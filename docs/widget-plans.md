@@ -414,7 +414,7 @@ WebRTC through [go2rtc](https://github.com/AlexxIT/go2rtc) is held in reserve. I
 ## Open questions
 
 1. What do the two small lines on the Today tile say?
-2. Answered in part on Nov 15: you confirmed the city. Still open: may it be written in the public settings file (until then the TV looks it up itself), and is Fahrenheit right?
+2. Answered in part on Nov 15: the weather uses Dallas, and you said it may be written in the public settings file. Still open: is Fahrenheit right?
 3. Bridge: Cloudflare Worker (recommended), private GitHub repo, or keep TV lists separate?
 4. AWWS board on the TV: read-only first (recommended), or ticks from day one?
 5. Calendar on a shared screen: show every calendar, or hide details for some?
