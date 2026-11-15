@@ -1,63 +1,108 @@
 /*
- * Home Hub tiles. Edit this file to change what shows on the TV.
+ * Home Hub settings. Edit this file to change what shows on the TV.
  *
- * Each app tile finds its app on the TV by name, so no app IDs are needed.
- * "match" is a list of names to look for (case does not matter). The first
- * installed app whose name equals or contains one of them is used.
- *
- * Tile kinds:
- *   app        opens an installed TV app
- *   tizentube  opens TizenTube through TizenBrew
- *   input      switches the TV to an input (sends a remote key)
- *   webhook    asks Home Assistant to do something (POSTs to a webhook url)
- *   dashboard  opens a web page full screen inside the hub (Back returns)
- *   allApps    lists every app on the TV
+ * The home screen is a grid of widget tiles (12 columns by 6 rows). Each
+ * layout entry places one widget: x and y are the top-left cell, w and h
+ * the size in cells. A layout entry for a widget that doesn't exist is
+ * skipped.
  */
+
+/* The Raspberry Pi on the home network. Home Assistant and the later widget
+   apps live here. Change it in this one place. */
+var HUB_PI = 'http://192.168.1.219';
+
 var HUB_CONFIG = {
   title: 'Living room',
-  rows: [
-    {
-      label: 'Watch',
-      tiles: [
-        { kind: 'app', label: 'Netflix', match: ['Netflix'], tone: 'red' },
-        { kind: 'app', label: 'Prime Video', match: ['Prime Video', 'Amazon Prime Video', 'Amazon'], tone: 'blue' },
-        { kind: 'app', label: 'Disney+', match: ['Disney+', 'Disney Plus', 'Disney'], tone: 'indigo' },
-        { kind: 'app', label: 'Hulu', match: ['Hulu'], tone: 'green' },
-        { kind: 'app', label: 'Peacock', match: ['Peacock TV', 'Peacock'], tone: 'amber' },
-        { kind: 'app', label: 'Apple TV', match: ['Apple TV', 'Apple TV+'], tone: 'slate' },
-        { kind: 'tizentube', label: 'YouTube', sub: 'TizenTube, no ads', tone: 'red' }
-      ]
-    },
-    {
-      label: 'Play',
-      tiles: [
-        /* The TV won't let the hub press keys itself, so Home Assistant (already trusted by the TV)
-           switches the input. Put the Home Assistant address in url, e.g.
-           'http://192.168.1.50:8123/api/webhook/tv-switch-to-xbox' */
-        { kind: 'webhook', label: 'Xbox', sub: 'HDMI 1', busy: 'Switching to the Xbox', url: 'http://192.168.1.219:8123/api/webhook/hub_xbox',
-          hint: 'Press the Xbox button on your controller. With Anynet+ on, the TV switches to HDMI 1 by itself.', tone: 'green' }
-      ]
-    },
-    {
-      label: 'Free TV',
-      tiles: [
-        { kind: 'app', label: 'Pluto TV', match: ['Pluto TV', 'Pluto'], tone: 'amber' },
-        { kind: 'app', label: 'Twitch', match: ['Twitch'], tone: 'indigo' }
-      ]
-    },
-    {
-      label: 'Dashboards',
-      tiles: [
-        /* Example. Replace the url with a page the TV can reach, then remove the slashes.
-        { kind: 'dashboard', label: 'Home', sub: 'Home Assistant', url: 'http://192.168.1.50:8123', tone: 'indigo' }
+  pi: HUB_PI,
+
+  /* How opening a widget looks:
+       'auto'    try the expanding animation, measure it, and switch to a plain
+                 fade for good if this TV can't keep up (the default)
+       'expand'  always use the expanding animation
+       'fade'    always use the plain fade (lightest on slow TVs) */
+  motion: 'auto',
+
+  // The tile that has focus when the hub opens.
+  start: 'entertainment',
+
+  layout: [
+    { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
+    { widget: 'entertainment', x: 3, y: 0, w: 6, h: 2 },
+    { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
+    { widget: 'todo',          x: 0, y: 2, w: 3, h: 4 },
+    { widget: 'calendar',      x: 3, y: 2, w: 3, h: 4 },
+    { widget: 'nowplaying',    x: 6, y: 2, w: 3, h: 2 },
+    { widget: 'awws',          x: 9, y: 2, w: 3, h: 2 },
+    { widget: 'ambiance',      x: 6, y: 4, w: 3, h: 2 },
+    { widget: 'mirror',        x: 9, y: 4, w: 3, h: 2 }
+  ],
+
+  widgets: {
+    /*
+     * Entertainment: the app launcher.
+     *
+     * Each app item finds its app on the TV by name, so no app IDs are needed.
+     * "match" is a list of names to look for (case does not matter). The first
+     * installed app whose name equals or contains one of them is used.
+     *
+     * Item kinds:
+     *   app        opens an installed TV app
+     *   tizentube  opens TizenTube through TizenBrew
+     *   input      switches the TV to an input (sends a remote key)
+     *   webhook    asks Home Assistant to do something (POSTs to a webhook url)
+     *   dashboard  opens a web page full screen inside the hub (Back returns)
+     *   allApps    lists every app on the TV
+     *
+     * "logo" picks the brand logo from logos.js. Without one, the item shows
+     * its first letter.
+     */
+    entertainment: {
+      sub: 'Apps, Xbox and live TV',
+      sections: [
+        {
+          label: 'Watch',
+          items: [
+            { kind: 'app', label: 'Netflix', match: ['Netflix'], logo: 'netflix' },
+            { kind: 'app', label: 'Prime Video', match: ['Prime Video', 'Amazon Prime Video', 'Amazon'], logo: 'primevideo' },
+            { kind: 'app', label: 'Disney+', match: ['Disney+', 'Disney Plus', 'Disney'], logo: 'disneyplus' },
+            { kind: 'app', label: 'Hulu', match: ['Hulu'], logo: 'hulu' },
+            { kind: 'app', label: 'Peacock', match: ['Peacock TV', 'Peacock'], logo: 'peacock' },
+            { kind: 'app', label: 'Apple TV', match: ['Apple TV', 'Apple TV+'], logo: 'appletv' },
+            { kind: 'tizentube', label: 'YouTube', sub: 'TizenTube, no ads', logo: 'youtube' }
+          ]
+        },
+        {
+          label: 'Play',
+          items: [
+            /* The TV won't let the hub press keys itself, so Home Assistant (already trusted by the TV)
+               switches the input. url is the Home Assistant webhook on the Pi, e.g.
+               HUB_PI + ':8123/api/webhook/tv-switch-to-xbox' */
+            { kind: 'webhook', label: 'Xbox', sub: 'HDMI 1', busy: 'Switching to the Xbox', url: HUB_PI + ':8123/api/webhook/hub_xbox',
+              hint: 'Press the Xbox button on your controller. With Anynet+ on, the TV switches to HDMI 1 by itself.', logo: 'xbox' }
+          ]
+        },
+        {
+          label: 'Free TV',
+          items: [
+            { kind: 'app', label: 'Pluto TV', match: ['Pluto TV', 'Pluto'], logo: 'plutotv' },
+            { kind: 'app', label: 'Twitch', match: ['Twitch'], logo: 'twitch' }
+          ]
+        },
+        /* A dashboard example. Replace the url with a page the TV can reach, then remove the slashes.
+        {
+          label: 'Dashboards',
+          items: [
+            { kind: 'dashboard', label: 'Home', sub: 'Home Assistant', url: HUB_PI + ':8123' }
+          ]
+        },
         */
-      ]
-    },
-    {
-      label: 'More',
-      tiles: [
-        { kind: 'allApps', label: 'All apps', sub: 'Everything on the TV', tone: 'slate' }
+        {
+          label: 'More',
+          items: [
+            { kind: 'allApps', label: 'All apps', sub: 'Everything on the TV', logo: 'allapps' }
+          ]
+        }
       ]
     }
-  ]
+  }
 };

@@ -7,26 +7,13 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="top">
-    <div>
-      <div class="place" id="place"></div>
-      <div class="build" id="build"></div>
-    </div>
-    <div class="clock">
-      <div class="time" id="time"></div>
-      <div class="date" id="date"></div>
-    </div>
-  </header>
+  <main class="stage" id="stage">
+    <div class="grid" id="grid"></div>
+  </main>
 
-  <main class="rows" id="rows"></main>
-
-  <section class="overlay" id="allApps" hidden>
-    <div class="sheet">
-      <h2 class="sheet-title">All apps</h2>
-      <p class="sheet-hint">Up and down to move, OK to open, Back to close</p>
-      <ul class="app-list" id="appList"></ul>
-    </div>
-  </section>
+  <div class="scrim" id="scrim"></div>
+  <div class="ghost" id="ghost"></div>
+  <section class="panel" id="panel" role="dialog" aria-modal="true"></section>
 
   <section class="frame-wrap" id="frameWrap" hidden>
     <iframe id="frame" title="Dashboard"></iframe>
@@ -36,6 +23,11 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="config.js"></script>
+  <script src="icons.js"></script>
+  <script src="logos.js"></script>
+  <script src="widgets/today.js"></script>
+  <script src="widgets/entertainment.js"></script>
+  <script src="widgets/planned.js"></script>
   <script src="hub.js"></script>
 </body>
 </html>
