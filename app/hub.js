@@ -115,19 +115,30 @@
 
   function findApp(match) {
     if (!apps || !match) return null;
-    var i, j, m, lower;
-    for (i = 0; i < match.length; i++) {
-      m = match[i].toLowerCase();
-      for (j = 0; j < apps.length; j++) {
-        if ((apps[j].name || '').toLowerCase() === m) return apps[j];
+    // Exact names beat partial ones. Visible apps beat hidden built-ins
+    // (Samsung TV Plus can be one of those).
+    return exactIn(match, false) || exactIn(match, true) ||
+      containsIn(match, false) || containsIn(match, true);
+  }
+
+  function exactIn(match, hidden) {
+    for (var i = 0; i < match.length; i++) {
+      var m = match[i].toLowerCase();
+      for (var j = 0; j < apps.length; j++) {
+        if (!!apps[j].hidden === hidden && (apps[j].name || '').toLowerCase() === m) return apps[j];
       }
     }
-    for (i = 0; i < match.length; i++) {
-      m = match[i].toLowerCase();
+    return null;
+  }
+
+  function containsIn(match, hidden) {
+    for (var i = 0; i < match.length; i++) {
+      var m = match[i].toLowerCase();
       var best = null;
-      for (j = 0; j < apps.length; j++) {
-        lower = (apps[j].name || '').toLowerCase();
-        if (lower.indexOf(m) !== -1 && (!best || lower.length < best.name.length)) best = apps[j];
+      for (var j = 0; j < apps.length; j++) {
+        var lower = (apps[j].name || '').toLowerCase();
+        if (!!apps[j].hidden !== hidden || lower.indexOf(m) === -1) continue;
+        if (!best || lower.length < best.name.length) best = apps[j];
       }
       if (best) return best;
     }
@@ -163,8 +174,7 @@
         tizen.application.getAppsInfo(function (infos) {
           apps = [];
           for (var i = 0; i < infos.length; i++) {
-            if (infos[i].show === false) continue;
-            apps.push({ id: infos[i].id, name: infos[i].name });
+            apps.push({ id: infos[i].id, name: infos[i].name, hidden: infos[i].show === false });
           }
           resolveTiles();
         }, function () { loadApps(2); });
@@ -316,7 +326,9 @@
 
   function openList() {
     if (!apps) return toast('Still looking for your apps. Try again in a second.');
+    // Your apps first, then hidden built-in ones at the bottom.
     var sorted = apps.slice().sort(function (a, b) {
+      if (!!a.hidden !== !!b.hidden) return a.hidden ? 1 : -1;
       return (a.name || '').toLowerCase() < (b.name || '').toLowerCase() ? -1 : 1;
     });
     listEl.innerHTML = '';
@@ -326,7 +338,7 @@
       n.textContent = sorted[i].name || sorted[i].id;
       var id = document.createElement('span');
       id.className = 'app-id';
-      id.textContent = sorted[i].id;
+      id.textContent = sorted[i].id + (sorted[i].hidden ? ' (hidden)' : '');
       li.appendChild(n);
       li.appendChild(id);
       li.setAttribute('data-id', sorted[i].id);

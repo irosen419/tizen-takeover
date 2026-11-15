@@ -35,7 +35,7 @@ var HUB_CONFIG = {
     {
       label: 'Free TV',
       tiles: [
-        { kind: 'app', label: 'Samsung TV Plus', match: ['Samsung TV Plus', 'TV Plus'], tone: 'blue' },
+        { kind: 'app', label: 'Samsung TV Plus', match: ['Samsung TV Plus', 'TV Plus', 'Samsung TV+', 'TV+'], tone: 'blue' },
         { kind: 'app', label: 'Pluto TV', match: ['Pluto TV', 'Pluto'], tone: 'amber' }
       ]
     },

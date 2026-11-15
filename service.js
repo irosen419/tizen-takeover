@@ -22,7 +22,7 @@ var urlLib = require('url');
 var os = require('os');
 
 var PORT = 8095;
-var VERSION = '0.2.0';
+var VERSION = '0.3.0';
 var TOKEN_FILE = '/home/owner/share/tizen-takeover-remote-token.txt';
 var REMOTE_NAME = new Buffer('Home Hub').toString('base64');
 
@@ -41,8 +41,8 @@ function listApps(cb) {
       var out = [];
       for (var i = 0; i < infos.length; i++) {
         var a = infos[i];
-        if (a.show === false) continue;
-        out.push({ id: a.id, name: a.name });
+        // Built-in apps like Samsung TV Plus can be marked hidden, so keep them and flag them.
+        out.push({ id: a.id, name: a.name, hidden: a.show === false });
       }
       cb(null, out);
     }, function (e) {
