@@ -2,7 +2,23 @@
 
 This is the plan for the seven Home Hub widgets not built yet, written Nov 15, 2026.
 
-Update, later on Nov 15: Weather and the To-do list kept on the TV were built overnight and are merged (v0.8.0). Their sections below are kept as the record of what was planned. The other five widgets are still to do.
+## Where things stand (updated Nov 15, 4 PM)
+
+The sections below are the original plan. Several parts have since been built or replaced, so read this table first.
+
+| Widget | Status | Notes |
+|---|---|---|
+| Weather | Built, merged (v0.8.0), location set to Deep Ellum (v0.8.1) | The plan's Dallas guess was replaced by a Deep Ellum setting. Fahrenheit is still unconfirmed. |
+| To-do | Built, merged (v0.7.0) | Kept on the TV. Now also syncs with the Pi (see live updates). The bridge for your morning list is still undecided. |
+| Calendar | Built, open as PR 8 (to become v0.11.0) | The Pi reads your five Google calendars through their secret links, as planned. Not yet checked on the real TV browser. |
+| Now Playing | Not started | Still needs your Spotify developer app. |
+| Ambiance | Not started | Still waits on the plant wall lights. |
+| A World Worth Saving | Not started | Still waits on the bridge decision. |
+| Mirror | Not started | Still waits on a camera. |
+
+Superseded by what was built: the "hub backend on the Pi" in the shared groundwork now exists as the live updates server (`docs/live-updates.md`, merged as v0.9.0 and running on your Pi). It already pushes data to the TV, so new widgets should use it instead of the routes sketched in G1. The no-purge loader (v0.10.0) also ends the cache purging problem that the plan only mentioned in passing.
+
+New idea from you, not planned here yet: a Guest mode and other modes.
 
 Two can be built tonight with nothing from you: Weather, and a To-do list kept on the TV.
 
@@ -414,7 +430,7 @@ WebRTC through [go2rtc](https://github.com/AlexxIT/go2rtc) is held in reserve. I
 ## Open questions
 
 1. What do the two small lines on the Today tile say?
-2. Answered in part on Nov 15: the weather uses Dallas, and you said it may be written in the public settings file. Still open: is Fahrenheit right?
+2. Answered on Nov 15: the weather location is set in the settings file (Deep Ellum). Still open: is Fahrenheit right?
 3. Bridge: Cloudflare Worker (recommended), private GitHub repo, or keep TV lists separate?
 4. AWWS board on the TV: read-only first (recommended), or ticks from day one?
 5. Calendar on a shared screen: show every calendar, or hide details for some?
