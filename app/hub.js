@@ -6,7 +6,9 @@
  * Writing a widget
  * ---------------------------------------------------------------------------
  * A widget is one file in app/widgets/ that registers itself, plus a script
- * tag in hub.html (before hub.js) and an entry in HUB_CONFIG.layout:
+ * tag in hub.html (before hub.js) and an entry in HUB_CONFIG.layout (the
+ * built-in layout; the Pi can send another, see "Tile layout from the Pi" in
+ * docs/live-updates.md):
  *
  *   (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push({
  *     id: 'weather',          // matches a layout entry and HUB_CONFIG.widgets[id]
@@ -55,7 +57,7 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.11.0'
+ *   ctx.build                 'v0.12.0'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -102,7 +104,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.11.0';
+  var BUILD = 'v0.12.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -743,6 +745,154 @@
     node.style.opacity = String(value);
   }
 
+  /* ---------- tile layout ---------- */
+
+  // The layout can also come from the hub server on the Pi (the live
+  // resource 'layout'), so it can change without editing config.js. The TV
+  // keeps the last one it got and starts with it. HUB_CONFIG.layout stays the
+  // built-in default, used as it is.
+  var LAYOUT_KEY = 'homeHub.layout';
+  var LAYOUT_RELOAD_KEY = 'homeHub.layout.reloaded';
+  var GRID_COLS = 12;
+  var GRID_ROWS = 6;
+  var MAX_TILES = 24;
+  var TILE_ID_RE = /^[a-z0-9-]{1,32}$/;
+  var registry = {};          // widget id -> widget, from pickWidgets()
+  var layoutKey = '';         // JSON of the layout on screen now
+  var pendingLayout;          // undefined: nothing waiting; otherwise a list, or null for the built-in one
+
+  function isWhole(v) { return typeof v === 'number' && isFinite(v) && Math.floor(v) === v; }
+
+  // The same rules as the Pi (pi/server.js), but a bad entry is skipped
+  // instead of refusing the lot: whole numbers inside the 12 x 6 grid, no
+  // overlap with an earlier entry, each widget once, at most 24. Returns the
+  // clean list (only the five fields), or null when nothing is left.
+  function cleanLayout(raw) {
+    if (!raw || Object.prototype.toString.call(raw) !== '[object Array]') return null;
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < raw.length && out.length < MAX_TILES; i++) {
+      var e = raw[i];
+      if (!e || typeof e !== 'object') continue;
+      var id = e.widget;
+      if (typeof id !== 'string' || !TILE_ID_RE.test(id) || seen.hasOwnProperty(id)) continue;
+      if (!isWhole(e.x) || !isWhole(e.y) || !isWhole(e.w) || !isWhole(e.h)) continue;
+      if (e.x < 0 || e.y < 0 || e.w < 1 || e.h < 1 || e.x + e.w > GRID_COLS || e.y + e.h > GRID_ROWS) continue;
+      var clash = false;
+      for (var j = 0; j < out.length; j++) {
+        var o = out[j];
+        if (e.x < o.x + o.w && o.x < e.x + e.w && e.y < o.y + o.h && o.y < e.y + e.h) { clash = true; break; }
+      }
+      if (clash) continue;
+      seen[id] = true;
+      out.push({ widget: id, x: e.x, y: e.y, w: e.w, h: e.h });
+    }
+    return out.length ? out : null;
+  }
+
+  // A clean layout that shows at least one widget this hub has, or null.
+  function usableLayout(raw) {
+    var list = cleanLayout(raw);
+    if (!list) return null;
+    for (var i = 0; i < list.length; i++) if (registry.hasOwnProperty(list[i].widget)) return list;
+    return null;
+  }
+
+  function readSavedLayout() {
+    try {
+      var raw = window.localStorage && localStorage.getItem(LAYOUT_KEY);
+      return raw ? usableLayout(JSON.parse(raw)) : null;
+    } catch (e) { return null; }
+  }
+
+  // list null: forget the saved one, so the built-in layout is used.
+  function saveLayout(list) {
+    try {
+      if (!window.localStorage) return;
+      if (list) localStorage.setItem(LAYOUT_KEY, JSON.stringify(list));
+      else localStorage.removeItem(LAYOUT_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
+  // The layout to build with at start.
+  function startLayout() {
+    var layout = readSavedLayout() || cfg.layout || [];
+    layoutKey = JSON.stringify(layout);
+    // The reload for this layout worked, so its note can go.
+    try {
+      if (window.sessionStorage && sessionStorage.getItem(LAYOUT_RELOAD_KEY) === layoutKey) sessionStorage.removeItem(LAYOUT_RELOAD_KEY);
+    } catch (e) { /* ignore */ }
+    return layout;
+  }
+
+  function placeCell(cell, entry) {
+    cell.style.left = (entry.x / 12 * 100) + '%';
+    cell.style.top = (entry.y / 6 * 100) + '%';
+    cell.style.width = (entry.w / 12 * 100) + '%';
+    cell.style.height = (entry.h / 6 * 100) + '%';
+  }
+
+  // The widget ids a layout puts on screen, each once, sorted.
+  function shownIds(layout) {
+    var ids = [];
+    for (var i = 0; i < layout.length; i++) {
+      var id = layout[i] && layout[i].widget;
+      if (typeof id === 'string' && registry.hasOwnProperty(id) && ids.indexOf(id) < 0) ids.push(id);
+    }
+    return ids.sort();
+  }
+
+  function onLayoutData(data) {
+    try {
+      if (!data || typeof data !== 'object') return;
+      var list = usableLayout(data.layout);   // null, or nothing usable: the built-in layout
+      saveLayout(list);
+      pendingLayout = list;
+      applyPendingLayout();
+    } catch (e) {
+      liveWarn('layout failed: ' + (e && e.message));
+    }
+  }
+
+  // Applies a layout that came in, once nothing is open or moving.
+  function applyPendingLayout() {
+    if (pendingLayout === undefined || open || frameOpen || busy) return;
+    var layout = pendingLayout || cfg.layout || [];
+    pendingLayout = undefined;
+    var key = JSON.stringify(layout);
+    if (key === layoutKey) return;
+    var onScreen = [];
+    for (var i = 0; i < widgets.length; i++) onScreen.push(widgets[i].w.id);
+    if (shownIds(layout).join(',') !== onScreen.sort().join(',')) {
+      reloadForLayout(key);
+      return;
+    }
+    // The same widgets: move their cells, then update what depends on where they are.
+    var at = {};
+    for (var j = 0; j < layout.length; j++) {
+      if (layout[j] && !at.hasOwnProperty(layout[j].widget)) at[layout[j].widget] = layout[j];
+    }
+    for (var k = 0; k < widgets.length; k++) placeCell(widgets[k].cell, at[widgets[k].w.id]);
+    layoutKey = key;
+    measureHome();
+    placeGlass();
+  }
+
+  // Other widgets: build afresh. A note in sessionStorage keyed by the layout
+  // makes sure this happens once per layout, never in a loop. Without
+  // sessionStorage there is no reload at all.
+  function reloadForLayout(key) {
+    try {
+      if (!window.sessionStorage || sessionStorage.getItem(LAYOUT_RELOAD_KEY) === key) return;
+      sessionStorage.setItem(LAYOUT_RELOAD_KEY, key);
+      if (sessionStorage.getItem(LAYOUT_RELOAD_KEY) !== key) return;
+    } catch (e) { return; }
+    layoutKey = key;
+    location.reload();
+  }
+
+  function layoutChance() { setTimeout(applyPendingLayout, 0); }
+
   /* ---------- building the stage ---------- */
 
   function pickWidgets() {
@@ -791,11 +941,14 @@
 
   function build() {
     var byId = pickWidgets();
-    var layout = cfg.layout || [];
+    registry = byId;
+    var layout = startLayout();
+    var placed = {};
     for (var i = 0; i < layout.length; i++) {
       var entry = layout[i];
-      var w = entry && byId[entry.widget];
-      if (!w) continue;
+      var w = entry && byId.hasOwnProperty(entry.widget) ? byId[entry.widget] : null;
+      if (!w || placed.hasOwnProperty(w.id)) continue;   // one tile per widget
+      placed[w.id] = true;
       var ctx = makeCtx(w);
       var rec = { w: w, ctx: ctx, expandable: w.expandable !== false };
       ctx._bind(rec);
@@ -803,10 +956,7 @@
 
       var cell = el('div', 'cell', gridEl);
       cell.setAttribute('data-widget', w.id);
-      cell.style.left = (entry.x / 12 * 100) + '%';
-      cell.style.top = (entry.y / 6 * 100) + '%';
-      cell.style.width = (entry.w / 12 * 100) + '%';
-      cell.style.height = (entry.h / 6 * 100) + '%';
+      placeCell(cell, entry);
 
       var tile = el('div', 'tile' + (w.planned ? ' is-planned' : '') + (rec.expandable ? '' : ' is-static'), cell);
       if (w.head !== false) {
@@ -1275,6 +1425,7 @@
       focusHome(rec.index);
       call(rec, 'onClose', [rec.ctx]);
       panel.body.innerHTML = '';
+      layoutChance();
     }
 
     if (motion.mode === 'fade' || mode === 'full') {
@@ -1377,6 +1528,7 @@
     frameEl.src = 'about:blank';
     frameWrap.hidden = true;
     frameOpen = false;
+    layoutChance();
   }
 
   /* ---------- keys ---------- */
@@ -1612,6 +1764,7 @@
       if (!server && readQuery('live') === null) return;
       if (typeof L.onCommand === 'function') L.onCommand(onLiveCommand);
       if (typeof L.onStatus === 'function') L.onStatus(function () { announceStatus(); });
+      if (typeof L.on === 'function') L.on('layout', onLayoutData);
       L.start({ server: server });
     } catch (e) {
       liveWarn('could not start: ' + (e && e.message));
@@ -1675,6 +1828,9 @@
   window.HUB_TEST.idle = hubIdle;
   window.HUB_TEST.setIdle = function (value) { idleOverride = value === true || value === false ? value : null; };
   window.HUB_TEST.setIdleMs = function (ms) { IDLE_MS = ms; };
+  window.HUB_TEST.cleanLayout = cleanLayout;
+  window.HUB_TEST.layout = function () { return layoutKey ? JSON.parse(layoutKey) : null; };
+  window.HUB_TEST.layoutWaiting = function () { return pendingLayout !== undefined; };
   window.HUB_TEST.checkUpdates = function () { var U = updateApi('check'); if (U) U.check(); };
 
   /* ---------- start ---------- */

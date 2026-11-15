@@ -84,7 +84,7 @@ Data:
 
 - **To-do.** The list moves to the Pi. Add, tick, move and remove work from the TV remote as today and from Claude. Changes made on the TV while the Pi is away are kept and sent later.
 
-Next, once this works on the TV: the calendar, private settings (below), a longer-lived banner, and choosing which tiles are on the home screen.
+Next, once this works on the TV: the calendar, private settings (below), a longer-lived banner, and choosing which tiles are on the home screen. (The calendar and the tile layout are now built.)
 
 ## How Claude reaches the Pi
 
@@ -137,6 +137,14 @@ From you: which calendars to show, whether any show as just "Busy", and one secr
 - Data shape, per event: `{ id, cal, title, start, end, allDay, location }`. Timed events use UTC ISO strings. All-day events use `YYYY-MM-DD` with an exclusive end. `cal` is the 1-based number of the calendar in `calendars`, which carries `name`, `ok`, `error`, `count`, `skipped`, `updatedAt`. With `busy`, titles and places are replaced by "Busy" before the data leaves the reader.
 - `GET /api/calendar` returns it, `POST /api/calendar/refresh` reads now and waits (up to 25 s), `./hub calendar status` and `./hub calendar refresh` wrap both.
 - The TV widget is `app/widgets/calendar.js` (v0.11.0). It listens for `calendar`, keeps the last copy on the TV (`homeHub.calendar.v1`) and converts every time to `tz` itself.
+
+## Tile layout from the Pi (built, v0.12.0)
+
+So a visual editor (or `./hub layout set`) can rearrange the home screen without a commit to `app/config.js`.
+
+- One more resource, `layout`: `{ layout: null | [ { widget, x, y, w, h } ] }`, the same shape as `HUB_CONFIG.layout` on the 12 x 6 grid. `null` means "use the hub's built-in layout", which stays `HUB_CONFIG.layout`. A state file from before this has none and reads as `null`; a damaged one also falls back to `null`.
+- `GET /api/layout` answers `{ ok, rev, layout }`. `POST /api/layout` takes `{ layout: [...] }` or `{ layout: null }` and answers `{ ok, rev, changed, layout }`. It is strict: whole numbers, `x, y >= 0`, `w, h >= 1`, `x + w <= 12`, `y + h <= 6`, no overlaps, each widget once, ids of 1 to 32 `a-z 0-9 -`, at most 24 tiles; otherwise `400` naming the tile. Fields other than the five are dropped. Posting the same layout again changes nothing and does not raise `rev`.
+- The TV (`app/hub.js`) starts with the copy it keeps in `homeHub.layout`, else `HUB_CONFIG.layout`, and listens for `layout`. A new layout is saved (or the copy cleared for `null`). If the same widgets stay on screen, their tiles just move. If the set of widgets changed it reloads once (a `sessionStorage` note keyed by the layout stops a loop). Nothing moves while a panel or a dashboard is open; it waits until it closes. The TV checks every entry the same way and skips bad ones; with nothing usable left it uses `HUB_CONFIG.layout`. Widgets the hub does not have are skipped, as before. `node dev/layout-test.js` tests all of this in a headless browser.
 - `updatedAt` only moves when the events change, because a refresh that finds the same events pushes nothing. So the TV does not call data old just because `updatedAt` is old: it only says "Last updated …" when the line to the Pi is down (or it is showing its saved copy) and the last time it had the Pi is more than 30 minutes ago.
 
 ## How it is tested without your TV or Pi
@@ -237,6 +245,8 @@ Ops are applied in order and the last one to arrive wins.
 | `GET /api/todo` | | `{ ok, rev, items }` |
 | `POST /api/todo` | `{ title, section?, due? }` | `{ ok, rev, item }` |
 | `POST /api/todo/ops` | `{ ops }` | `{ ok, rev, items }` |
+| `GET /api/layout` | | `{ ok, rev, layout }` (`null` = the hub's built-in layout) |
+| `POST /api/layout` | `{ layout: [...] \| null }` | `{ ok, rev, changed, layout }`; see "Tile layout from the Pi" |
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
 | `GET /health` (no token) | | `{ ok, server }` |
 

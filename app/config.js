@@ -4,7 +4,8 @@
  * The home screen is a grid of widget tiles (12 columns by 6 rows). Each
  * layout entry places one widget: x and y are the top-left cell, w and h
  * the size in cells. A layout entry for a widget that doesn't exist is
- * skipped.
+ * skipped. This is the built-in layout: a layout sent from the Pi
+ * (./hub layout set) takes its place until ./hub layout reset.
  */
 
 /* The Raspberry Pi on the home network. Home Assistant and the later widget
