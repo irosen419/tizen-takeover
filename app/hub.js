@@ -23,7 +23,13 @@
  *                                          // data-autofocus. A data-key attribute lets
  *                                          // redrawPanel keep focus on the same thing.
  *     onSelect: function (target, ctx) {}, // OK on a focusable in the panel body
- *     onFocus: function (target, ctx) {},  // focus moved to a body focusable
+ *     onSubmit: function (target, ctx) {}, // Enter or Done in a text box (see below)
+ *     onFocus: function (target, ctx) {},  // focus moved to a body focusable, or to the
+ *                                          // hub's Full screen button
+ *     onMove: function (dir, from, ctx) {}, // an arrow ('left' 'right' 'up' 'down') pressed with
+ *                                          // focus on `from` (a body focusable or the hub's
+ *                                          // Full screen button). Return the element to focus,
+ *                                          // true to stay put, or nothing to move by position.
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
@@ -35,9 +41,21 @@
  * stopping the hub. If two widgets register the same id, a real one beats a
  * planned placeholder; otherwise the last one registered wins.
  *
+ * Text boxes: an <input class="f"> (type text, search, url, email, tel,
+ * number, password or none) in the panel body. Focus on it is ordinary hub
+ * focus until OK, or a typed letter on a USB or Bluetooth keyboard, starts
+ * typing: the input gets real focus (on the TV that opens the on-screen
+ * keyboard) and keys go to it, so Backspace deletes and Left/Right move the
+ * caret. Enter or the keyboard's Done stops typing, then calls
+ * onSubmit(target, ctx); target.value is still there to read (clear it and
+ * redraw if you like). Back or Cancel stops typing and keeps the text. Up and
+ * Down stop typing and move on. Style the typing state with :focus, hub focus
+ * with .is-focused. Give the input a data-key so a redraw while typing keeps
+ * the text and the caret.
+ *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.6.1'
+ *   ctx.build                 'v0.8.1'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -66,9 +84,11 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.6.1';
+  var BUILD = 'v0.8.1';
   var SERVICE = 'http://127.0.0.1:8095';
-  var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8 };
+  // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
+  var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
+    IME_DONE: 65376, IME_CANCEL: 65385 };
   var MOTION_KEY = 'homeHub.motion';
   var EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';
 
@@ -854,6 +874,18 @@
       focusPanel(node);
       selectPanel();
     });
+    // Real focus entering or leaving a text box changes the Back hint. During
+    // blur the box can still be document.activeElement, so go by the event.
+    panelEl.addEventListener('focus', function (e) {
+      if (isTextBox(e.target)) drawPanelHint(true);
+    }, true);
+    panelEl.addEventListener('blur', function (e) {
+      if (!isTextBox(e.target)) return;
+      // The TV keyboard may close and blur the box by itself, so the stray-key
+      // guard starts here too, not only in stopTyping.
+      typingEndedAt = Date.now();
+      drawPanelHint(false);
+    }, true);
     scrimEl.addEventListener('click', function () {
       if (!busy && open && !frameOpen) closePanel();
     });
@@ -871,7 +903,14 @@
     var full = mode === 'full';
     panel.btnIcon.innerHTML = iconHTML(full ? 'shrink' : 'expand');
     panel.btnLabel.textContent = full ? 'Exit full screen' : 'Full screen';
-    panel.hint.textContent = full ? 'Back to shrink' : 'Back to close';
+    drawPanelHint();
+  }
+
+  // typing: true or false when the caller knows, otherwise worked out here.
+  function drawPanelHint(typing) {
+    if (!open) return;
+    if (typing === undefined) typing = !!typingBox();
+    panel.hint.textContent = typing ? 'Back to stop typing' : mode === 'full' ? 'Back to shrink' : 'Back to close';
   }
 
   function panelFocusables() {
@@ -897,6 +936,13 @@
       prevKey = panelFocus.getAttribute('data-key');
       prevIndex = bodyFocusables().indexOf(panelFocus);
     }
+    // A redraw while typing keeps the text, the caret and the typing.
+    var typed = null;
+    var box = keep ? typingBox() : null;
+    if (box && box.getAttribute('data-key')) {
+      typed = { key: box.getAttribute('data-key'), value: box.value, start: -1, end: -1 };
+      try { typed.start = box.selectionStart; typed.end = box.selectionEnd; } catch (e) { /* not supported */ }
+    }
     panelFocus = null;
     panel.body.innerHTML = '';
     panel.body.scrollTop = 0;
@@ -913,18 +959,34 @@
     if (!target) target = panel.body.querySelector('.f[data-autofocus]');
     if (!target && prevIndex >= 0 && items.length) target = items[Math.min(prevIndex, items.length - 1)];
     if (!target) target = items[0] || panel.btn;
-    focusPanel(target);
+    if (typed) {
+      for (var j = 0; j < items.length; j++) {
+        if (isTextBox(items[j]) && items[j].getAttribute('data-key') === typed.key) {
+          target = items[j];
+          target.value = typed.value;
+          focusPanel(target);
+          startTyping(target);
+          if (typed.start >= 0) {
+            try { target.setSelectionRange(typed.start, typed.end); } catch (e) { /* not supported */ }
+          }
+          break;
+        }
+      }
+    }
+    if (panelFocus !== target) focusPanel(target);
+    drawPanelHint();
   }
 
   function focusPanel(node) {
     if (!node) return;
-    if (panelFocus && panelFocus !== node) panelFocus.classList.remove('is-focused');
+    if (panelFocus && panelFocus !== node) {
+      if (panelFocus === typingBox()) stopTyping();
+      panelFocus.classList.remove('is-focused');
+    }
     panelFocus = node;
     node.classList.add('is-focused');
-    if (node !== panel.btn) {
-      keepInView(node);
-      call(open, 'onFocus', [node, open.ctx]);
-    }
+    if (node !== panel.btn) keepInView(node);
+    call(open, 'onFocus', [node, open.ctx]);
   }
 
   // Scrolls the panel body (instantly) so the focused element is visible.
@@ -946,6 +1008,11 @@
   function movePanel(dir) {
     var list = panelFocusables();
     if (!panelFocus) { focusPanel(list[0]); return; }
+    // A widget may steer a move itself: onMove returns the element to focus,
+    // true to stay put, or nothing for the usual move by position.
+    var own = call(open, 'onMove', [dir, panelFocus, open.ctx]);
+    if (own === true) return;
+    if (own && own.nodeType === 1 && own !== panelFocus && panelEl.contains(own)) { focusPanel(own); return; }
     var from = rectOf(panelFocus);
     var rects = [];
     for (var i = 0; i < list.length; i++) rects.push(list[i] === panelFocus ? null : rectOf(list[i]));
@@ -956,6 +1023,7 @@
   function selectPanel() {
     if (!panelFocus) return;
     if (panelFocus === panel.btn) { switchMode(mode === 'full' ? 'panel' : 'full'); return; }
+    if (isTextBox(panelFocus)) { startTyping(panelFocus); return; }
     var target = panelFocus;
     target.classList.add('is-pressed');
     setTimeout(function () { target.classList.remove('is-pressed'); }, 160);
@@ -966,6 +1034,73 @@
     if (call(open, 'onBack', [open.ctx]) === true) return;
     if (mode === 'full') switchMode('panel');
     else closePanel();
+  }
+
+  /* ---------- typing in text boxes ---------- */
+
+  // Typing = real (DOM) focus is on a text box in the open panel. Hub focus
+  // (.is-focused) stays on it too. Nothing else keeps a typing flag.
+  var TEXT_TYPES = { '': true, text: true, search: true, url: true, email: true, tel: true, number: true, password: true };
+  var typingEndedAt = 0;
+
+  function isTextBox(node) {
+    if (!node || node.nodeType !== 1 || node.tagName !== 'INPUT' || !hasClass(node, 'f')) return false;
+    var type = (node.getAttribute('type') || '').toLowerCase();
+    return TEXT_TYPES.hasOwnProperty(type) && panel.body.contains(node);
+  }
+
+  function typingBox() {
+    if (!open) return null;
+    var node = document.activeElement;
+    return isTextBox(node) ? node : null;
+  }
+
+  // On the TV, focusing the box opens the on-screen keyboard.
+  function startTyping(node) {
+    var already = document.activeElement === node;
+    try { node.focus(); } catch (e) { return; }
+    // A click has already focused it and placed the caret; leave that alone.
+    if (!already) {
+      try { node.setSelectionRange(node.value.length, node.value.length); } catch (e2) { /* not supported */ }
+    }
+  }
+
+  function stopTyping() {
+    var box = typingBox();
+    if (box) {
+      try { box.blur(); } catch (e) { /* ignore */ }
+    }
+    typingEndedAt = Date.now();
+  }
+
+  // Keys while typing. Only Enter/Done, Back/Cancel and Up/Down are the
+  // hub's; everything else (letters, Backspace, Left/Right) goes to the box.
+  function typingKey(e, box) {
+    var code = e.keyCode;
+    if (e.isComposing || code === 229) return;
+    if (e.repeat && (code === KEY.ENTER || code === KEY.BACK || code === KEY.ESC)) { e.preventDefault(); return; }
+    if (code === KEY.ENTER || code === KEY.IME_DONE) {
+      e.preventDefault();
+      stopTyping();
+      call(open, 'onSubmit', [box, open.ctx]);
+    } else if (code === KEY.BACK || code === KEY.ESC || code === KEY.IME_CANCEL) {
+      e.preventDefault();
+      stopTyping();
+    } else if (code === KEY.UP || code === KEY.DOWN) {
+      e.preventDefault();
+      stopTyping();
+      typingEndedAt = 0;   // OK right after moving on is a real press
+      if (!busy) movePanel(dirOf(code));
+    }
+  }
+
+  // A key that types a character, without ctrl, meta or alt.
+  function isPrintable(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    // Old engines leave key out or report 'Unidentified'; go by the code then.
+    if (e.key && e.key !== 'Unidentified') return e.key.length === 1;
+    var c = e.keyCode;
+    return c === 32 || (c >= 48 && c <= 90) || (c >= 96 && c <= 111) || (c >= 186 && c <= 222);
   }
 
   /* ---------- open, close, full screen ---------- */
@@ -1236,8 +1371,23 @@
       if (isBack(code)) { e.preventDefault(); closeFrame(); }
       return;
     }
-    if (handled) e.preventDefault();
-    if (busy || !handled) return;
+    var box = typingBox();
+    if (box) { typingKey(e, box); return; }
+    // A keyboard letter on a focused text box starts typing; the browser then
+    // puts that letter in the box. Backspace there deletes instead of going Back.
+    if (open && !busy && isTextBox(panelFocus) &&
+        (isPrintable(e) || (code === KEY.BACKSPACE && panelFocus.value))) {
+      startTyping(panelFocus);
+      return;
+    }
+    if (!handled) return;
+    e.preventDefault();
+    // A held OK or Back counts once. Otherwise holding OK on a tile would
+    // carry on pressing things inside the panel it opens.
+    if (e.repeat && !dir) return;
+    if (busy) return;
+    // The TV keyboard can send a stray Enter after Done or Back after Cancel.
+    if ((code === KEY.ENTER || isBack(code)) && Date.now() - typingEndedAt < 300) return;
 
     if (open) {
       if (dir) movePanel(dir);

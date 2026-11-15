@@ -8,7 +8,9 @@ Out of the box:
 
 - **Today:** the time, the date and the build.
 - **Entertainment:** Netflix, Prime Video, Disney+, Hulu, Peacock, Apple TV, YouTube (TizenTube), Xbox on HDMI 1, Pluto TV, Twitch and a list of every app on the TV.
-- **Coming soon:** Weather, To-do, Calendar, Now Playing, A World Worth Saving, Ambiance and Mirror. These tiles hold their spot with a "Soon" tag until they're built.
+- **To-do:** a list kept on the TV. Add, tick off and move things with the remote.
+- **Weather:** the temperature, today's high and low and the chance of rain, then the next 12 hours and the week. It finds the TV's city by itself.
+- **Coming soon:** Calendar, Now Playing, A World Worth Saving, Ambiance and Mirror. These tiles hold their spot with a "Soon" tag until they're built.
 
 Press OK on a tile to open it in a panel in the middle of the screen; the other tiles slide out of the way. The panel has a **Full screen** button. The tiles sit on a picture of the ocean, frosted like glass.
 
@@ -79,7 +81,7 @@ Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion
 
 ### The status line
 
-The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.6.1 · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand.
+The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.8.1 · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand.
 
 ### Entertainment
 
@@ -100,6 +102,43 @@ The home tile shows the first six logos. The panel shows them all; full screen g
 
 Uncomment the Dashboards example and point `url` at the page. Some sites refuse to load inside another page. If yours shows blank, that site blocks framing and needs its own setting changed.
 
+### Weather
+
+The tile shows the city, the temperature and the sky now, and today's high, low and chance of rain. The panel has two views, picked with Left and Right at the top: **Day** (now, feels like, wind, rain today, sunrise and sunset, then the next 12 hours with a temperature curve; if the screen is short on room, the hours show their temperatures as a plain row instead of the curve) and **Week** (seven days, each with its rain chance and its low-to-high range on one shared scale). Full screen shows both side by side, under the place's date.
+
+`widgets.weather.location` says where the forecast is for. It takes one of three forms:
+
+- `''` (the default): the TV finds its own city. It asks a public lookup service (ipwho.is, then get.geojs.io if that one doesn't answer) which city its internet address is in, and keeps the answer on the TV, not in this file. If the lookup picked the wrong city, **Wrong city?** in the panel asks again, trying the other service first; the old city stays until the new one's forecast is in. If it still gets it wrong, set the city yourself. If neither service answers (no internet yet), the tile says "Can’t find your city yet" and keeps trying. If they answer but can't place the TV, it says "Set your city": add one to `location`.
+- A city name, such as `'Lisbon'` or `'Portland, Oregon'`. It's looked up once. The part after the comma picks between towns with the same name.
+- An exact spot: `{ name: 'Home', latitude: 38.72, longitude: -9.14 }`.
+
+`units` is `'fahrenheit'` (wind in mph) or `'celsius'` (wind in km/h).
+
+Forecasts come from [Open-Meteo](https://open-meteo.com/), which is free and needs no account. The panel credits it, as its licence asks. The TV asks Open-Meteo directly; if the TV's browser can't reach it, the hub's local helper (`service.js`) asks for it. The forecast updates every 20 minutes while the hub is on screen, and right away when you come back to the hub after a while. When it can't update, the tile keeps the last forecast and says "as of" and the time it was fetched. After 24 hours without an update the old forecast is dropped and the tile says "No forecast right now" with the time of the next try. **Update now** in the panel tries at once. If the TV's clock jumps back, the hub updates straight away instead of waiting.
+
+## To-do
+
+A to-do list kept on this TV. The tile shows how many things are in **Now**, how many are in Next, Waiting on and Done today, and the first few Now items. Anything past its due date says **Overdue**.
+
+Open the tile to see the whole list, in four parts: **Now**, **Next**, **Waiting on** and **Done today**.
+
+- **Add something:** the box at the top has focus when the list is empty. Press OK and type with the TV's keyboard, then press Done. The new item goes to the top of Now and the box is ready for the next one. Back stops typing and keeps the text.
+- **Tick it off:** OK on an item. It stays where it is, crossed out, until you close the list, so a wrong press is fixed with another OK. Next time it shows under Done today. OK on a Done today item puts it back.
+- **Move it:** press Right on an item to reach its two round buttons: the arrow moves it along (its label says where: **To Next**, **To Waiting on** or **To Now**), the bin removes it.
+- **Remove it:** OK on the bin (**Remove**), then OK again on **Press again**. Moving away or pressing Back cancels.
+
+Done items stay under Done today until the end of the day, then they're cleared.
+
+A USB or Bluetooth keyboard plugged into the TV works too: with the box focused, just start typing, and Enter adds the item. Backspace deletes a letter while you type.
+
+Full screen shows Now on the left and the rest on the right.
+
+The list is saved on the TV itself, so it isn't shared with phones or other TVs (a later version can sync it with the Pi). A warning shows on the tile if something goes wrong:
+
+- **This TV isn't saving the list.** The TV won't let the hub save anything. The list works until the hub closes, then it's gone.
+- **Couldn't save the last change.** The TV's storage may be full. The change is kept until the hub closes, and the next change tries again.
+- **The saved list couldn't be read, so a fresh one was started.** The saved copy was damaged. It's kept on the TV as `homeHub.todo.v1.bad` in case it can be recovered.
+
 ## Writing a widget
 
 A widget is one file in `app/widgets/` that registers itself, a `<script>` tag for it in `index.html` before `hub.js`, and a `layout` entry. To replace a "Soon" placeholder, register a widget with the same `id`; a real widget always wins over a placeholder.
@@ -114,13 +153,20 @@ A widget is one file in `app/widgets/` that registers itself, a `<script>` tag f
   renderTile: function (el, ctx) {},    // fill the tile body (the hub draws icon and title)
   renderPanel: function (el, ctx) {},   // fill the panel body each time it opens
   onSelect: function (target, ctx) {},  // OK on one of your focusable elements
+  onSubmit: function (target, ctx) {},  // Enter or Done in a text box
   onBack: function (ctx) { return false; }, // return true if you handled Back
   onMode: function (mode, ctx) {},      // 'panel' or 'full'
   onClose: function (ctx) {}
 });
 ```
 
-Only `id` and `title` are required. Give every element the remote should reach the class `f`, and `data-autofocus` to the one that gets focus first. Arrows move between them by position. Other optional hooks and fields: `planned`, `head: false`, `sub`, `onFocus` and `onStatus`; the comment at the top of `hub.js` lists them all.
+Only `id` and `title` are required. Give every element the remote should reach the class `f`, and `data-autofocus` to the one that gets focus first. Arrows move between them by position.
+
+A text box is an `<input class="f">` (type text or similar). OK on it, or a letter typed on a keyboard, starts typing; on the TV that opens the on-screen keyboard. While typing, the keys go to the box (Backspace deletes, Left and Right move the cursor). Enter or the keyboard's Done stops typing and calls `onSubmit(target, ctx)`, where `target.value` is the text. Back or Cancel stops typing and keeps the text. Up and Down stop typing and move on. Style the typing state with `:focus` and hub focus with `.is-focused`. Give the box a `data-key` so a redraw while typing keeps the text.
+
+Arrows normally move by position. A widget that needs its own rule for some moves adds `onMove(dir, from, ctx)`: return the element to focus, `true` to stay put, or nothing to let the hub decide.
+
+Other optional hooks and fields: `planned`, `head: false`, `sub`, `onFocus` and `onStatus`; the comment at the top of `hub.js` lists them all.
 
 `ctx` gives each widget: `config` (its part of `HUB_CONFIG.widgets`), `toast(text, ms)`, `service(path, ms, cb)` for the TV's service, `getJSON(url, ms, cb)` for any other address, `pi(path)` to build an address on the Pi (`ctx.pi('/todo/')`, `ctx.pi(':8123/api/x')`), `openFrame(url)`, `isOpen()`, `mode()`, `setMode(mode)`, `close()`, `redrawTile()`, `redrawPanel()`, `setSub(text)`, `focus(el)`, `browser()` (the TV's browser, for example `Chrome 63 · Tizen 5.0`), `hasTizen` and `registerKeys(keys)`.
 
@@ -140,18 +186,18 @@ Then open http://127.0.0.1:8090/. It serves `app/` and pretends to be the TV's s
 
 ## Updating
 
-TizenBrew loads modules through jsDelivr, which caches each branch for a while. After pushing a change, wait a bit or purge the cache for each changed file at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/<file>`, then reopen the hub. There are more files now, so purge every one you changed: `index.html`, `style.css`, `config.js`, `icons.js`, `logos.js`, `hub.js`, each file in `widgets/` (for example `.../app/widgets/entertainment.js`) and the picture, `backgrounds/ocean.jpg`.
+TizenBrew loads modules through jsDelivr, which caches each branch for a while. After pushing a change, wait a bit or purge the cache for each changed file at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/<file>`, then reopen the hub. There are more files now, so purge every one you changed: `index.html`, `style.css`, `config.js`, `icons.js`, `logos.js`, `hub.js`, each file in `widgets/` (for example `.../app/widgets/entertainment.js`, `.../app/widgets/todo.js` and `.../app/widgets/todo.css`) and the picture, `backgrounds/ocean.jpg`.
 
 ## How it works
 
 - `app/index.html` is the page. It loads, in order: `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, then `hub.js`.
 - `app/config.js` holds the settings.
 - `app/icons.js` holds the white line icons; `app/logos.js` the app logos.
-- `app/widgets/` holds one file per widget: `today.js`, `entertainment.js` and `planned.js` (the "Soon" placeholders).
+- `app/widgets/` holds one file per widget: `today.js`, `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) and `planned.js` (the "Soon" placeholders).
 - `app/hub.js` builds the home screen, moves focus, opens panels and runs the animations.
-- `app/style.css` holds all the styles.
+- `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
 - `app/backgrounds/` holds the background picture.
-- `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps and calls webhooks when the page can't do it directly.
+- `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps, calls webhooks and fetches the weather when the page can’t do it directly.
 - `dev/preview.js` is for previewing on a laptop and isn't used on the TV.
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.

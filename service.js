@@ -1,6 +1,6 @@
 /*
  * Home Hub service. TizenBrew runs this file in its Node service on the TV
- * when the hub opens. It gives the hub page three things a web page can't
+ * when the hub opens. It gives the hub page a few things a web page can't
  * always do on its own:
  *
  *   GET /ping            health check
@@ -8,6 +8,7 @@
  *   GET /launch?id=...   open an app by its Tizen app ID
  *   GET /key?k=KEY_...   press a remote key (used for HDMI inputs)
  *   GET /webhook?url=... send an empty POST, e.g. to a Home Assistant webhook
+ *   GET /fetch?url=...   read JSON from one of four public weather/city addresses
  *
  * It listens on 127.0.0.1 only, so nothing else on the network can reach it.
  * Written for the old Node that ships on Tizen TVs: plain ES5, no newer APIs.
@@ -23,7 +24,7 @@ var urlLib = require('url');
 var os = require('os');
 
 var PORT = 8095;
-var VERSION = '0.4.0';
+var VERSION = '0.8.0';
 var TOKEN_FILE = '/home/owner/share/tizen-takeover-remote-token.txt';
 var REMOTE_NAME = new Buffer('Home Hub').toString('base64');
 
@@ -262,6 +263,80 @@ function postWebhook(target, cb) {
   req.end('{}');
 }
 
+/* ---------- Fetching public weather and city data ---------- */
+
+// The only addresses /fetch will read. Everything else is refused.
+var FETCH_ALLOWED = [
+  { host: 'api.open-meteo.com', path: '/v1/forecast' },
+  { host: 'geocoding-api.open-meteo.com', path: '/v1/search' },
+  { host: 'ipwho.is', path: '/' },
+  { host: 'get.geojs.io', path: '/v1/ip/geo.json' }
+];
+var FETCH_MAX_BYTES = 300 * 1024;
+
+/* Returns the parsed address if it is exactly on the list, otherwise null. */
+function checkFetchUrl(target) {
+  if (typeof target !== 'string' || !target || target.length > 2000) return null;
+  // Printable ASCII only: old Node writes the request path as latin1.
+  if (/[^\x21-\x7e]/.test(target)) return null;
+  var u = urlLib.parse(target);
+  if (u.protocol !== 'https:' || u.auth) return null;
+  if (u.port && String(u.port) !== '443') return null;
+  var host = String(u.hostname || '').toLowerCase();
+  for (var i = 0; i < FETCH_ALLOWED.length; i++) {
+    if (FETCH_ALLOWED[i].host === host && FETCH_ALLOWED[i].path === u.pathname) return u;
+  }
+  return null;
+}
+
+/*
+ * Reads JSON with a plain GET and hands it to cb(err, data). The hub page asks
+ * for this when its own direct call fails.
+ * rejectUnauthorized is false because the old Node on the TV ships a 2016
+ * certificate list that cannot verify today's certificates. This is only used
+ * for public weather and city data from the four listed addresses, and the hub
+ * shows it as plain text.
+ */
+function fetchJson(u, cb) {
+  var finished = false;
+  function done(err, data) { if (!finished) { finished = true; cb(err, data); } }
+  var req = require('https').request({
+    method: 'GET',
+    hostname: u.hostname,
+    port: 443,
+    path: u.path,
+    rejectUnauthorized: false,
+    headers: { 'Accept': 'application/json', 'User-Agent': 'HomeHub' }
+  }, function (r) {
+    var chunks = [];
+    var size = 0;
+    r.on('data', function (chunk) {
+      if (finished) return;
+      size += chunk.length;
+      if (size > FETCH_MAX_BYTES) {
+        req.abort();
+        return done('too large');
+      }
+      chunks.push(chunk);
+    });
+    r.on('error', function (e) { done(e.message); });
+    r.on('aborted', function () { done('connection dropped'); });
+    r.on('end', function () {
+      var ok = r.statusCode >= 200 && r.statusCode < 300;
+      var data = null;
+      try { data = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { data = null; }
+      var isObject = data !== null && typeof data === 'object';
+      if (ok) return isObject ? done(null, data) : done('not JSON');
+      var msg = 'HTTP ' + r.statusCode;
+      if (isObject && typeof data.reason === 'string') msg += ': ' + data.reason.slice(0, 120);
+      done(msg);
+    });
+  });
+  req.setTimeout(10000, function () { req.abort(); done('timed out'); });
+  req.on('error', function (e) { done(e.message); });
+  req.end();
+}
+
 /* ---------- HTTP server ---------- */
 
 var server = http.createServer(function (req, res) {
@@ -306,6 +381,15 @@ var server = http.createServer(function (req, res) {
     return postWebhook(target, function (err) {
       if (err) return send(res, 500, { ok: false, error: String(err) });
       send(res, 200, { ok: true });
+    });
+  }
+
+  if (parsed.pathname === '/fetch') {
+    var u = checkFetchUrl(q.url);
+    if (!u) return send(res, 400, { ok: false, error: 'address not allowed' });
+    return fetchJson(u, function (err, data) {
+      if (err) return send(res, 502, { ok: false, error: String(err) });
+      send(res, 200, { ok: true, data: data });
     });
   }
 
