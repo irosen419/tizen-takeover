@@ -2,6 +2,8 @@
 
 This is the plan for the seven Home Hub widgets not built yet, written Nov 15, 2026.
 
+Update, later on Nov 15: Weather and the To-do list kept on the TV were built overnight and are merged (v0.8.0). Their sections below are kept as the record of what was planned. The other five widgets are still to do.
+
 Two can be built tonight with nothing from you: Weather, and a To-do list kept on the TV.
 
 One 20-minute job from you unlocks most of the rest: installing the hub backend on the Pi (the Raspberry Pi on your home network).
@@ -412,7 +414,7 @@ WebRTC through [go2rtc](https://github.com/AlexxIT/go2rtc) is held in reserve. I
 ## Open questions
 
 1. What do the two small lines on the Today tile say?
-2. Which city should the weather use, may it be written in the public settings file, and is Fahrenheit right?
+2. Answered in part on Nov 15: you confirmed the city. Still open: may it be written in the public settings file (until then the TV looks it up itself), and is Fahrenheit right?
 3. Bridge: Cloudflare Worker (recommended), private GitHub repo, or keep TV lists separate?
 4. AWWS board on the TV: read-only first (recommended), or ticks from day one?
 5. Calendar on a shared screen: show every calendar, or hide details for some?
@@ -422,7 +424,7 @@ WebRTC through [go2rtc](https://github.com/AlexxIT/go2rtc) is held in reserve. I
 ## How this was checked
 
 - Read the hub's code on main at v0.6.0, your AWWS To-Do Board, Plant Wall Moods and Plant Wall Lighting artifacts, and the morning Tasks page (structure only), all on Nov 15.
-- Read Open-Meteo's and WLED's published source. Live Open-Meteo calls were refused by the network policy.
+- Read Open-Meteo's and WLED's published source. Live Open-Meteo calls were refused by the network policy. You allowed the address on Nov 15; that applies to threads started afterwards, so a live check is still to be run from a new thread.
 - Fetched a claude.ai artifact link's headers.
 - Spotify, calendar and camera facts come from research on Nov 15, 2026, with links beside each fact.
 - Samsung's TV browser table, from memory and not re-checked: 2018 Chromium 56, 2019 63, 2020 69, 2021 76, 2022 85, 2023 94, 2024 108. Until you read the Today tile, the plan assumes the oldest.
