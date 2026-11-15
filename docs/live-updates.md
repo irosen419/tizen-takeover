@@ -78,7 +78,7 @@ Commands:
 - `show <widget>`: open a widget (`weather`, `todo`, `calendar`, `entertainment`), optionally full screen.
 - `home`: close whatever is open.
 - `say "<text>"`: a short message at the bottom of the screen for a few seconds.
-- `reload`: load the hub afresh (handy after an update).
+- `reload`: load the hub afresh. It restarts through the loader (`app/index.html`), so it also picks up the newest version of the hub.
 
 Data:
 
@@ -136,7 +136,7 @@ From you: which calendars to show, whether any show as just "Busy", and one secr
 - A push happens only when the events really change, so a quiet calendar sends nothing.
 - Data shape, per event: `{ id, cal, title, start, end, allDay, location }`. Timed events use UTC ISO strings. All-day events use `YYYY-MM-DD` with an exclusive end. `cal` is the 1-based number of the calendar in `calendars`, which carries `name`, `ok`, `error`, `count`, `skipped`, `updatedAt`. With `busy`, titles and places are replaced by "Busy" before the data leaves the reader.
 - `GET /api/calendar` returns it, `POST /api/calendar/refresh` reads now and waits (up to 25 s), `./hub calendar status` and `./hub calendar refresh` wrap both.
-- The TV widget is `app/widgets/calendar.js` (v0.10.0). It listens for `calendar`, keeps the last copy on the TV (`homeHub.calendar.v1`) and converts every time to `tz` itself.
+- The TV widget is `app/widgets/calendar.js` (v0.11.0). It listens for `calendar`, keeps the last copy on the TV (`homeHub.calendar.v1`) and converts every time to `tz` itself.
 - `updatedAt` only moves when the events change, because a refresh that finds the same events pushes nothing. So the TV does not call data old just because `updatedAt` is old: it only says "Last updated …" when the line to the Pi is down (or it is showing its saved copy) and the last time it had the Pi is more than 30 minutes ago.
 
 ## How it is tested without your TV or Pi
@@ -168,7 +168,7 @@ Everything below is the contract between the hub (`app/`) and the Pi server (`pi
 - `app/live.js`: the hub's client. Plain ES5. Loads before `hub.js`, touches no DOM, does nothing until `HUB_LIVE.start()`.
 - `HUB_CONFIG.live.server`: the server address. `''` = off. `?live=<address>` or `?live=off` in the page address overrides it (for the preview).
 
-Every file must survive the others being an older version, because jsDelivr can serve a mix: `hub.js` works without `live.js`, `todo.js` works without `ctx.live`, `live.js` is inert without `hub.js`.
+Every file must survive the others being an older version, because jsDelivr can serve a mix when the hub runs from the branch (only when GitHub couldn't be reached on a first start; see the README's Updating section): `hub.js` works without `live.js`, `todo.js` works without `ctx.live`, `live.js` is inert without `hub.js`.
 
 ### Settings (`pi/.env`)
 
@@ -240,7 +240,7 @@ Ops are applied in order and the last one to arrive wins.
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
 | `GET /health` (no token) | | `{ ok, server }` |
 
-Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload`. Anything else is `400`.
+Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload` (the hub restarts through the loader with `HUB_UPDATE.restart()`, so it lands on the newest commit; ignored in the first 30 seconds after loading). Anything else is `400`.
 
 ### The hub's client
 

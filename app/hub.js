@@ -6,7 +6,7 @@
  * Writing a widget
  * ---------------------------------------------------------------------------
  * A widget is one file in app/widgets/ that registers itself, plus a script
- * tag in index.html (before hub.js) and an entry in HUB_CONFIG.layout:
+ * tag in hub.html (before hub.js) and an entry in HUB_CONFIG.layout:
  *
  *   (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push({
  *     id: 'weather',          // matches a layout entry and HUB_CONFIG.widgets[id]
@@ -55,7 +55,7 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.10.0'
+ *   ctx.build                 'v0.11.0'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -86,6 +86,11 @@
  *                               calls every widget's onStatus hook then)
  *     ctx.live.post(path, body, cb)  POST JSON to the server; cb(err, data, httpStatus)
  *     ctx.live.everConnected()  this TV has reached the server at least once
+ *   ctx.updates()             where this hub stands with updates (app/update.js):
+ *                             { managed, pinned, sha, state, text, newest, checkedAt },
+ *                             or undefined when update.js isn't loaded. text is the
+ *                             clock tile's line, '' when there is nothing to say;
+ *                             newest is true when this is the branch's newest commit
  *
  * Later widgets get their data from the Raspberry Pi in one of two ways. A
  * widget either draws natively from JSON it fetches with
@@ -97,7 +102,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.10.0';
+  var BUILD = 'v0.11.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -777,6 +782,7 @@
       setSub: function (text) { if (open === rec) setPanelSub(text); },
       setTileSub: function (text) { setTileSub(rec, text); },
       live: liveFacade(),
+      updates: updateStatus,
       focus: function (node) { if (open === rec) focusPanel(node); },
       _bind: function (r) { rec = r; }
     };
@@ -1578,6 +1584,11 @@
   function liveReload() {
     // A reload loop (an old command arriving right after loading) must not happen.
     if (new Date().getTime() - LOADED_AT < 30000) return;
+    // Through the shell, so it also picks up the newest version.
+    var U = updateApi('restart');
+    if (U) {
+      try { U.restart(); return; } catch (e) { liveWarn('restart failed: ' + (e && e.message)); }
+    }
     location.reload();
   }
 
@@ -1607,10 +1618,64 @@
     }
   }
 
+  /* ---------- updates ---------- */
+
+  // app/update.js moves the hub to the newest commit of its branch. Here the
+  // hub only says when a reload would bother nobody and reports the status.
+  // The @main fallback can still mix old and new files, so every call is
+  // checked and wrapped.
+
+  var IDLE_MS = 120000;        // no key or click for this long
+  var lastInputAt = 0;
+  var idleOverride = null;     // tests: true or false instead of the real answer
+
+  function updateApi(name) {
+    var U = window.HUB_UPDATE;
+    return U && typeof U === 'object' && typeof U[name] === 'function' ? U : null;
+  }
+
+  function noteInput() { lastInputAt = new Date().getTime(); }
+  document.addEventListener('keydown', noteInput, true);
+  document.addEventListener('click', noteInput, true);
+
+  function hubIdle() {
+    if (idleOverride !== null) return idleOverride;
+    if (busy || open || frameOpen || typingBox()) return false;
+    return new Date().getTime() - lastInputAt >= IDLE_MS;
+  }
+
+  // The status object, or undefined without update.js.
+  function updateStatus() {
+    var U = updateApi('status');
+    if (!U) return undefined;
+    try { return U.status(); } catch (e) { return undefined; }
+  }
+
+  function startUpdates() {
+    var U = updateApi('watch');
+    if (!U) return;
+    try {
+      U.watch({ idle: hubIdle, onStatus: function () { announceStatus(); } });
+    } catch (e) {
+      liveWarn('updates could not start: ' + (e && e.message));
+    }
+  }
+
+  // Tells update.js this commit started. The very last step of the start.
+  function reportStarted() {
+    var U = updateApi('started');
+    if (!U) return;
+    try { U.started({ version: BUILD.replace(/^v/, '') }); } catch (e) { liveWarn('started failed: ' + (e && e.message)); }
+  }
+
   // For tests in a laptop browser.
   window.HUB_TEST.open = function () { return open ? open.w.id : null; };
   window.HUB_TEST.mode = function () { return mode; };
   window.HUB_TEST.busy = function () { return busy; };
+  window.HUB_TEST.idle = hubIdle;
+  window.HUB_TEST.setIdle = function (value) { idleOverride = value === true || value === false ? value : null; };
+  window.HUB_TEST.setIdleMs = function (ms) { IDLE_MS = ms; };
+  window.HUB_TEST.checkUpdates = function () { var U = updateApi('check'); if (U) U.check(); };
 
   /* ---------- start ---------- */
 
@@ -1621,10 +1686,13 @@
   parkGhost();
   setupBackground();
   startLive();
+  startUpdates();
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(function () { measureHome(); placeGlass(); }, 150);
   });
+
+  reportStarted();
 })();

@@ -6,7 +6,7 @@ A custom home screen that runs as a [TizenBrew](https://github.com/reisxd/TizenB
 
 Out of the box:
 
-- **Today:** the time, the date and the build.
+- **Today:** the time, the date, the build and whether it is the newest.
 - **Entertainment:** Netflix, Prime Video, Disney+, Hulu, Peacock, Apple TV, YouTube (TizenTube), Xbox on HDMI 1, Pluto TV, Twitch and a list of every app on the TV.
 - **To-do:** a list kept on the TV. Add, tick off and move things with the remote.
 - **Weather:** the temperature, today's high and low and the chance of rain, then the next 12 hours and the week. It finds the TV's city by itself.
@@ -18,7 +18,7 @@ Press OK on a tile to open it in a panel in the middle of the screen; the other 
 ## Install on the TV
 
 1. Open TizenBrew and go to **Module Manager**.
-2. Choose **Add GitHub Module** and type `irosen419/tizen-takeover@main`. The `@main` matters. Without it, jsDelivr can keep serving an old copy that purging doesn't clear.
+2. Choose **Add GitHub Module** and type `irosen419/tizen-takeover@main`. The `@main` matters: the hub follows the branch you name and always runs its newest commit (see [Updating](#updating)).
 3. Back on the TizenBrew list, open **Home Hub**.
 
 Apps that aren't installed show dimmed with "Not installed". Install the app from the Samsung store and reopen the hub.
@@ -65,7 +65,7 @@ Everything lives in `app/config.js`.
 
 ### Background and glass
 
-`background` is the picture behind the tiles: a file next to `index.html` (the default is `backgrounds/ocean.jpg`) or a full web address. Any 1920x1080 picture works; drop it in `app/backgrounds/` and point `background` at it. Set `background: ''` for the plain dark look. If the picture can't load, the hub falls back to the plain dark look by itself.
+`background` is the picture behind the tiles: a file next to `hub.html` (the default is `backgrounds/ocean.jpg`) or a full web address. Any 1920x1080 picture works; drop it in `app/backgrounds/` and point `background` at it. Set `background: ''` for the plain dark look. If the picture can't load, the hub falls back to the plain dark look by itself.
 
 `glass: true` makes the tiles and panels frosted glass that show a soft blur of the picture behind them. `glass: false` keeps solid dark cards over the picture. A picture from another website still shows, but its glass is a plain tint without the blur, because the TV won't let the hub read pixels from another site.
 
@@ -82,7 +82,7 @@ Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion
 
 ### The status line
 
-The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.10.0 · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. A third line shows only when live updates have something to say (see [Live updates](#live-updates)).
+The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.11.0 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)).
 
 ### Entertainment
 
@@ -181,11 +181,11 @@ The clock tile says how it's going, in small text, never a pop-up:
 | `Live: unexpected reply from the Pi` | Something else answers at that address. Retries every 5 minutes |
 | `Live: the hub needs an update` | The Pi's server is newer than this hub understands |
 
-Commands the Pi can send: `show` a widget (`weather`, `todo`, `calendar`, `entertainment`, optionally full screen), `home` (close whatever is open), `say` a short message for a few seconds, and `reload`. A command sent while the TV is off is dropped, so nothing old fires when the TV turns on.
+Commands the Pi can send: `show` a widget (`weather`, `todo`, `calendar`, `entertainment`, optionally full screen), `home` (close whatever is open), `say` a short message for a few seconds, and `reload` (which goes through the loader, so it also picks up the newest version). A command sent while the TV is off is dropped, so nothing old fires when the TV turns on.
 
 ### For widget authors
 
-Widgets get `ctx.live`: `status()` (`{ state, text, since }`), `get(resource)`, `on(resource, fn)` (`fn(data, rev)` whenever new data arrives), `onStatus(fn)`, `post(path, body, cb)` and `everConnected()`. The hub also calls every widget's `onStatus` hook when the live state changes. `ctx.live` is `undefined` when `live.js` isn't loaded: jsDelivr can serve a mix of old and new files, so always check it first. `ctx.setTileSub(text)` changes the small line under the tile's title. The to-do widget (`app/widgets/todo.js`) is the worked example.
+Widgets get `ctx.live`: `status()` (`{ state, text, since }`), `get(resource)`, `on(resource, fn)` (`fn(data, rev)` whenever new data arrives), `onStatus(fn)`, `post(path, body, cb)` and `everConnected()`. The hub also calls every widget's `onStatus` hook when the live state changes. `ctx.live` is `undefined` when `live.js` isn't loaded. Normally every file comes from one commit, but when GitHub can't be reached on a TV's first start the hub runs from the branch, where jsDelivr can serve a mix of old and new files, so always check it first. `ctx.setTileSub(text)` changes the small line under the tile's title. The to-do widget (`app/widgets/todo.js`) is the worked example.
 
 ### Preview and test
 
@@ -204,7 +204,7 @@ The preview's hub server also reads four sample calendars from a small local fee
 
 ## Writing a widget
 
-A widget is one file in `app/widgets/` that registers itself, a `<script>` tag for it in `index.html` before `hub.js`, and a `layout` entry. To replace a "Soon" placeholder, register a widget with the same `id`; a real widget always wins over a placeholder.
+A widget is one file in `app/widgets/` that registers itself, a `<script>` tag for it in `hub.html` before `hub.js`, and a `layout` entry. To replace a "Soon" placeholder, register a widget with the same `id`; a real widget always wins over a placeholder.
 
 ```js
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push({
@@ -231,7 +231,7 @@ Arrows normally move by position. A widget that needs its own rule for some move
 
 Other optional hooks and fields: `planned`, `head: false`, `sub`, `onFocus` and `onStatus`; the comment at the top of `hub.js` lists them all.
 
-`ctx` gives each widget: `config` (its part of `HUB_CONFIG.widgets`), `toast(text, ms)`, `service(path, ms, cb)` for the TV's service, `getJSON(url, ms, cb)` for any other address, `pi(path)` to build an address on the Pi (`ctx.pi('/todo/')`, `ctx.pi(':8123/api/x')`), `openFrame(url)`, `isOpen()`, `mode()`, `setMode(mode)`, `close()`, `redrawTile()`, `redrawPanel()`, `setSub(text)`, `setTileSub(text)`, `focus(el)`, `live` (see [Live updates](#for-widget-authors)), `browser()` (the TV's browser, for example `Chrome 63 · Tizen 5.0`), `hasTizen` and `registerKeys(keys)`.
+`ctx` gives each widget: `config` (its part of `HUB_CONFIG.widgets`), `toast(text, ms)`, `service(path, ms, cb)` for the TV's service, `getJSON(url, ms, cb)` for any other address, `pi(path)` to build an address on the Pi (`ctx.pi('/todo/')`, `ctx.pi(':8123/api/x')`), `openFrame(url)`, `isOpen()`, `mode()`, `setMode(mode)`, `close()`, `redrawTile()`, `redrawPanel()`, `setSub(text)`, `setTileSub(text)`, `focus(el)`, `live` (see [Live updates](#for-widget-authors)), `updates()` (where this hub stands with updates: `{ state, text, newest, ... }`, or `undefined` without `update.js`), `browser()` (the TV's browser, for example `Chrome 63 · Tizen 5.0`), `hasTizen` and `registerKeys(keys)`.
 
 A widget gets its data from the Pi in one of two ways. It either draws itself from JSON fetched with `ctx.getJSON(ctx.pi('/...'))` (the Pi must send an `Access-Control-Allow-Origin` header), or it opens a page hosted on the Pi full screen with `ctx.openFrame(ctx.pi('/...'))`.
 
@@ -245,15 +245,53 @@ Keep to plain ES5 JavaScript (`var`, `function`, no arrow functions or `fetch`) 
 node dev/preview.js
 ```
 
-Then open http://127.0.0.1:8090/. It serves `app/` and pretends to be the TV's service with a made-up app list (Peacock is left out on purpose so "Not installed" shows). Launches, keys and webhooks are printed in the terminal instead of happening. Arrows move, Enter is OK and Escape is Back; the mouse works too. Add `?motion=push`, `?motion=expand`, `?motion=fade` or `?motion=auto` to the address to try each animation. YouTube can't open in the preview because there's no TizenBrew.
+Then open http://127.0.0.1:8090/ (it moves on to `/hub.html` by itself; the preview never asks GitHub for anything). It serves `app/` and pretends to be the TV's service with a made-up app list (Peacock is left out on purpose so "Not installed" shows). Launches, keys and webhooks are printed in the terminal instead of happening. Arrows move, Enter is OK and Escape is Back; the mouse works too. Add `?motion=push`, `?motion=expand`, `?motion=fade` or `?motion=auto` to the address to try each animation. YouTube can't open in the preview because there's no TizenBrew.
 
 ## Updating
 
-TizenBrew loads modules through jsDelivr, which caches each branch for a while. After pushing a change, wait a bit or purge the cache for each changed file at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/<file>`, then reopen the hub. There are more files now, so purge every one you changed: `index.html`, `style.css`, `config.js`, `icons.js`, `logos.js`, `hub.js`, `live.js`, each file in `widgets/` (for example `.../app/widgets/entertainment.js`, `.../app/widgets/todo.js`, `.../app/widgets/todo.css`, `.../app/widgets/calendar.js` and `.../app/widgets/calendar.css`) and the picture, `backgrounds/ocean.jpg`.
+Push to `main`. The TV picks the change up by itself, and nothing needs purging.
+
+How it works: TizenBrew opens `app/index.html` through jsDelivr. That page is a small loader. It asks GitHub for the newest commit on `main` and opens that exact commit's `app/hub.html`, so every file comes from the same commit. jsDelivr never changes a commit once it has it, so nothing old or mixed can show. A normal start takes a fraction of a second longer than before. If it takes more than about a second, the screen says "Getting the newest version…".
+
+While the hub is on screen it asks GitHub again every 15 minutes, and when you come back to it after 5 minutes or more. When there is a newer commit, it waits until nothing is open and the remote hasn't been touched for 2 minutes, then reloads into it. The live `reload` command goes through the loader too, so it also picks up the newest commit.
+
+It can't leave you worse off:
+
+- If GitHub can't be reached, the hub opens the last commit that started on this TV. A TV that has never got that far opens the branch, as it always did.
+- If a new commit hasn't started within 15 seconds, the hub goes back to the last one that did, and doesn't try the new one again for 6 hours. Push a fix and the fix is tried straight away.
+- If jsDelivr doesn't have the new commit yet, the hub stays where it is and tries again at the next check.
+
+GitHub allows 60 lookups an hour from one home without an account. The hub uses about 4 an hour, plus one each time it starts.
+
+The clock tile says how it's going:
+
+| The clock tile says | Meaning |
+| --- | --- |
+| `(newest)` after the version | GitHub confirmed this is the newest commit of the branch |
+| nothing extra | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
+| `Updates: can't reach GitHub` | GitHub didn't answer, or refused (too many lookups). This is the newest version the TV knows of. It asks again later |
+| `Updates: a newer version didn't start` | The newest commit didn't start, so the TV went back to this one. It tries again after 6 hours, or straight away when an even newer commit comes |
+| `Updates: a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
+| `Updates: a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
+
+The version on TizenBrew's card for the hub comes from the branch's `package.json` through jsDelivr's cache, so it can lag behind by up to 12 hours. The clock tile is the truth.
+
+A few files still come through jsDelivr's 12-hour branch cache: `package.json`, `service.js`, the loader `app/index.html`, and `app/update.js` as the loader uses it. These rarely change. After changing one of them, purge it at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/<file>` (for example `.../app/update.js`), or wait 12 hours.
+
+**Once, to get this version onto the TV:** jsDelivr still has the old `app/index.html`, so purge these four files once, then reopen the hub:
+
+- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/index.html`
+- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/update.js`
+- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/hub.html`
+- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/package.json`
+
+`node dev/update-test.js` tests all of this in a headless browser (Playwright), against a pretend TizenBrew and a pretend GitHub: the first start, a new commit, GitHub away, a broken commit, a commit jsDelivr hasn't got, waiting for a quiet moment, the `reload` command, an old commit from before the loader, damaged memory, the laptop preview, and the clock tile with up to four lines. It needs port 8095 free and nothing from the internet. Set `UPDATE_TEST_SHOTS` to a folder to also save screenshots. It can't prove the real TV, TizenBrew or jsDelivr; the first run on the TV is still a real test.
 
 ## How it works
 
-- `app/index.html` is the page. It loads, in order: `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, then `hub.js`.
+- `app/index.html` is the loader TizenBrew opens. It runs `update.js`, which moves on to the newest commit's `hub.html` (see [Updating](#updating)).
+- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, then `hub.js`.
+- `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
 - `app/icons.js` holds the white line icons; `app/logos.js` the app logos.
@@ -262,7 +300,7 @@ TizenBrew loads modules through jsDelivr, which caches each branch for a while. 
 - `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
 - `app/backgrounds/` holds the background picture.
 - `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps, calls webhooks and fetches the weather when the page can’t do it directly.
-- `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/live-test.js` tests live updates end to end.
+- `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/live-test.js` tests live updates end to end; `dev/update-test.js` tests updating.
 - `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.
