@@ -130,7 +130,7 @@ var HUB_CONFIG = {
                                      (the answer is kept on the TV, not in this file)
            'Lisbon' or 'Portland, Oregon'   a city name, looked up once
            { name: 'Home', latitude: 38.72, longitude: -9.14 }   an exact spot */
-      location: '',
+      location: { name: 'Deep Ellum', latitude: 32.78, longitude: -96.78 },
       // 'fahrenheit' (wind in mph) or 'celsius' (wind in km/h)
       units: 'fahrenheit'
     }
