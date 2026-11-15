@@ -115,6 +115,12 @@ var HUB_CONFIG = {
     },
 
     /*
+     * To-do: a list kept on this TV. Nothing to set up. sub is the small line
+     * under the title.
+     */
+    todo: { sub: 'On this TV' },
+
+    /*
      * Weather: today on the tile, the next hours and the week in the panel.
      * Forecasts come from Open-Meteo, free and without an account.
      */
