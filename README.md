@@ -42,6 +42,8 @@ Until `url` is set, the tile shows a tip instead.
 1. In TizenBrew, open **Settings**, then **Autolaunch Settings**, and pick Home Hub.
 2. On the TV, turn on **Autorun Last App** (usually under Settings, General, Smart Features).
 
+To get back to TizenBrew's own menu once autolaunch is on, close the hub, open TizenBrew and keep tapping Up while it connects. Up is the only key that skips autolaunch. **Disable Autolaunch** sits at the bottom of Autolaunch Settings.
+
 Do this last, after everything else works, so TizenBrew's own menus stay easy to reach while you set things up. Samsung can still decide to show its own home bar after some updates.
 
 ## Change the tiles
