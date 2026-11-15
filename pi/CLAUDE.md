@@ -16,10 +16,11 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Remove a to-do: `./hub todo remove "Buy milk"` (id or exact title)
 - Calendars and the next event: `./hub calendar status`
 - Read the calendars again now: `./hub calendar refresh`
+- Tile layout on the home screen: `./hub layout show`; a new one: `./hub layout set layout.json` (a JSON list of `{"widget":"weather","x":0,"y":0,"w":3,"h":2}` on the 12 x 6 grid; `-` reads it from input); back to the built-in one: `./hub layout reset`
 - Is the server up, which screens are on: `./hub status`
 - All commands: `./hub help`
 
-Widget ids are `weather`, `todo`, `calendar` and `entertainment`.
+Widget ids are `weather`, `todo`, `calendar` and `entertainment`. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
 
 ## Rules
 

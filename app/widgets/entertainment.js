@@ -352,8 +352,16 @@
       setTimeout(prebuild, 1000);
     },
 
+    // A new layout moved or resized the tile.
+    onLayout: function (ctx) {
+      ctx.redrawTile();
+    },
+
     renderTile: function (body, ctx) {
       C = ctx;
+      // A one-row tile: smaller logos so they stay inside the tile.
+      body.className = body.className.replace(/\s*ent-short/g, '');
+      if (body.offsetHeight && body.offsetHeight < 150) body.className += ' ent-short';
       var row = el('div', 'ent-chips');
       // At most six logos, then "+N" for the rest.
       var shown = items.length <= TILE_CHIPS + 1 ? items.length : TILE_CHIPS;

@@ -589,6 +589,148 @@ async function main() {
     assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR });
   });
 
+  /* ---------- layout ---------- */
+
+  const LAYOUT = [
+    { widget: 'weather', x: 0, y: 0, w: 3, h: 2 },
+    { widget: 'todo', x: 3, y: 0, w: 3, h: 4 },
+    { widget: 'calendar', x: 6, y: 0, w: 6, h: 6 }
+  ];
+
+  await check('layout validator: good layouts pass and keep only the five fields', () => {
+    assert.strictEqual(hubServer.normalizeLayout(null), null);
+    assert.deepStrictEqual(hubServer.normalizeLayout(LAYOUT), LAYOUT);
+    const extra = hubServer.normalizeLayout([{ widget: 'a-1', x: 11, y: 5, w: 1, h: 1, note: 'drop me', __proto__x: 1 }]);
+    assert.deepStrictEqual(extra, [{ widget: 'a-1', x: 11, y: 5, w: 1, h: 1 }]);
+    const full = [];
+    for (let i = 0; i < 24; i++) full.push({ widget: 't' + i, x: (i % 6) * 2, y: Math.floor(i / 6), w: 2, h: 1 });
+    assert.strictEqual(hubServer.normalizeLayout(full).length, 24);
+    // Touching edges is not overlapping.
+    hubServer.normalizeLayout([{ widget: 'a', x: 0, y: 0, w: 6, h: 6 }, { widget: 'b', x: 6, y: 0, w: 6, h: 6 }]);
+  });
+
+  await check('layout validator: each bad layout is a 400 with a readable message', () => {
+    const tile = (o) => Object.assign({ widget: 'weather', x: 0, y: 0, w: 3, h: 2 }, o);
+    const cases = [
+      ['not a list', { widget: 'x' }, /list of tiles/],
+      ['empty', [], /no tiles/],
+      ['not an object', [5], /must be an object \(tile 1\)/],
+      ['no widget', [tile({ widget: undefined })], /"widget" must be/],
+      ['capital letters', [tile({ widget: 'Weather' })], /"widget" must be/],
+      ['underscore', [tile({ widget: 'my_tile' })], /"widget" must be/],
+      ['too long id', [tile({ widget: 'a'.repeat(33) })], /"widget" must be/],
+      ['fraction', [tile({ x: 1.5 })], /"x" must be a whole number \(tile 1, weather\)/],
+      ['string', [tile({ w: '3' })], /"w" must be a whole number/],
+      ['NaN', [tile({ h: NaN })], /"h" must be a whole number/],
+      ['negative x', [tile({ x: -1 })], /0 or more/],
+      ['negative y', [tile({ y: -1 })], /0 or more/],
+      ['zero width', [tile({ w: 0 })], /1 or more/],
+      ['zero height', [tile({ h: 0 })], /1 or more/],
+      ['past the right', [tile({ x: 10, w: 3 })], /right edge/],
+      ['past the bottom', [tile({ y: 5, h: 2 })], /bottom edge/],
+      ['duplicate', [tile({}), tile({ x: 6 })], /"weather" is in the layout twice \(tile 2, weather\)/],
+      ['overlap', [tile({}), tile({ widget: 'todo', x: 2, y: 1 })], /overlaps "weather" \(tile 2, todo\)/]
+    ];
+    cases.forEach(([name, raw, re]) => {
+      let err = null;
+      try { hubServer.normalizeLayout(raw); } catch (e) { err = e; }
+      assert.ok(err, name + ' was accepted');
+      assert.strictEqual(err.status, 400, name);
+      assert.ok(re.test(err.message), name + ': ' + err.message);
+    });
+    const many = [];
+    for (let i = 0; i < 25; i++) many.push({ widget: 't' + i, x: i % 12, y: Math.floor(i / 12), w: 1, h: 1 });
+    assert.throws(() => hubServer.normalizeLayout(many), /too many tiles \(at most 24\)/);
+  });
+
+  await check('layout API: needs the token; starts as null (the built-in layout)', async () => {
+    assert.strictEqual((await request(P, 'GET', '/api/layout')).status, 401);
+    assert.strictEqual((await request(P, 'POST', '/api/layout', { body: { layout: null } })).status, 401);
+    const g = await request(P, 'GET', '/api/layout', { token: TOKEN });
+    assert.deepStrictEqual(g.json, { ok: true, rev: 0, layout: null });
+    const st = (await request(P, 'GET', '/live/state')).json;
+    assert.deepStrictEqual(st.resources.layout, { rev: 0, data: { layout: null } });
+    const m = await request(P, 'PUT', '/api/layout', { token: TOKEN, body: { layout: null } });
+    assert.strictEqual(m.status, 405);
+    assert.strictEqual(m.headers.allow, 'GET, POST');
+  });
+
+  await check('layout API: a new layout saves, bumps rev and reaches screens; a repeat is a no-op', async () => {
+    const es = await openEvents(P);
+    await es.waitFor((e) => e.event === 'hello');
+    const before = (await request(P, 'GET', '/live/state')).json.rev;
+    const r = await request(P, 'POST', '/api/layout', { token: TOKEN, body: { layout: LAYOUT } });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.json, { ok: true, rev: before + 1, changed: true, layout: LAYOUT });
+    const ch = await es.waitFor((e) => e.event === 'change' && e.data.resource === 'layout');
+    assert.deepStrictEqual(ch.data, { resource: 'layout', rev: before + 1, data: { layout: LAYOUT } });
+    const again = await request(P, 'POST', '/api/layout', { token: TOKEN, body: { layout: LAYOUT.map((t) => Object.assign({ extra: 1 }, t)) } });
+    assert.deepStrictEqual(again.json, { ok: true, rev: before + 1, changed: false, layout: LAYOUT });
+    assert.strictEqual((await request(P, 'GET', '/live/state')).json.rev, before + 1);
+    await sleep(50);
+    assert.strictEqual(es.events.filter((e) => e.event === 'change').length, 1);
+    es.close();
+    await waitUntil(() => h._debug().sse === 0);
+    const g = await request(P, 'GET', '/api/layout', { token: TOKEN });
+    assert.deepStrictEqual(g.json, { ok: true, rev: before + 1, layout: LAYOUT });
+  });
+
+  await check('layout API: the snapshot and the poll carry the layout', async () => {
+    const st = (await request(P, 'GET', '/live/state')).json;
+    assert.deepStrictEqual(st.resources.layout.data.layout, LAYOUT);
+    const p = (await request(P, 'GET', '/live/poll?epoch=old&rev=0')).json;
+    assert.deepStrictEqual(p.resources.layout.data.layout, LAYOUT);
+    const p2 = (await request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + (st.resources.layout.rev - 1) + '&cursor=' + p.cursor)).json;
+    assert.deepStrictEqual(p2.resources.layout.data.layout, LAYOUT);
+  });
+
+  await check('layout API: bad bodies are 400 and change nothing; null resets', async () => {
+    const rev = (await request(P, 'GET', '/live/state')).json.rev;
+    for (const body of [{}, [], { layout: 'weather' }, { layout: [] }, { layout: [{ widget: 'a', x: 0, y: 0, w: 13, h: 1 }] }]) {
+      const r = await request(P, 'POST', '/api/layout', { token: TOKEN, body: body });
+      assert.strictEqual(r.status, 400, JSON.stringify(body));
+      assert.strictEqual(r.json.ok, false);
+      assert.ok(typeof r.json.error === 'string' && r.json.error.length > 10);
+    }
+    assert.strictEqual((await request(P, 'GET', '/live/state')).json.rev, rev);
+    const reset = await request(P, 'POST', '/api/layout', { token: TOKEN, body: { layout: null } });
+    assert.deepStrictEqual(reset.json, { ok: true, rev: rev + 1, changed: true, layout: null });
+    const again = await request(P, 'POST', '/api/layout', { token: TOKEN, body: { layout: null } });
+    assert.strictEqual(again.json.changed, false);
+    assert.strictEqual(again.json.rev, rev + 1);
+  });
+
+  await check('layout in the state file: survives a restart; old or damaged files mean null', async () => {
+    const d = tmpDir();
+    const h2 = await start({ dataDir: d });
+    await request(h2.port, 'POST', '/api/layout', { token: TOKEN, body: { layout: LAYOUT } });
+    await stop(h2);
+    const h3 = await start({ dataDir: d });
+    const g = (await request(h3.port, 'GET', '/api/layout', { token: TOKEN })).json;
+    assert.deepStrictEqual(g, { ok: true, rev: 1, layout: LAYOUT });
+    await stop(h3);
+    // A file from before layouts existed.
+    const old = JSON.parse(fs.readFileSync(path.join(d, 'state.json'), 'utf8'));
+    delete old.resources.layout;
+    fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify(old));
+    const h4 = await start({ dataDir: d });
+    const s4 = (await request(h4.port, 'GET', '/live/state')).json;
+    assert.deepStrictEqual(s4.resources.layout, { rev: 0, data: { layout: null } });
+    assert.strictEqual(s4.epoch, old.epoch);
+    assert.strictEqual(s4.resources.todo.rev, old.resources.todo.rev);
+    await stop(h4);
+    // A damaged layout falls back to null; the rest of the file stays.
+    const bent = JSON.parse(fs.readFileSync(path.join(d, 'state.json'), 'utf8'));
+    bent.resources.layout = { rev: 7, data: { layout: [{ widget: 'x', x: 0, y: 0, w: 99, h: 1 }] } };
+    fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify(bent));
+    const h5 = await start({ dataDir: d });
+    const s5 = (await request(h5.port, 'GET', '/live/state')).json;
+    assert.deepStrictEqual(s5.resources.layout, { rev: 7, data: { layout: null } });
+    assert.strictEqual(s5.epoch, bent.epoch);
+    assert.ok(!fs.readdirSync(d).some((f) => /^state\.bad-/.test(f)), 'not moved aside');
+    await stop(h5);
+  });
+
   await stop(h);
 
   /* ---------- allow-list over HTTP ---------- */
