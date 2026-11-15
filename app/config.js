@@ -15,11 +15,20 @@ var HUB_CONFIG = {
   title: 'Living room',
   pi: HUB_PI,
 
+  /* The picture behind the tiles: a file next to index.html or a full URL.
+     Any 1920x1080 picture works. '' or null = no picture (plain dark). */
+  background: 'backgrounds/ocean.jpg',
+
+  /* true = frosted-glass tiles that show a soft blur of the picture.
+     false = solid dark cards, even with a picture. */
+  glass: true,
+
   /* How opening a widget looks:
-       'auto'    try the expanding animation, measure it, and switch to a plain
-                 fade for good if this TV can't keep up (the default)
-       'expand'  always use the expanding animation
-       'fade'    always use the plain fade (lightest on slow TVs) */
+       'auto'    start with 'push', time it on the TV, and step down to
+                 'expand', then 'fade', if the TV can't keep up (the default)
+       'push'    the widget grows in the middle and the other tiles slide aside
+       'expand'  the widget grows over a dimmed screen
+       'fade'    a plain fade (lightest on slow TVs) */
   motion: 'auto',
 
   // The tile that has focus when the hub opens.
@@ -68,7 +77,7 @@ var HUB_CONFIG = {
             { kind: 'app', label: 'Hulu', match: ['Hulu'], logo: 'hulu' },
             { kind: 'app', label: 'Peacock', match: ['Peacock TV', 'Peacock'], logo: 'peacock' },
             { kind: 'app', label: 'Apple TV', match: ['Apple TV', 'Apple TV+'], logo: 'appletv' },
-            { kind: 'tizentube', label: 'YouTube', sub: 'TizenTube, no ads', logo: 'youtube' }
+            { kind: 'tizentube', label: 'YouTube', sub: 'No ads', logo: 'youtube' }
           ]
         },
         {
@@ -99,7 +108,7 @@ var HUB_CONFIG = {
         {
           label: 'More',
           items: [
-            { kind: 'allApps', label: 'All apps', sub: 'Everything on the TV', logo: 'allapps' }
+            { kind: 'allApps', label: 'All apps', sub: 'On this TV', logo: 'allapps' }
           ]
         }
       ]

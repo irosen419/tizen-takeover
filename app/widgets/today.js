@@ -46,8 +46,11 @@
       time.appendChild(digits);
       time.appendChild(ampm);
       var date = div('today-date', el);
+      // Two fixed lines, so a wider TV font can't push the tile past its edge.
       var status = div('today-status', el);
-      status.textContent = 'Home Hub ' + ctx.build + ' · ' + ctx.motionStatus();
+      var browser = ctx.browser ? ctx.browser() : '';
+      div('today-status-line', status).textContent = ctx.build + (browser ? ' · ' + browser : '');
+      div('today-status-line', status).textContent = ctx.motionStatus();
       els = { digits: digits, ampm: ampm, date: date };
       tick();
     },

@@ -26,17 +26,29 @@
     return node;
   }
 
+  // A square app icon: .logo keeps the square (padding-top: 100%), .logo-face
+  // holds the color, the glyph and the sheen.
   function logoEl(cfg, cls) {
-    var node = el('span', 'logo ' + (cls || ''));
+    var node = el('span', 'logo' + (cls ? ' ' + cls : ''));
+    var face = el('span', 'logo-face');
+    node.appendChild(face);
     var logos = typeof HUB_LOGOS !== 'undefined' ? HUB_LOGOS : null;
     var logo = logos && cfg.logo ? logos[cfg.logo] : null;
     if (logo && logo.svg) {
-      node.style.background = logo.bg || '#1b1e26';
-      node.innerHTML = logo.svg;
+      face.style.background = logo.bg || '#1b1e26';
+      face.innerHTML = logo.svg;
     } else {
       node.className += ' logo-mono';
-      node.textContent = (cfg.label || '?').charAt(0).toUpperCase();
+      face.appendChild(el('span', 'logo-text', (cfg.label || '?').charAt(0).toUpperCase()));
     }
+    return node;
+  }
+
+  function textIcon(text, cls) {
+    var node = el('span', 'logo logo-mono' + (cls ? ' ' + cls : ''));
+    var face = el('span', 'logo-face');
+    face.appendChild(el('span', 'logo-text', text));
+    node.appendChild(face);
     return node;
   }
 
@@ -288,7 +300,9 @@
         var node = el('div', 'ent-item f' + (st.missing ? ' is-missing' : ''));
         node.setAttribute('data-key', item.key);
         if (item.key === lastKey) node.setAttribute('data-autofocus', '');
-        node.appendChild(logoEl(item.cfg, 'ent-logo'));
+        var iconWrap = el('div', 'ent-icon');
+        iconWrap.appendChild(logoEl(item.cfg));
+        node.appendChild(iconWrap);
         node.appendChild(el('div', 'ent-name', item.cfg.label));
         node.appendChild(el('div', 'ent-state', st.text));
         sec.appendChild(node);
@@ -317,12 +331,17 @@
       var row = el('div', 'ent-chips');
       // At most six logos, then "+N" for the rest.
       var shown = items.length <= TILE_CHIPS + 1 ? items.length : TILE_CHIPS;
+      // Each chip is a flex item holding a square icon.
       for (var i = 0; i < shown; i++) {
-        var chip = logoEl(items[i].cfg, 'ent-chip');
-        if (stateOf(items[i]).missing) chip.className += ' is-missing';
+        var chip = el('span', 'ent-chip' + (stateOf(items[i]).missing ? ' is-missing' : ''));
+        chip.appendChild(logoEl(items[i].cfg));
         row.appendChild(chip);
       }
-      if (items.length > shown) row.appendChild(el('span', 'logo ent-chip ent-more', '+' + (items.length - shown)));
+      if (items.length > shown) {
+        var more = el('span', 'ent-chip');
+        more.appendChild(textIcon('+' + (items.length - shown), 'ent-more'));
+        row.appendChild(more);
+      }
       body.appendChild(row);
     },
 

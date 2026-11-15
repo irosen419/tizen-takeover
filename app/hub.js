@@ -38,7 +38,8 @@
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
  *   ctx.build                 'v0.6.0'
- *   ctx.motionStatus()        e.g. 'Motion: expand (auto, 58 fps)'
+ *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
+ *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
  *   ctx.service(path, timeoutMs, cb)   GET JSON from the local service.js;
  *                             cb(err, data), err unless data.ok is true
@@ -82,6 +83,7 @@
   var toastEl = document.getElementById('toast');
   var frameWrap = document.getElementById('frameWrap');
   var frameEl = document.getElementById('frame');
+  var backdropEl = document.getElementById('backdrop');
 
   var widgets = [];       // [{ w, ctx, cell, tile, body, subEl, expandable }]
   var homeIndex = -1;     // focused tile
@@ -256,15 +258,19 @@
 
   /* ---------- motion ---------- */
 
+  // auto starts at the top rung and steps down when a rung stutters twice.
+  var LADDER = ['push', 'expand', 'fade'];
+
   var motion = {
-    mode: 'expand',       // what runs now: 'expand' | 'fade'
+    mode: 'push',         // what runs now: 'push' | 'expand' | 'fade'
     source: 'auto',       // 'auto' | 'config' | 'URL'
     measuring: false,
     fps: 0,
-    clean: [],            // fps of clean runs
-    janky: [],            // fps of janky runs
-    runs: 0
+    clean: [],            // fps of clean runs at the current rung
+    janky: []             // fps of janky runs at the current rung
   };
+
+  function isMode(m) { return m === 'push' || m === 'expand' || m === 'fade'; }
 
   function readQuery(name) {
     var m = new RegExp('[?&]' + name + '=([^&#]*)').exec(location.search || '');
@@ -276,7 +282,7 @@
       var raw = window.localStorage && localStorage.getItem(MOTION_KEY);
       if (!raw) return null;
       var data = JSON.parse(raw);
-      return data && data.build === BUILD ? data : null;
+      return data && data.build === BUILD && isMode(data.mode) ? data : null;
     } catch (e) { return null; }
   }
 
@@ -287,24 +293,33 @@
   function setupMotion() {
     var wanted = readQuery('motion');
     var source = 'URL';
-    if (wanted !== 'fade' && wanted !== 'expand' && wanted !== 'auto') {
+    if (!isMode(wanted) && wanted !== 'auto') {
       wanted = cfg.motion;
       source = 'config';
     }
-    if (wanted === 'fade' || wanted === 'expand') {
+    if (isMode(wanted)) {
       motion.mode = wanted;
       motion.source = source;
       return;
     }
     motion.source = 'auto';
     var stored = loadStored();
-    if (stored && (stored.mode === 'fade' || stored.mode === 'expand')) {
+    if (stored) {
       motion.mode = stored.mode;
       motion.fps = stored.fps || 0;
+      // A rung reached by stepping down is still being timed.
+      motion.measuring = !!stored.measuring && stored.mode !== 'fade';
       return;
     }
-    motion.mode = 'expand';
+    motion.mode = LADDER[0];
     motion.measuring = true;
+  }
+
+  // In push mode the tiles stay on their own layers, so they aren't
+  // re-rastered at the moment the animation starts.
+  function markMotion() {
+    if (motion.mode === 'push') document.body.classList.add('motion-push');
+    else document.body.classList.remove('motion-push');
   }
 
   function motionStatus() {
@@ -318,11 +333,12 @@
     for (var i = 0; i < widgets.length; i++) call(widgets[i], 'onStatus', [widgets[i].ctx]);
   }
 
-  // Samples frame times while an expand transition runs. Returns stop().
+  // Samples frame times while a push or expand transition runs. Returns stop().
   function startSampling() {
-    if (!motion.measuring || !window.requestAnimationFrame) return function () {};
+    if (!motion.measuring || motion.mode === 'fade' || !window.requestAnimationFrame) return function () {};
     var times = [];
     var running = true;
+    var rung = motion.mode;
     function frame(t) {
       if (!running) return;
       times.push(t);
@@ -331,7 +347,7 @@
     requestAnimationFrame(frame);
     return function () {
       running = false;
-      if (document.hidden) return;
+      if (document.hidden || rung !== motion.mode) return;
       recordRun(times);
     };
   }
@@ -345,19 +361,23 @@
     for (var j = 0; j < gaps.length; j++) { total += gaps[j]; if (gaps[j] > worst) worst = gaps[j]; }
     var fps = gaps.length && total > 0 ? Math.round(gaps.length * 1000 / total) : 0;
     var janky = gaps.length < 2 || fps < 40 || worst > 120;
-    motion.runs++;
     if (janky) motion.janky.push(fps); else motion.clean.push(fps);
 
     if (motion.janky.length >= 2) {
-      motion.mode = 'fade';
-      motion.measuring = false;
+      // Step down one rung. Fade is the last one, so it ends the timing.
+      var next = LADDER[LADDER.indexOf(motion.mode) + 1] || 'fade';
       motion.fps = average(motion.janky);
-      store({ mode: 'fade', build: BUILD, fps: motion.fps });
+      motion.mode = next;
+      motion.clean = [];
+      motion.janky = [];
+      motion.measuring = next !== 'fade';
+      store({ mode: next, build: BUILD, fps: motion.fps, measuring: motion.measuring });
+      markMotion();
       announceStatus();
     } else if (motion.clean.length >= 3) {
       motion.measuring = false;
       motion.fps = average(motion.clean);
-      store({ mode: 'expand', build: BUILD, fps: motion.fps });
+      store({ mode: motion.mode, build: BUILD, fps: motion.fps });
       announceStatus();
     }
   }
@@ -367,6 +387,237 @@
     for (var i = 0; i < list.length; i++) sum += list[i];
     return list.length ? Math.round(sum / list.length) : 0;
   }
+
+  /* ---------- browser version ---------- */
+
+  // e.g. 'Chrome 63 · Tizen 5.0', or '' if the user agent says neither.
+  var browserText = (function () {
+    var ua = navigator.userAgent || '';
+    var parts = [];
+    var chrome = /Chrome\/(\d+)/.exec(ua);
+    var tizenVer = /Tizen\s*(\d+(?:\.\d+)?)/.exec(ua);
+    if (chrome) parts.push('Chrome ' + chrome[1]);
+    if (tizenVer) parts.push('Tizen ' + tizenVer[1]);
+    return parts.join(' · ');
+  })();
+
+  /* ---------- geometry ---------- */
+
+  function remPx() {
+    return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  }
+
+  // Each tile's resting rect, from offsets, so transforms never skew it.
+  function measureHome() {
+    var g = gridEl.getBoundingClientRect();
+    for (var i = 0; i < widgets.length; i++) {
+      var rec = widgets[i];
+      var left = g.left + rec.cell.offsetLeft + rec.tile.offsetLeft;
+      var top = g.top + rec.cell.offsetTop + rec.tile.offsetTop;
+      var w = rec.tile.offsetWidth;
+      var h = rec.tile.offsetHeight;
+      rec.home = { left: left, top: top, width: w, height: h, right: left + w, bottom: top + h };
+    }
+  }
+
+  // The panel's resting rect in panel mode (46 x 26rem, centered).
+  function panelRect() {
+    var rem = remPx();
+    var W = window.innerWidth;
+    var H = window.innerHeight;
+    var w = 46 * rem;
+    var h = 26 * rem;
+    var left = (W - w) / 2;
+    var top = (H - h) / 2;
+    return { left: left, top: top, width: w, height: h, right: left + w, bottom: top + h };
+  }
+
+  /*
+   * Push mode: where every other tile goes while a panel is open. Pure:
+   * rects (null = leave alone), the panel rect P, screen W x H, outer margin m
+   * and gap g in, target rects { left, top, width, height, scale } out.
+   * Tiles go to a band around P by their home center (left or right column,
+   * else top or bottom band; a tile that would shrink below 0.4 in the top or
+   * bottom band goes to the nearer column), shrink uniformly to the band's thickness, then
+   * further if the band is too short. Across the band they hug the screen
+   * edge; along it they keep an edge that touches the band's end, otherwise
+   * their center, and two passes remove overlaps.
+   */
+  function ringLayout(rects, P, W, H, m, g) {
+    var bands = {
+      left:   { vertical: true,  thick: P.left - g - m,   start: m,      end: H - m,   items: [] },
+      right:  { vertical: true,  thick: W - m - P.right - g, start: m,   end: H - m,   items: [] },
+      top:    { vertical: false, thick: P.top - g - m,    start: P.left, end: P.right, items: [] },
+      bottom: { vertical: false, thick: H - m - P.bottom - g, start: P.left, end: P.right, items: [] }
+    };
+    var out = [];
+    var i;
+    for (i = 0; i < rects.length; i++) {
+      out.push(null);
+      var r = rects[i];
+      if (!r) continue;
+      var cx = r.left + r.width / 2;
+      var cy = r.top + r.height / 2;
+      var name = cx < P.left ? 'left' : cx > P.right ? 'right' : cy < H / 2 ? 'top' : 'bottom';
+      // A tall tile in a short top or bottom band would become an unreadable
+      // sliver, so it joins the nearer column instead.
+      if ((name === 'top' || name === 'bottom') && bands[name].thick / r.height < 0.4) {
+        name = cx < W / 2 ? 'left' : 'right';
+      }
+      bands[name].items.push(i);
+    }
+    for (var key in bands) {
+      if (!bands.hasOwnProperty(key)) continue;
+      var b = bands[key];
+      var n = b.items.length;
+      if (!n) continue;
+      var list = [];
+      var sum = 0;
+      for (i = 0; i < n; i++) {
+        var rr = rects[b.items[i]];
+        var tileThick = b.vertical ? rr.width : rr.height;
+        var tileLen = b.vertical ? rr.height : rr.width;
+        var s = Math.max(0.01, Math.min(1, b.thick / tileThick));
+        list.push({ idx: b.items[i], r: rr, s: s, len: tileLen * s, a0: b.vertical ? rr.top : rr.left, tileLen: tileLen });
+        sum += tileLen * s;
+      }
+      var room = b.end - b.start - g * (n - 1);
+      if (sum > room) {
+        var f = room / sum;
+        for (i = 0; i < n; i++) { list[i].s *= f; list[i].len *= f; }
+      }
+      list.sort(function (p, q) { return p.a0 - q.a0; });
+      for (i = 0; i < n; i++) {
+        var it = list[i];
+        var a1 = it.a0 + it.tileLen;
+        if (Math.abs(it.a0 - b.start) <= 2) it.st = b.start;
+        else if (Math.abs(a1 - b.end) <= 2) it.st = b.end - it.len;
+        else it.st = (it.a0 + a1) / 2 - it.len / 2;
+      }
+      for (i = 0; i < n; i++) {
+        var min = i === 0 ? b.start : list[i - 1].st + list[i - 1].len + g;
+        if (list[i].st < min) list[i].st = min;
+      }
+      for (i = n - 1; i >= 0; i--) {
+        var max = i === n - 1 ? b.end : list[i + 1].st - g;
+        if (list[i].st + list[i].len > max) list[i].st = max - list[i].len;
+      }
+      for (i = 0; i < n; i++) {
+        var t = list[i];
+        var w = t.r.width * t.s;
+        var h = t.r.height * t.s;
+        var left, top;
+        if (b.vertical) {
+          top = t.st;
+          left = key === 'left' ? m : W - m - w;
+        } else {
+          left = t.st;
+          top = key === 'top' ? m : H - m - h;
+        }
+        out[t.idx] = { left: left, top: top, width: w, height: h, right: left + w, bottom: top + h, scale: t.s };
+      }
+    }
+    return out;
+  }
+
+  function ringTargets(opener) {
+    var rem = remPx();
+    var rects = [];
+    for (var i = 0; i < widgets.length; i++) rects.push(widgets[i] === opener ? null : widgets[i].home);
+    return ringLayout(rects, panelRect(), window.innerWidth, window.innerHeight, 1.2 * rem, 0.9 * rem);
+  }
+
+  // For tests in a laptop browser. Not used by the hub itself.
+  window.HUB_TEST = {
+    ringLayout: ringLayout,
+    panelRect: panelRect,
+    homeRects: function () {
+      var out = {};
+      for (var i = 0; i < widgets.length; i++) out[widgets[i].w.id] = widgets[i].home;
+      return out;
+    }
+  };
+
+  /* ---------- background and glass ---------- */
+
+  var hasPicture = false;
+
+  // A tiny, smooth copy of the picture, for the frosted surfaces. Downscaling
+  // in two steps is the blur. Returns '' if the canvas can't be read
+  // (a picture from another site).
+  function blurredCopy(img) {
+    try {
+      var W = window.innerWidth;
+      var H = window.innerHeight;
+      var iw = img.naturalWidth;
+      var ih = img.naturalHeight;
+      // Crop like background-size: cover.
+      var k = Math.max(W / iw, H / ih);
+      var sw = W / k;
+      var sh = H / k;
+      var a = document.createElement('canvas');
+      a.width = 320;
+      a.height = Math.round(320 * H / W);
+      a.getContext('2d').drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, 0, 0, a.width, a.height);
+      var b = document.createElement('canvas');
+      b.width = 64;
+      b.height = Math.round(64 * H / W);
+      b.getContext('2d').drawImage(a, 0, 0, a.width, a.height, 0, 0, b.width, b.height);
+      return b.toDataURL('image/jpeg', 0.85);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function setupBackground() {
+    var src = cfg.background;
+    if (!src) return;
+    var img = new Image();
+    img.onload = function () {
+      hasPicture = true;
+      backdropEl.style.backgroundImage = 'url("' + src + '")';
+      document.body.classList.add('has-picture');
+      if (cfg.glass === false) return;
+      var data = blurredCopy(img);
+      if (data) document.documentElement.style.setProperty('--glass-img', 'url("' + data + '")');
+      document.body.classList.add('is-glass');
+      // An old engine may not take url() through a custom property, or may
+      // drop the whole background. Then fall back to the plain tint.
+      if (data && widgets.length) {
+        var bg = getComputedStyle(widgets[0].tile).backgroundImage || '';
+        if (bg.indexOf('url(') === -1) document.body.classList.add('glass-tint-only');
+      }
+      placeGlass();
+    };
+    img.onerror = function () { /* keep the plain dark look */ };
+    img.src = src;
+  }
+
+  // Lines up the blurred picture on a surface with the spot it covers.
+  function setGlassOrigin(node, left, top) {
+    node.style.setProperty('--gx', -left + 'px');
+    node.style.setProperty('--gy', -top + 'px');
+  }
+
+  function placeGlass() {
+    if (!hasPicture) return;
+    for (var i = 0; i < widgets.length; i++) {
+      var rec = widgets[i];
+      if (!rec.home) continue;
+      setGlassOrigin(rec.tile, rec.home.left + rec.tile.clientLeft, rec.home.top + rec.tile.clientTop);
+    }
+    placeFloatingGlass(panelEl);
+    placeFloatingGlass(ghostEl);
+  }
+
+  // Panel and ghost are fixed, so their offsets are screen positions that
+  // ignore transforms.
+  function placeFloatingGlass(node) {
+    if (!hasPicture) return;
+    setGlassOrigin(node, node.offsetLeft + node.clientLeft, node.offsetTop + node.clientTop);
+  }
+
+  function scrimLevel() { return hasPicture ? 0.6 : 0.72; }
 
   /* ---------- panel and ghost geometry ---------- */
 
@@ -388,6 +639,7 @@
     ghostEl.style.transition = 'none';
     ghostEl.className = 'ghost is-shown' + (full ? ' is-full' : '');
     ghostEl.style.transform = transform || IDENTITY;
+    placeFloatingGlass(ghostEl);
   }
 
   function hideGhost() {
@@ -424,6 +676,7 @@
       build: BUILD,
       hasTizen: hasPageTizen,
       motionStatus: motionStatus,
+      browser: function () { return browserText; },
       toast: toast,
       service: service,
       getJSON: function (url, timeoutMs, cb) { xhrJSON(url, timeoutMs, false, cb); },
@@ -483,6 +736,7 @@
 
     for (var j = 0; j < widgets.length; j++) call(widgets[j], 'init', [widgets[j].ctx]);
     for (var k = 0; k < widgets.length; k++) drawTile(widgets[k]);
+    measureHome();
 
     var start = -1;
     for (var s = 0; s < widgets.length; s++) {
@@ -516,10 +770,10 @@
 
   function moveHome(dir) {
     if (homeIndex < 0) return;
-    var from = rectOf(widgets[homeIndex].tile);
+    var from = widgets[homeIndex].home;
     var rects = [];
     for (var i = 0; i < widgets.length; i++) {
-      rects.push(i !== homeIndex && widgets[i].expandable ? rectOf(widgets[i].tile) : null);
+      rects.push(i !== homeIndex && widgets[i].expandable ? widgets[i].home : null);
     }
     var next = pickNext(from, rects, dir);
     if (next >= 0) focusHome(next);
@@ -660,12 +914,45 @@
 
   /* ---------- open, close, full screen ---------- */
 
+  // Push mode: the other tiles slide into a ring around the panel.
+  function pushOthers(rec, ms) {
+    var targets = ringTargets(rec);
+    for (var i = 0; i < widgets.length; i++) {
+      var t = targets[i];
+      var w = widgets[i];
+      if (!t || w === rec) continue;
+      w.tile.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + ms + 'ms ' + EASE;
+      w.tile.style.transform = 'translate(' + (t.left - w.home.left) + 'px,' + (t.top - w.home.top) + 'px) scale(' + t.scale + ')';
+      w.tile.style.opacity = '0.6';
+    }
+  }
+
+  function returnOthers(rec, ms) {
+    for (var i = 0; i < widgets.length; i++) {
+      var w = widgets[i];
+      if (w === rec || !w.tile.style.transform) continue;
+      w.tile.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + ms + 'ms ' + EASE;
+      w.tile.style.transform = 'translate(0px,0px) scale(1)';
+      w.tile.style.opacity = '1';
+    }
+  }
+
+  function settleOthers() {
+    for (var i = 0; i < widgets.length; i++) {
+      var s = widgets[i].tile.style;
+      s.transition = '';
+      s.transform = '';
+      s.opacity = '';
+    }
+  }
+
   function openPanel(rec) {
     if (busy || open || !rec.expandable) return;
     open = rec;
     mode = 'panel';
     busy = true;
     panelEl.className = 'panel is-shown';
+    placeFloatingGlass(panelEl);
     setOpacity(panelEl, 0, 0);
     drawPanelHead();
     setPanelSub(rec.ctx.config.sub || rec.w.sub || '');
@@ -676,14 +963,16 @@
 
     if (motion.mode === 'fade') {
       nextFrame(function () {
-        setOpacity(scrimEl, 0.72, 140);
+        setOpacity(scrimEl, scrimLevel(), 140);
         setOpacity(panelEl, 1, 140);
         after(panelEl, 140, function () { busy = false; });
       });
       return;
     }
 
-    var from = rectOf(rec.tile);
+    var push = motion.mode === 'push';
+    var ms = push ? 320 : 260;
+    var from = rec.home || rectOf(rec.tile);
     showGhost(false);
     var to = rectOf(ghostEl);
     ghostEl.style.transform = flip(from, to);
@@ -691,11 +980,13 @@
     void ghostEl.offsetWidth;
     nextFrame(function () {
       var stop = startSampling();
-      ghostEl.style.transition = 'transform 260ms ' + EASE;
+      ghostEl.style.transition = 'transform ' + ms + 'ms ' + EASE;
       ghostEl.style.transform = IDENTITY;
-      setOpacity(scrimEl, 0.72, 260);
-      setOpacity(panelEl, 1, 120, 140);
-      after(ghostEl, 260, function () {
+      // Push keeps the scrim transparent: it only catches clicks outside.
+      if (push) pushOthers(rec, ms);
+      else setOpacity(scrimEl, scrimLevel(), ms);
+      setOpacity(panelEl, 1, 140, ms - 140);
+      after(ghostEl, ms, function () {
         stop();
         hideGhost();
         busy = false;
@@ -714,6 +1005,7 @@
       scrimEl.className = 'scrim';
       scrimEl.style.transition = 'none';
       rec.tile.style.visibility = '';
+      settleOthers();
       hideGhost();
       if (panelFocus) panelFocus.classList.remove('is-focused');
       panelFocus = null;
@@ -730,19 +1022,21 @@
       setOpacity(panelEl, 0, 140);
       setOpacity(scrimEl, 0, 140);
       rec.tile.style.visibility = '';
+      returnOthers(rec, 140);
       after(panelEl, 140, done);
       return;
     }
 
     showGhost(false);
     var to = rectOf(ghostEl);
-    var target = flip(rectOf(rec.tile), to);
+    var target = flip(rec.home || rectOf(rec.tile), to);
     void ghostEl.offsetWidth;
     var stop = startSampling();
     setOpacity(panelEl, 0, 80);
     ghostEl.style.transition = 'transform 200ms ' + EASE + ' 80ms';
     ghostEl.style.transform = target;
-    setOpacity(scrimEl, 0, 200, 80);
+    if (motion.mode === 'push') returnOthers(rec, 280);
+    else setOpacity(scrimEl, 0, 200, 80);
     after(ghostEl, 280, function () { stop(); done(); });
   }
 
@@ -755,6 +1049,7 @@
     function apply() {
       mode = next;
       panelEl.className = 'panel is-shown' + (next === 'full' ? ' is-full' : '');
+      placeFloatingGlass(panelEl);
       drawPanelHead();
       call(rec, 'onMode', [next, rec.ctx]);
       if (panelFocus) keepInView(panelFocus);
@@ -772,6 +1067,7 @@
       showGhost(wasFull);
       var from = rectOf(ghostEl);
       ghostEl.className = 'ghost is-shown' + (next === 'full' ? ' is-full' : '');
+      placeFloatingGlass(ghostEl);
       var to = rectOf(ghostEl);
       ghostEl.style.transform = flip(from, to);
       apply();
@@ -836,6 +1132,14 @@
   /* ---------- start ---------- */
 
   setupMotion();
+  markMotion();
   buildPanel();
   build();
+  setupBackground();
+
+  var resizeTimer = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { measureHome(); placeGlass(); }, 150);
+  });
 })();

@@ -56,6 +56,7 @@ body {
   display: flex;
   flex-direction: column;
   cursor: pointer;
+  transform-origin: 0 0;      /* push mode scales tiles from their top-left corner */
 }
 .tile.is-static { cursor: default; }
 /* Focus is a plain border and color swap. No transition, no scale. */
@@ -273,34 +274,53 @@ body {
 }
 .toast.is-shown { display: block; }
 
-/* ---------- logos (Entertainment) ---------- */
+/* ---------- app icons (Entertainment) ---------- */
 
+/* Square at any width without aspect-ratio: .logo is a block whose height
+   comes from padding-top: 100% of its width, and .logo-face fills it. The
+   corner radius is a percentage so it scales with the icon. */
 .logo {
   display: block;
   position: relative;
-  border-radius: 0.9rem;
+  width: 100%;
+  height: 0;
+  padding-top: 100%;
+}
+.logo-face {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  border-radius: 24%;
   background: var(--mono);
   overflow: hidden;
-  text-align: center;
+  box-shadow: 0 0.12rem 0.35rem rgba(0, 0, 0, 0.35);
 }
-.logo svg {
+.logo-face svg {
   position: absolute;
-  left: 19%;
-  top: 22%;
-  width: 62%;
-  height: 56%;
+  left: 18%;
+  top: 18%;
+  width: 64%;
+  height: 64%;
 }
-.logo::after {
-  /* A hairline so dark logos don't vanish into the dark cards. Drawn on top,
-     so it changes no layout and the focus ring stays outside it. */
+/* Sheen and hairline: a soft light from the top, a touch of shade at the
+   bottom. Static, painted once, drawn over the glyph. */
+.logo-face::after {
   content: "";
   position: absolute;
   top: 0; right: 0; bottom: 0; left: 0;
-  border: 0.06rem solid rgba(255, 255, 255, 0.10);
+  border: 0.06rem solid rgba(255, 255, 255, 0.14);
   border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.05) 40%,
+    rgba(255, 255, 255, 0) 58%, rgba(0, 0, 0, 0.14) 100%);
   pointer-events: none;
 }
-.logo-mono {
+.logo-text {
+  position: absolute;
+  top: 50%; left: 0;
+  width: 100%;
+  margin-top: -0.65em;
+  line-height: 1.3;
+  text-align: center;
   color: var(--text);
   font-weight: 600;
 }
@@ -317,7 +337,7 @@ body {
 }
 .today-time {
   margin-top: auto;
-  font-size: 4.2rem;
+  font-size: 4.4rem;
   font-weight: 300;
   line-height: 1.25;
   letter-spacing: -0.02em;
@@ -337,41 +357,43 @@ body {
 }
 .today-status {
   margin-top: auto;
-  padding-top: 0.45rem;
+  padding-top: 0.3rem;
   font-size: 0.75rem;
   line-height: 1.3;
   color: var(--text-3);
 }
+.today-status-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ---------- Entertainment: home tile ---------- */
 
+/* Up to six icons and "+N", spread evenly, as large as fits up to 5.2rem. */
 .ent-chips {
   display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
   margin-top: auto;
 }
 .ent-chip {
+  display: block;
   flex: 1 1 0;
   min-width: 0;
-  height: 5rem;
+  max-width: 5.2rem;
   margin-right: 0.6rem;
 }
-/* Bigger logos on the home tile, so they read from the couch. */
-.ent-chip svg {
-  left: 14%;
-  top: 20%;
-  width: 72%;
-  height: 60%;
-}
 .ent-chip:last-child { margin-right: 0; }
-.ent-chip.logo-mono, .ent-more { font-size: 1.6rem; line-height: 5rem; }
-.ent-more { color: var(--text-2); font-weight: 600; }
-.ent-chip.is-missing { opacity: 0.35; }
+.ent-chip.is-missing .logo { opacity: 0.35; }
+.ent-chip .logo-text { font-size: 1.7rem; }
+.ent-more .logo-text { color: var(--text-2); }
 
 /* ---------- Entertainment: panel ---------- */
 
-/* Panel mode: one flat grid, six to a row. Full mode (below): sections with
-   labels, Watch on its own row, the short sections side by side. The DOM is
-   the same; only these rules change. */
+/* Panel mode: one flat grid, six to a row, like a phone home screen. Full
+   mode (below): sections with labels, Watch on its own row, the short
+   sections side by side. The DOM is the same; only these rules change. */
 .ent-grid {
   margin: 0 -0.45rem;
   padding-top: 0.4rem;
@@ -382,25 +404,18 @@ body {
   display: inline-block;
   vertical-align: top;
   width: 16.6666%;
-  padding: 0 0.45rem 0.9rem;
+  padding: 0 0.3rem 0.8rem;
+  text-align: center;
   cursor: pointer;
 }
-.ent-logo {
-  height: 4.4rem;
+.ent-icon {
+  width: 5.2rem;
+  max-width: 100%;
+  margin: 0 auto;
 }
-.ent-logo.logo::after {
-  /* A hairline so dark logos don't vanish into the dark cards. Drawn on top,
-     so it changes no layout and the focus ring stays outside it. */
-  content: "";
-  position: absolute;
-  top: 0; right: 0; bottom: 0; left: 0;
-  border: 0.06rem solid rgba(255, 255, 255, 0.10);
-  border-radius: inherit;
-  pointer-events: none;
-}
-.logo-mono { font-size: 1.8rem; line-height: 4.4rem; }
+.ent-icon .logo-text { font-size: 2rem; }
 .ent-name {
-  margin-top: 0.55rem;
+  margin-top: 0.5rem;
   font-size: 0.9rem;
   line-height: 1.3;
   color: var(--text-2);
@@ -412,25 +427,26 @@ body {
   color: var(--text-3);
   word-wrap: break-word;
 }
-.ent-item.is-missing .ent-logo { opacity: 0.35; }
-.ent-item.is-focused .ent-logo {
-  box-shadow: 0 0 0 0.16rem var(--card), 0 0 0 0.32rem var(--focus);
+.ent-item.is-missing .logo { opacity: 0.35; }
+/* The ring follows the rounded corners because it is a box-shadow on the face. */
+.ent-item.is-focused .logo-face {
+  box-shadow: 0 0 0 0.16rem rgba(5, 6, 8, 0.9), 0 0 0 0.34rem var(--focus);
 }
 .ent-item.is-focused .ent-name { color: var(--text); }
-.ent-item.is-pressed .ent-logo { opacity: 0.7; }
+.ent-item.is-pressed .logo { opacity: 0.7; }
 
-.panel.is-full .ent-grid { margin: 0 -0.6rem; }
+.panel.is-full .panel-head { margin-bottom: 1.6rem; }
+.panel.is-full .ent-grid { margin: 0 -0.6rem; padding-top: 0.5rem; }
 .panel.is-full .ent-section {
   display: inline-block;
   vertical-align: top;
-  margin: 0 2.4rem 1.6rem 0;
+  margin: 0 2.4rem 0 0;
 }
-.panel.is-full .ent-section.is-first { display: block; margin: 0 0 2.6rem; }
-.panel.is-full .panel-head { margin-bottom: 2.2rem; }
+.panel.is-full .ent-section.is-first { display: block; margin: 0 0 1.8rem; }
 .panel.is-full .ent-section-label {
   display: block;
   padding: 0 0.6rem;
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.8rem;
   font-size: 0.85rem;
   line-height: 1.3;
   font-weight: 600;
@@ -438,20 +454,9 @@ body {
   text-transform: uppercase;
   color: var(--text-3);
 }
-.panel.is-full .ent-grid { padding-top: 0.6rem; }
-.panel.is-full .ent-item { width: 10.8rem; padding: 0 0.6rem 1rem; }
-.panel.is-full .ent-logo { height: 7.8rem; border-radius: 1.2rem; }
-.panel.is-full .ent-logo.logo::after {
-  /* A hairline so dark logos don't vanish into the dark cards. Drawn on top,
-     so it changes no layout and the focus ring stays outside it. */
-  content: "";
-  position: absolute;
-  top: 0; right: 0; bottom: 0; left: 0;
-  border: 0.06rem solid rgba(255, 255, 255, 0.10);
-  border-radius: inherit;
-  pointer-events: none;
-}
-.logo-mono { font-size: 2.8rem; line-height: 7.8rem; }
+.panel.is-full .ent-item { width: 10.8rem; padding: 0 0.6rem 0.6rem; }
+.panel.is-full .ent-icon { width: 9rem; }
+.panel.is-full .ent-icon .logo-text { font-size: 3.4rem; }
 .panel.is-full .ent-name { font-size: 1.15rem; margin-top: 0.8rem; }
 .panel.is-full .ent-state { font-size: 0.9rem; }
 
@@ -519,3 +524,72 @@ body {
 .panel.is-full .planned-panel { max-width: 50rem; }
 .panel.is-full .planned-lead { font-size: 2rem; }
 .panel.is-full .planned-mark-panel { width: 18rem; height: 18rem; }
+
+/* ---------- background picture and glass ---------- */
+
+/* The picture sits on .backdrop, behind the stage, under a dark veil. It is
+   set from hub.js only once it has loaded, so a missing picture leaves the
+   plain dark page. */
+.backdrop {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-color: var(--page);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+.backdrop::after {
+  content: "";
+  display: none;
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, rgba(5, 7, 10, 0.12) 0%, rgba(5, 7, 10, 0.2) 50%, rgba(5, 7, 10, 0.32) 100%);
+}
+.has-picture .backdrop::after { display: block; }
+
+/* Grays a step lighter so they hold up on glass over the picture. */
+body.has-picture {
+  --text-2: #ced1d8;
+  --text-3: #acb1bc;
+}
+
+/* Frosted glass without backdrop-filter: each surface paints a tint over a
+   tiny blurred copy of the picture (--glass-img, made by hub.js), sized to
+   the screen and shifted by the surface's own position (--gx, --gy), so it
+   shows the blurred piece of picture behind it. Painted once; nothing here
+   animates. Without the blurred copy the surface is just the tint. */
+:root { --glass-img: none; }
+.is-glass .tile,
+.is-glass .panel,
+.is-glass .ghost {
+  --tint: rgba(10, 14, 20, 0.4);
+  background-color: transparent;
+  background-image: linear-gradient(var(--tint), var(--tint)), var(--glass-img);
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100vw 100vh;
+  background-position: 0 0, var(--gx, 0px) var(--gy, 0px);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.is-glass .tile.is-focused {
+  --tint: rgba(36, 44, 58, 0.46);
+  border-color: var(--focus);
+}
+.is-glass .panel,
+.is-glass .ghost { --tint: rgba(10, 14, 20, 0.5); }
+.is-glass .panel.is-full,
+.is-glass .ghost.is-full { --tint: rgba(10, 14, 20, 0.62); }
+
+/* The engine couldn't show the blurred layer: keep the see-through tint. */
+.glass-tint-only .tile,
+.glass-tint-only .panel,
+.glass-tint-only .ghost {
+  background-image: none;
+  background-color: rgba(10, 14, 20, 0.4);
+  background-color: var(--tint);
+}
+
+/* Push mode moves every tile, so keep them on their own layers up front. */
+.motion-push .tile { will-change: transform, opacity; }
