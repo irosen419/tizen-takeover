@@ -555,7 +555,26 @@
 
   /* ---------- home tile ---------- */
 
+  // A one-row strip: the number of open Now items and the first of them,
+  // or the one line that says why there are none.
+  function drawStrip(body) {
+    var wrap = el('div', 'todo-tile todo-strip', '', body);
+    var nowItems = inSection('now', false);
+    if (!store.items.length) {
+      el('div', 'todo-strip-text', STRINGS.emptyTitle, wrap);
+    } else if (nowItems.length) {
+      el('span', 'todo-strip-num', String(nowItems.length), wrap);
+      var first = nowItems[0];
+      var late = first.due && first.due < today();
+      el('div', 'todo-strip-text' + (late ? ' is-late' : ''), first.title, wrap);
+    } else {
+      el('div', 'todo-strip-text', STRINGS.allClear, wrap);
+    }
+  }
+
   function drawTile(body) {
+    var size = C && C.size ? C.size() : null;
+    if (size && size.tier === 'strip') return drawStrip(body);
     var wrap = el('div', 'todo-tile', '', body);
     var now = today();
     var nowItems = inSection('now', false);
@@ -619,6 +638,11 @@
       list.removeChild(list.lastChild);
       shown -= 1;
       setMore();
+    }
+    // No row fits (a small tile): the count above already says it all.
+    if (!shown) {
+      list.style.display = 'none';
+      more.style.display = 'none';
     }
   }
 
