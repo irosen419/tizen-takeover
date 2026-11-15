@@ -13,7 +13,7 @@
  *
  * The resource data:
  *   { configured: true, tz, from, to, updatedAt, truncated,
- *     calendars: [{ cal, name, ok, error, count, skipped, updatedAt }],
+ *     calendars: [{ cal, name, color, ok, error, count, skipped, updatedAt }],
  *     events: [{ id, cal, title, start, end, allDay, location }] }
  * Timed events have UTC start and end like "2026-11-16T15:00:00Z". All-day
  * events have dates like "2026-11-16", and the end date is the day after the
@@ -790,7 +790,7 @@ const calNum = (v) => (Number.isInteger(v) && v >= 1 && v <= MAX_CALENDARS ? v :
 function cleanData(d) {
   if (!isObj(d) || d.configured !== true) return unconfiguredData();
   const calendars = (Array.isArray(d.calendars) ? d.calendars : []).filter((c) => isObj(c) && calNum(c.cal)).slice(0, MAX_CALENDARS).map((c) => ({
-    cal: c.cal, name: cleanText(str(c.name), MAX_NAME), ok: c.ok === true, error: str(c.error).slice(0, 200),
+    cal: c.cal, name: cleanText(str(c.name), MAX_NAME), color: /^#[0-9a-f]{6}$/.test(str(c.color)) ? c.color : '', ok: c.ok === true, error: str(c.error).slice(0, 200),
     count: Number.isInteger(c.count) ? c.count : 0, skipped: Number.isInteger(c.skipped) ? c.skipped : 0,
     updatedAt: strOrNull(c.updatedAt)
   }));
@@ -865,7 +865,24 @@ function cleanName(s) {
   return cleanText(s, MAX_NAME);
 }
 
-// Checks the calendar list. Each entry is { cal?, name, url, details }.
+// Calendar colors: a name from this list or #rrggbb (CALENDAR_n_COLOR). The
+// named ones are tuned to be readable on the TV's dark glass. '' = the TV's
+// own default for that calendar number.
+const COLOR_NAMES = {
+  red: '#ff6b6b', orange: '#ffb36b', yellow: '#ffd166', green: '#7fdc8a', teal: '#5fd6cf',
+  blue: '#6db8ff', purple: '#c7a6ff', pink: '#f592c4', gray: '#b8c4d6', grey: '#b8c4d6'
+};
+
+// Returns '#rrggbb', '' (not set) or null (not understood).
+function normalizeColor(v) {
+  const t = String(v === undefined || v === null ? '' : v).trim().toLowerCase();
+  if (!t) return '';
+  if (Object.prototype.hasOwnProperty.call(COLOR_NAMES, t)) return COLOR_NAMES[t];
+  const m = /^#?([0-9a-f]{6})$/.exec(t);
+  return m ? '#' + m[1] : null;
+}
+
+// Checks the calendar list. Each entry is { cal?, name, url, details, color? }.
 // Problems are logged by name and that calendar is left out.
 function checkCalendars(list, log, allowHttp) {
   const out = [];
@@ -888,6 +905,11 @@ function checkCalendars(list, log, allowHttp) {
       log('calendar ' + name + ': DETAILS must be show or busy, skipped');
       return;
     }
+    let color = normalizeColor(c.color);
+    if (color === null) {
+      log('calendar ' + name + ': COLOR must be one of ' + Object.keys(COLOR_NAMES).filter((k) => k !== 'grey').join(', ') + ' or a code like #d50000; using the default color');
+      color = '';
+    }
     const u = checkLink(urlText, allowHttp);
     if (typeof u === 'string') {
       log('calendar ' + name + ': ' + u + ', skipped');
@@ -902,19 +924,19 @@ function checkCalendars(list, log, allowHttp) {
       return;
     }
     links.set(u.href, name);
-    out.push({ cal: cal, name: name, url: u.href, details: details });
+    out.push({ cal: cal, name: name, url: u.href, details: details, color: color });
   });
   return out.sort((a, b) => a.cal - b.cal);
 }
 
-// CALENDAR_1_NAME, CALENDAR_1_URL, CALENDAR_1_DETAILS ... up to 9.
+// CALENDAR_1_NAME, CALENDAR_1_URL, CALENDAR_1_DETAILS, CALENDAR_1_COLOR ... up to 9.
 function calendarsFromEnv(env) {
   const out = [];
   for (let n = 1; n <= MAX_CALENDARS; n++) {
     const url = env['CALENDAR_' + n + '_URL'];
     const name = env['CALENDAR_' + n + '_NAME'];
     if (!url && !name) continue;
-    out.push({ cal: n, name: name || '', url: url || '', details: env['CALENDAR_' + n + '_DETAILS'] });
+    out.push({ cal: n, name: name || '', url: url || '', details: env['CALENDAR_' + n + '_DETAILS'], color: env['CALENDAR_' + n + '_COLOR'] });
   }
   return out;
 }
@@ -1071,6 +1093,7 @@ function createReader(o) {
       calendars: cals.map((c) => ({
         cal: c.cfg.cal,
         name: c.cfg.name,
+        color: c.cfg.color || '',
         ok: c.ok,
         error: c.ok ? '' : c.error,
         count: all.filter((e) => e.cal === c.cfg.cal).length,
@@ -1174,6 +1197,7 @@ module.exports = {
   windowFor: windowFor,
   cleanText: cleanText,
   cleanData: cleanData,
+  normalizeColor: normalizeColor,
   cleanResource: cleanResource,
   unconfiguredData: unconfiguredData,
   sameData: sameData,
