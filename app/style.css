@@ -1,18 +1,19 @@
-/* Home Hub. Sized for a TV: 1rem is 1/80 of the screen width (24px at 1920). */
+/* Home Hub. Sized for a TV: 1rem is 1/80 of the screen width (24px at 1920),
+   so the screen is 80rem by 45rem.
+
+   Built for an old, slow TV browser: no CSS grid, no flex gap, no filters.
+   Only transform and opacity ever animate, and focus changes are instant. */
 :root {
-  --bg: #0b0d12;
-  --bg-2: #121621;
-  --text: #f3f5f9;
-  --text-2: #a7aec0;
-  --text-3: #6b7387;
-  --line: rgba(255, 255, 255, 0.08);
+  --page: #050506;
+  --card: #0e0f12;
+  --card-2: #171a20;
+  --mono: #1b1e26;
+  --line: rgba(255, 255, 255, 0.10);
+  --text: #f4f5f7;
+  --text-2: #a4a8b3;
+  --text-3: #6c7180;
   --focus: #ffffff;
-  --red: #e5484d;
-  --blue: #3e8bff;
-  --indigo: #7c6cff;
-  --green: #30a46c;
-  --amber: #f5a524;
-  --slate: #8b93a7;
+  --edge: 0.16rem;
 }
 
 html { font-size: calc(100vw / 80); }
@@ -21,153 +22,574 @@ html { font-size: calc(100vw / 80); }
 body {
   min-height: 100vh;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--page);
   color: var(--text);
   font-family: "SamsungOne", "Samsung Sans", "Helvetica Neue", Arial, sans-serif;
   line-height: 1.3;
   -webkit-font-smoothing: antialiased;
 }
 
-.top {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  padding: 2.4rem 3.2rem 1.2rem;
-}
-.place {
-  font-size: 1.1rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  font-weight: 600;
-}
-.clock { text-align: right; }
-.time { font-size: 3.2rem; font-weight: 300; letter-spacing: -0.02em; line-height: 1.1; }
-.date { font-size: 1rem; color: var(--text-2); margin-top: 0.2rem; }
+.icon { display: inline-block; flex: 0 0 auto; }
+.icon svg { display: block; width: 100%; height: 100%; }
 
-.rows {
-  position: relative;
-  padding: 0 3.2rem 2rem;
-}
-.row { margin-top: 1.6rem; }
-.row-label {
-  font-size: 0.9rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  font-weight: 600;
-  margin-bottom: 0.8rem;
-}
-.row.is-active .row-label { color: var(--text-2); }
+/* ---------- home stage ---------- */
 
-.tiles { display: flex; }
-.tiles .tile + .tile { margin-left: 1.2rem; }
+.stage {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  transform: translateZ(0);   /* its own layer, so the overlays don't repaint it */
+}
+.grid {
+  position: absolute;
+  top: 0.75rem; right: 0.75rem; bottom: 0.75rem; left: 0.75rem;
+}
+.cell { position: absolute; }
 
 .tile {
-  position: relative;
-  flex: 0 0 auto;
-  width: 11.5rem;
-  min-height: 6.6rem;
-  padding: 1.1rem 1.2rem 1rem;
-  border-radius: 1rem;
-  background: var(--bg-2);
-  border: 0.18rem solid var(--line);
+  position: absolute;
+  top: 0.45rem; right: 0.45rem; bottom: 0.45rem; left: 0.45rem;
+  padding: 1.3rem 1.4rem;
+  border-radius: 1.6rem;
+  background: var(--card);
+  border: var(--edge) solid var(--line);
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  color: var(--text-2);
+  cursor: pointer;
+  transform-origin: 0 0;      /* push mode scales tiles from their top-left corner */
 }
-.tile::before {
-  content: "";
-  position: absolute;
-  left: 0; top: 0; right: 0;
-  height: 0.3rem;
-  border-radius: 0.8rem 0.8rem 0 0;
-  background: var(--tone, var(--slate));
-}
-.tile-label {
-  font-size: 1.35rem;
-  color: inherit;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  line-height: 1.2;
-  word-break: break-word;
-}
-.tile-sub {
-  font-size: 0.8rem;
-  color: var(--text-2);
-  margin-top: 0.3rem;
-  line-height: 1.35;
-}
-.tile.is-missing { color: var(--text-3); }
-.tile.is-missing .tile-sub { color: var(--text-3); }
-
-/* Focus is a plain border and color swap. No blur, scale or animation,
-   because those repaint slowly on older TV chips. */
+.tile.is-static { cursor: default; }
+/* Focus is a plain border and color swap. No transition, no scale. */
 .tile.is-focused {
-  background: #1f2840;
+  background: var(--card-2);
   border-color: var(--focus);
+}
+
+.tile-head {
+  display: flex;
+  flex-wrap: wrap;            /* a long "Soon" label drops below the title instead of crushing it */
+  align-items: flex-start;
+  flex: 0 0 auto;
+}
+.tile-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0.1rem 0.7rem 0 0;
   color: var(--text);
 }
-.tile.is-pressed { background: #2a3552; }
-
-.tone-red { --tone: var(--red); }
-.tone-blue { --tone: var(--blue); }
-.tone-indigo { --tone: var(--indigo); }
-.tone-green { --tone: var(--green); }
-.tone-amber { --tone: var(--amber); }
-.tone-slate { --tone: var(--slate); }
-
-/* All apps list */
-.overlay {
-  position: fixed; top: 0; right: 0; bottom: 0; left: 0;
-  background: rgba(5, 6, 9, 0.86);
-  display: flex; justify-content: center; align-items: center;
+.tile-titles { flex: 1 1 9rem; min-width: 0; padding-right: 0.8rem; }
+.tile-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  word-wrap: break-word;
 }
-.overlay[hidden], .frame-wrap[hidden] { display: none; }
-.sheet {
-  width: 40rem; max-height: 86vh;
-  background: var(--bg-2);
-  border: 0.08rem solid var(--line);
-  border-radius: 1.2rem;
-  padding: 1.6rem 1.6rem 1rem;
-  display: flex; flex-direction: column;
-}
-.sheet-title { font-size: 1.8rem; font-weight: 700; }
-.sheet-hint { font-size: 0.85rem; color: var(--text-3); margin: 0.3rem 0 1rem; }
-.app-list { position: relative; list-style: none; overflow: hidden; flex: 1 1 auto; }
-.app-list li {
-  font-size: 1.1rem;
-  padding: 0.55rem 0.9rem;
-  border-radius: 0.6rem;
+.tile-sub {
+  font-size: 0.85rem;
+  line-height: 1.35;
   color: var(--text-2);
-  display: flex; justify-content: space-between;
+  margin-top: 0.15rem;
 }
-.app-list li .app-id { font-size: 0.75rem; color: var(--text-3); margin-left: 1rem; }
-.app-list li.is-focused { background: #26304a; color: var(--text); }
+.tile-soon {
+  flex: 0 0 auto;
+  margin: 0.15rem 0 0 auto;
+  padding: 0.2rem 0.6rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.18);
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.tile-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 
-/* Dashboards */
-.frame-wrap { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: #000; }
+/* Planned widgets are quieter until focused. */
+.tile.is-planned .tile-icon,
+.tile.is-planned .tile-title { color: var(--text-2); }
+.tile.is-planned.is-focused .tile-icon,
+.tile.is-planned.is-focused .tile-title { color: var(--text); }
+
+/* ---------- panel, scrim, ghost ---------- */
+
+.scrim {
+  display: none;
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: #000;
+  opacity: 0;
+  z-index: 10;
+  will-change: opacity;
+}
+.scrim.is-shown { display: block; }
+
+.panel,
+.ghost {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 46rem;
+  height: 26rem;
+  margin: -13rem 0 0 -23rem;
+  border-radius: 1.9rem;
+  background: var(--card);
+  border: var(--edge) solid var(--line);
+}
+.panel.is-full,
+.ghost.is-full {
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  border-width: 0;
+}
+
+.ghost {
+  display: none;
+  z-index: 11;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.ghost.is-shown { display: block; }
+
+.panel {
+  display: none;
+  z-index: 12;
+  padding: 1.4rem 1.5rem;
+  flex-direction: column;
+  opacity: 0;
+  will-change: opacity;
+}
+.panel.is-shown { display: flex; }
+.panel.is-full { padding: 2rem 2.4rem; }
+
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  flex: 0 0 auto;
+  margin-bottom: 1rem;
+}
+.panel-icon {
+  width: 1.8rem;
+  height: 1.8rem;
+  margin: 0.1rem 0.8rem 0 0;
+}
+.panel-titles { flex: 1 1 auto; min-width: 0; }
+.panel-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  word-wrap: break-word;
+}
+.panel-sub {
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  margin-top: 0.1rem;
+}
+.panel-actions {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  margin-left: 1rem;
+}
+.panel-hint {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  margin-right: 1rem;
+  text-align: right;
+}
+.panel-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0.45rem 0.9rem 0.45rem 0.75rem;
+  border-radius: 1.4rem;
+  border: var(--edge) solid var(--line);
+  background: var(--card-2);
+  font-size: 0.9rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.panel-btn-icon { width: 1.1rem; height: 1.1rem; margin-right: 0.5rem; }
+.panel-btn.is-focused {
+  border-color: var(--focus);
+  background: #fff;
+  color: #050506;
+}
+.panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  /* A little room past the edges so focus rings aren't clipped. */
+  margin: 0 -0.5rem;
+  padding: 0 0.5rem;
+}
+
+/* ---------- dashboards ---------- */
+
+.frame-wrap[hidden] { display: none; }
+.frame-wrap { position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: #000; z-index: 20; }
 .frame-wrap iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 .frame-hint {
   position: absolute; right: 1.2rem; bottom: 1rem;
-  font-size: 0.8rem; color: #fff;
+  font-size: 0.8rem; line-height: 1.3; color: #fff;
   background: rgba(0, 0, 0, 0.6);
   padding: 0.35rem 0.7rem; border-radius: 0.5rem;
 }
 
-/* Toast */
+/* ---------- toast ---------- */
+
 .toast {
   position: fixed; left: 50%; bottom: 2.2rem;
   transform: translate(-50%, 0);
   max-width: 50rem;
-  background: #1f2636;
+  background: #1f232c;
   border: 0.08rem solid var(--line);
   color: var(--text);
   font-size: 1rem; line-height: 1.4;
   padding: 0.8rem 1.2rem;
   border-radius: 0.8rem;
   display: none;
+  z-index: 30;
 }
 .toast.is-shown { display: block; }
-.build { font-size: 0.7rem; color: var(--text-3); margin-top: 0.3rem; }
+
+/* ---------- app icons (Entertainment) ---------- */
+
+/* Square at any width without aspect-ratio: .logo is a block whose height
+   comes from padding-top: 100% of its width, and .logo-face fills it. The
+   corner radius is a percentage so it scales with the icon. */
+.logo {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-top: 100%;
+}
+.logo-face {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  border-radius: 24%;
+  background: var(--mono);
+  overflow: hidden;
+  box-shadow: 0 0.12rem 0.35rem rgba(0, 0, 0, 0.35);
+}
+.logo-face svg {
+  position: absolute;
+  left: 18%;
+  top: 18%;
+  width: 64%;
+  height: 64%;
+}
+/* Sheen and hairline: a soft light from the top, a touch of shade at the
+   bottom. Static, painted once, drawn over the glyph. */
+.logo-face::after {
+  content: "";
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  border: 0.06rem solid rgba(255, 255, 255, 0.14);
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.05) 40%,
+    rgba(255, 255, 255, 0) 58%, rgba(0, 0, 0, 0.14) 100%);
+  pointer-events: none;
+}
+.logo-text {
+  position: absolute;
+  top: 50%; left: 0;
+  width: 100%;
+  margin-top: -0.65em;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ---------- Today ---------- */
+
+.today-place {
+  font-size: 0.85rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.today-time {
+  margin-top: auto;
+  font-size: 4.4rem;
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.today-ampm {
+  font-size: 1.5rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  margin-left: 0.5rem;
+  color: var(--text-2);
+}
+.today-date {
+  font-size: 1.2rem;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+.today-status {
+  margin-top: auto;
+  padding-top: 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-3);
+}
+.today-status-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Entertainment: home tile ---------- */
+
+/* Up to six icons and "+N", spread evenly, as large as fits up to 5.2rem. */
+.ent-chips {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: auto;
+}
+.ent-chip {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 5.2rem;
+  margin-right: 0.6rem;
+}
+.ent-chip:last-child { margin-right: 0; }
+.ent-chip.is-missing .logo { opacity: 0.35; }
+.ent-chip .logo-text { font-size: 1.7rem; }
+.ent-more .logo-text { color: var(--text-2); }
+
+/* ---------- Entertainment: panel ---------- */
+
+/* Panel mode: one flat grid, six to a row, like a phone home screen. Full
+   mode (below): sections with labels, Watch on its own row, the short
+   sections side by side. The DOM is the same; only these rules change. */
+.ent-grid {
+  margin: 0 -0.45rem;
+  padding-top: 0.4rem;
+}
+.ent-section { display: inline; }
+.ent-section-label { display: none; }
+.ent-item {
+  display: inline-block;
+  vertical-align: top;
+  width: 16.6666%;
+  padding: 0 0.3rem 0.8rem;
+  text-align: center;
+  cursor: pointer;
+}
+.ent-icon {
+  width: 5.2rem;
+  max-width: 100%;
+  margin: 0 auto;
+}
+.ent-icon .logo-text { font-size: 2rem; }
+.ent-name {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.ent-state {
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.ent-item.is-missing .logo { opacity: 0.35; }
+/* The ring follows the rounded corners because it is a box-shadow on the face. */
+.ent-item.is-focused .logo-face {
+  box-shadow: 0 0 0 0.16rem rgba(5, 6, 8, 0.9), 0 0 0 0.34rem var(--focus);
+}
+.ent-item.is-focused .ent-name { color: var(--text); }
+.ent-item.is-pressed .logo { opacity: 0.7; }
+
+.panel.is-full .panel-head { margin-bottom: 1.6rem; }
+.panel.is-full .ent-grid { margin: 0 -0.6rem; padding-top: 0.5rem; }
+.panel.is-full .ent-section {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 2.4rem 0 0;
+}
+.panel.is-full .ent-section.is-first { display: block; margin: 0 0 1.8rem; }
+.panel.is-full .ent-section-label {
+  display: block;
+  padding: 0 0.6rem;
+  margin-bottom: 0.8rem;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.panel.is-full .ent-item { width: 10.8rem; padding: 0 0.6rem 0.6rem; }
+.panel.is-full .ent-icon { width: 9rem; }
+.panel.is-full .ent-icon .logo-text { font-size: 3.4rem; }
+.panel.is-full .ent-name { font-size: 1.15rem; margin-top: 0.8rem; }
+.panel.is-full .ent-state { font-size: 0.9rem; }
+
+/* All apps list */
+.ent-list { padding: 0.5rem 0 0.1rem; }
+.ent-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.7rem;
+  border: var(--edge) solid transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.ent-row-name { flex: 1 1 auto; min-width: 0; font-size: 1.05rem; line-height: 1.35; word-wrap: break-word; }
+.ent-row-id {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 1rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  text-align: right;
+  word-break: break-all;
+}
+.ent-row.is-focused { background: var(--card-2); border-color: var(--focus); color: var(--text); }
+.ent-row.is-focused .ent-row-id { color: var(--text-2); }
+
+/* ---------- planned widgets ---------- */
+
+.planned-text {
+  position: relative;
+  margin-top: 0.9rem;
+  max-width: 92%;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  z-index: 1;
+}
+.planned-mark {
+  position: absolute;
+  right: -0.4rem;
+  bottom: -0.4rem;
+  width: 5rem;
+  height: 5rem;
+  opacity: 0.06;
+  color: #fff;
+}
+.planned-mark svg { display: block; width: 100%; height: 100%; }
+.planned-panel { position: relative; z-index: 1; max-width: 34rem; }
+.planned-lead {
+  margin-top: 1rem;
+  font-size: 1.5rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.planned-note {
+  margin-top: 0.8rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+.planned-mark-panel { width: 10rem; height: 10rem; right: 0; bottom: 0; }
+.panel.is-full .planned-panel { max-width: 50rem; }
+.panel.is-full .planned-lead { font-size: 2rem; }
+.panel.is-full .planned-mark-panel { width: 18rem; height: 18rem; }
+
+/* ---------- background picture and glass ---------- */
+
+/* The picture sits on .backdrop, behind the stage, under a dark veil. It is
+   set from hub.js only once it has loaded, so a missing picture leaves the
+   plain dark page. */
+.backdrop {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background-color: var(--page);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+.backdrop::after {
+  content: "";
+  display: none;
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: linear-gradient(180deg, rgba(5, 7, 10, 0.12) 0%, rgba(5, 7, 10, 0.2) 50%, rgba(5, 7, 10, 0.32) 100%);
+}
+.has-picture .backdrop::after { display: block; }
+
+/* Grays a step lighter so they hold up on glass over the picture. */
+body.has-picture {
+  --text-2: #ced1d8;
+  --text-3: #acb1bc;
+}
+
+/* Frosted glass without backdrop-filter: each surface paints a tint over a
+   tiny blurred copy of the picture (--glass-img, made by hub.js), sized to
+   the screen and shifted by the surface's own position (--gx, --gy), so it
+   shows the blurred piece of picture behind it. Painted once; nothing here
+   animates. Without the blurred copy the surface is just the tint. */
+:root { --glass-img: none; }
+.is-glass .tile,
+.is-glass .panel,
+.is-glass .ghost {
+  --tint: rgba(10, 14, 20, 0.4);
+  background-color: transparent;
+  background-image: linear-gradient(var(--tint), var(--tint)), var(--glass-img);
+  background-repeat: no-repeat;
+  background-size: 100% 100%, 100vw 100vh;
+  background-position: 0 0, var(--gx, 0px) var(--gy, 0px);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.is-glass .tile.is-focused {
+  --tint: rgba(36, 44, 58, 0.46);
+  border-color: var(--focus);
+}
+.is-glass .panel,
+.is-glass .ghost { --tint: rgba(10, 14, 20, 0.5); }
+.is-glass .panel.is-full,
+.is-glass .ghost.is-full { --tint: rgba(10, 14, 20, 0.62); }
+
+/* The engine couldn't show the blurred layer: keep the see-through tint. */
+.glass-tint-only .tile,
+.glass-tint-only .panel,
+.glass-tint-only .ghost {
+  background-image: none;
+  background-color: rgba(10, 14, 20, 0.4);
+  background-color: var(--tint);
+}
+
+/* Push mode moves every tile, so keep them on their own layers up front. */
+.motion-push .tile { will-change: transform, opacity; }
