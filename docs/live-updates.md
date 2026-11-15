@@ -241,3 +241,14 @@ States: `off`, `quiet` (never reached from this TV), `connecting`, `live`, `lost
 Widgets get `ctx.live` (absent when `live.js` is): `status()`, `get(resource)`, `on(resource, fn)`, `onStatus(fn)`, `post(path, body, cb)`.
 
 To-do on the TV: local storage stays the working copy, so the list is instant and survives the Pi being away. Each change is applied locally, then queued in `homeHub.todo.outbox` and sent as ops. On connect: send the outbox first, then take the server's list. The first time this TV meets a given epoch it uploads its own items as `add` ops, so neither side's items are lost.
+
+### Decisions made while building
+
+- `start()` also returns `ready`, a Promise that settles once the doors are listening.
+- The screen API answers only when the request's `Host` is an IP address, `localhost` or a `.local` name, and `POST /todo/ops` refuses an `Origin` that is not on the allowed list. Both stop a web page on another site from reaching the lists through a browser at home.
+- A poll with no `cursor` never receives commands. The hub sends its first poll without `rev`, which the server answers at once with a cursor.
+- To-do ops are all or nothing: a bad op rejects the whole batch with `400` and names it as `(op N)`. A batch that changes nothing does not raise `rev`.
+- `add` without `at` goes to the end. `POST /api/todo` adds at the top, as the TV does.
+- Before this TV has ever reached the server, only "unreachable" is silent. A refusal or a wrong reply shows its words even on first contact, because something did answer.
+- A dropped push line alone does not show `lost`. That appears only when the full-picture request that follows also fails.
+- On first contact with a server, the TV's own items are added after the server's, in the TV's order.

@@ -1,0 +1,26 @@
+# Home Hub live server in Docker. From this folder:
+#   docker compose up -d      start it (and again after every reboot, by itself)
+#   docker compose logs -f    watch what it is doing
+#   docker compose down       stop it
+#
+# network_mode host: the server sees the TV's real address (needed for the
+# allow-list) and the optional side door can sit on 127.0.0.1 of the Pi.
+#
+# Settings: there is deliberately no env_file line. The server reads
+# /app/.env itself (this folder, mounted below), and a missing .env is fine.
+# That works the same on every Compose version, where "env_file" with
+# "required: false" needs Compose 2.24 or newer. After changing .env, run
+# "docker compose restart hub".
+#
+# Data: the to-do list is kept in ./data on the Pi through the same mount.
+
+services:
+  hub:
+    image: node:22-alpine
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - ./:/app
+    command: node server.js
+    restart: unless-stopped
+    init: true

@@ -46,16 +46,23 @@
       time.appendChild(digits);
       time.appendChild(ampm);
       var date = div('today-date', el);
-      // Two fixed lines, so a wider TV font can't push the tile past its edge.
+      // One-line rows that end in "..." rather than wrap, so a wider TV font
+      // can't push the tile past its edge. The third row, live updates, is
+      // only there when it has something to say (checked to fit at 1920x1080).
       var status = div('today-status', el);
       var browser = ctx.browser ? ctx.browser() : '';
       div('today-status-line', status).textContent = ctx.build + (browser ? ' · ' + browser : '');
       div('today-status-line', status).textContent = ctx.motionStatus();
+      var live = '';
+      try { live = ctx.live ? ctx.live.status().text || '' : ''; } catch (e) { live = ''; }
+      if (live) div('today-status-line today-status-live', status).textContent = live;
+      // The clock gives up a little height to make room for the third line.
+      if (live) el.classList.add('today-has-live'); else el.classList.remove('today-has-live');
       els = { digits: digits, ampm: ampm, date: date };
       tick();
     },
 
-    // The motion status changed (auto mode finished measuring).
+    // The motion status or the live updates status changed.
     onStatus: function (ctx) {
       ctx.redrawTile();
     }

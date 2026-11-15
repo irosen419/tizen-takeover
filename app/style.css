@@ -593,3 +593,14 @@ body.has-picture {
 
 /* Push mode moves every tile, so keep them on their own layers up front. */
 .motion-push .tile { will-change: transform, opacity; }
+
+/* ---------- Today: the live updates line ---------- */
+
+/* A third status line shows only while live updates have something to say.
+   The clock is a little smaller then, so all three lines fit in the tile at
+   1920x1080 with room to spare. Each line still ends in "..." if too long. */
+.tile-body.today-has-live .today-time {
+  font-size: 3.9rem;
+  line-height: 1.15;
+}
+.tile-body.today-has-live .today-status { padding-top: 0.2rem; }

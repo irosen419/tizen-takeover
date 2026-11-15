@@ -81,7 +81,7 @@ Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion
 
 ### The status line
 
-The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.6.0 · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand.
+The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.9.0 · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. A third line shows only when live updates have something to say (see [Live updates](#live-updates)).
 
 ### Entertainment
 
@@ -133,11 +133,51 @@ A USB or Bluetooth keyboard plugged into the TV works too: with the box focused,
 
 Full screen shows Now on the left and the rest on the right.
 
-The list is saved on the TV itself, so it isn't shared with phones or other TVs (a later version can sync it with the Pi). A warning shows on the tile if something goes wrong:
+The list is saved on the TV itself. With [live updates](#live-updates) on, it is also kept on the Pi and changes go both ways; the line under the title says where the list is: `On this TV` (no Pi), `In sync`, `Saved here, 2 to send` (changed while the Pi was away; sent when it's back) or `Saved here` (the Pi is away, nothing waiting). A warning shows on the tile if something goes wrong:
 
 - **This TV isn't saving the list.** The TV won't let the hub save anything. The list works until the hub closes, then it's gone.
 - **Couldn't save the last change.** The TV's storage may be full. The change is kept until the hub closes, and the next change tries again.
 - **The saved list couldn't be read, so a fresh one was started.** The saved copy was damaged. It's kept on the TV as `homeHub.todo.v1.bad` in case it can be recovered.
+
+## Live updates
+
+A small server on the Raspberry Pi (`pi/`) lets Claude steer the screen ("show me the weather", "go home", a short message at the bottom) and keeps the to-do list, so "add milk to my to-do list" shows up on the TV by itself. The TV keeps one open line to the Pi and redraws when something changes. The TV being off, or the Pi being down, never breaks the hub: it draws from what it saved and tries again quietly. The design is in [docs/live-updates.md](docs/live-updates.md); installing and running the server is in [pi/README.md](pi/README.md).
+
+The setting is `live` in `app/config.js`:
+
+```js
+live: { server: HUB_PI + ':8097' },
+```
+
+`server: ''` turns live updates off, and the hub works exactly as before. On a laptop, `?live=http://127.0.0.1:8097` in the address uses another server for one visit, and `?live=off` turns it off.
+
+The clock tile says how it's going, in small text, never a pop-up:
+
+| The clock tile says | Meaning |
+| --- | --- |
+| nothing | Live updates are off, or this TV has never reached the Pi (it keeps trying quietly) |
+| `Live` | Connected |
+| `Live: lost the Pi at 7:10 AM` | Was connected, the Pi can't be reached now. The hub uses saved data and retries |
+| `Live: the Pi refused this TV` | The TV isn't on the Pi's allowed list (`HUB_TV_IPS`). Retries every 5 minutes |
+| `Live: unexpected reply from the Pi` | Something else answers at that address. Retries every 5 minutes |
+| `Live: the hub needs an update` | The Pi's server is newer than this hub understands |
+
+Commands the Pi can send: `show` a widget (`weather`, `todo`, `entertainment`, optionally full screen), `home` (close whatever is open), `say` a short message for a few seconds, and `reload`. A command sent while the TV is off is dropped, so nothing old fires when the TV turns on.
+
+### For widget authors
+
+Widgets get `ctx.live`: `status()` (`{ state, text, since }`), `get(resource)`, `on(resource, fn)` (`fn(data, rev)` whenever new data arrives), `onStatus(fn)`, `post(path, body, cb)` and `everConnected()`. The hub also calls every widget's `onStatus` hook when the live state changes. `ctx.live` is `undefined` when `live.js` isn't loaded: jsDelivr can serve a mix of old and new files, so always check it first. `ctx.setTileSub(text)` changes the small line under the tile's title. The to-do widget (`app/widgets/todo.js`) is the worked example.
+
+### Preview and test
+
+`node dev/preview.js` also runs the Pi's server on `127.0.0.1:8097` (with a made-up token, data in `dev/.live-data`). Open http://127.0.0.1:8090/?live=http://127.0.0.1:8097 and, in another terminal, try:
+
+```
+HUB_TOKEN=preview-token-not-a-secret-000000 node pi/hubctl.js show weather
+HUB_TOKEN=preview-token-not-a-secret-000000 node pi/hubctl.js say "Dinner in 10"
+```
+
+`node dev/live-test.js` runs the checks from the design doc in a headless browser (Playwright): no server, a server that starts late, commands, the to-do list both ways, the TV off then on, the server stopping, refusals and wrong replies, and the same again on the fallback for old browsers. It needs port 8095 free and nothing from the internet. It can't prove the real TV's browser or the home network; the first run on the TV is still a real test.
 
 ## Writing a widget
 
@@ -168,7 +208,7 @@ Arrows normally move by position. A widget that needs its own rule for some move
 
 Other optional hooks and fields: `planned`, `head: false`, `sub`, `onFocus` and `onStatus`; the comment at the top of `hub.js` lists them all.
 
-`ctx` gives each widget: `config` (its part of `HUB_CONFIG.widgets`), `toast(text, ms)`, `service(path, ms, cb)` for the TV's service, `getJSON(url, ms, cb)` for any other address, `pi(path)` to build an address on the Pi (`ctx.pi('/todo/')`, `ctx.pi(':8123/api/x')`), `openFrame(url)`, `isOpen()`, `mode()`, `setMode(mode)`, `close()`, `redrawTile()`, `redrawPanel()`, `setSub(text)`, `focus(el)`, `browser()` (the TV's browser, for example `Chrome 63 · Tizen 5.0`), `hasTizen` and `registerKeys(keys)`.
+`ctx` gives each widget: `config` (its part of `HUB_CONFIG.widgets`), `toast(text, ms)`, `service(path, ms, cb)` for the TV's service, `getJSON(url, ms, cb)` for any other address, `pi(path)` to build an address on the Pi (`ctx.pi('/todo/')`, `ctx.pi(':8123/api/x')`), `openFrame(url)`, `isOpen()`, `mode()`, `setMode(mode)`, `close()`, `redrawTile()`, `redrawPanel()`, `setSub(text)`, `setTileSub(text)`, `focus(el)`, `live` (see [Live updates](#for-widget-authors)), `browser()` (the TV's browser, for example `Chrome 63 · Tizen 5.0`), `hasTizen` and `registerKeys(keys)`.
 
 A widget gets its data from the Pi in one of two ways. It either draws itself from JSON fetched with `ctx.getJSON(ctx.pi('/...'))` (the Pi must send an `Access-Control-Allow-Origin` header), or it opens a page hosted on the Pi full screen with `ctx.openFrame(ctx.pi('/...'))`.
 
@@ -186,11 +226,12 @@ Then open http://127.0.0.1:8090/. It serves `app/` and pretends to be the TV's s
 
 ## Updating
 
-TizenBrew loads modules through jsDelivr, which caches each branch for a while. After pushing a change, wait a bit or purge the cache for each changed file at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/<file>`, then reopen the hub. There are more files now, so purge every one you changed: `index.html`, `style.css`, `config.js`, `icons.js`, `logos.js`, `hub.js`, each file in `widgets/` (for example `.../app/widgets/entertainment.js`, `.../app/widgets/todo.js` and `.../app/widgets/todo.css`) and the picture, `backgrounds/ocean.jpg`.
+TizenBrew loads modules through jsDelivr, which caches each branch for a while. After pushing a change, wait a bit or purge the cache for each changed file at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/<file>`, then reopen the hub. There are more files now, so purge every one you changed: `index.html`, `style.css`, `config.js`, `icons.js`, `logos.js`, `hub.js`, `live.js`, each file in `widgets/` (for example `.../app/widgets/entertainment.js`, `.../app/widgets/todo.js` and `.../app/widgets/todo.css`) and the picture, `backgrounds/ocean.jpg`.
 
 ## How it works
 
-- `app/index.html` is the page. It loads, in order: `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, then `hub.js`.
+- `app/index.html` is the page. It loads, in order: `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, then `hub.js`.
+- `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
 - `app/icons.js` holds the white line icons; `app/logos.js` the app logos.
 - `app/widgets/` holds one file per widget: `today.js`, `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) and `planned.js` (the "Soon" placeholders).
@@ -198,6 +239,7 @@ TizenBrew loads modules through jsDelivr, which caches each branch for a while. 
 - `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
 - `app/backgrounds/` holds the background picture.
 - `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps, calls webhooks and fetches the weather when the page can’t do it directly.
-- `dev/preview.js` is for previewing on a laptop and isn't used on the TV.
+- `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/live-test.js` tests live updates end to end.
+- `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.

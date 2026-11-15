@@ -1,0 +1,670 @@
+/*
+ * Tests for the Home Hub live server. Run from the repo root with:
+ *
+ *   node pi/test.js
+ *
+ * It starts the server on a free port with a throwaway data folder, talks to
+ * it over real HTTP, and prints one line per check, then "N passed, 0 failed".
+ * It uses only what ships with Node, so there is nothing to install.
+ */
+'use strict';
+
+const http = require('http');
+const assert = require('assert');
+const os = require('os');
+const fs = require('fs');
+const path = require('path');
+const hubServer = require('./server');
+
+const TOKEN = 'test-token-0123456789abcdef-long-enough';
+let passed = 0;
+let failed = 0;
+const tmpDirs = [];
+
+function tmpDir() {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-test-'));
+  tmpDirs.push(d);
+  return d;
+}
+
+async function check(name, fn) {
+  try {
+    await fn();
+    passed++;
+    console.log('ok   ' + name);
+  } catch (e) {
+    failed++;
+    console.log('FAIL ' + name + '\n     ' + (e && e.stack ? e.stack.split('\n').slice(0, 3).join('\n     ') : e));
+  }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function request(port, method, p, opts) {
+  const o = opts || {};
+  return new Promise((resolve, reject) => {
+    const headers = Object.assign({}, o.headers || {});
+    let body = null;
+    if (o.raw !== undefined) body = Buffer.from(o.raw);
+    else if (o.body !== undefined) body = Buffer.from(JSON.stringify(o.body));
+    if (body) {
+      headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+      headers['Content-Length'] = body.length;
+    }
+    if (o.token) headers.Authorization = 'Bearer ' + o.token;
+    const req = http.request({ host: '127.0.0.1', port: port, method: method, path: p, headers: headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let json = null;
+        try { json = JSON.parse(text); } catch (e) { /* not JSON */ }
+        resolve({ status: res.statusCode, headers: res.headers, text: text, json: json });
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+// A tiny Server-Sent Events reader.
+function openEvents(port, headers) {
+  return new Promise((resolve, reject) => {
+    const events = [];
+    const raw = { text: '' };
+    const req = http.get({ host: '127.0.0.1', port: port, path: '/live/events', headers: headers || {} }, (res) => {
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => {
+        raw.text += c;
+        buf += c;
+        let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const block = buf.slice(0, i);
+          buf = buf.slice(i + 2);
+          const ev = {};
+          block.split('\n').forEach((line) => {
+            if (line.indexOf('event: ') === 0) ev.event = line.slice(7);
+            else if (line.indexOf('data: ') === 0) ev.data = JSON.parse(line.slice(6));
+            else if (line.indexOf('retry: ') === 0) ev.retry = Number(line.slice(7));
+          });
+          events.push(ev);
+        }
+      });
+      resolve({
+        res: res,
+        events: events,
+        raw: raw,
+        close: () => req.destroy(),
+        waitFor: async (pred, ms) => {
+          const end = Date.now() + (ms || 2000);
+          while (Date.now() < end) {
+            const hit = events.find(pred);
+            if (hit) return hit;
+            await sleep(10);
+          }
+          throw new Error('event did not arrive');
+        }
+      });
+    });
+    req.on('error', reject);
+  });
+}
+
+function start(extra) {
+  const opts = Object.assign({ port: 0, token: TOKEN, log: false, dataDir: tmpDir() }, extra || {});
+  const h = hubServer.start(opts);
+  return h.ready.then(() => { h.dataDir = opts.dataDir; return h; });
+}
+
+const stop = (h) => new Promise((r) => h.close(r));
+
+async function waitUntil(fn, ms) {
+  const end = Date.now() + (ms || 2000);
+  while (Date.now() < end) {
+    if (fn()) return;
+    await sleep(10);
+  }
+  throw new Error('condition not met in time');
+}
+
+async function main() {
+  /* ---------- pure helpers ---------- */
+
+  await check('address classifier: private and loopback addresses allowed', () => {
+    ['10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.20', '169.254.9.9', '127.0.0.1',
+      '::1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'fe80::1%eth0', '::ffff:192.168.1.5', '::ffff:127.0.0.1', '::ffff:10.0.0.1']
+      .forEach((a) => assert.strictEqual(hubServer.isPrivateAddress(a), true, a));
+  });
+
+  await check('address classifier: public addresses refused', () => {
+    ['8.8.8.8', '172.15.0.1', '172.32.0.1', '192.169.0.1', '1.1.1.1', '2001:db8::1', '::ffff:8.8.8.8', '', 'nonsense', '::', '999.1.1.1']
+      .forEach((a) => assert.strictEqual(hubServer.isPrivateAddress(a), false, a));
+  });
+
+  await check('screen allow-list with HUB_TV_IPS: only those plus loopback', () => {
+    const list = ['192.168.1.50'];
+    assert.strictEqual(hubServer.screenAllowed('192.168.1.50', list), true);
+    assert.strictEqual(hubServer.screenAllowed('::ffff:192.168.1.50', list), true);
+    assert.strictEqual(hubServer.screenAllowed('127.0.0.1', list), true);
+    assert.strictEqual(hubServer.screenAllowed('::1', list), true);
+    assert.strictEqual(hubServer.screenAllowed('192.168.1.51', list), false);
+  });
+
+  await check('.env parser: comments, quotes, export, inline notes', () => {
+    const env = hubServer.parseEnv('# note\nHUB_TOKEN="abc def"\nHUB_PORT=9000  # main\nexport HUB_X=\'q\'\nBROKEN LINE\n\nHUB_EMPTY=\n');
+    assert.deepStrictEqual(env, { HUB_TOKEN: 'abc def', HUB_PORT: '9000', HUB_X: 'q', HUB_EMPTY: '' });
+  });
+
+  /* ---------- state file ---------- */
+
+  let dir = tmpDir();
+  let h = await start({ dataDir: dir });
+  let epoch;
+  await check('state file is created on first run with an epoch and rev 0', () => {
+    const st = JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8'));
+    assert.ok(typeof st.epoch === 'string' && st.epoch.length >= 4);
+    assert.strictEqual(st.rev, 0);
+    assert.deepStrictEqual(st.resources.todo.data.items, []);
+    epoch = st.epoch;
+  });
+  await request(h.port, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Keep me' } });
+  await stop(h);
+  h = await start({ dataDir: dir });
+  await check('rev, epoch and items survive a restart', async () => {
+    const r = await request(h.port, 'GET', '/live/state');
+    assert.strictEqual(r.json.epoch, epoch);
+    assert.strictEqual(r.json.rev, 1);
+    assert.strictEqual(r.json.resources.todo.data.items[0].title, 'Keep me');
+    assert.ok(!fs.readdirSync(dir).some((f) => f.indexOf('.tmp') >= 0), 'no temp file left');
+  });
+  await stop(h);
+
+  await check('a damaged state file is moved aside and a fresh one started', async () => {
+    const d = tmpDir();
+    fs.writeFileSync(path.join(d, 'state.json'), '{ this is not json');
+    const lines = [];
+    const h2 = await start({ dataDir: d, log: (s) => lines.push(s) });
+    const r = await request(h2.port, 'GET', '/live/state');
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.rev, 0);
+    assert.ok(fs.readdirSync(d).some((f) => /^state\.bad-.*\.json$/.test(f)));
+    assert.ok(lines.some((l) => /damaged/.test(l)));
+    fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify({ epoch: 5 }));
+    await stop(h2);
+    const h3 = await start({ dataDir: d });
+    assert.strictEqual((await request(h3.port, 'GET', '/live/state')).json.rev, 0);
+    assert.strictEqual(fs.readdirSync(d).filter((f) => /^state\.bad-/.test(f)).length >= 1, true);
+    await stop(h3);
+  });
+
+  /* ---------- control API ---------- */
+
+  h = await start({ pingInterval: 150, pollWait: 400, commandTtl: 300 });
+  const P = h.port;
+
+  await check('/health answers without a token', async () => {
+    const r = await request(P, 'GET', '/health');
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.1.0' });
+    assert.strictEqual(r.headers['cache-control'], 'no-store');
+  });
+
+  await check('control API: missing token is 401 "wrong token"', async () => {
+    const r = await request(P, 'GET', '/api/status');
+    assert.strictEqual(r.status, 401);
+    assert.deepStrictEqual(r.json, { ok: false, error: 'wrong token' });
+  });
+
+  await check('control API: wrong token (same and different length) is 401', async () => {
+    assert.strictEqual((await request(P, 'GET', '/api/status', { token: 'nope' })).status, 401);
+    const same = TOKEN.slice(0, -1) + (TOKEN.slice(-1) === 'x' ? 'y' : 'x');
+    assert.strictEqual((await request(P, 'GET', '/api/status', { token: same })).status, 401);
+    assert.strictEqual((await request(P, 'GET', '/api/status', { headers: { Authorization: TOKEN } })).status, 401);
+  });
+
+  await check('GET /api/status: version, rev, epoch, uptime, screens; no token in it', async () => {
+    const r = await request(P, 'GET', '/api/status', { token: TOKEN });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.ok, true);
+    assert.strictEqual(r.json.server, '0.1.0');
+    assert.strictEqual(typeof r.json.rev, 'number');
+    assert.strictEqual(typeof r.json.epoch, 'string');
+    assert.strictEqual(typeof r.json.uptime, 'number');
+    assert.deepStrictEqual(r.json.screens, []);
+    assert.ok(r.text.indexOf(TOKEN) < 0);
+  });
+
+  await check('control API: unknown call 404, wrong method 405, invalid JSON 400', async () => {
+    assert.strictEqual((await request(P, 'GET', '/api/nothing', { token: TOKEN })).status, 404);
+    const m = await request(P, 'GET', '/api/command', { token: TOKEN });
+    assert.strictEqual(m.status, 405);
+    assert.strictEqual(m.headers.allow, 'POST');
+    const j = await request(P, 'POST', '/api/command', { token: TOKEN, raw: '{bad json' });
+    assert.strictEqual(j.status, 400);
+    assert.ok(/JSON/.test(j.json.error));
+    assert.strictEqual((await request(P, 'GET', '/nowhere')).status, 404);
+  });
+
+  await check('body over 8 KB is 413', async () => {
+    const r = await request(P, 'POST', '/api/todo', { token: TOKEN, raw: JSON.stringify({ title: 'x'.repeat(9000) }) });
+    assert.strictEqual(r.status, 413);
+    assert.strictEqual(r.json.ok, false);
+  });
+
+  await check('commands: bad type and bad data are 400 with a clear error', async () => {
+    let r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'dance' } });
+    assert.strictEqual(r.status, 400);
+    assert.ok(/unknown command/.test(r.json.error));
+    r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'show', data: {} } });
+    assert.strictEqual(r.status, 400);
+    r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'show', data: { widget: 'weather', mode: 'huge' } } });
+    assert.strictEqual(r.status, 400);
+    r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'say', data: { text: 'x'.repeat(141) } } });
+    assert.strictEqual(r.status, 400);
+    assert.ok(/140/.test(r.json.error));
+    r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'say', data: { text: 'hi', seconds: 'ten' } } });
+    assert.strictEqual(r.status, 400);
+  });
+
+  await check('a command with no screens: delivered 0 at once, nothing kept', async () => {
+    const t0 = Date.now();
+    const r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'show', data: { widget: 'weather' } } });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.json, { ok: true, delivered: 0 });
+    assert.ok(Date.now() - t0 < 500);
+    for (const type of ['home', 'reload']) {
+      assert.strictEqual((await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: type } })).json.delivered, 0);
+    }
+    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false });
+  });
+
+  /* ---------- to-do ---------- */
+
+  await check('POST /api/todo adds at the top with a server id', async () => {
+    const a = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'First' } });
+    const b = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: '  Second  ', section: 'next', due: '2026-12-24' } });
+    assert.strictEqual(b.status, 200);
+    assert.ok(/^p[0-9a-z]+[0-9a-z]{3}$/.test(b.json.item.id));
+    assert.strictEqual(b.json.item.title, 'Second');
+    assert.strictEqual(b.json.item.section, 'next');
+    assert.strictEqual(b.json.item.due, '2026-12-24');
+    assert.strictEqual(b.json.item.done, false);
+    assert.strictEqual(b.json.item.doneAt, null);
+    assert.strictEqual(typeof b.json.item.createdAt, 'number');
+    assert.strictEqual(b.json.rev, a.json.rev + 1);
+    const list = await request(P, 'GET', '/api/todo', { token: TOKEN });
+    assert.deepStrictEqual(list.json.items.map((i) => i.title), ['Second', 'First']);
+  });
+
+  await check('POST /api/todo rejects a bad title, section and due date', async () => {
+    for (const body of [{}, { title: '' }, { title: 'x'.repeat(81) }, { title: 'ok', section: 'later' }, { title: 'ok', due: '24/12/2026' }]) {
+      const r = await request(P, 'POST', '/api/todo', { token: TOKEN, body: body });
+      assert.strictEqual(r.status, 400, JSON.stringify(body));
+      assert.ok(r.json.error && r.json.error.length > 5);
+    }
+  });
+
+  await check('to-do ops: add top/end, set, move to end, remove, last one wins', async () => {
+    const ops = [
+      { op: 'remove', id: 'nothere' },
+      { op: 'add', item: { id: 'a1', title: 'A' }, at: 'top' },
+      { op: 'add', item: { id: 'b1', title: 'B' }, at: 'end' },
+      { op: 'add', item: { id: 'c1', title: 'C' } },
+      { op: 'set', id: 'a1', fields: { title: 'A2', done: true }, to: 'end' },
+      { op: 'set', id: 'ghost', fields: { title: 'ignored' } },
+      { op: 'add', item: { id: 'b1', title: 'B2', section: 'waiting' } },
+      { op: 'set', id: 'c1', fields: { title: 'C2' } },
+      { op: 'set', id: 'c1', fields: { title: 'C3' } }
+    ];
+    const r = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: ops } });
+    assert.strictEqual(r.status, 200, r.text);
+    const titles = r.json.items.map((i) => i.title);
+    assert.deepStrictEqual(titles, ['Second', 'First', 'B2', 'C3', 'A2']);
+    const a = r.json.items.find((i) => i.id === 'a1');
+    assert.strictEqual(a.done, true);
+    assert.strictEqual(typeof a.doneAt, 'number');
+    assert.strictEqual(r.json.items.find((i) => i.id === 'b1').section, 'waiting');
+    const r2 = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'set', id: 'a1', fields: { done: false } }, { op: 'remove', id: 'c1' }] } });
+    assert.strictEqual(r2.json.items.find((i) => i.id === 'a1').doneAt, null);
+    assert.ok(!r2.json.items.some((i) => i.id === 'c1'));
+    assert.strictEqual(r2.json.rev, r.json.rev + 1);
+  });
+
+  await check('to-do ops: unknown small fields are kept; due can be cleared', async () => {
+    const r = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [
+      { op: 'add', item: { id: 'x1', title: 'Extra', note: 'kitchen', due: '2027-01-02' } },
+      { op: 'set', id: 'x1', fields: { due: null, colour: 'red' } }
+    ] } });
+    const it = r.json.items.find((i) => i.id === 'x1');
+    assert.strictEqual(it.note, 'kitchen');
+    assert.strictEqual(it.colour, 'red');
+    assert.ok(!('due' in it));
+  });
+
+  await check('to-do ops: bad ops are 400 and change nothing', async () => {
+    const before = (await request(P, 'GET', '/api/todo', { token: TOKEN })).json;
+    const bads = [
+      { ops: 'nope' },
+      { ops: [{ op: 'add', item: { id: 'ok1', title: 'fine' } }, { op: 'jump' }] },
+      { ops: [{ op: 'add', item: { id: 'bad id!', title: 'x' } }] },
+      { ops: [{ op: 'add', item: { id: 'big', title: 'x', note: 'y'.repeat(480) } }] },
+      { ops: [{ op: 'add', item: { id: 'ok2', title: 'x' }, at: 'middle' }] },
+      { ops: [{ op: 'set', id: 'a1', fields: { done: 'yes' } }] },
+      { ops: [{ op: 'set', id: 'a1', fields: {}, to: 'top' }] },
+      { ops: new Array(101).fill({ op: 'remove', id: 'zz' }) }
+    ];
+    for (const body of bads) {
+      const r = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: body });
+      assert.strictEqual(r.status, 400, JSON.stringify(body).slice(0, 80));
+      assert.ok(r.json.error);
+    }
+    const big = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'add', item: { id: 'big', title: 'x', note: 'y'.repeat(480) } }] } });
+    assert.ok(/500 bytes/.test(big.json.error), big.json.error);
+    const after = (await request(P, 'GET', '/api/todo', { token: TOKEN })).json;
+    assert.deepStrictEqual(after, before);
+  });
+
+  await check('to-do ops: at most 200 items', async () => {
+    const d = tmpDir();
+    const h2 = await start({ dataDir: d });
+    for (let n = 0; n < 4; n++) {
+      const ops = [];
+      for (let i = 0; i < 50; i++) ops.push({ op: 'add', item: { id: 'i' + n + '_' + i, title: 't' } });
+      const r = await request(h2.port, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: ops } });
+      assert.strictEqual(r.status, 200);
+    }
+    const r = await request(h2.port, 'POST', '/api/todo', { token: TOKEN, body: { title: 'one too many' } });
+    assert.strictEqual(r.status, 400);
+    assert.ok(/full/.test(r.json.error));
+    const r2 = await request(h2.port, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'add', item: { id: 'z', title: 'z' } }] } });
+    assert.strictEqual(r2.status, 400);
+    await stop(h2);
+  });
+
+  await check('done items ticked over 48 hours ago are dropped on the next write', async () => {
+    const old = Date.now() - 49 * 3600 * 1000;
+    const recent = Date.now() - 47 * 3600 * 1000;
+    await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [
+      { op: 'add', item: { id: 'old1', title: 'Old', done: true, doneAt: old } },
+      { op: 'add', item: { id: 'new1', title: 'Recent', done: true, doneAt: recent } }
+    ] } });
+    const r = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Trigger' } });
+    assert.ok(r.status === 200);
+    const items = (await request(P, 'GET', '/api/todo', { token: TOKEN })).json.items;
+    assert.ok(!items.some((i) => i.id === 'old1'));
+    assert.ok(items.some((i) => i.id === 'new1'));
+  });
+
+  /* ---------- screen API ---------- */
+
+  await check('GET /live/state: v, server, epoch, rev, resources', async () => {
+    const r = await request(P, 'GET', '/live/state');
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.ok, true);
+    assert.strictEqual(r.json.v, 1);
+    assert.strictEqual(r.json.server, '0.1.0');
+    assert.ok(Array.isArray(r.json.resources.todo.data.items));
+    assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
+    assert.strictEqual(r.headers['cache-control'], 'no-store');
+  });
+
+  await check('POST /todo/ops from a screen (no token) works and returns items', async () => {
+    const r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'add', item: { id: 'tv1', title: 'From TV' }, at: 'top' }] } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.items[0].id, 'tv1');
+    assert.strictEqual(typeof r.json.rev, 'number');
+  });
+
+  await check('CORS: allowed origin echoed with Vary, others not; preflight', async () => {
+    const ok = await request(P, 'GET', '/live/state', { headers: { Origin: 'http://127.0.0.1:8081' } });
+    assert.strictEqual(ok.headers['access-control-allow-origin'], 'http://127.0.0.1:8081');
+    assert.ok(/Origin/.test(ok.headers.vary));
+    const no = await request(P, 'GET', '/live/state', { headers: { Origin: 'http://evil.example' } });
+    assert.strictEqual(no.headers['access-control-allow-origin'], undefined);
+    assert.ok(/Origin/.test(no.headers.vary));
+    const pre = await request(P, 'OPTIONS', '/todo/ops', { headers: { Origin: 'http://127.0.0.1:8081', 'Access-Control-Request-Method': 'POST' } });
+    assert.strictEqual(pre.status, 204);
+    assert.strictEqual(pre.headers['access-control-allow-origin'], 'http://127.0.0.1:8081');
+    assert.ok(/POST/.test(pre.headers['access-control-allow-methods']));
+    assert.ok(/Content-Type/i.test(pre.headers['access-control-allow-headers']));
+    const preBad = await request(P, 'OPTIONS', '/todo/ops', { headers: { Origin: 'http://evil.example' } });
+    assert.strictEqual(preBad.headers['access-control-allow-origin'], undefined);
+    const post = await request(P, 'POST', '/todo/ops', { headers: { Origin: 'http://evil.example' }, body: { ops: [] } });
+    assert.strictEqual(post.status, 403);
+  });
+
+  await check('SSE: headers, retry, hello, change, command, ping', async () => {
+    const es = await openEvents(P, { Origin: 'http://127.0.0.1:8081' });
+    assert.ok(/text\/event-stream/.test(es.res.headers['content-type']));
+    assert.strictEqual(es.res.headers['cache-control'], 'no-store');
+    assert.strictEqual(es.res.headers['x-accel-buffering'], 'no');
+    assert.strictEqual(es.res.headers['access-control-allow-origin'], 'http://127.0.0.1:8081');
+    const hello = await es.waitFor((e) => e.event === 'hello');
+    assert.strictEqual(es.events[0].retry, 5000);
+    assert.strictEqual(hello.data.v, 1);
+    assert.strictEqual(typeof hello.data.epoch, 'string');
+    assert.strictEqual(typeof hello.data.rev, 'number');
+    await waitUntil(() => h._debug().sse === 1);
+    const add = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Pushed' } });
+    const ch = await es.waitFor((e) => e.event === 'change');
+    assert.strictEqual(ch.data.resource, 'todo');
+    assert.strictEqual(ch.data.rev, add.json.rev);
+    assert.ok(ch.data.data.items.some((i) => i.title === 'Pushed'));
+    const c = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'show', data: { widget: 'weather', mode: 'full' } } });
+    assert.strictEqual(c.json.delivered, 1);
+    const cmd = await es.waitFor((e) => e.event === 'command');
+    assert.strictEqual(cmd.data.type, 'show');
+    assert.deepStrictEqual(cmd.data.data, { widget: 'weather', mode: 'full' });
+    assert.ok(/^c[0-9a-z]+$/.test(cmd.data.id));
+    const ping = await es.waitFor((e) => e.event === 'ping', 1000);
+    assert.strictEqual(ping.data.rev, add.json.rev);
+    es.raw.text.split('\n').filter((l) => l.indexOf('data:') === 0).forEach((l) => JSON.parse(l.slice(5)));
+    const st = await request(P, 'GET', '/api/status', { token: TOKEN });
+    assert.strictEqual(st.json.screens.length, 1);
+    assert.strictEqual(st.json.screens[0].via, 'events');
+    es.close();
+    await waitUntil(() => h._debug().sse === 0);
+    assert.strictEqual(h._debug().pingTimer, false);
+    const after = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'home' } });
+    assert.strictEqual(after.json.delivered, 0);
+  });
+
+  await check('SSE: at most 20 screens, the 21st gets 503', async () => {
+    const list = [];
+    for (let i = 0; i < 20; i++) list.push(await openEvents(P));
+    await waitUntil(() => h._debug().sse === 20);
+    const r = await request(P, 'GET', '/live/events');
+    assert.strictEqual(r.status, 503);
+    const c = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'reload' } });
+    assert.strictEqual(c.json.delivered, 20);
+    list.forEach((e) => e.close());
+    await waitUntil(() => h._debug().sse === 0);
+  });
+
+  await check('poll: answers at once when rev or epoch differ', async () => {
+    const st = (await request(P, 'GET', '/live/state')).json;
+    const t0 = Date.now();
+    const r = await request(P, 'GET', '/live/poll?epoch=old&rev=0');
+    assert.ok(Date.now() - t0 < 200);
+    assert.strictEqual(r.json.ok, true);
+    assert.strictEqual(r.json.v, 1);
+    assert.strictEqual(r.json.epoch, st.epoch);
+    assert.ok(r.json.resources.todo);
+    assert.deepStrictEqual(r.json.commands, []);
+    assert.ok(/^c[0-9a-z]+$/.test(r.json.cursor));
+    const r2 = await request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + (st.rev - 1) + '&cursor=' + r.json.cursor);
+    assert.ok(r2.json.resources.todo);
+    assert.strictEqual(r2.json.rev, st.rev);
+  });
+
+  await check('poll: waits when nothing is new, returns empty resources after the wait', async () => {
+    const st = (await request(P, 'GET', '/live/state')).json;
+    const first = await request(P, 'GET', '/live/poll');
+    const t0 = Date.now();
+    const r = await request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + st.rev + '&cursor=' + first.json.cursor);
+    const took = Date.now() - t0;
+    assert.ok(took >= 350 && took < 1500, 'took ' + took);
+    assert.deepStrictEqual(r.json.resources, {});
+    assert.deepStrictEqual(r.json.commands, []);
+    assert.strictEqual(r.json.cursor, first.json.cursor);
+  });
+
+  await check('poll: a waiting poll wakes on a change', async () => {
+    const st = (await request(P, 'GET', '/live/state')).json;
+    const cur = (await request(P, 'GET', '/live/poll')).json.cursor;
+    const pending = request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + st.rev + '&cursor=' + cur);
+    await waitUntil(() => h._debug().polls === 1);
+    await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Wake' } });
+    const r = await pending;
+    assert.strictEqual(r.json.rev, st.rev + 1);
+    assert.ok(r.json.resources.todo.data.items.some((i) => i.title === 'Wake'));
+  });
+
+  await check('poll: a waiting poll gets a command and it counts as delivered', async () => {
+    const st = (await request(P, 'GET', '/live/state')).json;
+    const cur = (await request(P, 'GET', '/live/poll')).json.cursor;
+    const pending = request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + st.rev + '&cursor=' + cur);
+    await waitUntil(() => h._debug().polls === 1);
+    const c = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'say', data: { text: 'Dinner in 10', seconds: 8 } } });
+    assert.strictEqual(c.json.delivered, 1);
+    const r = await pending;
+    assert.strictEqual(r.json.commands.length, 1);
+    assert.strictEqual(r.json.commands[0].type, 'say');
+    assert.deepStrictEqual(r.json.commands[0].data, { text: 'Dinner in 10', seconds: 8 });
+    assert.strictEqual(r.json.cursor, r.json.commands[0].id);
+    assert.deepStrictEqual(r.json.resources, {});
+  });
+
+  await check('poll: a command sent between polls is picked up, then forgotten after the time limit', async () => {
+    const st = (await request(P, 'GET', '/live/state')).json;
+    const cur = (await request(P, 'GET', '/live/poll')).json.cursor;
+    const c = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'home' } });
+    assert.strictEqual(c.json.delivered, 0);
+    assert.ok(h._debug().commands >= 1);
+    const r = await request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + st.rev + '&cursor=' + cur);
+    assert.strictEqual(r.json.commands.length, 1);
+    assert.strictEqual(r.json.commands[0].type, 'home');
+    await sleep(450);
+    assert.strictEqual(h._debug().commands, 0);
+    const r2 = await request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + st.rev + '&cursor=' + cur);
+    assert.deepStrictEqual(r2.json.commands, []);
+  });
+
+  await check('poll: a first poll with no cursor never replays old commands', async () => {
+    await request(P, 'GET', '/live/poll');
+    await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'reload' } });
+    const r = await request(P, 'GET', '/live/poll');
+    assert.deepStrictEqual(r.json.commands, []);
+  });
+
+  await check('poll: at most 20 remembered commands', async () => {
+    await request(P, 'GET', '/live/poll');
+    for (let i = 0; i < 25; i++) await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'home' } });
+    assert.ok(h._debug().commands <= 20);
+  });
+
+  await check('with no screen left, nothing is held and nothing is kept', async () => {
+    await waitUntil(() => {
+      const d = h._debug();
+      return d.sse === 0 && d.polls === 0 && d.commands === 0 && d.pollScreens === 0;
+    }, 3000);
+    const c = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'show', data: { widget: 'todo' } } });
+    assert.strictEqual(c.json.delivered, 0);
+    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false });
+  });
+
+  await stop(h);
+
+  /* ---------- allow-list over HTTP ---------- */
+
+  await check('screen API refuses public addresses with 403 "screen not allowed"', async () => {
+    const h2 = await start({ clientAddress: (req) => req.headers['x-test-ip'] || req.socket.remoteAddress });
+    for (const ip of ['8.8.8.8', '::ffff:1.2.3.4']) {
+      for (const [m, p] of [['GET', '/live/state'], ['GET', '/live/events'], ['GET', '/live/poll'], ['POST', '/todo/ops']]) {
+        const r = await request(h2.port, m, p, { headers: { 'x-test-ip': ip }, body: m === 'POST' ? { ops: [] } : undefined });
+        assert.strictEqual(r.status, 403, ip + ' ' + p);
+        assert.deepStrictEqual(r.json, { ok: false, error: 'screen not allowed' });
+      }
+    }
+    assert.strictEqual((await request(h2.port, 'GET', '/live/state', { headers: { 'x-test-ip': '192.168.1.9' } })).status, 200);
+    assert.strictEqual(h2._debug().sse, 0);
+    await stop(h2);
+  });
+
+  await check('screen API refuses a request whose Host is another site\'s name', async () => {
+    const h2 = await start();
+    for (const host of ['evil.example.com', 'evil.example.com:8097', '192.168.1.219.evil.example.com']) {
+      const r = await request(h2.port, 'GET', '/live/state', { headers: { Host: host } });
+      assert.strictEqual(r.status, 403, host);
+    }
+    for (const host of ['192.168.1.219:8097', '127.0.0.1', 'localhost:8097', 'raspberrypi.local:8097', '[::1]:8097']) {
+      const r = await request(h2.port, 'GET', '/live/state', { headers: { Host: host } });
+      assert.strictEqual(r.status, 200, host);
+    }
+    await stop(h2);
+  });
+
+  await check('HUB_TV_IPS: only the listed TV plus loopback', async () => {
+    const h2 = await start({ tvIps: '192.168.1.50, 192.168.1.51', clientAddress: (req) => req.headers['x-test-ip'] || req.socket.remoteAddress });
+    const get = (ip) => request(h2.port, 'GET', '/live/state', { headers: ip ? { 'x-test-ip': ip } : {} });
+    assert.strictEqual((await get('192.168.1.50')).status, 200);
+    assert.strictEqual((await get('::ffff:192.168.1.51')).status, 200);
+    assert.strictEqual((await get('192.168.1.60')).status, 403);
+    assert.strictEqual((await get(null)).status, 200);
+    await stop(h2);
+  });
+
+  /* ---------- no token / short token ---------- */
+
+  await check('no token or a short token: control API 503, screens still work', async () => {
+    for (const token of [undefined, 'short-token']) {
+      const h2 = await start({ token: token });
+      const r = await request(h2.port, 'GET', '/api/status', { token: 'short-token' });
+      assert.strictEqual(r.status, 503);
+      assert.deepStrictEqual(r.json, { ok: false, error: 'no token set on the server' });
+      assert.strictEqual((await request(h2.port, 'GET', '/live/state')).status, 200);
+      assert.strictEqual((await request(h2.port, 'GET', '/health')).status, 200);
+      await stop(h2);
+    }
+  });
+
+  /* ---------- side door ---------- */
+
+  await check('side door: control API and /health only, screen routes are 404', async () => {
+    const h2 = await start({ tunnelPort: 0 });
+    assert.ok(h2.tunnelPort > 0 && h2.tunnelPort !== h2.port);
+    const T = h2.tunnelPort;
+    assert.strictEqual((await request(T, 'GET', '/health')).status, 200);
+    assert.strictEqual((await request(T, 'GET', '/api/status', { token: TOKEN })).status, 200);
+    assert.strictEqual((await request(T, 'GET', '/api/status')).status, 401);
+    const c = await request(T, 'POST', '/api/command', { token: TOKEN, body: { type: 'home' } });
+    assert.deepStrictEqual(c.json, { ok: true, delivered: 0 });
+    for (const [m, p] of [['GET', '/live/state'], ['GET', '/live/events'], ['GET', '/live/poll'], ['POST', '/todo/ops'], ['OPTIONS', '/todo/ops']]) {
+      const r = await request(T, m, p, { body: m === 'POST' ? { ops: [] } : undefined });
+      assert.strictEqual(r.status, 404, p);
+    }
+    assert.strictEqual(h2._debug().sse, 0);
+    await stop(h2);
+  });
+
+  await check('logs never contain the token', async () => {
+    const lines = [];
+    const h2 = await start({ log: (s) => lines.push(s), tunnelPort: 0 });
+    await request(h2.port, 'GET', '/api/status', { token: TOKEN });
+    await request(h2.port, 'GET', '/api/status', { token: 'wrong' });
+    await stop(h2);
+    assert.ok(lines.length >= 3);
+    assert.ok(lines.every((l) => l.indexOf(TOKEN) < 0));
+    assert.ok(lines.some((l) => /control GET \/api\/status -> 200/.test(l)));
+  });
+
+  tmpDirs.forEach((d) => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* fine */ } });
+  console.log(passed + ' passed, ' + failed + ' failed');
+  process.exit(failed ? 1 : 0);
+}
+
+main().catch((e) => {
+  console.log('the tests crashed: ' + (e && e.stack));
+  process.exit(1);
+});

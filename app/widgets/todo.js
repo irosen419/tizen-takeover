@@ -6,7 +6,16 @@
  * Saved as homeHub.todo.v1 = { v: 1, items: [item] }, where an item is
  * { id, title, section: 'now' | 'next' | 'waiting', done, doneAt, createdAt,
  * due: 'YYYY-MM-DD' (optional) }. Fields this file doesn't know are kept as
- * they are, for a later version that syncs with the Pi.
+ * they are.
+ *
+ * With live updates (ctx.live, see docs/live-updates.md) the list is also
+ * kept on the hub server on the Pi. The copy on the TV stays the working
+ * copy: every change is made here first, then queued in
+ * homeHub.todo.outbox = { v: 1, ops: [op], whole } and sent as ops. When the
+ * outbox is empty the server's list is taken as it is. The first time this TV
+ * meets a server's epoch (homeHub.todo.epoch) it uploads its own items, so
+ * neither side's items are lost. Without ctx.live, or before this TV has ever
+ * reached the server, nothing is queued and the widget works as before.
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -15,6 +24,9 @@
      number, {d} a date. */
   var STRINGS = {
     sub: 'On this TV',
+    subSynced: 'In sync',
+    subToSend: 'Saved here, {n} to send',
+    subSaved: 'Saved here',
     heroOne: 'to do now',
     heroMany: 'to do now',
     allClear: 'All clear for now',
@@ -229,18 +241,20 @@
     return out;
   }
 
-  // Done items last for the day they were ticked. Returns true if any went.
+  // Done items last for the day they were ticked. Returns true if any went;
+  // each one that went is also queued for the Pi.
   function purge() {
     var now = today();
     var kept = [];
-    var gone = false;
+    var gone = [];
     for (var i = 0; i < store.items.length; i++) {
       var it = store.items[i];
-      if (it.done && dayOf(new Date(it.doneAt)) !== now) { gone = true; delete ticked[it.id]; continue; }
+      if (it.done && dayOf(new Date(it.doneAt)) !== now) { gone.push(it.id); delete ticked[it.id]; continue; }
       kept.push(it);
     }
     store.items = kept;
-    return gone;
+    for (var j = 0; j < gone.length; j++) queue({ op: 'remove', id: gone[j] });
+    return gone.length > 0;
   }
 
   // The hub stays open for days, so look for a new day once a minute.
@@ -250,6 +264,246 @@
     lastDay = now;
     if (purge()) store.save();
     refresh();
+  }
+
+  /* ---------- sync with the hub server on the Pi ---------- */
+
+  var OUTBOX_KEY = 'homeHub.todo.outbox';
+  var EPOCH_KEY = 'homeHub.todo.epoch';
+  var MAX_OUTBOX = 300;     // past this, send the whole list instead
+  var SEND_BATCH = 100;     // the server takes at most 100 ops at a time
+  var SEND_BYTES = 6000;    // and a body of at most 8 KB
+  var RETRY_MS = 30000;
+
+  var sync = {
+    ops: [],                // changes waiting to be sent, oldest first
+    whole: false,           // the outbox overflowed: send the whole list next time
+    gen: 0,                 // bumped when ops is replaced, so a late reply can't remove the wrong ones
+    sending: false,         // one request at a time
+    server: null,           // { epoch, rev, items }: the newest list from the server
+    retryTimer: null,
+    redrawLater: false      // a list arrived while typing in the add box
+  };
+
+  function copy(x) { return JSON.parse(JSON.stringify(x)); }
+
+  function lsGet(key) {
+    try { return window.localStorage ? window.localStorage.getItem(key) : null; } catch (e) { return null; }
+  }
+
+  function lsSet(key, value) {
+    try { if (window.localStorage) window.localStorage.setItem(key, value); } catch (e) { /* kept in memory */ }
+  }
+
+  function live() { return C && C.live && typeof C.live.status === 'function' ? C.live : null; }
+
+  function liveStatus() {
+    var L = live();
+    try { return (L && L.status()) || {}; } catch (e) { return {}; }
+  }
+
+  // Syncing applies once live updates are running and this TV has reached
+  // the server before. Until then the first contact uploads the whole list.
+  function syncing() {
+    var L = live();
+    if (!L) return false;
+    try {
+      return !!L.everConnected() && (L.status() || {}).state !== 'off';
+    } catch (e) { return false; }
+  }
+
+  function loadOutbox() {
+    var raw = lsGet(OUTBOX_KEY);
+    if (!raw) return;
+    try {
+      var data = JSON.parse(raw);
+      if (data && isArray(data.ops)) {
+        sync.ops = data.ops;
+        sync.whole = data.whole === true;
+      }
+    } catch (e) { /* start empty */ }
+  }
+
+  function saveOutbox() {
+    lsSet(OUTBOX_KEY, JSON.stringify({ v: 1, ops: sync.ops, whole: sync.whole }));
+  }
+
+  function queue(op) {
+    if (!syncing()) return;
+    if (!sync.whole) {
+      sync.ops.push(copy(op));
+      if (sync.ops.length > MAX_OUTBOX) {
+        sync.ops = [];
+        sync.whole = true;
+        sync.gen += 1;
+      }
+    }
+    saveOutbox();
+    syncStep();
+  }
+
+  // Every local item as an add, in list order, so the order holds on the server.
+  function wholeList() {
+    var ops = [];
+    for (var i = 0; i < store.items.length; i++) ops.push({ op: 'add', item: copy(store.items[i]), at: 'end' });
+    return ops;
+  }
+
+  function replaceOutbox(ops) {
+    sync.ops = ops;
+    sync.whole = false;
+    sync.gen += 1;
+    saveOutbox();
+  }
+
+  function waiting() { return sync.whole ? store.items.length : sync.ops.length; }
+
+  function noteServer(rev, items) {
+    var ep = String(liveStatus().epoch || '');
+    var held = sync.server;
+    if (held && held.epoch === ep && typeof rev === 'number' && typeof held.rev === 'number' && rev < held.rev) return;
+    sync.server = { epoch: ep, rev: rev, items: items };
+  }
+
+  // Sends what is waiting, else takes the server's list. Runs on every
+  // arrival, every status change and every local change.
+  function syncStep() {
+    if (!live()) return;
+    var st = liveStatus();
+    if (st.state === 'live' && syncing()) {
+      var ep = st.epoch ? String(st.epoch) : '';
+      if (ep && ep !== lsGet(EPOCH_KEY)) {
+        replaceOutbox(wholeList());
+        lsSet(EPOCH_KEY, ep);
+      } else if (sync.whole) {
+        replaceOutbox(wholeList());
+      }
+      if (sync.ops.length) send();
+      else if (!sync.sending && sync.server && sync.server.epoch === ep) adopt(sync.server.items);
+    }
+    updateSubs();
+  }
+
+  function retryLater() {
+    if (sync.retryTimer) clearTimeout(sync.retryTimer);
+    sync.retryTimer = setTimeout(function () {
+      sync.retryTimer = null;
+      try { syncStep(); } catch (e) { /* the next arrival tries again */ }
+    }, RETRY_MS);
+  }
+
+  function byteLength(text) {
+    try { return unescape(encodeURIComponent(text)).length; } catch (e) { return text.length * 3; }
+  }
+
+  // The oldest ops that fit in one request, at least one.
+  function nextBatch() {
+    var batch = [];
+    var bytes = 20;
+    for (var i = 0; i < sync.ops.length && batch.length < SEND_BATCH; i++) {
+      var size = byteLength(JSON.stringify(sync.ops[i])) + 1;
+      if (batch.length && bytes + size > SEND_BYTES) break;
+      batch.push(sync.ops[i]);
+      bytes += size;
+    }
+    return batch;
+  }
+
+  // The server refused a batch (it is all or nothing). Its error names the op
+  // at fault as "(op N)": only that one goes, so the rest can follow. Without
+  // a name the whole batch goes, since it would be refused forever.
+  function dropRefused(batch, err) {
+    var m = /\(op (\d+)\)/.exec(String(err || ''));
+    var at = m ? parseInt(m[1], 10) - 1 : -1;
+    if (at >= 0 && at < batch.length) sync.ops.splice(at, 1);
+    else sync.ops.splice(0, batch.length);
+  }
+
+  function send() {
+    var L = live();
+    if (!L || sync.sending || !sync.ops.length) return;
+    var batch = nextBatch();
+    var gen = sync.gen;
+    sync.sending = true;
+    L.post('/todo/ops', { ops: batch }, function (err, data, code) {
+      sync.sending = false;
+      try {
+        if (!err && data && isArray(data.items)) {
+          if (gen === sync.gen) sync.ops.splice(0, batch.length);
+          saveOutbox();
+          noteServer(data.rev, data.items);
+          syncStep();
+        } else if (code === 400 || code === 413) {
+          if (gen === sync.gen) {
+            if (code === 413 && batch.length > 1) sync.ops.splice(0, 1);
+            else dropRefused(batch, err);
+          }
+          if (window.console && console.warn) console.warn('To-do: the Pi refused a change (' + err + ')');
+          saveOutbox();
+          syncStep();
+        } else {
+          updateSubs();
+          retryLater();
+        }
+      } catch (e) {
+        updateSubs();
+      }
+    });
+  }
+
+  // Takes the server's list as the working copy.
+  function adopt(items) {
+    if (!isArray(items)) return;
+    var list = clean(copy(items));
+    if (JSON.stringify(list) === JSON.stringify(store.items)) return;
+    store.items = list;
+    purge();
+    store.save();
+    refreshQuiet();
+  }
+
+  function addTyping() {
+    var box = addBox();
+    return !!box && document.activeElement === box;
+  }
+
+  // Like refresh, but never redraws the panel under someone typing in the add
+  // box; that waits until the typing stops.
+  function refreshQuiet() {
+    if (!C) return;
+    C.redrawTile();
+    if (!C.isOpen()) return;
+    if (addTyping()) { sync.redrawLater = true; return; }
+    C.redrawPanel();
+  }
+
+  function subText() {
+    if (!syncing()) return null;
+    var n = waiting();
+    if (n) return fill(STRINGS.subToSend, n);
+    return liveStatus().state === 'live' ? STRINGS.subSynced : STRINGS.subSaved;
+  }
+
+  // The small line on the tile and in the panel head says where the list is.
+  function updateSubs() {
+    if (!C) return;
+    var text = subText();
+    if (text === null) return;
+    if (typeof C.setTileSub === 'function') C.setTileSub(text);
+    if (C.isOpen()) C.setSub(text);
+  }
+
+  function startSync() {
+    var L = live();
+    if (!L) return;
+    loadOutbox();
+    L.on('todo', function (data, rev) {
+      try {
+        if (!data || !isArray(data.items)) return;
+        noteServer(rev, data.items);
+        syncStep();
+      } catch (e) { /* the next arrival tries again */ }
+    });
   }
 
   function refresh() {
@@ -419,6 +673,14 @@
     input.setAttribute('autocapitalize', 'sentences');
     input.setAttribute('spellcheck', 'false');
     input.setAttribute('placeholder', STRINGS.addPlaceholder);
+    // A list that arrived while typing is drawn once the typing stops.
+    input.addEventListener('blur', function () {
+      if (!sync.redrawLater) return;
+      sync.redrawLater = false;
+      setTimeout(function () {
+        try { if (C && C.isOpen() && !addTyping()) C.redrawPanel(); } catch (e) { /* ignore */ }
+      }, 0);
+    }, false);
     var hint = el('span', 'todo-add-hint', '', row);
     el('span', 'todo-hint-ok', STRINGS.hintOk, hint);
     el('span', 'todo-hint-typing', STRINGS.hintTyping, hint);
@@ -601,6 +863,7 @@
       store.toggle(item);
       if (item.done) { ticked[id] = true; flash = id; } else delete ticked[id];
       store.save();
+      queue({ op: 'set', id: id, fields: { done: item.done, doneAt: item.doneAt } });
       refresh();
       return;
     }
@@ -610,6 +873,7 @@
       if (!item || item.done) return;
       store.move(item);
       store.save();
+      queue({ op: 'set', id: id, fields: { section: item.section }, to: 'end' });
       refresh();
       return;
     }
@@ -632,6 +896,7 @@
       store.remove(item);
       delete ticked[id];
       store.save();
+      queue({ op: 'remove', id: id });
       ctx.redrawTile();
       ctx.redrawPanel();
       var node = byKey(nextKey) || byKey('add');
@@ -648,6 +913,7 @@
     flash = item.id;
     target.value = '';
     store.save();
+    queue({ op: 'add', item: item, at: 'top' });
     refresh();
   }
 
@@ -663,6 +929,7 @@
     init: function (ctx) {
       C = ctx;
       store.load();
+      try { startSync(); } catch (e) { /* works as a list on this TV */ }
       lastDay = today();
       if (purge()) store.save();
       setInterval(function () {
@@ -677,6 +944,7 @@
       } catch (e) {
         renderError(body, e, 'todo-tile-error');
       }
+      try { updateSubs(); } catch (e2) { /* keep the line as it is */ }
     },
 
     renderPanel: function (body) {
@@ -686,6 +954,12 @@
         panelBody = null;
         renderError(body, e, 'todo-panel-error');
       }
+      try { updateSubs(); } catch (e2) { /* keep the line as it is */ }
+    },
+
+    // Live updates changed state: send what waits, or take the server's list.
+    onStatus: function () {
+      try { syncStep(); } catch (e) { /* the next change tries again */ }
     },
 
     onFocus: function (target) {
@@ -719,6 +993,7 @@
       activeId = null;
       panelBody = null;
       flash = null;
+      sync.redrawLater = false;
     }
   };
 })());

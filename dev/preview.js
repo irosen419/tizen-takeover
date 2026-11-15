@@ -10,6 +10,12 @@
  * or GET http://127.0.0.1:8095/preview?weather=MODE while it runs. Modes: ok,
  * fail, slow, badjson, nolookup, nogeocode, forecastfail.
  * HUB_PAGE_PORT and HUB_SERVICE_PORT change the two ports (for tests).
+ *
+ * Live updates: when pi/server.js is there, the hub server runs here too, on
+ * 127.0.0.1:8097 (HUB_LIVE_PORT changes it), with a made-up token and its
+ * data in dev/.live-data. Open the hub with ?live=http://127.0.0.1:8097 to
+ * use it, and steer it with pi/hubctl.js (the address it prints).
+ * HUB_LIVE_PORT=off leaves it out (dev/live-test.js runs its own).
  */
 var http = require('http');
 var fs = require('fs');
@@ -20,6 +26,9 @@ var APP_DIR = path.join(__dirname, '..', 'app');
 var SAMPLE_DIR = path.join(__dirname, 'samples');
 var PAGE_PORT = parseInt(process.env.HUB_PAGE_PORT, 10) || 8090;
 var SERVICE_PORT = parseInt(process.env.HUB_SERVICE_PORT, 10) || 8095;
+var LIVE_PORT = parseInt(process.env.HUB_LIVE_PORT, 10) || 8097;
+var LIVE_TOKEN = 'preview-token-not-a-secret-000000';
+var LIVE_DATA_DIR = process.env.HUB_LIVE_DATA_DIR || path.join(__dirname, '.live-data');
 
 var MODES = ['ok', 'fail', 'slow', 'badjson', 'nolookup', 'nogeocode', 'forecastfail'];
 var weatherMode = process.env.WEATHER_MODE || 'ok';
@@ -209,3 +218,33 @@ service.listen(SERVICE_PORT, '127.0.0.1', function () {
   log('          switch with /preview?weather=' + MODES.join('|') + ' on the service port');
   log('Keys: arrows to move, Enter for OK, Escape for Back.');
 });
+
+/* The hub server from pi/, in the same process, if it's there. */
+var liveServer = null;
+(function startLive() {
+  var file = path.join(__dirname, '..', 'pi', 'server.js');
+  if (process.env.HUB_LIVE_PORT === 'off' || !fs.existsSync(file)) return;
+  try {
+    liveServer = require('../pi/server').start({
+      token: LIVE_TOKEN,
+      port: LIVE_PORT,
+      host: '127.0.0.1',
+      origins: ['http://127.0.0.1:' + PAGE_PORT],
+      dataDir: LIVE_DATA_DIR
+    });
+    var hub = 'http://127.0.0.1:' + LIVE_PORT;
+    log('Live:     ' + hub + ' (the Pi\'s hub server, data in ' + path.relative(process.cwd(), LIVE_DATA_DIR) + ')');
+    log('          open http://127.0.0.1:' + PAGE_PORT + '/?live=' + hub + ' for live updates');
+    log('          then try, in another terminal:');
+    log('            HUB_TOKEN=' + LIVE_TOKEN + ' HUB_URL=' + hub + ' node pi/hubctl.js show weather');
+    log('            HUB_TOKEN=' + LIVE_TOKEN + ' HUB_URL=' + hub + ' node pi/hubctl.js say "Dinner in 10"');
+  } catch (e) {
+    log('Live:     the hub server in pi/ did not start (' + (e && e.message) + '); the preview runs without it');
+  }
+})();
+
+module.exports = {
+  page: page,
+  service: service,
+  live: function () { return liveServer; }
+};

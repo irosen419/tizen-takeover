@@ -55,7 +55,7 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.8.1'
+ *   ctx.build                 'v0.9.0'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -72,7 +72,20 @@
  *   ctx.setMode(mode), ctx.close()
  *   ctx.redrawTile(), ctx.redrawPanel()
  *   ctx.setSub(text)          the small line in the panel head
+ *   ctx.setTileSub(text)      the small line under the tile's title ('' hides it)
  *   ctx.focus(el)             move panel focus to el
+ *   ctx.live                  live updates from the hub server on the Pi (see
+ *                             docs/live-updates.md), or undefined when live.js
+ *                             isn't loaded. jsDelivr can serve a mix of old and
+ *                             new files, so always check it exists first:
+ *     ctx.live.status()         { state, text, since }; text is the clock tile's
+ *                               line, '' when there is nothing to say
+ *     ctx.live.get(resource)    the data last received, e.g. get('todo').items
+ *     ctx.live.on(resource, fn) fn(data, rev) each time new data arrives
+ *     ctx.live.onStatus(fn)     fn(status) when the state changes (the hub also
+ *                               calls every widget's onStatus hook then)
+ *     ctx.live.post(path, body, cb)  POST JSON to the server; cb(err, data, httpStatus)
+ *     ctx.live.everConnected()  this TV has reached the server at least once
  *
  * Later widgets get their data from the Raspberry Pi in one of two ways. A
  * widget either draws natively from JSON it fetches with
@@ -84,7 +97,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.8.1';
+  var BUILD = 'v0.9.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -710,6 +723,8 @@
       redrawTile: function () { if (rec) drawTile(rec); },
       redrawPanel: function () { if (open === rec) drawPanelBody(true); },
       setSub: function (text) { if (open === rec) setPanelSub(text); },
+      setTileSub: function (text) { setTileSub(rec, text); },
+      live: liveFacade(),
       focus: function (node) { if (open === rec) focusPanel(node); },
       _bind: function (r) { rec = r; }
     };
@@ -1279,6 +1294,202 @@
     // Back on the home stage does nothing: the hub is home.
   });
 
+  /* ---------- tile sub line ---------- */
+
+  // Sets the small line under a tile's title, adding or removing it. The tile
+  // head keeps its shape; a tile without a head has nowhere to put it.
+  function setTileSub(rec, text) {
+    if (!rec || !rec.tile) return;
+    var titles = rec.tile.querySelector('.tile-titles');
+    if (!titles) return;
+    var sub = titles.querySelector('.tile-sub');
+    text = text ? String(text) : '';
+    if (!text) {
+      if (sub) titles.removeChild(sub);
+      return;
+    }
+    if (!sub) sub = el('div', 'tile-sub', titles);
+    if (sub.textContent !== text) sub.textContent = text;
+  }
+
+  /* ---------- live updates ---------- */
+
+  // The hub server on the Pi can steer the screen (show, home, say, reload)
+  // and send data. live.js does the talking; this part acts on commands.
+  // Nothing here runs unless live.js is loaded and a server is set, and every
+  // path is wrapped so a problem can never stop the hub.
+
+  var LOADED_AT = new Date().getTime();
+  var LIVE_WAIT_MS = 4000;     // how long a command waits for a running transition
+  var LIVE_STEP_MS = 60;
+  var liveApi = null;
+  var liveTimer = null;        // one pending step of a show or home command
+
+  function liveWarn(text) {
+    try { if (window.console && console.warn) console.warn('Live: ' + text); } catch (e) { /* ignore */ }
+  }
+
+  // A thin, safe face over window.HUB_LIVE for widgets, or undefined.
+  function liveFacade() {
+    var L = window.HUB_LIVE;
+    if (!L || typeof L !== 'object' || typeof L.status !== 'function') return undefined;
+    if (liveApi) return liveApi;
+    function wrap(name, fallback) {
+      return function () {
+        try {
+          if (typeof L[name] !== 'function') return fallback();
+          return L[name].apply(L, arguments);
+        } catch (e) {
+          liveWarn(name + ' failed: ' + (e && e.message));
+          return fallback();
+        }
+      };
+    }
+    function none() { return undefined; }
+    liveApi = {
+      status: wrap('status', function () { return { state: 'off', text: '', since: 0 }; }),
+      get: wrap('get', none),
+      on: wrap('on', function () { return function () {}; }),
+      onStatus: wrap('onStatus', none),
+      everConnected: wrap('everConnected', function () { return false; }),
+      post: function (path, body, cb) {
+        var finished = false;
+        function done(err, data, code) {
+          if (finished) return;
+          finished = true;
+          if (typeof cb === 'function') cb(err, data, code);
+        }
+        try {
+          if (typeof L.post !== 'function') throw new Error('no post');
+          L.post(path, body, done);
+        } catch (e) {
+          setTimeout(function () { done('live updates are not available', null, 0); }, 0);
+        }
+      }
+    };
+    return liveApi;
+  }
+
+  function cancelLiveStep() {
+    if (liveTimer) clearTimeout(liveTimer);
+    liveTimer = null;
+  }
+
+  // Runs step() now, or every 60 ms while a transition runs, for up to 4
+  // seconds in all. After that it gives up without a word. step() may return
+  // true to be run again once the hub is idle (it started a transition).
+  function whenIdle(step) {
+    cancelLiveStep();
+    var startedAt = new Date().getTime();
+    function tryStep() {
+      liveTimer = null;
+      try {
+        if (new Date().getTime() - startedAt > LIVE_WAIT_MS) return;
+        if (busy) {
+          liveTimer = setTimeout(tryStep, LIVE_STEP_MS);
+          return;
+        }
+        if (step() === true) liveTimer = setTimeout(tryStep, LIVE_STEP_MS);
+      } catch (e) {
+        liveWarn('a command failed: ' + (e && e.message));
+      }
+    }
+    tryStep();
+  }
+
+  function widgetById(id) {
+    for (var i = 0; i < widgets.length; i++) if (widgets[i].w.id === id) return widgets[i];
+    return null;
+  }
+
+  // Leaves the dashboard frame and any typing, the parts that are instant.
+  function clearForCommand() {
+    if (frameOpen) closeFrame();
+    if (typingBox()) stopTyping();
+  }
+
+  function liveShow(data) {
+    var id = String(data.widget || '');
+    var rec = widgetById(id);
+    if (!rec || !rec.expandable) {
+      var name = id.length > 40 ? id.substring(0, 40) + '...' : id;
+      toast('Asked to show "' + name + '", which this hub doesn\'t have.', 5000);
+      return;
+    }
+    var wanted = data.mode === 'full' || data.mode === 'panel' ? data.mode : null;
+    var opened = false;
+    whenIdle(function () {
+      clearForCommand();
+      if (open && open !== rec) { closePanel(); return true; }
+      if (open === rec) {
+        // Ours is open: only the mode may need fixing. An open just started
+        // here goes full screen only when asked.
+        if (wanted && mode !== wanted) switchMode(wanted);
+        return false;
+      }
+      if (opened) return false;   // the open did not happen (closed again meanwhile)
+      opened = true;
+      focusHome(rec.index);
+      openPanel(rec);
+      return wanted === 'full';
+    });
+  }
+
+  function liveHome() {
+    whenIdle(function () {
+      clearForCommand();
+      if (open) closePanel();
+      return false;
+    });
+  }
+
+  function liveSay(data) {
+    var text = String(data.text === undefined || data.text === null ? '' : data.text).replace(/\s+/g, ' ');
+    text = text.replace(/^\s+|\s+$/g, '').substring(0, 140);
+    if (!text) return;
+    var seconds = Number(data.seconds);
+    if (data.seconds === undefined || data.seconds === null || !isFinite(seconds)) seconds = 6;
+    seconds = Math.max(2, Math.min(30, seconds));
+    toast(text, Math.round(seconds * 1000));
+  }
+
+  function liveReload() {
+    // A reload loop (an old command arriving right after loading) must not happen.
+    if (new Date().getTime() - LOADED_AT < 30000) return;
+    location.reload();
+  }
+
+  function onLiveCommand(type, data) {
+    try {
+      data = data && typeof data === 'object' ? data : {};
+      if (type === 'show') liveShow(data);
+      else if (type === 'home') liveHome();
+      else if (type === 'say') liveSay(data);
+      else if (type === 'reload') liveReload();
+    } catch (e) {
+      liveWarn(type + ' failed: ' + (e && e.message));
+    }
+  }
+
+  function startLive() {
+    var L = window.HUB_LIVE;
+    if (!L || typeof L !== 'object' || typeof L.start !== 'function') return;
+    try {
+      var server = cfg.live && typeof cfg.live.server === 'string' ? cfg.live.server : '';
+      if (!server && readQuery('live') === null) return;
+      if (typeof L.onCommand === 'function') L.onCommand(onLiveCommand);
+      if (typeof L.onStatus === 'function') L.onStatus(function () { announceStatus(); });
+      L.start({ server: server });
+    } catch (e) {
+      liveWarn('could not start: ' + (e && e.message));
+    }
+  }
+
+  // For tests in a laptop browser.
+  window.HUB_TEST.open = function () { return open ? open.w.id : null; };
+  window.HUB_TEST.mode = function () { return mode; };
+  window.HUB_TEST.busy = function () { return busy; };
+
   /* ---------- start ---------- */
 
   setupMotion();
@@ -1286,6 +1497,7 @@
   buildPanel();
   build();
   setupBackground();
+  startLive();
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
