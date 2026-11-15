@@ -7,6 +7,7 @@
  *   GET /apps            installed apps, as [{ id, name }]
  *   GET /launch?id=...   open an app by its Tizen app ID
  *   GET /key?k=KEY_...   press a remote key (used for HDMI inputs)
+ *   GET /webhook?url=... send an empty POST, e.g. to a Home Assistant webhook
  *
  * It listens on 127.0.0.1 only, so nothing else on the network can reach it.
  * Written for the old Node that ships on Tizen TVs: plain ES5, no newer APIs.
@@ -22,7 +23,7 @@ var urlLib = require('url');
 var os = require('os');
 
 var PORT = 8095;
-var VERSION = '0.3.0';
+var VERSION = '0.4.0';
 var TOKEN_FILE = '/home/owner/share/tizen-takeover-remote-token.txt';
 var REMOTE_NAME = new Buffer('Home Hub').toString('base64');
 
@@ -239,6 +240,28 @@ function pressKey(key, cb) {
   })(0);
 }
 
+/* Sends an empty POST, for example to a Home Assistant webhook automation. */
+function postWebhook(target, cb) {
+  var u = urlLib.parse(target);
+  var lib = u.protocol === 'https:' ? require('https') : http;
+  var finished = false;
+  function done(err) { if (!finished) { finished = true; cb(err); } }
+  var req = lib.request({
+    method: 'POST',
+    hostname: u.hostname,
+    port: u.port,
+    path: u.path,
+    rejectUnauthorized: false,
+    headers: { 'Content-Type': 'application/json', 'Content-Length': 2 }
+  }, function (r) {
+    r.resume();
+    done(r.statusCode >= 200 && r.statusCode < 300 ? null : 'HTTP ' + r.statusCode);
+  });
+  req.setTimeout(10000, function () { req.abort(); done('timed out'); });
+  req.on('error', function (e) { done(e.message); });
+  req.end('{}');
+}
+
 /* ---------- HTTP server ---------- */
 
 var server = http.createServer(function (req, res) {
@@ -272,6 +295,15 @@ var server = http.createServer(function (req, res) {
     var key = String(q.k || '');
     if (!/^KEY_[A-Z0-9_]+$/.test(key)) return send(res, 400, { ok: false, error: 'bad key' });
     return pressKey(key, function (err) {
+      if (err) return send(res, 500, { ok: false, error: String(err) });
+      send(res, 200, { ok: true });
+    });
+  }
+
+  if (parsed.pathname === '/webhook') {
+    var target = String(q.url || '');
+    if (!/^https?:\/\/[^\s]+$/.test(target)) return send(res, 400, { ok: false, error: 'bad url' });
+    return postWebhook(target, function (err) {
       if (err) return send(res, 500, { ok: false, error: String(err) });
       send(res, 200, { ok: true });
     });

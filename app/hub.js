@@ -262,6 +262,14 @@
     });
   }
 
+  function callWebhook(tc) {
+    if (!tc.url) return toast(tc.label + ' has no webhook address yet. Add one in config.js.', 6000);
+    toast((tc.busy || 'Working on it') + '\u2026', 4000);
+    getJSON('/webhook?url=' + encodeURIComponent(tc.url), 15000, function (err) {
+      if (err) toast('Couldn\u2019t reach Home Assistant. ' + err, 10000);
+    });
+  }
+
   function openDashboard(tc) {
     mode = 'frame';
     frameEl.src = tc.url;
@@ -287,6 +295,7 @@
     if (tc.kind === 'tizentube') return openTizenBrewModule(/tizentube/i, tc.label);
     if (tc.kind === 'input') return pressInputKey(tc);
     if (tc.kind === 'dashboard') return openDashboard(tc);
+    if (tc.kind === 'webhook') return callWebhook(tc);
     if (tc.kind === 'allApps') return openList();
   }
 

@@ -9,6 +9,7 @@
  *   app        opens an installed TV app
  *   tizentube  opens TizenTube through TizenBrew
  *   input      switches the TV to an input (sends a remote key)
+ *   webhook    asks Home Assistant to do something (POSTs to a webhook url)
  *   dashboard  opens a web page full screen inside the hub (Back returns)
  *   allApps    lists every app on the TV
  */
@@ -30,7 +31,10 @@ var HUB_CONFIG = {
     {
       label: 'Play',
       tiles: [
-        { kind: 'input', label: 'Xbox', sub: 'HDMI 1', key: 'KEY_HDMI1', tone: 'green' }
+        /* The TV won't let the hub press keys itself, so Home Assistant (already trusted by the TV)
+           switches the input. Put the Home Assistant address in url, e.g.
+           'http://192.168.1.50:8123/api/webhook/tv-switch-to-xbox' */
+        { kind: 'webhook', label: 'Xbox', sub: 'HDMI 1', busy: 'Switching to the Xbox', url: '', tone: 'green' }
       ]
     },
     {
