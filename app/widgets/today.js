@@ -47,22 +47,31 @@
       time.appendChild(ampm);
       var date = div('today-date', el);
       // One-line rows that end in "..." rather than wrap, so a wider TV font
-      // can't push the tile past its edge. The third row, live updates, is
-      // only there when it has something to say (checked to fit at 1920x1080).
+      // can't push the tile past its edge. The live updates row and the
+      // updates row are only there when they have something to say; with
+      // both there are four rows (checked to fit at 1920x1080).
+      var updates;
+      try { updates = typeof ctx.updates === 'function' ? ctx.updates() : undefined; } catch (e) { updates = undefined; }
+      var newest = !!(updates && updates.newest === true);
+      var updateText = updates && typeof updates.text === 'string' ? updates.text : '';
       var status = div('today-status', el);
       var browser = ctx.browser ? ctx.browser() : '';
-      div('today-status-line', status).textContent = ctx.build + (browser ? ' · ' + browser : '');
+      div('today-status-line', status).textContent = ctx.build + (newest ? ' (newest)' : '') + (browser ? ' · ' + browser : '');
       div('today-status-line', status).textContent = ctx.motionStatus();
       var live = '';
       try { live = ctx.live ? ctx.live.status().text || '' : ''; } catch (e) { live = ''; }
       if (live) div('today-status-line today-status-live', status).textContent = live;
-      // The clock gives up a little height to make room for the third line.
-      if (live) el.classList.add('today-has-live'); else el.classList.remove('today-has-live');
+      if (updateText) div('today-status-line today-status-updates', status).textContent = updateText;
+      // The clock gives up a little height for each extra row.
+      var rows = 2 + (live ? 1 : 0) + (updateText ? 1 : 0);
+      el.classList.remove('today-rows-3');
+      el.classList.remove('today-rows-4');
+      if (rows > 2) el.classList.add('today-rows-' + rows);
       els = { digits: digits, ampm: ampm, date: date };
       tick();
     },
 
-    // The motion status or the live updates status changed.
+    // The motion status, the live updates status or the updates status changed.
     onStatus: function (ctx) {
       ctx.redrawTile();
     }

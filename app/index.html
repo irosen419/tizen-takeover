@@ -1,39 +1,44 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-boot>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The last resort: if update.js never loads or stops, open this branch's hub. -->
+  <meta http-equiv="refresh" content="15;url=hub.html">
   <title>Home Hub</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="widgets/todo.css">
-  <link rel="stylesheet" href="widgets/weather.css">
+  <!--
+    The page TizenBrew opens. It finds the newest commit of this branch and
+    moves on to that commit's hub.html (see app/update.js). Keep it small and
+    stable: it comes through jsDelivr's 12-hour branch cache.
+  -->
+  <style>
+    html { font-size: calc(100vw / 80); background: #050506; }
+    body {
+      margin: 0;
+      background: #050506;
+      color: #a4a8b3;
+      font-family: "SamsungOne", "Samsung Sans", "Helvetica Neue", Arial, sans-serif;
+    }
+    .wait {
+      position: absolute;
+      top: 50%; left: 0;
+      width: 100%;
+      margin-top: -0.9rem;
+      padding: 0 2rem;
+      box-sizing: border-box;
+      font-size: 1.1rem;
+      line-height: 1.6;
+      text-align: center;
+      opacity: 0;
+      -webkit-animation: wait-in 0.6s ease 1.2s forwards;
+      animation: wait-in 0.6s ease 1.2s forwards;
+    }
+    @-webkit-keyframes wait-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes wait-in { from { opacity: 0; } to { opacity: 1; } }
+  </style>
 </head>
 <body>
-  <div class="backdrop" id="backdrop"></div>
-  <main class="stage" id="stage">
-    <div class="grid" id="grid"></div>
-  </main>
-
-  <div class="scrim" id="scrim"></div>
-  <div class="ghost" id="ghost"></div>
-  <section class="panel" id="panel" role="dialog" aria-modal="true"></section>
-
-  <section class="frame-wrap" id="frameWrap" hidden>
-    <iframe id="frame" title="Dashboard"></iframe>
-    <div class="frame-hint">Back to return</div>
-  </section>
-
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-  <script src="config.js"></script>
-  <script src="icons.js"></script>
-  <script src="logos.js"></script>
-  <script src="widgets/today.js"></script>
-  <script src="widgets/entertainment.js"></script>
-  <script src="widgets/todo.js"></script>
-  <script src="widgets/weather.js"></script>
-  <script src="widgets/planned.js"></script>
-  <script src="live.js"></script>
-  <script src="hub.js"></script>
+  <div class="wait">Getting the newest version…</div>
+  <script src="update.js"></script>
 </body>
 </html>

@@ -275,7 +275,7 @@ async function check1() {
   await sleep(1500);
   const lines = await look.statusLines(page);
   assert(lines.length === 2, 'expected 2 status lines, got ' + JSON.stringify(lines));
-  assert(lines[0].indexOf('v0.9.0') === 0, 'first status line: ' + lines[0]);
+  assert(lines[0].indexOf('v0.10.0') === 0, 'first status line: ' + lines[0]);
   assert((await look.todoSub(page)) === 'On this TV', 'to-do sub line: ' + (await look.todoSub(page)));
   assert((await look.state(page)) === 'off', 'live state: ' + (await look.state(page)));
   await addOnScreen(page, 'Milk');
