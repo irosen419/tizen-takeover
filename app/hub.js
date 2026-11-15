@@ -37,7 +37,7 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.6.0'
+ *   ctx.build                 'v0.6.1'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -66,7 +66,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.6.0';
+  var BUILD = 'v0.6.1';
   var SERVICE = 'http://127.0.0.1:8095';
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8 };
   var MOTION_KEY = 'homeHub.motion';
@@ -193,10 +193,16 @@
     el.addEventListener('transitionend', finish);
   }
 
-  function nextFrame(cb) {
-    if (window.requestAnimationFrame) requestAnimationFrame(function () { requestAnimationFrame(cb); });
-    else setTimeout(cb, 32);
+  // Runs cb in a task after the coming frame has been drawn, so work done in
+  // cb can't hold back a transition that this task started.
+  function afterFrame(cb) {
+    if (window.requestAnimationFrame) requestAnimationFrame(function () { setTimeout(cb, 0); });
+    else setTimeout(cb, 16);
   }
+
+  var now = window.performance && performance.now ?
+    function () { return performance.now(); } :
+    function () { return Date.now(); };
 
   /* ---------- spatial navigation ---------- */
 
@@ -315,11 +321,11 @@
     motion.measuring = true;
   }
 
-  // In push mode the tiles stay on their own layers, so they aren't
-  // re-rastered at the moment the animation starts.
+  // In push and expand mode the tiles stay on their own layers, so they
+  // aren't re-rastered at the moment the animation starts.
   function markMotion() {
-    if (motion.mode === 'push') document.body.classList.add('motion-push');
-    else document.body.classList.remove('motion-push');
+    for (var i = 0; i < LADDER.length; i++) document.body.classList.remove('motion-' + LADDER[i]);
+    document.body.classList.add('motion-' + motion.mode);
   }
 
   function motionStatus() {
@@ -333,7 +339,9 @@
     for (var i = 0; i < widgets.length; i++) call(widgets[i], 'onStatus', [widgets[i].ctx]);
   }
 
-  // Samples frame times while a push or expand transition runs. Returns stop().
+  // Samples frame times while a push or expand transition runs. Returns
+  // stop(skip): skip is the [start, end] of work the hub itself did on the main
+  // thread during the transition (building the panel), or null.
   function startSampling() {
     if (!motion.measuring || motion.mode === 'fade' || !window.requestAnimationFrame) return function () {};
     var times = [];
@@ -345,22 +353,35 @@
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
-    return function () {
+    return function (skip) {
       running = false;
       if (document.hidden || rung !== motion.mode) return;
-      recordRun(times);
+      recordRun(times, skip);
     };
   }
 
-  function recordRun(times) {
+  function recordRun(times, skip) {
     // Ignore the first frame: it often carries the cost of starting the transition.
+    // Also ignore the gaps the panel build caused: the one it ran in and the
+    // next one, which paints what it built. That is our work, not the TV
+    // failing to keep up.
+    var skipUntil = -1;
+    if (skip) {
+      for (var k = 0; k < times.length; k++) if (times[k] >= skip[1]) { skipUntil = times[k]; break; }
+      if (skipUntil < 0) skipUntil = Infinity;
+    }
     var gaps = [];
-    for (var i = 2; i < times.length; i++) gaps.push(times[i] - times[i - 1]);
+    for (var i = 2; i < times.length; i++) {
+      if (skip && times[i] > skip[0] && times[i - 1] <= skipUntil) continue;
+      gaps.push(times[i] - times[i - 1]);
+    }
+    // Too little left to judge: count the run as neither clean nor janky.
+    if (gaps.length < 2) return;
     var total = 0;
     var worst = 0;
     for (var j = 0; j < gaps.length; j++) { total += gaps[j]; if (gaps[j] > worst) worst = gaps[j]; }
     var fps = gaps.length && total > 0 ? Math.round(gaps.length * 1000 / total) : 0;
-    var janky = gaps.length < 2 || fps < 40 || worst > 120;
+    var janky = fps < 40 || worst > 120;
     if (janky) motion.janky.push(fps); else motion.clean.push(fps);
 
     if (motion.janky.length >= 2) {
@@ -606,12 +627,12 @@
       if (!rec.home) continue;
       setGlassOrigin(rec.tile, rec.home.left + rec.tile.clientLeft, rec.home.top + rec.tile.clientTop);
     }
-    placeFloatingGlass(panelEl);
     placeFloatingGlass(ghostEl);
   }
 
-  // Panel and ghost are fixed, so their offsets are screen positions that
-  // ignore transforms.
+  // The ghost is fixed, so its offsets are screen positions that ignore
+  // transforms. Its panel-size rect only depends on the window, so this runs
+  // at start, on resize and when it changes size class.
   function placeFloatingGlass(node) {
     if (!hasPicture) return;
     setGlassOrigin(node, node.offsetLeft + node.clientLeft, node.offsetTop + node.clientTop);
@@ -635,17 +656,48 @@
 
   var IDENTITY = 'translate(0px,0px) scale(1,1)';
 
-  function showGhost(full, transform) {
-    ghostEl.style.transition = 'none';
-    ghostEl.className = 'ghost is-shown' + (full ? ' is-full' : '');
-    ghostEl.style.transform = transform || IDENTITY;
-    placeFloatingGlass(ghostEl);
+  function center(r) { return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+
+  // Panel content sitting on the tile: centered on it, scaled evenly to fit
+  // inside it. It then grows with the ghost and always stays inside it.
+  function panelStart(tile, P) {
+    var s = Math.min(tile.width / P.width, tile.height / P.height);
+    var a = center(tile);
+    var b = center(P);
+    return 'translate(' + (a.x - b.x) + 'px,' + (a.y - b.y) + 'px) scale(' + s + ',' + s + ')';
   }
 
-  function hideGhost() {
-    ghostEl.className = 'ghost';
+  // The tile moved so its center sits on the panel's center, scaled evenly
+  // as far as still fits inside the panel, so its content grows with the
+  // ghost and never pokes out of it. Tiles scale from their top-left corner.
+  function tileToCenter(tile, P) {
+    var k = Math.min(P.width / tile.width, P.height / tile.height);
+    var a = center(tile);
+    var b = center(P);
+    var x = b.x - a.x + (1 - k) * tile.width / 2;
+    var y = b.y - a.y + (1 - k) * tile.height / 2;
+    return 'translate(' + x + 'px,' + y + 'px) scale(' + k + ')';
+  }
+
+  var TILE_HOME = 'translate(0px,0px) scale(1)';
+
+  // Back to rest: invisible, panel size, no transform. Its layer stays.
+  function parkGhost() {
+    var wasFull = hasClass(ghostEl, 'is-full');
     ghostEl.style.transition = 'none';
-    ghostEl.style.transform = '';
+    ghostEl.style.opacity = '0';
+    ghostEl.style.transform = IDENTITY;
+    ghostEl.className = 'ghost';
+    if (wasFull) placeFloatingGlass(ghostEl);
+  }
+
+  function clearTile(rec) {
+    var s = rec.tile.style;
+    s.transition = '';
+    s.transform = '';
+    s.opacity = '';
+    rec.tile.classList.remove('is-lifted');
+    rec.cell.classList.remove('is-raised');
   }
 
   function setOpacity(node, value, ms, delay) {
@@ -881,10 +933,14 @@
     if (!body.contains(node)) return;
     var b = body.getBoundingClientRect();
     var r = node.getBoundingClientRect();
-    // About 0.5rem, so a focused row never sits flush against the clipped edge.
-    var margin = Math.round(0.5 * parseFloat(getComputedStyle(document.documentElement).fontSize || '16'));
-    if (r.top < b.top + margin) body.scrollTop -= (b.top + margin - r.top);
-    else if (r.bottom > b.bottom - margin) body.scrollTop += (r.bottom - (b.bottom - margin));
+    // While the panel grows it is scaled; scrollTop is in unscaled pixels.
+    var k = body.offsetHeight ? b.height / body.offsetHeight : 1;
+    if (!(k > 0)) k = 1;
+    // About 0.7rem, so a focused row (and a grown icon's ring) never sits
+    // flush against the clipped edge.
+    var margin = Math.round(0.7 * parseFloat(getComputedStyle(document.documentElement).fontSize || '16')) * k;
+    if (r.top < b.top + margin) body.scrollTop -= (b.top + margin - r.top) / k;
+    else if (r.bottom > b.bottom - margin) body.scrollTop += (r.bottom - (b.bottom - margin)) / k;
   }
 
   function movePanel(dir) {
@@ -946,54 +1002,99 @@
     }
   }
 
+  /*
+   * Opening starts moving in the same task as the key press and only uses
+   * layers that already exist: the ghost (the frame, parked invisible), the
+   * tile itself and the empty panel. The tile rides to the center and fades
+   * out over the growing ghost; the panel's content is built in a later task,
+   * once the first frame is out, and fades in wherever the move is by then.
+   * Transform and opacity transitions run on the compositor, so the build
+   * doesn't stop them.
+   */
   function openPanel(rec) {
     if (busy || open || !rec.expandable) return;
     open = rec;
     mode = 'panel';
     busy = true;
-    panelEl.className = 'panel is-shown';
-    placeFloatingGlass(panelEl);
-    setOpacity(panelEl, 0, 0);
-    drawPanelHead();
-    setPanelSub(rec.ctx.config.sub || rec.w.sub || '');
-    drawPanelBody(false);
+    var fade = motion.mode === 'fade';
+    var push = motion.mode === 'push';
+    var ms = fade ? 140 : push ? 320 : 260;
+    var P = panelRect();
+    var T = rec.home || rectOf(rec.tile);
+    var moved = false;
+    var built = false;
+    var skip = null;
+    var stop = fade ? function () {} : startSampling();
 
-    scrimEl.className = 'scrim is-shown';
-    setOpacity(scrimEl, 0, 0);
-
-    if (motion.mode === 'fade') {
-      nextFrame(function () {
-        setOpacity(scrimEl, scrimLevel(), 140);
-        setOpacity(panelEl, 1, 140);
-        after(panelEl, 140, function () { busy = false; });
-      });
-      return;
+    function finish() {
+      if (!moved || !built) return;
+      stop(skip);
+      ghostEl.style.transition = 'none';
+      if (!fade) {
+        clearTile(rec);
+        rec.tile.style.visibility = 'hidden';
+      }
+      busy = false;
     }
 
-    var push = motion.mode === 'push';
-    var ms = push ? 320 : 260;
-    var from = rec.home || rectOf(rec.tile);
-    showGhost(false);
-    var to = rectOf(ghostEl);
-    ghostEl.style.transform = flip(from, to);
-    rec.tile.style.visibility = 'hidden';
+    // Start state, then one style flush, then the transitions (FLIP).
+    panelEl.className = 'panel is-shown';
+    panelEl.style.transition = 'none';
+    panelEl.style.opacity = '0';
+    panelEl.style.transform = fade ? IDENTITY : panelStart(T, P);
+    ghostEl.style.transition = 'none';
+    ghostEl.className = 'ghost';
+    ghostEl.style.transform = fade ? IDENTITY : flip(T, P);
+    ghostEl.style.opacity = fade ? '0' : '1';
+    scrimEl.className = 'scrim is-shown';
+    setOpacity(scrimEl, 0, 0);
+    if (!fade) {
+      // Only the tile's content rides along; from here the ghost is the frame.
+      rec.cell.classList.add('is-raised');
+      rec.tile.classList.add('is-lifted');
+      rec.tile.style.transition = 'none';
+      rec.tile.style.transform = TILE_HOME;
+      rec.tile.style.opacity = '1';
+    }
     void ghostEl.offsetWidth;
-    nextFrame(function () {
-      var stop = startSampling();
+
+    if (fade) {
+      panelEl.style.transition = 'opacity 150ms linear';
+      setOpacity(ghostEl, 1, ms);
+      setOpacity(scrimEl, scrimLevel(), ms);
+    } else {
       ghostEl.style.transition = 'transform ' + ms + 'ms ' + EASE;
       ghostEl.style.transform = IDENTITY;
+      panelEl.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity 150ms linear';
+      panelEl.style.transform = IDENTITY;
+      rec.tile.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + Math.round(ms * 0.45) + 'ms linear';
+      rec.tile.style.transform = tileToCenter(T, P);
+      rec.tile.style.opacity = '0';
       // Push keeps the scrim transparent: it only catches clicks outside.
       if (push) pushOthers(rec, ms);
       else setOpacity(scrimEl, scrimLevel(), ms);
-      setOpacity(panelEl, 1, 140, ms - 140);
-      after(ghostEl, ms, function () {
-        stop();
-        hideGhost();
-        busy = false;
-      });
+    }
+    after(ghostEl, ms, function () { moved = true; finish(); });
+
+    afterFrame(function () {
+      var t0 = now();
+      try {
+        drawPanelHead();
+        setPanelSub(rec.ctx.config.sub || rec.w.sub || '');
+        drawPanelBody(false);
+      } catch (e) {
+        if (window.console && console.warn) console.warn('Panel build: ' + (e && e.message));
+      }
+      skip = [t0, now()];
+      panelEl.style.opacity = '1';
+      built = true;
+      finish();
     });
   }
 
+  // The mirror of opening: the content fades out quickly while shrinking
+  // toward the tile, the ghost shrinks onto the tile, and the tile rides
+  // back home fading in, so there is always something in the box.
   function closePanel() {
     if (busy || !open) return;
     var rec = open;
@@ -1002,11 +1103,14 @@
     function done() {
       panelEl.className = 'panel';
       panelEl.style.transition = 'none';
+      panelEl.style.transform = '';
+      panelEl.style.opacity = '0';
       scrimEl.className = 'scrim';
       scrimEl.style.transition = 'none';
+      parkGhost();
+      clearTile(rec);
       rec.tile.style.visibility = '';
       settleOthers();
-      hideGhost();
       if (panelFocus) panelFocus.classList.remove('is-focused');
       panelFocus = null;
       open = null;
@@ -1018,8 +1122,9 @@
     }
 
     if (motion.mode === 'fade' || mode === 'full') {
-      // From full screen the panel just fades; there is no tile-sized box to shrink to cleanly.
+      // From full screen everything just fades; there is no tile-sized box to shrink to cleanly.
       setOpacity(panelEl, 0, 140);
+      setOpacity(ghostEl, 0, 140);
       setOpacity(scrimEl, 0, 140);
       rec.tile.style.visibility = '';
       returnOthers(rec, 140);
@@ -1027,61 +1132,78 @@
       return;
     }
 
-    showGhost(false);
-    var to = rectOf(ghostEl);
-    var target = flip(rec.home || rectOf(rec.tile), to);
-    void ghostEl.offsetWidth;
+    var ms = 280;
+    var P = panelRect();
+    var T = rec.home || rectOf(rec.tile);
     var stop = startSampling();
-    setOpacity(panelEl, 0, 80);
-    ghostEl.style.transition = 'transform 200ms ' + EASE + ' 80ms';
-    ghostEl.style.transform = target;
-    if (motion.mode === 'push') returnOthers(rec, 280);
-    else setOpacity(scrimEl, 0, 200, 80);
-    after(ghostEl, 280, function () { stop(); done(); });
+    rec.cell.classList.add('is-raised');
+    rec.tile.classList.add('is-lifted');
+    rec.tile.style.transition = 'none';
+    rec.tile.style.transform = tileToCenter(T, P);
+    rec.tile.style.opacity = '0';
+    rec.tile.style.visibility = '';
+    void rec.tile.offsetWidth;
+    ghostEl.style.transition = 'transform ' + ms + 'ms ' + EASE;
+    ghostEl.style.transform = flip(T, P);
+    panelEl.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity 90ms linear';
+    panelEl.style.transform = panelStart(T, P);
+    panelEl.style.opacity = '0';
+    // The tile starts fading in just before the content is gone, so the two overlap.
+    rec.tile.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + Math.round(ms * 0.5) + 'ms linear ' + Math.round(ms * 0.2) + 'ms';
+    rec.tile.style.transform = TILE_HOME;
+    rec.tile.style.opacity = '1';
+    if (motion.mode === 'push') returnOthers(rec, ms);
+    else setOpacity(scrimEl, 0, ms - 80, 80);
+    after(ghostEl, ms, function () { stop(null); done(); });
   }
 
   function switchMode(next) {
     if (busy || !open || next === mode) return;
     busy = true;
     var rec = open;
-    var wasFull = mode === 'full';
 
     function apply() {
       mode = next;
       panelEl.className = 'panel is-shown' + (next === 'full' ? ' is-full' : '');
-      placeFloatingGlass(panelEl);
       drawPanelHead();
       call(rec, 'onMode', [next, rec.ctx]);
       if (panelFocus) keepInView(panelFocus);
     }
 
+    function sizeGhost() {
+      ghostEl.className = 'ghost' + (next === 'full' ? ' is-full' : '');
+      placeFloatingGlass(ghostEl);
+    }
+
     setOpacity(panelEl, 0, 80);
+    if (motion.mode === 'fade') setOpacity(ghostEl, 0, 80);
     after(panelEl, 80, function () {
       if (motion.mode === 'fade') {
+        // Both are invisible, so the frame just changes size with the content.
+        sizeGhost();
         apply();
         void panelEl.offsetWidth;
         setOpacity(panelEl, 1, 120);
+        setOpacity(ghostEl, 1, 120);
         after(panelEl, 120, function () { busy = false; });
         return;
       }
-      showGhost(wasFull);
+      // The frame morphs between the two rects while the content is out.
       var from = rectOf(ghostEl);
-      ghostEl.className = 'ghost is-shown' + (next === 'full' ? ' is-full' : '');
-      placeFloatingGlass(ghostEl);
+      sizeGhost();
       var to = rectOf(ghostEl);
+      ghostEl.style.transition = 'none';
       ghostEl.style.transform = flip(from, to);
       apply();
       void ghostEl.offsetWidth;
-      nextFrame(function () {
-        var stop = startSampling();
-        ghostEl.style.transition = 'transform 240ms ' + EASE;
-        ghostEl.style.transform = IDENTITY;
-        setOpacity(panelEl, 1, 120, 130);
-        after(ghostEl, 240, function () {
-          stop();
-          hideGhost();
-          busy = false;
-        });
+      var stop = startSampling();
+      ghostEl.style.transition = 'transform 240ms ' + EASE;
+      ghostEl.style.transform = IDENTITY;
+      setOpacity(panelEl, 1, 120, 130);
+      after(ghostEl, 240, function () {
+        stop(null);
+        ghostEl.style.transition = 'none';
+        busy = false;
       });
     });
   }
@@ -1135,6 +1257,7 @@
   markMotion();
   buildPanel();
   build();
+  parkGhost();
   setupBackground();
 
   var resizeTimer = null;

@@ -16,6 +16,7 @@
   var lookupFailed = false;
   var view = 'grid';        // grid | list
   var lastKey = null;       // last focused item, so reopening lands on it
+  var gridCache = null;     // the grid's DOM, built once: { grid, nodes: [{ item, node, state }] }
 
   /* ---------- small DOM helpers ---------- */
 
@@ -288,28 +289,52 @@
 
   /* ---------- grid ---------- */
 
-  // Built without whitespace text nodes, so inline-block items sit flush.
-  function renderGrid(body) {
+  // Built once (parsing the logo SVGs is slow on the TV) and kept; each
+  // render only updates what can change. Built without whitespace text
+  // nodes, so inline-block items sit flush.
+  function buildGrid() {
+    if (gridCache) return gridCache;
     var grid = el('div', 'ent-grid');
+    var nodes = [];
     for (var s = 0; s < sections.length; s++) {
       var sec = el('div', 'ent-section' + (s === 0 ? ' is-first' : ''));
       sec.appendChild(el('div', 'ent-section-label', sections[s].label));
       for (var i = 0; i < sections[s].items.length; i++) {
         var item = sections[s].items[i];
-        var st = stateOf(item);
-        var node = el('div', 'ent-item f' + (st.missing ? ' is-missing' : ''));
+        var node = el('div', 'ent-item f');
         node.setAttribute('data-key', item.key);
-        if (item.key === lastKey) node.setAttribute('data-autofocus', '');
         var iconWrap = el('div', 'ent-icon');
         iconWrap.appendChild(logoEl(item.cfg));
         node.appendChild(iconWrap);
         node.appendChild(el('div', 'ent-name', item.cfg.label));
-        node.appendChild(el('div', 'ent-state', st.text));
+        var state = el('div', 'ent-state');
+        node.appendChild(state);
         sec.appendChild(node);
+        nodes.push({ item: item, node: node, state: state });
       }
       grid.appendChild(sec);
     }
-    body.appendChild(grid);
+    gridCache = { grid: grid, nodes: nodes };
+    return gridCache;
+  }
+
+  function renderGrid(body) {
+    var cache = buildGrid();
+    for (var i = 0; i < cache.nodes.length; i++) {
+      var n = cache.nodes[i];
+      var st = stateOf(n.item);
+      // Resetting the class also drops focus and press marks from last time.
+      n.node.className = 'ent-item f' + (st.missing ? ' is-missing' : '');
+      if (n.state.textContent !== st.text) n.state.textContent = st.text;
+      if (n.item.key === lastKey) n.node.setAttribute('data-autofocus', '');
+      else n.node.removeAttribute('data-autofocus');
+    }
+    body.appendChild(cache.grid);
+  }
+
+  // Builds the grid ahead of time, while nothing else is going on.
+  function prebuild() {
+    try { buildGrid(); } catch (e) { /* renderPanel will try again */ }
   }
 
   /* ---------- widget ---------- */
@@ -324,6 +349,7 @@
       C = ctx;
       buildItems();
       loadApps(1);
+      setTimeout(prebuild, 1000);
     },
 
     renderTile: function (body, ctx) {
