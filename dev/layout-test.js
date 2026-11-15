@@ -25,17 +25,17 @@ const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
 const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
 
-// app/config.js's layout with Weather and Today swapped: the same widgets.
+// app/config.js's layout with Weather and Now Playing swapped: the same widgets.
 const SWAPPED = [
-  { widget: 'weather',       x: 0, y: 0, w: 3, h: 2 },
-  { widget: 'entertainment', x: 3, y: 0, w: 6, h: 2 },
-  { widget: 'today',         x: 9, y: 0, w: 3, h: 2 },
-  { widget: 'todo',          x: 0, y: 2, w: 3, h: 4 },
-  { widget: 'calendar',      x: 3, y: 2, w: 3, h: 4 },
-  { widget: 'nowplaying',    x: 6, y: 2, w: 3, h: 2 },
-  { widget: 'awws',          x: 9, y: 2, w: 3, h: 2 },
-  { widget: 'ambiance',      x: 6, y: 4, w: 3, h: 2 },
-  { widget: 'mirror',        x: 9, y: 4, w: 3, h: 2 }
+  { widget: 'today',         x: 0, y: 0, w: 3, h: 1 },
+  { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },
+  { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
+  { widget: 'nowplaying',    x: 9, y: 0, w: 3, h: 2 },
+  { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
+  { widget: 'mirror',        x: 9, y: 2, w: 3, h: 4 },
+  { widget: 'ambiance',      x: 3, y: 4, w: 6, h: 1 },
+  { widget: 'weather',       x: 0, y: 5, w: 3, h: 1 },
+  { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
 ];
 
 // Fewer widgets: a different set, so the hub reloads.
@@ -284,17 +284,19 @@ async function checkMove() {
   await waitIdle(page);
   await until(() => page.evaluate(() => document.body.classList.contains('is-glass')), 6000, 'the frosted glass never came on');
   assert((await look.focused(page)) === 'entertainment', 'start focus: ' + (await look.focused(page)));
-  // With config.js's layout, Left from Entertainment has nowhere to go (Today is static).
+  // With config.js's layout, Left from Entertainment reaches Now Playing.
   await page.keyboard.press('ArrowLeft');
-  assert((await look.focused(page)) === 'entertainment', 'Left before: ' + (await look.focused(page)));
+  assert((await look.focused(page)) === 'nowplaying', 'Left before: ' + (await look.focused(page)));
+  await page.keyboard.press('ArrowRight');
+  assert((await look.focused(page)) === 'entertainment', 'Right before: ' + (await look.focused(page)));
   const before = await look.home(page, 'weather');
   await page.evaluate(() => { window.__sameLoad = true; });
 
   await setLayout(SWAPPED);
-  await until(() => cellAt(page, 'weather', 0, 0, 3, 2), 4000, 'the weather tile did not move');
-  assert(await cellAt(page, 'today', 9, 0, 3, 2), 'today did not move');
+  await until(() => cellAt(page, 'weather', 0, 5, 3, 1), 4000, 'the weather tile did not move');
+  assert(await cellAt(page, 'nowplaying', 9, 0, 3, 2), 'now playing did not move');
   const after = await look.home(page, 'weather');
-  const today = await look.home(page, 'today');
+  const today = await look.home(page, 'nowplaying');
   assert(after.left < before.left && after.left < today.left, 'measured rects: ' + JSON.stringify({ before, after, today }));
   assert(await page.evaluate(() => window.__sameLoad === true) && page.loads === 1, 'the page reloaded (loads ' + page.loads + ')');
   assert((await look.ids(page)).length === 9, 'tile count changed');
@@ -338,7 +340,7 @@ async function checkWaitsForPanel() {
   await sleep(350);
   await page.keyboard.press('Escape');
   await until(async () => (await look.open(page)) === null, 4000, 'the panel did not close');
-  await until(() => cellAt(page, 'weather', 0, 0, 3, 2), 4000, 'the tile did not move after closing');
+  await until(() => cellAt(page, 'weather', 0, 5, 3, 1), 4000, 'the tile did not move after closing');
   assert(page.loads === 1, 'reloaded');
   assert((await look.focused(page)) === 'todo', 'focus after close: ' + (await look.focused(page)));
   noErrors(context);

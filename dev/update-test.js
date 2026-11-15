@@ -684,6 +684,13 @@ async function checkTile() {
   ];
   for (const c of cases) {
     const { context, page } = await contextWithGood(A, c.query);
+    // This check is about a two-row clock tile, so use the earlier layout where it is two rows tall.
+    await context.addInitScript(() => {
+      try { localStorage.setItem('homeHub.layout', JSON.stringify([
+        { widget: 'today', x: 0, y: 0, w: 3, h: 2 }, { widget: 'entertainment', x: 3, y: 0, w: 6, h: 2 }, { widget: 'weather', x: 9, y: 0, w: 3, h: 2 },
+        { widget: 'todo', x: 0, y: 2, w: 3, h: 4 }, { widget: 'calendar', x: 3, y: 2, w: 3, h: 4 }, { widget: 'nowplaying', x: 6, y: 2, w: 3, h: 2 },
+        { widget: 'awws', x: 9, y: 2, w: 3, h: 2 }, { widget: 'ambiance', x: 6, y: 4, w: 3, h: 2 }, { widget: 'mirror', x: 9, y: 4, w: 3, h: 2 }])); } catch (e) { /* ignore */ }
+    });
     github.mode = c.mode;
     await go(page, shellUrl(c.query));
     await waitAt(page, A, 'app/hub.html');

@@ -639,3 +639,31 @@ body.has-picture {
   padding-top: 0.15rem;
   line-height: 1.25;
 }
+
+/* ---------- Today: one row tall ---------- */
+
+/* A one-row tile has room for the time and the date only. */
+.tile-body.today-compact .today-place,
+.tile-body.today-compact .today-status { display: none; }
+.tile-body.today-compact .today-time {
+  margin-top: 0;
+  font-size: 2.9rem;
+  line-height: 1.1;
+}
+.tile-body.today-compact .today-ampm { font-size: 1.2rem; }
+.tile-body.today-compact .today-date { font-size: 1.05rem; }
+
+/* ---------- Entertainment: one row tall ---------- */
+
+/* No room under the title, so the logos sit on the title's row, on the right. */
+.tile-body.ent-short {
+  position: absolute;
+  top: 1.2rem;
+  right: 1.4rem;
+  width: 50%;
+  height: 3rem;
+}
+.tile-body.ent-short .ent-chips { margin-top: 0; align-items: center; height: 100%; }
+.tile-body.ent-short .ent-chip { max-width: 2.8rem; margin-right: 0.4rem; }
+.tile-body.ent-short .ent-chip:last-child { margin-right: 0; }
+.tile-body.ent-short .ent-chip .logo-text { font-size: 1rem; }

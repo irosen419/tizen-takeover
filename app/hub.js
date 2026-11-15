@@ -35,6 +35,7 @@
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
+ *     onLayout: function (ctx) {},         // a new layout moved or resized the tiles
  *     onStatus: function (ctx) {}          // the motion status text changed
  *   });
  *
@@ -876,6 +877,11 @@
     layoutKey = key;
     measureHome();
     placeGlass();
+    for (var m = 0; m < widgets.length; m++) {
+      // A widget with an onLayout hook handles its own redraw; the rest are drawn again at the new size.
+      if (typeof widgets[m].w.onLayout === 'function') call(widgets[m], 'onLayout', [widgets[m].ctx]);
+      else drawTile(widgets[m]);
+    }
   }
 
   // Other widgets: build afresh. A note in sessionStorage keyed by the layout

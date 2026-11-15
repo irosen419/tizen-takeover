@@ -35,7 +35,16 @@
       setInterval(tick, 15000);
     },
 
+    // The tile moved or changed size (a new layout came from the Pi).
+    onLayout: function (ctx) {
+      ctx.redrawTile();
+    },
+
     renderTile: function (el, ctx) {
+      // One row tall: only the time and the date fit. The status lines move
+      // to the clock's page once it grows one (see the Clock plan).
+      var compact = !!(el.offsetHeight && el.offsetHeight < 150);
+      el.classList.toggle('today-compact', compact);
       var place = div('today-place', el);
       place.textContent = (window.HUB_CONFIG && HUB_CONFIG.title) || 'Today';
       var time = div('today-time', el);
@@ -55,6 +64,7 @@
       var newest = !!(updates && updates.newest === true);
       var updateText = updates && typeof updates.text === 'string' ? updates.text : '';
       var status = div('today-status', el);
+      if (compact) status.style.display = 'none';
       var browser = ctx.browser ? ctx.browser() : '';
       div('today-status-line', status).textContent = ctx.build + (newest ? ' (newest)' : '') + (browser ? ' · ' + browser : '');
       div('today-status-line', status).textContent = ctx.motionStatus();
