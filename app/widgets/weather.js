@@ -700,25 +700,29 @@
     return lastError.length > 40 ? str(lastError.substring(0, 40)) + '…' : lastError;
   }
 
+  // line is the panel's text. short is the tile's: the tile is small, so it
+  // gets one brief sentence and leaves the reason and the advice to the panel.
   function message(state) {
     if (state === 'setup') {
       return { head: 'Set your city', line: 'The TV couldn’t work out where it is. Add a city to weather.location in config.js.',
-        button: 'Try again', icon: 'wx-pin' };
+        short: 'Add a city to weather.location in config.js.', button: 'Try again', icon: 'wx-pin' };
     }
     if (state === 'notfound') {
       var loc = C.config.location;
       var name = typeof loc === 'object' && loc ? 'the spot in config.js' : str(loc);
-      return { head: 'City not found', line: 'Couldn’t find “' + name + '”. Check weather.location in config.js.', icon: 'wx-pin' };
+      return { head: 'City not found', line: 'Couldn’t find “' + name + '”. Check weather.location in config.js.',
+        short: 'Check weather.location in config.js.', icon: 'wx-pin' };
     }
     if (state === 'lookuperror') {
       return { head: 'Can’t find your city yet', line: 'The city lookup didn’t answer (' + reason() + '). Trying again at ' + tvClock(nextDue) +
-        '. To skip the lookup, add a city to weather.location in config.js.', button: 'Try now', icon: 'wx-pin' };
+        '. To skip the lookup, add a city to weather.location in config.js.',
+        short: 'Trying again at ' + tvClock(nextDue) + '.', button: 'Try now', icon: 'wx-pin' };
     }
     if (state === 'error') {
       return { head: 'No forecast right now', line: 'The weather service didn’t answer (' + reason() + '). Trying again at ' + tvClock(nextDue) + '.',
-        button: 'Try now', icon: 'wx-cloudy' };
+        short: 'Trying again at ' + tvClock(nextDue) + '.', button: 'Try now', icon: 'wx-cloudy' };
     }
-    return { head: phase === 'place' && !place ? 'Finding your city…' : 'Getting the forecast…', line: '', icon: 'wx-partly-day' };
+    return { head: phase === 'place' && !place ? 'Finding your city…' : 'Getting the forecast…', line: '', short: '', icon: 'wx-partly-day' };
   }
 
   /* ---------- tile ---------- */
@@ -735,7 +739,7 @@
     if (!m) {
       var msg = message(state);
       el('div', 'wx-msg-head', root, msg.head);
-      if (msg.line) el('div', 'wx-msg-line', root, msg.line);
+      if (msg.short) el('div', 'wx-msg-line', root, msg.short);
       icon(msg.icon, 'wx-mark', root);
       return;
     }
@@ -1126,6 +1130,8 @@
     if (clockJumped()) {
       nextDue = 0;
       if (rec && rec.savedAt > Date.now()) rec.savedAt = Date.now() - REFRESH_EVERY;
+      // An update already running keeps going; restart its watchdog on the new clock.
+      if (refreshing) startedAt = Date.now();
     }
     // Every call has its own timeout, so an update stuck this long lost its
     // callback to an error somewhere. Let the next one run.
@@ -1142,6 +1148,8 @@
     if (clockJumped()) {
       nextDue = 0;
       if (rec && rec.savedAt > Date.now()) rec.savedAt = Date.now() - REFRESH_EVERY;
+      // An update already running keeps going; restart its watchdog on the new clock.
+      if (refreshing) startedAt = Date.now();
     }
     if (refreshing) return;
     var due = rec ? ageOf(rec) >= REFRESH_EVERY || Date.now() >= nextDue : Date.now() >= nextDue;
