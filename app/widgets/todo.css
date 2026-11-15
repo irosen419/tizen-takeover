@@ -7,6 +7,7 @@
 .todo-panel,
 .todo-error {
   --todo-warn: #ffb36b;
+  --todo-danger: #d93036;
   --todo-hair: rgba(255, 255, 255, 0.12);
 }
 
@@ -408,7 +409,7 @@
 .todo-del.is-armed .todo-pill-label { display: none; }
 .todo-del.is-armed .todo-pill-armed { display: inline; }
 .todo-del.is-armed,
-.todo-del.is-armed .todo-pill { background: var(--todo-warn); border-color: var(--todo-warn); color: #1a1006; }
+.todo-del.is-armed .todo-pill { background: var(--todo-danger); border-color: var(--todo-danger); color: #fff; font-weight: 700; }
 
 /* A tiny pop on a tick that was just ticked or an item just added. */
 @media (prefers-reduced-motion: no-preference) {
