@@ -247,8 +247,8 @@
 
   function pressInputKey(tc) {
     toast('Switching to ' + (tc.sub || tc.label) + '. If the TV asks, choose Allow.', 6000);
-    getJSON('/key?k=' + encodeURIComponent(tc.key), 65000, function (err) {
-      if (err) toast('Couldn’t switch input (' + err + ').', 7000);
+    getJSON('/key?k=' + encodeURIComponent(tc.key), 170000, function (err) {
+      if (err) toast('Couldn\u2019t switch input. ' + err, 15000);
     });
   }
 

@@ -19,8 +19,10 @@ var tls = require('tls');
 var fs = require('fs');
 var crypto = require('crypto');
 var urlLib = require('url');
+var os = require('os');
 
 var PORT = 8095;
+var VERSION = '0.2.0';
 var TOKEN_FILE = '/home/owner/share/tizen-takeover-remote-token.txt';
 var REMOTE_NAME = new Buffer('Home Hub').toString('base64');
 
@@ -125,7 +127,7 @@ function decodeFrames(buf) {
  * waits for the TV to accept (the first time, the TV shows an Allow prompt),
  * presses one key, then closes.
  */
-function pressKeyVia(secure, key, cb) {
+function pressKeyVia(host, secure, key, cb) {
   var port = secure ? 8002 : 8001;
   var token = readToken();
   var path = '/api/v2/channels/samsung.remote.control?name=' + REMOTE_NAME +
@@ -144,13 +146,13 @@ function pressKeyVia(secure, key, cb) {
   }
 
   // Long enough for someone to press Allow on the TV the first time.
-  var timer = setTimeout(function () { finish('timed out waiting for the TV'); }, 30000);
+  var timer = setTimeout(function () { finish('no answer'); }, 20000);
 
   var onConnect = function () {
     var wsKey = crypto.randomBytes(16).toString('base64');
     sock.write(
       'GET ' + path + ' HTTP/1.1\r\n' +
-      'Host: 127.0.0.1:' + port + '\r\n' +
+      'Host: ' + host + ':' + port + '\r\n' +
       'Upgrade: websocket\r\n' +
       'Connection: Upgrade\r\n' +
       'Sec-WebSocket-Key: ' + wsKey + '\r\n' +
@@ -159,9 +161,9 @@ function pressKeyVia(secure, key, cb) {
   };
 
   if (secure) {
-    sock = tls.connect({ host: '127.0.0.1', port: port, rejectUnauthorized: false }, onConnect);
+    sock = tls.connect({ host: host, port: port, rejectUnauthorized: false }, onConnect);
   } else {
-    sock = net.connect({ host: '127.0.0.1', port: port }, onConnect);
+    sock = net.connect({ host: host, port: port }, onConnect);
   }
 
   sock.on('data', function (chunk) {
@@ -170,7 +172,7 @@ function pressKeyVia(secure, key, cb) {
       var text = pending.toString('binary');
       var end = text.indexOf('\r\n\r\n');
       if (end === -1) return;
-      if (text.slice(0, 12).indexOf('101') === -1) return finish('remote channel refused on port ' + port);
+      if (text.slice(0, 12).indexOf('101') === -1) return finish('refused');
       upgraded = true;
       pending = pending.slice(end + 4);
     }
@@ -187,24 +189,54 @@ function pressKeyVia(secure, key, cb) {
         })));
         setTimeout(function () { finish(null); }, 400);
       } else if (msg.event === 'ms.channel.unauthorized') {
-        finish('the TV said no (Allow was declined or turned off)');
+        finish('denied');
       } else if (msg.event === 'ms.channel.timeOut') {
-        finish('the Allow prompt timed out on the TV');
+        finish('prompt timed out');
       }
     }
   });
   sock.on('error', function (e) { finish(e.message); });
-  sock.on('close', function () { finish('connection closed on port ' + port); });
+  sock.on('close', function () { finish('closed'); });
 }
 
+/* The TV's own network addresses, so the remote channel sees a normal LAN client. */
+function lanAddresses() {
+  var out = [];
+  try {
+    var ifs = os.networkInterfaces();
+    for (var name in ifs) {
+      if (!ifs.hasOwnProperty(name)) continue;
+      for (var i = 0; i < ifs[name].length; i++) {
+        var a = ifs[name][i];
+        if (a.family === 'IPv4' && !a.internal) out.push(a.address);
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return out;
+}
+
+/*
+ * Tries each way in until one works: the TV's LAN address first, then
+ * 127.0.0.1, each on 8002 (TLS, newer sets) and then 8001.
+ * The error lists every attempt so the hub can show what happened.
+ */
 function pressKey(key, cb) {
-  // Most 2016 to 2018 sets take plain 8001. Newer ones want 8002 with a token.
-  pressKeyVia(false, key, function (err) {
-    if (!err) return cb(null);
-    pressKeyVia(true, key, function (err2) {
-      cb(err2 ? ('8001: ' + err + ' / 8002: ' + err2) : null);
+  var attempts = [];
+  var hosts = lanAddresses().concat(['127.0.0.1']);
+  for (var h = 0; h < hosts.length; h++) {
+    attempts.push({ host: hosts[h], secure: true });
+    attempts.push({ host: hosts[h], secure: false });
+  }
+  var errors = [];
+  (function next(i) {
+    if (i >= attempts.length) return cb(errors.join(', '));
+    var a = attempts[i];
+    pressKeyVia(a.host, a.secure, key, function (err) {
+      if (!err) return cb(null);
+      errors.push(a.host + ':' + (a.secure ? 8002 : 8001) + ' ' + err);
+      next(i + 1);
     });
-  });
+  })(0);
 }
 
 /* ---------- HTTP server ---------- */
@@ -213,7 +245,13 @@ var server = http.createServer(function (req, res) {
   var parsed = urlLib.parse(req.url, true);
   var q = parsed.query || {};
 
-  if (parsed.pathname === '/ping') return send(res, 200, { ok: true });
+  if (parsed.pathname === '/ping') return send(res, 200, { ok: true, version: VERSION });
+
+  // A newer copy of this service asks the running one to step aside.
+  if (parsed.pathname === '/quit') {
+    send(res, 200, { ok: true });
+    return setTimeout(function () { server.close(); }, 50);
+  }
 
   if (parsed.pathname === '/apps') {
     return listApps(function (err, apps) {
@@ -242,9 +280,15 @@ var server = http.createServer(function (req, res) {
   send(res, 404, { ok: false, error: 'not found' });
 });
 
+var listenTries = 0;
 server.on('error', function (e) {
-  // A copy of this service is already running from an earlier launch. That one keeps serving.
-  if (e && e.code === 'EADDRINUSE') return;
+  // An older copy from an earlier launch still holds the port. Ask it to quit, then take over.
+  if (e && e.code === 'EADDRINUSE' && listenTries < 5) {
+    listenTries++;
+    http.get('http://127.0.0.1:' + PORT + '/quit', function (r) { r.resume(); })
+      .on('error', function () { /* ignore */ });
+    return setTimeout(function () { server.listen(PORT, '127.0.0.1'); }, 600);
+  }
   console.log('Home Hub service error: ' + (e && e.message));
 });
 
