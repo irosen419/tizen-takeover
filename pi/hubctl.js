@@ -13,6 +13,9 @@
  *   ./hub todo remove <id or exact title>
  *   ./hub calendar status            each calendar, and the next event
  *   ./hub calendar refresh           read the calendars again now
+ *   ./hub layout show                the home-screen tile layout
+ *   ./hub layout set <file.json|->   a new layout (a list of tiles, or { layout: [...] })
+ *   ./hub layout reset               back to the layout in app/config.js
  *   ./hub status                     is the server up, which screens are on
  *   ./hub token                      create the password, once
  *   ./hub help
@@ -309,6 +312,57 @@ async function calendar(args) {
   stop('Use one of: calendar status, calendar refresh. Run ./hub help for examples.');
 }
 
+/* ---------- layout ---------- */
+
+function describeLayout(layout) {
+  if (!layout) {
+    say('The TV uses its built-in layout (HUB_CONFIG.layout in app/config.js).');
+    return;
+  }
+  say(plural(layout.length, 'tile') + ' on the 12 x 6 grid:');
+  const width = Math.max.apply(null, layout.map((t) => t.widget.length));
+  layout.forEach((t) => {
+    say('  ' + t.widget + ' '.repeat(width - t.widget.length) + '  at x ' + t.x + ', y ' + t.y + ', ' + t.w + ' wide, ' + t.h + ' high');
+  });
+}
+
+function readLayoutFile(name) {
+  let text;
+  try {
+    text = name === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(name, 'utf8');
+  } catch (e) {
+    stop(name === '-' ? 'Could not read the layout from standard input.' : 'Could not read ' + name + ' (' + (e.code || e.message) + ').');
+  }
+  let data;
+  try { data = JSON.parse(text); } catch (e) { stop((name === '-' ? 'The input' : name) + ' is not valid JSON.'); }
+  if (data && typeof data === 'object' && !Array.isArray(data) && 'layout' in data) data = data.layout;
+  if (!Array.isArray(data)) stop('The file must hold a list of tiles, like [{"widget":"weather","x":0,"y":0,"w":3,"h":2}], or {"layout": [...]}.');
+  return data;
+}
+
+async function layout(args) {
+  const sub = args[0];
+  if (sub === 'show') {
+    const r = await call('GET', '/api/layout');
+    describeLayout(r.layout);
+    return;
+  }
+  if (sub === 'set') {
+    const name = args[1];
+    if (!name) stop('Say which file holds the layout, or - to read it from standard input. For example: ./hub layout set layout.json');
+    const r = await call('POST', '/api/layout', { layout: readLayoutFile(name) });
+    if (!r.changed) { say('That is already the layout. Nothing changed.'); return; }
+    say('Layout saved (' + plural(r.layout.length, 'tile') + '). Screens that are on change now.');
+    return;
+  }
+  if (sub === 'reset') {
+    const r = await call('POST', '/api/layout', { layout: null });
+    say(r.changed ? 'Back to the built-in layout. Screens that are on change now.' : 'The TV already uses its built-in layout. Nothing changed.');
+    return;
+  }
+  stop('Use one of: layout show, layout set <file.json|->, layout reset. Run ./hub help for examples.');
+}
+
 /* ---------- token ---------- */
 
 function token() {
@@ -372,6 +426,9 @@ const HELP = [
   '  ./hub todo remove "Buy milk"',
   '  ./hub calendar status       each calendar, and the next event',
   '  ./hub calendar refresh      read the calendars again now (after adding an event)',
+  '  ./hub layout show           the home-screen tile layout',
+  '  ./hub layout set file.json  a new tile layout (a list of tiles; - reads it from input)',
+  '  ./hub layout reset          back to the layout in app/config.js',
   '  ./hub status                is the server running, which screens are on',
   '  ./hub token                 create the password in pi/.env (only once)'
 ].join('\n');
@@ -404,6 +461,7 @@ async function main(argv) {
   }
   if (cmd === 'todo') return todo(rest);
   if (cmd === 'calendar') return calendar(rest);
+  if (cmd === 'layout') return layout(rest);
   if (cmd === 'status') return status();
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
