@@ -34,7 +34,7 @@ var HUB_CONFIG = {
         /* The TV won't let the hub press keys itself, so Home Assistant (already trusted by the TV)
            switches the input. Put the Home Assistant address in url, e.g.
            'http://192.168.1.50:8123/api/webhook/tv-switch-to-xbox' */
-        { kind: 'webhook', label: 'Xbox', sub: 'HDMI 1', busy: 'Switching to the Xbox', url: '',
+        { kind: 'webhook', label: 'Xbox', sub: 'HDMI 1', busy: 'Switching to the Xbox', url: 'http://192.168.1.219:8123/api/webhook/hub_xbox',
           hint: 'Press the Xbox button on your controller. With Anynet+ on, the TV switches to HDMI 1 by itself.', tone: 'green' }
       ]
     },
