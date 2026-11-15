@@ -13,7 +13,7 @@ Rows out of the box:
 ## Install on the TV
 
 1. Open TizenBrew and go to **Module Manager**.
-2. Choose **Add GitHub Module** and type `irosen419/tizen-takeover`.
+2. Choose **Add GitHub Module** and type `irosen419/tizen-takeover@main`. The `@main` matters. Without it, jsDelivr can keep serving an old copy that purging doesn't clear.
 3. Back on the TizenBrew list, open **Home Hub**.
 
 Tiles for apps that aren't installed show dimmed with "Not installed". Install the app from the Samsung store and reopen the hub.
