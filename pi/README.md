@@ -143,6 +143,16 @@ CALENDAR_2_DETAILS=busy
 
 The TV then shows each event as `Busy`, with its time but no title and no place. Restart the server after the change, as in step 9.
 
+### Choose a calendar's color
+
+The secret address does not carry Google's colors, so the TV gives each calendar a color by its number (1 to 9). To match Google, or just to pick your own, add a line per calendar:
+
+```
+CALENDAR_3_COLOR=red
+```
+
+Use `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink` or `gray`, or a code like `#d50000`. These names are tuned to be readable on the TV. A color the server does not understand is logged by calendar name and the default is used. Restart the server after the change, as in step 9.
+
 ### New events and waiting
 
 Google can take a while to put a new or changed event into the secret address. We have not confirmed how long. The Pi reads every 5 minutes (change it with `CALENDAR_REFRESH_MINUTES` in `.env`).
