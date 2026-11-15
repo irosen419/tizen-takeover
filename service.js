@@ -277,6 +277,8 @@ var FETCH_MAX_BYTES = 300 * 1024;
 /* Returns the parsed address if it is exactly on the list, otherwise null. */
 function checkFetchUrl(target) {
   if (typeof target !== 'string' || !target || target.length > 2000) return null;
+  // Printable ASCII only: old Node writes the request path as latin1.
+  if (/[^\x21-\x7e]/.test(target)) return null;
   var u = urlLib.parse(target);
   if (u.protocol !== 'https:' || u.auth) return null;
   if (u.port && String(u.port) !== '443') return null;

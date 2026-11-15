@@ -33,11 +33,14 @@
   var HOURS_SHOWN = 12;
   var MINUS = '−';
   var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var LONG_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
+    'September', 'October', 'November', 'December'];
 
   var C = null;              // ctx, kept from init
   var units = 'fahrenheit';
   var place = null;          // { source, provider, name, region, latitude, longitude }
-  var placeProblem = null;   // null | 'setup' | 'notfound'
+  var placeProblem = null;   // null | 'setup' | 'notfound' | 'nolookup' (no lookup answered)
   var rec = null;            // the forecast record: { savedAt, placeKey, units, via, data }
   var via = 'direct';        // the way that worked last: 'direct' | 'helper'
   var refreshing = false;
@@ -51,6 +54,7 @@
   var lastSig = '';
   var rootEl = null;         // the panel's root, for switching views without a redraw
   var nowEls = null;         // the now band's parts, to fit it once it is on screen
+  var hoursEls = null;       // the hour strip's parts, likewise
 
   /* ---------- safety ---------- */
 
@@ -103,6 +107,11 @@
     return typeof v === 'number' && isFinite(v) ? v : null;
   }
 
+  // Readings outside these ranges are garbage; treat them as missing.
+  function tnum(v) { v = num(v); return v !== null && v >= -150 && v <= 150 ? v : null; }
+  function wnum(v) { v = num(v); return v !== null && v >= 0 && v <= 500 ? v : null; }
+  function pnum(v) { v = num(v); return v !== null && v >= 0 && v <= 100 ? v : null; }
+
   function str(v) {
     return typeof v === 'string' ? v.replace(/^\s+|\s+$/g, '') : '';
   }
@@ -123,11 +132,25 @@
 
   /* ---------- time ---------- */
 
-  // "2026-11-15T09:00" or "2026-11-15" to a wall clock number (Date.UTC), or NaN.
+  // "2026-11-15T09:00" (seconds allowed, nothing else after) to a wall clock
+  // number (Date.UTC), or NaN. Values out of range are refused, not rolled over.
   function parseTime(s) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(typeof s === 'string' ? s : '');
-    if (!m) return NaN;
-    return Date.UTC(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0);
+    var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(typeof s === 'string' ? s : '');
+    if (!m || +m[4] > 23 || +m[5] > 59 || (m[6] && +m[6] > 59)) return NaN;
+    return calendar(+m[1], +m[2], +m[3], +m[4], +m[5]);
+  }
+
+  // "2026-11-15" exactly, to the wall clock number of its midnight, or NaN.
+  function parseDate(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof s === 'string' ? s : '');
+    return m ? calendar(+m[1], +m[2], +m[3], 0, 0) : NaN;
+  }
+
+  function calendar(y, mo, d, h, mi) {
+    if (mo < 1 || mo > 12 || d < 1 || d > 31) return NaN;
+    var t = Date.UTC(y, mo - 1, d, h, mi);
+    // Date.UTC rolls 31 November into December; refuse it instead.
+    return new Date(t).getUTCDate() === d ? t : NaN;
   }
 
   function ampm(h, m) {
@@ -154,19 +177,19 @@
   /* ---------- formatting ---------- */
 
   function temp(v) {
-    v = num(v);
+    v = tnum(v);
     if (v === null) return '–';
     var r = Math.round(v);
     return (r < 0 ? MINUS + (-r) : String(r)) + '°';
   }
 
   function pct(v) {
-    v = num(v);
+    v = pnum(v);
     return v === null ? '–' : Math.round(v) + '%';
   }
 
   function windText(v) {
-    v = num(v);
+    v = wnum(v);
     if (v === null) return '–';
     return Math.round(v) + (units === 'celsius' ? ' km/h' : ' mph');
   }
@@ -225,23 +248,28 @@
 
   // GET a remote JSON address, one way then the other. check(data) returns
   // '' when the reply is usable, otherwise why not (that counts as a failure,
-  // so the other way gets a go). cb(err, data, way, absent): when both failed
-  // and the helper looked absent or too old, absent is its error, else ''.
+  // so the other way gets a go). cb(err, data, way, answered): answered is
+  // true when some way did get a reply, but check() refused it.
   function fetchJSON(url, check, cb) {
     var order = via === 'helper' ? ['helper', 'direct'] : ['direct', 'helper'];
     var errors = {};
+    var answered = false;
     function attempt(i) {
       if (i >= order.length) {
-        var absent = helperAbsent(errors.helper) ? errors.helper : '';
-        return cb(absent ? (errors.direct || errors.helper) : errors.helper, null, '', absent);
+        var err = helperAbsent(errors.helper) ? (errors.direct || errors.helper) : errors.helper;
+        return cb(err, null, '', answered);
       }
       var way = order[i];
       var done = safe(function (err, data) {
         try {
           if (way === 'helper' && !err) data = data && data.data;
-          if (!err) err = check(data);
+          if (!err) {
+            err = check(data);
+            if (err) answered = true;
+          }
         } catch (e) {
           err = 'unexpected reply';
+          answered = true;
         }
         if (err) {
           errors[way] = err;
@@ -257,6 +285,12 @@
   }
 
   /* ---------- the place ---------- */
+
+  // Place names are data; a 250-character one must not run out of the panel.
+  function cap(v) {
+    v = str(v);
+    return v.length > 40 ? str(v.substring(0, 40)) + '…' : v;
+  }
 
   function placeKeyOf(p) {
     return p ? p.latitude + ',' + p.longitude : '';
@@ -275,7 +309,7 @@
       var lat = num(loc.latitude);
       var lon = num(loc.longitude);
       if (inRange(lat, lon)) {
-        place = { source: 'coords', name: str(loc.name) || 'Home', region: '', latitude: lat, longitude: lon };
+        place = { source: 'coords', name: cap(loc.name) || 'Home', region: '', latitude: lat, longitude: lon };
         return true;
       }
       placeProblem = 'notfound';
@@ -295,14 +329,14 @@
     if (!p || typeof p !== 'object') return null;
     var lat = num(p.latitude);
     var lon = num(p.longitude);
-    var name = str(p.name);
+    var name = cap(p.name);
     if (!name || !inRange(lat, lon)) return null;
     return {
       source: p.source === 'config' ? 'config' : 'lookup',
       provider: p.provider === 'geojs' ? 'geojs' : 'ipwho',
       query: str(p.query),
       name: name,
-      region: str(p.region),
+      region: cap(p.region),
       latitude: lat,
       longitude: lon,
       savedAt: num(p.savedAt) || 0
@@ -338,8 +372,8 @@
       pick = pick || first;
       if (!pick) return cb('notfound');
       place = {
-        source: 'config', provider: 'ipwho', query: query, name: str(pick.name),
-        region: str(pick.admin1) || str(pick.country),
+        source: 'config', provider: 'ipwho', query: query, name: cap(pick.name),
+        region: cap(pick.admin1) || cap(pick.country),
         latitude: num(pick.latitude), longitude: num(pick.longitude), savedAt: Date.now()
       };
       lsSet(PLACE_KEY, place);
@@ -347,12 +381,12 @@
     });
   }
 
-  // One city lookup service. cb(err, place, absent) as fetchJSON.
+  // One city lookup service. cb(err, place, answered) as fetchJSON.
   function lookupOne(provider, cb) {
     fetchJSON(LOOKUPS[provider], function (data) {
       return readLookup(provider, data) ? '' : 'no city in the reply';
-    }, function (err, data, way, absent) {
-      cb(err, err ? null : readLookup(provider, data), absent);
+    }, function (err, data, way, answered) {
+      cb(err, err ? null : readLookup(provider, data), answered);
     });
   }
 
@@ -363,37 +397,25 @@
     var lon = provider === 'geojs' ? parseFloat(d.longitude) : num(d.longitude);
     lat = num(lat);
     lon = num(lon);
-    var city = str(d.city);
+    var city = cap(d.city);
     if (!city || !inRange(lat, lon)) return null;
     return {
-      source: 'lookup', provider: provider, name: city, region: str(d.region),
+      source: 'lookup', provider: provider, name: city, region: cap(d.region),
       latitude: round2(lat), longitude: round2(lon), savedAt: Date.now()
     };
   }
 
   // Asks the lookup services in order until one names a city.
-  // cb(err, place, absent): absent is the helper's error when neither
-  // service could be reached and the helper looked absent both times.
+  // cb(err, place, answered): answered is true when a service did reply but
+  // named no usable city (as opposed to no service being reachable at all).
   function lookupCity(first, cb) {
     var order = first === 'geojs' ? ['geojs', 'ipwho'] : ['ipwho', 'geojs'];
-    lookupOne(order[0], function (err, p, absent) {
-      if (!err) return cb('', p, '');
-      lookupOne(order[1], function (err2, p2, absent2) {
-        cb(err2 ? err : '', p2, absent && absent2 ? absent2 : '');
+    lookupOne(order[0], function (err, p, answered) {
+      if (!err) return cb('', p, false);
+      lookupOne(order[1], function (err2, p2, answered2) {
+        cb(err2 ? err : '', p2, answered || answered2);
       });
     });
-  }
-
-  // When nothing could be reached, the TV is offline: that is the error
-  // state, not "Set your city". "service not reachable" is ambiguous (a
-  // helper can say "not reachable" about the remote service, and the hub
-  // reports both the same way), so ask the helper's /fetch for an address it
-  // must refuse: a working helper answers, an absent or old one doesn't.
-  // cb(offline).
-  function checkOffline(absent, cb) {
-    if (!absent) return cb(false);
-    if (absent !== 'service not reachable') return cb(true);
-    C.service('/fetch?url=', 4000, safe(function (err) { cb(!err || helperAbsent(err)); }));
   }
 
   // Makes sure the place is known. cb(err): '' when it is.
@@ -408,12 +430,12 @@
         cb(err);
       });
     }
-    lookupCity('ipwho', function (err, p, absent) {
+    lookupCity('ipwho', function (err, p, answered) {
       if (err) {
-        return checkOffline(absent, function (offline) {
-          placeProblem = offline ? null : 'setup';
-          cb(err);
-        });
+        // A reply without a city means the lookup can't place this TV: ask for
+        // a city. No reply at all is a network problem: keep trying.
+        placeProblem = answered ? 'setup' : 'nolookup';
+        return cb(err);
       }
       placeProblem = null;
       place = p;
@@ -434,15 +456,16 @@
       '&timezone=auto&forecast_days=7';
   }
 
-  // All arrays present, the same length as their time list, and every time readable.
-  function columnsOk(block, keys, minLen) {
+  // All arrays present, the same length as their time list, and every time
+  // readable by parse (parseTime for hours, parseDate for days).
+  function columnsOk(block, keys, minLen, parse) {
     if (!block || typeof block !== 'object' || !isArr(block.time) || block.time.length < minLen) return false;
     var n = block.time.length;
     for (var i = 0; i < keys.length; i++) {
       if (!isArr(block[keys[i]]) || block[keys[i]].length !== n) return false;
     }
     for (var j = 0; j < n; j++) {
-      if (isNaN(parseTime(block.time[j]))) return false;
+      if (isNaN(parse(block.time[j]))) return false;
     }
     return true;
   }
@@ -452,9 +475,11 @@
     if (!d || typeof d !== 'object') return 'unexpected reply';
     if (d.error) return str(d.reason) || 'the service refused';
     if (!d.current || typeof d.current !== 'object' || isNaN(parseTime(d.current.time))) return 'incomplete reply';
-    if (!columnsOk(d.hourly, ['temperature_2m', 'precipitation_probability', 'weather_code', 'is_day'], 2)) return 'incomplete reply';
+    if (!columnsOk(d.hourly, ['temperature_2m', 'precipitation_probability', 'weather_code', 'is_day'], 2, parseTime)) return 'incomplete reply';
     if (!columnsOk(d.daily, ['weather_code', 'temperature_2m_max', 'temperature_2m_min',
-      'precipitation_probability_max', 'sunrise', 'sunset'], 1)) return 'incomplete reply';
+      'precipitation_probability_max', 'sunrise', 'sunset'], 1, parseDate)) return 'incomplete reply';
+    // The hourly data must cover the reply's own "now", or nothing could be shown.
+    if (hourIndex(d, parseTime(d.current.time)) < 0) return 'incomplete reply';
     return '';
   }
 
@@ -541,7 +566,7 @@
   function dayIndex(d, t) {
     var times = d.daily.time;
     for (var i = times.length - 1; i >= 0; i--) {
-      if (parseTime(times[i]) <= t) return i;
+      if (parseDate(times[i]) <= t) return i;
     }
     return 0;
   }
@@ -552,12 +577,13 @@
     return hourIndex(rec.data, locNow(rec)) >= 0 ? rec : null;
   }
 
-  // 'loading' | 'live' | 'stale' | 'setup' | 'notfound' | 'error'
+  // 'loading' | 'live' | 'stale' | 'setup' | 'notfound' | 'lookuperror' | 'error'
   function stateNow() {
     var r = usable();
     if (r) return ageOf(r) < LIVE_FOR ? 'live' : 'stale';
     if (placeProblem === 'setup' && !place) return 'setup';
     if (placeProblem === 'notfound') return 'notfound';
+    if (placeProblem === 'nolookup' && !place && lastError) return 'lookuperror';
     if (lastError) return 'error';
     return 'loading';
   }
@@ -582,17 +608,19 @@
       dayIdx: di,
       fromHourly: fromHourly
     };
+    var today = new Date(now);
+    m.date = LONG_DAYS[today.getUTCDay()] + ', ' + MONTHS[today.getUTCMonth()] + ' ' + today.getUTCDate();
     var code = fromHourly ? at(h.weather_code, hi) : cur.weather_code;
     var isDay = fromHourly ? at(h.is_day, hi) : cur.is_day;
     var cond = condition(code, isDay);
-    m.temp = fromHourly ? num(at(h.temperature_2m, hi)) : num(cur.temperature_2m);
+    m.temp = fromHourly ? tnum(at(h.temperature_2m, hi)) : tnum(cur.temperature_2m);
     m.text = cond.text;
     m.icon = cond.icon;
     // "Feels like" belongs to the old reading, so it goes once the hourly forecast takes over.
-    m.feels = fromHourly ? null : num(cur.apparent_temperature);
-    m.wind = num(cur.wind_speed_10m);
-    m.hi = num(at(d.daily.temperature_2m_max, di));
-    m.lo = num(at(d.daily.temperature_2m_min, di));
+    m.feels = fromHourly ? null : tnum(cur.apparent_temperature);
+    m.wind = wnum(cur.wind_speed_10m);
+    m.hi = tnum(at(d.daily.temperature_2m_max, di));
+    m.lo = tnum(at(d.daily.temperature_2m_min, di));
     var rise = parseTime(at(d.daily.sunrise, di));
     var set = parseTime(at(d.daily.sunset, di));
     m.sunrise = isNaN(rise) ? '–' : wallClock(rise);
@@ -602,10 +630,10 @@
     var rain = null;
     for (var i = hi; i < h.time.length; i++) {
       if (!sameDay(parseTime(h.time[i]), now)) break;
-      var p = num(at(h.precipitation_probability, i));
+      var p = pnum(at(h.precipitation_probability, i));
       if (p !== null && (rain === null || p > rain)) rain = p;
     }
-    m.rain = rain !== null ? rain : num(at(d.daily.precipitation_probability_max, di));
+    m.rain = rain !== null ? rain : pnum(at(d.daily.precipitation_probability_max, di));
 
     m.hours = [];
     for (var k = hi; k < h.time.length && m.hours.length < HOURS_SHOWN; k++) {
@@ -616,8 +644,8 @@
         hour: t % 12 === 0 ? '12' : String(t % 12),
         ampm: t < 12 ? 'AM' : 'PM',
         icon: hc.icon,
-        temp: num(at(h.temperature_2m, k)),
-        rain: num(at(h.precipitation_probability, k))
+        temp: tnum(at(h.temperature_2m, k)),
+        rain: pnum(at(h.precipitation_probability, k))
       });
     }
     // The current hour shows the big reading when that is fresher.
@@ -625,17 +653,17 @@
     if (m.hours.length && !fromHourly) m.hours[0].icon = m.icon;
 
     m.days = [];
-    for (var j = di; j < d.daily.time.length; j++) {
-      var dt = new Date(parseTime(d.daily.time[j]));
+    for (var j = di; j < d.daily.time.length && m.days.length < 7; j++) {
+      var dt = new Date(parseDate(d.daily.time[j]));
       var dc = condition(at(d.daily.weather_code, j), 1);
       m.days.push({
         name: j === di ? 'Today' : DAY_NAMES[dt.getUTCDay()],
         date: String(dt.getUTCDate()),
         icon: dc.icon,
         text: dc.text,
-        lo: num(at(d.daily.temperature_2m_min, j)),
-        hi: num(at(d.daily.temperature_2m_max, j)),
-        rain: num(at(d.daily.precipitation_probability_max, j))
+        lo: tnum(at(d.daily.temperature_2m_min, j)),
+        hi: tnum(at(d.daily.temperature_2m_max, j)),
+        rain: pnum(at(d.daily.precipitation_probability_max, j))
       });
     }
     return m;
@@ -647,7 +675,7 @@
     var m = model();
     var line = s + '|' + phase + '|' + lastError + '|' + placeLabel(place) + '|' + (refreshing ? 1 : 0) + '|' + userAction;
     if (m) line += '|' + m.hourIdx + '|' + m.dayIdx + '|' + m.stale + '|' + m.fromHourly + '|' + m.asOf;
-    if (s === 'error') line += '|' + nextDue;
+    if (s === 'error' || s === 'lookuperror') line += '|' + nextDue;
     return line;
   }
 
@@ -667,6 +695,11 @@
 
   /* ---------- message states ---------- */
 
+  // Network reasons can be long ("getaddrinfo ENOTFOUND …"); the tile is small.
+  function reason() {
+    return lastError.length > 40 ? str(lastError.substring(0, 40)) + '…' : lastError;
+  }
+
   function message(state) {
     if (state === 'setup') {
       return { head: 'Set your city', line: 'The TV couldn’t work out where it is. Add a city to weather.location in config.js.',
@@ -677,8 +710,12 @@
       var name = typeof loc === 'object' && loc ? 'the spot in config.js' : str(loc);
       return { head: 'City not found', line: 'Couldn’t find “' + name + '”. Check weather.location in config.js.', icon: 'wx-pin' };
     }
+    if (state === 'lookuperror') {
+      return { head: 'Can’t find your city yet', line: 'The city lookup didn’t answer (' + reason() + '). Trying again at ' + tvClock(nextDue) +
+        '. To skip the lookup, add a city to weather.location in config.js.', button: 'Try now', icon: 'wx-pin' };
+    }
     if (state === 'error') {
-      return { head: 'No forecast yet', line: 'The weather service didn’t answer (' + lastError + '). Trying again at ' + tvClock(nextDue) + '.',
+      return { head: 'No forecast right now', line: 'The weather service didn’t answer (' + reason() + '). Trying again at ' + tvClock(nextDue) + '.',
         button: 'Try now', icon: 'wx-cloudy' };
     }
     return { head: phase === 'place' && !place ? 'Finding your city…' : 'Getting the forecast…', line: '', icon: 'wx-partly-day' };
@@ -725,7 +762,7 @@
     if (!place) return '';
     var m = model();
     if (!m) return placeLabel(place);
-    return placeLabel(place) + ' · ' + (m.stale ? 'Couldn’t update since ' : 'Updated ') + m.asOf;
+    return placeLabel(place) + ' · ' + (m.stale ? 'As of ' : 'Updated ') + m.asOf;
   }
 
   function button(parent, key, label, iconName, extra) {
@@ -744,10 +781,10 @@
       var day = button(left, 'tab-day', 'Day', '', ' wx-tab' + (view === 'day' ? ' is-selected' : ''));
       var week = button(left, 'tab-week', 'Week', '', ' wx-tab' + (view === 'week' ? ' is-selected' : ''));
       (view === 'week' ? week : day).setAttribute('data-autofocus', '');
-    } else if (place && hasForecast) {
-      var where = el('div', 'wx-bar-place', left);
-      icon('wx-pin', 'wx-bar-pin', where);
-      el('span', 'wx-bar-name', where, placeLabel(place));
+    } else if (hasForecast) {
+      // The hub's head already names the place; here, the place's own date.
+      var m = model();
+      if (m) el('div', 'wx-bar-date', left, m.date);
     }
     var right = el('div', 'wx-bar-right', bar);
     var busy = refreshing;
@@ -756,7 +793,7 @@
       if (place && place.source === 'lookup') {
         button(right, 'relocate', userAction === 'relocate' ? 'Looking…' : 'Wrong city?', 'wx-pin');
       }
-    } else if (state === 'setup' || state === 'error') {
+    } else if (state === 'setup' || state === 'error' || state === 'lookuperror') {
       var b = button(right, 'retry', busy ? 'Trying…' : message(state).button, 'wx-refresh');
       b.setAttribute('data-autofocus', '');
     }
@@ -777,7 +814,7 @@
 
     var stats = el('div', 'wx-stats', band);
     stat(stats, windText(m.wind), 'wx-wind', 'Wind', '');
-    stat(stats, pct(m.rain), 'wx-drop', 'Rain', rainClass(m.rain));
+    stat(stats, pct(m.rain), 'wx-drop', 'Rain today', rainClass(m.rain));
     stat(stats, m.sunrise, 'wx-sunrise', 'Sunrise', '');
     stat(stats, m.sunset, 'wx-sunset', 'Sunset', '');
     nowEls = { band: band, words: words, temp: main.firstChild };
@@ -792,6 +829,21 @@
     n.band.className = 'wx-now';
     var tight = n.band.scrollWidth > n.band.clientWidth + 1 || n.words.offsetHeight > n.temp.offsetHeight + 1;
     if (tight) n.band.className = 'wx-now is-tight';
+  }
+
+  // Without room for a readable curve (a two-line head, a folded now band,
+  // long text), the temperatures become a plain row and the curve goes.
+  function fitHours() {
+    var h = hoursEls;
+    if (!h || !h.strip.parentNode || !h.strip.offsetWidth) return;
+    h.strip.className = 'wx-hours';
+    var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    if (h.plot.offsetHeight < 2.4 * rem) h.strip.className = 'wx-hours is-flat';
+  }
+
+  function fitDay() {
+    fitNow();
+    fitHours();
   }
 
   function stat(parent, value, iconName, label, extra) {
@@ -867,6 +919,7 @@
     }
     var zone = el('div', 'wx-curve', strip);
     var plot = el('div', 'wx-plot', zone);
+    hoursEls = { strip: strip, plot: plot };
     if (lo !== Infinity) {
       var W = n * 100;
       var pts = [];
@@ -884,18 +937,21 @@
       svgEl('stop', { offset: '1', 'stop-color': '#ffffff', 'stop-opacity': '0' }, grad);
       svgEl('path', { d: line + 'L' + pts[pts.length - 1].x + ' 130L' + pts[0].x + ' 130Z', 'class': 'wx-curve-fill', fill: 'url(#wx-curve-grad)' }, svg);
       svgEl('path', { d: line, 'class': 'wx-curve-line' }, svg);
-      for (i = 0; i < pts.length; i++) {
-        var p = pts[i];
-        var left = (p.i / n * 100) + '%';
-        var num2 = el('div', 'wx-ctemp' + (hours[p.i].now ? ' is-now' : ''), plot, temp(hours[p.i].temp));
-        num2.style.left = left;
-        num2.style.width = (100 / n) + '%';
-        num2.style.bottom = (p.f * 100) + '%';
-        if (hours[p.i].now) {
-          var dot = el('div', 'wx-dot', plot);
-          dot.style.left = ((p.i + 0.5) / n * 100) + '%';
-          dot.style.top = ((1 - p.f) * 100) + '%';
-        }
+    }
+    // One number per hour, in order, so they also work as a plain row when
+    // there is no room for the curve (see fitHours). On the curve each rides
+    // just above its point; a missing one sits at the bottom as a dash.
+    for (i = 0; i < n; i++) {
+      var t = hours[i].temp;
+      var f2 = t === null ? 0 : (hi > lo ? (t - lo) / (hi - lo) : 0.5);
+      var label2 = el('div', 'wx-ctemp' + (hours[i].now ? ' is-now' : ''), plot, temp(t));
+      label2.style.left = (i / n * 100) + '%';
+      label2.style.width = (100 / n) + '%';
+      label2.style.bottom = (f2 * 100) + '%';
+      if (hours[i].now && t !== null) {
+        var dot = el('div', 'wx-dot', plot);
+        dot.style.left = ((i + 0.5) / n * 100) + '%';
+        dot.style.top = ((1 - f2) * 100) + '%';
       }
     }
 
@@ -957,6 +1013,7 @@
     var state = stateNow();
     var m = model();
     nowEls = null;
+    hoursEls = null;
     rootEl = el('div', 'wx-panel ' + (full ? 'is-full' : 'is-' + view), body);
     ctx.setSub(sub());
     drawBar(rootEl, state, full);
@@ -977,6 +1034,7 @@
     }
     footer(rootEl, m);
     if (!full) fitNow();
+    fitHours();
   }
 
   // Switches Day and Week by a class, without a redraw.
@@ -985,7 +1043,7 @@
     if (!rootEl || !rootEl.parentNode) return;
     if (rootEl.className.indexOf('is-full') !== -1) return;
     rootEl.className = 'wx-panel is-' + next;
-    if (next === 'day') fitNow();
+    if (next === 'day') fitDay();
     var tabs = rootEl.querySelectorAll('.wx-tab');
     for (var i = 0; i < tabs.length; i++) {
       var on = tabs[i].getAttribute('data-key') === 'tab-' + next;
@@ -1036,13 +1094,18 @@
         C.toast('The lookup still says ' + p.name + '. To set it yourself, add a city to weather.location in config.js.', 7000);
         return done();
       }
-      // A different city: keep showing the old forecast until the new one is in.
+      // A different city: keep the old place and forecast until the new
+      // forecast is in, and keep them if it doesn't come.
       fetchForecast(p, safe(function (err2, r) {
+        if (err2 || !r) {
+          lsSet(PLACE_KEY, old);
+          C.toast('Couldn’t get the forecast for ' + p.name + ' (' + (err2 || 'no answer') + '). Still showing ' + old.name + '.', 6000);
+          return done();
+        }
         place = p;
         lsSet(PLACE_KEY, p);
-        rec = null;
-        if (r) keep(r);
-        settle(err2);
+        keep(r);
+        settle('');
         done();
       }));
     }));
@@ -1050,17 +1113,38 @@
 
   /* ---------- timers ---------- */
 
+  // The TV's clock can jump back (a wrong time fixed by the network). Then a
+  // refresh scheduled by the old time would wait far too long, and a forecast
+  // "saved in the future" would look fresh forever. Either one means: due now.
+  function clockJumped() {
+    var now = Date.now();
+    return nextDue - now > REFRESH_EVERY || (rec && rec.savedAt - now > MIN) ||
+      (refreshing && startedAt - now > MIN);
+  }
+
   function tick() {
+    if (clockJumped()) {
+      nextDue = 0;
+      if (rec && rec.savedAt > Date.now()) rec.savedAt = Date.now() - REFRESH_EVERY;
+    }
     // Every call has its own timeout, so an update stuck this long lost its
     // callback to an error somewhere. Let the next one run.
-    if (refreshing && Date.now() - startedAt > 3 * MIN) refreshing = false;
+    if (refreshing && Math.abs(Date.now() - startedAt) > 3 * MIN) {
+      refreshing = false;
+      userAction = '';
+    }
     if (!document.hidden && !refreshing && Date.now() >= nextDue) refresh();
     else redraw();
   }
 
   function onVisible() {
-    if (document.hidden || refreshing) return;
-    var due = rec ? ageOf(rec) >= REFRESH_EVERY : Date.now() >= nextDue;
+    if (document.hidden) return;
+    if (clockJumped()) {
+      nextDue = 0;
+      if (rec && rec.savedAt > Date.now()) rec.savedAt = Date.now() - REFRESH_EVERY;
+    }
+    if (refreshing) return;
+    var due = rec ? ageOf(rec) >= REFRESH_EVERY || Date.now() >= nextDue : Date.now() >= nextDue;
     if (due) refresh();
     else redraw();
   }

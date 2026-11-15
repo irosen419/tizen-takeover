@@ -21,6 +21,7 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;      /* never paint past the tile, whatever the text */
   display: flex;
   flex-direction: column;
 }
@@ -222,20 +223,12 @@
   color: #050506;
 }
 .wx-btn.is-pressed { opacity: 0.7; }
-.wx-bar-place {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  color: var(--text-2);
-}
-.wx-bar-pin { width: 1.2rem; height: 1.2rem; margin-right: 0.5rem; }
-.wx-bar-name {
+.wx-bar-date {
   min-width: 0;
   font-size: 1.05rem;
   line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--text-2);
+  word-wrap: break-word;
 }
 
 .wx-main {
@@ -243,6 +236,8 @@
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
+  /* Last line of defence: nothing may paint over the bar or the footer. */
+  overflow: hidden;
 }
 .wx-view {
   flex: 1 1 auto;
@@ -268,7 +263,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 0.35rem;
+  padding-bottom: 0.15rem;
 }
 .wx-now-main {
   flex: 1 1 auto;
@@ -278,7 +273,7 @@
 }
 .wx-now-temp {
   flex: 0 0 auto;
-  font-size: 4.6rem;
+  font-size: 4rem;
   font-weight: 300;
   line-height: 1.25;
   letter-spacing: -0.02em;
@@ -341,7 +336,7 @@
   display: flex;
   flex-direction: column;
   border-top: 0.06rem solid var(--line);
-  padding-top: 0.45rem;
+  padding-top: 0.4rem;
 }
 .wx-hrow { flex: 0 0 auto; display: flex; }
 .wx-hcol {
@@ -370,7 +365,7 @@
 .wx-curve {
   position: relative;
   flex: 1 1 auto;
-  min-height: 3rem;
+  min-height: 0;
 }
 .wx-plot {
   position: absolute;
@@ -420,6 +415,22 @@
 }
 .wx-hrain.is-wet { color: #7cc4ff; }
 .wx-hrain.is-dry { color: var(--text-3); }
+
+/* Flat: no room for a readable curve (set by fitHours in weather.js). The
+   temperatures become an ordinary row between the icons and the rain. */
+.wx-hours.is-flat .wx-curve { flex: 0 0 auto; }
+.wx-hours.is-flat .wx-plot {
+  position: static;
+  display: flex;
+  padding: 0.25rem 0 0.2rem;
+}
+.wx-hours.is-flat .wx-curve-svg,
+.wx-hours.is-flat .wx-dot { display: none; }
+.wx-hours.is-flat .wx-ctemp {
+  position: static;
+  flex: 0 0 auto;
+  margin: 0;
+}
 
 /* ---------- Week ---------- */
 

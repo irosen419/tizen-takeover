@@ -83,6 +83,8 @@ function log(text) {
 /* Returns the matching list entry, or null if the address is not exactly on the list. */
 function checkFetchUrl(target) {
   if (typeof target !== 'string' || !target || target.length > 2000) return null;
+  // Printable ASCII only: old Node writes the request path as latin1.
+  if (/[^\x21-\x7e]/.test(target)) return null;
   var u = urlLib.parse(target, true);
   if (u.protocol !== 'https:' || u.auth) return null;
   if (u.port && String(u.port) !== '443') return null;
