@@ -13,6 +13,9 @@
 # "docker compose restart hub".
 #
 # Data: the to-do list is kept in ./data on the Pi through the same mount.
+#
+# TZ makes the log show local time. Compose fills it in from HUB_TIMEZONE in
+# .env (it reads .env in this folder for that by itself), or uses Chicago.
 
 services:
   hub:
@@ -22,5 +25,7 @@ services:
     volumes:
       - ./:/app
     command: node server.js
+    environment:
+      - TZ=${HUB_TIMEZONE:-America/Chicago}
     restart: unless-stopped
     init: true

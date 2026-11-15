@@ -17,6 +17,7 @@ const path = require('path');
 const hubServer = require('./server');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
+const NO_CALENDAR = { configured: false, calendars: 0, timer: false, refreshing: false };
 let passed = 0;
 let failed = 0;
 const tmpDirs = [];
@@ -167,6 +168,7 @@ async function main() {
     assert.ok(typeof st.epoch === 'string' && st.epoch.length >= 4);
     assert.strictEqual(st.rev, 0);
     assert.deepStrictEqual(st.resources.todo.data.items, []);
+    assert.deepStrictEqual(st.resources.calendar, { rev: 0, data: { configured: false, calendars: [], events: [] } });
     epoch = st.epoch;
   });
   await request(h.port, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Keep me' } });
@@ -177,6 +179,7 @@ async function main() {
     assert.strictEqual(r.json.epoch, epoch);
     assert.strictEqual(r.json.rev, 1);
     assert.strictEqual(r.json.resources.todo.data.items[0].title, 'Keep me');
+    assert.strictEqual(r.json.resources.calendar.data.configured, false);
     assert.ok(!fs.readdirSync(dir).some((f) => f.indexOf('.tmp') >= 0), 'no temp file left');
   });
   await stop(h);
@@ -232,7 +235,18 @@ async function main() {
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
     assert.deepStrictEqual(r.json.screens, []);
+    assert.deepStrictEqual(r.json.calendar, { configured: false, calendars: 0, lastRefresh: null });
     assert.ok(r.text.indexOf(TOKEN) < 0);
+  });
+
+  await check('calendar calls need the token; with nothing set up they answer configured false', async () => {
+    assert.strictEqual((await request(P, 'GET', '/api/calendar')).status, 401);
+    assert.strictEqual((await request(P, 'POST', '/api/calendar/refresh')).status, 401);
+    const g = await request(P, 'GET', '/api/calendar', { token: TOKEN });
+    assert.deepStrictEqual(g.json, { ok: true, rev: 0, data: { configured: false, calendars: [], events: [] } });
+    const r = await request(P, 'POST', '/api/calendar/refresh', { token: TOKEN });
+    assert.deepStrictEqual(r.json, { ok: true, done: true, changed: false, calendars: [] });
+    assert.strictEqual((await request(P, 'GET', '/api/calendar/refresh', { token: TOKEN })).status, 405);
   });
 
   await check('control API: unknown call 404, wrong method 405, invalid JSON 400', async () => {
@@ -276,7 +290,7 @@ async function main() {
     for (const type of ['home', 'reload']) {
       assert.strictEqual((await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: type } })).json.delivered, 0);
     }
-    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false });
+    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR });
   });
 
   /* ---------- to-do ---------- */
@@ -406,6 +420,7 @@ async function main() {
     assert.strictEqual(r.json.server, '0.1.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
+    assert.strictEqual(r.json.resources.calendar.data.configured, false);
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -571,7 +586,7 @@ async function main() {
     }, 3000);
     const c = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'show', data: { widget: 'todo' } } });
     assert.strictEqual(c.json.delivered, 0);
-    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false });
+    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR });
   });
 
   await stop(h);
