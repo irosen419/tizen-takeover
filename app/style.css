@@ -34,17 +34,19 @@ body {
 
 /* ---------- home stage ---------- */
 
+/* Absolute, not fixed, and no layer of its own: either would make the stage
+   a stacking context, and the opening tile has to draw above the ghost. */
 .stage {
-  position: fixed;
+  position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
-  transform: translateZ(0);   /* its own layer, so the overlays don't repaint it */
 }
 .grid {
   position: absolute;
   top: 0.75rem; right: 0.75rem; bottom: 0.75rem; left: 0.75rem;
 }
 .cell { position: absolute; }
+.cell.is-raised { z-index: 12; }   /* the opening or closing tile, above the ghost */
 
 .tile {
   position: absolute;
@@ -133,6 +135,9 @@ body {
 }
 .scrim.is-shown { display: block; }
 
+/* The ghost is the panel's frame (background, glass, border). The panel on
+   top holds only the content, so the two can move separately while opening.
+   The panel keeps a transparent border so its content sits where it did. */
 .panel,
 .ghost {
   position: fixed;
@@ -142,8 +147,11 @@ body {
   height: 26rem;
   margin: -13rem 0 0 -23rem;
   border-radius: 1.9rem;
+  border: var(--edge) solid transparent;
+}
+.ghost {
   background: var(--card);
-  border: var(--edge) solid var(--line);
+  border-color: var(--line);
 }
 .panel.is-full,
 .ghost.is-full {
@@ -156,21 +164,25 @@ body {
   border-width: 0;
 }
 
+/* Always laid out and on its own layer, parked invisible, so opening only
+   has to show it, not paint it. */
 .ghost {
-  display: none;
+  display: block;
   z-index: 11;
+  opacity: 0;
+  pointer-events: none;
   transform-origin: 0 0;
-  will-change: transform;
+  will-change: transform, opacity;
 }
-.ghost.is-shown { display: block; }
 
 .panel {
   display: none;
-  z-index: 12;
+  z-index: 13;
   padding: 1.4rem 1.5rem;
   flex-direction: column;
+  background: transparent;
   opacity: 0;
-  will-change: opacity;
+  will-change: transform, opacity;
 }
 .panel.is-shown { display: flex; }
 .panel.is-full { padding: 2rem 2.4rem; }
@@ -396,7 +408,7 @@ body {
    sections side by side. The DOM is the same; only these rules change. */
 .ent-grid {
   margin: 0 -0.45rem;
-  padding-top: 0.4rem;
+  padding-top: 0.6rem;        /* room for a grown, ringed icon in the first row */
 }
 .ent-section { display: inline; }
 .ent-section-label { display: none; }
@@ -404,7 +416,7 @@ body {
   display: inline-block;
   vertical-align: top;
   width: 16.6666%;
-  padding: 0 0.3rem 0.8rem;
+  padding: 0 0.3rem 0.6rem;
   text-align: center;
   cursor: pointer;
 }
@@ -412,10 +424,11 @@ body {
   width: 5.2rem;
   max-width: 100%;
   margin: 0 auto;
+  transition: transform 100ms ease-out;
 }
 .ent-icon .logo-text { font-size: 2rem; }
 .ent-name {
-  margin-top: 0.5rem;
+  margin-top: 0.7rem;         /* clear of a grown, ringed icon */
   font-size: 0.9rem;
   line-height: 1.3;
   color: var(--text-2);
@@ -428,9 +441,15 @@ body {
   word-wrap: break-word;
 }
 .ent-item.is-missing .logo { opacity: 0.35; }
-/* The ring follows the rounded corners because it is a box-shadow on the face. */
+/* The focused icon grows a little (only the transform animates) and gets a
+   soft ring. The ring follows the rounded corners because it is a box-shadow
+   on the face; it changes at once, it is never animated. */
+.ent-item.is-focused .ent-icon {
+  transform: scale(1.05);
+  transition: transform 140ms ease-out;
+}
 .ent-item.is-focused .logo-face {
-  box-shadow: 0 0 0 0.16rem rgba(5, 6, 8, 0.9), 0 0 0 0.34rem var(--focus);
+  box-shadow: 0 0 0 0.14rem rgba(5, 6, 8, 0.85), 0 0 0 0.3rem rgba(255, 255, 255, 0.6);
 }
 .ent-item.is-focused .ent-name { color: var(--text); }
 .ent-item.is-pressed .logo { opacity: 0.7; }
@@ -562,7 +581,6 @@ body.has-picture {
    animates. Without the blurred copy the surface is just the tint. */
 :root { --glass-img: none; }
 .is-glass .tile,
-.is-glass .panel,
 .is-glass .ghost {
   --tint: rgba(10, 14, 20, 0.4);
   background-color: transparent;
@@ -577,22 +595,30 @@ body.has-picture {
   --tint: rgba(36, 44, 58, 0.46);
   border-color: var(--focus);
 }
-.is-glass .panel,
 .is-glass .ghost { --tint: rgba(10, 14, 20, 0.5); }
-.is-glass .panel.is-full,
 .is-glass .ghost.is-full { --tint: rgba(10, 14, 20, 0.62); }
 
 /* The engine couldn't show the blurred layer: keep the see-through tint. */
 .glass-tint-only .tile,
-.glass-tint-only .panel,
 .glass-tint-only .ghost {
   background-image: none;
   background-color: rgba(10, 14, 20, 0.4);
   background-color: var(--tint);
 }
 
-/* Push mode moves every tile, so keep them on their own layers up front. */
-.motion-push .tile { will-change: transform, opacity; }
+/* While a tile rides to or from the center it shows only its content: the
+   ghost is the frame by then, and a second frame inside it would show. */
+.tile.is-lifted,
+.is-glass .tile.is-lifted,
+.glass-tint-only .tile.is-lifted {
+  background: none;
+  border-color: transparent;
+}
+
+/* Push and expand move tiles (push all of them, expand the opening one), so
+   keep them on their own layers up front. */
+.motion-push .tile,
+.motion-expand .tile { will-change: transform, opacity; }
 
 /* ---------- Today: the live updates line ---------- */
 
