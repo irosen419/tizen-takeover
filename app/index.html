@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Home Hub</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="place" id="place"></div>
+    <div class="clock">
+      <div class="time" id="time"></div>
+      <div class="date" id="date"></div>
+    </div>
+  </header>
+
+  <main class="rows" id="rows"></main>
+
+  <section class="overlay" id="allApps" hidden>
+    <div class="sheet">
+      <h2 class="sheet-title">All apps</h2>
+      <p class="sheet-hint">Up and down to move, OK to open, Back to close</p>
+      <ul class="app-list" id="appList"></ul>
+    </div>
+  </section>
+
+  <section class="frame-wrap" id="frameWrap" hidden>
+    <iframe id="frame" title="Dashboard"></iframe>
+    <div class="frame-hint">Back to return</div>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="config.js"></script>
+  <script src="hub.js"></script>
+</body>
+</html>
