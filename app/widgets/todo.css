@@ -1,0 +1,448 @@
+/* To-do widget. Same rules as style.css: no grid, no flex gap, only
+   transform and opacity animate, focus changes are instant. Every line that
+   can be cut off has a line-height of at least 1.3, so accents and
+   descenders stay whole. */
+
+.todo-tile,
+.todo-panel,
+.todo-error {
+  --todo-warn: #ffb36b;
+  --todo-hair: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------- shared bits ---------- */
+
+/* The round tick mark. Empty when open, filled with a check when done. */
+.todo-tick {
+  display: block;
+  flex: 0 0 auto;
+  position: relative;
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 0.12rem solid var(--text-2);
+  border-radius: 50%;
+  color: #050506;
+}
+.todo-tick svg {
+  display: none;
+  position: absolute;
+  top: 12%;
+  left: 12%;
+  width: 76%;
+  height: 76%;
+}
+
+.todo-warn {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--todo-warn);
+  word-wrap: break-word;
+}
+
+.todo-error { padding-top: 0.6rem; }
+.todo-error-title { font-size: 1rem; line-height: 1.35; color: var(--text); }
+.todo-error-detail {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+
+/* ---------- home tile ---------- */
+
+.todo-tile {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.9rem;
+}
+
+/* The key number first: open Now items, large and light like the clock. */
+.todo-hero {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.todo-hero-num {
+  flex: 0 0 auto;
+  margin-right: 0.6rem;
+  font-size: 4.4rem;
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.todo-hero-cap {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+.todo-hero-clear {
+  font-size: 1.9rem;
+  font-weight: 300;
+  line-height: 1.3;
+  color: var(--text);
+}
+.todo-meta {
+  flex: 0 0 auto;
+  margin-top: 0.3rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+
+/* Rows of the first open Now items. The JS adds rows while they fit; the
+   list only shrinks, so "+N more" sits right under the last row. */
+.todo-tile-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin-top: 0.9rem;
+  border-top: 0.06rem solid var(--todo-hair);
+}
+.todo-tile-row {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.55rem 0 0.5rem;
+  border-bottom: 0.06rem solid var(--todo-hair);
+}
+.todo-tile-row .todo-tick {
+  width: 0.95rem;
+  height: 0.95rem;
+  margin: 0.18rem 0.75rem 0 0;
+  border-width: 0.1rem;
+}
+.todo-tile-text { flex: 1 1 auto; min-width: 0; }
+/* Two lines at most; the cut falls between lines, never through a glyph. */
+.todo-tile-title {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  max-height: 2.7em;
+  overflow: hidden;
+  /* Ends a cut title with "…" where the engine can; max-height still holds it
+     to two lines where it can't. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text);
+  word-wrap: break-word;
+}
+.todo-flag {
+  margin-top: 0.15rem;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--todo-warn);
+}
+.todo-more {
+  flex: 0 0 auto;
+  padding-top: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+
+.todo-tile-empty { padding-top: 0.4rem; }
+.todo-tile-empty-title {
+  font-size: 1.35rem;
+  font-weight: 300;
+  line-height: 1.35;
+  color: var(--text);
+}
+.todo-tile-empty-hint {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+
+/* Pinned to the bottom of the tile. */
+.todo-tile-warn {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 0.6rem;
+}
+
+/* ---------- panel ---------- */
+
+.todo-panel { padding: 0.2rem 0 0.6rem; }
+.todo-cols { display: block; }
+.todo-col { display: block; }
+
+/* Add row. The input is the focusable; .todo-add-frame (after it in the DOM)
+   draws the box, so the sibling selectors below can style the whole row.
+   Icon, input and hint sit side by side, so typed text never runs under the
+   hint. */
+.todo-add {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  padding: 0 1rem 0 0.9rem;
+}
+.todo-add-icon,
+.todo-input,
+.todo-add-hint { position: relative; z-index: 1; }
+.todo-add-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-right: 0.7rem;
+  color: var(--text-2);
+}
+.todo-add-icon svg { display: block; width: 100%; height: 100%; }
+.todo-input {
+  flex: 1 1 auto;
+  min-width: 8rem;
+  display: block;
+  padding: 0.7rem 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1.4;
+  color: var(--text);
+  caret-color: #ffffff;
+  outline: none;
+  -webkit-appearance: none;
+}
+.todo-input::-webkit-input-placeholder { color: var(--text-3); opacity: 1; }
+.todo-input::placeholder { color: var(--text-3); opacity: 1; }
+/* Both hints are stacked, so the hint is as wide as the wider one and the
+   input doesn't change width when typing starts. */
+.todo-add-hint {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  margin-left: 1rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  text-align: right;
+}
+.todo-hint-ok,
+.todo-hint-typing { display: block; height: 0; overflow: hidden; visibility: hidden; }
+.todo-add-frame {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+  border-radius: 0.8rem;
+  border: var(--edge) solid var(--todo-hair);
+  background: rgba(255, 255, 255, 0.05);
+}
+/* Hub focus on the box: white border, OK to type. */
+.todo-input.is-focused ~ .todo-add-frame { border-color: var(--focus); background: var(--card-2); }
+.todo-input.is-focused ~ .todo-add-hint .todo-hint-ok { height: auto; overflow: visible; visibility: visible; }
+/* Typing: brighter fill, a caret, Done or Enter adds it. */
+/* The soft outer ring is what tells typing from plain focus across a room. */
+.todo-input:focus ~ .todo-add-frame {
+  border-color: var(--focus);
+  background: #2b313c;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.24);
+}
+.todo-input:focus ~ .todo-add-hint { color: var(--text-2); }
+.todo-input:focus ~ .todo-add-hint .todo-hint-ok { height: 0; overflow: hidden; visibility: hidden; }
+.todo-input:focus ~ .todo-add-hint .todo-hint-typing { height: auto; overflow: visible; visibility: visible; }
+
+/* The right column's spacer in full screen: an empty copy of the add row
+   with the input's metrics, so it is exactly as tall. */
+.todo-add-spacer { display: none; }
+.panel.is-full .todo-add-spacer { display: flex; visibility: hidden; }
+
+.todo-panel-warn { padding: 0.2rem 0.9rem 0.3rem; }
+
+/* Sections: a small letter-spaced label and its count, then rows split by
+   hairlines. */
+.todo-sec { padding-top: 0.9rem; }
+.todo-sec.is-empty { display: none; }
+.todo-sec-label {
+  padding: 0 0.9rem 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.todo-sec-count {
+  margin-left: 0.6rem;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+.todo-sec-empty {
+  padding: 0.4rem 0.9rem 0.2rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+
+.todo-row {
+  display: flex;
+  align-items: flex-start;
+  border-top: 0.06rem solid var(--todo-hair);
+}
+.todo-sec-label + .todo-row { border-top-color: transparent; }
+
+.todo-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  padding: 0.6rem 0.8rem;
+  margin: 0.1rem 0;
+  border-radius: 0.7rem;
+  border: var(--edge) solid transparent;
+  cursor: pointer;
+}
+.todo-main .todo-tick { margin: 0.18rem 0.8rem 0 0; }
+.todo-text { flex: 1 1 auto; min-width: 0; }
+.todo-title {
+  display: block;
+  font-size: 1.1rem;
+  line-height: 1.35;
+  color: var(--text);
+  word-wrap: break-word;
+}
+.todo-due {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.todo-due.is-overdue { color: var(--todo-warn); }
+
+.todo-main.is-focused { background: var(--card-2); border-color: var(--focus); }
+/* Focus on the row's Move or Remove: the row stays visibly picked. */
+.todo-row.is-active .todo-main { background: rgba(255, 255, 255, 0.06); }
+.todo-row.is-active .todo-main.is-focused { background: var(--card-2); }
+.todo-main.is-focused .todo-tick { border-color: var(--text); }
+.todo-main.is-pressed { opacity: 0.75; }
+
+/* Done: tick filled, title dim and struck through. */
+.todo-row.is-done .todo-tick { background: var(--text-2); border-color: var(--text-2); }
+.todo-row.is-done .todo-tick svg { display: block; }
+.todo-row.is-done .todo-title { color: var(--text-3); text-decoration: line-through; }
+.todo-row.is-done .todo-main.is-focused .todo-tick { background: var(--text); border-color: var(--text); }
+.todo-row.is-done .todo-main.is-focused .todo-title { color: var(--text-2); }
+
+/* Actions: two round icon buttons. Every row keeps room for both (a done
+   row has an empty slot instead of Move), so nothing moves; they only show
+   on the active row. Aligned to the row's bottom, so they end where the row
+   does. */
+.todo-acts {
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 0 0.45rem 0.3rem;
+  opacity: 0;
+  pointer-events: none;
+}
+.todo-row.is-active .todo-acts { opacity: 1; pointer-events: auto; }
+.todo-act,
+.todo-act-slot {
+  display: block;
+  position: relative;
+  flex: 0 0 auto;
+  width: 2.3rem;
+  height: 2.3rem;
+  margin-left: 0.4rem;
+}
+.todo-act {
+  border-radius: 50%;
+  border: var(--edge) solid var(--todo-hair);
+  background: var(--card-2);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.todo-act-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: -0.575rem 0 0 -0.575rem;
+}
+.todo-act-icon svg { display: block; width: 100%; height: 100%; }
+
+/* The label: a pill anchored to the button's right edge (the -0.16rem is
+   --edge, so it covers the border) that grows leftward over the row while
+   the button has focus. The icon stays on top at its right end. */
+.todo-pill {
+  display: none;
+  position: absolute;
+  top: -0.16rem;
+  right: -0.16rem;
+  bottom: -0.16rem;
+  z-index: 0;
+  align-items: center;
+  padding: 0 2.55rem 0 1rem;
+  border-radius: 1.3rem;
+  background: #fff;
+  color: #050506;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.todo-act.is-focused { z-index: 2; background: #fff; border-color: #fff; color: #050506; }
+.todo-act.is-focused .todo-pill { display: flex; }
+.todo-pill-armed { display: none; }
+.todo-del.is-armed .todo-pill-label { display: none; }
+.todo-del.is-armed .todo-pill-armed { display: inline; }
+.todo-del.is-armed,
+.todo-del.is-armed .todo-pill { background: var(--todo-warn); border-color: var(--todo-warn); color: #1a1006; }
+
+/* A tiny pop on a tick that was just ticked or an item just added. */
+@media (prefers-reduced-motion: no-preference) {
+  .todo-row.is-flash .todo-tick { -webkit-animation: todo-pop 140ms ease-out; animation: todo-pop 140ms ease-out; }
+}
+@-webkit-keyframes todo-pop {
+  from { -webkit-transform: scale(0.6); transform: scale(0.6); opacity: 0.4; }
+  to { -webkit-transform: scale(1); transform: scale(1); opacity: 1; }
+}
+@keyframes todo-pop {
+  from { transform: scale(0.6); opacity: 0.4; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* ---------- full screen: two columns, larger type ---------- */
+
+.panel.is-full .todo-cols { display: flex; align-items: flex-start; }
+.panel.is-full .todo-col-main { flex: 0 0 56%; width: 56%; padding-right: 2.4rem; }
+.panel.is-full .todo-col-side { flex: 1 1 auto; min-width: 0; }
+.panel.is-full .todo-sec.is-empty { display: block; }
+
+.panel.is-full .todo-input { font-size: 1.3rem; padding: 0.85rem 0; }
+.panel.is-full .todo-add-icon { width: 1.35rem; height: 1.35rem; }
+.panel.is-full .todo-add-hint { font-size: 0.9rem; }
+.panel.is-full .todo-sec { padding-top: 1.2rem; }
+.panel.is-full .todo-sec-label { font-size: 0.9rem; padding-bottom: 0.45rem; }
+.panel.is-full .todo-main { padding: 0.75rem 0.9rem; }
+.panel.is-full .todo-title { font-size: 1.3rem; }
+.panel.is-full .todo-main .todo-tick { width: 1.35rem; height: 1.35rem; margin-top: 0.2rem; }
+.panel.is-full .todo-due { font-size: 0.85rem; margin-top: 0.25rem; }
+.panel.is-full .todo-acts { padding-bottom: 0.6rem; }
+.panel.is-full .todo-act,
+.panel.is-full .todo-act-slot { width: 2.6rem; height: 2.6rem; }
+.panel.is-full .todo-act-icon { width: 1.3rem; height: 1.3rem; margin: -0.65rem 0 0 -0.65rem; }
+.panel.is-full .todo-pill { padding-right: 2.85rem; font-size: 1rem; border-radius: 1.45rem; }
+.panel.is-full .todo-sec-empty { font-size: 1.1rem; }
+.panel.is-full .todo-warn { font-size: 0.9rem; }

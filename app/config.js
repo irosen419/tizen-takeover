@@ -112,6 +112,12 @@ var HUB_CONFIG = {
           ]
         }
       ]
-    }
+    },
+
+    /*
+     * To-do: a list kept on this TV. Nothing to set up. sub is the small line
+     * under the title.
+     */
+    todo: { sub: 'On this TV' }
   }
 };
