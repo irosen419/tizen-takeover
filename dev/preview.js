@@ -4,6 +4,12 @@
  * Serves app/ at http://127.0.0.1:8090/ and pretends to be service.js on
  * 127.0.0.1:8095 with a made-up app list. Opening apps, keys and webhooks are
  * only printed here. No dependencies.
+ *
+ * Weather: GET /fetch?url=... answers from dev/samples/*.json (edit them, no
+ * restart needed). Try failure states with WEATHER_MODE=fail node dev/preview.js
+ * or GET http://127.0.0.1:8095/preview?weather=MODE while it runs. Modes: ok,
+ * fail, slow, badjson, nolookup, nogeocode, forecastfail.
+ * HUB_PAGE_PORT and HUB_SERVICE_PORT change the two ports (for tests).
  */
 var http = require('http');
 var fs = require('fs');
@@ -11,8 +17,20 @@ var path = require('path');
 var urlLib = require('url');
 
 var APP_DIR = path.join(__dirname, '..', 'app');
-var PAGE_PORT = 8090;
-var SERVICE_PORT = 8095;
+var SAMPLE_DIR = path.join(__dirname, 'samples');
+var PAGE_PORT = parseInt(process.env.HUB_PAGE_PORT, 10) || 8090;
+var SERVICE_PORT = parseInt(process.env.HUB_SERVICE_PORT, 10) || 8095;
+
+var MODES = ['ok', 'fail', 'slow', 'badjson', 'nolookup', 'nogeocode', 'forecastfail'];
+var weatherMode = process.env.WEATHER_MODE || 'ok';
+
+// Same four addresses as service.js, each with the sample file that stands in for it.
+var FETCH_ALLOWED = [
+  { host: 'api.open-meteo.com', path: '/v1/forecast', sample: 'weather.json', kind: 'forecast' },
+  { host: 'geocoding-api.open-meteo.com', path: '/v1/search', sample: 'geocode.json', kind: 'geocode' },
+  { host: 'ipwho.is', path: '/', sample: 'ipwho.json', kind: 'lookup' },
+  { host: 'get.geojs.io', path: '/v1/ip/geo.json', sample: 'geojs.json', kind: 'lookup' }
+];
 
 var TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -62,6 +80,77 @@ function log(text) {
   console.log('[' + t.toTimeString().substring(0, 8) + '] ' + text);
 }
 
+/* Returns the matching list entry, or null if the address is not exactly on the list. */
+function checkFetchUrl(target) {
+  if (typeof target !== 'string' || !target || target.length > 2000) return null;
+  // Printable ASCII only: old Node writes the request path as latin1.
+  if (/[^\x21-\x7e]/.test(target)) return null;
+  var u = urlLib.parse(target, true);
+  if (u.protocol !== 'https:' || u.auth) return null;
+  if (u.port && String(u.port) !== '443') return null;
+  var host = String(u.hostname || '').toLowerCase();
+  for (var i = 0; i < FETCH_ALLOWED.length; i++) {
+    if (FETCH_ALLOWED[i].host === host && FETCH_ALLOWED[i].path === u.pathname) {
+      return { entry: FETCH_ALLOWED[i], query: u.query || {} };
+    }
+  }
+  return null;
+}
+
+function round1(x) { return Math.round(x * 10) / 10; }
+function toC(f) { return round1((f - 32) * 5 / 9); }
+
+/* Turns the Fahrenheit/mph sample into what the widget asked for. */
+function convertForecast(data, query) {
+  var celsius = query.temperature_unit === 'celsius' || query.temperature_unit !== 'fahrenheit';
+  var kmh = query.wind_speed_unit !== 'mph';
+  var i;
+  if (celsius) {
+    data.current.temperature_2m = toC(data.current.temperature_2m);
+    data.current.apparent_temperature = toC(data.current.apparent_temperature);
+    for (i = 0; i < data.hourly.temperature_2m.length; i++) data.hourly.temperature_2m[i] = toC(data.hourly.temperature_2m[i]);
+    for (i = 0; i < data.daily.temperature_2m_max.length; i++) {
+      data.daily.temperature_2m_max[i] = toC(data.daily.temperature_2m_max[i]);
+      data.daily.temperature_2m_min[i] = toC(data.daily.temperature_2m_min[i]);
+    }
+    data.current_units.temperature_2m = '°C';
+    data.current_units.apparent_temperature = '°C';
+    data.hourly_units.temperature_2m = '°C';
+    data.daily_units.temperature_2m_max = '°C';
+    data.daily_units.temperature_2m_min = '°C';
+  }
+  if (kmh) {
+    data.current.wind_speed_10m = round1(data.current.wind_speed_10m * 1.609);
+    data.current_units.wind_speed_10m = 'km/h';
+  }
+  return data;
+}
+
+/* The pretend /fetch: same replies as service.js, answered from dev/samples. */
+function handleFetch(q, res) {
+  var hit = checkFetchUrl(q.url);
+  if (!hit) return send(res, 400, { ok: false, error: 'address not allowed' });
+  var kind = hit.entry.kind;
+  log('fetch ' + hit.entry.host + ' (weather mode: ' + weatherMode + ')');
+  function answer() {
+    if (weatherMode === 'fail') return send(res, 502, { ok: false, error: 'not reachable' });
+    if (weatherMode === 'nolookup' && kind === 'lookup') return send(res, 502, { ok: false, error: 'not reachable' });
+    if (weatherMode === 'forecastfail' && kind === 'forecast') return send(res, 502, { ok: false, error: 'HTTP 503' });
+    if (weatherMode === 'badjson' && kind === 'forecast') return send(res, 200, { ok: true, data: { latitude: 40.0 } });
+    if (weatherMode === 'nogeocode' && kind === 'geocode') return send(res, 200, { ok: true, data: { generationtime_ms: 0.4 } });
+    var data;
+    try {
+      data = JSON.parse(fs.readFileSync(path.join(SAMPLE_DIR, hit.entry.sample), 'utf8'));
+    } catch (e) {
+      return send(res, 502, { ok: false, error: 'sample file problem: ' + e.message });
+    }
+    if (kind === 'forecast') data = convertForecast(data, hit.query);
+    send(res, 200, { ok: true, data: data });
+  }
+  if (weatherMode === 'slow') setTimeout(answer, 6000);
+  else answer();
+}
+
 var page = http.createServer(function (req, res) {
   var pathname = decodeURIComponent(urlLib.parse(req.url).pathname || '/');
   if (pathname === '/') pathname = '/index.html';
@@ -96,6 +185,17 @@ var service = http.createServer(function (req, res) {
     log('webhook ' + q.url);
     return send(res, 200, { ok: true });
   }
+  if (p === '/fetch') return handleFetch(q, res);
+  if (p === '/preview') {
+    if (q.weather !== undefined) {
+      if (MODES.indexOf(String(q.weather)) === -1) {
+        return send(res, 400, { ok: false, error: 'unknown mode', modes: MODES });
+      }
+      weatherMode = String(q.weather);
+      log('weather mode: ' + weatherMode);
+    }
+    return send(res, 200, { ok: true, weather: weatherMode });
+  }
   send(res, 404, { ok: false, error: 'not found' });
 });
 
@@ -105,5 +205,7 @@ page.listen(PAGE_PORT, '127.0.0.1', function () {
 });
 service.listen(SERVICE_PORT, '127.0.0.1', function () {
   log('Service:  http://127.0.0.1:' + SERVICE_PORT + ' (pretend service.js)');
+  log('Weather:  answers from dev/samples, mode "' + weatherMode + '"');
+  log('          switch with /preview?weather=' + MODES.join('|') + ' on the service port');
   log('Keys: arrows to move, Enter for OK, Escape for Back.');
 });

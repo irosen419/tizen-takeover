@@ -1,0 +1,574 @@
+/* Weather widget. Every class starts with wx-.
+
+   No boxes inside boxes: the tile and panel are already glass, so inside
+   them it's open space, hairlines and type weight. The only filled shapes
+   are the buttons, the temperature range bars and the curve. Nothing
+   animates. Every text element keeps a line-height of 1.25 or more so
+   accents never clip, and labels may wrap. */
+
+/* ---------- icon accents ---------- */
+
+.wx-a-sun,
+.wx-a-bolt { stroke: #ffd166; }
+.wx-a-moon { stroke: #eadfb8; }
+.wx-a-rain { stroke: #7cc4ff; }
+.wx-a-snow { stroke: #e3f2ff; }
+
+/* ---------- tile ---------- */
+
+/* A twin of the Today tile: the same quiet label on top, the same big light numerals. */
+.wx-tile {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;      /* never paint past the tile, whatever the text */
+  display: flex;
+  flex-direction: column;
+}
+.wx-tile-top {
+  display: flex;
+  align-items: baseline;
+  flex: 0 0 auto;
+}
+.wx-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-asof {
+  flex: 0 0 auto;
+  margin-left: 0.6rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+/* Like the hub's "Soon" tag. */
+.wx-tag {
+  flex: 0 0 auto;
+  align-self: center;
+  /* The tag may stand a little taller than the label without making the row taller. */
+  margin: -0.1rem 0 -0.1rem 0.6rem;
+  padding: 0.05rem 0.55rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.18);
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.wx-tile-now {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+}
+.wx-tile-temp {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 3.8rem;
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.wx-tile-icon {
+  width: 3.4rem;
+  height: 3.4rem;
+  margin-left: 0.6rem;
+  color: var(--text);
+}
+.wx-tile-cond {
+  flex: 0 0 auto;
+  font-size: 1.2rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.wx-tile-foot {
+  margin-top: auto;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.wx-range { flex: 0 1 auto; min-width: 0; white-space: nowrap; }
+.wx-hl-key {
+  font-size: 0.8rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text-3);
+  margin-right: 0.3rem;
+}
+.wx-hl-gap { margin-left: 0.9rem; }
+.wx-hl-val { font-size: 1.05rem; line-height: 1.3; color: var(--text); }
+.wx-rain {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-left: 0.6rem;
+  color: var(--text-2);
+}
+.wx-rain.is-wet { color: #7cc4ff; }
+.wx-rain-icon { width: 1.05rem; height: 1.05rem; margin-right: 0.3rem; }
+.wx-rain-val { font-size: 1.05rem; line-height: 1.3; }
+
+/* Loading, setup and error on the tile: headline, line, faint mark. */
+.wx-msg-head {
+  position: relative;
+  z-index: 1;
+  margin-top: 0.9rem;
+  font-size: 1.3rem;
+  line-height: 1.3;
+  color: var(--text);
+}
+.wx-msg-line {
+  position: relative;
+  z-index: 1;
+  margin-top: 0.4rem;
+  max-width: 92%;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+.wx-mark {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 5rem;
+  height: 5rem;
+  opacity: 0.06;
+  color: #fff;
+}
+/* The accent colors would show through the faint mark; keep it plain white. */
+.wx-mark .wx-a-sun,
+.wx-mark .wx-a-moon { stroke: #fff; }
+
+/* ---------- panel frame ---------- */
+
+/* Fills the panel body's content box (the body keeps 0.5rem each side for focus rings). */
+.wx-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The one row of controls. One row, so Left and Right walk all of them and
+   Up always reaches the hub's Full screen button. */
+.wx-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+.wx-bar-left {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.wx-bar-right {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding-left: 1rem;
+}
+.wx-btn {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  padding: 0.45rem 0.9rem;
+  border-radius: 1.4rem;
+  border: var(--edge) solid var(--line);
+  background: var(--card-2);
+  font-size: 0.9rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.wx-bar-right .wx-btn { margin-left: 0.6rem; padding-left: 0.75rem; }
+.wx-bar-right .wx-btn:first-child { margin-left: 0; }
+.wx-btn-icon { width: 1.1rem; height: 1.1rem; margin-right: 0.5rem; }
+.wx-tab {
+  margin-right: 0.5rem;
+  padding-left: 1.1rem;
+  padding-right: 1.1rem;
+  background: transparent;
+  border-color: transparent;
+}
+.wx-tab.is-selected { background: var(--card-2); border-color: var(--line); color: var(--text); }
+.wx-btn.is-focused,
+.wx-tab.is-focused {
+  border-color: var(--focus);
+  background: #fff;
+  color: #050506;
+}
+.wx-btn.is-pressed { opacity: 0.7; }
+.wx-bar-date {
+  min-width: 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+
+.wx-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  /* Last line of defence: nothing may paint over the bar or the footer. */
+  overflow: hidden;
+}
+.wx-view {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wx-panel.is-day .wx-view-week,
+.wx-panel.is-week .wx-view-day { display: none; }
+
+.wx-foot {
+  flex: 0 0 auto;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  color: var(--text-3);
+}
+
+/* ---------- Day: the now band ---------- */
+
+.wx-now {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.15rem;
+}
+.wx-now-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.wx-now-temp {
+  flex: 0 0 auto;
+  font-size: 4rem;
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.wx-now-icon {
+  width: 3.6rem;
+  height: 3.6rem;
+  margin: 0 1rem 0 0.5rem;
+  color: var(--text);
+}
+.wx-now-words { flex: 1 1 auto; min-width: 0; }
+.wx-now-cond { font-size: 1.3rem; line-height: 1.3; color: var(--text); word-wrap: break-word; }
+.wx-now-feels { font-size: 0.95rem; line-height: 1.3; color: var(--text-2); margin-top: 0.1rem; }
+
+/* The stats keep their width; the condition beside the temperature wraps instead. */
+.wx-stats {
+  flex: 0 0 auto;
+  display: flex;
+  margin-left: 1rem;
+}
+.wx-stat {
+  flex: 0 0 auto;
+  padding: 0.1rem 0.8rem;
+  border-left: 0.06rem solid var(--line);
+}
+.wx-stat:first-child { border-left: 0; padding-left: 0; }
+.wx-stat:last-child { padding-right: 0; }
+.wx-stat-val {
+  font-size: 1.25rem;
+  line-height: 1.3;
+  color: var(--text);
+  white-space: nowrap;
+}
+.wx-stat-ampm { font-size: 0.8rem; color: var(--text-2); }
+.wx-stat.is-wet .wx-stat-val { color: #7cc4ff; }
+.wx-stat-label {
+  display: flex;
+  align-items: center;
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--text-3);
+}
+.wx-stat-icon { width: 0.95rem; height: 0.95rem; margin-right: 0.3rem; }
+
+/* Folded: two rows of two, set by fitNow() in weather.js when the words need the room. */
+.wx-now.is-tight .wx-stats { flex: 0 0 38%; flex-wrap: wrap; }
+.wx-now.is-tight .wx-stat { flex: 0 0 50%; padding: 0.15rem 0 0.15rem 0.8rem; }
+.wx-now.is-tight .wx-stat:nth-child(odd) { border-left: 0; padding-left: 0; }
+.wx-now.is-tight .wx-now-cond { font-size: 1.15rem; }
+.wx-stat-text { white-space: nowrap; }
+
+/* ---------- Day: the next hours ---------- */
+
+.wx-hours {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 0.06rem solid var(--line);
+  padding-top: 0.4rem;
+}
+.wx-hrow { flex: 0 0 auto; display: flex; }
+.wx-hcol {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+}
+.wx-hour {
+  font-size: 0.95rem;
+  line-height: 1.3;
+  color: var(--text);
+  white-space: nowrap;
+}
+.wx-hour-ampm { font-size: 0.75rem; color: var(--text-3); }
+.wx-hcol.is-now .wx-hour { font-weight: 600; }
+.wx-hour-icon {
+  display: block;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin: 0.2rem auto 0;
+  color: var(--text);
+}
+
+/* The curve zone. Numbers sit just above their point; the plot is pulled in so
+   the highest number and the lowest point both stay inside. */
+.wx-curve {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.wx-plot {
+  position: absolute;
+  top: 1.6rem;
+  bottom: 0.35rem;
+  left: 0;
+  right: 0;
+}
+.wx-curve-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.wx-curve-line {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.5);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.wx-curve-fill { stroke: none; }
+.wx-ctemp {
+  position: absolute;
+  margin-bottom: 0.3rem;
+  text-align: center;
+  font-size: 1rem;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+}
+.wx-ctemp.is-now { font-weight: 600; }
+.wx-dot {
+  position: absolute;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin: -0.3rem 0 0 -0.3rem;
+  border-radius: 50%;
+  background: #fff;
+}
+.wx-hrain {
+  font-size: 0.85rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.wx-hrain.is-wet { color: #7cc4ff; }
+.wx-hrain.is-dry { color: var(--text-3); }
+
+/* Flat: no room for a readable curve (set by fitHours in weather.js). The
+   temperatures become an ordinary row between the icons and the rain. */
+.wx-hours.is-flat .wx-curve { flex: 0 0 auto; }
+.wx-hours.is-flat .wx-plot {
+  position: static;
+  display: flex;
+  padding: 0.25rem 0 0.2rem;
+}
+.wx-hours.is-flat .wx-curve-svg,
+.wx-hours.is-flat .wx-dot { display: none; }
+.wx-hours.is-flat .wx-ctemp {
+  position: static;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+/* ---------- Week ---------- */
+
+.wx-week {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.wx-day {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  border-top: 0.06rem solid var(--line);
+}
+.wx-day:first-child { border-top: 0; }
+.wx-day-name {
+  flex: 0 0 5.6rem;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-day-dow { font-size: 1.1rem; line-height: 1.3; font-weight: 600; color: var(--text); }
+.wx-day-date { font-size: 0.85rem; line-height: 1.3; color: var(--text-3); margin-left: 0.45rem; }
+.wx-day-icon { width: 1.6rem; height: 1.6rem; margin-right: 0.8rem; color: var(--text); }
+.wx-day-cond {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-day-rain {
+  flex: 0 0 4.4em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  color: var(--text-3);
+}
+.wx-day-rain.is-wet { color: #7cc4ff; }
+.wx-day-drop { width: 0.9rem; height: 0.9rem; margin-right: 0.3rem; }
+.wx-day-pct { font-size: 0.95rem; line-height: 1.3; }
+/* Fixed number columns, right-aligned, so every bar starts and ends in line. */
+.wx-day-lo,
+.wx-day-hi {
+  flex: 0 0 2.9em;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  text-align: right;
+  white-space: nowrap;
+}
+.wx-day-lo { color: var(--text-2); }
+.wx-day-hi { color: var(--text); }
+.wx-track {
+  position: relative;
+  flex: 0 0 10rem;
+  height: 0.4rem;
+  margin: 0 0.2rem 0 0.9rem;
+  border-radius: 0.2rem;
+  background: rgba(255, 255, 255, 0.1);
+}
+/* One fixed cool-to-warm gradient across the whole track; each fill shows its slice. */
+.wx-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0.2rem;
+  background-image: linear-gradient(90deg, #6fb8ff 0%, #ffd166 60%, #ff9f5a 100%);
+  background-repeat: no-repeat;
+}
+
+/* ---------- other states in the panel ---------- */
+
+.wx-msg { position: relative; z-index: 1; max-width: 34rem; }
+.wx-msg-big { margin-top: 0.6rem; font-size: 1.5rem; line-height: 1.35; color: var(--text); }
+.wx-msg-text { margin-top: 0.6rem; font-size: 1rem; line-height: 1.4; color: var(--text-2); }
+.wx-mark-panel { width: 10rem; height: 10rem; right: 0; bottom: 0; }
+
+/* ---------- full screen: Day and Week side by side ---------- */
+
+.wx-panel.is-full .wx-bar { margin-bottom: 1.4rem; }
+.wx-panel.is-full .wx-btn { font-size: 1rem; }
+.wx-panel.is-full .wx-view-day { flex: 0 0 58%; }
+.wx-panel.is-full .wx-view-week { flex: 1 1 0; }
+.wx-split {
+  flex: 0 0 auto;
+  width: 0.06rem;
+  margin: 0 1.8rem;
+  background: var(--line);
+}
+.wx-panel.is-full .wx-foot { margin-top: 1rem; font-size: 0.85rem; }
+
+/* The now band stacks: the big reading, then the four stats across. */
+.wx-panel.is-full .wx-now { display: block; padding-bottom: 1.4rem; }
+.wx-panel.is-full .wx-now-temp { font-size: 6.4rem; }
+.wx-panel.is-full .wx-now-icon { width: 5rem; height: 5rem; margin: 0 1.4rem 0 0.8rem; }
+.wx-panel.is-full .wx-now-cond { font-size: 1.8rem; }
+.wx-panel.is-full .wx-now-feels { font-size: 1.2rem; }
+.wx-panel.is-full .wx-stats { margin: 1rem 0 0; }
+.wx-panel.is-full .wx-stat { flex: 1 1 0; padding: 0.2rem 1.2rem; }
+.wx-panel.is-full .wx-stat:first-child { padding-left: 0; }
+.wx-panel.is-full .wx-stat-val { font-size: 1.6rem; }
+.wx-panel.is-full .wx-stat-ampm { font-size: 1rem; }
+.wx-panel.is-full .wx-stat-label { font-size: 0.95rem; }
+.wx-panel.is-full .wx-stat-icon { width: 1.1rem; height: 1.1rem; }
+
+.wx-panel.is-full .wx-hours { padding-top: 1rem; }
+.wx-panel.is-full .wx-hour { font-size: 1.1rem; }
+.wx-panel.is-full .wx-hour-ampm { font-size: 0.85rem; }
+.wx-panel.is-full .wx-hour-icon { width: 2rem; height: 2rem; margin-top: 0.5rem; }
+.wx-panel.is-full .wx-plot { top: 2.2rem; bottom: 0.8rem; }
+.wx-panel.is-full .wx-ctemp { font-size: 1.25rem; }
+.wx-panel.is-full .wx-hrain { font-size: 1rem; }
+
+/* Week rows have room here: the condition goes under the day name and may wrap. */
+.wx-day-lead { flex: 1 1 9rem; min-width: 0; }
+.wx-panel.is-full .wx-day-name { flex: none; white-space: normal; overflow: visible; }
+.wx-panel.is-full .wx-day-dow { font-size: 1.3rem; }
+.wx-panel.is-full .wx-day-date { font-size: 1rem; }
+.wx-panel.is-full .wx-day-cond {
+  font-size: 0.95rem;
+  white-space: normal;
+  overflow: visible;
+  word-wrap: break-word;
+}
+.wx-panel.is-full .wx-day-icon { width: 1.9rem; height: 1.9rem; margin: 0 0.6rem; }
+.wx-panel.is-full .wx-day-rain { flex-basis: 3.6rem; }
+.wx-panel.is-full .wx-day-pct { font-size: 1.05rem; }
+.wx-panel.is-full .wx-day-lo,
+.wx-panel.is-full .wx-day-hi { flex-basis: 2.7em; font-size: 1.15rem; }
+.wx-panel.is-full .wx-track { flex: 1 1 5rem; min-width: 3rem; height: 0.45rem; margin-left: 0.7rem; }
+
+.panel.is-full .wx-msg { max-width: 50rem; }
+.panel.is-full .wx-msg-big { font-size: 2rem; }
+.panel.is-full .wx-msg-text { font-size: 1.2rem; }
+.panel.is-full .wx-mark-panel { width: 18rem; height: 18rem; }

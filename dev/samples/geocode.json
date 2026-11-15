@@ -1,0 +1,1 @@
+{ "results": [ { "id": 1, "name": "Sample City", "latitude": 40.0, "longitude": -95.0, "country_code": "XX", "admin1": "Sample State", "country": "Sampleland", "timezone": "America/Chicago" } ], "generationtime_ms": 0.5 }

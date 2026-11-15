@@ -8,7 +8,43 @@ var HUB_ICONS = (function () {
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" ' +
       'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + body + '</svg>';
   }
-  return {
+
+  /* Weather icons. Every cloud is the same shape (three bumps on a flat
+     base), only moved and scaled, so the set reads as one family. Accent
+     parts sit in a wx-a-* group that weather.css colors; without it they
+     stay white. */
+  var CLOUD = '<path d="M6.75 18.75H16.75A4 4 0 1 0 16.5 10.76A5.25 5.25 0 1 0 6.11 11.81A3.5 3.5 0 0 0 6.75 18.75z"/>';
+  // Raised, to leave room for rain, snow, lightning or fog underneath.
+  var CLOUD_UP = '<path d="M7.59 13.64H15.99A3.36 3.36 0 1 0 15.78 6.93A4.41 4.41 0 1 0 7.05 7.81A2.94 2.94 0 0 0 7.59 13.64z"/>';
+  // Low on the right, in front of a sun or moon.
+  var CLOUD_PART = '<path d="M11.23 19.36H18.83A3.04 3.04 0 1 0 18.64 13.29A3.99 3.99 0 1 0 10.74 14.09A2.66 2.66 0 0 0 11.23 19.36z"/>';
+
+  var weather = {
+    'wx-clear-day': svg('<g class="wx-a-sun"><circle cx="12" cy="12" r="4.25"/>' +
+      '<path d="M18.9 12H21.4M16.88 16.88L18.65 18.65M12 18.9V21.4M7.12 16.88L5.35 18.65M5.1 12H2.6M7.12 7.12L5.35 5.35M12 5.1V2.6M16.88 7.12L18.65 5.35"/></g>'),
+    'wx-clear-night': svg('<g class="wx-a-moon"><path d="M19.44 13.76A8.25 8.25 0 1 1 10.24 4.56A6.6 6.6 0 0 0 19.44 13.76z"/></g>'),
+    // The sun stops short of the cloud, as if behind it; the moon's bite faces the cloud.
+    'wx-partly-day': svg('<g class="wx-a-sun"><path d="M8.09 12.38A3.5 3.5 0 1 1 12 7.2"/>' +
+      '<path d="M5.11 12.89L4.23 13.77M3.5 9H2.25M5.11 5.11L4.23 4.23M9 3.5V2.25M12.89 5.11L13.77 4.23"/></g>' + CLOUD_PART),
+    'wx-partly-night': svg('<g class="wx-a-moon"><path d="M7.14 13.43A5.5 5.5 0 1 1 13.26 6.39A5 5 0 0 0 7.14 13.43z"/></g>' + CLOUD_PART),
+    'wx-cloudy': svg(CLOUD),
+    'wx-fog': svg(CLOUD_UP + '<path d="M4.5 17.25h15M7 20.75h10"/>'),
+    'wx-drizzle': svg(CLOUD_UP + '<g class="wx-a-rain"><path d="M8.6 16.6l-.6 1.4M12.6 16.6l-.6 1.4M16.6 16.6l-.6 1.4M10.6 19.9l-.6 1.4M14.6 19.9l-.6 1.4"/></g>'),
+    'wx-rain': svg(CLOUD_UP + '<g class="wx-a-rain"><path d="M8.9 16.5l-1.4 3.8M12.9 17.5l-1.4 3.8M16.9 16.5l-1.4 3.8"/></g>'),
+    'wx-snow': svg(CLOUD_UP + '<g class="wx-a-snow"><path d="M8.5 16.1V21.1M6.33 17.35L10.67 19.85M10.67 17.35L6.33 19.85' +
+      'M15.5 16.1V21.1M13.33 17.35L17.67 19.85M17.67 17.35L13.33 19.85"/></g>'),
+    'wx-storm': svg(CLOUD_UP + '<g class="wx-a-bolt"><path d="M13.1 16l-2.35 3h3.5l-2.35 3"/></g>'),
+    'wx-wind': svg('<path d="M3 9h10a2.75 2.75 0 1 0-2.75-2.75"/><path d="M3 13h15a2.75 2.75 0 1 1-2.75 2.75"/><path d="M3 17h6.5"/>'),
+    'wx-sunrise': svg('<path d="M12 3v6.25M9 6l3-3 3 3"/><path d="M3.5 19h17"/>' +
+      '<g class="wx-a-sun"><path d="M8 19a4 4 0 0 1 8 0"/><path d="M7.1 14.89L5.57 13.6M16.9 14.89L18.43 13.6"/></g>'),
+    'wx-sunset': svg('<path d="M12 3v6.25M9 6.25l3 3 3-3"/><path d="M3.5 19h17"/>' +
+      '<g class="wx-a-sun"><path d="M8 19a4 4 0 0 1 8 0"/><path d="M7.1 14.89L5.57 13.6M16.9 14.89L18.43 13.6"/></g>'),
+    'wx-drop': svg('<path d="M12 3.75c-3.4 4.3-5.75 7.6-5.75 10.75a5.75 5.75 0 0 0 11.5 0c0-3.15-2.35-6.45-5.75-10.75z"/>'),
+    'wx-refresh': svg('<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M18.25 3.25v3.75h-3.75"/>'),
+    'wx-pin': svg('<path d="M12 21.25c-3.9-3.9-6.25-7.4-6.25-10.5a6.25 6.25 0 0 1 12.5 0c0 3.1-2.35 6.6-6.25 10.5z"/><circle cx="12" cy="10.75" r="2.25"/>')
+  };
+
+  var icons = {
     tv: svg('<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>'),
     'sun-cloud': svg('<path d="M10 2.5v1.5"/><path d="M3.6 5.1l1.1 1.1"/><path d="M2 11.5h1.5"/>' +
       '<path d="M16.4 5.1l-1.1 1.1"/><path d="M6.6 12.4a3.6 3.6 0 0 1 6.5-3.3"/>' +
@@ -31,4 +67,8 @@ var HUB_ICONS = (function () {
     grid: svg('<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/>' +
       '<rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>')
   };
+  for (var name in weather) {
+    if (weather.hasOwnProperty(name)) icons[name] = weather[name];
+  }
+  return icons;
 })();
