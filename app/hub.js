@@ -5,6 +5,7 @@
 (function () {
   'use strict';
 
+  var BUILD = 'v0.5.0';
   var SERVICE = 'http://127.0.0.1:8095';
   var TIZENBREW_WS = 'ws://127.0.0.1:8081';
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8 };
@@ -75,6 +76,8 @@
 
   function build() {
     document.getElementById('place').textContent = cfg.title || '';
+    var buildEl = document.getElementById('build');
+    if (buildEl) buildEl.textContent = 'Home Hub ' + BUILD;
     for (var r = 0; r < cfg.rows.length; r++) {
       var rowCfg = cfg.rows[r];
       if (!rowCfg.tiles || !rowCfg.tiles.length) continue;
