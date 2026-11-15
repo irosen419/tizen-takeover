@@ -76,6 +76,9 @@ function stop(line) {
 
 /* ---------- talking to the server ---------- */
 
+const WAIT_STEP_MS = 500;
+const WAIT_TRIES = Number(process.env.HUB_WAIT_TRIES || 10); // about 5 seconds in all
+
 function call(method, p, body) {
   const s = settings();
   if (!s.token) stop('There is no token in pi/.env yet. Run ./hub token first, then restart the server.');
@@ -83,7 +86,7 @@ function call(method, p, body) {
   try { url = new URL(s.url + p); } catch (e) { stop('HUB_URL is not a valid address: ' + s.url); }
   const lib = url.protocol === 'https:' ? https : http;
   const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
-  return new Promise((resolve) => {
+  const once = () => new Promise((resolve) => {
     const req = lib.request(url, {
       method: method,
       headers: Object.assign({ Authorization: 'Bearer ' + s.token, Accept: 'application/json' },
@@ -102,7 +105,16 @@ function call(method, p, body) {
     req.on('error', (e) => resolve({ error: e }));
     if (data) req.write(data);
     req.end();
-  }).then((r) => {
+  });
+  // A server that was started a moment ago may not be listening yet, so
+  // "nothing answered" is tried again for a few seconds before it is believed.
+  const patient = (triesLeft) => once().then((r) => {
+    if (r.error && r.error.code === 'ECONNREFUSED' && triesLeft > 0) {
+      return new Promise((resolve) => setTimeout(resolve, WAIT_STEP_MS)).then(() => patient(triesLeft - 1));
+    }
+    return r;
+  });
+  return patient(WAIT_TRIES).then((r) => {
     const where = process.env.HUB_URL ? s.url : 'this Pi';
     if (r.error) {
       if (r.error.code === 'ECONNREFUSED') {
