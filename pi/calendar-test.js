@@ -418,6 +418,28 @@ async function main() {
     assert.strictEqual(cal.timezone('Mars/Base', () => {}), 'America/Chicago');
   });
 
+  await check('settings: COLOR takes a name or #rrggbb; anything else is logged and the default color is used', () => {
+    assert.strictEqual(cal.normalizeColor(''), '');
+    assert.strictEqual(cal.normalizeColor(undefined), '');
+    assert.strictEqual(cal.normalizeColor(' Blue '), '#6db8ff');
+    assert.strictEqual(cal.normalizeColor('#D50000'), '#d50000');
+    assert.strictEqual(cal.normalizeColor('d50000'), '#d50000');
+    assert.strictEqual(cal.normalizeColor('chartreuse'), null);
+    assert.strictEqual(cal.normalizeColor('#12345'), null);
+    assert.strictEqual(cal.normalizeColor('red; background:url(x)'), null);
+    const lines = [];
+    const list = cal.checkCalendars(cal.calendarsFromEnv({
+      CALENDAR_1_NAME: 'A', CALENDAR_1_URL: 'https://calendar.example.test/a', CALENDAR_1_COLOR: 'green',
+      CALENDAR_2_NAME: 'B', CALENDAR_2_URL: 'https://calendar.example.test/b', CALENDAR_2_COLOR: 'chartreuse',
+      CALENDAR_3_NAME: 'C', CALENDAR_3_URL: 'https://calendar.example.test/c'
+    }), (s) => lines.push(s), false);
+    assert.deepStrictEqual(list.map((c) => [c.cal, c.color]), [[1, '#7fdc8a'], [2, ''], [3, '']]);
+    assert.strictEqual(lines.length, 1);
+    assert.ok(lines[0].indexOf('calendar B: COLOR') === 0 && lines[0].indexOf('chartreuse') < 0, lines[0]);
+    const d = cal.cleanData({ configured: true, calendars: [{ cal: 1, name: 'A', color: '#7fdc8a' }, { cal: 2, name: 'B', color: 'red; x' }], events: [] });
+    assert.deepStrictEqual(d.calendars.map((c) => c.color), ['#7fdc8a', ''], 'a damaged state file cannot carry a bad color');
+  });
+
   /* --- the server, end to end --- */
 
   const feeds = await feedServer();
@@ -429,7 +451,7 @@ async function main() {
   feeds.modes[pathB] = { file: 'basic.ics' };
   const logs = [];
   let fakeNow = Date.parse('2026-10-31T17:00:00Z');
-  const calendars = [{ name: 'Ian', url: linkA }, { name: 'Health', url: linkB, details: 'busy' }];
+  const calendars = [{ name: 'Ian', url: linkA }, { name: 'Health', url: linkB, details: 'busy', color: 'Red' }];
   const dir = tmpDir();
   feeds.hold();
   let h = await startHub({ dataDir: dir, calendars: calendars, now: () => new Date(fakeNow), log: (s) => logs.push(s), calendarTimeout: 400 });
@@ -471,7 +493,8 @@ async function main() {
     assert.strictEqual(d.to, '2026-12-31T06:00:00Z');
     assert.strictEqual(d.updatedAt, '2026-10-31T17:00:00Z');
     assert.strictEqual(d.truncated, false);
-    assert.deepStrictEqual(Object.keys(d.calendars[0]), ['cal', 'name', 'ok', 'error', 'count', 'skipped', 'updatedAt']);
+    assert.deepStrictEqual(Object.keys(d.calendars[0]), ['cal', 'name', 'color', 'ok', 'error', 'count', 'skipped', 'updatedAt']);
+    assert.deepStrictEqual(d.calendars.map((c) => c.color), ['', '#ff6b6b'], 'a named color becomes its code; unset stays empty');
     const dentist = d.events.find((e) => e.title === 'Dentist');
     assert.deepStrictEqual([dentist.cal, dentist.start, dentist.end, dentist.location], [1, '2026-11-02T15:00:00Z', '2026-11-02T16:00:00Z', 'Downtown clinic']);
     const health = d.events.filter((e) => e.cal === 2);
