@@ -53,6 +53,57 @@
     return node;
   }
 
+  /* ---------- home tile ---------- */
+
+  // How many logo chips fit the tile body: per row (never so many that a
+  // chip is smaller than MIN_CHIP) and, unless it is a strip, how many rows
+  // and how big (face, px; 0 leaves it to the CSS).
+  var MIN_CHIP = 3.4;       // rem, a chip in a two-row or taller tile
+  var NARROW_CHIP = 2.6;    // rem, the same in a tile one or two columns wide
+  var STRIP_CHIP = 3.4;     // rem, every chip in a one-row strip
+  var MAX_CHIP = 5.2;       // rem
+  var CHIP_GAP = 0.6;       // rem, like .ent-chip's margin-right
+  var STRIP_GAP = 0.5;
+
+  function chipFit(body, ctx) {
+    var size = ctx && ctx.size ? ctx.size() : null;
+    var rem = parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 24;
+    var strip = !!size && size.tier === 'strip';
+    var chip = (strip ? STRIP_CHIP : size && size.width === 'narrow' ? NARROW_CHIP : MIN_CHIP) * rem;
+    var gap = (strip ? STRIP_GAP : CHIP_GAP) * rem;
+    var w = body.clientWidth;
+    var h = body.clientHeight;
+    if (!w) {
+      // Not laid out (hidden): guess from the grid, 80rem by 45rem.
+      var cols = size ? size.cols : 6;
+      w = (cols * 78.5 / 12 - 3.2) * rem;
+      h = ((size ? size.rows : 2) * 43.5 / 6 - 3.2) * rem;
+    }
+    var perRow = Math.max(1, Math.min(TILE_CHIPS + 1, Math.floor((w + gap) / (chip + gap))));
+    var fit = { perRow: perRow, rows: 1, face: 0 };
+    if (strip) return fit;
+    // One row is the usual look. More rows of smaller logos only when they
+    // clearly cover more of the tile (count x size squared, a quarter more),
+    // as in a narrow or a tall tile.
+    var oneFace = Math.min(MAX_CHIP * rem, (w - gap * (perRow - 1)) / perRow);
+    var bestScore = Math.min(perRow, items.length) * oneFace * oneFace;
+    for (var p = 1; p <= TILE_CHIPS + 1; p++) {
+      var faceW = (w - gap * (p - 1)) / p;
+      if (faceW < chip) break;
+      for (var r = 2; r <= 6; r++) {
+        var face = Math.min(MAX_CHIP * rem, faceW, (h - gap * (r - 1)) / r);
+        if (face < chip) break;
+        var score = Math.min(p * r, items.length) * face * face;
+        if (score > bestScore * 1.25) {
+          bestScore = score;
+          fit = { perRow: p, rows: r, face: face };
+        }
+        if (p * r >= items.length) break;
+      }
+    }
+    return fit;
+  }
+
   /* ---------- items ---------- */
 
   function buildItems() {
@@ -354,21 +405,44 @@
 
     renderTile: function (body, ctx) {
       C = ctx;
-      var row = el('div', 'ent-chips');
-      // At most six logos, then "+N" for the rest.
-      var shown = items.length <= TILE_CHIPS + 1 ? items.length : TILE_CHIPS;
+      var fit = chipFit(body, ctx);
+      // As many logos as fit, the last one "+N" when there are more.
+      var room = fit.perRow * fit.rows;
+      if (room < 2 && items.length > 1) {
+        // No room for logos and "+N": the widget's own icon says what it is.
+        var mark = el('span', 'icon ent-tile-mark');
+        mark.innerHTML = (window.HUB_ICONS && HUB_ICONS.tv) || '';
+        body.appendChild(mark);
+        return;
+      }
+      var shown = items.length <= room ? items.length : room - 1;
+      var rowEl = null;
+      var inRow = 0;
+      function nextChip(chip) {
+        if (fit.face) chip.style.maxWidth = Math.floor(fit.face) + 'px';
+        if (!rowEl || inRow === fit.perRow) {
+          rowEl = el('div', 'ent-chips' + (fit.rows > 1 ? ' is-multi' : ''));
+          body.appendChild(rowEl);
+          inRow = 0;
+        }
+        rowEl.appendChild(chip);
+        inRow++;
+      }
       // Each chip is a flex item holding a square icon.
       for (var i = 0; i < shown; i++) {
         var chip = el('span', 'ent-chip' + (stateOf(items[i]).missing ? ' is-missing' : ''));
         chip.appendChild(logoEl(items[i].cfg));
-        row.appendChild(chip);
+        nextChip(chip);
       }
       if (items.length > shown) {
         var more = el('span', 'ent-chip');
         more.appendChild(textIcon('+' + (items.length - shown), 'ent-more'));
-        row.appendChild(more);
+        nextChip(more);
       }
-      body.appendChild(row);
+      // Several rows: blank chips keep the last row on the same columns.
+      while (fit.rows > 1 && rowEl && inRow < fit.perRow) {
+        nextChip(el('span', 'ent-chip is-blank'));
+      }
     },
 
     renderPanel: function (body) {

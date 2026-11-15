@@ -79,7 +79,8 @@
  *                             and width is 'narrow' (1-2 columns), 'standard'
  *                             (3-5) or 'wide' (6+). The tile also carries the
  *                             classes tile-h1 / tile-h2 / tile-h3 and tile-wn /
- *                             tile-wm / tile-ww for CSS. A layout from the Pi
+ *                             tile-wm / tile-ww for CSS (and tile-w1 when one
+ *                             column wide). A layout from the Pi
  *                             that changes a tile's size calls renderTile again.
  *   ctx.setSub(text)          the small line in the panel head
  *   ctx.setTileSub(text)      the small line under the tile's title ('' hides it)
@@ -853,17 +854,19 @@
     };
   }
 
-  var SIZE_CLASSES = ['tile-h1', 'tile-h2', 'tile-h3', 'tile-wn', 'tile-wm', 'tile-ww'];
+  var SIZE_CLASSES = ['tile-h1', 'tile-h2', 'tile-h3', 'tile-wn', 'tile-wm', 'tile-ww', 'tile-w1'];
 
   // Puts the size classes on the tile: tile-h1 (one row, a strip), tile-h2,
   // tile-h3 (three rows or more), and tile-wn (one or two columns), tile-wm
-  // (three to five) or tile-ww (six or more). Returns true when they changed.
+  // (three to five) or tile-ww (six or more), plus tile-w1 on a tile one
+  // column wide. Returns true when the size changed.
   function applySize(rec, entry) {
     var size = sizeOf(entry);
     var old = rec.size;
     rec.size = size;
     var want = [size.tier === 'strip' ? 'tile-h1' : size.tier === 'standard' ? 'tile-h2' : 'tile-h3',
       size.width === 'narrow' ? 'tile-wn' : size.width === 'wide' ? 'tile-ww' : 'tile-wm'];
+    if (size.cols === 1) want.push('tile-w1');
     for (var i = 0; i < SIZE_CLASSES.length; i++) {
       var c = SIZE_CLASSES[i];
       if (want.indexOf(c) >= 0) rec.tile.classList.add(c);
