@@ -39,7 +39,6 @@ var HUB_CONFIG = {
         /* On this TV, Samsung TV Plus lives inside Live TV ("TV app") rather than being its own app. */
         { kind: 'app', label: 'Samsung TV Plus', sub: 'Opens Live TV', match: ['Samsung TV Plus', 'TV Plus', 'Samsung TV+', 'TV app'], tone: 'blue' },
         { kind: 'app', label: 'Pluto TV', match: ['Pluto TV', 'Pluto'], tone: 'amber' },
-        { kind: 'app', label: 'PBS', match: ['PBS Video', 'PBS'], tone: 'indigo' },
         { kind: 'app', label: 'Twitch', match: ['Twitch'], tone: 'indigo' }
       ]
     },
