@@ -4,9 +4,9 @@ A custom home screen that runs as a [TizenBrew](https://github.com/reisxd/TizenB
 
 Rows out of the box:
 
-- **Watch:** Netflix, Prime Video, Disney+, Hulu, Peacock, YouTube (TizenTube)
+- **Watch:** Netflix, Prime Video, Disney+, Hulu, Peacock, Apple TV, YouTube (TizenTube)
 - **Play:** Xbox on HDMI 1
-- **Free TV:** Samsung TV Plus, Pluto TV
+- **Free TV:** Pluto TV, Twitch
 - **Dashboards:** empty until you add one
 - **More:** every app on the TV, as a list
 
@@ -30,7 +30,12 @@ The Home button always goes to Samsung's own home bar. Open the hub from TizenBr
 
 ## Xbox tile
 
-The Xbox tile presses the TV's own HDMI 1 key through the TV's remote control service. The first time, the TV shows a prompt asking to allow "Home Hub". Choose **Allow**. If the tile does nothing, change `key` in `app/config.js` to `KEY_SOURCE` (opens the input picker instead), or turn on HDMI-CEC (Anynet+) so the Xbox switches the TV when it turns on.
+The TV refuses remote key presses from an app running on itself, so the hub can't switch inputs directly. Two things make the Xbox tile work:
+
+1. Turn on HDMI-CEC: Anynet+ on the TV and HDMI-CEC on the Xbox. Then pressing the Xbox button on the controller switches the TV to HDMI 1 by itself.
+2. Put a Home Assistant webhook URL in the tile's `url` in `app/config.js`. The tile posts to it, Home Assistant wakes the Xbox, and CEC switches the input.
+
+Until `url` is set, the tile shows a tip instead.
 
 ## Start the hub when the TV turns on
 
@@ -45,7 +50,8 @@ Everything lives in `app/config.js`. Each tile has a `kind`:
 
 - `app` opens an installed app. `match` lists names to look for. The first exact match wins, otherwise the shortest name that contains the text.
 - `tizentube` opens the TizenTube module through TizenBrew.
-- `input` presses a remote key, for example `KEY_HDMI1`, `KEY_HDMI2`, `KEY_SOURCE`.
+- `input` presses a remote key. This TV refuses key presses from the hub, so it's kept only for TVs that allow it.
+- `webhook` posts to a URL, for example a Home Assistant webhook.
 - `dashboard` opens a web page full screen, for example Home Assistant or Grafana.
 - `allApps` opens the list of every app.
 
@@ -62,4 +68,4 @@ TizenBrew loads modules through jsDelivr, which caches each branch for a while. 
 ## How it works
 
 - `app/` is the screen. Plain ES5 JavaScript so the TV's older browser can run it.
-- `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps and presses remote keys when the page can't do it directly.
+- `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps and calls webhooks when the page can't do it directly.
