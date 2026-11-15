@@ -1,0 +1,1139 @@
+/*
+ * Weather: today on the tile, the next 12 hours and the week in the panel.
+ *
+ * Forecasts come from Open-Meteo (free, no account). The place comes from
+ * HUB_CONFIG.widgets.weather.location, or, when that is empty, from a public
+ * lookup of the TV's internet address. Every remote call goes straight from
+ * the page first and through the TV's helper (service.js /fetch) if that
+ * fails, and whichever way worked is tried first next time.
+ *
+ * Times from Open-Meteo are the place's own wall clock ("2026-11-15T09:00").
+ * They are never given to Date to parse (old browsers read them as UTC);
+ * they are split by hand into Date.UTC numbers and read back with getUTC*.
+ */
+(window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
+  'use strict';
+
+  var PLACE_KEY = 'homeHub.weather.place';
+  var CACHE_KEY = 'homeHub.weather.v1';
+  var GEOCODE = 'https://geocoding-api.open-meteo.com/v1/search';
+  var FORECAST = 'https://api.open-meteo.com/v1/forecast';
+  var LOOKUPS = {
+    ipwho: 'https://ipwho.is/',
+    geojs: 'https://get.geojs.io/v1/ip/geo.json'
+  };
+
+  var MIN = 60000;
+  var HOUR = 60 * MIN;
+  var REFRESH_EVERY = 20 * MIN;
+  var LIVE_FOR = 45 * MIN;        // younger than this is live, older is stale
+  var USE_HOURLY_AFTER = 90 * MIN; // older than this, "now" comes from the hourly forecast
+  var USABLE_FOR = 24 * HOUR;
+  var RETRY_STEPS = [2 * MIN, 5 * MIN, 20 * MIN];
+  var HOURS_SHOWN = 12;
+  var MINUS = '−';
+  var DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  var C = null;              // ctx, kept from init
+  var units = 'fahrenheit';
+  var place = null;          // { source, provider, name, region, latitude, longitude }
+  var placeProblem = null;   // null | 'setup' | 'notfound'
+  var rec = null;            // the forecast record: { savedAt, placeKey, units, via, data }
+  var via = 'direct';        // the way that worked last: 'direct' | 'helper'
+  var refreshing = false;
+  var startedAt = 0;         // when the running update began, for the watchdog
+  var phase = 'place';       // what loading is waiting on: 'place' | 'forecast'
+  var lastError = '';        // why the last refresh failed ('' after a success)
+  var failCount = 0;
+  var nextDue = 0;           // TV time of the next scheduled refresh
+  var userAction = '';       // '' | 'refresh' | 'relocate' while a button press runs
+  var view = 'day';          // Day or Week in panel mode, kept for the session
+  var lastSig = '';
+  var rootEl = null;         // the panel's root, for switching views without a redraw
+  var nowEls = null;         // the now band's parts, to fit it once it is on screen
+
+  /* ---------- safety ---------- */
+
+  // Wraps a callback the hub does not wrap (XHR, timers, listeners), so an
+  // error in it can't escape and stop anything else.
+  function safe(fn) {
+    return function () {
+      try {
+        return fn.apply(this, arguments);
+      } catch (e) {
+        if (window.console && console.warn) console.warn('Weather: ' + (e && e.message));
+        return undefined;
+      }
+    };
+  }
+
+  function lsGet(key) {
+    try {
+      var raw = window.localStorage && window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function lsSet(key, value) {
+    try { if (window.localStorage) window.localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
+  }
+
+  function lsRemove(key) {
+    try { if (window.localStorage) window.localStorage.removeItem(key); } catch (e) { /* ignore */ }
+  }
+
+  /* ---------- small helpers ---------- */
+
+  function el(tag, cls, parent, text) {
+    var node = document.createElement(tag);
+    if (cls) node.className = cls;
+    if (text) node.textContent = text;
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  function icon(name, cls, parent) {
+    var node = el('span', 'icon ' + cls, parent);
+    node.innerHTML = (window.HUB_ICONS && window.HUB_ICONS[name]) || '';
+    return node;
+  }
+
+  // A finite number or null.
+  function num(v) {
+    return typeof v === 'number' && isFinite(v) ? v : null;
+  }
+
+  function str(v) {
+    return typeof v === 'string' ? v.replace(/^\s+|\s+$/g, '') : '';
+  }
+
+  function isArr(v) {
+    return Object.prototype.toString.call(v) === '[object Array]';
+  }
+
+  function at(list, i) {
+    return isArr(list) && i >= 0 && i < list.length ? list[i] : null;
+  }
+
+  function round2(v) { return Math.round(v * 100) / 100; }
+
+  function inRange(lat, lon) {
+    return lat !== null && lon !== null && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
+  }
+
+  /* ---------- time ---------- */
+
+  // "2026-11-15T09:00" or "2026-11-15" to a wall clock number (Date.UTC), or NaN.
+  function parseTime(s) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(typeof s === 'string' ? s : '');
+    if (!m) return NaN;
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], m[4] ? +m[4] : 0, m[5] ? +m[5] : 0);
+  }
+
+  function ampm(h, m) {
+    var h12 = h % 12 === 0 ? 12 : h % 12;
+    return h12 + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' AM' : ' PM');
+  }
+
+  // The TV's own clock time of a Date.now() value, e.g. "7:10 AM".
+  function tvClock(ms) {
+    var d = new Date(ms);
+    return ampm(d.getHours(), d.getMinutes());
+  }
+
+  // A wall clock number as "7:04 AM".
+  function wallClock(t) {
+    var d = new Date(t);
+    return ampm(d.getUTCHours(), d.getUTCMinutes());
+  }
+
+  function sameDay(a, b) {
+    return Math.floor(a / (24 * HOUR)) === Math.floor(b / (24 * HOUR));
+  }
+
+  /* ---------- formatting ---------- */
+
+  function temp(v) {
+    v = num(v);
+    if (v === null) return '–';
+    var r = Math.round(v);
+    return (r < 0 ? MINUS + (-r) : String(r)) + '°';
+  }
+
+  function pct(v) {
+    v = num(v);
+    return v === null ? '–' : Math.round(v) + '%';
+  }
+
+  function windText(v) {
+    v = num(v);
+    if (v === null) return '–';
+    return Math.round(v) + (units === 'celsius' ? ' km/h' : ' mph');
+  }
+
+  /* ---------- weather codes ---------- */
+
+  // code: [day text, night text, day icon, night icon]
+  var CODES = {
+    0: ['Sunny', 'Clear', 'wx-clear-day', 'wx-clear-night'],
+    1: ['Mostly sunny', 'Mostly clear', 'wx-partly-day', 'wx-partly-night'],
+    2: ['Partly cloudy', 'Partly cloudy', 'wx-partly-day', 'wx-partly-night'],
+    3: ['Cloudy', 'Cloudy', 'wx-cloudy', 'wx-cloudy'],
+    45: ['Fog', 'Fog', 'wx-fog', 'wx-fog'],
+    48: ['Fog', 'Fog', 'wx-fog', 'wx-fog'],
+    51: ['Light drizzle', '', 'wx-drizzle'],
+    53: ['Drizzle', '', 'wx-drizzle'],
+    55: ['Heavy drizzle', '', 'wx-drizzle'],
+    56: ['Freezing drizzle', '', 'wx-drizzle'],
+    57: ['Freezing drizzle', '', 'wx-drizzle'],
+    61: ['Light rain', '', 'wx-rain'],
+    63: ['Rain', '', 'wx-rain'],
+    65: ['Heavy rain', '', 'wx-rain'],
+    66: ['Freezing rain', '', 'wx-rain'],
+    67: ['Freezing rain', '', 'wx-rain'],
+    71: ['Light snow', '', 'wx-snow'],
+    73: ['Snow', '', 'wx-snow'],
+    75: ['Heavy snow', '', 'wx-snow'],
+    77: ['Snow grains', '', 'wx-snow'],
+    80: ['Light showers', '', 'wx-rain'],
+    81: ['Showers', '', 'wx-rain'],
+    82: ['Heavy showers', '', 'wx-rain'],
+    85: ['Snow showers', '', 'wx-snow'],
+    86: ['Snow showers', '', 'wx-snow'],
+    95: ['Thunderstorm', '', 'wx-storm'],
+    96: ['Thunderstorm with hail', '', 'wx-storm'],
+    99: ['Thunderstorm with hail', '', 'wx-storm']
+  };
+
+  function condition(code, isDay) {
+    code = num(code);
+    var row = code === null ? null : CODES[code];
+    if (!row) return { text: '', icon: 'wx-cloudy' };
+    var night = num(isDay) === 0;
+    return {
+      text: (night && row[1]) || row[0],
+      icon: (night && row[3]) || row[2]
+    };
+  }
+
+  /* ---------- fetching ---------- */
+
+  // The helper is missing or too old to have /fetch.
+  function helperAbsent(err) {
+    return err === 'service not reachable' || err === 'not found' || err === 'HTTP 404';
+  }
+
+  // GET a remote JSON address, one way then the other. check(data) returns
+  // '' when the reply is usable, otherwise why not (that counts as a failure,
+  // so the other way gets a go). cb(err, data, way, absent): when both failed
+  // and the helper looked absent or too old, absent is its error, else ''.
+  function fetchJSON(url, check, cb) {
+    var order = via === 'helper' ? ['helper', 'direct'] : ['direct', 'helper'];
+    var errors = {};
+    function attempt(i) {
+      if (i >= order.length) {
+        var absent = helperAbsent(errors.helper) ? errors.helper : '';
+        return cb(absent ? (errors.direct || errors.helper) : errors.helper, null, '', absent);
+      }
+      var way = order[i];
+      var done = safe(function (err, data) {
+        try {
+          if (way === 'helper' && !err) data = data && data.data;
+          if (!err) err = check(data);
+        } catch (e) {
+          err = 'unexpected reply';
+        }
+        if (err) {
+          errors[way] = err;
+          return attempt(i + 1);
+        }
+        via = way;
+        cb('', data, way);
+      });
+      if (way === 'direct') C.getJSON(url, 8000, done);
+      else C.service('/fetch?url=' + encodeURIComponent(url), 12000, done);
+    }
+    attempt(0);
+  }
+
+  /* ---------- the place ---------- */
+
+  function placeKeyOf(p) {
+    return p ? p.latitude + ',' + p.longitude : '';
+  }
+
+  function placeLabel(p) {
+    if (!p) return '';
+    return p.name + (p.region && p.region !== p.name ? ', ' + p.region : '');
+  }
+
+  // Works out the place from config.js and what's saved, without the network.
+  // Returns true when it knows the place.
+  function placeFromSaved() {
+    var loc = C.config.location;
+    if (loc && typeof loc === 'object') {
+      var lat = num(loc.latitude);
+      var lon = num(loc.longitude);
+      if (inRange(lat, lon)) {
+        place = { source: 'coords', name: str(loc.name) || 'Home', region: '', latitude: lat, longitude: lon };
+        return true;
+      }
+      placeProblem = 'notfound';
+      return false;
+    }
+    var query = str(loc);
+    var saved = validPlace(lsGet(PLACE_KEY));
+    if (query) {
+      if (saved && saved.source === 'config' && saved.query === query) { place = saved; return true; }
+      return false;
+    }
+    if (saved && saved.source === 'lookup') { place = saved; return true; }
+    return false;
+  }
+
+  function validPlace(p) {
+    if (!p || typeof p !== 'object') return null;
+    var lat = num(p.latitude);
+    var lon = num(p.longitude);
+    var name = str(p.name);
+    if (!name || !inRange(lat, lon)) return null;
+    return {
+      source: p.source === 'config' ? 'config' : 'lookup',
+      provider: p.provider === 'geojs' ? 'geojs' : 'ipwho',
+      query: str(p.query),
+      name: name,
+      region: str(p.region),
+      latitude: lat,
+      longitude: lon,
+      savedAt: num(p.savedAt) || 0
+    };
+  }
+
+  // Looks the configured city name up once. cb(err) where err is '' (found),
+  // 'notfound', or a network reason.
+  function geocode(cb) {
+    var query = str(C.config.location);
+    var comma = query.indexOf(',');
+    var city = str(comma >= 0 ? query.substring(0, comma) : query);
+    var hint = comma >= 0 ? str(query.substring(comma + 1)).toLowerCase() : '';
+    var url = GEOCODE + '?name=' + encodeURIComponent(city) + '&count=10&language=en&format=json';
+    fetchJSON(url, function (data) {
+      return data && typeof data === 'object' && !data.error ? '' : 'unexpected reply';
+    }, function (err, data) {
+      if (err) return cb(err);
+      var results = isArr(data.results) ? data.results : [];
+      var pick = null;
+      var first = null;
+      for (var i = 0; i < results.length; i++) {
+        var r = results[i];
+        if (!r || !str(r.name) || !inRange(num(r.latitude), num(r.longitude))) continue;
+        if (!first) first = r;
+        if (!hint) break;
+        var fields = [r.admin1, r.country, r.country_code];
+        for (var j = 0; j < fields.length; j++) {
+          if (str(fields[j]).toLowerCase().indexOf(hint) !== -1) { pick = r; break; }
+        }
+        if (pick) break;
+      }
+      pick = pick || first;
+      if (!pick) return cb('notfound');
+      place = {
+        source: 'config', provider: 'ipwho', query: query, name: str(pick.name),
+        region: str(pick.admin1) || str(pick.country),
+        latitude: num(pick.latitude), longitude: num(pick.longitude), savedAt: Date.now()
+      };
+      lsSet(PLACE_KEY, place);
+      cb('');
+    });
+  }
+
+  // One city lookup service. cb(err, place, absent) as fetchJSON.
+  function lookupOne(provider, cb) {
+    fetchJSON(LOOKUPS[provider], function (data) {
+      return readLookup(provider, data) ? '' : 'no city in the reply';
+    }, function (err, data, way, absent) {
+      cb(err, err ? null : readLookup(provider, data), absent);
+    });
+  }
+
+  function readLookup(provider, d) {
+    if (!d || typeof d !== 'object') return null;
+    if (provider === 'ipwho' && d.success !== true) return null;
+    var lat = provider === 'geojs' ? parseFloat(d.latitude) : num(d.latitude);
+    var lon = provider === 'geojs' ? parseFloat(d.longitude) : num(d.longitude);
+    lat = num(lat);
+    lon = num(lon);
+    var city = str(d.city);
+    if (!city || !inRange(lat, lon)) return null;
+    return {
+      source: 'lookup', provider: provider, name: city, region: str(d.region),
+      latitude: round2(lat), longitude: round2(lon), savedAt: Date.now()
+    };
+  }
+
+  // Asks the lookup services in order until one names a city.
+  // cb(err, place, absent): absent is the helper's error when neither
+  // service could be reached and the helper looked absent both times.
+  function lookupCity(first, cb) {
+    var order = first === 'geojs' ? ['geojs', 'ipwho'] : ['ipwho', 'geojs'];
+    lookupOne(order[0], function (err, p, absent) {
+      if (!err) return cb('', p, '');
+      lookupOne(order[1], function (err2, p2, absent2) {
+        cb(err2 ? err : '', p2, absent && absent2 ? absent2 : '');
+      });
+    });
+  }
+
+  // When nothing could be reached, the TV is offline: that is the error
+  // state, not "Set your city". "service not reachable" is ambiguous (a
+  // helper can say "not reachable" about the remote service, and the hub
+  // reports both the same way), so ask the helper's /fetch for an address it
+  // must refuse: a working helper answers, an absent or old one doesn't.
+  // cb(offline).
+  function checkOffline(absent, cb) {
+    if (!absent) return cb(false);
+    if (absent !== 'service not reachable') return cb(true);
+    C.service('/fetch?url=', 4000, safe(function (err) { cb(!err || helperAbsent(err)); }));
+  }
+
+  // Makes sure the place is known. cb(err): '' when it is.
+  function ensurePlace(cb) {
+    if (place) return cb('');
+    if (placeProblem === 'notfound' && typeof C.config.location === 'object' && C.config.location) return cb('notfound');
+    phase = 'place';
+    redraw();
+    if (str(C.config.location)) {
+      return geocode(function (err) {
+        placeProblem = err === 'notfound' ? 'notfound' : null;
+        cb(err);
+      });
+    }
+    lookupCity('ipwho', function (err, p, absent) {
+      if (err) {
+        return checkOffline(absent, function (offline) {
+          placeProblem = offline ? null : 'setup';
+          cb(err);
+        });
+      }
+      placeProblem = null;
+      place = p;
+      lsSet(PLACE_KEY, p);
+      cb('');
+    });
+  }
+
+  /* ---------- the forecast ---------- */
+
+  function forecastUrl(p) {
+    var c = units === 'celsius';
+    return FORECAST + '?latitude=' + p.latitude + '&longitude=' + p.longitude +
+      '&current=temperature_2m,apparent_temperature,is_day,weather_code,wind_speed_10m' +
+      '&hourly=temperature_2m,precipitation_probability,weather_code,is_day' +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset' +
+      '&temperature_unit=' + (c ? 'celsius' : 'fahrenheit') + '&wind_speed_unit=' + (c ? 'kmh' : 'mph') +
+      '&timezone=auto&forecast_days=7';
+  }
+
+  // All arrays present, the same length as their time list, and every time readable.
+  function columnsOk(block, keys, minLen) {
+    if (!block || typeof block !== 'object' || !isArr(block.time) || block.time.length < minLen) return false;
+    var n = block.time.length;
+    for (var i = 0; i < keys.length; i++) {
+      if (!isArr(block[keys[i]]) || block[keys[i]].length !== n) return false;
+    }
+    for (var j = 0; j < n; j++) {
+      if (isNaN(parseTime(block.time[j]))) return false;
+    }
+    return true;
+  }
+
+  // '' when the reply is a forecast we can draw, otherwise why not.
+  function checkForecast(d) {
+    if (!d || typeof d !== 'object') return 'unexpected reply';
+    if (d.error) return str(d.reason) || 'the service refused';
+    if (!d.current || typeof d.current !== 'object' || isNaN(parseTime(d.current.time))) return 'incomplete reply';
+    if (!columnsOk(d.hourly, ['temperature_2m', 'precipitation_probability', 'weather_code', 'is_day'], 2)) return 'incomplete reply';
+    if (!columnsOk(d.daily, ['weather_code', 'temperature_2m_max', 'temperature_2m_min',
+      'precipitation_probability_max', 'sunrise', 'sunset'], 1)) return 'incomplete reply';
+    return '';
+  }
+
+  function loadCache() {
+    var c = lsGet(CACHE_KEY);
+    if (!c || typeof c !== 'object' || num(c.savedAt) === null) return null;
+    if (c.placeKey !== placeKeyOf(place) || c.units !== units) return null;
+    if (checkForecast(c.data)) return null;
+    if (c.via === 'helper' || c.via === 'direct') via = c.via;
+    return c;
+  }
+
+  // cb(err, record) with a new forecast record for place p.
+  function fetchForecast(p, cb) {
+    phase = 'forecast';
+    redraw();
+    fetchJSON(forecastUrl(p), checkForecast, function (err, data, way) {
+      if (err) return cb(err, null);
+      cb('', { savedAt: Date.now(), placeKey: placeKeyOf(p), units: units, via: way, data: data });
+    });
+  }
+
+  function keep(r) {
+    rec = r;
+    lsSet(CACHE_KEY, r);
+  }
+
+  // Bookkeeping after an update: when to try next.
+  function settle(err) {
+    if (err) {
+      lastError = err;
+      failCount++;
+      nextDue = Date.now() + RETRY_STEPS[Math.min(failCount, RETRY_STEPS.length) - 1];
+    } else {
+      lastError = '';
+      failCount = 0;
+      nextDue = Date.now() + REFRESH_EVERY;
+    }
+  }
+
+  // The whole update: place if needed, then the forecast. cb(err) after the
+  // state is updated. Never two at once.
+  function refresh(cb) {
+    if (refreshing) return;
+    refreshing = true;
+    startedAt = Date.now();
+    var finish = safe(function (err) {
+      refreshing = false;
+      settle(err);
+      if (cb) cb(err);
+      redraw(true);
+    });
+    ensurePlace(safe(function (err) {
+      if (err) return finish(err);
+      fetchForecast(place, function (err2, r) {
+        if (r) keep(r);
+        finish(err2);
+      });
+    }));
+  }
+
+  /* ---------- what to show ---------- */
+
+  function ageOf(r) {
+    return Math.max(0, Date.now() - r.savedAt);
+  }
+
+  // The place's wall clock now: the forecast's "current" time plus the time since it was saved.
+  function locNow(r) {
+    return parseTime(r.data.current.time) + ageOf(r);
+  }
+
+  // Index of the hour that holds t, or -1 when t is past the end of the data.
+  function hourIndex(d, t) {
+    var times = d.hourly.time;
+    var last = parseTime(times[times.length - 1]);
+    if (t >= last + HOUR) return -1;
+    for (var i = times.length - 1; i >= 0; i--) {
+      if (parseTime(times[i]) <= t) return i;
+    }
+    return 0;
+  }
+
+  function dayIndex(d, t) {
+    var times = d.daily.time;
+    for (var i = times.length - 1; i >= 0; i--) {
+      if (parseTime(times[i]) <= t) return i;
+    }
+    return 0;
+  }
+
+  // The forecast, if it is still worth showing.
+  function usable() {
+    if (!rec || ageOf(rec) > USABLE_FOR) return null;
+    return hourIndex(rec.data, locNow(rec)) >= 0 ? rec : null;
+  }
+
+  // 'loading' | 'live' | 'stale' | 'setup' | 'notfound' | 'error'
+  function stateNow() {
+    var r = usable();
+    if (r) return ageOf(r) < LIVE_FOR ? 'live' : 'stale';
+    if (placeProblem === 'setup' && !place) return 'setup';
+    if (placeProblem === 'notfound') return 'notfound';
+    if (lastError) return 'error';
+    return 'loading';
+  }
+
+  // Everything the tile and panel draw, worked out once.
+  function model() {
+    var r = usable();
+    if (!r) return null;
+    var d = r.data;
+    var now = locNow(r);
+    var hi = hourIndex(d, now);
+    var di = dayIndex(d, now);
+    var age = ageOf(r);
+    var h = d.hourly;
+    var cur = d.current;
+    var fromHourly = age > USE_HOURLY_AFTER;
+    var m = {
+      sample: d.sample === true,
+      stale: age >= LIVE_FOR,
+      asOf: tvClock(r.savedAt),
+      hourIdx: hi,
+      dayIdx: di,
+      fromHourly: fromHourly
+    };
+    var code = fromHourly ? at(h.weather_code, hi) : cur.weather_code;
+    var isDay = fromHourly ? at(h.is_day, hi) : cur.is_day;
+    var cond = condition(code, isDay);
+    m.temp = fromHourly ? num(at(h.temperature_2m, hi)) : num(cur.temperature_2m);
+    m.text = cond.text;
+    m.icon = cond.icon;
+    // "Feels like" belongs to the old reading, so it goes once the hourly forecast takes over.
+    m.feels = fromHourly ? null : num(cur.apparent_temperature);
+    m.wind = num(cur.wind_speed_10m);
+    m.hi = num(at(d.daily.temperature_2m_max, di));
+    m.lo = num(at(d.daily.temperature_2m_min, di));
+    var rise = parseTime(at(d.daily.sunrise, di));
+    var set = parseTime(at(d.daily.sunset, di));
+    m.sunrise = isNaN(rise) ? '–' : wallClock(rise);
+    m.sunset = isNaN(set) ? '–' : wallClock(set);
+
+    // Chance of rain for the rest of today: the wettest hour left, else the day's figure.
+    var rain = null;
+    for (var i = hi; i < h.time.length; i++) {
+      if (!sameDay(parseTime(h.time[i]), now)) break;
+      var p = num(at(h.precipitation_probability, i));
+      if (p !== null && (rain === null || p > rain)) rain = p;
+    }
+    m.rain = rain !== null ? rain : num(at(d.daily.precipitation_probability_max, di));
+
+    m.hours = [];
+    for (var k = hi; k < h.time.length && m.hours.length < HOURS_SHOWN; k++) {
+      var t = new Date(parseTime(h.time[k])).getUTCHours();
+      var hc = condition(at(h.weather_code, k), at(h.is_day, k));
+      m.hours.push({
+        now: k === hi,
+        hour: t % 12 === 0 ? '12' : String(t % 12),
+        ampm: t < 12 ? 'AM' : 'PM',
+        icon: hc.icon,
+        temp: num(at(h.temperature_2m, k)),
+        rain: num(at(h.precipitation_probability, k))
+      });
+    }
+    // The current hour shows the big reading when that is fresher.
+    if (m.hours.length && !fromHourly && m.temp !== null) m.hours[0].temp = m.temp;
+    if (m.hours.length && !fromHourly) m.hours[0].icon = m.icon;
+
+    m.days = [];
+    for (var j = di; j < d.daily.time.length; j++) {
+      var dt = new Date(parseTime(d.daily.time[j]));
+      var dc = condition(at(d.daily.weather_code, j), 1);
+      m.days.push({
+        name: j === di ? 'Today' : DAY_NAMES[dt.getUTCDay()],
+        date: String(dt.getUTCDate()),
+        icon: dc.icon,
+        text: dc.text,
+        lo: num(at(d.daily.temperature_2m_min, j)),
+        hi: num(at(d.daily.temperature_2m_max, j)),
+        rain: num(at(d.daily.precipitation_probability_max, j))
+      });
+    }
+    return m;
+  }
+
+  // A short summary of what the tile would show, to redraw only on change.
+  function signature() {
+    var s = stateNow();
+    var m = model();
+    var line = s + '|' + phase + '|' + lastError + '|' + placeLabel(place) + '|' + (refreshing ? 1 : 0) + '|' + userAction;
+    if (m) line += '|' + m.hourIdx + '|' + m.dayIdx + '|' + m.stale + '|' + m.fromHourly + '|' + m.asOf;
+    if (s === 'error') line += '|' + nextDue;
+    return line;
+  }
+
+  // Redraws what changed. force: redraw even if the signature is the same.
+  function redraw(force) {
+    if (!C) return;
+    var sig = signature();
+    if (!force && sig === lastSig) return;
+    lastSig = sig;
+    C.redrawTile();
+    if (C.isOpen()) C.redrawPanel();
+  }
+
+  function rainClass(v) {
+    return num(v) !== null && v >= 30 ? ' is-wet' : '';
+  }
+
+  /* ---------- message states ---------- */
+
+  function message(state) {
+    if (state === 'setup') {
+      return { head: 'Set your city', line: 'The TV couldn’t work out where it is. Add a city to weather.location in config.js.',
+        button: 'Try again', icon: 'wx-pin' };
+    }
+    if (state === 'notfound') {
+      var loc = C.config.location;
+      var name = typeof loc === 'object' && loc ? 'the spot in config.js' : str(loc);
+      return { head: 'City not found', line: 'Couldn’t find “' + name + '”. Check weather.location in config.js.', icon: 'wx-pin' };
+    }
+    if (state === 'error') {
+      return { head: 'No forecast yet', line: 'The weather service didn’t answer (' + lastError + '). Trying again at ' + tvClock(nextDue) + '.',
+        button: 'Try now', icon: 'wx-cloudy' };
+    }
+    return { head: phase === 'place' && !place ? 'Finding your city…' : 'Getting the forecast…', line: '', icon: 'wx-partly-day' };
+  }
+
+  /* ---------- tile ---------- */
+
+  function drawTile(body) {
+    var state = stateNow();
+    var m = model();
+    var root = el('div', 'wx-tile', body);
+    var top = el('div', 'wx-tile-top', root);
+    el('div', 'wx-label', top, m && place ? place.name : 'Weather');
+    if (m && m.stale) el('div', 'wx-asof', top, 'as of ' + m.asOf);
+    else if (m && m.sample) el('div', 'wx-tag', top, 'Sample');
+
+    if (!m) {
+      var msg = message(state);
+      el('div', 'wx-msg-head', root, msg.head);
+      if (msg.line) el('div', 'wx-msg-line', root, msg.line);
+      icon(msg.icon, 'wx-mark', root);
+      return;
+    }
+
+    var now = el('div', 'wx-tile-now', root);
+    el('div', 'wx-tile-temp', now, temp(m.temp));
+    icon(m.icon, 'wx-tile-icon', now);
+    if (m.text) el('div', 'wx-tile-cond', root, m.text);
+
+    var foot = el('div', 'wx-tile-foot', root);
+    var range = el('div', 'wx-range', foot);
+    el('span', 'wx-hl-key', range, 'H');
+    el('span', 'wx-hl-val', range, temp(m.hi));
+    el('span', 'wx-hl-key wx-hl-gap', range, 'L');
+    el('span', 'wx-hl-val', range, temp(m.lo));
+    var rain = el('div', 'wx-rain' + rainClass(m.rain), foot);
+    icon('wx-drop', 'wx-rain-icon', rain);
+    el('span', 'wx-rain-val', rain, pct(m.rain));
+  }
+
+  /* ---------- panel ---------- */
+
+  function sub() {
+    if (!place) return '';
+    var m = model();
+    if (!m) return placeLabel(place);
+    return placeLabel(place) + ' · ' + (m.stale ? 'Couldn’t update since ' : 'Updated ') + m.asOf;
+  }
+
+  function button(parent, key, label, iconName, extra) {
+    var b = el('div', 'wx-btn f' + (extra || ''), parent);
+    b.setAttribute('data-key', key);
+    if (iconName) icon(iconName, 'wx-btn-icon', b);
+    el('span', 'wx-btn-label', b, label);
+    return b;
+  }
+
+  function drawBar(root, state, full) {
+    var bar = el('div', 'wx-bar', root);
+    var left = el('div', 'wx-bar-left', bar);
+    var hasForecast = state === 'live' || state === 'stale';
+    if (hasForecast && !full) {
+      var day = button(left, 'tab-day', 'Day', '', ' wx-tab' + (view === 'day' ? ' is-selected' : ''));
+      var week = button(left, 'tab-week', 'Week', '', ' wx-tab' + (view === 'week' ? ' is-selected' : ''));
+      (view === 'week' ? week : day).setAttribute('data-autofocus', '');
+    } else if (place && hasForecast) {
+      var where = el('div', 'wx-bar-place', left);
+      icon('wx-pin', 'wx-bar-pin', where);
+      el('span', 'wx-bar-name', where, placeLabel(place));
+    }
+    var right = el('div', 'wx-bar-right', bar);
+    var busy = refreshing;
+    if (hasForecast) {
+      button(right, 'refresh', userAction === 'refresh' || (busy && userAction !== 'relocate') ? 'Updating…' : 'Update now', 'wx-refresh');
+      if (place && place.source === 'lookup') {
+        button(right, 'relocate', userAction === 'relocate' ? 'Looking…' : 'Wrong city?', 'wx-pin');
+      }
+    } else if (state === 'setup' || state === 'error') {
+      var b = button(right, 'retry', busy ? 'Trying…' : message(state).button, 'wx-refresh');
+      b.setAttribute('data-autofocus', '');
+    }
+  }
+
+  function footer(root, m) {
+    el('div', 'wx-foot', root, (m && m.sample ? 'Sample data, not a live forecast · ' : '') + 'Weather data by Open-Meteo.com');
+  }
+
+  function drawNow(parent, m) {
+    var band = el('div', 'wx-now', parent);
+    var main = el('div', 'wx-now-main', band);
+    el('div', 'wx-now-temp', main, temp(m.temp));
+    icon(m.icon, 'wx-now-icon', main);
+    var words = el('div', 'wx-now-words', main);
+    if (m.text) el('div', 'wx-now-cond', words, m.text);
+    if (m.feels !== null) el('div', 'wx-now-feels', words, 'Feels like ' + temp(m.feels));
+
+    var stats = el('div', 'wx-stats', band);
+    stat(stats, windText(m.wind), 'wx-wind', 'Wind', '');
+    stat(stats, pct(m.rain), 'wx-drop', 'Rain', rainClass(m.rain));
+    stat(stats, m.sunrise, 'wx-sunrise', 'Sunrise', '');
+    stat(stats, m.sunset, 'wx-sunset', 'Sunset', '');
+    nowEls = { band: band, words: words, temp: main.firstChild };
+  }
+
+  // Four stats in a row leave little room beside the temperature. When the
+  // words don't fit there (a longer language, a long condition), the stats
+  // fold into two rows of two. Measured, because only the screen knows.
+  function fitNow() {
+    var n = nowEls;
+    if (!n || !n.band.parentNode || !n.band.offsetWidth) return;
+    n.band.className = 'wx-now';
+    var tight = n.band.scrollWidth > n.band.clientWidth + 1 || n.words.offsetHeight > n.temp.offsetHeight + 1;
+    if (tight) n.band.className = 'wx-now is-tight';
+  }
+
+  function stat(parent, value, iconName, label, extra) {
+    var s = el('div', 'wx-stat' + extra, parent);
+    var val = el('div', 'wx-stat-val', s);
+    // "7:04 AM": the time leads, AM/PM smaller.
+    var m = /^(.*) (AM|PM)$/.exec(value);
+    if (m) {
+      el('span', '', val, m[1]);
+      el('span', 'wx-stat-ampm', val, ' ' + m[2]);
+    } else {
+      val.textContent = value;
+    }
+    var lab = el('div', 'wx-stat-label', s);
+    icon(iconName, 'wx-stat-icon', lab);
+    el('span', 'wx-stat-text', lab, label);
+  }
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+
+  function svgEl(tag, attrs, parent) {
+    var node = document.createElementNS(SVG_NS, tag);
+    for (var k in attrs) {
+      if (attrs.hasOwnProperty(k)) node.setAttribute(k, attrs[k]);
+    }
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  // A smooth line through the points that never overshoots them: each
+  // segment's control points stay between its two ends' heights.
+  function smoothPath(pts) {
+    var d = 'M' + pts[0].x + ' ' + pts[0].y;
+    for (var i = 0; i < pts.length - 1; i++) {
+      var p0 = pts[i > 0 ? i - 1 : i];
+      var p1 = pts[i];
+      var p2 = pts[i + 1];
+      var p3 = pts[i + 2 < pts.length ? i + 2 : i + 1];
+      var lo = Math.min(p1.y, p2.y);
+      var hiY = Math.max(p1.y, p2.y);
+      var c1y = Math.max(lo, Math.min(hiY, p1.y + (p2.y - p0.y) / 6));
+      var c2y = Math.max(lo, Math.min(hiY, p2.y - (p3.y - p1.y) / 6));
+      d += 'C' + (p1.x + (p2.x - p0.x) / 6).toFixed(1) + ' ' + c1y.toFixed(1) + ' ' +
+        (p2.x - (p3.x - p1.x) / 6).toFixed(1) + ' ' + c2y.toFixed(1) + ' ' + p2.x + ' ' + p2.y.toFixed(1);
+    }
+    return d;
+  }
+
+  function drawHours(parent, m) {
+    var hours = m.hours;
+    var n = hours.length;
+    var strip = el('div', 'wx-hours', parent);
+    var top = el('div', 'wx-hrow wx-hrow-top', strip);
+    var i;
+    for (i = 0; i < n; i++) {
+      var col = el('div', 'wx-hcol' + (hours[i].now ? ' is-now' : ''), top);
+      var label = el('div', 'wx-hour', col);
+      if (hours[i].now) label.textContent = 'Now';
+      else {
+        el('span', 'wx-hour-num', label, hours[i].hour);
+        el('span', 'wx-hour-ampm', label, ' ' + hours[i].ampm);
+      }
+      icon(hours[i].icon, 'wx-hour-icon', col);
+    }
+
+    // The curve: an honest scale from the lowest to the highest of these hours.
+    var lo = Infinity;
+    var hi = -Infinity;
+    for (i = 0; i < n; i++) {
+      if (hours[i].temp === null) continue;
+      if (hours[i].temp < lo) lo = hours[i].temp;
+      if (hours[i].temp > hi) hi = hours[i].temp;
+    }
+    var zone = el('div', 'wx-curve', strip);
+    var plot = el('div', 'wx-plot', zone);
+    if (lo !== Infinity) {
+      var W = n * 100;
+      var pts = [];
+      for (i = 0; i < n; i++) {
+        if (hours[i].temp === null) continue;
+        var f = hi > lo ? (hours[i].temp - lo) / (hi - lo) : 0.5;
+        pts.push({ x: i * 100 + 50, y: (1 - f) * 100, f: f, i: i });
+      }
+      var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' 100', preserveAspectRatio: 'none', 'class': 'wx-curve-svg' }, plot);
+      var line = smoothPath(pts);
+      // The soft fill under the line fades out downward. Only one curve is
+      // ever on screen, so a fixed id is safe.
+      var grad = svgEl('linearGradient', { id: 'wx-curve-grad', x1: '0', y1: '0', x2: '0', y2: '1' }, svgEl('defs', {}, svg));
+      svgEl('stop', { offset: '0', 'stop-color': '#ffffff', 'stop-opacity': '0.12' }, grad);
+      svgEl('stop', { offset: '1', 'stop-color': '#ffffff', 'stop-opacity': '0' }, grad);
+      svgEl('path', { d: line + 'L' + pts[pts.length - 1].x + ' 130L' + pts[0].x + ' 130Z', 'class': 'wx-curve-fill', fill: 'url(#wx-curve-grad)' }, svg);
+      svgEl('path', { d: line, 'class': 'wx-curve-line' }, svg);
+      for (i = 0; i < pts.length; i++) {
+        var p = pts[i];
+        var left = (p.i / n * 100) + '%';
+        var num2 = el('div', 'wx-ctemp' + (hours[p.i].now ? ' is-now' : ''), plot, temp(hours[p.i].temp));
+        num2.style.left = left;
+        num2.style.width = (100 / n) + '%';
+        num2.style.bottom = (p.f * 100) + '%';
+        if (hours[p.i].now) {
+          var dot = el('div', 'wx-dot', plot);
+          dot.style.left = ((p.i + 0.5) / n * 100) + '%';
+          dot.style.top = ((1 - p.f) * 100) + '%';
+        }
+      }
+    }
+
+    var bottom = el('div', 'wx-hrow wx-hrow-rain', strip);
+    for (i = 0; i < n; i++) {
+      var r = hours[i].rain;
+      var cell = el('div', 'wx-hcol wx-hrain' + rainClass(r) + (r === null || r < 5 ? ' is-dry' : ''), bottom);
+      cell.textContent = r === null || r < 5 ? '–' : pct(r);
+    }
+  }
+
+  // full: the condition goes under the day name, since rows are taller there.
+  function drawWeek(parent, m, full) {
+    var week = el('div', 'wx-week', parent);
+    var lo = Infinity;
+    var hi = -Infinity;
+    var i;
+    for (i = 0; i < m.days.length; i++) {
+      if (m.days[i].lo !== null && m.days[i].lo < lo) lo = m.days[i].lo;
+      if (m.days[i].hi !== null && m.days[i].hi > hi) hi = m.days[i].hi;
+    }
+    var span = hi > lo ? hi - lo : 1;
+    for (i = 0; i < m.days.length; i++) {
+      var d = m.days[i];
+      var row = el('div', 'wx-day' + (i === 0 ? ' is-today' : ''), week);
+      var lead = full ? el('div', 'wx-day-lead', row) : row;
+      var name = el('div', 'wx-day-name', lead);
+      el('span', 'wx-day-dow', name, d.name);
+      el('span', 'wx-day-date', name, d.date);
+      if (full) {
+        el('div', 'wx-day-cond', lead, d.text);
+        icon(d.icon, 'wx-day-icon', row);
+      } else {
+        icon(d.icon, 'wx-day-icon', row);
+        el('div', 'wx-day-cond', row, d.text);
+      }
+      var rain = el('div', 'wx-day-rain' + rainClass(d.rain), row);
+      icon('wx-drop', 'wx-day-drop', rain);
+      el('span', 'wx-day-pct', rain, pct(d.rain));
+      el('div', 'wx-day-lo', row, temp(d.lo));
+      var track = el('div', 'wx-track', row);
+      if (d.lo !== null && d.hi !== null && lo !== Infinity) {
+        var a = (d.lo - lo) / span;
+        var b = (d.hi - lo) / span;
+        var fill = el('div', 'wx-fill', track);
+        fill.style.left = (a * 100) + '%';
+        fill.style.width = (Math.max(b - a, 0.02) * 100) + '%';
+        // The gradient spans the whole track; the fill shows its own slice of it.
+        var w = Math.max(b - a, 0.02);
+        fill.style.backgroundSize = (100 / w) + '% 100%';
+        fill.style.backgroundPosition = (w < 1 ? (a / (1 - w)) * 100 : 0) + '% 0';
+      }
+      el('div', 'wx-day-hi', row, temp(d.hi));
+    }
+  }
+
+  function drawPanel(body, ctx) {
+    var full = ctx.mode() === 'full';
+    var state = stateNow();
+    var m = model();
+    nowEls = null;
+    rootEl = el('div', 'wx-panel ' + (full ? 'is-full' : 'is-' + view), body);
+    ctx.setSub(sub());
+    drawBar(rootEl, state, full);
+    var main = el('div', 'wx-main', rootEl);
+    if (m) {
+      var dayView = el('div', 'wx-view wx-view-day', main);
+      drawNow(dayView, m);
+      drawHours(dayView, m);
+      if (full) el('div', 'wx-split', main);
+      var weekView = el('div', 'wx-view wx-view-week', main);
+      drawWeek(weekView, m, full);
+    } else {
+      var msg = message(state);
+      var box = el('div', 'wx-msg', main);
+      el('div', 'wx-msg-big', box, msg.head);
+      if (msg.line) el('div', 'wx-msg-text', box, msg.line);
+      icon(msg.icon, 'wx-mark wx-mark-panel', main);
+    }
+    footer(rootEl, m);
+    if (!full) fitNow();
+  }
+
+  // Switches Day and Week by a class, without a redraw.
+  function showView(next) {
+    view = next;
+    if (!rootEl || !rootEl.parentNode) return;
+    if (rootEl.className.indexOf('is-full') !== -1) return;
+    rootEl.className = 'wx-panel is-' + next;
+    if (next === 'day') fitNow();
+    var tabs = rootEl.querySelectorAll('.wx-tab');
+    for (var i = 0; i < tabs.length; i++) {
+      var on = tabs[i].getAttribute('data-key') === 'tab-' + next;
+      if (on) tabs[i].classList.add('is-selected');
+      else tabs[i].classList.remove('is-selected');
+    }
+  }
+
+  /* ---------- buttons ---------- */
+
+  function updateNow() {
+    if (refreshing) return;
+    var before = rec;
+    userAction = 'refresh';
+    refresh(function (err) {
+      userAction = '';
+      if (err && before && usable()) {
+        C.toast('Couldn’t update (' + err + '). Showing the forecast from ' + tvClock(before.savedAt) + '.', 5000);
+      }
+    });
+    redraw(true);
+  }
+
+  // Forget the looked-up city and ask again, the other service first.
+  function relocate() {
+    if (refreshing || !place || place.source !== 'lookup') return;
+    var old = place;
+    userAction = 'relocate';
+    refreshing = true;
+    startedAt = Date.now();
+    redraw(true);
+    lsRemove(PLACE_KEY);
+    function done() {
+      refreshing = false;
+      userAction = '';
+      redraw(true);
+    }
+    lookupCity(old.provider === 'geojs' ? 'ipwho' : 'geojs', safe(function (err, p) {
+      if (err) {
+        lsSet(PLACE_KEY, old);
+        C.toast('Couldn’t reach the city lookup (' + err + '). Still showing ' + old.name + '.', 6000);
+        return done();
+      }
+      if (p.name.toLowerCase() === old.name.toLowerCase()) {
+        // Keep the coordinates the forecast was made for, but remember who answered.
+        old.provider = p.provider;
+        lsSet(PLACE_KEY, old);
+        C.toast('The lookup still says ' + p.name + '. To set it yourself, add a city to weather.location in config.js.', 7000);
+        return done();
+      }
+      // A different city: keep showing the old forecast until the new one is in.
+      fetchForecast(p, safe(function (err2, r) {
+        place = p;
+        lsSet(PLACE_KEY, p);
+        rec = null;
+        if (r) keep(r);
+        settle(err2);
+        done();
+      }));
+    }));
+  }
+
+  /* ---------- timers ---------- */
+
+  function tick() {
+    // Every call has its own timeout, so an update stuck this long lost its
+    // callback to an error somewhere. Let the next one run.
+    if (refreshing && Date.now() - startedAt > 3 * MIN) refreshing = false;
+    if (!document.hidden && !refreshing && Date.now() >= nextDue) refresh();
+    else redraw();
+  }
+
+  function onVisible() {
+    if (document.hidden || refreshing) return;
+    var due = rec ? ageOf(rec) >= REFRESH_EVERY : Date.now() >= nextDue;
+    if (due) refresh();
+    else redraw();
+  }
+
+  /* ---------- widget ---------- */
+
+  function fallbackText(body, text) {
+    try {
+      body.innerHTML = '';
+      el('div', 'wx-msg-line wx-broken', body, text);
+    } catch (e) { /* nothing more to do */ }
+  }
+
+  return {
+    id: 'weather',
+    title: 'Weather',
+    icon: 'sun-cloud',
+    expandable: true,
+    head: false,
+
+    init: function (ctx) {
+      C = ctx;
+      units = ctx.config.units === 'celsius' ? 'celsius' : 'fahrenheit';
+      // Draw from the cache at once if there is one, then update in the background.
+      if (placeFromSaved()) rec = loadCache();
+      lastSig = signature();
+      setInterval(safe(tick), MIN);
+      if (document.addEventListener) document.addEventListener('visibilitychange', safe(onVisible));
+      // After the hub has drawn every tile, so the first paint isn't held up.
+      setTimeout(safe(function () { refresh(); }), 0);
+    },
+
+    renderTile: function (body, ctx) {
+      C = ctx;
+      try {
+        drawTile(body);
+      } catch (e) {
+        if (window.console && console.warn) console.warn('Weather tile: ' + (e && e.message));
+        fallbackText(body, 'The weather couldn’t be shown.');
+      }
+    },
+
+    renderPanel: function (body, ctx) {
+      C = ctx;
+      try {
+        drawPanel(body, ctx);
+      } catch (e) {
+        if (window.console && console.warn) console.warn('Weather panel: ' + (e && e.message));
+        rootEl = null;
+        fallbackText(body, 'The weather couldn’t be shown.');
+      }
+    },
+
+    onFocus: function (target) {
+      var key = target.getAttribute('data-key');
+      if (key === 'tab-day' && view !== 'day') showView('day');
+      else if (key === 'tab-week' && view !== 'week') showView('week');
+    },
+
+    onSelect: function (target) {
+      var key = target.getAttribute('data-key');
+      if (key === 'tab-day') showView('day');
+      else if (key === 'tab-week') showView('week');
+      else if (key === 'refresh' || key === 'retry') updateNow();
+      else if (key === 'relocate') relocate();
+    },
+
+    onMode: function (mode, ctx) {
+      ctx.redrawPanel();
+    },
+
+    onClose: function () {
+      rootEl = null;
+    }
+  };
+})());

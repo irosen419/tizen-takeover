@@ -112,6 +112,21 @@ var HUB_CONFIG = {
           ]
         }
       ]
+    },
+
+    /*
+     * Weather: today on the tile, the next hours and the week in the panel.
+     * Forecasts come from Open-Meteo, free and without an account.
+     */
+    weather: {
+      /* Where the forecast is for. One setting, three ways to fill it:
+           ''                        the TV finds its own city from its internet address
+                                     (the answer is kept on the TV, not in this file)
+           'Lisbon' or 'Portland, Oregon'   a city name, looked up once
+           { name: 'Home', latitude: 38.72, longitude: -9.14 }   an exact spot */
+      location: '',
+      // 'fahrenheit' (wind in mph) or 'celsius' (wind in km/h)
+      units: 'fahrenheit'
     }
   }
 };
