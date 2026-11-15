@@ -15,7 +15,7 @@ var HUB_CONFIG = {
   title: 'Living room',
   pi: HUB_PI,
 
-  /* The picture behind the tiles: a file next to index.html or a full URL.
+  /* The picture behind the tiles: a file next to hub.html or a full URL.
      Any 1920x1080 picture works. '' or null = no picture (plain dark). */
   background: 'backgrounds/ocean.jpg',
 

@@ -78,7 +78,7 @@ Commands:
 - `show <widget>`: open a widget (`weather`, `todo`, `entertainment`), optionally full screen.
 - `home`: close whatever is open.
 - `say "<text>"`: a short message at the bottom of the screen for a few seconds.
-- `reload`: load the hub afresh (handy after an update).
+- `reload`: load the hub afresh. It restarts through the loader (`app/index.html`), so it also picks up the newest version of the hub.
 
 Data:
 
@@ -155,7 +155,7 @@ Everything below is the contract between the hub (`app/`) and the Pi server (`pi
 - `app/live.js`: the hub's client. Plain ES5. Loads before `hub.js`, touches no DOM, does nothing until `HUB_LIVE.start()`.
 - `HUB_CONFIG.live.server`: the server address. `''` = off. `?live=<address>` or `?live=off` in the page address overrides it (for the preview).
 
-Every file must survive the others being an older version, because jsDelivr can serve a mix: `hub.js` works without `live.js`, `todo.js` works without `ctx.live`, `live.js` is inert without `hub.js`.
+Every file must survive the others being an older version, because jsDelivr can serve a mix when the hub runs from the branch (only when GitHub couldn't be reached on a first start; see the README's Updating section): `hub.js` works without `live.js`, `todo.js` works without `ctx.live`, `live.js` is inert without `hub.js`.
 
 ### Settings (`pi/.env`)
 
@@ -227,7 +227,7 @@ Ops are applied in order and the last one to arrive wins.
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
 | `GET /health` (no token) | | `{ ok, server }` |
 
-Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload`. Anything else is `400`.
+Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload` (the hub restarts through the loader with `HUB_UPDATE.restart()`, so it lands on the newest commit; ignored in the first 30 seconds after loading). Anything else is `400`.
 
 ### The hub's client
 

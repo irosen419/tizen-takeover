@@ -620,13 +620,22 @@ body.has-picture {
 .motion-push .tile,
 .motion-expand .tile { will-change: transform, opacity; }
 
-/* ---------- Today: the live updates line ---------- */
+/* ---------- Today: the extra status rows ---------- */
 
-/* A third status line shows only while live updates have something to say.
-   The clock is a little smaller then, so all three lines fit in the tile at
-   1920x1080 with room to spare. Each line still ends in "..." if too long. */
-.tile-body.today-has-live .today-time {
+/* A third row (live updates or updates) and a fourth (both) show only while
+   they have something to say. The clock is a little smaller for each, so all
+   rows fit in the tile at 1920x1080 with room to spare. Each row still ends
+   in "..." if too long. */
+.tile-body.today-rows-3 .today-time {
   font-size: 3.9rem;
   line-height: 1.15;
 }
-.tile-body.today-has-live .today-status { padding-top: 0.2rem; }
+.tile-body.today-rows-3 .today-status { padding-top: 0.2rem; }
+.tile-body.today-rows-4 .today-time {
+  font-size: 3.5rem;
+  line-height: 1.1;
+}
+.tile-body.today-rows-4 .today-status {
+  padding-top: 0.15rem;
+  line-height: 1.25;
+}
