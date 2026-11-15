@@ -16,6 +16,13 @@
  * data in dev/.live-data. Open the hub with ?live=http://127.0.0.1:8097 to
  * use it, and steer it with pi/hubctl.js (the address it prints).
  * HUB_LIVE_PORT=off leaves it out (dev/live-test.js runs its own).
+ *
+ * Calendar: that hub server reads four sample calendars (dev/calendar-sample.js)
+ * from a small local feed server, the way it reads Google on the Pi. Try the
+ * other states with CALENDAR_MODE=MODE node dev/preview.js or GET
+ * http://127.0.0.1:8095/preview?calendar=MODE while it runs (the Pi reads the
+ * feeds again at once). Modes: sample, empty, fail, partial, many, and off
+ * (only at start: no calendars set up).
  */
 var http = require('http');
 var fs = require('fs');
@@ -32,6 +39,8 @@ var LIVE_DATA_DIR = process.env.HUB_LIVE_DATA_DIR || path.join(__dirname, '.live
 
 var MODES = ['ok', 'fail', 'slow', 'badjson', 'nolookup', 'nogeocode', 'forecastfail'];
 var weatherMode = process.env.WEATHER_MODE || 'ok';
+var calendarMode = process.env.CALENDAR_MODE || 'sample';
+var calendarFeeds = null;
 
 // Same four addresses as service.js, each with the sample file that stands in for it.
 var FETCH_ALLOWED = [
@@ -203,7 +212,15 @@ var service = http.createServer(function (req, res) {
       weatherMode = String(q.weather);
       log('weather mode: ' + weatherMode);
     }
-    return send(res, 200, { ok: true, weather: weatherMode });
+    if (q.calendar !== undefined) {
+      if (!calendarFeeds || !calendarFeeds.setMode(String(q.calendar))) {
+        return send(res, 400, { ok: false, error: calendarFeeds ? 'unknown calendar mode' : 'no sample calendars running' });
+      }
+      calendarMode = String(q.calendar);
+      log('calendar mode: ' + calendarMode + ' (asking the hub server to read again)');
+      refreshCalendars();
+    }
+    return send(res, 200, { ok: true, weather: weatherMode, calendar: calendarMode });
   }
   send(res, 404, { ok: false, error: 'not found' });
 });
@@ -224,14 +241,30 @@ var liveServer = null;
 (function startLive() {
   var file = path.join(__dirname, '..', 'pi', 'server.js');
   if (process.env.HUB_LIVE_PORT === 'off' || !fs.existsSync(file)) return;
+  var sample = require('./calendar-sample');
+  var feeds = calendarMode === 'off' ? Promise.resolve(null) :
+    sample.feedServer({ mode: calendarMode }).catch(function (e) {
+      log('Calendar: the sample feeds did not start (' + (e && e.message) + ')');
+      return null;
+    });
+  feeds.then(function (f) {
+    calendarFeeds = f;
+    start(f);
+  });
+  function start(f) {
   try {
     liveServer = require('../pi/server').start({
       token: LIVE_TOKEN,
       port: LIVE_PORT,
       host: '127.0.0.1',
       origins: ['http://127.0.0.1:' + PAGE_PORT],
-      dataDir: LIVE_DATA_DIR
+      dataDir: LIVE_DATA_DIR,
+      calendars: f ? f.calendars : [],
+      allowHttp: true,
+      timezone: sample.TZ
     });
+    log('Calendar: ' + (f ? 'sample calendars, mode "' + calendarMode + '"; switch with /preview?calendar=' + sample.MODES.join('|') :
+      'none set up (CALENDAR_MODE=off)'));
     var hub = 'http://127.0.0.1:' + LIVE_PORT;
     log('Live:     ' + hub + ' (the Pi\'s hub server, data in ' + path.relative(process.cwd(), LIVE_DATA_DIR) + ')');
     log('          open http://127.0.0.1:' + PAGE_PORT + '/?live=' + hub + ' for live updates');
@@ -241,7 +274,18 @@ var liveServer = null;
   } catch (e) {
     log('Live:     the hub server in pi/ did not start (' + (e && e.message) + '); the preview runs without it');
   }
+  }
 })();
+
+// Asks the hub server to read the calendars again now (the control API).
+function refreshCalendars() {
+  var req = http.request({
+    host: '127.0.0.1', port: LIVE_PORT, path: '/api/calendar/refresh', method: 'POST',
+    headers: { Authorization: 'Bearer ' + LIVE_TOKEN, 'Content-Type': 'application/json', 'Content-Length': 2 }
+  }, function (res) { res.resume(); });
+  req.on('error', function (e) { log('Calendar: refresh failed (' + e.message + ')'); });
+  req.end('{}');
+}
 
 module.exports = {
   page: page,

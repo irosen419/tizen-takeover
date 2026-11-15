@@ -15,14 +15,17 @@
  *   GET  /api/todo       the to-do list
  *   POST /api/todo       add one to-do
  *   POST /api/todo/ops   several to-do changes at once
- *   GET  /api/status     version, rev, connected screens
+ *   GET  /api/status     version, rev, connected screens, calendar summary
+ *   GET  /api/calendar   the calendar events (never the secret links)
+ *   POST /api/calendar/refresh   read every calendar now and wait for it
  *   GET  /health         no token, just "is it running"
  *
  * The full contract is in docs/live-updates.md ("Reference for builders").
  *
  * Commands are never stored for a TV that is off. Only the fallback poll
  * remembers them, for 10 seconds, at most 20. With no TV connected the
- * server holds nothing open. Data (the to-do list) lives in data/state.json.
+ * server holds nothing open. Data (the to-do list and the calendar events)
+ * lives in data/state.json. The calendar reader is in calendar.js.
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -32,6 +35,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const calendar = require('./calendar');
 
 const SERVER_VERSION = '0.1.0';
 const PROTOCOL = 1;
@@ -351,7 +355,10 @@ function freshState() {
   return {
     epoch: crypto.randomBytes(6).readUIntBE(0, 6).toString(36),
     rev: 0,
-    resources: { todo: { rev: 0, data: { items: [] } } }
+    resources: {
+      todo: { rev: 0, data: { items: [] } },
+      calendar: { rev: 0, data: calendar.unconfiguredData() }
+    }
   };
 }
 
@@ -388,6 +395,8 @@ function loadState(dir, log) {
       } catch (e) { /* skip one bad item, keep the rest */ }
     });
     st.resources.todo = { rev: typeof todo.rev === 'number' ? todo.rev : 0, data: { items: items } };
+    // Older files have no calendar; a damaged one is rebuilt from known fields.
+    st.resources.calendar = calendar.cleanResource(st.resources.calendar);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -440,6 +449,46 @@ function start(options) {
   let closing = false;
 
   if (!tokenOk) log('no token set (or shorter than ' + MIN_TOKEN + ' characters): the control API is off, screens still work');
+
+  /* --- calendar --- */
+
+  // opt.calendars is a list of { name, url, details }; opt.calendarEnv is the
+  // .env settings (CALENDAR_1_NAME ...). Links are never logged.
+  const allowHttp = opt.allowHttp === true;
+  const calTz = calendar.timezone(opt.timezone, log);
+  const calList = calendar.checkCalendars(
+    Array.isArray(opt.calendars) ? opt.calendars : calendar.calendarsFromEnv(opt.calendarEnv || {}), log, allowHttp);
+  const calWaitMs = opt.calendarWait || 25000;
+  const calReader = calendar.createReader({
+    calendars: calList,
+    tz: calTz,
+    refreshMs: calendar.refreshMinutes(opt.refreshMinutes, log) * 60000,
+    allowHttp: allowHttp,
+    timeoutMs: opt.calendarTimeout,
+    now: typeof opt.now === 'function' ? opt.now : () => new Date(),
+    log: log,
+    current: () => state.resources.calendar.data,
+    publish: (data, changed) => {
+      if (!changed) {
+        // Only the "read at" times moved: keep them in memory, no push, no write.
+        state.resources.calendar = { rev: state.resources.calendar.rev, data: data };
+        return;
+      }
+      try {
+        changeResource('calendar', data);
+        log('calendar changed: ' + data.events.length + ' events (rev ' + state.rev + ')');
+      } catch (e) { /* changeResource already logged it */ }
+    }
+  });
+  if (calList.length) {
+    log('calendars: ' + calList.map((c) => c.name + (c.details === 'busy' ? ' (busy only)' : '')).join(', ') + '; time zone ' + calTz);
+  } else if (state.resources.calendar.data.configured) {
+    try {
+      changeResource('calendar', calendar.unconfiguredData());
+      log('no calendars are set up any more; cleared the calendar');
+    } catch (e) { /* logged */ }
+  }
+  calReader.start();
 
   /* --- replies --- */
 
@@ -521,9 +570,15 @@ function start(options) {
   // Applies a change to the to-do list: saves, bumps rev, tells every screen.
   function changeTodo(newItems) {
     if (JSON.stringify(newItems) === JSON.stringify(todoItems())) return false;
+    changeResource('todo', { items: newItems });
+    return true;
+  }
+
+  // Replaces one resource: saves, bumps rev, tells every screen.
+  function changeResource(name, data) {
     const next = JSON.parse(JSON.stringify(state));
     next.rev += 1;
-    next.resources.todo = { rev: next.rev, data: { items: newItems } };
+    next.resources[name] = { rev: next.rev, data: data };
     try {
       saveState(dataDir, next);
     } catch (e) {
@@ -533,9 +588,8 @@ function start(options) {
       throw err;
     }
     state = next;
-    broadcast('change', { resource: 'todo', rev: state.rev, data: state.resources.todo.data });
+    broadcast('change', { resource: name, rev: state.rev, data: state.resources[name].data });
     wakePolls();
-    return true;
   }
 
   function opsAndReply(res, body, extra) {
@@ -780,7 +834,9 @@ function start(options) {
       '/api/command': ['POST'],
       '/api/todo': ['GET', 'POST'],
       '/api/todo/ops': ['POST'],
-      '/api/status': ['GET']
+      '/api/status': ['GET'],
+      '/api/calendar': ['GET'],
+      '/api/calendar/refresh': ['POST']
     };
     if (!routes[route]) return done(404, { ok: false, error: 'no such call' });
     if (routes[route].indexOf(req.method) < 0) {
@@ -791,8 +847,27 @@ function start(options) {
     if (route === '/api/status') {
       return done(200, {
         ok: true, server: SERVER_VERSION, rev: state.rev, epoch: state.epoch,
-        uptime: Math.round((Date.now() - startedAt) / 1000), screens: screenList()
+        uptime: Math.round((Date.now() - startedAt) / 1000), screens: screenList(),
+        calendar: { configured: calReader.configured, calendars: calList.length, lastRefresh: calReader.lastRefresh() }
       });
+    }
+    if (route === '/api/calendar') {
+      const c = state.resources.calendar;
+      return done(200, { ok: true, rev: c.rev, data: c.data });
+    }
+    if (route === '/api/calendar/refresh') {
+      req.resume(); // no body is needed
+      let waitTimer = null;
+      const late = new Promise((resolve) => { waitTimer = setTimeout(() => resolve(null), calWaitMs); });
+      Promise.race([calReader.refresh().then((r) => ({ r: r })), late]).then((w) => {
+        clearTimeout(waitTimer);
+        const finished = !!(w && w.r);
+        done(200, {
+          ok: true, done: finished || !calReader.configured, changed: finished ? w.r.changed : false,
+          calendars: state.resources.calendar.data.calendars
+        }, finished ? (w.r.changed ? 'changed' : 'no change') : 'still reading');
+      }).catch(failed);
+      return undefined;
     }
     if (route === '/api/todo' && req.method === 'GET') {
       return done(200, { ok: true, rev: state.rev, items: todoItems() });
@@ -944,7 +1019,10 @@ function start(options) {
     close: close,
     _debug: () => {
       forgetOld();
-      return { sse: sse.size, polls: polls.size, commands: remembered.length, pollScreens: pollSeen.size, pingTimer: !!pingTimer };
+      return {
+        sse: sse.size, polls: polls.size, commands: remembered.length, pollScreens: pollSeen.size, pingTimer: !!pingTimer,
+        calendar: calReader.debug()
+      };
     }
   };
 
@@ -967,6 +1045,7 @@ function start(options) {
   function close(cb) {
     if (closing) { if (cb) setImmediate(cb); return; }
     closing = true;
+    calReader.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
@@ -1011,7 +1090,10 @@ if (require.main === module) {
     tvIps: env.HUB_TV_IPS || '',
     origins: env.HUB_ORIGINS || '',
     tunnelPort: env.HUB_TUNNEL_PORT || null,
-    dataDir: env.HUB_DATA_DIR || 'data'
+    dataDir: env.HUB_DATA_DIR || 'data',
+    calendarEnv: env,
+    timezone: env.HUB_TIMEZONE || '',
+    refreshMinutes: env.CALENDAR_REFRESH_MINUTES || ''
   });
   hub.ready.catch(() => process.exit(1));
   let stopping = false;

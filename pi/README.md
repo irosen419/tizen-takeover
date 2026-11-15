@@ -75,6 +75,96 @@ If the TV is off you will see `Sent, but no screen is listening`. That is normal
 
 Run `./hub help` for every command.
 
+## Calendars
+
+The Pi can read your Google calendars and send the coming events to the TV. Each calendar has a private link, called the **secret address**. The Pi reads that link every few minutes. Nobody needs to sign in to Google on the Pi.
+
+The secret address is like a key: anyone who has it can read that calendar. Keep it only in `.env` on the Pi. Never put it in git, a chat, an email or a screenshot.
+
+### Set up a calendar
+
+1. On a computer (not the phone app), open [Google Calendar](https://calendar.google.com).
+2. Click the gear at the top right, then **Settings**.
+3. On the left, under **Settings for my calendars**, click the calendar you want on the TV.
+4. Scroll down to **Integrate calendar**.
+5. Find **Secret address in iCal format** and click the copy button next to it. It starts with `https://calendar.google.com/calendar/ical/` and ends with `basic.ics`.
+6. On the Pi, go to this folder and open the settings file:
+
+   ```sh
+   cd tizen-takeover/pi
+   nano .env
+   ```
+
+7. Find the `CALENDAR_` lines near the bottom. For your first calendar, make two lines like these (no `#` at the start), and paste your link after `CALENDAR_1_URL=`:
+
+   ```
+   CALENDAR_1_NAME=Ian
+   CALENDAR_1_URL=https://calendar.google.com/calendar/ical/.../basic.ics
+   ```
+
+   The name is what you will see in `./hub calendar status`. A second calendar uses `CALENDAR_2_NAME` and `CALENDAR_2_URL`, and so on up to 9.
+
+   If your `.env` has no `CALENDAR_` lines (it was made before calendars existed), just type them at the end.
+
+8. Save and close: press Ctrl+O, then Enter, then Ctrl+X.
+9. Restart the server so it reads the new settings:
+
+   ```sh
+   docker compose restart hub
+   ```
+
+10. Check it:
+
+    ```sh
+    ./hub calendar status
+    ```
+
+    You should see one line per calendar, such as `Ian: 42 events, read at 7:10 AM`, and then the next event, such as `Next: Thursday 9:00 AM, Dentist`. If it says `No calendars are set up yet`, check that the two lines in `.env` have no `#` in front.
+
+The TV shows events from yesterday up to 60 days ahead.
+
+### Show a calendar as just "Busy"
+
+For a calendar whose details should stay private (work, for example), add a third line:
+
+```
+CALENDAR_2_DETAILS=busy
+```
+
+The TV then shows each event as `Busy`, with its time but no title and no place. Restart the server after the change, as in step 9.
+
+### New events and waiting
+
+Google can take a while to put a new or changed event into the secret address. We have not confirmed how long. The Pi reads every 5 minutes (change it with `CALENDAR_REFRESH_MINUTES` in `.env`).
+
+To read all calendars right now:
+
+```sh
+./hub calendar refresh
+```
+
+You should see something like `Refreshed. 3 calendars, 57 events (changed).` This reads at once, but it cannot make Google update its side sooner. If a new event is not there yet, try again in a few minutes.
+
+### If a secret address leaks
+
+1. Go back to the same Google screen (gear, **Settings**, click the calendar, **Integrate calendar**).
+2. Next to **Secret address in iCal format**, click **Reset**. The old link stops working.
+3. Copy the new link and paste it into `.env` in place of the old one (steps 6 to 9 above).
+
+### Holidays and other public calendars
+
+A public calendar, such as a Holidays calendar, has a normal public address and does not need the secret one. On its **Integrate calendar** screen, use **Public address in iCal format** instead, in the same `CALENDAR_` lines.
+
+### If a calendar cannot be read
+
+`./hub calendar status` says what went wrong in plain words, for example `Health: could not be read (HTTP 404), showing the 12 events from 6:55 AM`. The TV keeps showing the last events it had for up to a day.
+
+- `could not be read (HTTP 404)`: the link is wrong or was reset. Copy it again from Google.
+- `did not look like a calendar`: the link leads to a web page, not a calendar. Make sure you copied the **iCal** address.
+- `timed out` or `could not be reached`: the Pi could not reach Google. Check its internet connection; it tries again by itself.
+
+The server never writes a calendar link in its log, so `docker compose logs hub` is safe to show.
+
 ## Run without Docker
 
 If you prefer, install Node 14 or newer (`node --version` shows yours) and run it directly:
@@ -164,7 +254,7 @@ Point the tunnel at `http://127.0.0.1:8098` and nothing else. Never point a tunn
 
 ## Where your data lives, and backups
 
-Everything is in `data/state.json` in this folder. It is rewritten safely on each change. If it ever gets damaged, the server moves it aside as `data/state.bad-<time>.json` and starts an empty list instead of failing.
+Everything is in `data/state.json` in this folder (the to-do list, and the latest calendar events; never the calendar links). It is rewritten safely on each change. If it ever gets damaged, the server moves it aside as `data/state.bad-<time>.json` and starts an empty list instead of failing.
 
 To back up, copy that file somewhere safe:
 
@@ -179,4 +269,5 @@ To restore, stop the server, copy the file back to `data/state.json`, and start 
 - The token is the key to sending commands. It lives only in `pi/.env` on the Pi.
 - Never put the token in git, in a chat, or in a screenshot. `.env` is listed in `.gitignore` so git skips it.
 - `./hub` never prints the token, and the server never logs it.
+- The calendar secret addresses are also only in `.env`. The server never logs them or shows them in any answer.
 - If you think it leaked, delete the `HUB_TOKEN=` line from `.env`, run `./hub token`, and restart the server.

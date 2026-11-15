@@ -75,7 +75,7 @@ Kept deliberately small, one or two of each kind, so the first test is easy to j
 
 Commands:
 
-- `show <widget>`: open a widget (`weather`, `todo`, `entertainment`), optionally full screen.
+- `show <widget>`: open a widget (`weather`, `todo`, `calendar`, `entertainment`), optionally full screen.
 - `home`: close whatever is open.
 - `say "<text>"`: a short message at the bottom of the screen for a few seconds.
 - `reload`: load the hub afresh. It restarts through the loader (`app/index.html`), so it also picks up the newest version of the hub.
@@ -125,6 +125,19 @@ The calendar needs a home off GitHub for its secret links, and this server is th
 - When Claude adds an event to your Google Calendar, Claude then tells the Pi "read the calendar now", so it appears right away instead of minutes later.
 
 From you: which calendars to show, whether any show as just "Busy", and one secret link per calendar pasted into `.env`.
+
+### What the Pi reader does (built)
+
+- Each calendar is `CALENDAR_n_NAME`, `CALENDAR_n_URL` and optionally `CALENDAR_n_DETAILS=busy` in `.env`. Names may contain spaces.
+- The Pi downloads each feed over https only (10 second limit, 5 MB cap, at most 3 redirects), reads it with its own small parser and keeps one resource, `calendar`, in `state.json`. Only the events live there. The links never do, and never appear in a log, an answer or the state file.
+- Window: the start of yesterday up to 60 days after today, at most 500 events, in the time zone `HUB_TIMEZONE` (default America/Chicago).
+- Repeating events are expanded on the Pi (daily, weekly, monthly, yearly, with interval, count, until, weekdays, month days, exceptions and moved single copies). Shapes it cannot read safely are skipped and counted, never guessed.
+- A feed that fails keeps its last good events for 24 hours, and the calendar's own row says which one failed and why. Other calendars keep working.
+- A push happens only when the events really change, so a quiet calendar sends nothing.
+- Data shape, per event: `{ id, cal, title, start, end, allDay, location }`. Timed events use UTC ISO strings. All-day events use `YYYY-MM-DD` with an exclusive end. `cal` is the 1-based number of the calendar in `calendars`, which carries `name`, `ok`, `error`, `count`, `skipped`, `updatedAt`. With `busy`, titles and places are replaced by "Busy" before the data leaves the reader.
+- `GET /api/calendar` returns it, `POST /api/calendar/refresh` reads now and waits (up to 25 s), `./hub calendar status` and `./hub calendar refresh` wrap both.
+- The TV widget is `app/widgets/calendar.js` (v0.11.0). It listens for `calendar`, keeps the last copy on the TV (`homeHub.calendar.v1`) and converts every time to `tz` itself.
+- `updatedAt` only moves when the events change, because a refresh that finds the same events pushes nothing. So the TV does not call data old just because `updatedAt` is old: it only says "Last updated …" when the line to the Pi is down (or it is showing its saved copy) and the last time it had the Pi is more than 30 minutes ago.
 
 ## How it is tested without your TV or Pi
 
