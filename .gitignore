@@ -1,0 +1,4 @@
+pi/.env
+pi/data/
+dev/.live-data/
+node_modules/

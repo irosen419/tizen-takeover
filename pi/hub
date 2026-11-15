@@ -1,0 +1,26 @@
+#!/bin/sh
+# Home Hub command wrapper. Run it from the pi folder, for example:
+#   ./hub show weather
+#   ./hub todo add "Buy milk"
+# It uses Node on this machine if there is one. Otherwise it runs the same
+# command inside the Docker container (see docker-compose.yml).
+# "./hub token" works even before the server is started.
+
+cd "$(dirname "$0")" || exit 1
+
+if command -v node >/dev/null 2>&1; then
+  exec node hubctl.js "$@"
+fi
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Neither Node nor Docker is installed on this machine."
+  exit 1
+fi
+
+if [ "$1" = "token" ]; then
+  # A one-off container, so this works before the server is running.
+  # It runs as you, so pi/.env stays owned by you.
+  exec docker compose run --rm --no-deps --user "$(id -u):$(id -g)" hub node hubctl.js "$@"
+fi
+
+exec docker compose exec -T hub node hubctl.js "$@"

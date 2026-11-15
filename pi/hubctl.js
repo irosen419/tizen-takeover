@@ -1,0 +1,314 @@
+/*
+ * hubctl: the command line for the Home Hub live server. Claude on the Pi
+ * (or you) runs it to change what the TV shows and to edit the to-do list.
+ * Usually you run it through the "hub" script in this folder:
+ *
+ *   ./hub show weather [--full]      open a widget on the TV
+ *   ./hub home                       close whatever is open
+ *   ./hub say "Dinner in 10" [--seconds 8]
+ *   ./hub reload                     load the hub afresh
+ *   ./hub todo add "Buy milk" [--section now|next|waiting] [--due 2026-12-24]
+ *   ./hub todo list
+ *   ./hub todo done <id or exact title>
+ *   ./hub todo remove <id or exact title>
+ *   ./hub status                     is the server up, which screens are on
+ *   ./hub token                      create the password, once
+ *   ./hub help
+ *
+ * It reads HUB_TOKEN and HUB_PORT from pi/.env next to this file (real
+ * environment variables win) and talks to http://127.0.0.1:<port>, or to
+ * HUB_URL if that is set. It never prints the token.
+ * Node 14 or newer, no npm packages. Exit code 0 on success, 1 otherwise.
+ */
+'use strict';
+
+const http = require('http');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const ENV_FILE = path.join(__dirname, '.env');
+const EXAMPLE_FILE = path.join(__dirname, '.env.example');
+const WIDGETS = ['weather', 'todo', 'entertainment'];
+
+/* ---------- settings ---------- */
+
+function parseEnv(text) {
+  const out = {};
+  String(text || '').split(/\r?\n/).forEach((line) => {
+    const t = line.trim();
+    if (!t || t[0] === '#') return;
+    const m = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(t);
+    if (!m) return;
+    let v = m[2];
+    if ((v[0] === '"' || v[0] === "'") && v.length >= 2 && v[v.length - 1] === v[0]) v = v.slice(1, -1);
+    else v = v.replace(/\s+#.*$/, '').trim();
+    out[m[1]] = v;
+  });
+  return out;
+}
+
+function settings() {
+  let file = {};
+  try { file = parseEnv(fs.readFileSync(ENV_FILE, 'utf8')); } catch (e) { /* no .env yet */ }
+  const pick = (k) => (process.env[k] ? process.env[k] : file[k] || '');
+  const port = pick('HUB_PORT') || '8097';
+  return {
+    token: pick('HUB_TOKEN'),
+    port: port,
+    url: (pick('HUB_URL') || 'http://127.0.0.1:' + port).replace(/\/+$/, '')
+  };
+}
+
+/* ---------- output ---------- */
+
+class Stop extends Error {}
+
+function say(line) {
+  process.stdout.write(line + '\n');
+}
+
+function stop(line) {
+  const e = new Stop(line);
+  throw e;
+}
+
+/* ---------- talking to the server ---------- */
+
+function call(method, p, body) {
+  const s = settings();
+  if (!s.token) stop('There is no token in pi/.env yet. Run ./hub token first, then restart the server.');
+  let url;
+  try { url = new URL(s.url + p); } catch (e) { stop('HUB_URL is not a valid address: ' + s.url); }
+  const lib = url.protocol === 'https:' ? https : http;
+  const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
+  return new Promise((resolve) => {
+    const req = lib.request(url, {
+      method: method,
+      headers: Object.assign({ Authorization: 'Bearer ' + s.token, Accept: 'application/json' },
+        data ? { 'Content-Type': 'application/json', 'Content-Length': data.length } : {}),
+      timeout: 15000
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        let json = null;
+        try { json = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { /* handled below */ }
+        resolve({ status: res.statusCode, json: json });
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', (e) => resolve({ error: e }));
+    if (data) req.write(data);
+    req.end();
+  }).then((r) => {
+    const where = process.env.HUB_URL ? s.url : 'this Pi';
+    if (r.error) {
+      if (r.error.code === 'ECONNREFUSED') {
+        stop('The server is not running on ' + where + ' (nothing answered on port ' + (url.port || s.port) + ').');
+      }
+      if (r.error.message === 'timeout') stop('The server did not answer in time.');
+      stop('Could not reach the server (' + (r.error.code || r.error.message) + ').');
+    }
+    if (!r.json) stop('Something answered at ' + s.url + ', but it is not the Home Hub server.');
+    if (r.status === 401) stop('The server rejected the token in pi/.env.');
+    if (r.status === 503 && /no token/.test(r.json.error || '')) {
+      stop('The server has no token yet. Run ./hub token, then restart the server.');
+    }
+    if (!r.json.ok) stop('The server said no: ' + (r.json.error || 'error ' + r.status) + '.');
+    return r.json;
+  });
+}
+
+/* ---------- arguments ---------- */
+
+// Splits "--name value" and "--flag" options from the plain words.
+function parseArgs(args, valued) {
+  const words = [];
+  const opts = {};
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.indexOf('--') === 0) {
+      const name = a.slice(2);
+      if (valued.indexOf(name) >= 0) {
+        if (i + 1 >= args.length) stop('--' + name + ' needs a value.');
+        opts[name] = args[++i];
+      } else {
+        opts[name] = true;
+      }
+    } else {
+      words.push(a);
+    }
+  }
+  return { words: words, opts: opts };
+}
+
+function screens(n) {
+  return n === 1 ? '1 screen' : n + ' screens';
+}
+
+async function command(type, data) {
+  const r = await call('POST', '/api/command', { type: type, data: data || {} });
+  if (r.delivered > 0) say('Sent. ' + screens(r.delivered) + ' showed it.');
+  else say('Sent, but no screen is listening (is the TV on with Home Hub open?).');
+}
+
+/* ---------- to-do helpers ---------- */
+
+async function findItem(what) {
+  const r = await call('GET', '/api/todo');
+  const items = r.items || [];
+  let hit = items.find((i) => i.id === what);
+  if (hit) return hit;
+  let matches = items.filter((i) => i.title === what);
+  if (!matches.length) matches = items.filter((i) => i.title.toLowerCase() === what.toLowerCase());
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    stop('More than one to-do is called "' + what + '". Use its id instead: ' + matches.map((i) => i.id).join(', ') + '.');
+  }
+  stop('No to-do has the id or title "' + what + '". Run ./hub todo list to see them.');
+  return null;
+}
+
+const SECTION_NAMES = { now: 'Now', next: 'Next', waiting: 'Waiting on' };
+
+async function todo(args) {
+  const sub = args[0];
+  const rest = args.slice(1);
+  if (sub === 'add') {
+    const a = parseArgs(rest, ['section', 'due']);
+    const title = a.words.join(' ').trim();
+    if (!title) stop('Say what to add, for example: ./hub todo add "Buy milk"');
+    const body = { title: title };
+    if (a.opts.section) body.section = a.opts.section;
+    if (a.opts.due) body.due = a.opts.due;
+    const r = await call('POST', '/api/todo', body);
+    say('Added "' + r.item.title + '" to ' + SECTION_NAMES[r.item.section] + (r.item.due ? ', due ' + r.item.due : '') + '.');
+    return;
+  }
+  if (sub === 'list') {
+    const r = await call('GET', '/api/todo');
+    const items = r.items || [];
+    if (!items.length) { say('The to-do list is empty.'); return; }
+    Object.keys(SECTION_NAMES).forEach((sec) => {
+      const inSec = items.filter((i) => i.section === sec);
+      if (!inSec.length) return;
+      say(SECTION_NAMES[sec] + ':');
+      inSec.forEach((i) => say('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (i.due ? ' (due ' + i.due + ')' : '') + '   id ' + i.id));
+    });
+    return;
+  }
+  if (sub === 'done' || sub === 'remove') {
+    const what = rest.join(' ').trim();
+    if (!what) stop('Say which to-do, by its id or exact title. Run ./hub todo list to see them.');
+    const item = await findItem(what);
+    const op = sub === 'done'
+      ? { op: 'set', id: item.id, fields: { done: true } }
+      : { op: 'remove', id: item.id };
+    await call('POST', '/api/todo/ops', { ops: [op] });
+    say((sub === 'done' ? 'Ticked "' : 'Removed "') + item.title + '".');
+    return;
+  }
+  stop('Use one of: todo add, todo list, todo done, todo remove. Run ./hub help for examples.');
+}
+
+/* ---------- token ---------- */
+
+function token() {
+  let text = null;
+  try { text = fs.readFileSync(ENV_FILE, 'utf8'); } catch (e) { /* not there yet */ }
+  if (text !== null && parseEnv(text).HUB_TOKEN) {
+    say('A token already exists in pi/.env. Nothing was changed.');
+    return;
+  }
+  if (text === null) {
+    try { text = fs.readFileSync(EXAMPLE_FILE, 'utf8'); } catch (e) { text = ''; }
+  }
+  const value = crypto.randomBytes(24).toString('hex');
+  const line = 'HUB_TOKEN=' + value;
+  if (/^[ \t]*#?[ \t]*HUB_TOKEN[ \t]*=.*$/m.test(text)) {
+    text = text.replace(/^[ \t]*#?[ \t]*HUB_TOKEN[ \t]*=.*$/m, line);
+  } else {
+    text = (text && !/\n$/.test(text) ? text + '\n' : text) + line + '\n';
+  }
+  const tmp = ENV_FILE + '.tmp-' + process.pid;
+  fs.writeFileSync(tmp, text, { mode: 0o600 });
+  fs.renameSync(tmp, ENV_FILE);
+  try { fs.chmodSync(ENV_FILE, 0o600); } catch (e) { /* not fatal */ }
+  say('Token created and saved in pi/.env. If the server is already running, restart it so it uses the token.');
+}
+
+/* ---------- status ---------- */
+
+async function status() {
+  const r = await call('GET', '/api/status');
+  const mins = Math.round(r.uptime / 60);
+  const up = mins < 1 ? 'less than a minute' : mins < 120 ? mins + ' minutes' : Math.round(mins / 60) + ' hours';
+  say('The server is running (version ' + r.server + ', up ' + up + ', data revision ' + r.rev + ').');
+  const list = r.screens || [];
+  if (!list.length) {
+    say('No screen is connected right now.');
+    return;
+  }
+  say(screens(list.length) + ' connected:');
+  list.forEach((sc) => {
+    const t = new Date(sc.since);
+    say('  ' + sc.address + ', since ' + t.toLocaleTimeString() + (sc.via === 'poll' ? ' (fallback mode)' : ''));
+  });
+}
+
+/* ---------- help ---------- */
+
+const HELP = [
+  'Home Hub commands (run from the pi folder):',
+  '  ./hub show weather          open a widget: weather, todo or entertainment',
+  '  ./hub show todo --full      the same, full screen',
+  '  ./hub home                  close whatever is open',
+  '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
+  '  ./hub reload                load the hub afresh',
+  '  ./hub todo add "Buy milk"   add a to-do (add --section next, --due 2026-12-24)',
+  '  ./hub todo list             show the to-do list with ids',
+  '  ./hub todo done "Buy milk"  tick a to-do, by id or exact title',
+  '  ./hub todo remove "Buy milk"',
+  '  ./hub status                is the server running, which screens are on',
+  '  ./hub token                 create the password in pi/.env (only once)'
+].join('\n');
+
+/* ---------- main ---------- */
+
+async function main(argv) {
+  const cmd = argv[0];
+  const rest = argv.slice(1);
+  if (!cmd || cmd === 'help' || cmd === '--help' || cmd === '-h') { say(HELP); return; }
+  if (cmd === 'show') {
+    const a = parseArgs(rest, []);
+    const widget = a.words[0];
+    if (!widget) stop('Say which widget: ' + WIDGETS.join(', ') + '. For example: ./hub show weather');
+    if (WIDGETS.indexOf(widget) < 0) stop('"' + widget + '" is not a widget. Use one of: ' + WIDGETS.join(', ') + '.');
+    return command('show', { widget: widget, mode: a.opts.full ? 'full' : 'panel' });
+  }
+  if (cmd === 'home' || cmd === 'reload') return command(cmd, {});
+  if (cmd === 'say') {
+    const a = parseArgs(rest, ['seconds']);
+    const text = a.words.join(' ').trim();
+    if (!text) stop('Say what to show, for example: ./hub say "Dinner in 10"');
+    const data = { text: text };
+    if (a.opts.seconds !== undefined) {
+      const n = Number(a.opts.seconds);
+      if (!(n >= 1 && n <= 60)) stop('--seconds must be a number from 1 to 60.');
+      data.seconds = n;
+    }
+    return command('say', data);
+  }
+  if (cmd === 'todo') return todo(rest);
+  if (cmd === 'status') return status();
+  if (cmd === 'token') return token();
+  stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
+}
+
+main(process.argv.slice(2)).then(() => process.exit(0), (e) => {
+  if (e instanceof Stop) say(e.message);
+  else say('Something went wrong: ' + (e && e.message));
+  process.exit(1);
+});

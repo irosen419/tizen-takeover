@@ -34,6 +34,11 @@ var HUB_CONFIG = {
   // The tile that has focus when the hub opens.
   start: 'entertainment',
 
+  /* Live updates: the hub server on the Raspberry Pi, which can change what
+     the screen shows and keeps the to-do list (see docs/live-updates.md).
+     '' turns live updates off, and the hub works exactly as before. */
+  live: { server: HUB_PI + ':8097' },
+
   layout: [
     { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
     { widget: 'entertainment', x: 3, y: 0, w: 6, h: 2 },
