@@ -750,3 +750,62 @@
 .panel.is-full .cal-mev { padding: 0.6rem 0 0.55rem; }
 .panel.is-full .cal-mev-when { font-size: 0.95rem; }
 .panel.is-full .cal-mev-title { font-size: 1.2rem; }
+
+/* ---------- tile: the next days, in a tall tile ---------- */
+
+.cal-later {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 1.2rem;
+}
+.cal-later .cal-next-label { flex: 0 0 auto; }
+.cal-later-list { margin-top: 0.4rem; }
+.cal-later-list .cal-trow-title { color: var(--text-2); }
+
+/* ---------- tile: one-row strip ---------- */
+
+.cal-tile.cal-strip { padding-top: 0; justify-content: center; }
+.cal-strip-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.cal-strip-line .cal-bar { align-self: stretch; }
+.cal-strip-when {
+  flex: 0 0 auto;
+  margin-right: 0.6rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.cal-strip-title {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-strip-title.is-quiet { color: var(--text-2); }
+
+/* ---------- tile: small sizes ---------- */
+
+.tile-h1 .cal-tile,
+.tile-wn .cal-tile { overflow: hidden; }
+.tile-wn .cal-date-num { font-size: 2.8rem; margin-right: 0.6rem; }
+.tile-wn .cal-date-dow,
+.tile-wn .cal-date-month {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-wn .cal-trow-when { white-space: normal; }
+.tile-w1 .cal-strip-line .cal-bar,
+.tile-w1 .cal-strip-title { display: none; }
+.tile-w1 .cal-strip-when { margin: 0 auto; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; }
