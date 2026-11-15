@@ -8,7 +8,6 @@
 .todo-error {
   --todo-warn: #ffb36b;
   --todo-danger: #d93036;
-  --todo-green: #5fd68a;
   --todo-hair: rgba(255, 255, 255, 0.12);
 }
 
@@ -337,9 +336,9 @@
 .todo-main.is-focused .todo-tick { border-color: var(--text); }
 .todo-main.is-pressed { opacity: 0.75; }
 
-/* Done: a green tick with a white check, the title green with a white
+/* Done: a green tick with a white check, the title gray with a white
    strikethrough (the white line shows on newer browsers; older ones draw it
-   in the title's own green). The white outline stays. */
+   in the title's own gray). The white outline stays. */
 .todo-row.is-done .todo-tick {
   color: #fff;
   border-color: #fff;
@@ -349,22 +348,13 @@
 }
 .todo-row.is-done .todo-tick svg { display: block; }
 .todo-row.is-done .todo-title {
-  color: var(--todo-green);
+  color: var(--text-3);
   text-decoration: line-through;
   -webkit-text-decoration-color: #fff;
   text-decoration-color: #fff;
 }
 .todo-row.is-done .todo-main.is-focused .todo-tick { border-color: #fff; }
-.todo-row.is-done .todo-main.is-focused .todo-title { color: #8ee8ae; }
-
-/* Option B for the tick, to compare: the same green, but with a ridged
-   edge like a button (lighter ring, thin dark line inside) instead of the
-   white outline. Used by putting class todo-ridge on <body>. */
-.todo-ridge .todo-row.is-done .todo-tick,
-.todo-ridge .todo-row.is-done .todo-main.is-focused .todo-tick {
-  border-color: #9cebb8;
-  box-shadow: inset 0 0 0 0.1rem #2a9d5c, 0 0 0.3rem rgba(95, 214, 138, 0.35);
-}
+.todo-row.is-done .todo-main.is-focused .todo-title { color: var(--text-2); }
 
 /* Actions: two round icon buttons. Every row keeps room for both (a done
    row has an empty slot instead of Move), so nothing moves; they only show
@@ -455,6 +445,15 @@
 .todo-act.is-focused { z-index: 2; background: transparent; border-color: transparent; color: #1a1006; }
 .todo-act.is-focused .todo-pill { display: flex; }
 .todo-pill-armed { display: none; }
+/* Remove while focused: a light rose with dark words, same edge-to-centre
+   shading. It turns red when it waits for its Confirm. */
+.todo-del.is-focused,
+.todo-del.is-focused .todo-pill { color: #4a1219; }
+.todo-del.is-focused .todo-pill::before {
+  background: #f6d3d7;
+  background: -webkit-linear-gradient(left, #cf98a0 0%, #fbdfe2 50%, #cf98a0 100%);
+  background: linear-gradient(to right, #cf98a0 0%, #fbdfe2 50%, #cf98a0 100%);
+}
 .todo-del.is-armed .todo-pill-label { display: none; }
 .todo-del.is-armed .todo-pill-armed { display: inline; }
 .todo-del.is-armed,
