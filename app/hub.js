@@ -263,7 +263,7 @@
   }
 
   function callWebhook(tc) {
-    if (!tc.url) return toast(tc.label + ' has no webhook address yet. Add one in config.js.', 6000);
+    if (!tc.url) return toast(tc.hint || (tc.label + ' has no webhook address yet. Add one in config.js.'), 8000);
     toast((tc.busy || 'Working on it') + '\u2026', 4000);
     getJSON('/webhook?url=' + encodeURIComponent(tc.url), 15000, function (err) {
       if (err) toast('Couldn\u2019t reach Home Assistant. ' + err, 10000);
