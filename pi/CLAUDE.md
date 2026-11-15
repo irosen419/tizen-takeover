@@ -19,7 +19,7 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Is the server up, which screens are on: `./hub status`
 - All commands: `./hub help`
 
-Widget ids are `weather`, `todo` and `entertainment`.
+Widget ids are `weather`, `todo`, `calendar` and `entertainment`.
 
 ## Rules
 

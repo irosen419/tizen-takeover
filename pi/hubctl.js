@@ -361,7 +361,7 @@ async function status() {
 
 const HELP = [
   'Home Hub commands (run from the pi folder):',
-  '  ./hub show weather          open a widget: weather, todo or entertainment',
+  '  ./hub show weather          open a widget: weather, todo, calendar or entertainment',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
