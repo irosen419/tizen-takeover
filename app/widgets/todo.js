@@ -67,6 +67,7 @@
   var C = null;              // ctx, kept from init
   var warn = null;           // null | 'nostore' | 'savefail' | 'corrupt'
   var ticked = {};           // ids ticked while the panel is open: they stay in place
+  var armedAt = 0;           // when it was armed (a held OK must not count as the second press)
   var armed = null;          // the Remove button waiting for its second press
   var activeRow = null;      // the .todo-row holding panel focus
   var activeId = null;       // its item id, so a redraw keeps it active
@@ -150,7 +151,13 @@
         warn = 'corrupt';
         return;
       }
-      store.items = clean(data.items);
+      try {
+        store.items = clean(data.items);
+      } catch (e4) {
+        try { ls.setItem(BAD_KEY, String(raw)); } catch (e5) { /* nowhere to keep it */ }
+        store.items = [];
+        warn = 'corrupt';
+      }
     },
 
     // Keeps the list in memory whatever happens; the warning says so.
@@ -213,8 +220,9 @@
       it.done = it.done === true;
       it.doneAt = it.done ? (typeof it.doneAt === 'number' ? it.doneAt : now) : null;
       if (typeof it.createdAt !== 'number') it.createdAt = now;
-      if (it.due !== undefined && !(typeof it.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(it.due))) delete it.due;
-      if (typeof it.id !== 'string' || !it.id || seen.hasOwnProperty(it.id)) it.id = newId();
+      if (it.due !== undefined && !(typeof it.due === 'string' && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(it.due))) delete it.due;
+      // "in" also catches ids that clash with built-in names, such as "constructor".
+      if (typeof it.id !== 'string' || !it.id || (it.id in seen)) it.id = newId();
       seen[it.id] = true;
       out.push(it);
     }
@@ -609,11 +617,14 @@
     if (id !== null) {
       if (armed !== target) {
         disarm();
+        armedAt = new Date().getTime();
         armed = target;
         target.classList.add('is-armed');
         target.setAttribute('aria-label', STRINGS.removeArmed);
         return;
       }
+      // A held OK repeats; the second press has to be a new one.
+      if (new Date().getTime() - armedAt < 400) return;
       item = store.find(id);
       armed = null;
       if (!item) return;

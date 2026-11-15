@@ -125,6 +125,11 @@
   line-height: 1.35;
   max-height: 2.7em;
   overflow: hidden;
+  /* Ends a cut title with "…" where the engine can; max-height still holds it
+     to two lines where it can't. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   color: var(--text);
   word-wrap: break-word;
 }
@@ -241,7 +246,12 @@
 .todo-input.is-focused ~ .todo-add-frame { border-color: var(--focus); background: var(--card-2); }
 .todo-input.is-focused ~ .todo-add-hint .todo-hint-ok { height: auto; overflow: visible; visibility: visible; }
 /* Typing: brighter fill, a caret, Done or Enter adds it. */
-.todo-input:focus ~ .todo-add-frame { border-color: var(--focus); background: #2b313c; }
+/* The soft outer ring is what tells typing from plain focus across a room. */
+.todo-input:focus ~ .todo-add-frame {
+  border-color: var(--focus);
+  background: #2b313c;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.24);
+}
 .todo-input:focus ~ .todo-add-hint { color: var(--text-2); }
 .todo-input:focus ~ .todo-add-hint .todo-hint-ok { height: 0; overflow: hidden; visibility: hidden; }
 .todo-input:focus ~ .todo-add-hint .todo-hint-typing { height: auto; overflow: visible; visibility: visible; }

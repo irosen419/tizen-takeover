@@ -24,7 +24,8 @@
  *                                          // redrawPanel keep focus on the same thing.
  *     onSelect: function (target, ctx) {}, // OK on a focusable in the panel body
  *     onSubmit: function (target, ctx) {}, // Enter or Done in a text box (see below)
- *     onFocus: function (target, ctx) {},  // focus moved to a body focusable
+ *     onFocus: function (target, ctx) {},  // focus moved to a body focusable, or to the
+ *                                          // hub's Full screen button
  *     onMove: function (dir, from, ctx) {}, // an arrow ('left' 'right' 'up' 'down') pressed with
  *                                          // focus on `from` (a body focusable or the hub's
  *                                          // Full screen button). Return the element to focus,
@@ -827,7 +828,11 @@
       if (isTextBox(e.target)) drawPanelHint(true);
     }, true);
     panelEl.addEventListener('blur', function (e) {
-      if (isTextBox(e.target)) drawPanelHint(false);
+      if (!isTextBox(e.target)) return;
+      // The TV keyboard may close and blur the box by itself, so the stray-key
+      // guard starts here too, not only in stopTyping.
+      typingEndedAt = Date.now();
+      drawPanelHint(false);
     }, true);
     scrimEl.addEventListener('click', function () {
       if (!busy && open && !frameOpen) closePanel();
@@ -928,10 +933,8 @@
     }
     panelFocus = node;
     node.classList.add('is-focused');
-    if (node !== panel.btn) {
-      keepInView(node);
-      call(open, 'onFocus', [node, open.ctx]);
-    }
+    if (node !== panel.btn) keepInView(node);
+    call(open, 'onFocus', [node, open.ctx]);
   }
 
   // Scrolls the panel body (instantly) so the focused element is visible.
@@ -1019,6 +1022,7 @@
   function typingKey(e, box) {
     var code = e.keyCode;
     if (e.isComposing || code === 229) return;
+    if (e.repeat && (code === KEY.ENTER || code === KEY.BACK || code === KEY.ESC)) { e.preventDefault(); return; }
     if (code === KEY.ENTER || code === KEY.IME_DONE) {
       e.preventDefault();
       stopTyping();
@@ -1029,6 +1033,7 @@
     } else if (code === KEY.UP || code === KEY.DOWN) {
       e.preventDefault();
       stopTyping();
+      typingEndedAt = 0;   // OK right after moving on is a real press
       if (!busy) movePanel(dirOf(code));
     }
   }
@@ -1255,6 +1260,9 @@
     }
     if (!handled) return;
     e.preventDefault();
+    // A held OK or Back counts once. Otherwise holding OK on a tile would
+    // carry on pressing things inside the panel it opens.
+    if (e.repeat && !dir) return;
     if (busy) return;
     // The TV keyboard can send a stray Enter after Done or Back after Cancel.
     if ((code === KEY.ENTER || isBack(code)) && Date.now() - typingEndedAt < 300) return;
