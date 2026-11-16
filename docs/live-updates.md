@@ -178,6 +178,12 @@ Everything below is the contract between the hub (`app/`) and the Pi server (`pi
 
 Every file must survive the others being an older version, because jsDelivr can serve a mix when the hub runs from the branch (only when GitHub couldn't be reached on a first start; see the README's Updating section): `hub.js` works without `live.js`, `todo.js` works without `ctx.live`, `live.js` is inert without `hub.js`.
 
+### Now Playing (Spotify)
+
+One more resource, `nowplaying`, from `pi/spotify.js`: `{ v: 1, configured, signedIn, state, problem, track, progressMs, at, device, shuffle, repeat, playedAt }`. `state` is `off` (no Spotify settings in `.env`), `signin` (set up, not signed in), `idle`, `playing`, `paused` or `error`. `track` is `null` or `{ id, kind: 'track'|'episode', title, artist, album, art, artSmall, artTiny, durationMs, explicit }` (https picture addresses only); it is kept through `idle` and `error` as "last played". `progressMs` was the song's position when the Pi looked; the TV adds the time since the data **arrived** (never the Pi's `at`, which is in the Pi's clock) while `playing`. The Pi pushes only when something changes (a new song, play or pause, a jump of more than 2.5 s, an error), so a song that plays through pushes nothing. The Pi asks Spotify every 5 s while a screen is on and music plays, 10 s when nothing plays, 60 s with no screen on, and backs off on errors and on Spotify's 429 answers. It carries no token, no secret and no client ID.
+
+Control API: `GET /api/spotify` (`{ ok, spotify: { configured, signedIn, user, state, track, device, lastOkAt, ... } }`), `POST /api/spotify/login` (`{ url, redirectUri, minutes }`), `POST /api/spotify/code` (`{ input }`: the pasted address, a `?code=...&state=...` part or the bare code), `POST /api/spotify/logout`, `POST /api/spotify/refresh` (ask Spotify now). `GET /spotify/callback` on the main door (private addresses only) finishes a sign-in when a browser can reach it. The status call has a `spotify` section; the mailbox has `spotify.status`, `spotify.login`, `spotify.code`, `spotify.logout`. The sign-in (refresh token) lives only in `data/spotify.json`, mode 600.
+
 ### Settings (`pi/.env`)
 
 | Name | Default | Meaning |
@@ -187,7 +193,9 @@ Every file must survive the others being an older version, because jsDelivr can 
 | `HUB_TV_IPS` | empty | Comma-separated addresses allowed to use the screen API. Empty = any private or loopback address |
 | `HUB_ORIGINS` | `http://127.0.0.1:8081` | Page origins allowed by CORS (TizenBrew serves the hub from this one) |
 | `HUB_TUNNEL_PORT` | empty | Side door on `127.0.0.1` only: control API and `/health`, nothing else |
-| `HUB_DATA_DIR` | `./data` | Where `state.json` is kept |
+| `HUB_DATA_DIR` | `./data` | Where `state.json` (and the Spotify sign-in) is kept |
+| `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | empty | The Spotify app's ID and secret. Both, or Now Playing says "Not set up" |
+| `SPOTIFY_REDIRECT_URI` | `http://127.0.0.1:<HUB_PORT>/spotify/callback` | Must match a Redirect URI in the Spotify app; `http://127.0.0.1...` or `https://...` only |
 
 ### State
 
