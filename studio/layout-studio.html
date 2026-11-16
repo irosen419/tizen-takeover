@@ -1,0 +1,1314 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Home Hub Layout Studio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a top bar, the 16:9 screen canvas on the left, a notes column on the right (stacked on phones). */
+:root {
+  --bg: #eceef2;
+  --panel: #ffffff;
+  --panel-2: #f3f4f8;
+  --tile: #14161b;
+  --tile-fg: #f4f5f7;
+  --tile-mute: #9aa0ad;
+  --canvas: #0a0b0e;
+  --grid: rgba(255,255,255,0.07);
+  --line: rgba(20,24,36,0.12);
+  --fg: #161922;
+  --mute: #5d6373;
+  --accent: #1d6fd6;
+  --accent-fg: #ffffff;
+  --changed: #c47a0a;
+  --proposal: #0b8a7e;
+  --danger: #b8372f;
+  --ok: #1f7a46;
+  --font: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --display: "Space Grotesk", "Inter", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d0e12; --panel: #16181e; --panel-2: #1d2027; --tile: #1a1d24; --tile-fg: #f4f5f7; --tile-mute: #9aa0ad;
+    --canvas: #050506; --grid: rgba(255,255,255,0.07); --line: rgba(255,255,255,0.11); --fg: #eef0f4; --mute: #9aa1b0;
+    --accent: #6fb1ff; --accent-fg: #07101c; --changed: #f0a93a; --proposal: #3ccbb9; --danger: #ff7b70; --ok: #5bd18d;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d0e12; --panel: #16181e; --panel-2: #1d2027; --tile: #1a1d24; --tile-fg: #f4f5f7; --tile-mute: #9aa0ad;
+  --canvas: #050506; --grid: rgba(255,255,255,0.07); --line: rgba(255,255,255,0.11); --fg: #eef0f4; --mute: #9aa1b0;
+  --accent: #6fb1ff; --accent-fg: #07101c; --changed: #f0a93a; --proposal: #3ccbb9; --danger: #ff7b70; --ok: #5bd18d;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font: 15px/1.45 var(--font);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1320px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+button, textarea, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* top bar */
+.bar { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: flex-end; justify-content: space-between; }
+.bar h1 { font: 700 1.7rem/1.25 var(--display); margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.bar p { margin: 4px 0 0; color: var(--mute); max-width: 62ch; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn {
+  border: 1px solid var(--line); background: var(--panel); border-radius: 10px; padding: 9px 15px;
+  line-height: 1.35; font-weight: 600; min-height: 40px; text-align: center;
+}
+.btn:hover { background: var(--panel-2); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--danger); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.status { font-size: 0.85rem; color: var(--mute); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mute); flex: none; }
+.dot.dirty { background: var(--changed); }
+.dot.saved { background: var(--ok); }
+
+/* workspace */
+.work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 18px; align-items: start; }
+@media (max-width: 960px) { .work { grid-template-columns: minmax(0, 1fr); } }
+
+.stage { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.stage-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; align-items: baseline; }
+.stage-head h2 { margin: 0; font: 600 0.82rem/1.4 var(--font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.8rem; color: var(--mute); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; border: 2px solid; }
+.canvas {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; background: var(--canvas); border-radius: 12px; overflow: hidden;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: calc(100% / 12) calc(100% / 6);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.tile {
+  position: absolute; padding: 3px; touch-action: none;
+}
+.tile.anim { transition: left 0.14s ease, top 0.14s ease, width 0.14s ease, height 0.14s ease; }
+@media (prefers-reduced-motion: reduce) { .tile.anim { transition: none; } }
+.card {
+  position: absolute; inset: 3px; border-radius: 14px; background: var(--tile); color: var(--tile-fg);
+  border: 2px solid rgba(255,255,255,0.1); padding: 10px 12px; overflow: hidden; display: flex; flex-direction: column; gap: 2px;
+  cursor: grab; min-width: 0;
+}
+.tile.drag .card { cursor: grabbing; box-shadow: 0 12px 30px rgba(0,0,0,0.5); }
+.tile.drag { z-index: 5; }
+.tile.changed .card { border-color: var(--changed); }
+.tile.proposal .card { border: 2px dashed var(--proposal); background: transparent; }
+.tile.sel .card { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.card .t { padding-right: 3.6rem; font: 600 clamp(0.72rem, 1.5vw, 1rem)/1.3 var(--display); overflow-wrap: anywhere; }
+.card .s { font-size: clamp(0.62rem, 1.1vw, 0.78rem); line-height: 1.35; color: var(--tile-mute); overflow-wrap: anywhere; }
+.card .badges { position: absolute; top: 6px; right: 8px; display: flex; gap: 4px; }
+.pill { font-size: 0.68rem; line-height: 1.3; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: rgba(255,255,255,0.13); color: var(--tile-fg); }
+.pill.c { background: var(--accent); color: var(--accent-fg); }
+.pill.p { background: var(--proposal); color: #04201c; }
+.size { margin-top: auto; font-size: 0.7rem; color: var(--tile-mute); font-variant-numeric: tabular-nums; }
+.handle {
+  position: absolute; right: 3px; bottom: 3px; width: 26px; height: 26px; cursor: nwse-resize; border-radius: 8px;
+  background: linear-gradient(135deg, transparent 52%, rgba(255,255,255,0.55) 52%, rgba(255,255,255,0.55) 60%, transparent 60%, transparent 72%, rgba(255,255,255,0.55) 72%, rgba(255,255,255,0.55) 80%, transparent 80%);
+}
+.hint { margin: 0; font-size: 0.82rem; color: var(--mute); }
+.hint kbd { font: 600 0.75rem var(--font); border: 1px solid var(--line); border-radius: 5px; padding: 0 5px; background: var(--panel-2); }
+.tray { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tray .lbl { font-size: 0.82rem; color: var(--mute); }
+.chip { border: 1px dashed var(--line); background: transparent; border-radius: 99px; padding: 5px 12px; font-size: 0.85rem; line-height: 1.35; }
+.chip:hover { background: var(--panel-2); }
+
+/* saved layouts */
+.layouts { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.lay-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lay-chips .lbl { font-size: 0.82rem; font-weight: 600; color: var(--mute); margin-right: 2px; }
+.lchip { border: 1px solid var(--line); background: transparent; border-radius: 99px; padding: 6px 14px; font-size: 0.9rem; line-height: 1.35; display: inline-flex; gap: 6px; align-items: baseline; text-align: left; overflow-wrap: anywhere; }
+.lchip:hover { background: var(--panel-2); }
+.lchip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: transparent; }
+.lchip .star { color: var(--changed); font-size: 0.85em; }
+.lchip[aria-pressed="true"] .star { color: inherit; }
+.lchip small { font-size: 0.72rem; opacity: 0.75; }
+.lay-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lay-actions .btn { min-height: 36px; padding: 6px 12px; font-size: 0.88rem; }
+.lay-actions input[type="text"] { width: auto; flex: 1 1 180px; max-width: 280px; padding: 7px 10px; }
+
+/* side column */
+.side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.box h3 { margin: 0; font: 700 1.1rem/1.3 var(--display); overflow-wrap: anywhere; }
+.box h4 { margin: 0; font: 600 0.78rem/1.4 var(--font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.facts div { background: var(--panel-2); border-radius: 10px; padding: 7px 8px; min-width: 0; }
+.facts dt { font-size: 0.7rem; color: var(--mute); text-transform: uppercase; letter-spacing: 0.06em; }
+.facts dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { border: 1px solid var(--line); background: transparent; border-radius: 99px; padding: 5px 12px; font-size: 0.85rem; line-height: 1.35; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: transparent; }
+textarea, input[type="text"] {
+  width: 100%; border: 1px solid var(--line); background: var(--panel-2); border-radius: 10px; padding: 9px 11px; line-height: 1.45;
+}
+textarea { min-height: 84px; resize: vertical; }
+label.f { display: flex; flex-direction: column; gap: 5px; font-size: 0.85rem; font-weight: 600; }
+.notes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.notes li { background: var(--panel-2); border-radius: 10px; padding: 9px 11px; display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; }
+.notes .k { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.notes .k.idea { color: var(--proposal); }
+.notes p { margin: 2px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.x { border: 0; background: transparent; color: var(--mute); border-radius: 6px; padding: 2px 8px; font-size: 1.1rem; line-height: 1.2; }
+.x:hover { color: var(--danger); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.empty { color: var(--mute); margin: 0; font-size: 0.9rem; }
+.confirm { background: var(--panel-2); border: 1px solid var(--accent); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.confirm p { margin: 0; }
+.msg { margin: 0; font-size: 0.9rem; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); overflow-wrap: anywhere; }
+.msg.ok { border-left: 4px solid var(--ok); }
+.msg.err { border-left: 4px solid var(--danger); }
+pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; background: var(--canvas); color: #dfe3ea; border-radius: 8px; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.atsize { margin: 0; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: space-between; background: var(--panel-2); border-radius: 10px; padding: 8px 10px; }
+.atsize span { font-weight: 600; overflow-wrap: anywhere; }
+.atsize .btn { min-height: 40px; padding: 6px 12px; font-size: 0.88rem; }
+
+/* ---------- what shows at each size ---------- */
+.sizes { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.sz-top { display: flex; flex-wrap: wrap; gap: 12px 24px; justify-content: space-between; align-items: flex-start; }
+.sz-top > div { min-width: 0; flex: 1 1 320px; }
+.sz-top h2 { margin: 0; font: 700 1.4rem/1.3 var(--display); overflow-wrap: anywhere; }
+.sz-top p { margin: 4px 0 0; color: var(--mute); max-width: 72ch; overflow-wrap: anywhere; }
+.sz-lang { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sz-lang .lbl { font-size: 0.82rem; font-weight: 600; color: var(--mute); }
+.sz-lang .seg button { min-height: 40px; padding: 6px 14px; }
+.sz-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; padding: 0; list-style: none; font-size: 0.85rem; color: var(--mute); }
+.sz-legend b { color: var(--fg); font-weight: 600; }
+.szb { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; scroll-margin-top: 12px; }
+.szb-h { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.szb-h h3 { margin: 0; font: 700 1.12rem/1.3 var(--display); overflow-wrap: anywhere; }
+.szb-h .soon { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); border: 1px solid var(--line); border-radius: 99px; padding: 1px 8px; }
+.szb-h .where { font-size: 0.85rem; color: var(--mute); }
+.szb-scroll { overflow-x: auto; overscroll-behavior-x: contain; padding: 4px 4px 8px; margin: -4px -4px 0; }
+.szb-row { display: grid; grid-template-columns: repeat(3, minmax(170px, 1fr)) repeat(2, minmax(230px, 1.4fr)); gap: 12px; align-items: start; }
+.szc { border: 1px solid var(--line); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 8px; min-width: 0; background: var(--panel); }
+.szc.is-current { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.szc.is-target { outline: 3px solid var(--changed); outline-offset: 2px; }
+.szc-h { display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; }
+.szc-h h4 { margin: 0; font: 700 0.95rem/1.35 var(--font); }
+.szc-h h4:focus { outline: none; }
+.szc-h .dim { font-size: 0.78rem; color: var(--mute); }
+.szc-h .pill { margin-left: auto; align-self: center; }
+.szc .now { margin: 0; font-size: 0.76rem; font-weight: 700; line-height: 1.35; color: var(--accent); }
+.szc-pv { container-type: inline-size; min-width: 0; }
+.szc-desc { margin: 0; font-size: 0.86rem; line-height: 1.45; overflow-wrap: anywhere; }
+.szc-desc.nb::first-line { font-weight: 600; }
+.szc .notes li { padding: 7px 9px; font-size: 0.88rem; }
+.szc .btn.cm { min-height: 44px; width: 100%; }
+.szc-ed { display: flex; flex-direction: column; gap: 8px; }
+.szc-ed textarea { min-height: 76px; font-size: 0.9rem; }
+.szc-ed .row .btn { min-height: 44px; flex: 1 1 auto; }
+
+/* Previews: drawn like the TV tiles. Tiles are three columns wide at one
+   scale (--r is one TV rem); the panel and full screen use their own. */
+.pv { --r: 5.24cqw; position: relative; width: 100%; overflow: hidden; display: flex; flex-direction: column; gap: calc(var(--r) * 0.25);
+  background: var(--tile); color: var(--tile-fg); border: 1px solid rgba(255,255,255,0.13); border-radius: calc(var(--r) * 1.6);
+  padding: calc(var(--r) * 1.3) calc(var(--r) * 1.4); font: 400 max(8px, calc(var(--r) * 0.95))/1.35 var(--font); }
+.pv.t-strip { aspect-ratio: 191 / 66; flex-direction: row; align-items: center; gap: calc(var(--r) * 0.8); padding: calc(var(--r) * 0.7) calc(var(--r) * 1.1); }
+.pv.t-standard { aspect-ratio: 191 / 141; }
+.pv.t-tall { aspect-ratio: 191 / 291; }
+.pv svg, .pp svg { display: block; flex: none; }
+.l1 { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; padding-block: 0.1em; }
+.wr { overflow-wrap: anywhere; min-width: 0; padding-block: 0.1em; }
+.c2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; padding-top: 0.1em; min-width: 0; }
+.c3 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; padding-top: 0.1em; min-width: 0; }
+.mu { color: var(--tile-mute); }
+.cap { text-transform: uppercase; letter-spacing: 0.13em; }
+.tag { flex: none; max-width: 48%; font-size: max(7px, calc(var(--r) * 0.62)); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.35); border-radius: 99px; padding: 0.15em 0.7em; }
+.ph { display: flex; align-items: flex-start; gap: calc(var(--r) * 0.6); min-width: 0; flex: none; }
+.ph-i { width: calc(var(--r) * 1.35); height: calc(var(--r) * 1.35); margin-top: 0.12em; }
+.ph-t { min-width: 0; flex: 1 1 auto; }
+.ph-title { font-weight: 600; font-size: calc(var(--r) * 1.25); line-height: 1.3; }
+.ph-sub { font-size: max(7.5px, calc(var(--r) * 0.85)); color: var(--tile-mute); }
+.t-strip .ph { max-width: 45%; align-items: center; flex: 0 0 auto; }
+.t-strip .ph-i { margin-top: 0; }
+.big { font-weight: 300; line-height: 1.15; letter-spacing: -0.02em; white-space: nowrap; padding-block: 0.05em; }
+.big small { font-size: 0.32em; font-weight: 400; letter-spacing: 0.02em; margin-left: 0.3em; color: var(--tile-mute); }
+.push { margin-top: auto; }
+/* Clock */
+.ck-place { font-size: calc(var(--r) * 0.8); }
+.ck-time { font-size: calc(var(--r) * 3.6); overflow: hidden; text-overflow: ellipsis; }
+.t-tall .ck-time { font-size: calc(var(--r) * 4.4); }
+.ck-date { font-size: calc(var(--r) * 1.1); }
+.ck-status { font-size: max(7.5px, calc(var(--r) * 0.72)); color: var(--tile-mute); }
+.t-strip .ck-time { font-size: calc(var(--r) * 2.9); flex: 0 0 auto; overflow: visible; }
+.t-strip .ck-date { margin-left: calc(var(--r) * 0.9); font-size: calc(var(--r) * 1); line-height: 1.4; min-width: 0; flex: 1 1 0; }
+/* Entertainment */
+.lg { display: grid; place-items: center; aspect-ratio: 1; width: 100%; border-radius: 22%; font-weight: 800; line-height: 1.3; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08); letter-spacing: -0.02em; }
+.lg.miss { opacity: 0.35; }
+.lg svg { width: 52%; height: 52%; }
+.en-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: calc(var(--r) * 0.6); margin-top: auto; font-size: calc(var(--r) * 1.05); }
+.en-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 4.6em)); justify-content: space-between; align-content: end; gap: calc(var(--r) * 0.6); margin-top: auto; font-size: var(--r); }
+.en-grid .lg { font-size: 1.35em; }
+.t-strip .en-row { display: flex; margin: 0 0 0 auto; gap: calc(var(--r) * 0.5); }
+.t-strip .en-row .lg { width: calc(var(--r) * 3.4); }
+.lg .s { font-size: 0.62em; }
+/* Weather */
+.wx-top { display: flex; justify-content: space-between; align-items: center; gap: 0.6em; min-width: 0; }
+.wx-place { font-size: calc(var(--r) * 0.8); }
+.wx-now { display: flex; justify-content: space-between; align-items: center; gap: 0.4em; margin-top: calc(var(--r) * 0.5); }
+.wx-temp { font-size: calc(var(--r) * 3.4); }
+.wx-ic { width: calc(var(--r) * 2.5); height: calc(var(--r) * 2.5); }
+.wx-cond { font-size: calc(var(--r) * 1.2); }
+.wx-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.2em 0.8em; font-size: calc(var(--r) * 1.0); }
+.wx-foot .k, .wx-k { font-size: 0.7em; font-weight: 700; color: var(--tile-mute); margin-right: 0.25em; }
+.rain { color: #6fb1ff; display: inline-flex; align-items: center; gap: 0.25em; }
+.rain svg { width: 0.85em; height: 0.85em; }
+.wx-hours { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); text-align: center; gap: 0.2em; margin-top: auto; margin-bottom: calc(var(--r) * 1.2); font-size: calc(var(--r) * 0.85); }
+.wx-hours svg { width: calc(var(--r) * 1.7); height: calc(var(--r) * 1.7); margin: 0.2em auto; }
+.wx-hours .on { font-weight: 700; }
+.t-strip .wx-temp { font-size: calc(var(--r) * 3.0); }
+.t-strip .wx-ic { width: calc(var(--r) * 2.3); height: calc(var(--r) * 2.3); }
+.t-strip .wx-cond { flex: 1 1 auto; font-size: calc(var(--r) * 1.05); color: var(--tile-mute); }
+/* To-do and Calendar rows */
+.td-hero { display: flex; align-items: baseline; gap: 0.4em; flex-wrap: wrap; margin-top: calc(var(--r) * 0.5); min-width: 0; }
+.td-num { font-size: calc(var(--r) * 3.4); }
+.td-cap { font-size: calc(var(--r) * 1.15); }
+.td-meta { font-size: calc(var(--r) * 0.95); color: var(--tile-mute); }
+.rows { flex: 0 1 auto; min-height: 0; overflow: hidden; border-top: 1px solid rgba(255,255,255,0.14); margin-top: calc(var(--r) * 0.4); }
+.rw { display: flex; gap: 0.6em; align-items: flex-start; padding: 0.4em 0; border-bottom: 1px solid rgba(255,255,255,0.1); min-width: 0; }
+.rw > div { min-width: 0; flex: 1 1 auto; }
+.tick { flex: none; width: 0.95em; height: 0.95em; border: 1.5px solid currentColor; border-radius: 50%; margin-top: 0.22em; opacity: 0.85; }
+.late { color: #f0a93a; font-size: 0.7em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.more { flex: none; font-size: calc(var(--r) * 0.9); color: var(--tile-mute); padding-top: 0.3em; }
+.td-snum { font-size: calc(var(--r) * 2.8); flex: none; }
+.t-strip .td-stext { flex: 1 1 0; font-size: calc(var(--r) * 1.05); }
+.cbar { flex: none; width: 3px; align-self: stretch; border-radius: 2px; background: #6fb1ff; }
+.cbar.g { background: #5bd18d; } .cbar.o { background: #f0a93a; }
+.cl-date { display: flex; align-items: center; gap: 0.45em; margin-top: calc(var(--r) * 0.4); min-width: 0; }
+.cl-num { font-size: calc(var(--r) * 3.0); }
+.cl-words { font-size: calc(var(--r) * 1.1); min-width: 0; line-height: 1.3; }
+.cl-tag { font-size: 0.7em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tile-mute); margin-right: 0.4em; }
+.cl-when { font-size: 0.85em; color: var(--tile-mute); }
+.cl-lab { font-size: calc(var(--r) * 0.78); color: var(--tile-mute); margin-top: 0.6em; }
+.rows.cl { font-size: calc(var(--r) * 1.0); }
+.rows.td { font-size: calc(var(--r) * 1.0); }
+.t-strip .cl-line { display: flex; align-items: center; gap: 0.5em; flex: 1 1 auto; min-width: 0; font-size: calc(var(--r) * 1.0); }
+.t-strip .cl-line .cbar { height: 1.4em; align-self: center; }
+/* Placeholders */
+.pl-text { font-size: calc(var(--r) * 1.0); color: var(--tile-fg); }
+.pl-mark { position: absolute; right: calc(var(--r) * -0.4); bottom: calc(var(--r) * -0.4); width: calc(var(--r) * 5); height: calc(var(--r) * 5); opacity: 0.08; color: #fff; }
+.pl-mid { margin-block: auto; display: flex; flex-direction: column; align-items: center; text-align: center; gap: calc(var(--r) * 1.4); min-height: 0; }
+.pl-mid svg { width: calc(var(--r) * 7); height: calc(var(--r) * 7); opacity: 0.2; }
+.pl-mid .pl-text { font-size: calc(var(--r) * 1.15); line-height: 1.45; }
+.t-strip.pl { flex-direction: column; align-items: stretch; justify-content: center; gap: 0.15em; }
+.t-strip.pl .ph { max-width: none; }
+
+/* Panel (clicked) and full screen */
+.pp { --e: max(8px, 3.25cqw); position: relative; width: 100%; aspect-ratio: 46 / 26; overflow: hidden; display: flex; flex-direction: column; gap: 0.45em;
+  background: var(--tile); color: var(--tile-fg); border: 1px solid rgba(255,255,255,0.16); border-radius: 3.2cqw; padding: 3.4cqw 3.8cqw; font: 400 var(--e)/1.35 var(--font); }
+.pp.full { aspect-ratio: 16 / 9; border-radius: 4px; --e: max(8px, 3cqw); }
+.pp-head { display: flex; align-items: center; gap: 0.45em; min-width: 0; flex: none; }
+.pp-head .ph-i { width: 1.25em; height: 1.25em; margin: 0; }
+.pp-head .tt { min-width: 0; flex: 0 1 auto; }
+.pp-head .t { font-weight: 600; font-size: 1.15em; }
+.pp-head .s { font-size: 0.78em; color: var(--tile-mute); }
+.pp-btn { margin-left: auto; flex: 0 1 auto; max-width: 48%; display: inline-flex; align-items: center; gap: 0.3em; border: 1px solid rgba(255,255,255,0.3); border-radius: 99px; padding: 0.1em 0.6em; font-size: 0.72em; min-width: 0; }
+.pp-btn svg { width: 1em; height: 1em; }
+.pp-body { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 0.4em; }
+.pp-hint { position: absolute; right: 3.8cqw; bottom: 1.6cqw; font-size: 0.66em; color: var(--tile-mute); max-width: 50%; }
+.sm { font-size: 0.72em; }
+.xs { font-size: 0.64em; }
+.pp-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.5em 0.6em; text-align: center; }
+.pp-grid .lg { font-size: 0.95em; }
+.pp-sec { display: flex; flex-direction: column; gap: 0.25em; min-width: 0; }
+.pp-secs { display: flex; gap: 1.2em; min-width: 0; }
+.pp-items { display: flex; gap: 0.5em; min-width: 0; }
+.pp-items > div { width: 3.1em; flex: none; text-align: center; min-width: 0; }
+.full .pp-items > div { width: 2.75em; }
+.pp-items .lg { font-size: 0.85em; }
+.pp-tabs { display: flex; gap: 0.35em; align-items: center; min-width: 0; flex: none; }
+.chipb { flex: none; border: 1px solid rgba(255,255,255,0.25); border-radius: 99px; padding: 0.05em 0.6em; font-size: 0.72em; max-width: 40%; }
+.chipb.on { background: var(--tile-fg); color: var(--tile); border-color: transparent; }
+.pp-tabs .chipb:last-child { margin-left: auto; }
+.wxp-now { display: flex; align-items: center; gap: 0.5em; min-width: 0; }
+.wxp-now .big { font-size: 2.4em; }
+.wxp-now svg { width: 2em; height: 2em; }
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4em; }
+.stats b { display: block; font-weight: 600; font-size: 0.9em; }
+.curve { width: 100%; height: 2.6em; }
+.cols2 { display: flex; gap: 1em; min-height: 0; flex: 1 1 auto; }
+.cols2 > div { min-width: 0; display: flex; flex-direction: column; gap: 0.35em; overflow: hidden; }
+.wk { display: grid; grid-template-columns: 2.6em 1em 2.3em 1.6em minmax(0, 1fr) 1.6em; align-items: center; gap: 0.3em; font-size: 0.72em; }
+.wk svg { width: 1em; height: 1em; }
+.wk .track { height: 0.3em; border-radius: 99px; background: rgba(255,255,255,0.12); position: relative; }
+.wk .track i { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: linear-gradient(90deg, #6fb1ff, #f0a93a); }
+.add { display: flex; align-items: center; gap: 0.45em; border: 1px solid rgba(255,255,255,0.25); border-radius: 0.6em; padding: 0.25em 0.6em; min-width: 0; flex: none; }
+.add svg { width: 0.9em; height: 0.9em; }
+.secl { display: flex; gap: 0.5em; font-size: 0.68em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--tile-mute); margin-top: 0.3em; min-width: 0; }
+.prow { display: flex; gap: 0.5em; align-items: center; font-size: 0.82em; padding: 0.12em 0; min-width: 0; }
+.prow.done { color: var(--tile-mute); text-decoration: line-through; }
+.cal-day { display: flex; gap: 0.8em; flex: 1 1 auto; min-height: 0; }
+.cal-tl { flex: 1 1 60%; min-width: 0; position: relative; display: flex; flex-direction: column; }
+.cal-tl .hr { display: flex; gap: 0.4em; flex: 1 1 0; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.6em; color: var(--tile-mute); min-height: 0; }
+.cal-ev { position: absolute; left: 3.2em; right: 0.2em; top: 38%; height: 42%; border-radius: 0.35em; background: rgba(111,177,255,0.28); border-left: 3px solid #6fb1ff; padding: 0.1em 0.4em; font-size: 0.7em; overflow: hidden; }
+.cal-detail { flex: 0 1 38%; min-width: 0; border-left: 1px solid rgba(255,255,255,0.12); padding-left: 0.7em; display: flex; flex-direction: column; gap: 0.1em; overflow: hidden; }
+.full .cal-detail { flex-basis: 44%; }
+.legend2 { display: flex; gap: 0.8em; font-size: 0.64em; color: var(--tile-mute); align-items: center; flex: none; min-width: 0; }
+.legend2 i { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 2px; margin-right: 0.3em; vertical-align: -0.05em; }
+.pl-lead { font-size: 1.15em; line-height: 1.35; max-width: 75%; position: relative; z-index: 1; }
+.full .pl-lead { font-size: 1.3em; }
+.pl-note { color: var(--tile-mute); font-size: 0.8em; position: relative; z-index: 1; max-width: 75%; }
+.pp .pl-big { position: absolute; right: 3cqw; bottom: 3cqw; width: 26cqw; height: 26cqw; opacity: 0.08; color: #fff; }
+.full .pl-big { width: 34cqw; height: 34cqw; }
+.pp.nb { background: transparent; border: 2px dashed var(--line); color: var(--mute); justify-content: center; align-items: center; text-align: center; }
+.pp.nb b { color: var(--fg); font-size: 1.15em; }
+@media (max-width: 560px) {
+  .sizes { padding: 14px; }
+  .szb-row { grid-template-columns: repeat(3, 176px) repeat(2, 236px); }
+}
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@600;700&display=swap">
+
+<div class="wrap">
+  <header class="bar" id="hdr">
+    <div>
+      <h1>Home Hub Layout Studio</h1>
+      <p>Drag tiles to move them and pull the corner to resize. Add comments on any tile, propose new widgets, then save for later or submit everything to Claude.</p>
+    </div>
+    <div class="actions">
+      <span class="status" id="status" aria-live="polite"><span class="dot" id="dot"></span><span id="statusText">Loading…</span></span>
+      <button class="btn" id="btnReset" type="button">Undo layout changes</button>
+      <button class="btn" id="btnSave" type="button">Save for later</button>
+      <button class="btn primary" id="btnSubmit" type="button">Submit to Claude</button>
+    </div>
+  </header>
+
+  <div id="submitArea"></div>
+
+  <div class="work">
+    <section class="stage" aria-label="Home screen">
+      <div class="stage-head">
+        <h2>Home screen · 12 × 6 grid</h2>
+        <div class="legend">
+          <span><i style="border-color:var(--changed)"></i>Differs from Stock</span>
+          <span><i style="border-color:var(--proposal);border-style:dashed"></i>Proposed widget</span>
+          <span><i style="border-color:var(--accent)"></i>Selected</span>
+        </div>
+      </div>
+      <div class="layouts" id="layouts"></div>
+      <div class="canvas" id="canvas" role="group" aria-label="Tiles on the home screen"></div>
+      <p class="hint">Tap a tile to select it. With a tile selected, <kbd>←</kbd> <kbd>↑</kbd> <kbd>→</kbd> <kbd>↓</kbd> move it and <kbd>Shift</kbd> + arrows resize it. Tiles snap to whole cells and cannot overlap.</p>
+      <div class="tray" id="tray"></div>
+    </section>
+
+    <aside class="side">
+      <section class="box" id="selBox"></section>
+      <section class="box" id="newBox">
+        <h3>Propose a new widget</h3>
+        <label class="f" for="pName">Name<input type="text" id="pName" maxlength="60" placeholder="For example: Photo frame"></label>
+        <label class="f" for="pDesc">What should it do?<textarea id="pDesc" maxlength="600" placeholder="What it shows, how big it should be, what happens when you open it."></textarea></label>
+        <div class="row"><button class="btn" id="btnPropose" type="button">Add to the screen</button></div>
+        <p class="msg err" id="pErr" hidden></p>
+      </section>
+      <section class="box">
+        <h3>General note</h3>
+        <label class="f" for="general">Anything that is not about one tile<textarea id="general" maxlength="1500" placeholder="Overall feel, a different background, modes like Guest…"></textarea></label>
+      </section>
+    </aside>
+  </div>
+
+  <section class="sizes" id="sizes" aria-labelledby="szTitle"></section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var COLS = 12, ROWS = 6, MIN_W = 2, MIN_H = 1;
+
+  // What the TV shows today (app/config.js, HUB_CONFIG.layout), with each widget's plain-language job.
+  var WIDGETS = {
+    today:         { title: 'Clock',                 sub: 'Time and date, plus the live status line' },
+    entertainment: { title: 'Entertainment',         sub: 'Apps, Xbox and live TV' },
+    weather:       { title: 'Weather',               sub: 'Today, the next hours and the week' },
+    todo:          { title: 'To-do',                 sub: 'Your list, kept on the Pi' },
+    calendar:      { title: 'Calendar',              sub: 'Today’s agenda, then day, week and month' },
+    nowplaying:    { title: 'Now Playing',           sub: 'What’s playing on Spotify', soon: true },
+    awws:          { title: 'A World Worth Saving',  sub: 'The dashboards, starting with the to-do app', soon: true },
+    ambiance:      { title: 'Ambiance',              sub: 'Pick the light vibe from the TV', soon: true },
+    mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true }
+  };
+  var BASE = [
+    { id: 'today', x: 0, y: 0, w: 3, h: 2 }, { id: 'entertainment', x: 3, y: 0, w: 6, h: 2 }, { id: 'weather', x: 9, y: 0, w: 3, h: 2 },
+    { id: 'todo', x: 0, y: 2, w: 3, h: 4 }, { id: 'calendar', x: 3, y: 2, w: 3, h: 4 }, { id: 'nowplaying', x: 6, y: 2, w: 3, h: 2 },
+    { id: 'awws', x: 9, y: 2, w: 3, h: 2 }, { id: 'ambiance', x: 6, y: 4, w: 3, h: 2 }, { id: 'mirror', x: 9, y: 4, w: 3, h: 2 }
+  ];
+  var KINDS = [
+    { k: 'change', label: 'Change request' },
+    { k: 'idea',   label: 'New widget idea' },
+    { k: 'note',   label: 'Note' }
+  ];
+
+  /* ---------- what shows at each size: the facts ----------
+     One object, keyed by widget id and then by cell (strip, standard, tall,
+     panel = Clicked, full = Full screen), with en and es text per cell.
+     Checked against the TV code (PR 17, v0.12.2: app/hub.js sizeOf, app/widgets/*).
+     title and sample hold the words the previews draw. built: false marks a
+     view the TV does not have yet. Mirrored in tile-sizes.md. */
+  var PLANNED_CELLS = {
+    strip: { en: 'Icon, title and Soon on one line, the description on the next, cut with “…”. A narrow strip (1–2 columns) hides Soon.',
+             es: 'Icono, título y Próximamente en una línea; la descripción en la siguiente, cortada con «…». En una tira estrecha (1–2 columnas) no aparece Próximamente.' },
+    standard: { en: 'Icon, title and Soon, then the description in as many lines as fit, with a faint icon behind. Narrow: the title is cut with “…” and Soon gets its own line.',
+                es: 'Icono, título y Próximamente; luego la descripción en las líneas que quepan, con un icono tenue detrás. Estrecho: el título se corta con «…» y Próximamente va en su propia línea.' },
+    tall: { en: 'Icon, title and Soon at the top, then a big faint icon centered above the description.',
+            es: 'Icono, título y Próximamente arriba; después, un icono grande y tenue centrado sobre la descripción.' },
+    panel: { built: false, en: 'Not built yet. The panel opens with the description, “Not built yet. This spot is reserved for it.” and a large faint icon.',
+             es: 'Todavía no está hecho. El panel se abre con la descripción, «Todavía no está hecho. Este espacio queda reservado.» y un icono grande y tenue.' },
+    full: { built: false, en: 'Not built yet. The same as Clicked at full screen, with bigger text and icon.',
+            es: 'Todavía no está hecho. Igual que al pulsar, a pantalla completa, con letra e icono más grandes.' }
+  };
+  function plannedEntry(title, text) {
+    var o = clonePlain(PLANNED_CELLS);
+    o.title = title; o.sample = { en: { text: text.en }, es: { text: text.es } };
+    return o;
+  }
+  function clonePlain(o) { return JSON.parse(JSON.stringify(o)); }
+
+  var SIZE_MATRIX = {
+    today: {
+      title: { en: 'Clock', es: 'Reloj' },
+      sample: {
+        en: { place: 'Living room', time: '11:24', ampm: 'PM', dow: 'Wednesday', md: 'November 18', dowShort: 'Wed', mdShort: 'Nov 18', long: 'Wednesday, November 18',
+              status: ['v0.12.2 · Chrome 153', 'Motion: push (auto, measuring)', 'Live'], nb: 'Not built yet', nbLine: 'A Clock page is planned.' },
+        es: { place: 'Salón principal', time: '11:24', ampm: 'p. m.', dow: 'Miércoles', md: '18 de noviembre', dowShort: 'Mié.', mdShort: '18 nov.', long: 'Miércoles, 18 de noviembre',
+              status: ['v0.12.2 · Chrome 153', 'Movimiento: empuje (automático, midiendo)', 'En directo · Última actualización 23:20'], nb: 'Todavía no está hecho', nbLine: 'Está prevista una página del Reloj.' }
+      },
+      strip: { en: 'The time, with the date stacked right beside it: the weekday over the month and day. A part too long for the room takes its short form (Wed, Sep 30). No place name, no status lines. A narrow strip (1–2 columns) shows the time only; at 6+ columns the date is a little bigger.',
+               es: 'La hora y, justo a su lado, la fecha en dos líneas: el día de la semana sobre el mes y el día. Si una parte no cabe, pasa a su forma corta (mié., 30 sept.). Sin nombre del lugar ni líneas de estado. En una tira estrecha (1–2 columnas) solo se ve la hora; con 6 columnas o más, la fecha es algo más grande.' },
+      standard: { en: 'Place name (Living room), big time, full date, then the status lines: version and browser, motion, and live updates and updates when they have news. Narrow tiles shorten the date to “Wed, Nov 18”.',
+                  es: 'Nombre del lugar (Salón principal), la hora en grande, la fecha completa y las líneas de estado: versión y navegador, movimiento, y directo y actualizaciones cuando hay novedades. En mosaicos estrechos la fecha se acorta a «Mié 18 de noviembre».' },
+      tall: { en: 'The same as Standard with a bigger clock (biggest at 6+ columns). The status lines stay at the bottom.',
+              es: 'Igual que Estándar, con un reloj más grande (el mayor a partir de 6 columnas). Las líneas de estado siguen abajo.' },
+      panel: { built: false, en: 'Not built yet. The clock tile is static today: the remote’s focus skips it and it does not open. A Clock page is planned.',
+               es: 'Todavía no está hecho. Hoy el reloj es fijo: el mando lo salta y no se abre. Está prevista una página del Reloj.' },
+      full: { built: false, en: 'Not built yet. It comes with the planned Clock page.',
+              es: 'Todavía no está hecho. Llegará con la página del Reloj prevista.' }
+    },
+    entertainment: {
+      title: { en: 'Entertainment', es: 'Entretenimiento' },
+      sample: {
+        en: { sub: 'Apps, Xbox and live TV', names: ['Netflix', 'Prime Video', 'Disney+', 'Hulu', 'Peacock', 'Apple TV', 'YouTube', 'Xbox', 'Pluto TV', 'Twitch', 'All apps'],
+              states: ['', '', '', '', 'Not installed', '', 'No ads', 'HDMI 1', '', '', 'On this TV'], secs: ['Watch', 'Play', 'Free TV', 'More'] },
+        es: { sub: 'Aplicaciones, Xbox y televisión en directo', names: ['Netflix', 'Prime Video', 'Disney+', 'Hulu', 'Peacock', 'Apple TV', 'YouTube', 'Xbox', 'Pluto TV', 'Twitch', 'Todas las aplicaciones'],
+              states: ['', '', '', '', 'No instalada', '', 'Sin anuncios', 'HDMI 1', '', '', 'En este televisor'], secs: ['Ver', 'Jugar', 'Televisión gratis', 'Más'] }
+      },
+      strip: { en: 'Icon and title on the left, a row of app logos on the right ending in “+N”. Strip logos are one size at any width; a narrow strip drops the title, and with no room for two logos only the TV icon shows.',
+               es: 'Icono y título a la izquierda; a la derecha, una fila de logotipos que termina en «+N». En una tira los logotipos tienen siempre el mismo tamaño; una tira estrecha quita el título y, si no caben dos logotipos, solo se ve el icono de la tele.' },
+      standard: { en: 'Icon, title and “Apps, Xbox and live TV”, then one row of logos at the bottom, the last one “+N”. Narrow tiles (1–2 columns) allow smaller logos in more rows; if not even two fit, only the TV icon shows.',
+                  es: 'Icono, título y «Aplicaciones, Xbox y televisión en directo»; abajo, una fila de logotipos, el último «+N». En mosaicos estrechos (1–2 columnas) los logotipos pueden ser más pequeños y en más filas; si no caben ni dos, solo se ve el icono de la tele.' },
+      tall: { en: 'More rows of bigger logos, as many as fit (all 11 at 3×4); blank spaces even out the last row.',
+              es: 'Más filas de logotipos más grandes, todos los que quepan (los 11 a 3×4); huecos en blanco igualan la última fila.' },
+      panel: { en: 'A panel about a third of the screen: every app in one flat grid, six to a row, each with its name and a small line (No ads, HDMI 1, Not installed). All apps opens the TV’s own app list.',
+               es: 'Un panel de un tercio de la pantalla: todas las aplicaciones en una cuadrícula, seis por fila, cada una con su nombre y una línea pequeña (Sin anuncios, HDMI 1, No instalada). Todas las aplicaciones abre la lista del propio televisor.' },
+      full: { en: 'Sections with labels: Watch on its own row, then Play, Free TV and More side by side, with bigger icons and names.',
+              es: 'Secciones con nombre: Ver en su propia fila; después Jugar, Televisión gratis y Más, una al lado de otra, con iconos y nombres más grandes.' }
+    },
+    weather: {
+      title: { en: 'Weather', es: 'Tiempo' },
+      sample: {
+        en: { place: 'Deep Ellum', tag: 'Sample', temp: '66°', cond: 'Partly cloudy', H: 'H', L: 'L', hi: '68°', lo: '49°', rain: '75%',
+              hours: ['Now', '4 PM', '5 PM', '6 PM', '7 PM'], htemps: ['66°', '68°', '67°', '66°', '65°'], day: 'Day', week: 'Week', update: 'Update now', feels: 'Feels like 64°',
+              stats: [['8 mph', 'Wind'], ['75%', 'Rain today'], ['6:58 AM', 'Sunrise'], ['5:23 PM', 'Sunset']], days: ['Today', 'Thu', 'Fri', 'Sat', 'Sun', 'Mon', 'Tue'],
+              date: 'Wednesday, November 18', credit: 'Weather data by Open-Meteo.com' },
+        es: { place: 'Deep Ellum', tag: 'Muestra', temp: '66°', cond: 'Nublado parcial', H: 'Máx', L: 'Mín', hi: '68°', lo: '49°', rain: '75 %',
+              hours: ['Ahora', '4 p. m.', '5 p. m.', '6 p. m.', '7 p. m.'], htemps: ['66°', '68°', '67°', '66°', '65°'], day: 'Día', week: 'Semana', update: 'Actualizar ahora', feels: 'Sensación térmica 64°',
+              stats: [['13 km/h', 'Viento'], ['75 %', 'Lluvia hoy'], ['6:58', 'Amanecer'], ['17:23', 'Atardecer']], days: ['Hoy', 'Jue', 'Vie', 'Sáb', 'Dom', 'Lun', 'Mar'],
+              date: 'Miércoles, 18 de noviembre', credit: 'Datos del tiempo de Open-Meteo.com' }
+      },
+      strip: { en: 'Temperature, weather icon and condition on one line. A wide strip (6+ columns) adds high, low and chance of rain on the right; a narrow strip drops the condition words.',
+               es: 'Temperatura, icono y estado del cielo en una línea. Una tira ancha (6 columnas o más) añade máxima, mínima y probabilidad de lluvia a la derecha; una tira estrecha quita el texto del estado.' },
+      standard: { en: 'No title row. Place name with a Sample or “as of” tag, big temperature and icon, the condition, then high and low with chance of rain at the bottom.',
+                  es: 'Sin fila de título. Nombre del lugar con la etiqueta Muestra o «a las…», temperatura grande e icono, el estado del cielo y, abajo, máxima y mínima con probabilidad de lluvia.' },
+      tall: { en: 'Standard plus a row of the next hours with icons: 3 hours in a narrow tile, 5 at 3–5 columns, 8 at 6 or more.',
+              es: 'Estándar más una fila con las próximas horas e iconos: 3 horas en un mosaico estrecho, 5 con 3–5 columnas y 8 con 6 o más.' },
+      panel: { en: 'Day and Week tabs and Update now. Day: temperature, condition, feels like, then wind, rain today, sunrise and sunset, and a 12-hour curve. Week: seven days with icon, rain and a low-to-high bar.',
+               es: 'Pestañas Día y Semana y Actualizar ahora. Día: temperatura, estado, sensación térmica; viento, lluvia hoy, amanecer y atardecer, y una curva de 12 horas. Semana: siete días con icono, lluvia y barra de mínima a máxima.' },
+      full: { en: 'Day and Week side by side, today’s date in the top bar instead of tabs, bigger type. Footer: Weather data by Open-Meteo.com.',
+              es: 'Día y Semana una al lado de otra, la fecha de hoy arriba en lugar de pestañas y letra más grande. Pie: datos del tiempo de Open-Meteo.com.' }
+    },
+    todo: {
+      title: { en: 'To-do', es: 'Pendientes' },
+      sample: {
+        en: { sub: 'In sync', n: '6', cap: 'to do now', meta: '1 next · 1 waiting', overdue: 'Overdue', more: '+2 more', moreStd: '+5 more',
+              items: ['Llamar al fontanero por la cañería del baño', 'Book flights for Thanksgiving', 'Renew passport', 'Buy birthday gift for Ñandú'],
+              add: 'Add an item', ok: 'OK to type', secs: ['Now', 'Next', 'Waiting on', 'Done today'], next: 'Call the bank about the card', waiting: 'Refund from the airline', done: 'Water the plants' },
+        es: { sub: 'Sincronizado', n: '6', cap: 'pendientes ahora', meta: '1 después · 1 en espera', overdue: 'Vencida', more: '+2 más', moreStd: '+5 más',
+              items: ['Llamar al fontanero por la cañería del baño', 'Reservar vuelos para Acción de Gracias', 'Renovar el pasaporte', 'Comprar el regalo de cumpleaños de Ñandú'],
+              add: 'Añadir una tarea', ok: 'OK para escribir', secs: ['Ahora', 'Después', 'En espera', 'Hecho hoy'], next: 'Llamar al banco por la tarjeta', waiting: 'Reembolso de la aerolínea', done: 'Regar las plantas' }
+      },
+      strip: { en: 'Icon and title, the number of Now items, then the first Now item on one line, amber if overdue. A narrow strip drops the title.',
+               es: 'Icono y título, el número de tareas de Ahora y la primera de ellas en una línea, en ámbar si está vencida. Una tira estrecha quita el título.' },
+      standard: { en: 'Icon, title and sync line, a big count “to do now”, a line like “1 next · 1 waiting”, then as many Now items as fit and “+N more”. At 2 rows often no item fits; the count says it all.',
+                  es: 'Icono, título y estado de sincronización, el número grande «pendientes ahora», una línea como «1 después · 1 en espera» y luego las tareas de Ahora que quepan y «+N más». Con 2 filas a menudo no cabe ninguna; basta el número.' },
+      tall: { en: 'Standard with room for the list: up to 8 Now items, each with a tick circle and an Overdue flag when late, then “+N more”.',
+              es: 'Estándar con sitio para la lista: hasta 8 tareas de Ahora, cada una con su círculo y la marca Vencida si va con retraso, y «+N más».' },
+      panel: { en: 'An Add an item box, then Now, with Next, Waiting on and Done today below it. The focused row shows Move and Remove buttons.',
+               es: 'Un cuadro Añadir una tarea, luego Ahora y, debajo, Después, En espera y Hecho hoy. La fila con el foco muestra los botones Mover y Quitar.' },
+      full: { en: 'Two columns: Add and Now on the left; Next, Waiting on and Done today on the right.',
+              es: 'Dos columnas: Añadir y Ahora a la izquierda; Después, En espera y Hecho hoy a la derecha.' }
+    },
+    calendar: {
+      title: { en: 'Calendar', es: 'Calendario' },
+      sample: {
+        en: { num: '18', dow: 'Wednesday', month: 'November', allday: 'All day', allTitle: 'Grandma visiting', t1: '6:30 PM', e1: 'Family dinner', coming: 'Coming up', more: '+1 more',
+              later: [['Tomorrow 9:00 AM', 'Dentist: Maya'], ['Tomorrow 10:00 AM', 'Busy'], ['Friday · All day', 'Ñandú’s birthday']],
+              today: 'Today', views: ['Day', 'Week', 'Month'], label: 'Today · Wednesday, November 18', hours: ['5 PM', '6 PM', '7 PM', '8 PM'],
+              dCal: 'Family', dWhen: '6:30 – 8:00 PM', dPlace: 'Grandma’s house', legend: ['Family', 'Work'], hint: '← → day · ↑ ↓ events' },
+        es: { num: '18', dow: 'Miércoles', month: 'Noviembre', allday: 'Todo el día', allTitle: 'Visita de la abuela', t1: '6:30 p. m.', e1: 'Cena familiar', coming: 'Próximamente', more: '+1 más',
+              later: [['Mañana 9:00 a. m.', 'Próxima cita: dentista de Maya'], ['Mañana 10:00 a. m.', 'Ocupado'], ['Viernes · Todo el día', 'Cumpleaños de Ñandú']],
+              today: 'Hoy', views: ['Día', 'Semana', 'Mes'], label: 'Hoy · Miércoles, 18 de noviembre', hours: ['5 p. m.', '6 p. m.', '7 p. m.', '8 p. m.'],
+              dCal: 'Familia', dWhen: '6:30 – 8:00 p. m.', dPlace: 'Casa de la abuela', legend: ['Familia', 'Trabajo'], hint: '← → día · ↑ ↓ eventos' }
+      },
+      strip: { en: 'Icon and title, then one line: a color bar, the time (or Now, or All day) and the next event. A narrow strip drops the title.',
+               es: 'Icono y título y una sola línea: barra de color, la hora (o Ahora, o Todo el día) y la próxima cita. Una tira estrecha quita el título.' },
+      standard: { en: 'Icon and title, the day number with weekday and month, then today’s all-day and upcoming events and “+N more”. If not even one event fits, the date gives way.',
+                  es: 'Icono y título, el número del día con el día de la semana y el mes, y luego los eventos de todo el día y los próximos de hoy, con «+N más». Si no cabe ni uno, la fecha deja su sitio.' },
+      tall: { en: 'Standard plus “Coming up”: the next days’ events with day and time, as many as fit.',
+              es: 'Estándar más «Próximamente»: los eventos de los próximos días con día y hora, todos los que quepan.' },
+      panel: { en: 'Today, then Day, Week and Month tabs and the date. Day: an hour timeline with a detail pane; Week: seven columns; Month: a grid. Calendar colors and key hints at the bottom.',
+               es: 'Hoy, las pestañas Día, Semana y Mes y la fecha. Día: horas con un panel de detalle; Semana: siete columnas; Mes: una cuadrícula. Abajo, los colores de cada calendario y las teclas.' },
+      full: { en: 'The same views at full screen: taller hours, bigger text and a wider detail pane.',
+              es: 'Las mismas vistas a pantalla completa: horas más altas, letra más grande y un panel de detalle más ancho.' }
+    },
+    nowplaying: plannedEntry({ en: 'Now Playing', es: 'Reproduciendo ahora' },
+      { en: 'What’s playing on Spotify.', es: 'Lo que está sonando ahora mismo en Spotify.' }),
+    awws: plannedEntry({ en: 'A World Worth Saving', es: 'Un mundo que vale la pena salvar' },
+      { en: 'Open any of the dashboards, starting with the to-do app.', es: 'Abre cualquiera de los paneles, empezando por la aplicación de tareas pendientes.' }),
+    ambiance: plannedEntry({ en: 'Ambiance', es: 'Ambiente' },
+      { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),
+    mirror: plannedEntry({ en: 'Mirror', es: 'Espejo' },
+      { en: 'A camera mirror for mornings and nights out.', es: 'Un espejo con cámara para las mañanas y las noches de salida.' })
+  };
+  var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
+  var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying', 'awws', 'ambiance', 'mirror'];
+  var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
+  var I18N = {
+    en: { title: 'What shows at each size', lang: 'Language',
+          intro: 'A tile draws differently by how many rows it spans. Here is each widget at every size, and when it is clicked. Comment on any of them; comments go out with your submission.',
+          legend: [['Strip', '1 row'], ['Standard', '2 rows'], ['Tall', '3 or more rows']], widthNote: 'Width also counts: narrow is 1–2 columns, standard 3–5, wide 6 or more. Previews are drawn 3 columns wide.',
+          cells: { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' },
+          dims: { strip: '1 row', standard: '2 rows', tall: '3+ rows', panel: 'Panel', full: 'Whole screen' },
+          nowOn: 'On the screen now', where: 'On the screen at {s}: {t}', off: 'Off the screen', soon: 'Soon',
+          comment: 'Comment', add: 'Add comment', cancel: 'Cancel', yours: 'Your comment', del: 'Delete this comment',
+          kinds: { change: 'Change request', idea: 'New widget idea', note: 'Note' }, kindGroup: 'Kind of comment',
+          fullBtn: 'Full screen', exitBtn: 'Exit full screen', close: 'Back to close', shrink: 'Back to shrink', notBuilt: 'Not built yet. This spot is reserved for it.' },
+    es: { title: 'Qué se ve en cada tamaño', lang: 'Idioma',
+          intro: 'Cada mosaico se dibuja distinto según las filas que ocupa. Aquí está cada widget en todos los tamaños y al pulsarlo. Comenta lo que quieras; los comentarios se envían con tu propuesta.',
+          legend: [['Tira', '1 fila'], ['Estándar', '2 filas'], ['Alta', '3 filas o más']], widthNote: 'El ancho también cuenta: estrecho es 1–2 columnas, estándar 3–5 y ancho 6 o más. Las vistas previas tienen 3 columnas de ancho.',
+          cells: { strip: 'Tira', standard: 'Estándar', tall: 'Alta', panel: 'Al pulsar', full: 'Pantalla completa' },
+          dims: { strip: '1 fila', standard: '2 filas', tall: '3 filas o más', panel: 'Panel', full: 'Toda la pantalla' },
+          nowOn: 'En pantalla ahora', where: 'En pantalla a {s}: {t}', off: 'Fuera de la pantalla', soon: 'Próximamente',
+          comment: 'Comentar', add: 'Añadir comentario', cancel: 'Cancelar', yours: 'Tu comentario', del: 'Borrar este comentario',
+          kinds: { change: 'Pedir un cambio', idea: 'Idea de widget nuevo', note: 'Nota' }, kindGroup: 'Tipo de comentario',
+          fullBtn: 'Pantalla completa', exitBtn: 'Salir de pantalla completa', close: 'Atrás para cerrar', shrink: 'Atrás para reducir', notBuilt: 'Todavía no está hecho. Este espacio queda reservado.' }
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var state = fresh();
+  var selected = null, dirty = false, savedAt = null, kind = 'change', lastSummary = '';
+  var lib = { layouts: [], defaultId: 'stock' }, cur = 'stock', db = null, comments = null, dragging = false, submitState = { mode: 'idle' };
+
+  function fresh() {
+    return { layout: BASE.map(function (b) { return { id: b.id, x: b.x, y: b.y, w: b.w, h: b.h }; }), hidden: [], proposals: [], notes: {}, general: '' };
+  }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function baseOf(id) { for (var i = 0; i < BASE.length; i++) if (BASE[i].id === id) return BASE[i]; return null; }
+  function entry(id) { for (var i = 0; i < state.layout.length; i++) if (state.layout[i].id === id) return state.layout[i]; return null; }
+  function proposalOf(id) { for (var i = 0; i < state.proposals.length; i++) if (state.proposals[i].id === id) return state.proposals[i]; return null; }
+  function titleOf(id) { var p = proposalOf(id); return p ? p.name : (WIDGETS[id] ? WIDGETS[id].title : id); }
+  function isChanged(e) { var b = baseOf(e.id); return !b || b.x !== e.x || b.y !== e.y || b.w !== e.w || b.h !== e.h; }
+  function noteCount(id) { return (state.notes[id] || []).length; }
+
+  /* ---------- geometry ---------- */
+  function overlaps(r, ignoreId) {
+    for (var i = 0; i < state.layout.length; i++) {
+      var o = state.layout[i];
+      if (o.id === ignoreId) continue;
+      if (r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y) return true;
+    }
+    return false;
+  }
+  function fits(r) { return r.x >= 0 && r.y >= 0 && r.w >= MIN_W && r.h >= MIN_H && r.x + r.w <= COLS && r.y + r.h <= ROWS; }
+  function findSpot(w, h) {
+    for (var y = 0; y + h <= ROWS; y++) for (var x = 0; x + w <= COLS; x++) if (!overlaps({ x: x, y: y, w: w, h: h }, null)) return { x: x, y: y };
+    return null;
+  }
+  function tryRect(e, r) {
+    if (!fits(r) || overlaps(r, e.id)) return false;
+    if (e.x === r.x && e.y === r.y && e.w === r.w && e.h === r.h) return false;
+    e.x = r.x; e.y = r.y; e.w = r.w; e.h = r.h; return true;
+  }
+
+  /* ---------- canvas ---------- */
+  var canvas = $('canvas');
+  function place(el, e) {
+    el.style.left = (e.x / COLS * 100) + '%'; el.style.top = (e.y / ROWS * 100) + '%';
+    el.style.width = (e.w / COLS * 100) + '%'; el.style.height = (e.h / ROWS * 100) + '%';
+  }
+  function renderCanvas() {
+    canvas.innerHTML = '';
+    state.layout.forEach(function (e) {
+      var p = proposalOf(e.id), w = WIDGETS[e.id] || {};
+      var t = document.createElement('div');
+      t.className = 'tile anim' + (p ? ' proposal' : '') + (!p && isChanged(e) ? ' changed' : '') + (selected === e.id ? ' sel' : '');
+      t.dataset.id = e.id; t.tabIndex = 0;
+      t.setAttribute('role', 'button');
+      var n = noteCount(e.id);
+      t.setAttribute('aria-label', titleOf(e.id) + ', ' + e.w + ' by ' + e.h + ' cells at column ' + (e.x + 1) + ', row ' + (e.y + 1) + (n ? ', ' + n + ' comments' : ''));
+      t.innerHTML = '<div class="card"><div class="badges">' +
+        (w.soon ? '<span class="pill">Soon</span>' : '') + (p ? '<span class="pill p">Proposal</span>' : '') + (n ? '<span class="pill c">' + n + '</span>' : '') +
+        '</div><div class="t">' + esc(titleOf(e.id)) + '</div><div class="s">' + esc(p ? p.desc : (w.sub || '')) + '</div><div class="size">' + e.w + ' × ' + e.h + '</div><div class="handle" data-handle="1"></div></div>';
+      place(t, e);
+      canvas.appendChild(t);
+    });
+    updateCurrentTiers();
+  }
+  function placeAll() {
+    state.layout.forEach(function (e) {
+      var t = canvas.querySelector('[data-id="' + e.id + '"]'); if (!t) return;
+      place(t, e);
+      t.querySelector('.size').textContent = e.w + ' × ' + e.h;
+      var p = proposalOf(e.id);
+      t.classList.toggle('changed', !p && isChanged(e));
+    });
+    updateCurrentTiers();
+  }
+
+  var drag = null;
+  canvas.addEventListener('pointerdown', function (ev) {
+    var t = ev.target.closest('.tile'); if (ev.button > 0) return;
+    if (!t) { select(null); return; }
+    var e = entry(t.dataset.id); if (!e) return;
+    select(e.id, true);
+    var rect = canvas.getBoundingClientRect();
+    drag = { snap: clone(state.layout), id: e.id, el: canvas.querySelector('[data-id="' + e.id + '"]'), resize: !!ev.target.closest('[data-handle]'), sx: ev.clientX, sy: ev.clientY, cw: rect.width / COLS, ch: rect.height / ROWS, o: { x: e.x, y: e.y, w: e.w, h: e.h }, moved: false };
+    drag.el.classList.add('drag'); drag.el.classList.remove('anim'); dragging = true;
+    try { canvas.setPointerCapture(ev.pointerId); } catch (x) { /* ignore */ }
+    ev.preventDefault();
+  });
+  canvas.addEventListener('pointermove', function (ev) {
+    if (!drag) return;
+    var dx = Math.round((ev.clientX - drag.sx) / drag.cw), dy = Math.round((ev.clientY - drag.sy) / drag.ch);
+    var o = drag.o;
+    var r = drag.resize ? { x: o.x, y: o.y, w: Math.max(MIN_W, o.w + dx), h: Math.max(MIN_H, o.h + dy) }
+                        : { x: Math.min(COLS - o.w, Math.max(0, o.x + dx)), y: Math.min(ROWS - o.h, Math.max(0, o.y + dy)), w: o.w, h: o.h };
+    if (drag.resize) { r.w = Math.min(r.w, COLS - r.x); r.h = Math.min(r.h, ROWS - r.y); }
+    var before = JSON.stringify(state.layout);
+    state.layout = clone(drag.snap);
+    var e = entry(drag.id);
+    if (!tryRect(e, r) && !drag.resize) swapInto(e, r, o);
+    if (JSON.stringify(state.layout) !== before) { drag.moved = true; placeAll(); renderFacts(); }
+  });
+  // Dropping on exactly one other tile swaps the two, when the other tile fits where this one was.
+  function swapInto(e, r, o) {
+    var hit = null, n = 0;
+    state.layout.forEach(function (q) { if (q.id !== e.id && r.x < q.x + q.w && r.x + r.w > q.x && r.y < q.y + q.h && r.y + r.h > q.y) { hit = q; n++; } });
+    if (n !== 1) return;
+    var qOld = { x: hit.x, y: hit.y, w: hit.w, h: hit.h };
+    var qNew = { x: Math.min(o.x, COLS - hit.w), y: Math.min(o.y, ROWS - hit.h), w: hit.w, h: hit.h };
+    hit.x = -99; hit.y = -99;                       // set the other tile aside while checking
+    var ok = fits(r) && !overlaps(r, e.id) && fits(qNew);
+    if (ok) { var keep = { x: e.x, y: e.y, w: e.w, h: e.h }; e.x = r.x; e.y = r.y; e.w = r.w; e.h = r.h; ok = !overlaps(qNew, hit.id) ; if (!ok) { e.x = keep.x; e.y = keep.y; e.w = keep.w; e.h = keep.h; } }
+    if (ok) { hit.x = qNew.x; hit.y = qNew.y; } else { hit.x = qOld.x; hit.y = qOld.y; }
+  }
+  function endDrag() {
+    if (!drag) return;
+    var moved = drag.moved; drag.el.classList.remove('drag'); drag.el.classList.add('anim'); drag = null; dragging = false;
+    if (moved) { markDirty(); renderCanvas(); renderSide(); }
+  }
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  canvas.addEventListener('keydown', function (ev) {
+    var t = ev.target.closest('.tile'); if (!t) return;
+    var d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
+    if (!d) return;
+    ev.preventDefault();
+    var e = entry(t.dataset.id);
+    var r = ev.shiftKey ? { x: e.x, y: e.y, w: e.w + d[0], h: e.h + d[1] } : { x: e.x + d[0], y: e.y + d[1], w: e.w, h: e.h };
+    if (tryRect(e, r)) { markDirty(); selected = e.id; renderCanvas(); renderSide(); var again = canvas.querySelector('[data-id="' + e.id + '"]'); if (again) again.focus(); }
+  });
+
+  function select(id, keep) {
+    if (selected === id) return;
+    selected = id;
+    Array.prototype.forEach.call(canvas.querySelectorAll('.tile'), function (t) { t.classList.toggle('sel', t.dataset.id === id); });
+    renderSide();
+  }
+
+  /* ---------- side column ---------- */
+  function renderFacts() {
+    var e = selected && entry(selected), f = $('facts'); if (!e || !f) return;
+    f.innerHTML = '<div><dt>Column</dt><dd>' + (e.x + 1) + '</dd></div><div><dt>Row</dt><dd>' + (e.y + 1) + '</dd></div><div><dt>Wide</dt><dd>' + e.w + '</dd></div><div><dt>Tall</dt><dd>' + e.h + '</dd></div>';
+    var a = $('atSizeText');
+    if (a) a.textContent = 'At this size: ' + TIER_EN[tierOf(e.h)] + ' (' + e.w + '×' + e.h + ')';
+  }
+  function renderSide() {
+    var box = $('selBox'), id = selected, e = id && entry(id);
+    if (!e) {
+      var total = 0; Object.keys(state.notes).forEach(function (k) { total += state.notes[k].length; });
+      box.innerHTML = '<h3>Select a tile</h3><p class="empty">Pick a tile on the screen to comment on it, or use the tray under the screen to bring a removed tile back.</p>' +
+        '<p class="empty">' + total + ' comment' + (total === 1 ? '' : 's') + ' so far.</p>';
+      return;
+    }
+    var p = proposalOf(id), w = WIDGETS[id] || {}, list = state.notes[id] || [];
+    var h = '<h4>' + (p ? 'Proposed widget' : 'Selected tile') + '</h4><h3>' + esc(titleOf(id)) + '</h3>';
+    if (p || w.sub) h += '<p class="empty">' + esc(p ? p.desc : w.sub) + '</p>';
+    h += '<dl class="facts" id="facts"></dl>';
+    h += '<p class="atsize"><span id="atSizeText"></span>' + (SIZE_MATRIX[id] ? '<button class="btn" type="button" id="btnSeeSize">See what it shows</button>' : '') + '</p>';
+    h += '<div class="row"><button class="btn danger" type="button" id="btnRemove">' + (p ? 'Delete proposal' : 'Take off the screen') + '</button></div>';
+    h += '<h4>Comments</h4>';
+    h += list.length ? '<ul class="notes">' + list.map(function (n, i) {
+      return '<li><div><span class="k ' + n.k + '">' + esc(kindLabel(n.k)) + '</span><p>' + esc(n.t) + '</p></div><button class="x" type="button" data-del="' + i + '" aria-label="Delete this comment">×</button></li>';
+    }).join('') + '</ul>' : '<p class="empty">No comments on this tile yet.</p>';
+    h += '<div class="seg" role="group" aria-label="Kind of comment">' + KINDS.map(function (k) { return '<button type="button" data-kind="' + k.k + '" aria-pressed="' + (kind === k.k) + '">' + k.label + '</button>'; }).join('') + '</div>';
+    h += '<label class="f" for="noteText">Your comment<textarea id="noteText" maxlength="1000" placeholder="' + esc(kindHint()) + '"></textarea></label>';
+    h += '<div class="row"><button class="btn" type="button" id="btnAddNote">Add comment</button></div>';
+    box.innerHTML = h;
+    renderFacts();
+  }
+  function kindLabel(k) { for (var i = 0; i < KINDS.length; i++) if (KINDS[i].k === k) return KINDS[i].label; return k; }
+  function kindHint() { return kind === 'idea' ? 'Describe a widget you would like. Claude will start a planning thread for it.' : kind === 'change' ? 'What should change about this tile?' : 'Anything Claude should know.'; }
+
+  $('selBox').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.kind) { var keepText = ($('noteText') || {}).value; kind = b.dataset.kind; renderSide(); if (keepText) $('noteText').value = keepText; return; }
+    if (b.dataset.del !== undefined) { state.notes[selected].splice(+b.dataset.del, 1); if (!state.notes[selected].length) delete state.notes[selected]; markDirty(); renderCanvas(); renderSide(); return; }
+    if (b.id === 'btnAddNote') {
+      var ta = $('noteText'), t = ta.value.trim(); if (!t) { ta.focus(); return; }
+      (state.notes[selected] = state.notes[selected] || []).push({ k: kind, t: t, at: Date.now() });
+      markDirty(); renderCanvas(); renderSide(); return;
+    }
+    if (b.id === 'btnSeeSize') { seeSize(selected); return; }
+    if (b.id === 'btnRemove') { removeSelected(); }
+  });
+
+  function removeSelected() {
+    var id = selected, p = proposalOf(id);
+    state.layout = state.layout.filter(function (e) { return e.id !== id; });
+    if (p) { state.proposals = state.proposals.filter(function (q) { return q.id !== id; }); }
+    else if (state.hidden.indexOf(id) < 0) state.hidden.push(id);
+    selected = null; markDirty(); renderAll();
+  }
+  function renderTray() {
+    var t = $('tray');
+    if (!state.hidden.length) { t.innerHTML = ''; return; }
+    t.innerHTML = '<span class="lbl">Off the screen, tap to bring back:</span>' + state.hidden.map(function (id) { return '<button type="button" class="chip" data-back="' + id + '">+ ' + esc(titleOf(id)) + '</button>'; }).join('');
+  }
+  $('tray').addEventListener('click', function (ev) {
+    var b = ev.target.closest('[data-back]'); if (!b) return;
+    var id = b.dataset.back, base = baseOf(id), w = base ? base.w : 3, h = base ? base.h : 2;
+    var spot = (base && !overlaps(base, null)) ? { x: base.x, y: base.y } : (findSpot(w, h) || findSpot(MIN_W, MIN_H));
+    if (!spot) { flash('No free space on the screen. Shrink or take off another tile first.'); return; }
+    var fitW = findSpot(w, h) ? w : MIN_W, fitH = findSpot(w, h) ? h : MIN_H;
+    if (base && !overlaps(base, null)) { fitW = base.w; fitH = base.h; }
+    state.layout.push({ id: id, x: spot.x, y: spot.y, w: fitW, h: fitH });
+    state.hidden = state.hidden.filter(function (q) { return q !== id; });
+    selected = id; markDirty(); renderAll();
+  });
+
+  $('btnPropose').addEventListener('click', function () {
+    var name = $('pName').value.trim(), desc = $('pDesc').value.trim(), err = $('pErr');
+    err.hidden = true;
+    if (!name) { err.textContent = 'Give the widget a name first.'; err.hidden = false; $('pName').focus(); return; }
+    var spot = findSpot(3, 2) || findSpot(2, 2) || findSpot(MIN_W, MIN_H);
+    if (!spot) { err.textContent = 'No free space on the screen. Shrink or take off a tile, then add it.'; err.hidden = false; return; }
+    var w = findSpot(3, 2) ? 3 : 2, h = findSpot(3, 2) || findSpot(2, 2) ? 2 : 1;
+    var id = 'new-' + Date.now().toString(36);
+    state.proposals.push({ id: id, name: name, desc: desc });
+    state.layout.push({ id: id, x: spot.x, y: spot.y, w: w, h: h });
+    $('pName').value = ''; $('pDesc').value = '';
+    selected = id; markDirty(); renderAll();
+  });
+  $('general').addEventListener('input', function () { state.general = this.value; markDirty(); });
+
+  function flash(text) { var s = $('statusText'); s.textContent = text; setTimeout(updateStatus, 3500); }
+
+  /* ---------- status, draft ---------- */
+  function markDirty() { dirty = true; if (submitState.mode === 'sent') submitState = { mode: 'idle' }; updateStatus(); renderSubmit(); }
+  function updateStatus() {
+    $('dot').className = 'dot ' + (dirty ? 'dirty' : (savedAt ? 'saved' : ''));
+    var ln = (layoutById(cur) || {}).name || 'Stock';
+    var t = 'Layout: ' + ln + (layoutDiffers() ? ' (edited)' : '') + ' · ';
+    t += dirty ? 'Unsaved changes' : (savedAt ? 'Draft saved ' + new Date(savedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'nothing to save');
+    if (!db) t += ' · saving needs a signed-in view';
+    $('statusText').textContent = t;
+  }
+  function counts() {
+    var moved = 0, notes = 0;
+    state.layout.forEach(function (e) { if (!proposalOf(e.id) && isChanged(e)) moved++; });
+    Object.keys(state.notes).forEach(function (k) { notes += state.notes[k].length; });
+    return { moved: moved, removed: state.hidden.length, proposals: state.proposals.length, notes: notes + (state.general.trim() ? 1 : 0) };
+  }
+
+  $('btnSave').addEventListener('click', function () {
+    if (!db) { flash('Saving is not available in this view.'); return; }
+    var b = this; b.disabled = true;
+    db.doc('drafts/current').set({ state: JSON.stringify(state), cur: cur, savedAt: Date.now() }).then(function () {
+      dirty = false; savedAt = Date.now(); updateStatus();
+    }).catch(function (e) { flash('Could not save: ' + (e && e.message || 'try again')); }).then(function () { b.disabled = false; });
+  });
+  $('btnReset').addEventListener('click', function () { loadLayout(cur, true); });
+
+  /* ---------- saved layouts ---------- */
+  function layoutById(id) {
+    if (id === 'stock') return { id: 'stock', name: 'Stock', layout: BASE.map(function (b) { return { id: b.id, x: b.x, y: b.y, w: b.w, h: b.h }; }), hidden: [] };
+    for (var i = 0; i < lib.layouts.length; i++) if (lib.layouts[i].id === id) return lib.layouts[i];
+    return null;
+  }
+  function realTiles() { return state.layout.filter(function (e) { return !proposalOf(e.id); }).map(function (e) { return { id: e.id, x: e.x, y: e.y, w: e.w, h: e.h }; }); }
+  function layoutDiffers() {
+    var l = layoutById(cur); if (!l) return true;
+    return JSON.stringify(sortTiles(realTiles())) !== JSON.stringify(sortTiles(l.layout)) || JSON.stringify(state.hidden.slice().sort()) !== JSON.stringify((l.hidden || []).slice().sort());
+  }
+  function sortTiles(a) { return a.slice().sort(function (p, q) { return p.id < q.id ? -1 : 1; }); }
+  function applyLayout(l) {
+    var keep = state.proposals.map(function (p) { return { p: p, e: entry(p.id) }; });
+    state.layout = clone(l.layout); state.hidden = (l.hidden || []).slice();
+    var lost = 0, ps = [];
+    keep.forEach(function (k) {
+      var e = k.e, spot = e && !overlaps(e, null) && fits(e) ? { x: e.x, y: e.y } : findSpot(e ? e.w : 3, e ? e.h : 2) || findSpot(MIN_W, MIN_H);
+      if (!spot) { lost++; return; }
+      var w = e ? e.w : 3, h = e ? e.h : 2;
+      if (overlaps({ x: spot.x, y: spot.y, w: w, h: h }, null) || spot.x + w > COLS || spot.y + h > ROWS) { w = MIN_W; h = MIN_H; }
+      state.layout.push({ id: k.p.id, x: spot.x, y: spot.y, w: w, h: h }); ps.push(k.p);
+    });
+    state.proposals = ps;
+    return lost;
+  }
+  function loadLayout(id, quiet) {
+    var l = layoutById(id); if (!l) return;
+    var lost = applyLayout(l); cur = id; selected = null; dirty = true;
+    renderAll(); if (lost) flash(lost + ' proposed widget' + (lost === 1 ? '' : 's') + ' had no free space and ' + (lost === 1 ? 'was' : 'were') + ' removed.');
+  }
+  function saveLib() {
+    if (!db) { flash('Saving is not available in this view.'); return Promise.reject(); }
+    return db.doc('library/main').set({ data: JSON.stringify(lib), savedAt: Date.now() }).catch(function (e) { flash('Could not save layouts: ' + (e && e.message || 'try again')); throw e; });
+  }
+  function renderLayouts() {
+    var h = '<div class="lay-chips" role="group" aria-label="Saved layouts"><span class="lbl">Layouts</span>';
+    [layoutById('stock')].concat(lib.layouts).forEach(function (l) {
+      h += '<button type="button" class="lchip" data-load="' + esc(l.id) + '" aria-pressed="' + (cur === l.id) + '">' + esc(l.name) + (lib.defaultId === l.id ? ' <span class="star" title="Opens by default">★</span><small>default</small>' : '') + (cur === l.id && layoutDiffers() ? ' <small>edited</small>' : '') + '</button>';
+    });
+    h += '</div><div class="lay-actions">';
+    if (cur !== 'stock') h += '<button class="btn" type="button" id="layUpdate">Update “' + esc(layoutById(cur).name) + '”</button>';
+    if (lib.defaultId !== cur) h += '<button class="btn" type="button" id="layDefault">Make this the default</button>';
+    h += '<input type="text" id="layName" maxlength="40" placeholder="Name for a new layout" aria-label="Name for a new layout"><button class="btn" type="button" id="laySaveAs">Save as new</button>';
+    if (cur !== 'stock') h += '<button class="btn danger" type="button" id="layDelete">Delete</button>';
+    h += '</div><p class="msg err" id="layErr" hidden></p>';
+    var keep = $('layName') ? $('layName').value : '';
+    $('layouts').innerHTML = h; if (keep) $('layName').value = keep;
+  }
+  function layErr(t) { var e = $('layErr'); e.textContent = t; e.hidden = false; }
+  $('layouts').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.load) { if (b.dataset.load !== cur) loadLayout(b.dataset.load); return; }
+    if (b.id === 'layDefault') { var prev = lib.defaultId; lib.defaultId = cur; saveLib().then(renderLayouts, function () { lib.defaultId = prev; }); return; }
+    if (b.id === 'layUpdate') { var l = layoutById(cur); var snapL = [l.layout, l.hidden]; l.layout = realTiles(); l.hidden = state.hidden.slice(); l.savedAt = Date.now(); saveLib().then(function () { renderAll(); flash('Updated “' + l.name + '”.'); }, function () { l.layout = snapL[0]; l.hidden = snapL[1]; }); return; }
+    if (b.id === 'layDelete') {
+      var l2 = layoutById(cur), idx = lib.layouts.indexOf(l2), wasDef = lib.defaultId === cur;
+      lib.layouts.splice(idx, 1); if (wasDef) lib.defaultId = 'stock';
+      saveLib().then(function () { cur = 'stock'; renderAll(); flash('Deleted “' + l2.name + '”. Your tiles stay as they are; pick a layout to load it.'); },
+        function () { lib.layouts.splice(idx, 0, l2); if (wasDef) lib.defaultId = cur; });
+      return;
+    }
+    if (b.id === 'laySaveAs') {
+      var name = $('layName').value.trim();
+      if (!name) { layErr('Give the layout a name first.'); $('layName').focus(); return; }
+      if (name.toLowerCase() === 'stock' || lib.layouts.some(function (q) { return q.name.toLowerCase() === name.toLowerCase(); })) { layErr('A layout called “' + name + '” already exists. Pick another name, or use Update.'); return; }
+      var nl = { id: 'l-' + Date.now().toString(36), name: name, layout: realTiles(), hidden: state.hidden.slice(), savedAt: Date.now() };
+      lib.layouts.push(nl);
+      saveLib().then(function () { cur = nl.id; $('layName').value = ''; renderAll(); flash('Saved “' + name + '”.'); }, function () { lib.layouts.pop(); });
+    }
+  });
+
+  /* ---------- submit ---------- */
+  function buildSummary(id) {
+    var L = [];
+    L.push('HOME HUB LAYOUT SUBMISSION ' + id);
+    L.push('Grid is 12 columns x 6 rows; positions are zero-based (x across, y down); sizes are w x h cells. Compared with the layout on the TV today.');
+    L.push('');
+    var any = false;
+    state.layout.forEach(function (e) {
+      if (proposalOf(e.id)) return;
+      var b = baseOf(e.id);
+      if (isChanged(e)) { any = true; L.push('- ' + titleOf(e.id) + ': ' + b.w + 'x' + b.h + ' at (' + b.x + ',' + b.y + ') -> ' + e.w + 'x' + e.h + ' at (' + e.x + ',' + e.y + ')'); }
+    });
+    state.hidden.forEach(function (h) { any = true; L.push('- ' + titleOf(h) + ': REMOVED from the home screen'); });
+    if (!any) L.push('- No tile moved or resized.');
+    if (state.proposals.length) {
+      L.push(''); L.push('New widget proposals (start a planning thread for each):');
+      state.proposals.forEach(function (p) { var e = entry(p.id); L.push('- "' + p.name + '"' + (e ? ' wanted at (' + e.x + ',' + e.y + ') ' + e.w + 'x' + e.h : '') + (p.desc ? ': ' + p.desc : '')); });
+    }
+    var nl = [];
+    Object.keys(state.notes).forEach(function (k) {
+      if (k.indexOf('size:') === 0) return;
+      state.notes[k].forEach(function (n) { nl.push('[' + kindLabel(n.k) + (n.k === 'idea' ? ' -> start a planning thread' : '') + '] ' + titleOf(k) + ': ' + n.t); });
+    });
+    if (nl.length) { L.push(''); L.push('Comments:'); nl.forEach(function (x) { L.push(x); }); }
+    var sl = [];
+    SZ_ORDER.forEach(function (w) {
+      CELLS.forEach(function (c) {
+        (state.notes[sizeKey(w, c)] || []).forEach(function (n) { sl.push('[' + kindLabel(n.k) + (n.k === 'idea' ? ' -> start a planning thread' : '') + '] ' + titleOf(w) + ' at ' + TIER_EN[c] + ': ' + n.t); });
+      });
+    });
+    if (sl.length) { L.push(''); L.push('Comments on what shows at each size:'); sl.forEach(function (x) { L.push(x); }); }
+    if (state.general.trim()) { L.push(''); L.push('General note: ' + state.general.trim()); }
+    L.push(''); L.push('Layout JSON (hub format): ' + JSON.stringify(state.layout.filter(function (e) { return !proposalOf(e.id); }).map(function (e) { return { widget: e.id, x: e.x, y: e.y, w: e.w, h: e.h }; })));
+    L.push('Full details are saved in this artifact at submissions/' + id + '.');
+    var text = L.join('\n');
+    // Trim by bytes, not characters: accents and ñ take two bytes each.
+    var enc = new TextEncoder(), tail = '\n…(trimmed; see submissions/' + id + ' for everything)';
+    if (enc.encode(text).length > 3900) {
+      var cut = text.slice(0, 3300);
+      while (cut.length && enc.encode(cut + tail).length > 3900) cut = cut.slice(0, cut.length - 50);
+      text = cut + tail;
+    }
+    return text;
+  }
+  function renderSubmit() {
+    var a = $('submitArea'), c = counts(), m = submitState;
+    if (m.mode === 'idle') { a.innerHTML = ''; return; }
+    if (m.mode === 'confirm') {
+      a.innerHTML = '<div class="confirm"><p><strong>Send to Claude?</strong> ' + c.moved + ' tile' + (c.moved === 1 ? '' : 's') + ' moved or resized, ' + c.removed + ' removed, ' + c.proposals + ' proposed widget' + (c.proposals === 1 ? '' : 's') + ', ' + c.notes + ' comment' + (c.notes === 1 ? '' : 's') + '. Claude starts building from this.</p>' +
+        '<div class="row"><button class="btn primary" id="go" type="button">Send now</button><button class="btn" id="no" type="button">Keep editing</button></div></div>';
+      return;
+    }
+    if (m.mode === 'sending') { a.innerHTML = '<p class="msg">Sending…</p>'; return; }
+    if (m.mode === 'sent') { a.innerHTML = '<p class="msg ok">Sent to Claude. It shows as a comment thread on this page, and Claude replies there.</p>'; return; }
+    if (m.mode === 'fallback') {
+      a.innerHTML = '<div class="confirm"><p class="msg err">' + esc(m.reason) + '</p><p>Your submission is saved in this artifact. You can also copy this summary and paste it to Claude:</p><pre class="sum">' + esc(lastSummary) + '</pre><div class="row"><button class="btn" id="copy" type="button">Copy summary</button><button class="btn" id="no" type="button">Close</button></div></div>';
+    }
+  }
+  $('btnSubmit').addEventListener('click', function () { submitState = { mode: 'confirm' }; renderSubmit(); $('submitArea').scrollIntoView({ block: 'nearest' }); });
+  $('submitArea').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    if (b.id === 'no') { submitState = { mode: 'idle' }; renderSubmit(); }
+    if (b.id === 'copy') { try { navigator.clipboard.writeText(lastSummary).then(function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Select the text and copy it'; }); } catch (e) { b.textContent = 'Select the text and copy it'; } }
+    if (b.id === 'go') send();
+  });
+  function send() {
+    var id = 's-' + Date.now().toString(36);
+    lastSummary = buildSummary(id);
+    submitState = { mode: 'sending' }; renderSubmit();
+    var record = { state: JSON.stringify(state), summary: lastSummary, submittedAt: Date.now() };
+    var saved = db ? db.doc('submissions/' + id).set(record).catch(function () { return null; }) : Promise.resolve(null);
+    saved.then(function () {
+      if (!comments) throw { code: 'no_comments', message: 'Sending to Claude is not available in this view.' };
+      return comments.canSendToClaude().then(function (st) {
+        if (st !== 'available') throw { code: st, message: st === 'writers_only' ? 'Only people who can edit this artifact can send to Claude.' : 'No Claude session is listening to this artifact right now.' };
+        return comments.anchorFor($('hdr'));
+      }).then(function (anchor) { return comments.sendToClaude({ anchor: anchor, text: lastSummary }); });
+    }).then(function () {
+      submitState = { mode: 'sent' }; renderSubmit();
+      if (db) db.doc('drafts/current').set({ state: JSON.stringify(state), cur: cur, savedAt: Date.now() }).then(function () { dirty = false; savedAt = Date.now(); updateStatus(); }).catch(function () {});
+    }).catch(function (e) {
+      submitState = { mode: 'fallback', reason: (e && e.message) || 'Could not send to Claude.' }; renderSubmit();
+    });
+  }
+
+  /* ---------- what shows at each size: drawing ---------- */
+  var lang = 'en', szEd = {}, targetTimer = null;
+  try { if (localStorage.getItem('hh.studio.sizeLang') === 'es') lang = 'es'; } catch (x) { /* ignore */ }
+  function tierOf(h) { return h <= 1 ? 'strip' : h === 2 ? 'standard' : 'tall'; }
+  function sizeKey(id, cell) { return 'size:' + id + ':' + cell; }
+
+  var ICON = {
+    tv: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+    list: '<path d="M10 6h11M10 12h11M10 18h11M3 6l1.5 1.5L7 5M3 12l1.5 1.5L7 11M3 18l1.5 1.5L7 17"/>',
+    cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7.5 14h.01M12 14h.01M16.5 14h.01M7.5 17.5h.01M12 17.5h.01"/>',
+    music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
+    globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
+    sparkle: '<path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/>',
+    camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+    drop: '<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/>',
+    expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    grid: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
+    play: '<path d="M9 7.5v9l7.5-4.5z" fill="#fff" stroke="none"/>'
+  };
+  var WICON = { entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera' };
+  function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
+  function sunCloud(cls) {
+    return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';
+  }
+  // The launcher's logos as plain colored squares: [background, color, text or icon, small text?]
+  var LOGOS = [['#000', '#e50914', 'N'], ['#1a98ff', '#fff', 'prime', 1], ['#14318f', '#fff', 'D+'], ['#0b0c0f', '#1ce783', 'hulu', 1], ['#1e2027', '#c9ccd3', 'P'], ['#000', '#fff', 'tv'],
+    ['#0b0c0f', '#ff0033', '@yt'], ['#107c10', '#fff', 'X'], ['#000', '#fff200', 'pluto', 1], ['#9146ff', '#fff', 'tw'], ['#2a2d35', '#dfe3ea', '@grid']];
+  function logo(i, miss) {
+    var L = LOGOS[i], inner;
+    if (L[2] === '@yt') inner = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="3.5" fill="#ff0033"/>' + ICON.play + '</svg>';
+    else if (L[2] === '@grid') inner = ic('grid');
+    else inner = L[3] ? '<span class="s">' + L[2] + '</span>' : L[2];
+    return '<span class="lg' + (miss ? ' miss' : '') + '" style="background:' + L[0] + ';color:' + L[1] + '">' + inner + '</span>';
+  }
+  function more(n) { return '<span class="lg" style="background:#2a2d35;color:#f4f5f7">+' + n + '</span>'; }
+  function head(id, title, sub, soon, strip) {
+    return '<div class="ph">' + ic(WICON[id], 'ph-i') + '<div class="ph-t"><div class="ph-title ' + (strip ? 'l1' : 'c2') + '">' + esc(title) + '</div>' +
+      (sub ? '<div class="ph-sub l1">' + esc(sub) + '</div>' : '') + '</div>' + (soon ? '<span class="tag l1">' + esc(soon) + '</span>' : '') + '</div>';
+  }
+
+  function tilePreview(id, tier) {
+    var M = SIZE_MATRIX[id], S = M.sample[lang], U = I18N[lang], T = M.title[lang], cls = 'pv t-' + tier, h = '';
+    if (id === 'today') {
+      var time = '<div class="big ck-time">' + esc(S.time) + '<small>' + esc(S.ampm) + '</small></div>';
+      if (tier === 'strip') return '<div class="' + cls + '">' + time + '<div class="ck-date"><div class="l1" data-short="' + esc(S.dowShort) + '">' + esc(S.dow) + '</div><div class="l1" data-short="' + esc(S.mdShort) + '">' + esc(S.md) + '</div></div></div>';
+      h = '<div class="ck-place cap mu l1">' + esc(S.place) + '</div>' + time + '<div class="ck-date l1">' + esc(S.long) + '</div><div class="ck-status push">' +
+        S.status.map(function (s) { return '<div class="l1">' + esc(s) + '</div>'; }).join('') + '</div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    }
+    if (id === 'entertainment') {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="en-row">' + logo(0) + more(10) + '</div></div>';
+      if (tier === 'standard') return '<div class="' + cls + '">' + head(id, T, S.sub) + '<div class="en-row">' + logo(0) + logo(1) + logo(2) + more(8) + '</div></div>';
+      for (var i = 0; i < 11; i++) h += logo(i, i === 4);
+      return '<div class="' + cls + '">' + head(id, T, S.sub) + '<div class="en-grid">' + h + '<span></span></div></div>';
+    }
+    if (id === 'weather') {
+      var rain = '<span class="rain">' + ic('drop') + esc(S.rain) + '</span>';
+      if (tier === 'strip') return '<div class="' + cls + '"><div class="big wx-temp">' + esc(S.temp) + '</div>' + sunCloud('wx-ic') + '<div class="wx-cond l1">' + esc(S.cond) + '</div></div>';
+      h = '<div class="wx-top"><div class="wx-place cap mu l1">' + esc(S.place) + '</div><span class="tag l1">' + esc(S.tag) + '</span></div>' +
+        '<div class="wx-now"><div class="big wx-temp">' + esc(S.temp) + '</div>' + sunCloud('wx-ic') + '</div><div class="wx-cond l1">' + esc(S.cond) + '</div>';
+      if (tier === 'tall') h += '<div class="wx-hours">' + S.hours.map(function (x, j) { return '<div class="' + (j ? '' : 'on') + '"><div class="l1">' + esc(x) + '</div>' + sunCloud('') + '<div>' + esc(S.htemps[j]) + '</div></div>'; }).join('') + '</div>';
+      h += '<div class="wx-foot' + (tier === 'tall' ? '' : ' push') + '"><span><span class="k">' + esc(S.H) + '</span>' + esc(S.hi) + ' <span class="k">' + esc(S.L) + '</span>' + esc(S.lo) + '</span>' + rain + '</div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    }
+    if (id === 'todo') {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="big td-snum">' + esc(S.n) + '</div><div class="td-stext l1">' + esc(S.items[0]) + '</div></div>';
+      h = head(id, T, S.sub) + '<div class="td-hero"><span class="big td-num">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.cap) + '</span></div><div class="td-meta l1">' + esc(S.meta) + '</div>';
+      if (tier === 'standard') {
+        h += '<div class="rows td"><div class="rw"><span class="tick"></span><div class="l1">' + esc(S.items[0]) + '</div></div></div><div class="more l1">' + esc(S.moreStd) + '</div>';
+      } else {
+        h += '<div class="rows td">' + S.items.map(function (t, j) {
+          return '<div class="rw"><span class="tick"></span><div><div class="c2">' + esc(t) + '</div>' + (j === 2 ? '<div class="late l1">' + esc(S.overdue) + '</div>' : '') + '</div></div>';
+        }).join('') + '</div><div class="more l1">' + esc(S.more) + '</div>';
+      }
+      return '<div class="' + cls + '">' + h + '</div>';
+    }
+    if (id === 'calendar') {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="cl-line"><span class="cbar"></span><span class="cl-when" style="flex:none">' + esc(S.t1) + '</span><span class="l1">' + esc(S.e1) + '</span></div></div>';
+      h = head(id, T) + '<div class="cl-date"><span class="big cl-num">' + esc(S.num) + '</span><div class="cl-words"><div class="l1">' + esc(S.dow) + '</div><div class="l1 mu">' + esc(S.month) + '</div></div></div>';
+      var allRow = '<div class="rw"><span class="cbar"></span><div class="l1"><span class="cl-tag">' + esc(S.allday) + '</span>' + esc(S.allTitle) + '</div></div>';
+      if (tier === 'standard') return '<div class="' + cls + '">' + h + '<div class="rows cl">' + allRow + '</div><div class="more l1">' + esc(S.more) + '</div></div>';
+      h += '<div class="rows cl">' + allRow + '<div class="rw"><span class="cbar"></span><div><div class="cl-when l1">' + esc(S.t1) + '</div><div class="c2">' + esc(S.e1) + '</div></div></div></div>';
+      h += '<div class="cl-lab cap l1">' + esc(S.coming) + '</div><div class="rows cl">' + S.later.map(function (r, j) {
+        return '<div class="rw"><span class="cbar' + (j === 1 ? ' g' : j === 2 ? ' o' : '') + '"></span><div><div class="cl-when l1">' + esc(r[0]) + '</div><div class="c2">' + esc(r[1]) + '</div></div></div>';
+      }).join('') + '</div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    }
+    // Placeholders
+    var mark = ic(WICON[id], 'pl-mark');
+    if (tier === 'strip') return '<div class="' + cls + ' pl">' + head(id, T, '', U.soon, true) + '<div class="pl-text l1">' + esc(S.text) + '</div></div>';
+    if (tier === 'standard') return '<div class="' + cls + '">' + head(id, T, '', U.soon) + '<div class="pl-text c3" style="margin-top:.5em">' + esc(S.text) + '</div>' + mark + '</div>';
+    return '<div class="' + cls + '">' + head(id, T, '', U.soon) + '<div class="pl-mid">' + ic(WICON[id]) + '<div class="pl-text wr">' + esc(S.text) + '</div></div></div>';
+  }
+
+  function panelHead(id, full, sub) {
+    var U = I18N[lang], T = SIZE_MATRIX[id].title[lang];
+    return '<div class="pp-head">' + (WICON[id] ? ic(WICON[id], 'ph-i') : '') + '<div class="tt"><div class="t l1">' + esc(T) + '</div>' + (sub ? '<div class="s l1">' + esc(sub) + '</div>' : '') + '</div>' +
+      '<span class="pp-btn">' + ic('expand') + '<span class="l1">' + esc(full ? U.exitBtn : U.fullBtn) + '</span></span></div>';
+  }
+  function panelPreview(id, full) {
+    var M = SIZE_MATRIX[id], S = M.sample[lang], U = I18N[lang], cls = 'pp' + (full ? ' full' : ''), b = '';
+    var hint = '<div class="pp-hint l1">' + esc(full ? U.shrink : U.close) + '</div>';
+    if (id === 'today') return '<div class="' + cls + ' nb"><b>' + esc(S.nb) + '</b><span>' + esc(S.nbLine) + '</span></div>';
+    if (id === 'entertainment') {
+      var item = function (i) { return '<div>' + logo(i, i === 4) + '<div class="xs l1">' + esc(S.names[i]) + '</div>' + (full && S.states[i] ? '<div class="xs l1 mu">' + esc(S.states[i]) + '</div>' : '') + '</div>'; };
+      if (!full) { for (var i = 0; i < 11; i++) b += item(i); b = '<div class="pp-grid">' + b + '</div>'; }
+      else {
+        var sec = function (label, ids) { return '<div class="pp-sec"><div class="secl"><span class="l1">' + esc(label) + '</span></div><div class="pp-items">' + ids.map(item).join('') + '</div></div>'; };
+        b = sec(S.secs[0], [0, 1, 2, 3, 4, 5, 6]) + '<div class="pp-secs">' + sec(S.secs[1], [7]) + sec(S.secs[2], [8, 9]) + sec(S.secs[3], [10]) + '</div>';
+      }
+      return '<div class="' + cls + '">' + panelHead(id, full, S.sub) + '<div class="pp-body">' + b + '</div>' + hint + '</div>';
+    }
+    if (id === 'weather') {
+      var now = '<div class="wxp-now"><span class="big">' + esc(S.temp) + '</span>' + sunCloud('') + '<div style="min-width:0"><div class="l1">' + esc(S.cond) + '</div><div class="l1 mu sm">' + esc(S.feels) + '</div></div></div>';
+      var stats = '<div class="stats">' + S.stats.map(function (s) { return '<div><b class="l1">' + esc(s[0]) + '</b><div class="xs l1 mu">' + esc(s[1]) + '</div></div>'; }).join('') + '</div>';
+      var curve = '<svg class="curve" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><path d="M0 14 C15 6 25 5 40 9 S70 18 100 20" stroke="#f5c242" stroke-width="1.4" fill="none" vector-effect="non-scaling-stroke"/></svg>';
+      var week = S.days.map(function (d, j) {
+        var lo = [10, 20, 30, 15, 5, 25, 18][j], w = [50, 40, 45, 55, 60, 35, 48][j];
+        return '<div class="wk"><span class="l1">' + esc(d) + '</span>' + sunCloud('') + '<span class="rain l1">' + [75, 40, 10, 0, 20, 60, 30][j] + '%</span><span class="mu">' + (49 + j) + '°</span><span class="track"><i style="left:' + lo + '%;width:' + w + '%"></i></span><span>' + (68 - j) + '°</span></div>';
+      }).join('');
+      if (!full) {
+        b = '<div class="pp-tabs"><span class="chipb on l1">' + esc(S.day) + '</span><span class="chipb l1">' + esc(S.week) + '</span><span class="chipb l1">' + esc(S.update) + '</span></div>' + now + stats + curve;
+      } else {
+        b = '<div class="pp-tabs"><span class="l1 sm">' + esc(S.date) + '</span><span class="chipb l1">' + esc(S.update) + '</span></div><div class="cols2"><div style="flex:0 0 56%">' + now + stats + curve + '</div><div style="flex:1 1 0">' + week + '</div></div><div class="xs mu l1">' + esc(S.credit) + '</div>';
+      }
+      return '<div class="' + cls + '">' + panelHead(id, full, S.place + ' · ' + S.tag) + '<div class="pp-body">' + b + '</div>' + (full ? '' : hint) + '</div>';
+    }
+    if (id === 'todo') {
+      var row = function (t, done) { return '<div class="prow' + (done ? ' done' : '') + '"><span class="tick"></span><span class="l1">' + esc(t) + '</span></div>'; };
+      var add = '<div class="add">' + ic('plus') + '<span class="l1 sm" style="flex:1 1 auto">' + esc(S.add) + '</span><span class="l1 xs mu">' + esc(S.ok) + '</span></div>';
+      var nowSec = '<div class="secl"><span class="l1">' + esc(S.secs[0]) + '</span><span>4</span></div>' + S.items.map(function (t) { return row(t); }).join('');
+      var side = '<div class="secl"><span class="l1">' + esc(S.secs[1]) + '</span><span>1</span></div>' + row(S.next) + '<div class="secl"><span class="l1">' + esc(S.secs[2]) + '</span><span>1</span></div>' + row(S.waiting) +
+        '<div class="secl"><span class="l1">' + esc(S.secs[3]) + '</span><span>1</span></div>' + row(S.done, true);
+      b = full ? '<div class="cols2"><div style="flex:0 0 56%">' + add + nowSec + '</div><div style="flex:1 1 0">' + side + '</div></div>' : add + nowSec + side;
+      return '<div class="' + cls + '">' + panelHead(id, full, S.sub) + '<div class="pp-body">' + b + '</div>' + hint + '</div>';
+    }
+    if (id === 'calendar') {
+      var tabs = '<div class="pp-tabs"><span class="chipb on l1">' + esc(S.today) + '</span>' + S.views.map(function (v, j) { return '<span class="chipb l1' + (j ? '' : ' on') + '" style="' + (j ? '' : 'background:transparent;color:inherit;border-color:var(--tile-fg)') + '">' + esc(v) + '</span>'; }).join('') +
+        '<span class="l1 sm" style="flex:1 1 auto;text-align:right">' + esc(S.label) + '</span></div>';
+      var tl = '<div class="cal-tl">' + S.hours.map(function (x) { return '<div class="hr"><span class="l1" style="width:3.2em;flex:none">' + esc(x) + '</span></div>'; }).join('') +
+        '<div class="cal-ev"><div class="l1">' + esc(S.e1) + '</div><div class="l1 mu">' + esc(S.t1) + '</div></div></div>';
+      var det = '<div class="cal-detail"><div class="xs mu l1 cap">' + esc(S.today) + '</div><div class="xs l1" style="color:#6fb1ff">' + esc(S.dCal) + '</div><div class="c2" style="font-weight:600">' + esc(S.e1) + '</div><div class="sm l1">' + esc(S.dWhen) + '</div><div class="xs l1 mu">' + esc(S.dPlace) + '</div></div>';
+      var foot = '<div class="legend2"><span class="l1"><i style="background:#6fb1ff"></i>' + esc(S.legend[0]) + '</span><span class="l1"><i style="background:#5bd18d"></i>' + esc(S.legend[1]) + '</span><span class="l1" style="margin-left:auto">' + esc(S.hint) + '</span></div>';
+      return '<div class="' + cls + '">' + panelHead(id, full, '') + '<div class="pp-body">' + tabs + '<div class="cal-day">' + tl + det + '</div>' + foot + '</div></div>';
+    }
+    return '<div class="' + cls + '">' + panelHead(id, full, '') + '<div class="pp-body"><div class="pl-lead wr">' + esc(S.text) + '</div><div class="pl-note wr">' + esc(U.notBuilt) + '</div></div>' + ic(WICON[id], 'pl-big') + hint + '</div>';
+  }
+
+  function cellHTML(id, cell) {
+    var U = I18N[lang], c = SIZE_MATRIX[id][cell], key = sizeKey(id, cell), list = state.notes[key] || [], ed = szEd[key];
+    var h = '<article class="szc" id="szc-' + id + '-' + cell + '" data-key="' + key + '">';
+    h += '<div class="szc-h"><h4 tabindex="-1">' + esc(U.cells[cell]) + '</h4><span class="dim">' + esc(U.dims[cell]) + '</span>' +
+      (list.length ? '<span class="pill c" title="' + list.length + '">' + list.length + '</span>' : '') + '</div>';
+    h += '<p class="now" hidden></p>';
+    h += '<div class="szc-pv" aria-hidden="true">' + (cell === 'panel' || cell === 'full' ? panelPreview(id, cell === 'full') : tilePreview(id, cell)) + '</div>';
+    h += '<p class="szc-desc' + (c.built === false ? ' nb' : '') + '">' + esc(c[lang]) + '</p>';
+    if (list.length) h += '<ul class="notes">' + list.map(function (n, i) {
+      return '<li><div><span class="k ' + n.k + '">' + esc(U.kinds[n.k] || n.k) + '</span><p>' + esc(n.t) + '</p></div><button class="x" type="button" data-sz-del="' + i + '" aria-label="' + esc(U.del) + '">×</button></li>';
+    }).join('') + '</ul>';
+    if (ed) {
+      h += '<div class="szc-ed"><div class="seg" role="group" aria-label="' + esc(U.kindGroup) + '">' + KINDS.map(function (k) {
+        return '<button type="button" data-sz-kind="' + k.k + '" aria-pressed="' + (ed.kind === k.k) + '">' + esc(U.kinds[k.k]) + '</button>';
+      }).join('') + '</div><label class="f">' + esc(U.yours) + '<textarea data-sz-text maxlength="1000">' + esc(ed.text) + '</textarea></label>' +
+        '<div class="row"><button class="btn primary" type="button" data-sz-add>' + esc(U.add) + '</button><button class="btn" type="button" data-sz-cancel>' + esc(U.cancel) + '</button></div></div>';
+    } else {
+      h += '<button class="btn cm" type="button" data-sz-open aria-label="' + esc(U.comment + ': ' + SIZE_MATRIX[id].title[lang] + ', ' + U.cells[cell]) + '">' + esc(U.comment) + '</button>';
+    }
+    return h + '</article>';
+  }
+  function blockHTML(id) {
+    var U = I18N[lang], w = WIDGETS[id] || {};
+    return '<div class="szb" id="szb-' + id + '"><div class="szb-h"><h3>' + esc(SIZE_MATRIX[id].title[lang]) + '</h3>' + (w.soon ? '<span class="soon">' + esc(U.soon) + '</span>' : '') +
+      '<span class="where"></span></div><div class="szb-scroll"><div class="szb-row">' + CELLS.map(function (c) { return cellHTML(id, c); }).join('') + '</div></div></div>';
+  }
+  function renderSizes() {
+    var U = I18N[lang];
+    var h = '<div class="sz-top"><div><h2 id="szTitle">' + esc(U.title) + '</h2><p>' + esc(U.intro) + '</p></div>' +
+      '<div class="sz-lang"><span class="lbl">' + esc(U.lang) + '</span><div class="seg" role="group" aria-label="' + esc(U.lang) + '">' +
+      '<button type="button" data-lang="en" lang="en" aria-pressed="' + (lang === 'en') + '">English</button><button type="button" data-lang="es" lang="es" aria-pressed="' + (lang === 'es') + '">Español</button></div></div></div>';
+    h += '<ul class="sz-legend">' + U.legend.map(function (l) { return '<li><b>' + esc(l[0]) + ':</b> ' + esc(l[1]) + '</li>'; }).join('') + '<li>' + esc(U.widthNote) + '</li></ul>';
+    h += SZ_ORDER.map(blockHTML).join('');
+    var s = $('sizes'); s.innerHTML = h; s.setAttribute('lang', lang);
+    updateCurrentTiers(); fitShort(s);
+  }
+  // Like the TV's Clock strip: a date part too long for its room takes its short form before it would end in "...".
+  function fitShort(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('[data-short]'), function (n) {
+      if (n.scrollWidth > n.clientWidth + 1) n.textContent = n.getAttribute('data-short');
+    });
+  }
+  function renderCell(key) {
+    var p = key.split(':'), el = $('szc-' + p[1] + '-' + p[2]); if (!el) return null;
+    el.outerHTML = cellHTML(p[1], p[2]);
+    var again = $('szc-' + p[1] + '-' + p[2]); if (again) fitShort(again);
+    updateCurrentTiers();
+    return $('szc-' + p[1] + '-' + p[2]);
+  }
+  // Marks, in each block, the tier that matches the tile's size on the screen. Cheap: runs on every drag step.
+  function updateCurrentTiers() {
+    var U = I18N[lang];
+    SZ_ORDER.forEach(function (id) {
+      var b = $('szb-' + id); if (!b) return;
+      var e = entry(id), t = e ? tierOf(e.h) : null;
+      ['strip', 'standard', 'tall'].forEach(function (c) {
+        var el = $('szc-' + id + '-' + c); if (!el) return;
+        var on = c === t, n = el.querySelector('.now');
+        el.classList.toggle('is-current', on); n.hidden = !on;
+        if (on) n.textContent = U.nowOn + ' · ' + e.w + '×' + e.h;
+      });
+      b.querySelector('.where').textContent = e ? U.where.replace('{s}', e.w + '×' + e.h).replace('{t}', U.cells[t]) : U.off;
+    });
+  }
+  function seeSize(id) {
+    var e = entry(id); if (!e || !SIZE_MATRIX[id]) return;
+    var block = $('szb-' + id), cell = $('szc-' + id + '-' + tierOf(e.h)); if (!block || !cell) return;
+    Array.prototype.forEach.call(document.querySelectorAll('.szc.is-target'), function (x) { x.classList.remove('is-target'); });
+    block.scrollIntoView({ block: 'start' });
+    var sc = block.querySelector('.szb-scroll');
+    sc.scrollLeft = Math.max(0, cell.offsetLeft - (sc.clientWidth - cell.offsetWidth) / 2);
+    cell.classList.add('is-target');
+    cell.querySelector('h4').focus({ preventScroll: true });
+    clearTimeout(targetTimer);
+    targetTimer = setTimeout(function () { cell.classList.remove('is-target'); }, 4000);
+  }
+
+  $('sizes').addEventListener('click', function (ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    if (b.dataset.lang) {
+      if (b.dataset.lang === lang) return;
+      lang = b.dataset.lang;
+      try { localStorage.setItem('hh.studio.sizeLang', lang); } catch (x) { /* ignore */ }
+      renderSizes();
+      var again = $('sizes').querySelector('[data-lang="' + lang + '"]'); if (again) again.focus();
+      return;
+    }
+    var art = b.closest('.szc'); if (!art) return;
+    var key = art.dataset.key, el;
+    if (b.hasAttribute('data-sz-open')) { szEd[key] = { kind: 'change', text: '' }; el = renderCell(key); if (el) el.querySelector('textarea').focus(); return; }
+    if (b.dataset.szKind) {
+      if (!szEd[key]) return;
+      szEd[key].kind = b.dataset.szKind;
+      Array.prototype.forEach.call(art.querySelectorAll('[data-sz-kind]'), function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      return;
+    }
+    if (b.hasAttribute('data-sz-cancel')) { delete szEd[key]; el = renderCell(key); if (el) el.querySelector('[data-sz-open]').focus(); return; }
+    if (b.hasAttribute('data-sz-add')) {
+      var ta = art.querySelector('textarea'), t = ta.value.trim(); if (!t) { ta.focus(); return; }
+      (state.notes[key] = state.notes[key] || []).push({ k: szEd[key] ? szEd[key].kind : 'change', t: t, at: Date.now() });
+      delete szEd[key]; markDirty(); el = renderCell(key); if (!selected) renderSide();
+      if (el) el.querySelector('[data-sz-open]').focus();
+      return;
+    }
+    if (b.dataset.szDel !== undefined) {
+      var list = state.notes[key] || [];
+      list.splice(+b.dataset.szDel, 1); if (!list.length) delete state.notes[key];
+      markDirty(); el = renderCell(key); if (!selected) renderSide();
+      if (el) (el.querySelector('.x') || el.querySelector('[data-sz-open]') || el.querySelector('h4')).focus();
+    }
+  });
+  $('sizes').addEventListener('input', function (ev) {
+    var ta = ev.target; if (!ta.hasAttribute || !ta.hasAttribute('data-sz-text')) return;
+    var key = ta.closest('.szc').dataset.key; if (szEd[key]) szEd[key].text = ta.value;
+  });
+
+  /* ---------- boot ---------- */
+  function renderAll() { renderLayouts(); renderSizes(); renderCanvas(); renderTray(); renderSide(); updateStatus(); renderSubmit(); }
+  renderAll();
+
+  var T = setTimeout(function () { /* storage never answered; the editor still works offline */ }, 10000);
+  window.claude && window.claude.use('comments').then(function (c) { comments = c; }).catch(function () {});
+  window.claude && window.claude.use('db').then(function (d) {
+    clearTimeout(T); db = d; updateStatus();
+    if (!d) return;
+    return d.doc('library/main').get().then(function (snap) {
+      if (snap.exists) { try { var L = JSON.parse(snap.data().data); if (L && Array.isArray(L.layouts)) lib = { layouts: L.layouts, defaultId: L.defaultId || 'stock' }; } catch (e) { /* keep defaults */ } }
+      if (!layoutById(lib.defaultId)) lib.defaultId = 'stock';
+      return d.doc('drafts/current').get();
+    }).then(function (snap) {
+      var def = layoutById(lib.defaultId);
+      var base = clone(state);
+      if (snap.exists) {
+        var data = snap.data(), s = JSON.parse(data.state);
+        if (s && Array.isArray(s.layout)) {
+          base = { layout: s.layout, hidden: s.hidden || [], proposals: s.proposals || [], notes: s.notes || {}, general: s.general || '' };
+          state = base; cur = layoutById(data.cur) ? data.cur : lib.defaultId; savedAt = data.savedAt;
+          // Unsaved tile changes in the draft win; otherwise the default layout opens.
+          if (!layoutDiffers()) { applyLayout(def); cur = lib.defaultId; }
+          $('general').value = state.general; dirty = false; renderAll(); return;
+        }
+      }
+      cur = lib.defaultId; applyLayout(def); dirty = false; renderAll();
+    });
+  }).catch(function () { updateStatus(); });
+})();
+</script>
+
+</body></html>
