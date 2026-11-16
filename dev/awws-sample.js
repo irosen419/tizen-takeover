@@ -18,9 +18,18 @@
  *     feeds.close()
  *   });
  *   sample.snapshot({ today: '2026-11-16', sentAt: '2026-11-16T13:10:00Z' })
+ *   sample.snapshot({ reach: 'subscribers' })   // or 'traffic', or 'both' (the default)
+ *   sample.reach('subscribers')                 // only the reach section, as sent
+ *
+ * The reach section comes in three shapes, because the subscribers are
+ * counted by hand for now and the traffic figures come later:
+ *   both          visits, buy clicks, scans and subscribers (the fixture)
+ *   subscribers   only "2 subscribers" and the day they were counted
+ *   traffic       visits, buy clicks and scans, no subscribers
  *
  * From the command line it prints the snapshot moved to today:
  *   node dev/awws-sample.js | HUB_TOKEN=... node pi/hubctl.js awws set -
+ *   node dev/awws-sample.js --reach subscribers | ...
  */
 'use strict';
 
@@ -32,6 +41,7 @@ const TZ = 'America/Chicago';
 const MODES = ['sample', 'empty', 'fail', 'novisits'];
 const FIXTURE = path.join(__dirname, '..', 'pi', 'fixtures', 'awws-sample.json');
 const FIXTURE_DAY = '2026-11-16';   // the day the fixture's dates were written around
+const REACH_SHAPES = ['both', 'subscribers', 'traffic'];
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
 
@@ -161,15 +171,37 @@ function shift(value, days) {
   return value;
 }
 
+// The fixture's reach section in one of REACH_SHAPES (dates as written).
+function reachShape(raw, shape) {
+  if (REACH_SHAPES.indexOf(shape || 'both') < 0) throw new Error('reach shape: one of ' + REACH_SHAPES.join(', '));
+  const r = raw.reach;
+  if (shape === 'subscribers') return { asOf: r.asOf, subscribers: 2, subscribersAsOf: r.subscribersAsOf };
+  if (shape === 'traffic') {
+    const out = Object.assign({}, r);
+    delete out.subscribers;
+    delete out.subscribersAsOf;
+    return out;
+  }
+  return r;
+}
+
+// Only the reach section in a shape, for { v, sentAt, reach } snapshots.
+function reach(shape, opts) {
+  return snapshot(Object.assign({}, opts || {}, { reach: shape })).reach;
+}
+
 /*
  * The snapshot from pi/fixtures/awws-sample.json, as the Pi keeps it.
  * opts.today: 'YYYY-MM-DD' moves its dates to that day (default: as written,
  * for Monday 16 November 2026). opts.sentAt: another sentAt.
  * opts.receivedAt: the Pi's time it was stored (default: sentAt plus 12 s).
+ * opts.reach: the reach section's shape, 'both' (default), 'subscribers'
+ * or 'traffic'.
  */
 function snapshot(opts) {
   opts = opts || {};
   const raw = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+  raw.reach = reachShape(raw, opts.reach);
   let days = 0;
   if (opts.today) days = Math.round((Date.parse(opts.today + 'T00:00:00Z') - Date.parse(FIXTURE_DAY + 'T00:00:00Z')) / 86400000);
   const snap = shift(raw, days);
@@ -208,13 +240,15 @@ function startPi(opts) {
   });
 }
 
-module.exports = { feedServer, snapshot, startPi, chicagoToday, MODES, TZ, CALENDARS };
+module.exports = { feedServer, snapshot, reach, startPi, chicagoToday, MODES, TZ, CALENDARS, REACH_SHAPES };
 
-// node dev/awws-sample.js: prints the sample snapshot moved to today, sent a
-// minute ago, for ./hub awws set - (or node pi/hubctl.js awws set -).
+// node dev/awws-sample.js [--reach both|subscribers|traffic]: prints the
+// sample snapshot moved to today, sent a minute ago, for ./hub awws set -
+// (or node pi/hubctl.js awws set -).
 if (require.main === module) {
+  const at = process.argv.indexOf('--reach');
   const sent = new Date(Date.now() - 60000).toISOString().replace(/\.\d+Z$/, 'Z');
-  const snap = snapshot({ today: chicagoToday(), sentAt: sent });
+  const snap = snapshot({ today: chicagoToday(), sentAt: sent, reach: at > 0 ? process.argv[at + 1] : 'both' });
   delete snap.receivedAt;
   process.stdout.write(JSON.stringify(snap, null, 2) + '\n');
 }

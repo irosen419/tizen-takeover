@@ -7,7 +7,10 @@
  *   awws-visits    Next visit: school visits from the calendar.
  *   awws-agenda    This week: calendar dates and dated to-dos, day by day.
  *   awws-todo      To-do board: the snapshot's to-dos (read only).
- *   awws-outreach, awws-pipeline, awws-money, awws-reach: placeholders.
+ *   awws-reach     Reach: site visits and buy clicks this week with their
+ *                  trend, flier scans at schools, and newsletter subscribers
+ *                  (counted by hand for now, so it works with those alone).
+ *   awws-outreach, awws-pipeline, awws-money: placeholders.
  *
  * Two sources, both from the hub server on the Raspberry Pi:
  *   - the live resource "calendar" (docs/live-updates.md), filtered by
@@ -88,10 +91,18 @@
     bookStage: '{title}: {stage}',
     allLive: 'All {n} live',
     moneyLine: 'Spent {spent} · earned {earned}',
+    moneyLineShort: '{spent} out · {earned} in',
     reachLine: '{n} visits this week',
+    reachLine1: '1 visit this week',
+    reachSubs: '{n} subscribers',
+    reachSubs1: '1 subscriber',
+    reachClicks: '{n} buy clicks',
+    reachClicks1: '1 buy click',
+    reachScans: '{n} flier scans',
+    reachScans1: '1 flier scan',
     notSynced: 'Not synced yet',
     soon: 'Soon',
-    views: { visits: 'Next visit', agenda: 'This week', todo: 'To-do board' },
+    views: { visits: 'Next visit', agenda: 'This week', todo: 'To-do board', reach: 'Reach' },
     // This week
     nothingToday: 'Nothing today',
     nothingWeek: 'Nothing this week',
@@ -118,6 +129,34 @@
     emptyBoard: 'Nothing on the board',
     emptySection: 'Nothing here',
     emptyFilter: 'Nothing for {name}',
+    // Reach
+    visitsWord: 'visits',
+    visitsWord1: 'visit',
+    visitsWeek: 'visits this week',
+    visitsWeek1: 'visit this week',
+    clicksWord: 'buy clicks',
+    clicksWord1: 'buy click',
+    clicksWordShort: 'clicks',
+    clicksWeek: 'buy clicks this week',
+    clicksWeek1: 'buy click this week',
+    subsWord: 'subscribers',
+    subsWord1: 'subscriber',
+    subsWordShort: 'subs',
+    scansWord: 'flier scans',
+    scansWord1: 'flier scan',
+    changeUp: 'up {n}',
+    changeDown: 'down {n}',
+    changeSame: 'same as last week',
+    changeSameShort: 'same',
+    vsLast: 'vs {n} last week',
+    vsLastShort: 'vs {n}',
+    weekVsLast: '{n} last week',
+    lastCheck: 'at last check {d}',
+    lastCheckShort: 'checked {d}',
+    lastDays: 'Last {n} days',
+    scansHead: 'Flier scans',
+    reachHeads: { visits: 'Site visits', clicks: 'Buy clicks', scans: 'Flier scans at schools', subs: 'Newsletter subscribers' },
+    trafficLater: 'Site visits and buy clicks show here once the sync sends them.',
     states: {
       off: { head: 'Needs the Pi',
         line: 'Visits and the board come from the hub server on the Raspberry Pi. Live updates are off on this TV: set live.server in config.js to the Pi’s address.',
@@ -149,8 +188,7 @@
     planned: {
       outreach: 'Replies waiting on you, and how many schools replied, booked and were visited.',
       pipeline: 'Each book and download from writing to live, and what each one waits on.',
-      money: 'What the project spent and earned, month by month. Off until you say yes.',
-      reach: 'Site visits and buy clicks this week, subscribers, and scans at schools.'
+      money: 'What the project spent and earned, month by month.'
     },
     plannedNote: 'Not built yet. This spot is reserved for it.'
   };
@@ -939,9 +977,10 @@
     } else if (key === 'handoffs' && sec && count(sec.open) !== null && count(sec.blocked) !== null) {
       f.forms = [fill(STRINGS.handoffsLine, { open: fmtNum(count(sec.open)), blocked: fmtNum(count(sec.blocked)) })];
     } else if (key === 'money' && sec && typeof sec.spent === 'number' && typeof sec.earned === 'number') {
-      f.forms = [fill(STRINGS.moneyLine, { spent: money(sec.spent, str(sec.currency)), earned: money(sec.earned, str(sec.currency)) })];
-    } else if (key === 'reach' && sec && sec.visits && count(sec.visits.week) !== null) {
-      f.forms = [fill(STRINGS.reachLine, { n: fmtNum(count(sec.visits.week)) })];
+      var cash = { spent: money(sec.spent, str(sec.currency)), earned: money(sec.earned, str(sec.currency)) };
+      f.forms = [fill(STRINGS.moneyLine, cash), fill(STRINGS.moneyLineShort, cash)];
+    } else if (key === 'reach' && reachData()) {
+      f.forms = [reachStatus(reachData())];
     } else {
       f.missing = true;
     }
@@ -1633,6 +1672,381 @@
     }
   }
 
+  /* ---------- Reach ---------- */
+
+  // A week's count from the snapshot: { week, prev (or null), days [] }.
+  function trendOf(o) {
+    if (!o || typeof o !== 'object' || isArr(o)) return null;
+    var week = count(o.week);
+    if (week === null) return null;
+    var days = [];
+    if (isArr(o.days)) {
+      for (var i = 0; i < o.days.length; i++) if (count(o.days[i]) !== null) days.push(count(o.days[i]));
+    }
+    return { week: week, prev: count(o.prev), days: days };
+  }
+
+  // The reach section, or null when it isn't there or holds nothing usable:
+  // { visits, clicks (trends or null), subs (a number or null), subsDay (the
+  //   day the subscribers were last counted, or null), scans [{ school, n }] }.
+  // Subscribers are counted by hand for now, so any one figure is enough.
+  function reachData() {
+    var sec = section('reach');
+    if (!sec) return null;
+    var r = { visits: trendOf(sec.visits), clicks: trendOf(sec.buyClicks), subs: count(sec.subscribers), subsDay: null, scans: [] };
+    var d = dayFromText(sec.subscribersAsOf);
+    if (d === null && !isNaN(parseIso(sec.subscribersAsOf))) d = zone().dayOf(parseIso(sec.subscribersAsOf));
+    if (d === null && !isNaN(parseIso(sec.asOf))) d = zone().dayOf(parseIso(sec.asOf));
+    r.subsDay = d;
+    var list = isArr(sec.scans) ? sec.scans : [];
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      if (s && typeof s === 'object' && clean(s.school) && count(s.count) !== null) r.scans.push({ school: clean(s.school), n: count(s.count) });
+    }
+    r.scans.sort(function (p, q) { return q.n - p.n; });
+    if (!r.visits && !r.clicks && r.subs === null && !r.scans.length) return null;
+    return r;
+  }
+
+  // The one figure a tile leads with: visits this week when the sync sends
+  // them, otherwise the subscribers (counted by hand), then buy clicks, then
+  // scans. { kind, n, t (the trend, or null), cap, word [longest first] }.
+  function reachHero(r) {
+    if (r.visits) {
+      return { kind: 'visits', n: r.visits.week, t: r.visits, cap: r.visits.week === 1 ? STRINGS.visitsWeek1 : STRINGS.visitsWeek,
+        word: [r.visits.week === 1 ? STRINGS.visitsWord1 : STRINGS.visitsWord] };
+    }
+    if (r.subs !== null) {
+      return { kind: 'subs', n: r.subs, t: null, cap: r.subs === 1 ? STRINGS.subsWord1 : STRINGS.subsWord,
+        word: [r.subs === 1 ? STRINGS.subsWord1 : STRINGS.subsWord, STRINGS.subsWordShort] };
+    }
+    if (r.clicks) {
+      return { kind: 'clicks', n: r.clicks.week, t: r.clicks, cap: r.clicks.week === 1 ? STRINGS.clicksWeek1 : STRINGS.clicksWeek,
+        word: [r.clicks.week === 1 ? STRINGS.clicksWord1 : STRINGS.clicksWord, STRINGS.clicksWordShort] };
+    }
+    var total = 0;
+    for (var i = 0; i < r.scans.length; i++) total += r.scans[i].n;
+    return { kind: 'scans', n: total, t: null, cap: total === 1 ? STRINGS.scansWord1 : STRINGS.scansWord,
+      word: [total === 1 ? STRINGS.scansWord1 : STRINGS.scansWord] };
+  }
+
+  // This week against last week: { dir: 'up'|'down'|'same', n }, or null.
+  function changeOf(t) {
+    if (!t || t.prev === null) return null;
+    var d = t.week - t.prev;
+    return { dir: d > 0 ? 'up' : d < 0 ? 'down' : 'same', n: Math.abs(d) };
+  }
+
+  // The words for a change ("up 24"); the arrow beside them only helps.
+  function changeWords(ch, long) {
+    if (ch.dir === 'same') return long ? STRINGS.changeSame : STRINGS.changeSameShort;
+    return fill(ch.dir === 'up' ? STRINGS.changeUp : STRINGS.changeDown, { n: fmtNum(ch.n) });
+  }
+
+  // "at last check Nov 16" for the hand-counted subscribers.
+  function lastCheck(r, short) {
+    if (r.subsDay === null) return '';
+    return fill(short ? STRINGS.lastCheckShort : STRINGS.lastCheck, { d: dateText(r.subsDay, 'short') });
+  }
+
+  var ARROW = {
+    up: '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1.5 9.2 8.5H.8z" fill="currentColor"/></svg>',
+    down: '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 8.5 .8 1.5h8.4z" fill="currentColor"/></svg>'
+  };
+
+  // A line made of parts: the first form that fits on one line; none, it goes.
+  // A part: { t: text, c: class, dir: 'up' or 'down' for a small arrow before it }.
+  function fitParts(node, forms) {
+    for (var f = 0; f < forms.length; f++) {
+      if (!forms[f]) continue;
+      while (node.firstChild) node.removeChild(node.firstChild);
+      for (var i = 0; i < forms[f].length; i++) {
+        var p = forms[f][i];
+        var span = el('span', p.c || '', node);
+        if (p.dir && ARROW[p.dir]) el('span', 'aw-arrow', span).innerHTML = ARROW[p.dir];
+        span.appendChild(document.createTextNode(p.t));
+      }
+      if (!overW(node)) return true;
+    }
+    node.style.display = 'none';
+    return false;
+  }
+
+  function sepPart() { return { t: STRINGS.sep, c: 'aw-sep' }; }
+
+  function changePart(ch, long) { return { t: changeWords(ch, long), c: 'aw-rchg', dir: ch.dir === 'same' ? '' : ch.dir }; }
+
+  // Under the hero: "▲ up 24 · vs 388 last week" (shorter forms when narrow),
+  // or for subscribers "at last check Nov 16".
+  function compareForms(r, h) {
+    if (h.kind === 'subs') {
+      var a = lastCheck(r, false);
+      return a ? [[{ t: a }], [{ t: lastCheck(r, true) }]] : [];
+    }
+    var ch = changeOf(h.t);
+    if (!ch) return [];
+    var vs = { t: fill(STRINGS.vsLast, { n: fmtNum(h.t.prev) }) };
+    var vsShort = { t: fill(STRINGS.vsLastShort, { n: fmtNum(h.t.prev) }) };
+    return [[changePart(ch, false), sepPart(), vs], [changePart(ch, false), sepPart(), vsShort], [vs], [changePart(ch, false)]];
+  }
+
+  // "23 buy clicks · ▼ down 4", with shorter forms.
+  function figureForms(t, one, many, short) {
+    var num = { t: fmtNum(t.week) + ' ', c: 'aw-rline-num' };
+    var word = { t: t.week === 1 ? one : many };
+    var ch = changeOf(t);
+    var forms = [];
+    if (ch) forms.push([num, word, sepPart(), changePart(ch, false)]);
+    if (ch && short) forms.push([num, { t: short }, sepPart(), changePart(ch, false)]);
+    forms.push([num, word]);
+    if (short) forms.push([num, { t: short }]);
+    return forms;
+  }
+
+  function subsForms(r) {
+    var num = { t: fmtNum(r.subs) + ' ', c: 'aw-rline-num' };
+    var word = { t: r.subs === 1 ? STRINGS.subsWord1 : STRINGS.subsWord };
+    var forms = [];
+    if (lastCheck(r, false)) forms.push([num, word, sepPart(), { t: lastCheck(r, false) }], [num, word, sepPart(), { t: lastCheck(r, true) }]);
+    forms.push([num, word], [num, { t: STRINGS.subsWordShort }]);
+    return forms;
+  }
+
+  // A sparkline: the days as one line, the last day marked with a dot. No
+  // axes and no labels. Drawn to the box's measured size, so the stroke keeps
+  // its width (strokeRem, never under 3 px at 1920 x 1080).
+  function spark(box, values, strokeRem) {
+    var w = box.clientWidth;
+    var h = box.clientHeight;
+    // Too low to read a shape: no line at all.
+    if (!w || !h || values.length < 2 || h < remPx() * 1.8) return false;
+    var NS = 'http://www.w3.org/2000/svg';
+    var sw = Math.max(3, remPx() * strokeRem);
+    var r = sw * 1.5;
+    var pad = r + 1;
+    if (h < pad * 2 + 4) return false;
+    var lo = values[0];
+    var hi = values[0];
+    for (var i = 1; i < values.length; i++) { lo = Math.min(lo, values[i]); hi = Math.max(hi, values[i]); }
+    var pts = [];
+    var x = 0;
+    var y = 0;
+    for (var j = 0; j < values.length; j++) {
+      x = pad + j * (w - 2 * pad) / (values.length - 1);
+      y = hi === lo ? h / 2 : pad + (1 - (values[j] - lo) / (hi - lo)) * (h - 2 * pad);
+      pts.push(x.toFixed(1) + ',' + y.toFixed(1));
+    }
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    svg.setAttribute('aria-hidden', 'true');
+    var line = document.createElementNS(NS, 'polyline');
+    line.setAttribute('points', pts.join(' '));
+    line.setAttribute('fill', 'none');
+    line.setAttribute('stroke', 'currentColor');
+    line.setAttribute('stroke-width', sw.toFixed(1));
+    line.setAttribute('stroke-linejoin', 'round');
+    line.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(line);
+    var end = document.createElementNS(NS, 'circle');
+    end.setAttribute('cx', x.toFixed(1));
+    end.setAttribute('cy', y.toFixed(1));
+    end.setAttribute('r', r.toFixed(1));
+    end.setAttribute('class', 'aw-spark-dot');
+    svg.appendChild(end);
+    box.appendChild(svg);
+    return true;
+  }
+
+  function lastDays(values, n) { return values.length > n ? values.slice(values.length - n) : values.slice(); }
+
+  // Top scans as plain horizontal bars: school, bar, count. Returns the rows.
+  function scanBars(parent, scans, max) {
+    var rows = [];
+    var most = scans.length ? Math.max(1, scans[0].n) : 1;
+    for (var i = 0; i < scans.length && i < max; i++) {
+      var row = el('div', 'aw-brow');
+      el('span', 'aw-brow-label aw-cut', row, scans[i].school);
+      var track = el('span', 'aw-brow-track', row);
+      el('span', 'aw-brow-fill', track).style.width = Math.max(4, Math.round(scans[i].n / most * 100)) + '%';
+      el('span', 'aw-brow-value', row, fmtNum(scans[i].n));
+      rows.push(row);
+    }
+    if (parent) for (var k = 0; k < rows.length; k++) parent.appendChild(rows[k]);
+    return rows;
+  }
+
+  // The one-line status for the Glance's launcher.
+  function reachStatus(r) {
+    if (r.visits) return plural(r.visits.week, STRINGS.reachLine1, STRINGS.reachLine);
+    if (r.subs !== null) return plural(r.subs, STRINGS.reachSubs1, STRINGS.reachSubs);
+    if (r.clicks) return plural(r.clicks.week, STRINGS.reachClicks1, STRINGS.reachClicks);
+    return plural(reachHero(r).n, STRINGS.reachScans1, STRINGS.reachScans);
+  }
+
+  function reachTile(body, ctx) {
+    var size = sizeOf(ctx);
+    var r = reachData();
+    ctx.setTileSub(r ? staleText(false, true) : '');
+    var root = el('div', 'aw-tile aw-reach', body);
+    var st = snapState();
+    if (!r) return tileMessage(root, size, message(st === 'data' ? 'notsetup' : st), st === 'data' || st === 'notsetup');
+    var h = reachHero(r);
+    if (size.cols === 1) return solo(root, fmtNum(h.n), h.word);
+    if (size.tier === 'strip') return reachStrip(root, size, r, h);
+    var tall = size.tier === 'tall';
+    var days = h.t ? lastDays(h.t.days, 14) : [];
+    var subsFoot = tall && h.kind !== 'subs' && r.subs !== null;
+    // Wide: the figures on the left; on the right the trend, or when tall the
+    // scans and subscribers. Nothing for the right, no split.
+    var wide = size.width === 'wide' && (tall ? r.scans.length > 0 || subsFoot : days.length >= 2);
+    var left = wide ? el('div', 'aw-split-a', el('div', 'aw-split', root)) : root;
+    var right = wide ? el('div', 'aw-split-b', left.parentNode) : null;
+    var hb = heroCount(left, h.n, h.cap);
+    var cmp = el('div', 'aw-rcmp', left);
+    // The second figure: buy clicks, under visits or subscribers.
+    var second = (h.kind === 'visits' || h.kind === 'subs') && r.clicks ?
+      figureForms(r.clicks, STRINGS.clicksWord1, STRINGS.clicksWord, STRINGS.clicksWordShort) : null;
+    var line2 = second ? el('div', 'aw-rline', left) : null;
+    var sparkBox = null;
+    var head = null;
+    var scanSec = null;
+    var foot = null;
+    if (days.length >= 2) {
+      // Wide and tall, the trend fills the left column under the figures.
+      var where = wide && !tall ? right : left;
+      if (wide) head = label(where, fill(STRINGS.lastDays, { n: days.length }), 'aw-rspark-head');
+      sparkBox = el('div', 'aw-spark' + (tall && !wide ? ' is-fixed' : ''), where);
+    }
+    if (tall && r.scans.length) {
+      scanSec = el('div', 'aw-sect aw-rscans', wide ? right : left);
+      label(scanSec, STRINGS.scansHead);
+      scanSec.list = el('div', 'aw-list aw-rbars', scanSec);
+      scanSec.rows = scanBars(null, r.scans, 5);
+    }
+    // Tall: the subscribers as a quiet figure with their last-check date.
+    if (subsFoot) foot = el('div', 'aw-foot aw-rfoot', wide ? right : root);
+    fitHero(hb);
+    // A caption pushed under the number takes its short word ("visits").
+    var cap = hb.lastChild !== hb.numEl ? hb.lastChild : null;
+    if (cap && cap.offsetLeft <= hb.numEl.offsetLeft + 1 && h.word[0] !== h.cap) cap.textContent = h.word[0];
+    if (!fitParts(cmp, compareForms(r, h))) { cmp.parentNode.removeChild(cmp); cmp = null; }
+    if (line2 && !fitParts(line2, second)) { line2.parentNode.removeChild(line2); line2 = null; }
+    if (foot && !fitParts(foot, subsForms(r))) { foot.parentNode.removeChild(foot); foot = null; }
+    if (scanSec && !fitRows(scanSec.list, null, scanSec.rows, 5)) { scanSec.parentNode.removeChild(scanSec); scanSec = null; }
+    trim(root, [line2, foot]);
+    if (wide) trim(left, [line2]);
+    if (sparkBox && !spark(sparkBox, days, 0.15)) {
+      if (head) head.parentNode.removeChild(head);
+      sparkBox.parentNode.removeChild(sparkBox);
+      sparkBox = null;
+    }
+    // Subscribers alone leave room: when tall, a quiet word on the traffic
+    // still to come, and the faint globe, as the messages have.
+    if (!sparkBox && !scanSec && !line2 && !foot && size.cols >= 3) {
+      if (tall && !r.visits && !r.clicks) {
+        var note = el('div', 'aw-rnote', root, STRINGS.trafficLater);
+        if (overH(root)) root.removeChild(note);
+      }
+      mark(root);
+    }
+  }
+
+  function reachStrip(root, size, r, h) {
+    root.className += ' aw-strip';
+    if (size.width === 'narrow') {
+      var hb = heroCount(root, h.n, h.word[0], 'is-strip');
+      fitHero(hb);
+      if (overW(root) && h.word[1] && hb.lastChild !== hb.numEl) hb.lastChild.textContent = h.word[1];
+      if (overW(root) && hb.lastChild !== hb.numEl) hb.removeChild(hb.lastChild);
+      return;
+    }
+    var line = el('div', 'aw-strip-line', root);
+    el('span', 'aw-strip-num', line, fmtNum(h.n));
+    var text = el('span', 'aw-rstrip', line);
+    var forms = [];
+    var ch = changeOf(h.t);
+    if (h.kind === 'subs' && lastCheck(r, false)) {
+      forms.push([{ t: h.word[0] }, sepPart(), { t: lastCheck(r, false), c: 'aw-rquiet' }]);
+      forms.push([{ t: h.word[0] }, sepPart(), { t: lastCheck(r, true), c: 'aw-rquiet' }]);
+    } else if (ch) {
+      forms.push([{ t: h.cap }, sepPart(), changePart(ch, false), { t: ' ' + fill(STRINGS.vsLastShort, { n: fmtNum(h.t.prev) }), c: 'aw-rquiet' }]);
+      forms.push([{ t: h.word[0] + ' ' }, changePart(ch, false)]);
+    }
+    forms.push([{ t: h.cap }], [{ t: h.word[0] }]);
+    if (h.word[1]) forms.push([{ t: h.word[1] }]);
+    fitParts(text, forms);
+    // The words stay whole from here: the extras must fit beside them.
+    text.style.flexShrink = '0';
+    // A wide strip with room: the other figures after it, while they fit whole.
+    var extras = [];
+    if (h.kind !== 'clicks' && r.clicks) extras.push(plural(r.clicks.week, STRINGS.reachClicks1, STRINGS.reachClicks));
+    if (h.kind !== 'subs' && r.subs !== null) extras.push(plural(r.subs, STRINGS.reachSubs1, STRINGS.reachSubs));
+    for (var i = 0; i < extras.length; i++) {
+      var more = el('span', 'aw-strip-extra', line, STRINGS.sep + extras[i]);
+      if (overW(line)) { line.removeChild(more); break; }
+    }
+  }
+
+  // The panel: each figure with its trend, this week against last, then the
+  // scans and the subscribers. Each part takes focus, so a long one scrolls.
+  function reachPanel(root, ctx, opts) {
+    var r = reachData();
+    var st = snapState();
+    if (!r) return panelMessage(root, message(st === 'data' ? 'notsetup' : st));
+    var wrap = el('div', 'aw-rpanel' + (opts.full ? ' is-cols' : ''), root);
+    var cols = [el('div', 'aw-rcol', wrap)];
+    if (opts.full && (r.visits || r.clicks) && (r.scans.length || r.subs !== null)) cols.push(el('div', 'aw-rcol', wrap));
+    var first = true;
+    var sparks = [];
+    var lines = [];
+    function sect(key, parent, head) {
+      var box = el('div', 'aw-rsec f', parent);
+      box.setAttribute('data-key', 'r-' + key);
+      if (first) { box.setAttribute('data-autofocus', ''); first = false; }
+      label(box, head, 'aw-rsec-head');
+      return box;
+    }
+    function bigFigure(box, n, cap) {
+      var big = el('div', 'aw-rbig', box);
+      big.numEl = el('span', 'aw-rbig-num', big, fmtNum(n));
+      el('span', 'aw-rbig-cap', big, cap);
+      return big;
+    }
+    function trendSect(key, t, head, one, many) {
+      var box = sect(key, cols[0], head);
+      bigFigure(box, t.week, t.week === 1 ? one : many);
+      var ch = changeOf(t);
+      if (ch) {
+        var prev = { t: fill(STRINGS.weekVsLast, { n: fmtNum(t.prev) }) };
+        lines.push({ node: el('div', 'aw-rcmp', box), forms: [[changePart(ch, true), sepPart(), prev], [changePart(ch, false), sepPart(), prev], [prev]] });
+      }
+      var days = lastDays(t.days, 28);
+      if (days.length >= 2) {
+        var sb = el('div', 'aw-spark is-panel', box);
+        sparks.push({ box: sb, days: days, cap: el('div', 'aw-rspark-cap', box, fill(STRINGS.lastDays, { n: days.length })) });
+      }
+    }
+    if (r.visits) trendSect('visits', r.visits, STRINGS.reachHeads.visits, STRINGS.visitsWeek1, STRINGS.visitsWeek);
+    if (r.clicks) trendSect('clicks', r.clicks, STRINGS.reachHeads.clicks, STRINGS.clicksWeek1, STRINGS.clicksWeek);
+    var side = cols[cols.length - 1];
+    if (r.scans.length) scanBars(el('div', 'aw-rbars', sect('scans', side, STRINGS.reachHeads.scans)), r.scans, 10);
+    if (r.subs !== null) {
+      var subs = sect('subs', side, STRINGS.reachHeads.subs);
+      bigFigure(subs, r.subs, r.subs === 1 ? STRINGS.subsWord1 : STRINGS.subsWord);
+      if (lastCheck(r, false)) lines.push({ node: el('div', 'aw-rcmp', subs), forms: [[{ t: lastCheck(r, false) }], [{ t: lastCheck(r, true) }]] });
+    }
+    if (!r.visits && !r.clicks) el('div', 'aw-pnote', side, STRINGS.trafficLater);
+    for (var i = 0; i < lines.length; i++) fitParts(lines[i].node, lines[i].forms);
+    for (var j = 0; j < sparks.length; j++) {
+      if (!spark(sparks[j].box, sparks[j].days, opts.full ? 0.22 : 0.18)) {
+        sparks[j].box.parentNode.removeChild(sparks[j].cap);
+        sparks[j].box.parentNode.removeChild(sparks[j].box);
+      }
+    }
+  }
+
   /* ---------- the Glance ---------- */
 
   function glanceTile(body, ctx) {
@@ -1955,9 +2369,13 @@
       if (late) ts += STRINGS.sep + plural(late, STRINGS.overdueCount1, STRINGS.overdueCount);
     }
     row('todo', STRINGS.views.todo, ts);
+    var r = reachData();
+    var rs;
+    if (r) rs = reachStatus(r);
+    else rs = snapState() === 'data' || snapState() === 'notsetup' ? STRINGS.notSynced : message(snapState()).head;
+    row('reach', STRINGS.views.reach, rs);
     var soon = ['outreach', 'pipeline'];
     if (showMoney()) soon.push('money');
-    soon.push('reach');
     el('div', 'aw-ldiv', list);
     for (var k = 0; k < soon.length; k++) {
       var f = figure(soon[k]);
@@ -1993,6 +2411,7 @@
     if (view === 'visits') { ctx.setSub(subText(ctx, view, true, false)); visitsPanel(root, ctx, opts); }
     else if (view === 'agenda') { ctx.setSub(subText(ctx, view, true, true)); agendaPanel(root, ctx, opts); }
     else if (view === 'todo') { ctx.setSub(subText(ctx, view, false, true)); todoPanel(root, ctx, opts); }
+    else if (view === 'reach') { ctx.setSub(subText(ctx, view, false, true)); reachPanel(root, ctx, opts); }
     else if (view === 'dash') {
       ctx.setSub(subText(ctx, view, true, true));
       root.className += ' is-fill';
@@ -2011,7 +2430,7 @@
       onSelect: function (target, ctx) {
         var ps = pstate(ctx.id);
         var key = (target && target.getAttribute('data-key')) || '';
-        var m = /^(?:go|q)-(visits|agenda|todo)$/.exec(key);
+        var m = /^(?:go|q)-(visits|agenda|todo|reach)$/.exec(key);
         if (m && ctx.id === 'awws') {
           ps.view = m[1];
           ps.from = m[1];
@@ -2148,8 +2567,8 @@
   list.push(real('awws-visits', 'visits', visitsTile));
   list.push(real('awws-agenda', 'agenda', agendaTile));
   list.push(real('awws-todo', 'todo', todoTile));
+  list.push(real('awws-reach', 'reach', reachTile));
   list.push(placeholder('outreach'));
   list.push(placeholder('pipeline'));
   list.push(placeholder('money'));
-  list.push(placeholder('reach'));
 })();

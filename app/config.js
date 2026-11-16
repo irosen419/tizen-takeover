@@ -172,8 +172,9 @@ var HUB_CONFIG = {
 
     /*
      * A World Worth Saving: the awws tiles (awws, awws-visits, awws-agenda,
-     * awws-todo, and the placeholders awws-outreach, awws-pipeline,
-     * awws-money and awws-reach). One setting for all of them.
+     * awws-todo, awws-reach, and the placeholders awws-outreach,
+     * awws-pipeline and awws-money). One setting for all of them. Reach is
+     * on no layout yet: place it with the Layout Studio or ./hub layout set.
      *
      * calendars: which of the Pi's calendars to use, by the name given in the
      * Pi's .env (CALENDAR_n_NAME; case and spaces at the ends don't matter).
@@ -181,15 +182,15 @@ var HUB_CONFIG = {
      * coming dates on the Glance. Everything else comes from the snapshot
      * described in docs/awws-snapshot.md.
      *
-     * showMoney: false keeps money figures off the TV. It stays false until
-     * the owner says yes to money on the living room screen.
+     * showMoney: the owner said yes to money figures on the TV on
+     * 2026-11-16. Set it to false to keep them off the TV (for guests, say).
      */
     awws: {
       calendars: {
         visits: ['School Visits'],
         awws: ['A World Worth Saving']
       },
-      showMoney: false
+      showMoney: true
     },
 
     /*

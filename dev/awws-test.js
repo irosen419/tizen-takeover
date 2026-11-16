@@ -15,6 +15,10 @@
  *   snapshot that doesn't redraw; the launcher, a view and Back; the owner
  *   filter with Left and Right; full screen; the layout switcher with five
  *   layouts, to AWWS desk and back.
+ *   Reach at every size in both languages with its three shapes of data
+ *   (subscribers alone, traffic alone, both), its panel and full screen,
+ *   no reach section ("Not synced yet"), the launcher opening Reach and Back;
+ *   showMoney true and false drawing and hiding the money line.
  * Needs Playwright. Prints one line per check and "N passed, M failed";
  * exits 1 on a failure. Nothing here reaches the internet.
  */
@@ -22,8 +26,8 @@
 
 const H = require('./awws-harness');
 
-const REAL = ['awws', 'awws-visits', 'awws-agenda', 'awws-todo'];
-const PLACEHOLDERS = ['awws-outreach', 'awws-pipeline', 'awws-money', 'awws-reach'];
+const REAL = ['awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach'];
+const PLACEHOLDERS = ['awws-outreach', 'awws-pipeline', 'awws-money'];
 const SIZES = [[1, 1], [2, 1], [3, 1], [6, 1], [12, 1], [2, 2], [3, 2], [6, 2], [3, 4], [6, 4], [9, 6]];
 const DESK = [
   { widget: 'awws-visits', x: 0, y: 0, w: 3, h: 2 }, { widget: 'awws-agenda', x: 3, y: 0, w: 6, h: 2 },
@@ -31,6 +35,16 @@ const DESK = [
   { widget: 'calendar', x: 4, y: 2, w: 5, h: 4 }, { widget: 'today', x: 9, y: 2, w: 3, h: 1 },
   { widget: 'awws', x: 9, y: 3, w: 3, h: 3 }
 ];
+// The desk with Reach where the Glance was (a layout holds a widget once),
+// and with the Glance as a strip where Today was.
+const REACH_DESK = DESK.map((t) => (t.widget === 'awws' ? Object.assign({}, t, { widget: 'awws-reach' }) :
+  t.widget === 'today' ? Object.assign({}, t, { widget: 'awws' }) : t));
+
+// Runs before config.js: catches its HUB_CONFIG on the way in and sets showMoney.
+function moneyConfig(on) {
+  return new Function('let cfg; Object.defineProperty(window, "HUB_CONFIG", { configurable: true, get: () => cfg, set: (v) => {' +
+    ' cfg = v; if (v && v.widgets && v.widgets.awws) v.widgets.awws.showMoney = ' + (on ? 'true' : 'false') + '; } });');
+}
 
 let passed = 0;
 let failed = 0;
@@ -181,9 +195,17 @@ async function main() {
         try {
           await H.openPanel(page, 'awws');
           const rows = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .aw-lrow.f'), (n) => n.getAttribute('data-key')));
-          assert(rows.join() === 'go-visits,go-agenda,go-todo', 'launcher rows: ' + rows.join());
+          assert(rows.join() === 'go-visits,go-agenda,go-todo,go-reach', 'launcher rows: ' + rows.join());
           const money = await text(page, '#panel .aw-lrow');
-          assert(!/Money|Dinero/.test(money), 'Money shows with showMoney false');
+          assert(/Money|Dinero/.test(money) && /\$1[,.]841/.test(money), 'no money line with showMoney true (the default): ' + money);
+          // Soon rows take no focus, so the whole list must fit without scrolling.
+          const fits = await page.evaluate(() => {
+            const body = document.querySelector('#panel .panel-body').getBoundingClientRect();
+            const rows = document.querySelectorAll('#panel .aw-lrow');
+            const last = rows[rows.length - 1].getBoundingClientRect();
+            return last.bottom <= body.bottom + 1 && last.top >= body.top - 1;
+          });
+          assert(fits, 'the last launcher row is out of sight');
           let p = await panelProblems(page);
           assert(!p.length, 'launcher: ' + p.slice(0, 4).join('; '));
           await H.key(page, 'ArrowDown');
@@ -238,7 +260,7 @@ async function main() {
       await check(lang + ': full screen for each view fits', async () => {
         const page = await env.newPage({ layout: DESK, spanish: es });
         try {
-          for (const id of REAL) {
+          for (const id of REAL.filter((x) => x !== 'awws-reach')) {
             await H.openPanel(page, id);
             await H.fullScreen(page);
             const p = await panelProblems(page);
@@ -249,6 +271,153 @@ async function main() {
             await H.idle(page);
             if (await page.evaluate(() => window.HUB_TEST.open() !== null)) { await H.key(page, 'Escape'); await H.idle(page); }
           }
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      });
+    }
+
+    /* ---------- Reach ---------- */
+    for (const es of [false, true]) {
+      const lang = es ? 'Spanish' : 'English';
+      await check(lang + ': the launcher opens Reach, and Back returns to it', async () => {
+        const page = await env.newPage({ layout: DESK, spanish: es });
+        try {
+          await H.openPanel(page, 'awws');
+          const S = await page.evaluate(() => window.HUB_AWWS_TEST.STRINGS);
+          const status = await text(page, '#panel .aw-lrow[data-key="go-reach"] .aw-lrow-status');
+          assert(status === S.reachLine.replace('{n}', '412'), 'Reach status: ' + status);
+          await H.key(page, 'ArrowDown', 3);
+          await H.key(page, 'Enter');
+          await H.idle(page);
+          const parts = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .aw-pview-reach .aw-rsec'), (n) => n.getAttribute('data-key')));
+          assert(parts.join() === 'r-visits,r-clicks,r-scans,r-subs', 'Reach view parts: ' + parts.join());
+          assert(await page.evaluate(() => document.querySelectorAll('#panel .aw-spark svg polyline').length === 2), 'no sparklines in the Reach view');
+          const p = await panelProblems(page);
+          assert(!p.length, 'reach view: ' + p.slice(0, 4).join('; '));
+          await H.key(page, 'Escape');
+          await H.idle(page);
+          const back = await page.evaluate(() => {
+            const f = document.querySelector('#panel .is-focused');
+            return { open: window.HUB_TEST.open(), focus: f && f.getAttribute('data-key') };
+          });
+          assert(back.open === 'awws' && back.focus === 'go-reach', 'after Back: ' + JSON.stringify(back));
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      });
+
+      await check(lang + ': Reach panel and full screen fit, and the sparklines are 3 px or more', async () => {
+        const page = await env.newPage({ layout: REACH_DESK, spanish: es });
+        try {
+          await H.openPanel(page, 'awws-reach');
+          let p = await panelProblems(page);
+          assert(!p.length, 'panel: ' + p.slice(0, 4).join('; '));
+          // Down moves through the parts, so a long panel scrolls to each.
+          await H.key(page, 'ArrowDown', 3);
+          const f = await page.evaluate(() => (document.querySelector('#panel .is-focused') || {}).getAttribute('data-key'));
+          assert(f === 'r-subs', 'Down three times reached ' + f);
+          await H.fullScreen(page);
+          p = await panelProblems(page);
+          assert(!p.length, 'full screen: ' + p.slice(0, 4).join('; '));
+          const cols = await page.evaluate(() => document.querySelectorAll('#panel .aw-rpanel.is-cols .aw-rcol').length);
+          assert(cols === 2, 'full screen columns: ' + cols);
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+        const tile = await env.newPage({ layout: [{ widget: 'awws-reach', x: 0, y: 0, w: 6, h: 2 }], spanish: es });
+        try {
+          const w = await tile.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.aw-spark polyline'), (n) => +n.getAttribute('stroke-width')));
+          assert(w.length === 1 && w[0] >= 3, 'tile sparkline stroke: ' + w.join());
+          assert(await tile.evaluate(() => !!document.querySelector('.aw-spark circle')), 'the last day has no dot');
+          noErrors(tile);
+        } finally { await tile.ctx.close(); }
+      });
+    }
+
+    // The other two shapes at every size, one page per size (a layout holds a widget once).
+    const SHAPES = [
+      ['subscribers alone', 'subscribers', (t, S) => /(^|\D)2(\D|$)/.test(t) && t.indexOf('412') < 0 && (t.indexOf(S.subsWord) >= 0 || t.indexOf(S.subsWordShort) >= 0)],
+      ['traffic alone', 'traffic', (t, S) => t.indexOf('412') >= 0 && t.indexOf(S.subsWord) < 0]
+    ];
+    for (const shape of SHAPES) {
+      await env.setSnapshot(H.sample.snapshot({ reach: shape[1] }));
+      try {
+        for (const es of [false, true]) {
+          const lang = es ? 'Spanish' : 'English';
+          await check(lang + ': Reach with ' + shape[0] + ' at every size, its panel and full screen', async () => {
+            for (const size of SIZES.filter((x) => x[0] !== 9)) {
+              const page = await env.newPage({ layout: [{ widget: 'awws-reach', x: 0, y: 0, w: size[0], h: size[1] }], spanish: es });
+              try {
+                const where = size[0] + ' x ' + size[1] + ': ';
+                assert(!(await blankTiles(page)).length, where + 'blank');
+                const p = await tileProblems(page);
+                assert(!p.length, where + p.slice(0, 6).join('; '));
+                const S = await page.evaluate(() => window.HUB_AWWS_TEST.STRINGS);
+                const t = await text(page, '.cell[data-widget="awws-reach"] .tile-body');
+                assert(shape[2](t, S), where + 'shows ' + t);
+                noErrors(page);
+              } finally { await page.ctx.close(); }
+            }
+            const page = await env.newPage({ layout: REACH_DESK, spanish: es });
+            try {
+              await H.openPanel(page, 'awws-reach');
+              let p = await panelProblems(page);
+              assert(!p.length, 'panel: ' + p.slice(0, 4).join('; '));
+              const S = await page.evaluate(() => window.HUB_AWWS_TEST.STRINGS);
+              const body = await text(page, '#panel .panel-body');
+              if (shape[1] === 'subscribers') {
+                assert(body.indexOf(S.trafficLater) >= 0, 'no word on the traffic to come: ' + body);
+                assert(body.indexOf(S.lastCheck.replace('{d}', '')) >= 0, 'no last-check date: ' + body);
+              } else {
+                assert(body.indexOf(S.reachHeads.subs) < 0, 'subscribers show without any: ' + body);
+              }
+              await H.fullScreen(page);
+              p = await panelProblems(page);
+              assert(!p.length, 'full screen: ' + p.slice(0, 4).join('; '));
+              noErrors(page);
+            } finally { await page.ctx.close(); }
+          });
+        }
+      } finally {
+        await env.setSnapshot(H.sample.snapshot());
+      }
+    }
+
+    await check('no reach section: Reach says Not synced yet, the launcher too, nothing blank', async () => {
+      const snap = H.sample.snapshot();
+      snap.reach = null;
+      await env.setSnapshot(snap);
+      try {
+        const page = await env.newPage({ layout: REACH_DESK });
+        try {
+          const t = await text(page, '.cell[data-widget="awws-reach"] .tile-body');
+          assert(/Not synced yet/.test(t), 'Reach tile: ' + t);
+          assert(!(await blankTiles(page)).length, 'a blank tile');
+          await H.openPanel(page, 'awws-reach');
+          assert(/Not synced yet/.test(await text(page, '#panel .panel-body')), 'Reach panel');
+          await H.key(page, 'Escape');
+          await H.idle(page);
+          await H.openPanel(page, 'awws');
+          const s = await text(page, '#panel .aw-lrow[data-key="go-reach"] .aw-lrow-status');
+          assert(s === 'Not synced yet', 'launcher status: ' + s);
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      } finally {
+        await env.setSnapshot(H.sample.snapshot());
+      }
+    });
+
+    /* ---------- money ---------- */
+    for (const on of [true, false]) {
+      await check('showMoney ' + on + ': the money line ' + (on ? 'shows' : 'stays off') + ' in the launcher and the dashboard', async () => {
+        const page = await env.newPage({ layout: [{ widget: 'awws', x: 0, y: 0, w: 9, h: 6 }], config: moneyConfig(on) });
+        try {
+          const dash = await text(page, '.cell[data-widget="awws"] .aw-fig');
+          // The long form, or the short one when the quarter is narrow.
+          assert(on === /Money\s*(Spent \$1,841 · earned \$1,265|\$1,841 out · \$1,265 in)/.test(dash), 'dashboard: ' + dash);
+          assert(!(await tileProblems(page)).length, 'the dashboard is cut');
+          await H.openPanel(page, 'awws');
+          const list = await text(page, '#panel .aw-lrow');
+          assert(on === /Money/.test(list), 'launcher: ' + list);
+          assert(!(await panelProblems(page)).length, 'the launcher is cut');
           noErrors(page);
         } finally { await page.ctx.close(); }
       });
