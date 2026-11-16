@@ -898,20 +898,38 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       h += '<button type="button" class="lchip" data-load="' + esc(l.id) + '" aria-pressed="' + (cur === l.id) + '">' + esc(l.name) + (lib.defaultId === l.id ? ' <span class="star" title="Opens by default">★</span><small>default</small>' : '') + (cur === l.id && layoutDiffers() ? ' <small>edited</small>' : '') + '</button>';
     });
     h += '</div><div class="lay-actions">';
-    if (cur !== 'stock') h += '<button class="btn" type="button" id="layUpdate">Update “' + esc(layoutById(cur).name) + '”</button>';
+    if (cur !== 'stock') h += '<button class="btn" type="button" id="layUpdate"></button>';
     if (lib.defaultId !== cur) h += '<button class="btn" type="button" id="layDefault">Make this the default</button>';
-    h += '<input type="text" id="layName" maxlength="40" placeholder="Name for a new layout" aria-label="Name for a new layout"><button class="btn" type="button" id="laySaveAs">Save as new</button>';
+    h += '<input type="text" id="layName" maxlength="40" placeholder="New name" aria-label="Name for a new layout, or a new name for the loaded one"><button class="btn" type="button" id="laySaveAs">Save as new</button>';
     if (cur !== 'stock') h += '<button class="btn danger" type="button" id="layDelete">Delete</button>';
     h += '</div><p class="msg err" id="layErr" hidden></p>';
     var keep = $('layName') ? $('layName').value : '';
     $('layouts').innerHTML = h; if (keep) $('layName').value = keep;
+    updateLabel();
   }
+  // Update also renames the loaded layout when the name box holds a different name, and its label says so.
+  function renameTo() {
+    var l = layoutById(cur), box = $('layName'), n = box ? box.value.trim() : '';
+    return cur !== 'stock' && l && n && n !== l.name ? n : '';
+  }
+  function updateLabel() {
+    var b = $('layUpdate'); if (!b) return;
+    var n = renameTo(), was = layoutById(cur).name;
+    b.textContent = n ? 'Update and rename to “' + n + '”' : 'Update “' + was + '”';
+  }
+  $('layouts').addEventListener('input', function (ev) { if (ev.target.id === 'layName') { updateLabel(); var er = $('layErr'); if (er) er.hidden = true; } });
   function layErr(t) { var e = $('layErr'); e.textContent = t; e.hidden = false; }
   $('layouts').addEventListener('click', function (ev) {
     var b = ev.target.closest('button'); if (!b) return;
     if (b.dataset.load) { if (b.dataset.load !== cur) loadLayout(b.dataset.load); return; }
     if (b.id === 'layDefault') { var prev = lib.defaultId; lib.defaultId = cur; saveLib().then(renderLayouts, function () { lib.defaultId = prev; }); return; }
-    if (b.id === 'layUpdate') { var l = layoutById(cur); var snapL = [l.layout, l.hidden]; l.layout = realTiles(); l.hidden = state.hidden.slice(); l.savedAt = Date.now(); saveLib().then(function () { renderAll(); flash('Updated “' + l.name + '”.'); }, function () { l.layout = snapL[0]; l.hidden = snapL[1]; }); return; }
+    if (b.id === 'layUpdate') {
+      var l = layoutById(cur), snapL = [l.layout, l.hidden, l.name], nn = renameTo();
+      if (nn && (nn.toLowerCase() === 'stock' || lib.layouts.some(function (q) { return q !== l && q.name.toLowerCase() === nn.toLowerCase(); }))) { layErr('A layout called “' + nn + '” already exists. Pick another name, or clear the box to update without renaming.'); return; }
+      l.layout = realTiles(); l.hidden = state.hidden.slice(); l.savedAt = Date.now(); if (nn) l.name = nn;
+      saveLib().then(function () { if (nn) $('layName').value = ''; renderAll(); flash(nn ? 'Updated and renamed “' + snapL[2] + '” to “' + nn + '”.' : 'Updated “' + l.name + '”.'); }, function () { l.layout = snapL[0]; l.hidden = snapL[1]; l.name = snapL[2]; });
+      return;
+    }
     if (b.id === 'layDelete') {
       var l2 = layoutById(cur), idx = lib.layouts.indexOf(l2), wasDef = lib.defaultId === cur;
       lib.layouts.splice(idx, 1); if (wasDef) lib.defaultId = 'stock';
