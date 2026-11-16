@@ -96,12 +96,9 @@
  *                               calls every widget's onStatus hook then)
  *     ctx.live.post(path, body, cb)  POST JSON to the server; cb(err, data, httpStatus)
  *     ctx.live.everConnected()  this TV has reached the server at least once
- *   ctx.updates()             where this hub stands with updates (app/update.js):
- *                             { managed, pinned, sha, state, text, newest, checkedAt },
- *                             or undefined when update.js isn't loaded. text is what
- *                             the About panel shows for the version check, '' when
- *                             there is nothing to say;
- *                             newest is true when this is the branch's newest commit
+ *
+ * (Where the hub stands with updates, the TV's browser and the motion choice
+ * are not in ctx: since v0.18.0 the About panel in this file shows them.)
  *
  * Later widgets get their data from the Raspberry Pi in one of two ways. A
  * widget either draws natively from JSON it fetches with
@@ -113,7 +110,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.18.0';
+  var BUILD = 'v0.18.1';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -1116,7 +1113,10 @@
     }, raw: function () { var L = liveFacade(); return L ? (L.status() || {}).text || '' : ''; } },
     { group: 'Updates', label: 'Version check', value: function () {
       var u = updateStatus();
-      return noPrefix(u && typeof u.text === 'string' ? u.text : '', 'Updates: ');
+      var t = noPrefix(u && typeof u.text === 'string' ? u.text : '', 'Updates: ');
+      // Held: why that version didn't start, when update.js kept the reason.
+      if (t && u.state === 'held' && typeof u.why === 'string' && u.why) t += ' (' + u.why + ')';
+      return t;
     }, raw: function () { var u = updateStatus(); return u && typeof u.text === 'string' ? u.text : ''; } },
     { group: 'Wanderers', label: 'Now', value: function () { return clayPart('now'); } },
     { group: 'Wanderers', label: 'Visits', value: function () { return clayPart('visits'); } },
