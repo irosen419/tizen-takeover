@@ -112,57 +112,39 @@
   },
   "ember/ball-trot-a1": {
    "file": "sprites/ember/ball-trot-a1.webp",
-   "w": 102,
-   "h": 94,
-   "cx": 54.0,
+   "w": 89,
+   "h": 93,
+   "cx": 46.7,
    "sheet": "ember-ball-trot",
    "faces": "right",
    "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-a1."
   },
   "ember/ball-trot-a2": {
    "file": "sprites/ember/ball-trot-a2.webp",
-   "w": 104,
-   "h": 86,
-   "cx": 52.4,
+   "w": 82,
+   "h": 93,
+   "cx": 42.9,
    "sheet": "ember-ball-trot",
    "faces": "right",
    "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-a2."
   },
-  "ember/ball-trot-a3": {
-   "file": "sprites/ember/ball-trot-a3.webp",
-   "w": 100,
-   "h": 87,
-   "cx": 53.1,
-   "sheet": "ember-ball-trot",
-   "faces": "right",
-   "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-a3."
-  },
   "ember/ball-trot-b1": {
    "file": "sprites/ember/ball-trot-b1.webp",
-   "w": 104,
-   "h": 92,
-   "cx": 54.2,
+   "w": 83,
+   "h": 94,
+   "cx": 41.5,
    "sheet": "ember-ball-trot",
    "faces": "right",
    "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-b1."
   },
   "ember/ball-trot-b2": {
    "file": "sprites/ember/ball-trot-b2.webp",
-   "w": 101,
-   "h": 90,
-   "cx": 50.9,
+   "w": 81,
+   "h": 95,
+   "cx": 41.0,
    "sheet": "ember-ball-trot",
    "faces": "right",
    "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-b2."
-  },
-  "ember/ball-trot-b3": {
-   "file": "sprites/ember/ball-trot-b3.webp",
-   "w": 101,
-   "h": 91,
-   "cx": 52.1,
-   "sheet": "ember-ball-trot",
-   "faces": "right",
-   "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-b3."
   },
   "ember/beg": {
    "file": "sprites/ember/beg.webp",
@@ -652,57 +634,39 @@
   },
   "ember/trot-a1": {
    "file": "sprites/ember/trot-a1.webp",
-   "w": 102,
-   "h": 94,
-   "cx": 53.6,
-   "sheet": "ember-trot",
+   "w": 89,
+   "h": 93,
+   "cx": 46.0,
+   "sheet": "ember-trot-edit",
    "faces": "right",
-   "about": "Trot frame 1, side view facing right, CONTACT: the near front leg reaches forward and its paw touches down in front of her chest, and at the same moment the far back leg reaches forward and its paw touches down under her belly; the other two legs (far front and near back) are stretched out behind, paws just leaving the ground. Tail up, cheerful."
+   "about": "Trotting, side view facing right: near front leg forward and planted, near hind leg stretched back on its toes."
   },
   "ember/trot-a2": {
    "file": "sprites/ember/trot-a2.webp",
-   "w": 104,
-   "h": 86,
-   "cx": 51.4,
-   "sheet": "ember-trot",
+   "w": 83,
+   "h": 93,
+   "cx": 42.7,
+   "sheet": "ember-trot-edit",
    "faces": "right",
-   "about": "Trot frame 2, side view facing right, WEIGHT DOWN: the near front leg and the far back leg are straight under her body carrying her weight; the far front leg and the near back leg are bent and swinging forward, paws lifted under her body. Body a little lower."
-  },
-  "ember/trot-a3": {
-   "file": "sprites/ember/trot-a3.webp",
-   "w": 101,
-   "h": 87,
-   "cx": 52.2,
-   "sheet": "ember-trot",
-   "faces": "right",
-   "about": "Trot frame 3, side view facing right, FLOATING: all four paws just off the ground; the far front leg and the near back leg reach forward, the near front leg and the far back leg trail behind. Body a little higher, ears lifting."
+   "about": "Trotting, side view facing right: near front leg planted under her shoulder, near hind leg lifted and swinging forward under her rump."
   },
   "ember/trot-b1": {
    "file": "sprites/ember/trot-b1.webp",
-   "w": 105,
-   "h": 92,
-   "cx": 54.0,
-   "sheet": "ember-trot",
+   "w": 83,
+   "h": 94,
+   "cx": 40.8,
+   "sheet": "ember-trot-edit",
    "faces": "right",
-   "about": "Trot frame 4, side view facing right, CONTACT on the other diagonal: the far front paw touches down in front of her chest and the near back paw touches down under her belly; the near front leg and the far back leg are stretched out behind, paws just leaving the ground."
+   "about": "Trotting, side view facing right: near hind leg planted a little ahead of her hip, the other hind leg lifted behind."
   },
   "ember/trot-b2": {
    "file": "sprites/ember/trot-b2.webp",
-   "w": 102,
-   "h": 91,
-   "cx": 50.6,
-   "sheet": "ember-trot",
+   "w": 82,
+   "h": 95,
+   "cx": 40.9,
+   "sheet": "ember-trot-edit",
    "faces": "right",
-   "about": "Trot frame 5, side view facing right, WEIGHT DOWN on the other diagonal: the far front leg and the near back leg are straight under her body carrying her weight; the near front leg and the far back leg are bent and swinging forward, paws lifted under her body."
-  },
-  "ember/trot-b3": {
-   "file": "sprites/ember/trot-b3.webp",
-   "w": 102,
-   "h": 91,
-   "cx": 51.9,
-   "sheet": "ember-trot",
-   "faces": "right",
-   "about": "Trot frame 6, side view facing right, FLOATING again: all four paws just off the ground; the near front leg and the far back leg reach forward, the far front leg and the near back leg trail behind."
+   "about": "Trotting, side view facing right: near hind leg planted behind her hip, pushing off; the other hind leg swinging forward."
   },
   "ember/zoomies": {
    "file": "sprites/ember/zoomies.webp",
@@ -1351,10 +1315,8 @@
   "ember.trot": [
    "ember/trot-a1",
    "ember/trot-a2",
-   "ember/trot-a3",
    "ember/trot-b1",
-   "ember/trot-b2",
-   "ember/trot-b3"
+   "ember/trot-b2"
   ],
   "ember.run": [
    "ember/gallop-1",
@@ -1393,10 +1355,8 @@
   "ember.ball-trot": [
    "ember/ball-trot-a1",
    "ember/ball-trot-a2",
-   "ember/ball-trot-a3",
    "ember/ball-trot-b1",
-   "ember/ball-trot-b2",
-   "ember/ball-trot-b3"
+   "ember/ball-trot-b2"
   ],
   "ember.sock-run": [
    "ember/sock-run-1",
@@ -1411,21 +1371,17 @@
  "strides": {
   "ian.walk": 86,
   "ian.run": 230,
-  "ember.trot": 90,
+  "ember.trot": 56,
   "ember.run": 120,
-  "ember.ball-trot": 90,
+  "ember.ball-trot": 56,
   "ember.sock-run": 120
  },
  "lifts": {
   "ian/run-5": 12,
   "ian/run-8": 14,
-  "ember/trot-a3": 8,
-  "ember/trot-b3": 3,
   "ember/gallop-1": 14,
   "ember/gallop-4": 11,
   "ember/gallop-7": 4,
-  "ember/ball-trot-a3": 8,
-  "ember/ball-trot-b3": 3,
   "ember/sock-run-1": 14,
   "ember/sock-run-4": 11,
   "ember/sock-run-7": 4
