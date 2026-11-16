@@ -173,6 +173,7 @@ Everything below is the contract between the hub (`app/`) and the Pi server (`pi
 
 - `pi/server.js`: Node 14 or newer, no dependencies. `require('./server').start(options)` returns `{ close(cb), port, tunnelPort }`; run directly it reads `pi/.env`.
 - `pi/hubctl.js`: command line for the control API. Reads the token from `pi/.env`.
+- `pi/awws.js`: checks, merges and describes the A World Worth Saving snapshot (the resource `awws`, see below). No network, no files; `server.js` stores what it returns.
 - `app/live.js`: the hub's client. Plain ES5. Loads before `hub.js`, touches no DOM, does nothing until `HUB_LIVE.start()`.
 - `HUB_CONFIG.live.server`: the server address. `''` = off. `?live=<address>` or `?live=off` in the page address overrides it (for the preview).
 
@@ -199,6 +200,7 @@ Every file must survive the others being an older version, because jsDelivr can 
 
 - `rev` is one counter for the whole server. Every change adds 1 and stamps the changed resource.
 - `epoch` is made once with the file. A new epoch means "forget what you knew, take everything".
+- The resources are `todo`, `calendar`, `layout` and `awws`. A state file from before a resource existed loads fine: the missing one starts empty.
 - A to-do item: `{ id, title, section: 'now'|'next'|'waiting', done, doneAt, createdAt, due? }`, the same shape the TV already saves. Order in `items` is display order. At most 200 items; title 1 to 80 characters; id up to 40 of `A-Z a-z 0-9 _ -`. Done items ticked more than 48 hours ago are dropped on the next write.
 
 ### Screen API (no token; private addresses only, or `HUB_TV_IPS`)
@@ -208,7 +210,7 @@ Refusals are `403 { ok: false, error: 'screen not allowed' }`.
 `GET /live/state`
 
 ```json
-{ "ok": true, "v": 1, "server": "0.1.0", "epoch": "k3v9x2", "rev": 57,
+{ "ok": true, "v": 1, "server": "0.2.0", "epoch": "k3v9x2", "rev": 57,
   "resources": { "todo": { "rev": 57, "data": { "items": [] } } } }
 ```
 
@@ -237,7 +239,7 @@ Ops are applied in order and the last one to arrive wins.
 
 ### Control API (token; both doors)
 
-`Authorization: Bearer <token>`. Wrong or missing: `401 { ok: false, error: 'wrong token' }`. Bodies are JSON, at most 8 KB.
+`Authorization: Bearer <token>`. Wrong or missing: `401 { ok: false, error: 'wrong token' }`. Bodies are JSON, at most 8 KB, except `POST /api/awws`, which takes up to 64 KB (the snapshot inside it may be at most 48 KB). A body over the limit is refused with `413 { ok: false, error: 'request body too large (at most 8 KB)' }` (or `64 KB`) before it is read.
 
 | Call | Body | Answer |
 |---|---|---|
@@ -247,10 +249,22 @@ Ops are applied in order and the last one to arrive wins.
 | `POST /api/todo/ops` | `{ ops }` | `{ ok, rev, items }` |
 | `GET /api/layout` | | `{ ok, rev, layout }` (`null` = the hub's built-in layout) |
 | `POST /api/layout` | `{ layout: [...] \| null }` | `{ ok, rev, changed, layout }`; see "Tile layout from the Pi" |
+| `GET /api/awws` | | `{ ok, rev, data, tz }`: the stored snapshot, and the hub's time zone so `./hub awws show` can write times the way `./hub calendar status` does |
+| `POST /api/awws` | `{ snapshot: {...} \| null }` | `{ ok, rev, changed, bytes, accepted, cleared, rejected }`; see below |
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
 | `GET /health` (no token) | | `{ ok, server }` |
 
 Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload` (the hub restarts through the loader with `HUB_UPDATE.restart()`, so it lands on the newest commit; ignored in the first 30 seconds after loading). Anything else is `400`.
+
+### The A World Worth Saving snapshot (`awws`)
+
+The full contract, field by field, is [`docs/awws-snapshot.md`](awws-snapshot.md). In short:
+
+- One more resource, `awws`: `{ v: 1, sentAt, receivedAt, todos?, handoffs?, outreach?, khaya?, pipeline?, money?, reach? }`. Before any snapshot, and after a clear, it is `{ v: 1, sentAt: null, receivedAt: null }`. It reaches screens like every other resource: in `/live/state`, as a `change` event and in the poll.
+- `POST /api/awws` checks each section by itself. A section that breaks a rule is listed in `rejected` with the reason and keeps its stored copy; the others are stored. A section sent as `null` is removed (`cleared`). `{ snapshot: null }` removes everything.
+- It answers `400` and changes nothing when the snapshot as a whole is wrong (not an object, `v` not 1, `sentAt` missing or more than 10 minutes ahead, no sections, over 48 KB as sent or once merged with what is stored) or every section in it was rejected. The error text names each rejected section and why.
+- Every accepted snapshot is stored and pushed, even when no section changed: its new `sentAt` is what tells the TV the data is fresh. `changed` says whether any section's contents changed. Only a clear when nothing is stored leaves `rev` alone.
+- The log notes each call without its contents, for example `control POST /api/awws -> 200 3 sections stored, 12.4 KB, rev 58`.
 
 ### The hub's client
 

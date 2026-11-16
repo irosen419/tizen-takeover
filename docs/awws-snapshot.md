@@ -52,7 +52,7 @@ One JSON object. `v` and `sentAt` are required. Every section is optional.
 - **Times** are UTC, written `2026-11-16T15:10:00Z` (fractions of a second are allowed). **Dates** are `2026-12-01`. **Months** are `2026-11`.
 - `sentAt` is when the sender built the snapshot. It may not be more than 10 minutes in the future. The TV calls the snapshot stale, and says "as of 9:10 AM", once `sentAt` is over 2 hours old.
 - `asOf` on a section is when its source was read. Left out, the Pi fills in `sentAt`.
-- **Text** is trimmed, and control characters become spaces. Text longer than its limit is cut to the limit and ends in "…". Lengths are counted in characters, so "ñ" is one.
+- **Text** is trimmed, and control characters become spaces (a run of them becomes one space). Text longer than its limit is cut to the limit and ends in "…". Lengths are counted in characters, so "ñ" is one.
 - **No email addresses and no links.** A section with text that holds an email address, `http://`, `https://` or `www.` is refused. Also leave out notes text and librarians' last names; the Pi cannot check those, so the sender must.
 - **Unknown fields are dropped**, at the top and inside sections, so a newer sender does not break an older Pi.
 - Whole numbers are 0 or more and at most 1,000,000 unless a section says otherwise.
@@ -74,7 +74,7 @@ Open items, plus items ticked in the last 7 days. Order in `items` is the order 
 | `items[].waitingOn` | text, 40 | who or what it waits on |
 | `items[].done` | true or false | default false |
 | `items[].doneAt` | time | when it was ticked |
-| `totals` | object | optional: `{ "ian": { "now": 17, "next": 9, "later": 30 }, "claude": { ... }, "both": { ... } }`. The true open counts on the board. Send it when the list had to be cut to fit; without it the TV counts the open items it was given |
+| `totals` | object | optional: `{ "ian": { "now": 17, "next": 9, "later": 30 }, "claude": { ... }, "both": { ... } }`, all three owners, each with `now`, `next` and `later` as whole numbers. The true open counts on the board. Send it when the list had to be cut to fit; without it the TV counts the open items it was given |
 
 ### `handoffs`
 
@@ -98,7 +98,7 @@ Open items, plus items ticked in the last 7 days. Order in `items` is the order 
 | `schools[].school` | text, 40 | required; the school, never a person's name |
 | `schools[].state` | `waiting-ian`, `waiting-them`, `booked` or `visited` | required |
 | `schools[].since` | date | optional |
-| `log` | list, at most 30 | optional: `{ "date": "2026-11-14", "school": "...", "what": "Replied, asked for dates" }`; `what` is text, 80 |
+| `log` | list, at most 30 | optional: `{ "date": "2026-11-14", "school": "...", "what": "Replied, asked for dates" }`, all three required; `date` is a date, `school` is text, 40, `what` is text, 80 |
 
 ### `khaya`: rewrite progress
 
@@ -152,7 +152,11 @@ The resource `awws` in `data/state.json`, sent to the TV with everything else:
   "todos": { ... }, "khaya": { ... } }
 ```
 
-`receivedAt` is the Pi's own clock when it last stored something. Before any snapshot arrives, and after `./hub awws clear`, it is `{ "v": 1, "sentAt": null, "receivedAt": null }` and the tiles say "Not synced yet". A push to the TV happens only when what is stored really changes.
+`receivedAt` is the Pi's own clock when it last stored something. Before any snapshot arrives, and after `./hub awws clear`, it is `{ "v": 1, "sentAt": null, "receivedAt": null }` and the tiles say "Not synced yet".
+
+Every snapshot the Pi accepts is stored and pushed to the TV, even when no section's contents changed. A sync that found nothing new still proves the data is fresh, and the new `sentAt` is what keeps the tiles from calling it stale. The answer's `changed` says whether any section's contents changed. Only a clear when nothing is stored pushes nothing.
+
+What the Pi keeps is the checked copy: unknown fields dropped, text tidied, money rounded, `asOf` filled in. `done` and `blocked` are kept only when they are `true`; left out means `false`, so the stored copy is never meaningfully larger than what was sent.
 
 ## Sending and reading
 
@@ -166,12 +170,12 @@ Control API (token needed, see `docs/live-updates.md`):
 
 | Call | Body | Answer |
 |---|---|---|
-| `GET /api/awws` | | `{ ok, rev, data }` |
+| `GET /api/awws` | | `{ ok, rev, data, tz }`; `tz` is the hub's time zone (`HUB_TIMEZONE`), so `./hub awws show` writes times the way `./hub calendar status` does |
 | `POST /api/awws` | `{ "snapshot": { ... } }` or `{ "snapshot": null }` to clear | `{ ok, rev, changed, bytes, accepted: [], cleared: [], rejected: [{ section, error }] }` |
 
-`POST /api/awws` answers `400` and changes nothing when the snapshot as a whole is wrong (not an object, wrong `v`, bad `sentAt`, no sections at all, over 48 KB) or when every section in it was rejected. Otherwise it answers `200`, even with some sections rejected; read `rejected`.
+`POST /api/awws` answers `400` and changes nothing when the snapshot as a whole is wrong (not an object, wrong `v`, bad `sentAt`, no sections at all, over 48 KB as sent or once merged with what the Pi holds) or when every section in it was rejected; the error text then names each section and why. Bodies for this call may be up to 64 KB (every other control call keeps 8 KB). Otherwise it answers `200`, even with some sections rejected; read `rejected`.
 
-From the cloud, through the Claude mailbox (`pi/CLAUDE.md`): `awws.set {"snapshot": { ... }}`, `awws.show`, `awws.clear`. The reply's `message` is the same text `./hub` prints, and `data` carries `accepted`, `cleared` and `rejected`.
+From the cloud, through the Claude mailbox (`pi/CLAUDE.md`): `awws.set {"snapshot": { ... }}`, `awws.show`, `awws.clear`. The reply's `message` is the same text `./hub` prints. For `awws.set`, `data` carries `changed`, `bytes`, `accepted`, `cleared` and `rejected`. For `awws.show`, `data` is a compact summary, never the whole snapshot (a reply's `data` is capped at 48 KB): `sentAt`, `receivedAt`, `bytes`, and per section its `asOf` and counts. `awws.set {"snapshot": null}` clears everything, like `awws.clear`.
 
 ## What the TV does with it
 
