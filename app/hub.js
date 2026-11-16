@@ -59,7 +59,7 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.13.0'
+ *   ctx.build                 'v0.13.1'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -117,7 +117,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.13.0';
+  var BUILD = 'v0.13.1';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -892,6 +892,12 @@
   function onLayoutData(data) {
     try {
       if (!data || typeof data !== 'object') return;
+      // A layout picked in the switcher stays until the Pi's layout changes.
+      var choice = readChoice();
+      if (choice) {
+        if (choice.piSig === layoutSig(data.layout)) return;
+        saveChoice(null);
+      }
       var list = usableLayout(data.layout);   // null, or nothing usable: the built-in layout
       saveLayout(list);
       pendingLayout = list;
@@ -946,6 +952,131 @@
   }
 
   function layoutChance() { setTimeout(applyPendingLayout, 0); }
+
+  /* ---------- layout switcher ---------- */
+
+  // Press Up on a top tile, or Left on a left-most one, and a bar of saved
+  // layouts (HUB_CONFIG.layouts) drops from the top. Left and Right move, OK
+  // applies one at once, and the one showing now has a star. The TV can't write to the Pi (that
+  // needs its token), so the pick is kept here, with the Pi's layout at that
+  // moment; it stays until someone sets another layout on the Pi.
+  var CHOICE_KEY = 'homeHub.layoutChoice';
+  var switcherEl = document.getElementById('switcher');
+  var STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.4l-5.8 3.1 1.1-6.5L2.6 9.4l6.5-.9z"/></svg>';
+  var sw = { on: false, index: 0, presets: [], nodes: [], built: false, hideTimer: null };
+
+  // Order-free text for a layout, so two lists of the same tiles compare equal.
+  function layoutSig(raw) {
+    var list = cleanLayout(raw);
+    if (!list) return '';
+    list.sort(function (a, b) { return a.widget < b.widget ? -1 : a.widget > b.widget ? 1 : 0; });
+    return JSON.stringify(list);
+  }
+
+  function readChoice() {
+    try {
+      var raw = window.localStorage && localStorage.getItem(CHOICE_KEY);
+      var c = raw ? JSON.parse(raw) : null;
+      return c && typeof c.piSig === 'string' ? c : null;
+    } catch (e) { return null; }
+  }
+
+  function saveChoice(c) {
+    try {
+      if (!window.localStorage) return;
+      if (c) localStorage.setItem(CHOICE_KEY, JSON.stringify(c));
+      else localStorage.removeItem(CHOICE_KEY);
+    } catch (e) { /* ignore */ }
+  }
+
+  // The saved layouts that can be used here: { name, layout (null = built-in) }.
+  function switcherPresets() {
+    var src = cfg.layouts;
+    var out = [];
+    if (!src || Object.prototype.toString.call(src) !== '[object Array]') return out;
+    for (var i = 0; i < src.length; i++) {
+      var p = src[i];
+      if (!p || typeof p.name !== 'string' || !p.name) continue;
+      var list = p.layout ? usableLayout(p.layout) : null;
+      if (p.layout && !list) continue;
+      out.push({ name: p.name, layout: list });
+    }
+    return out;
+  }
+
+  function presetSig(p) { return layoutSig(p.layout || cfg.layout); }
+
+  function drawSwitcher() {
+    switcherEl.innerHTML = '';
+    sw.bar = el('div', 'switcher-bar', switcherEl);
+    var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
+    sw.nodes = [];
+    sw.index = 0;
+    for (var i = 0; i < sw.presets.length; i++) {
+      var node = el('div', 'switcher-item', sw.bar);
+      node.setAttribute('role', 'menuitem');
+      if (presetSig(sw.presets[i]) === current) {
+        node.classList.add('is-active');
+        node.setAttribute('aria-current', 'true');
+        el('span', 'switcher-star', node).innerHTML = STAR_SVG;
+        sw.index = i;
+      }
+      el('span', 'switcher-name', node).textContent = sw.presets[i].name;
+      node.addEventListener('click', (function (n) { return function () { sw.index = n; chooseLayout(); }; })(i));
+      sw.nodes.push(node);
+    }
+    focusSwitcher(sw.index);
+  }
+
+  function focusSwitcher(i) {
+    if (sw.nodes[sw.index]) sw.nodes[sw.index].classList.remove('is-focused');
+    sw.index = i;
+    if (sw.nodes[i]) sw.nodes[i].classList.add('is-focused');
+  }
+
+  function openSwitcher() {
+    if (sw.on || busy || open || frameOpen) return;
+    sw.presets = switcherPresets();
+    if (sw.presets.length < 2) return;     // nothing to switch between
+    clearTimeout(sw.hideTimer);
+    drawSwitcher();
+    sw.on = true;
+    switcherEl.classList.add('is-on');
+    // Glass: the bar shows the blurred picture behind where it comes to rest.
+    if (hasPicture) {
+      setGlassOrigin(sw.bar, switcherEl.offsetLeft + sw.bar.offsetLeft + sw.bar.clientLeft,
+        switcherEl.offsetTop + sw.bar.offsetTop + sw.bar.clientTop);
+    }
+    void switcherEl.offsetWidth;           // so the drop starts from off screen
+    switcherEl.classList.add('is-shown');
+  }
+
+  function closeSwitcher() {
+    if (!sw.on) return;
+    sw.on = false;
+    switcherEl.classList.remove('is-shown');
+    clearTimeout(sw.hideTimer);
+    sw.hideTimer = setTimeout(function () { if (!sw.on) switcherEl.classList.remove('is-on'); }, 260);
+    layoutChance();
+  }
+
+  function moveSwitcher(dir) {
+    var n = sw.nodes.length;
+    if (dir === 'right' && sw.index < n - 1) focusSwitcher(sw.index + 1);
+    else if (dir === 'left' && sw.index > 0) focusSwitcher(sw.index - 1);
+  }
+
+  function chooseLayout() {
+    var p = sw.presets[sw.index];
+    closeSwitcher();
+    if (!p) return;
+    var live = window.HUB_LIVE && typeof window.HUB_LIVE.get === 'function' ? window.HUB_LIVE.get('layout') : null;
+    saveChoice({ id: p.name, piSig: layoutSig(live && live.layout) });
+    saveLayout(p.layout);
+    pendingLayout = p.layout;
+    applyPendingLayout();
+    toast(p.name + ' layout', 1800);
+  }
 
   /* ---------- building the stage ---------- */
 
@@ -1079,6 +1210,7 @@
     }
     var next = pickNext(from, rects, dir);
     if (next >= 0) focusHome(next);
+    else if (dir === 'up' || dir === 'left') openSwitcher();   // off the top or left edge: the layout bar
   }
 
   /* ---------- the panel ---------- */
@@ -1620,6 +1752,13 @@
     if (busy) return;
     // The TV keyboard can send a stray Enter after Done or Back after Cancel.
     if ((code === KEY.ENTER || isBack(code)) && Date.now() - typingEndedAt < 300) return;
+
+    if (sw.on) {
+      if (code === KEY.ENTER) chooseLayout();
+      else if (dir === 'left' || dir === 'right') moveSwitcher(dir);
+      else if (dir === 'down' || isBack(code)) closeSwitcher();
+      return;
+    }
 
     if (open) {
       if (dir) movePanel(dir);
