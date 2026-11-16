@@ -1268,6 +1268,27 @@
 
     onClose: function () {
       rootEl = null;
+    },
+
+    // The weather now, for app/clay.js: { code, temp, wind, isDay, units }
+    // from the forecast already on the TV, or null. Read-only; never fetches.
+    current: function () {
+      try {
+        var r = usable();
+        if (!r) return null;
+        var d = r.data;
+        var hi = hourIndex(d, locNow(r));
+        var fromHourly = ageOf(r) > USE_HOURLY_AFTER;
+        return {
+          code: num(fromHourly ? at(d.hourly.weather_code, hi) : d.current.weather_code),
+          temp: fromHourly ? tnum(at(d.hourly.temperature_2m, hi)) : tnum(d.current.temperature_2m),
+          wind: wnum(d.current.wind_speed_10m),
+          isDay: num(fromHourly ? at(d.hourly.is_day, hi) : d.current.is_day) !== 0,
+          units: units
+        };
+      } catch (e) {
+        return null;
+      }
     }
   };
 })());

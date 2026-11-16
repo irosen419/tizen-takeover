@@ -57,6 +57,7 @@ var TYPES = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
   '.json': 'application/json'
 };
 

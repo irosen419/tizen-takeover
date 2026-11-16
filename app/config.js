@@ -40,6 +40,15 @@ var HUB_CONFIG = {
      '' turns live updates off, and the hub works exactly as before. */
   live: { server: HUB_PI + ':8097' },
 
+  /* Ian and Ember, as clay puppets, now and then wander onto the home screen
+     while nobody is using the remote, do a short scene and leave (see
+     docs/clay.md). Any key press sends them away at once.
+       idleAfter   seconds without a key press before the first visit
+       every       seconds between visits: a random wait in [shortest, longest]
+       nightEvery  the same from 10 PM to 6 AM, when Ember just naps in a corner
+     clay: false (or on: false) turns them off; so does ?clay=off on the address. */
+  clay: { on: true, idleAfter: 20, every: [90, 240], nightEvery: [300, 600] },
+
   layout: [
     { widget: 'today',         x: 0, y: 0, w: 3, h: 1 },
     { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },

@@ -1,0 +1,33 @@
+/* Clay wanderers (app/clay.js). Loaded by clay.js before the first scene.
+   One click-through layer above the tiles (cells have no z-index) and below
+   the scrim (10), the ghost, the panel, the dashboard frame and the toast.
+   Each actor and each shadow is its own layer; on a tick only an image's
+   opacity and an actor's transform change. Nothing here animates by itself. */
+.clay-layer {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 9;
+  transform-origin: 0 0;
+}
+.clay-actor,
+.clay-shadow {
+  position: absolute;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+.clay-actor img {
+  position: absolute;
+  display: block;
+  max-width: none;
+  opacity: 0;
+}
+/* A soft contact shadow under the feet: a painted gradient, no blur. */
+.clay-shadow {
+  border-radius: 50%;
+  background: radial-gradient(ellipse closest-side, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.22) 55%, rgba(0, 0, 0, 0));
+}
