@@ -14,6 +14,9 @@
  *   BROKEN     its hub.js throws at once
  *   MISSING    jsDelivr can't find anything
  *   LEGACY     made before update.js: no hubPage, index.html is the whole hub
+ *   SLOW       its clay.js takes 5 s to come (the TV's slow cold load, scaled)
+ *   STUCK      its clay.js never comes
+ *   LONGERR    its hub.js throws a long, Spanish-length error
  *
  * GitHub is faked with Playwright routing (a sha, 403, garbage, an abort or
  * no answer at all). The pretend service on 8095 and the laptop preview come
@@ -47,6 +50,12 @@ const B = fakeSha('B');
 const BROKEN = fakeSha('broken');
 const MISSING = fakeSha('missing');
 const LEGACY = fakeSha('legacy');
+const SLOW = fakeSha('slow');
+const STUCK = fakeSha('stuck');
+const LONGERR = fakeSha('long error');
+const LONG_MESSAGE = 'No se pudo iniciar el panel principal porque la configuración de la pantalla de inicio todavía no estaba disponible en este televisor';
+// Some files of some commits come late (ms), or never (Infinity).
+const DELAYS = { [SLOW]: { 'app/clay.js': 5000 }, [STUCK]: { 'app/clay.js': Infinity } };
 
 let PROXY_PORT, PROXY, PAGE_PORT, PAGE, LIVE_PORT;
 let proxyServer = null;
@@ -118,7 +127,7 @@ const COMMITS = {
   [A]: (rest) => readWorking(rest),
   [B]: (rest) => {
     const body = readWorking(rest);
-    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.18.0-B'));
+    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.18.1-B'));
     return body;
   },
   [BROKEN]: (rest) => {
@@ -126,6 +135,12 @@ const COMMITS = {
     return readWorking(rest);
   },
   [MISSING]: () => null,
+  [SLOW]: (rest) => readWorking(rest),
+  [STUCK]: (rest) => readWorking(rest),
+  [LONGERR]: (rest) => {
+    if (rest === 'app/hub.js') return Buffer.from('throw new Error(' + JSON.stringify(LONG_MESSAGE) + ');\n');
+    return readWorking(rest);
+  },
   [LEGACY]: (rest) => {
     if (rest === 'package.json') {
       const pkg = JSON.parse(readWorking('package.json').toString('utf8'));
@@ -169,6 +184,17 @@ function startProxy() {
     if (proxy.hang) { proxy.held.push(res); return; }
     let body = null;
     if (r && r[1] === OWNER && r[2] === REPO && COMMITS[r[3]]) body = COMMITS[r[3]](rest);
+    const delay = r && DELAYS[r[3]] ? DELAYS[r[3]][rest] : 0;
+    if (delay === Infinity) { proxy.held.push(res); return; }
+    if (delay) {
+      setTimeout(() => {
+        try {
+          res.writeHead(200, { 'Content-Type': TYPES[path.extname(rest)] || 'text/plain' });
+          res.end(body === null ? 'missing' : body);
+        } catch (e) { /* the page left */ }
+      }, delay);
+      return;
+    }
     // Like TizenBrew: always 200, the type from the extension, jsDelivr's words when it has nothing.
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(rest)] || 'text/plain' });
     if (body === null) {
@@ -310,8 +336,12 @@ function githubAsks(since) { return github.requests.slice(since); }
 
 // A context that has run the hub once with GitHub answering `sha`, so that
 // commit is the stored good one. Returns the page, on that commit.
-async function contextWithGood(sha, query) {
-  const context = await newContext();
+// opts.scale: window.HUB_UPDATE_TEST_SCALE for every page (shortens the
+// watchdog and the notice); opts.dsf: the device scale factor.
+async function contextWithGood(sha, query, opts) {
+  opts = opts || {};
+  const context = await newContext(opts.dsf ? { deviceScaleFactor: opts.dsf } : undefined);
+  if (opts.scale) await context.addInitScript((v) => { window.HUB_UPDATE_TEST_SCALE = v; }, opts.scale);
   const page = await context.newPage();
   github.mode = 'sha';
   github.sha = sha;
@@ -369,10 +399,10 @@ async function check1() {
   await waitAt(page, A, 'app/hub.html');
   const rec = await until(async () => { const r = await record(page); return r && r.good === A ? r : false; }, 3000, 'good is not A');
   assert(!rec.trying, 'trying was not cleared: ' + JSON.stringify(rec));
-  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.18.0', 'record: ' + JSON.stringify(rec));
+  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.18.1', 'record: ' + JSON.stringify(rec));
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
-  assert(/^v0\.18\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.18\.1 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   // Version, browser, motion: no version check row when this is the newest.
   assert(lines.length === 3, 'About rows: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
@@ -400,7 +430,7 @@ async function check2() {
   await go(page, shellUrl());
   await waitAt(page, B, 'app/hub.html');
   const lines = await look.lines(page);
-  assert(/^v0\.18\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.18\.1-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   const rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared');
   noMissingFiles(logSince(at));
@@ -476,7 +506,7 @@ async function check4() {
   await waitAt(page, B, 'app/hub.html');
   rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared on B: ' + JSON.stringify(rec));
-  assert(/^v0\.18\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
+  assert(/^v0\.18\.1-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
   noErrors(context);
 }
 
@@ -710,7 +740,7 @@ async function checkTile() {
       await page.evaluate(() => window.HUB_TEST.clay.stop());
     }
     const a = await clockPage.waitFor(page, (x) => x.lines.length === c.rows ? x : null, 10000, c.rows + ' rows');
-    assert(/^v0\.18\.0/.test(a.lines[0]), 'version row: ' + a.lines[0]);
+    assert(/^v0\.18\.1/.test(a.lines[0]), 'version row: ' + a.lines[0]);
     const wand = a.rows.filter((r) => r.group === 'Wanderers').map((r) => r.label + ': ' + r.value);
     if (c.visit) {
       assert(wand.length === 4 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 1 played · 0 slow · 0 failed' &&
@@ -762,6 +792,210 @@ async function checkTile() {
     await context.close();
   }
   s.server.close();
+}
+
+/* ---------- a commit that doesn't start: crash or slow ---------- */
+
+const NOTICE = 'div[role="alert"]';
+const SCALE = 0.2;   // watchdog 3 s, then every 1 s up to 12 s; notice 2.4 s
+
+function notice(page) {
+  return page.evaluate((sel) => {
+    const e = document.querySelector(sel);
+    return e ? Array.prototype.map.call(e.children, (c) => c.textContent) : null;
+  }, NOTICE).catch(() => null);
+}
+
+function why(page) {
+  return page.evaluate(() => { try { return JSON.parse(localStorage.getItem('homeHub.release.why')); } catch (e) { return 'unreadable'; } });
+}
+
+// The notice inside the screen, every line inside the box, nothing cut.
+function noticeFit(page) {
+  return page.evaluate((sel) => {
+    const box = document.querySelector(sel);
+    const b = box.getBoundingClientRect();
+    const bad = [];
+    if (b.left < 0 || b.top < 0 || b.right > innerWidth || b.bottom > innerHeight) bad.push('off screen ' + JSON.stringify(b));
+    if (box.scrollHeight > box.clientHeight + 1 || box.scrollWidth > box.clientWidth + 1) bad.push('the box is cut');
+    const cs = getComputedStyle(box);
+    if (cs.pointerEvents !== 'none' || Number(cs.zIndex) < 1000) bad.push('pointer-events ' + cs.pointerEvents + ', z-index ' + cs.zIndex);
+    if (cs.animationName !== 'none' || (cs.transitionDuration && cs.transitionDuration !== '0s')) bad.push('it animates');
+    let lines = 0;
+    Array.prototype.forEach.call(box.children, (c) => {
+      const r = c.getBoundingClientRect();
+      if (r.left < b.left || r.right > b.right) bad.push('"' + c.textContent.slice(0, 30) + '" sticks out');
+      if (c.scrollWidth > c.clientWidth + 1) bad.push('"' + c.textContent.slice(0, 30) + '" is cut');
+      lines += Math.round(r.height / parseFloat(getComputedStyle(c).lineHeight));
+    });
+    return { bad, lines, fontPx: parseFloat(cs.fontSize), rows: box.children.length };
+  }, NOTICE);
+}
+
+// (a) and (d): hub.js throws. With the real timings: the notice comes as soon
+// as parsing is done (long before 15 s), names the error, stays 12 s, then
+// back to A, held 6 hours as a crash; the About panel says why.
+async function checkCrash() {
+  const { context, page } = await contextWithGood(A, '', { dsf: SHOTS ? 2 : 0 });
+  github.sha = BROKEN;
+  await go(page, shellUrl());
+  await until(() => { const w = where(page); return w && w.ref === BROKEN; }, 10000, 'did not go to the broken commit');
+  const t0 = Date.now();
+  const lines = await until(() => notice(page), 6000, 'no notice');
+  const shownAfter = Date.now() - t0;
+  assert(shownAfter < 4000, 'the notice came after ' + shownAfter + ' ms, not when parsing finished');
+  assert(lines[0] === 'Version 0.18.1 didn\'t start', 'title: ' + lines[0]);
+  assert(/^It broke while starting \(after \d+ s\)\.$/.test(lines[1]), 'line 2: ' + lines[1]);
+  assert(/^(\d+) of \1 files had loaded\.$/.test(lines[2]), 'files: ' + lines[2]);
+  assert(lines[3] === 'Error: Uncaught Error: pretend broken build (app/hub.js line 1)', 'error: ' + lines[3]);
+  assert(lines[4] === 'Going back to version 0.18.1 in 12 s.' && lines[5] === 'It will be tried again in 6 hours, or when a newer version comes.', 'last lines: ' + JSON.stringify(lines.slice(4)));
+  const fit = await noticeFit(page);
+  assert(!fit.bad.length && fit.fontPx >= 26, 'notice: ' + JSON.stringify(fit));
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'update-failed-crash.jpg'), type: 'jpeg', quality: 90 });
+  let rec = await record(page);
+  assert(rec.trying === BROKEN && rec.note === 'held' && rec.holdKind === 'crash' && rec.good === A, 'record: ' + JSON.stringify(rec));
+  // It stays about 12 s, then back to A.
+  await sleep(Math.max(0, 10500 - (Date.now() - t0 - shownAfter)));
+  assert(where(page).ref === BROKEN && (await notice(page)), 'the notice went before 12 s');
+  await waitAt(page, A, 'app/hub.html', 8000);
+  const total = Date.now() - t0 - shownAfter;
+  assert(total > 11500 && total < 15000, 'the notice was up about ' + total + ' ms');
+  const w = await why(page);
+  assert(w && w.sha === BROKEN && w.kind === 'crash' && w.why === '0.18.1: error: Uncaught Error: pretend broken build (app/hub.js line 1)' &&
+    JSON.stringify(w).length <= 400, 'why: ' + JSON.stringify(w));
+  const st = await look.status(page);
+  assert(st.state === 'held' && st.why === w.why, 'status: ' + JSON.stringify(st));
+  await clockPage.waitFor(page, (a) => a.rows.some((r) => r.label === 'Version check' &&
+    r.value === 'a newer version didn\'t start (0.18.1: error: Uncaught Error: pretend broken build (app/hub.js line 1))'), 3000, 'version check row');
+  if (SHOTS) {
+    await clockPage.openAbout(page);
+    await sleep(600);
+    await page.screenshot({ path: path.join(SHOTS, 'about-panel-held.jpg'), type: 'jpeg', quality: 90 });
+    await clockPage.closeAbout(page);
+  }
+  // Held 6 hours: still held after 21 minutes.
+  await page.evaluate(() => {
+    const r = JSON.parse(localStorage.getItem('homeHub.release'));
+    r.triedAt = Date.now() - 21 * 60000;
+    localStorage.setItem('homeHub.release', JSON.stringify(r));
+  });
+  const at = mark();
+  await go(page, shellUrl());
+  await waitAt(page, A, 'app/hub.html');
+  assert(!logSince(at).some((e) => e.ref === BROKEN), 'a crash was tried again after 21 minutes');
+  context.log.errors = context.log.errors.filter((e) => !/pretend broken build/.test(e));
+  noErrors(context);
+}
+
+// (b) A file 5 s late (25 s on the TV's scale): no fallback at the watchdog
+// (3 s here, 15 s on the TV); it starts and becomes the good one.
+async function checkSlowStarts() {
+  const { context, page } = await contextWithGood(A, '', { scale: SCALE });
+  github.sha = SLOW;
+  await go(page, shellUrl());
+  await until(() => { const w = where(page); return w && w.ref === SLOW; }, 10000, 'did not go to the slow commit');
+  await sleep(3800);
+  assert(where(page).ref === SLOW && !(await notice(page)), 'it gave up at the watchdog while files were still coming');
+  await waitAt(page, SLOW, 'app/hub.html', 8000);
+  const rec = await until(async () => { const r = await record(page); return r && r.good === SLOW ? r : false; }, 3000, 'the slow commit did not become good');
+  assert(!rec.trying && !rec.holdKind && !rec.note, 'record: ' + JSON.stringify(rec));
+  assert(!(await notice(page)), 'a notice showed');
+  noErrors(context);
+}
+
+// (c) A file that never comes: back at 60 s (12 s here), held 20 minutes as
+// slow; the notice says it was still loading and what it waited for. (f) A
+// different commit is not held by it, and it is tried again after 20 minutes.
+async function checkStuck() {
+  const { context, page } = await contextWithGood(A, '', { scale: SCALE, dsf: SHOTS ? 2 : 0 });
+  github.sha = STUCK;
+  await go(page, shellUrl());
+  await until(() => { const w = where(page); return w && w.ref === STUCK; }, 10000, 'did not go to the stuck commit');
+  const t0 = Date.now();
+  await sleep(6000);
+  assert(where(page).ref === STUCK && !(await notice(page)), 'it gave up before the limit');
+  const lines = await until(() => notice(page), 12000, 'no notice');
+  const after = Date.now() - t0;
+  assert(after > 10000 && after < 14500, 'gave up after ' + after + ' ms (limit 12 s here)');
+  assert(lines[0] === 'Version 0.18.1 didn\'t start' && /^It was still loading after 1[1-3] s\.$/.test(lines[1]), 'lines: ' + JSON.stringify(lines));
+  assert(/^\d+ of \d+ files had loaded so far; still waiting for app\/clay\.js\.$/.test(lines[2]), 'files: ' + lines[2]);
+  assert(/^Going back to version 0\.18\.1 in 12 s\.$/.test(lines[3]) && lines[4] === 'It will be tried again in 20 minutes, or when a newer version comes.', 'lines: ' + JSON.stringify(lines));
+  assert(lines.length === 5, 'an error line showed: ' + JSON.stringify(lines));
+  const fit = await noticeFit(page);
+  assert(!fit.bad.length, 'notice: ' + JSON.stringify(fit));
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'update-failed-slow.jpg'), type: 'jpeg', quality: 90 });
+  await waitAt(page, A, 'app/hub.html', 8000);
+  const rec = await record(page);
+  assert(rec.trying === STUCK && rec.holdKind === 'slow' && rec.note === 'held', 'record: ' + JSON.stringify(rec));
+  const w = await why(page);
+  assert(w && w.kind === 'slow' && /^0\.18\.1: still loading after 1[1-3] s, waiting for app\/clay\.js$/.test(w.why), 'why: ' + JSON.stringify(w));
+  await clockPage.waitFor(page, (a) => a.rows.some((r) => r.label === 'Version check' && r.value === 'a newer version didn\'t start (' + w.why + ')'), 3000, 'version check row');
+  // Held now: reopening stays on A.
+  let at = mark();
+  await go(page, shellUrl());
+  await waitAt(page, A, 'app/hub.html');
+  assert(!logSince(at).some((e) => e.ref === STUCK), 'the stuck commit was tried again at once');
+  // After 20 minutes it is tried again.
+  await page.evaluate(() => {
+    const r = JSON.parse(localStorage.getItem('homeHub.release'));
+    r.triedAt = Date.now() - 21 * 60000;
+    localStorage.setItem('homeHub.release', JSON.stringify(r));
+  });
+  at = mark();
+  await go(page, shellUrl());
+  await until(() => { const x = where(page); return x && x.ref === STUCK; }, 10000, 'not tried again after 20 minutes');
+  await go(page, PROXY + '/__blank');
+  // (f) A different commit is not held: B loads and becomes good.
+  github.sha = B;
+  await go(page, shellUrl());
+  await waitAt(page, B, 'app/hub.html');
+  await until(async () => { const r = await record(page); return r && r.good === B; }, 3000, 'B did not become good');
+  noErrors(context);
+}
+
+// (d) A long, Spanish-length error wraps inside the notice at 1920x1080 and 1280x720.
+async function checkNoticeWraps() {
+  for (const viewport of [{ width: 1920, height: 1080 }, { width: 1280, height: 720 }]) {
+    const { context, page } = await contextWithGood(A, '', { scale: SCALE });
+    await page.setViewportSize(viewport);
+    github.sha = LONGERR;
+    await go(page, shellUrl());
+    await until(() => { const w = where(page); return w && w.ref === LONGERR; }, 10000, 'did not go to the commit');
+    const lines = await until(() => notice(page), 4000, 'no notice');
+    const err = lines.filter((l) => /^Error: /.test(l))[0] || '';
+    assert(err.length > 100 && err.length <= 128 && /…$/.test(err), 'error line: ' + err);
+    const fit = await noticeFit(page);
+    assert(!fit.bad.length, viewport.width + ': ' + JSON.stringify(fit));
+    assert(fit.lines >= fit.rows + 1, viewport.width + ': nothing wrapped (' + fit.lines + ' lines in ' + fit.rows + ' rows)');
+    await waitAt(page, A, 'app/hub.html', 8000);
+    const w = await why(page);
+    assert(w && JSON.stringify(w).length <= 400 && w.why.length <= 200, 'why too long: ' + JSON.stringify(w).length);
+    await context.close();
+  }
+}
+
+// (e) A record written before 0.18.1 (no holdKind, no tryingVersion, no
+// reason kept) still reads: held 6 hours, and the row has no brackets. A
+// reason kept for another commit is not shown.
+async function checkOldRecord() {
+  const { context, page } = await contextWithGood(A);
+  const entry = new URL(shellUrl()).pathname;
+  await page.evaluate(([e, a, broken, stuck]) => {
+    localStorage.setItem('homeHub.release', JSON.stringify({ v: 1, entry: e, good: a, goodPage: 'app/hub.html', goodVersion: '0.17.0',
+      trying: broken, triedAt: Date.now() - 30 * 60000, note: 'held' }));
+    localStorage.setItem('homeHub.release.why', JSON.stringify({ v: 1, sha: stuck, kind: 'slow', why: 'not this one', text: 'x' }));
+  }, [entry, A, BROKEN, STUCK]);
+  github.sha = BROKEN;
+  const at = mark();
+  await go(page, shellUrl());
+  await waitAt(page, A, 'app/hub.html');
+  assert(!logSince(at).some((e) => e.ref === BROKEN), 'an old-format hold was not kept');
+  const rec = await record(page);
+  assert(rec.good === A && rec.trying === BROKEN && rec.note === 'held' && !rec.holdKind && !rec.tryingVersion, 'record: ' + JSON.stringify(rec));
+  const st = await look.status(page);
+  assert(st.state === 'held' && st.why === '', 'status: ' + JSON.stringify(st));
+  await clockPage.waitFor(page, (a) => a.rows.some((r) => r.label === 'Version check' && r.value === 'a newer version didn\'t start'), 3000, 'version check row');
+  noErrors(context);
 }
 
 function stranger(status, type, body) {
@@ -849,6 +1083,11 @@ async function main() {
   await check('11. Laptop preview: /hub.html with the query, no GitHub, no update text', check11);
   await check('12. The About panel fits its rows at 1920x1080; the Clock page has no About section and fits, panel and full screen', checkTile);
   await check('13. The shell: dark, quiet text after 1.2 s, and the normal start time', checkShell);
+  await check('14. A crash: the notice as soon as parsing is done, naming the error, 12 s, back to A, held 6 hours, the reason in the About panel', checkCrash);
+  await check('15. A slow commit (a file 5 s late, scaled): no fallback at the watchdog; it starts and becomes good', checkSlowStarts);
+  await check('16. A file that never comes: back at the limit, held 20 minutes as slow, then tried again; another commit is not held', checkStuck);
+  await check('17. A long error wraps inside the notice at 1920x1080 and 1280x720; the kept reason stays short', checkNoticeWraps);
+  await check('18. A record from before 0.18.1 still reads and holds; a reason kept for another commit is not shown', checkOldRecord);
 }
 
 main().catch((e) => {
