@@ -1065,6 +1065,9 @@ async function checkGaitArt() {
   if (process.env.CLAY_EIGHT) console.log(JSON.stringify(plan.frames));
   assert(!plan.bad.length, plan.bad.slice(0, 6).join('; '));
   assert(plan.side && plan.gaits['ian.walk'] === 6, 'stroll with the new art: ' + JSON.stringify(plan));
+  // Both carrying cycles fit (fetch leaves its heart out to make room).
+  assert(plan.frames.fetch.gaits['ember.ball-trot'] === 6 && plan.frames['sock-heist'].gaits['ember.sock-run'] === 7,
+    'carrying cycles: ' + JSON.stringify([plan.frames.fetch, plan.frames['sock-heist']]));
   await playing(page, 'stroll', { seed: 3, dir: 'right' });
   const ty = (s) => Number((/translate3d\([-\d.]+px, ?([-\d.]+)px/.exec(s) || [])[1]);
   let lifted = null;

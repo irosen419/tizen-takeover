@@ -1481,6 +1481,7 @@
   var BALL_TROT = { seq: 'ember.ball-trot', keys: ['ember/stand-ball'], step: 18, stride: 72, dy: [0, -6, -3, 0], optional: true };
   var SOCK_RUN = { seq: 'ember.sock-run', keys: ['ember/sock-run'], step: 46, stride: 138, dy: [0, -10, -4], optional: true };
   var plainExtras = false;     // while building: leave the optional cycles out
+  var trimmed = false;         // while building: leave a scene's small touches out
 
   // The sequence a gait takes its pictures from: its own, or (zoomies) a
   // longer cycle of another; null for its own fallback pictures.
@@ -1621,7 +1622,9 @@
     // on his far side (the way they travel).
     var duo = S.actor('duo', 'duo', { shadow: 120, mirror: S.dir === 'left' });
     var ball = S.actor('ball', 'prop', { shadow: 18, scale: 1.6 });
-    var heart = S.actor('heart', 'prop', { scale: 1.5 });
+    // The heart over the hug is a trimming: left out when the pictures would
+    // go over MAX_FRAMES with her ball-carrying trot (see build()).
+    var heart = trimmed ? null : S.actor('heart', 'prop', { scale: 1.5 });
     var ianX = S.across(S.rand(0.14, 0.2));
     var emberWait = ianX + S.sgn * 125;
     var fakeTo = emberWait + S.sgn * 190;
@@ -1714,7 +1717,7 @@
     // The high five, then a hug, between where they stand.
     var duoX = meet + S.sgn * 34;
     duo.after('swap').at(duoX, F).pose('duo/high-five', 14).pose('duo/hug', 20).hide().signal('fived');
-    heart.after('swap').wait(16).at(duoX + S.sgn * 6, F - 150).pose('props/heart', 2).move(0, -4, 6, { key: 'props/heart' }).hide();
+    if (heart) heart.after('swap').wait(16).at(duoX + S.sgn * 6, F - 150).pose('props/heart', 2).move(0, -4, 6, { key: 'props/heart' }).hide();
 
     // The ball: from Ian's hand at the end of the throw, along an arc that
     // ends in Ember's open mouth at the top of her jump, then down with her.
@@ -2167,15 +2170,30 @@
   };
 
   // { actors, night, W, H, k }, or null when the scene doesn't fit here.
-  // A scene too big with the optional cycles (BALL_TROT, SOCK_RUN) is built
-  // again without them.
+  // A scene too big for MAX_FRAMES is built again with less: first without
+  // its trimmings (small touches like fetch's heart, see `trimmed`) so the
+  // optional cycles (BALL_TROT, SOCK_RUN) can stay, then with the trimmings
+  // but without those cycles, then without both.
+  var LEANER = [[false, true], [true, false], [true, true]];
+
   function build(name, o) {
     try {
       return buildOnce(name, o);
     } catch (e) {
       if (!e.tooBig) throw e;
-      plainExtras = true;
-      try { return buildOnce(name, o); } finally { plainExtras = false; }
+      for (var i = 0; i < LEANER.length; i++) {
+        plainExtras = LEANER[i][0];
+        trimmed = LEANER[i][1];
+        try {
+          return buildOnce(name, o);
+        } catch (e2) {
+          if (!e2.tooBig || i === LEANER.length - 1) throw e2;
+        } finally {
+          plainExtras = false;
+          trimmed = false;
+        }
+      }
+      return null;
     }
   }
 
