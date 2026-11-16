@@ -28,6 +28,7 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const hubctl = require('./hubctl');
+const awws = require('./awws');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -52,6 +53,7 @@ const MAX_MESSAGE = 8000;
 const MAX_TEXT = 140;
 const MAX_TITLE = 80;
 const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const MAX_DEPTH = 8;
 
 function isObj(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -339,13 +341,32 @@ const V = {
     if (!Array.isArray(v)) throw argError('"' + name + '" must be a list');
     if (v.length > max) throw argError('"' + name + '" has more than ' + max + ' entries');
     return v;
+  },
+  // A JSON object, copied without "__proto__", "constructor" or "prototype"
+  // keys at any depth, so nothing in it can reach an object's prototype.
+  object: () => (name, v) => {
+    if (!isObj(v)) throw argError('"' + name + '" must be an object');
+    return plainCopy(name, v, 0);
   }
 };
 
+function plainCopy(name, v, depth) {
+  if (depth > MAX_DEPTH) throw argError('"' + name + '" is nested more than ' + MAX_DEPTH + ' levels deep');
+  if (Array.isArray(v)) return v.map((x) => plainCopy(name, x, depth + 1));
+  if (!isObj(v)) return v;
+  const out = {};
+  Object.keys(v).forEach((k) => {
+    if (!BAD_KEYS.has(k)) out[k] = plainCopy(name, v[k], depth + 1);
+  });
+  return out;
+}
+
 /* ---------- the commands ---------- */
 
-// Each command: args { name: [check, required] }, check(args) for extra
-// rules, run(args, ctx) -> { message, data, restart }.
+// Each command: args { name: [check, required, nullable] }, check(args) for
+// extra rules, run(args, ctx) -> { message, data, restart }. An arg marked
+// nullable may be sent as null and reaches run as null; otherwise null counts
+// as left out.
 function lines(list) {
   return list.join('\n');
 }
@@ -465,6 +486,33 @@ const COMMANDS = {
       return { message: hubctl.layoutResetText(r), data: { changed: r.changed } };
     }
   },
+  'awws.show': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/awws');
+      // Only counts and times: the whole snapshot would not fit in a reply.
+      return { message: lines(hubctl.awwsShowLines(r)), data: awws.summaryData(r.data) };
+    }
+  },
+  'awws.set': {
+    // Only the shape is checked here; the server's own snapshot check decides.
+    args: { snapshot: [V.object(), true, true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/awws', { snapshot: a.snapshot });
+      const text = a.snapshot === null ? awws.clearText(r) : awws.setText(r);
+      return {
+        message: text,
+        data: { changed: r.changed, bytes: r.bytes, accepted: r.accepted, cleared: r.cleared, rejected: r.rejected }
+      };
+    }
+  },
+  'awws.clear': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/awws', { snapshot: null });
+      return { message: awws.clearText(r), data: { changed: r.changed, cleared: r.cleared } };
+    }
+  },
   status: {
     args: {},
     run: async (a, ctx) => {
@@ -554,11 +602,16 @@ function checkEnvelope(name, bytes, nowMs) {
   });
   Object.keys(spec.args).forEach((k) => {
     const pair = spec.args[k];
-    if (raw[k] === undefined || raw[k] === null) {
+    const given = Object.prototype.hasOwnProperty.call(raw, k) ? raw[k] : undefined;
+    if (given === null && pair[2]) {
+      args[k] = null;
+      return;
+    }
+    if (given === undefined || given === null) {
       if (pair[1]) throw argError('"' + env.cmd + '" needs "' + k + '"');
       return;
     }
-    args[k] = pair[0](k, raw[k]);
+    args[k] = pair[0](k, given);
   });
   if (spec.check) spec.check(args);
   return { id: name, created: created, cmd: env.cmd, args: args };

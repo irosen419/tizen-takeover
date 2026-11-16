@@ -1,0 +1,453 @@
+{
+  "v": 1,
+  "sentAt": "2026-11-16T15:10:00Z",
+  "todos": {
+    "asOf": "2026-11-16T15:08:00Z",
+    "items": [
+      {
+        "id": "t01",
+        "title": "Print 30 activity sheets for Maple Grove",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Visits",
+        "due": "Nov 30",
+        "dueISO": "2026-11-30"
+      },
+      {
+        "id": "t02",
+        "title": "Reply to Cedar Hollow about dates",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Outreach",
+        "due": "Nov 13",
+        "dueISO": "2026-11-13"
+      },
+      {
+        "id": "t03",
+        "title": "Approve the hardcover proof of Luma the Otter",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Books",
+        "waitingOn": "Printer proof"
+      },
+      {
+        "id": "t04",
+        "title": "Record the read-aloud intro video",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Content",
+        "due": "Nov 18, 4 PM",
+        "dueISO": "2026-11-18T22:00:00Z"
+      },
+      {
+        "id": "t05",
+        "title": "Sign the visit form for Río Niño Academy",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Visits",
+        "due": "Nov 20",
+        "dueISO": "2026-11-20"
+      },
+      {
+        "id": "t06",
+        "title": "Pick three photos for the school flier",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Outreach"
+      },
+      {
+        "id": "t07",
+        "title": "Order 40 paperbacks for December visits",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Books",
+        "due": "Nov 19",
+        "dueISO": "2026-11-19"
+      },
+      {
+        "id": "t08",
+        "title": "Review the worksheet answer key",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Education"
+      },
+      {
+        "id": "t09",
+        "title": "Check the poster tube and the photo ID",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Visits"
+      },
+      {
+        "id": "t10",
+        "title": "Draft follow-ups for five librarians",
+        "owner": "claude",
+        "section": "now",
+        "stream": "Outreach"
+      },
+      {
+        "id": "t11",
+        "title": "Tidy the education downloads page",
+        "owner": "claude",
+        "section": "now",
+        "stream": "Education",
+        "due": "Nov 17",
+        "dueISO": "2026-11-17"
+      },
+      {
+        "id": "t12",
+        "title": "Summarize last week’s site traffic",
+        "owner": "claude",
+        "section": "now",
+        "stream": "Reach"
+      },
+      {
+        "id": "t13",
+        "title": "Choose the cover color for Pip and the Reef",
+        "owner": "both",
+        "section": "now",
+        "stream": "Books",
+        "waitingOn": "Illustrator"
+      },
+      {
+        "id": "t14",
+        "title": "Plan the January school list",
+        "owner": "both",
+        "section": "now",
+        "stream": "Outreach",
+        "due": "Nov 24",
+        "dueISO": "2026-11-24"
+      },
+      {
+        "id": "t15",
+        "title": "Write the back matter for spread 12",
+        "owner": "both",
+        "section": "now",
+        "stream": "Books"
+      },
+      {
+        "id": "t16",
+        "title": "Update the visit pack list",
+        "owner": "ian",
+        "section": "next",
+        "stream": "Visits"
+      },
+      {
+        "id": "t17",
+        "title": "Thank-you notes for Maple Grove",
+        "owner": "ian",
+        "section": "next",
+        "stream": "Visits",
+        "due": "Dec 3",
+        "dueISO": "2026-12-03"
+      },
+      {
+        "id": "t18",
+        "title": "Compare two printers for the hardcover",
+        "owner": "ian",
+        "section": "next",
+        "stream": "Books"
+      },
+      {
+        "id": "t19",
+        "title": "Outline the spring newsletter",
+        "owner": "claude",
+        "section": "next",
+        "stream": "Content"
+      },
+      {
+        "id": "t20",
+        "title": "Collect teacher quotes for the site",
+        "owner": "both",
+        "section": "next",
+        "stream": "Reach"
+      },
+      {
+        "id": "t21",
+        "title": "Sketch ideas for book three",
+        "owner": "ian",
+        "section": "later",
+        "stream": "Books",
+        "due": "On hold"
+      },
+      {
+        "id": "t22",
+        "title": "Translate the worksheets into Spanish",
+        "owner": "both",
+        "section": "later",
+        "stream": "Education"
+      },
+      {
+        "id": "t23",
+        "title": "Look into a library conference table",
+        "owner": "ian",
+        "section": "later",
+        "stream": "Outreach"
+      },
+      {
+        "id": "t24",
+        "title": "Send the proof corrections",
+        "owner": "ian",
+        "section": "now",
+        "stream": "Books",
+        "done": true,
+        "doneAt": "2026-11-15T20:30:00Z"
+      },
+      {
+        "id": "t25",
+        "title": "Book the Maple Grove visit",
+        "owner": "both",
+        "section": "now",
+        "stream": "Visits",
+        "done": true,
+        "doneAt": "2026-11-12T17:00:00Z"
+      }
+    ],
+    "totals": {
+      "ian": {
+        "now": 9,
+        "next": 3,
+        "later": 2
+      },
+      "claude": {
+        "now": 3,
+        "next": 1,
+        "later": 0
+      },
+      "both": {
+        "now": 3,
+        "next": 1,
+        "later": 1
+      }
+    }
+  },
+  "handoffs": {
+    "asOf": "2026-11-16T15:08:00Z",
+    "open": 2,
+    "blocked": 1,
+    "items": [
+      {
+        "id": "h1",
+        "title": "Flier copy ready for Ian to read",
+        "state": "open"
+      },
+      {
+        "id": "h2",
+        "title": "Worksheet layout needs the new logo",
+        "state": "blocked"
+      },
+      {
+        "id": "h3",
+        "title": "Traffic summary for the week",
+        "state": "open"
+      }
+    ]
+  },
+  "outreach": {
+    "asOf": "2026-11-16T14:00:00Z",
+    "emailed": 48,
+    "replied": 12,
+    "booked": 3,
+    "visited": 1,
+    "waitingOnIan": 5,
+    "schools": [
+      {
+        "school": "Cedar Hollow Elementary",
+        "state": "waiting-ian",
+        "since": "2026-11-10"
+      },
+      {
+        "school": "Río Niño Academy",
+        "state": "booked",
+        "since": "2026-11-08"
+      },
+      {
+        "school": "Maple Grove Elementary",
+        "state": "booked",
+        "since": "2026-11-02"
+      },
+      {
+        "school": "Birchwood Primary",
+        "state": "waiting-them",
+        "since": "2026-11-12"
+      },
+      {
+        "school": "Lakeview School",
+        "state": "visited",
+        "since": "2026-10-28"
+      }
+    ],
+    "log": [
+      {
+        "date": "2026-11-15",
+        "school": "Cedar Hollow Elementary",
+        "what": "Replied, asked for two dates in December"
+      },
+      {
+        "date": "2026-11-12",
+        "school": "Birchwood Primary",
+        "what": "Sent the visit outline"
+      }
+    ]
+  },
+  "khaya": {
+    "asOf": "2026-11-16T15:00:00Z",
+    "label": "Rewrite",
+    "done": 11,
+    "total": 12
+  },
+  "pipeline": {
+    "asOf": "2026-11-14T18:00:00Z",
+    "stages": [
+      "Write",
+      "Art",
+      "Layout",
+      "Proof",
+      "Live"
+    ],
+    "items": [
+      {
+        "id": "p1",
+        "title": "Luma the Otter",
+        "format": "Paperback",
+        "stage": 5
+      },
+      {
+        "id": "p2",
+        "title": "Luma the Otter",
+        "format": "Hardcover",
+        "stage": 3,
+        "next": "Approve the printer proof",
+        "waitingOn": "Printer proof",
+        "blocked": true
+      },
+      {
+        "id": "p3",
+        "title": "Pip and the Reef",
+        "format": "Paperback",
+        "stage": 2,
+        "next": "Finish the layout of spreads 9 to 12"
+      },
+      {
+        "id": "p4",
+        "title": "Año Nuevo, Árbol Viejo",
+        "format": "Paperback",
+        "stage": 1,
+        "next": "First sketches",
+        "waitingOn": "Illustrator"
+      },
+      {
+        "id": "p5",
+        "title": "Education downloads",
+        "format": "Worksheets",
+        "stage": 4,
+        "next": "Publish the answer key"
+      }
+    ]
+  },
+  "money": {
+    "asOf": "2026-11-12T12:00:00Z",
+    "currency": "USD",
+    "spent": 1840.5,
+    "earned": 1265,
+    "months": [
+      {
+        "month": "2026-06",
+        "spent": 210,
+        "earned": 95
+      },
+      {
+        "month": "2026-07",
+        "spent": 340,
+        "earned": 180
+      },
+      {
+        "month": "2026-08",
+        "spent": 280.5,
+        "earned": 150
+      },
+      {
+        "month": "2026-09",
+        "spent": 390,
+        "earned": 260
+      },
+      {
+        "month": "2026-10",
+        "spent": 420,
+        "earned": 330
+      },
+      {
+        "month": "2026-11",
+        "spent": 200,
+        "earned": 250
+      }
+    ],
+    "claude": {
+      "month": "2026-11",
+      "cost": 38.4
+    },
+    "nextTransfer": {
+      "date": "2026-12-01",
+      "amount": 150
+    }
+  },
+  "reach": {
+    "asOf": "2026-11-16T12:00:00Z",
+    "visits": {
+      "week": 412,
+      "prev": 388,
+      "days": [
+        41,
+        52,
+        48,
+        61,
+        57,
+        70,
+        59,
+        44,
+        55,
+        63,
+        58,
+        66,
+        72,
+        54
+      ]
+    },
+    "buyClicks": {
+      "week": 23,
+      "prev": 27,
+      "days": [
+        2,
+        4,
+        3,
+        5,
+        4,
+        6,
+        3,
+        2,
+        3,
+        4,
+        3,
+        5,
+        4,
+        2
+      ]
+    },
+    "subscribers": 187,
+    "subscribersAsOf": "2026-11-16",
+    "scans": [
+      {
+        "school": "Maple Grove Elementary",
+        "count": 14
+      },
+      {
+        "school": "Lakeview School",
+        "count": 9
+      },
+      {
+        "school": "Río Niño Academy",
+        "count": 6
+      }
+    ]
+  }
+}

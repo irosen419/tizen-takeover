@@ -16,6 +16,9 @@
  *   ./hub layout show                the home-screen tile layout
  *   ./hub layout set <file.json|->   a new layout (a list of tiles, or { layout: [...] })
  *   ./hub layout reset               back to the layout in app/config.js
+ *   ./hub awws show                  the A World Worth Saving snapshot: when sent, size, sections
+ *   ./hub awws set <file.json|->     store one (the snapshot, or { snapshot: {...} })
+ *   ./hub awws clear                 remove it; the TV tiles say "Not synced yet"
  *   ./hub spotify status             is Spotify connected, and what is playing
  *   ./hub spotify login              connect Spotify (once): a link to open, then paste the address back
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
@@ -37,10 +40,11 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const awws = require('./awws');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
-const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today'];
+const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach'];
 
 /* ---------- settings ---------- */
 
@@ -405,6 +409,55 @@ async function layout(args) {
   stop('Use one of: layout show, layout set <file.json|->, layout reset. Run ./hub help for examples.');
 }
 
+/* ---------- A World Worth Saving snapshot ---------- */
+
+// The lines for ./hub awws show, from a GET /api/awws answer. Times read the
+// same way as in ./hub calendar status, in the hub's time zone (HUB_TIMEZONE).
+function awwsShowLines(r) {
+  const tz = r && zoneOk(r.tz) ? r.tz : 'America/Chicago';
+  return awws.summaryLines(r && r.data, { when: (ms) => when(ms, tz) });
+}
+
+function readAwwsFile(name) {
+  let text;
+  try {
+    text = name === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(name, 'utf8');
+  } catch (e) {
+    stop(name === '-' ? 'Could not read the snapshot from standard input.' : 'Could not read ' + name + ' (' + (e.code || e.message) + ').');
+  }
+  let data;
+  try { data = JSON.parse(text); } catch (e) { stop((name === '-' ? 'The input' : name) + ' is not valid JSON.'); }
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  if (isObj(data) && own(data, 'snapshot') && !own(data, 'v')) data = data.snapshot;
+  if (!isObj(data)) {
+    stop('The file must hold one snapshot, like {"v": 1, "sentAt": "2026-11-16T15:10:00Z", "todos": {...}}, or {"snapshot": {...}}. To remove it, use ./hub awws clear.');
+  }
+  return data;
+}
+
+async function awwsCommand(args) {
+  const sub = args[0];
+  if (sub === 'show') {
+    const r = await call('GET', '/api/awws');
+    awwsShowLines(r).forEach(say);
+    return;
+  }
+  if (sub === 'set') {
+    const name = args[1];
+    if (!name) stop('Say which file holds the snapshot, or - to read it from standard input. For example: ./hub awws set snapshot.json');
+    const r = await call('POST', '/api/awws', { snapshot: readAwwsFile(name) });
+    say(awws.setText(r));
+    return;
+  }
+  if (sub === 'clear') {
+    const r = await call('POST', '/api/awws', { snapshot: null });
+    say(awws.clearText(r));
+    return;
+  }
+  stop('Use one of: awws show, awws set <file.json|->, awws clear. Run ./hub help for examples.');
+}
+
 /* ---------- Spotify ---------- */
 
 const SPOTIFY_SETUP = 'Spotify is not set up yet: add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to pi/.env, then restart the server (docker compose restart hub). See "Spotify" in pi/README.md.';
@@ -607,7 +660,9 @@ async function mailbox(args) {
 
 const HELP = [
   'Home Hub commands (run from the pi folder):',
-  '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying or today (the clock)',
+  '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying,',
+  '                              today (the clock), awws, awws-visits, awws-agenda, awws-todo',
+  '                              or awws-reach',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
@@ -621,6 +676,9 @@ const HELP = [
   '  ./hub layout show           the home-screen tile layout',
   '  ./hub layout set file.json  a new tile layout (a list of tiles; - reads it from input)',
   '  ./hub layout reset          back to the layout in app/config.js',
+  '  ./hub awws show             the A World Worth Saving snapshot: when sent, size, sections',
+  '  ./hub awws set file.json    store a snapshot (- reads it from input; see docs/awws-snapshot.md)',
+  '  ./hub awws clear            remove it; the TV tiles say "Not synced yet"',
   '  ./hub spotify status        is Spotify connected, and what is playing',
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
@@ -658,6 +716,7 @@ async function main(argv) {
   if (cmd === 'todo') return todo(rest);
   if (cmd === 'calendar') return calendar(rest);
   if (cmd === 'layout') return layout(rest);
+  if (cmd === 'awws') return awwsCommand(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
@@ -679,6 +738,7 @@ module.exports = {
   layoutLines: layoutLines,
   layoutSetText: layoutSetText,
   layoutResetText: layoutResetText,
+  awwsShowLines: awwsShowLines,
   statusLines: statusLines,
   mailboxLines: mailboxLines,
   spotifyStatusLines: spotifyStatusLines,

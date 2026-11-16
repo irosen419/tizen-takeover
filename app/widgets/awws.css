@@ -1,0 +1,932 @@
+/* A World Worth Saving tiles. Every class starts with aw-.
+
+   Same rules as style.css: no grid, no flex gap, nothing animates, focus
+   changes are instant. Every line that can be cut has a line-height of 1.25
+   or more, so accents (Í, Á, Ñ) and descenders stay whole. Numbers never
+   wrap. Text marked .aw-cut is a title that may end in "…"; every other
+   label is fitted by the JS (short forms, fewer rows) so it never clips.
+   Sizes: nothing under 0.85rem on a tile or 1rem in a panel. */
+
+.aw-tile,
+.aw-panel {
+  --aw-warn: #ffb36b;
+  --aw-hair: rgba(255, 255, 255, 0.12);
+}
+
+.aw-cut {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aw-sep { color: var(--text-3); }
+
+/* A thin color bar or dot per calendar; a hollow one for a to-do. */
+.aw-bar {
+  display: block;
+  flex: 0 0 auto;
+  width: 0.24rem;
+  border-radius: 0.12rem;
+  align-self: stretch;
+  margin-right: 0.7rem;
+}
+.aw-bar.is-todo { background: transparent; border: 0.08rem solid var(--text-3); }
+.aw-dot {
+  display: inline-block;
+  vertical-align: middle;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  margin: 0 0.22rem 0 0;
+}
+.aw-dot.is-todo { background: transparent; border: 0.12rem solid var(--text-2); }
+
+/* ---------- tile ---------- */
+
+.aw-tile {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: 0.35rem;
+}
+
+/* The hero: one big light number (or word) and its quiet caption. */
+.aw-hero {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  min-width: 0;
+}
+.aw-hero-num {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin-right: 0.6rem;
+  font-size: 4.4rem;
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-hero-num.is-word { font-size: 2.9rem; letter-spacing: -0.01em; }
+.aw-hero-cap {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.aw-hero.is-dash .aw-hero-num { font-size: 4.8rem; }
+.aw-hero.is-dash .aw-hero-num.is-word { font-size: 3.2rem; }
+
+.aw-lead {
+  flex: 0 0 auto;
+  font-size: 1.15rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.aw-lead.is-small { font-size: 1rem; }
+.aw-lead.is-quiet { color: var(--text-2); }
+/* Two lines at most, cut at the end of the second. */
+.aw-two {
+  overflow: hidden;
+  max-height: 2.7em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.aw-when {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-meta {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-late-count { color: var(--aw-warn); }
+
+/* Housekeeping at the bottom: the quietest line. */
+.aw-foot {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-foot.is-warn { color: var(--aw-warn); }
+.aw-quiet {
+  flex: 0 0 auto;
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.aw-empty {
+  flex: 0 0 auto;
+  margin-top: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 300;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+
+/* A small letter-spaced label over a list. */
+.aw-label {
+  flex: 0 0 auto;
+  margin-top: 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+
+/* Lists: the JS adds rows while they fit; a list only shrinks. */
+.aw-sect {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.aw-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin-top: 0.3rem;
+  border-top: 0.06rem solid var(--aw-hair);
+}
+.aw-more {
+  flex: 0 0 auto;
+  padding-top: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+
+/* Event rows: color bar, "when" over the title. */
+.aw-erow {
+  display: flex;
+  align-items: stretch;
+  padding: 0.4rem 0 0.35rem;
+  border-bottom: 0.06rem solid var(--aw-hair);
+}
+.aw-erow-text { flex: 1 1 auto; min-width: 0; }
+.aw-erow-when {
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-erow.is-now .aw-erow-when { color: var(--text); font-weight: 600; }
+.aw-erow-title { font-size: 1rem; line-height: 1.35; color: var(--text); }
+/* One line each: "when" in a column, then the title (the big dashboard). */
+.aw-erow.is-line .aw-erow-text { display: flex; align-items: baseline; }
+.aw-erow.is-line .aw-erow-when { flex: 0 0 auto; min-width: 10rem; padding-right: 0.8rem; }
+.aw-erow.is-line .aw-erow-title { flex: 1 1 auto; min-width: 0; }
+
+/* To-do rows: owner chip, title, then due and "waiting on". */
+.aw-trow {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.4rem 0 0.35rem;
+  border-bottom: 0.06rem solid var(--aw-hair);
+}
+.aw-chip {
+  flex: 0 0 auto;
+  margin: 0.08rem 0.6rem 0 0;
+  padding: 0 0.4rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.aw-trow-text { flex: 1 1 auto; min-width: 0; }
+.aw-trow-title { font-size: 1rem; line-height: 1.35; color: var(--text); }
+.aw-trow-meta {
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-meta-part.is-late { color: var(--aw-warn); }
+.aw-meta-part.is-wait { color: var(--text-3); }
+
+/* Compact visit rows: countdown, school, date. */
+.aw-vrow {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0 0.35rem;
+  border-bottom: 0.06rem solid var(--aw-hair);
+}
+.aw-vrow .aw-bar { margin-right: 0.6rem; }
+.aw-vrow-count {
+  flex: 0 0 auto;
+  min-width: 3.4rem;
+  padding-right: 0.6rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.aw-vrow-title { flex: 1 1 auto; min-width: 0; font-size: 1rem; line-height: 1.35; color: var(--text); }
+.aw-vrow-date {
+  flex: 0 0 auto;
+  margin-left: 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* Waiting, setup and trouble: headline, line, faint mark. */
+.aw-msg { position: relative; z-index: 1; padding-top: 0.2rem; }
+.aw-msg-head {
+  flex: 0 0 auto;
+  font-size: 1.3rem;
+  line-height: 1.3;
+  color: var(--text);
+  word-wrap: break-word;
+}
+.aw-msg-line {
+  flex: 0 0 auto;
+  margin-top: 0.4rem;
+  max-width: 92%;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.aw-mark {
+  position: absolute;
+  right: -0.4rem;
+  bottom: -0.4rem;
+  width: 5rem;
+  height: 5rem;
+  opacity: 0.06;
+  color: #fff;
+}
+.aw-mark svg { display: block; width: 100%; height: 100%; }
+.aw-mark.is-solo { position: static; width: 2rem; height: 2rem; margin: auto; opacity: 0.45; }
+.aw-broken { margin-top: 0.6rem; }
+
+/* ---------- one column: only the number ---------- */
+
+.aw-tile.aw-solo {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding-top: 0;
+}
+.aw-solo-num {
+  flex: 0 0 auto;
+  text-align: left;
+  max-width: 100%;
+  font-size: 2.6rem;
+  font-weight: 300;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-solo-num.is-warn { color: var(--aw-warn); }
+.aw-solo-cap {
+  flex: 0 0 auto;
+  text-align: left;
+  max-width: 100%;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ---------- strip: one line ---------- */
+
+.aw-tile.aw-strip {
+  flex: 1 1 auto;
+  flex-direction: row;
+  align-items: center;
+  padding-top: 0;
+}
+.aw-strip-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+.aw-strip-line .aw-bar { height: 1.5rem; align-self: center; }
+.aw-strip-title { flex: 0 1 auto; min-width: 0; color: var(--text); }
+.aw-strip-title.is-quiet { color: var(--text-2); }
+.aw-strip-title.is-late { color: var(--aw-warn); }
+.aw-strip-when {
+  flex: 0 0 auto;
+  margin-right: 0.6rem;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.aw-strip-when.is-now { color: var(--text); font-weight: 600; }
+.aw-strip-title + .aw-strip-when { margin: 0 0 0 0.35rem; }
+.aw-strip-when.is-strong { color: var(--text); font-weight: 600; }
+.aw-strip-extra,
+.aw-strip-quiet {
+  flex: 0 0 auto;
+  margin-left: 0.35rem;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.aw-strip-quiet { margin: 0 0.5rem 0 0; color: var(--text-3); }
+.aw-strip-num {
+  flex: 0 0 auto;
+  margin-right: 0.7rem;
+  font-size: 2.6rem;
+  font-weight: 300;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+}
+.aw-strip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+.aw-strip-text.is-quiet { color: var(--text-2); }
+.aw-strip-stack { flex: 1 1 auto; min-width: 0; }
+.aw-strip-small {
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-strip-small.is-now { color: var(--text); font-weight: 600; }
+.aw-strip-line.is-stack .aw-bar { height: auto; align-self: stretch; }
+.aw-strip-stack .aw-strip-title2.aw-cut { display: block; display: -webkit-box; }
+.aw-strip-title2.aw-cut {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: normal;
+  max-height: 2.8em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-wrap: break-word;
+}
+.aw-strip-title2.is-late { color: var(--aw-warn); }
+.aw-hero.is-strip { flex: 0 1 auto; flex-wrap: nowrap; }
+.aw-hero.is-strip .aw-hero-num { font-size: 2.6rem; margin-right: 0.45rem; }
+.aw-hero.is-strip .aw-hero-num.is-word { font-size: 1.7rem; }
+.aw-hero.is-strip .aw-hero-cap { font-size: 1rem; }
+
+/* ---------- narrow tiles ---------- */
+
+.tile-wn .aw-hero-num { font-size: 3.4rem; }
+.tile-wn .aw-hero-num.is-word { font-size: 2.1rem; }
+.tile-wn .aw-hero-cap { font-size: 1rem; }
+.tile-wn .aw-lead { font-size: 1rem; }
+.tile-h3 .aw-hero-num { font-size: 4.8rem; }
+.tile-h3.tile-wn .aw-hero-num { font-size: 3.6rem; }
+
+/* ---------- wide, two or three rows: two columns ---------- */
+
+.aw-split { flex: 1 1 auto; min-height: 0; display: flex; }
+.aw-split-a,
+.aw-split-b {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.aw-split-a { padding-right: 1.2rem; }
+.aw-split-b { padding-left: 1.2rem; border-left: 0.06rem solid var(--aw-hair); }
+.aw-split-b > .aw-sect:first-child > .aw-label { margin-top: 0.3rem; }
+
+/* ---------- This week: seven day columns ---------- */
+
+.aw-wk { flex: 1 1 auto; min-height: 0; display: flex; margin-top: 0.4rem; }
+.aw-wd {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 0.35rem;
+  border-left: 0.06rem solid var(--aw-hair);
+}
+.aw-wd:first-child { border-left: 0; padding-left: 0; }
+.aw-wd-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  padding-bottom: 0.15rem;
+  border-bottom: 0.16rem solid transparent;
+}
+.aw-wd-dow {
+  margin-right: 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.aw-wd-num { font-size: 1.35rem; line-height: 1.3; color: var(--text-2); white-space: nowrap; }
+.aw-wd.is-today .aw-wd-head { border-bottom-color: var(--text); }
+.aw-wd.is-today .aw-wd-dow,
+.aw-wd.is-today .aw-wd-num { color: var(--text); }
+.aw-wd.is-today .aw-wd-num { font-weight: 600; }
+.aw-dots {
+  flex: 0 0 auto;
+  height: 0.85rem;
+  margin-top: 0.35rem;
+  line-height: 0.85rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-wd-list { flex: 0 1 auto; min-height: 0; overflow: hidden; margin-top: 0.2rem; }
+.aw-wd-item {
+  padding: 0.1rem 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+/* A day's title may take two lines; the cut falls between lines. */
+.aw-wd-item.aw-cut {
+  white-space: normal;
+  max-height: 2.9em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-wrap: break-word;
+}
+.aw-wd-item.is-now { color: var(--text); font-weight: 600; }
+.aw-wd-more { flex: 0 0 auto; font-size: 0.85rem; line-height: 1.35; color: var(--text-3); }
+
+/* The small week in the dashboard: weekday over the day, dots below. */
+.aw-wk.is-mini { flex: 0 0 auto; margin-top: 0.5rem; }
+.aw-wk.is-mini .aw-wd { border-left: 0; padding: 0; align-items: center; text-align: center; }
+.aw-wk.is-mini .aw-wd-head { flex-direction: column; align-items: center; }
+.aw-wk.is-mini .aw-wd-dow { margin-right: 0; }
+.aw-wk.is-mini .aw-dots { text-align: center; }
+.aw-wk.is-mini .aw-dot { margin: 0 0.1rem; }
+
+/* ---------- the one-screen dashboard ---------- */
+
+.aw-tile.aw-dash { padding-top: 0.2rem; }
+.aw-drow { flex: 1 1 0; min-height: 0; display: flex; }
+.aw-drow.is-bottom { border-top: 0.06rem solid var(--aw-hair); }
+.aw-q {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0.3rem 1.2rem 0.6rem 0;
+}
+.aw-q + .aw-q { padding: 0.3rem 0 0.6rem 1.2rem; border-left: 0.06rem solid var(--aw-hair); }
+.aw-drow.is-bottom .aw-q { padding-top: 0.8rem; }
+.aw-q > .aw-label:first-child { margin-top: 0; }
+.aw-q .aw-msg-head { margin-top: 0.5rem; }
+
+/* One-line figures: label, then the figure. */
+.aw-figs { flex: 0 1 auto; min-height: 0; overflow: hidden; margin-top: 0.3rem; border-top: 0.06rem solid var(--aw-hair); }
+.aw-fig {
+  display: flex;
+  align-items: baseline;
+  padding: 0.45rem 0 0.4rem;
+  border-bottom: 0.06rem solid var(--aw-hair);
+}
+.aw-fig-label {
+  flex: 0 0 auto;
+  width: 7rem;
+  padding-right: 0.8rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.aw-fig-value { flex: 1 1 auto; min-width: 0; }
+.aw-fig-text {
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-fig.is-missing .aw-fig-text { color: var(--text-3); }
+.aw-fig-track {
+  height: 0.3rem;
+  margin: 0.3rem 0 0.15rem;
+  border-radius: 0.15rem;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.aw-fig-fill { height: 100%; border-radius: 0.15rem; background: var(--text-2); }
+
+/* A big tile (9 x 5 and up) and full screen: everything a step bigger. */
+.aw-dash.is-big .aw-label { font-size: 1rem; }
+.aw-dash.is-big .aw-hero-num { font-size: 5.6rem; }
+.aw-dash.is-big .aw-hero-num.is-word { font-size: 4.2rem; }
+.aw-dash.is-big .aw-hero-cap { font-size: 1.5rem; }
+.aw-dash.is-big .aw-lead { font-size: 1.5rem; }
+.aw-dash.is-big .aw-when { font-size: 1.15rem; }
+.aw-dash.is-big .aw-erow-when,
+.aw-dash.is-big .aw-trow-meta,
+.aw-dash.is-big .aw-vrow-date,
+.aw-dash.is-big .aw-more,
+.aw-dash.is-big .aw-wd-dow { font-size: 1rem; }
+.aw-dash.is-big .aw-erow-title,
+.aw-dash.is-big .aw-trow-title,
+.aw-dash.is-big .aw-vrow-title,
+.aw-dash.is-big .aw-vrow-count,
+.aw-dash.is-big .aw-fig-text { font-size: 1.2rem; }
+.aw-dash.is-big .aw-fig-label { font-size: 1.1rem; width: 10rem; }
+.aw-dash.is-big .aw-wd-num { font-size: 1.7rem; }
+.aw-dash.is-big .aw-dot { width: 0.7rem; height: 0.7rem; }
+.aw-dash.is-big .aw-dots { height: 1rem; line-height: 1rem; }
+.aw-dash.is-big .aw-chip { font-size: 1rem; }
+.aw-dash.is-big .aw-q { padding-right: 1.8rem; }
+.aw-dash.is-big .aw-q + .aw-q { padding-left: 1.8rem; padding-right: 0; }
+.aw-dash.is-full .aw-q {
+  border-radius: 1.2rem;
+  border: var(--edge) solid transparent;
+  padding: 0.9rem 1.4rem 0.8rem;
+  margin: 0.4rem;
+}
+.aw-dash.is-full .aw-q + .aw-q { padding: 0.9rem 1.4rem 0.8rem; border-left: var(--edge) solid transparent; }
+.aw-dash.is-full .aw-q.is-focused { border-color: var(--focus); background: rgba(255, 255, 255, 0.04); }
+
+/* ---------- panels ---------- */
+
+.aw-panel { position: relative; padding: 0.2rem 0 0.8rem; }
+.aw-panel.is-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0.5rem;
+  right: 0.5rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.aw-panel .aw-label { font-size: 1rem; }
+.aw-panel .aw-more,
+.aw-panel .aw-chip,
+.aw-panel .aw-trow-meta { font-size: 1rem; }
+.aw-panel .aw-trow { border-bottom: 0; }
+.aw-panel .aw-trow-title { font-size: 1.15rem; }
+.aw-pnote {
+  padding: 0.7rem 0.9rem 0;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.aw-pnote.is-warn { color: var(--aw-warn); }
+
+/* Every focusable row: the same white ring and lighter fill as the hub's. */
+.aw-lrow,
+.aw-vpanel,
+.aw-arow,
+.aw-prow,
+.aw-rsec {
+  border-radius: 0.7rem;
+  border: var(--edge) solid transparent;
+  margin: 0.1rem 0;
+  cursor: pointer;
+}
+.aw-lrow.is-focused,
+.aw-vpanel.is-focused,
+.aw-arow.is-focused,
+.aw-prow.is-focused,
+.aw-rsec.is-focused { background: var(--card-2); border-color: var(--focus); }
+.aw-lrow.is-pressed,
+.aw-vpanel.is-pressed,
+.aw-arow.is-pressed,
+.aw-prow.is-pressed,
+.aw-rsec.is-pressed { opacity: 0.75; }
+
+.aw-pmsg { position: relative; z-index: 1; max-width: 34rem; padding-top: 0.6rem; }
+.aw-pmsg-head { font-size: 1.5rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+.aw-pmsg-line { margin-top: 0.7rem; font-size: 1rem; line-height: 1.45; color: var(--text-2); word-wrap: break-word; }
+.aw-mark.is-panel { position: absolute; width: 10rem; height: 10rem; right: 0; bottom: 0; }
+.aw-panel.is-full .aw-pmsg { max-width: 50rem; }
+.aw-panel.is-full .aw-pmsg-head { font-size: 2rem; }
+.aw-panel.is-full .aw-pmsg-line { font-size: 1.2rem; }
+.aw-panel.is-full .aw-mark.is-panel { width: 18rem; height: 18rem; }
+
+/* The launcher: one row per view, its one-line status beside it. Four views
+   and three Soon rows (Money included) fit the panel without scrolling, so
+   the Soon rows, which take no focus, are never out of sight. */
+.aw-lrow {
+  display: flex;
+  align-items: baseline;
+  padding: 0.42rem 0.9rem;
+}
+.aw-lrow-name {
+  flex: 0 0 auto;
+  width: 12.5rem;
+  padding-right: 1rem;
+  font-size: 1.2rem;
+  line-height: 1.35;
+  color: var(--text);
+  word-wrap: break-word;
+}
+.aw-lrow-status { flex: 1 1 auto; min-width: 0; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); }
+.aw-lrow.is-focused .aw-lrow-status { color: var(--text); }
+.aw-lrow.is-soon { cursor: default; padding-top: 0.26rem; padding-bottom: 0.26rem; }
+.aw-lrow.is-soon .aw-lrow-name { color: var(--text-3); font-size: 1.1rem; }
+.aw-lrow.is-soon .aw-lrow-status { color: var(--text-3); font-size: 1rem; }
+.aw-lrow-soon {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0 0.6rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.16);
+  border-radius: 1rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.aw-lrow-status + .aw-lrow-soon { margin-left: 0.8rem; }
+.aw-ldiv { height: 0; margin: 0.4rem 0.9rem 0.3rem; border-top: 0.06rem solid var(--aw-hair); }
+
+/* Next visit: every booked visit. */
+.aw-vpanel {
+  display: flex;
+  align-items: stretch;
+  padding: 0.65rem 0.9rem 0.6rem;
+}
+.aw-vpanel .aw-bar { margin-right: 0.9rem; }
+.aw-vpanel-count {
+  flex: 0 0 auto;
+  min-width: 7.5rem;
+  padding-right: 0.9rem;
+  font-size: 1.5rem;
+  font-weight: 300;
+  line-height: 1.3;
+  color: var(--text);
+  white-space: nowrap;
+}
+.aw-vpanel-count.is-first { font-weight: 400; }
+.aw-vpanel-text { flex: 1 1 auto; min-width: 0; }
+.aw-vpanel-title { font-size: 1.2rem; line-height: 1.35; color: var(--text); }
+.aw-vpanel-when {
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-vpanel-place { font-size: 1rem; line-height: 1.35; color: var(--text-3); }
+.aw-vlist.is-cols .aw-vpanel {
+  display: inline-flex;
+  vertical-align: top;
+  width: 49%;
+  margin-right: 1%;
+}
+.aw-panel.is-full .aw-vpanel-count { font-size: 2rem; min-width: 9.5rem; }
+.aw-panel.is-full .aw-vpanel-title { font-size: 1.45rem; }
+.aw-panel.is-full .aw-vpanel-when,
+.aw-panel.is-full .aw-vpanel-place { font-size: 1.15rem; }
+
+/* This week: days with their rows. */
+.aw-aday { padding-top: 0.5rem; }
+.aw-aday-head { padding: 0 1rem 0.2rem; white-space: nowrap; overflow: hidden; }
+.aw-aday-rel { margin-right: 0.6rem; font-size: 1.1rem; line-height: 1.35; font-weight: 600; color: var(--text); }
+.aw-aday-date { font-size: 1rem; line-height: 1.35; color: var(--text-3); }
+.aw-aday-head.is-today .aw-aday-rel { text-decoration: underline; }
+.aw-arow {
+  display: flex;
+  align-items: stretch;
+  padding: 0.45rem 0.9rem 0.4rem;
+}
+.aw-arow-when {
+  flex: 0 0 auto;
+  min-width: 7rem;
+  padding-right: 0.8rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.aw-arow.is-now .aw-arow-when { color: var(--text); font-weight: 600; }
+.aw-arow-text { flex: 1 1 auto; min-width: 0; }
+.aw-arow-title { font-size: 1.1rem; line-height: 1.35; color: var(--text); }
+.aw-arow-sub { font-size: 1rem; line-height: 1.35; color: var(--text-3); }
+.aw-alist.is-cols { display: flex; align-items: flex-start; }
+.aw-acol { flex: 1 1 0; min-width: 0; }
+.aw-alist.is-cols .aw-acol + .aw-acol { margin-left: 1.6rem; }
+.aw-panel.is-full .aw-arow-title { font-size: 1.25rem; }
+.aw-panel.is-full .aw-aday-rel { font-size: 1.25rem; }
+
+/* To-do board: the owner filter, then Now, Next and Later. */
+.aw-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 0.1rem 0.4rem 0.2rem;
+}
+.aw-filter {
+  flex: 0 0 auto;
+  margin: 0 0.4rem 0.3rem 0;
+  padding: 0.25rem 0.9rem;
+  border-radius: 1.4rem;
+  border: 0.1rem solid var(--aw-hair);
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.aw-filter.is-on { background: rgba(255, 255, 255, 0.24); border-color: rgba(255, 255, 255, 0.5); color: var(--text); }
+.aw-filter-hint {
+  flex: 0 0 auto;
+  margin: 0 0 0.3rem auto;
+  padding-left: 0.6rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.aw-bsec { padding-top: 0.5rem; }
+.aw-bsec-head { margin: 0; padding: 0 1rem 0.15rem; }
+.aw-bsec-count { margin-left: 0.6rem; letter-spacing: 0.04em; color: var(--text-2); }
+.aw-bsec-empty { padding: 0.2rem 1rem; font-size: 1rem; line-height: 1.35; color: var(--text-3); }
+.aw-bsec .aw-more { padding: 0.2rem 1rem 0; }
+.aw-prow { padding: 0.45rem 0.9rem 0.4rem; }
+.aw-board.is-full { display: flex; align-items: flex-start; }
+.aw-board-main { flex: 1 1 auto; min-width: 0; }
+.aw-board-side { flex: 0 0 27rem; margin-left: 2.4rem; padding-top: 0.4rem; }
+.aw-board-side .aw-label { margin: 0 0 0.6rem; }
+.aw-brow { display: flex; align-items: center; padding: 0.45rem 0; }
+.aw-brow-label { flex: 0 0 9rem; min-width: 0; padding-right: 0.8rem; font-size: 1.1rem; line-height: 1.35; color: var(--text-2); }
+.aw-brow-track { flex: 1 1 auto; height: 0.7rem; border-radius: 0.35rem; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.aw-brow-fill { display: block; height: 100%; border-radius: 0.35rem; background: var(--text-2); }
+.aw-brow-value {
+  flex: 0 0 auto;
+  min-width: 2.6rem;
+  margin-left: 0.8rem;
+  text-align: right;
+  font-size: 1.2rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+}
+.aw-panel.is-full .aw-trow-title { font-size: 1.25rem; }
+
+/* ---------- Reach ---------- */
+
+/* Under the hero: the change and last week, or the subscribers' last check. */
+.aw-rcmp {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* A second figure: "23 buy clicks · down 4". */
+.aw-rline {
+  flex: 0 0 auto;
+  margin-top: 0.55rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-rline-num { color: var(--text); font-weight: 600; }
+.aw-rquiet { color: var(--text-3); }
+.aw-rchg { white-space: nowrap; }
+/* The small up or down arrow beside the words, in the text's own color. */
+.aw-arrow {
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-right: 0.28em;
+  vertical-align: 0.02em;
+}
+.aw-arrow svg { display: block; width: 100%; height: 100%; }
+
+/* The sparkline: a line and a dot, no axes. The JS draws it to the box. */
+.aw-spark {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0.6rem;
+  overflow: hidden;
+  color: var(--text-2);
+}
+.aw-spark svg { display: block; overflow: visible; }
+.aw-spark-dot { fill: var(--text); }
+.aw-spark.is-fixed { flex: 0 0 auto; height: 3.4rem; }
+.aw-split-b > .aw-rspark-head:first-child { margin-top: 0.3rem; }
+.aw-split-a > .aw-rspark-head { margin-top: 1rem; }
+.aw-split-a > .aw-rspark-head + .aw-spark { margin-top: 0.4rem; }
+.aw-split-b > .aw-rscans:first-child > .aw-label { margin-top: 0.3rem; }
+.aw-reach .aw-hero,
+.aw-reach .aw-rcmp { position: relative; z-index: 1; }
+.aw-split-b > .aw-spark { margin-top: 0.4rem; }
+.aw-rfoot { padding-top: 0.6rem; }
+.aw-rfoot .aw-rline-num { color: var(--text-2); font-weight: 400; }
+
+/* Scans: plain bars, a step smaller on a tile. */
+.aw-rscans { flex: 0 1 auto; }
+.aw-tile .aw-rbars .aw-brow { padding: 0.32rem 0; }
+.aw-tile .aw-rbars .aw-brow-label { flex: 0 1 48%; font-size: 0.9rem; }
+.aw-tile .aw-rbars .aw-brow-track { height: 0.45rem; }
+.aw-tile .aw-rbars .aw-brow-value { min-width: 1.8rem; margin-left: 0.6rem; font-size: 1rem; }
+.aw-tile .aw-rbars { border-top: 0; }
+
+/* A strip: the big number, then its words. */
+.aw-rstrip {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-rstrip .aw-rchg { color: var(--text-2); }
+
+/* The panel: one focusable part per figure. */
+.aw-rsec { padding: 0.6rem 0.9rem 0.7rem; }
+.aw-rsec > .aw-rsec-head { margin-top: 0; }
+.aw-rbig { display: flex; flex-wrap: wrap; align-items: baseline; margin-top: 0.2rem; }
+.aw-rbig-num {
+  margin-right: 0.6rem;
+  font-size: 2.6rem;
+  font-weight: 300;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+}
+.aw-rbig-cap { font-size: 1.15rem; line-height: 1.35; color: var(--text-2); white-space: nowrap; }
+.aw-rsec .aw-rcmp { font-size: 1.05rem; }
+.aw-spark.is-panel { flex: 0 0 auto; height: 4.6rem; margin-top: 0.7rem; }
+.aw-rspark-cap { margin-top: 0.3rem; font-size: 1rem; line-height: 1.35; color: var(--text-3); }
+.aw-rbars { margin-top: 0.3rem; }
+.aw-rpanel.is-cols { display: flex; align-items: flex-start; }
+.aw-rcol { flex: 1 1 0; min-width: 0; }
+.aw-rpanel.is-cols .aw-rcol + .aw-rcol { margin-left: 1.6rem; }
+.aw-panel.is-full .aw-rbig-num { font-size: 3.4rem; }
+.aw-panel.is-full .aw-rbig-cap { font-size: 1.4rem; }
+.aw-panel.is-full .aw-rsec .aw-rcmp { font-size: 1.2rem; }
+.aw-panel.is-full .aw-spark.is-panel { height: 7rem; }
+.aw-panel.is-full .aw-rspark-cap { font-size: 1.1rem; }
+/* Two rows leave room under the hero for one more figure: a step smaller. */
+.tile-h2 .aw-reach .aw-hero-num { font-size: 3.8rem; }
+.tile-h2.tile-wn .aw-reach .aw-hero-num { font-size: 3.4rem; }
+.aw-rnote {
+  flex: 0 0 auto;
+  margin-top: auto;
+  max-width: 72%;
+  position: relative;
+  z-index: 1;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.aw-rpanel .aw-brow-label { flex: 0 1 45%; }

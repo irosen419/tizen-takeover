@@ -87,6 +87,21 @@ var HUB_CONFIG = {
       { widget: 'calendar',      x: 3, y: 4, w: 6, h: 2 },
       { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
       { widget: 'ambiance',      x: 9, y: 4, w: 3, h: 2 }
+    ] },
+    { id: 'awws-desk', name: 'AWWS desk', layout: [
+      { widget: 'awws-visits',   x: 0, y: 0, w: 3, h: 2 },
+      { widget: 'awws-agenda',   x: 3, y: 0, w: 6, h: 2 },
+      { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
+      { widget: 'awws-todo',     x: 0, y: 2, w: 4, h: 4 },
+      { widget: 'calendar',      x: 4, y: 2, w: 5, h: 4 },
+      { widget: 'today',         x: 9, y: 2, w: 3, h: 1 },
+      { widget: 'entertainment', x: 9, y: 3, w: 3, h: 3 }
+    ] },
+    { id: 'awws-one-screen', name: 'AWWS one screen', layout: [
+      { widget: 'awws',          x: 0, y: 0, w: 9, h: 6 },
+      { widget: 'today',         x: 9, y: 0, w: 3, h: 1 },
+      { widget: 'weather',       x: 9, y: 1, w: 3, h: 2 },
+      { widget: 'calendar',      x: 9, y: 3, w: 3, h: 3 }
     ] }
   ],
 
@@ -163,6 +178,29 @@ var HUB_CONFIG = {
      * under the title.
      */
     todo: { sub: 'On this TV' },
+
+    /*
+     * A World Worth Saving: the awws tiles (awws, awws-visits, awws-agenda,
+     * awws-todo, awws-reach, and the placeholders awws-outreach,
+     * awws-pipeline and awws-money). One setting for all of them. Reach is
+     * on no layout yet: place it with the Layout Studio or ./hub layout set.
+     *
+     * calendars: which of the Pi's calendars to use, by the name given in the
+     * Pi's .env (CALENDAR_n_NAME; case and spaces at the ends don't matter).
+     * "visits" feeds Next visit; both lists together feed This week and the
+     * coming dates on the Glance. Everything else comes from the snapshot
+     * described in docs/awws-snapshot.md.
+     *
+     * showMoney: the owner said yes to money figures on the TV on
+     * 2026-11-16. Set it to false to keep them off the TV (for guests, say).
+     */
+    awws: {
+      calendars: {
+        visits: ['School Visits'],
+        awws: ['A World Worth Saving']
+      },
+      showMoney: true
+    },
 
     /*
      * Weather: today on the tile, the next hours and the week in the panel.
