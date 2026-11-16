@@ -160,8 +160,8 @@ function getOk(url) {
 }
 
 /*
- * Starts everything. opts: { at (UTC ms, default MONDAY), snapshot (true =
- * the sample) }. Returns an env with control(), setSnapshot(), feeds, the
+ * Starts everything. opts: { at (UTC ms, default MONDAY), snapshot (false =
+ * none; default the sample), calendars (false = a Pi with no calendars) }. Returns an env with control(), setSnapshot(), feeds, the
  * addresses, newPage() and stop().
  */
 async function start(opts) {
@@ -179,7 +179,7 @@ async function start(opts) {
   env.feeds = await sample.feedServer({ today: () => sample.chicagoToday(env.at) });
   env.dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-awws-'));
   env.pi = await sample.startPi({ at: env.at, port: env.LIVE_PORT, token: TOKEN, origins: [env.PAGE],
-    dataDir: env.dataDir, calendars: env.feeds.calendars });
+    dataDir: env.dataDir, calendars: opts.calendars === false ? [] : env.feeds.calendars });
   env.control = (method, route, body) => control(env, method, route, body);
   env.setSnapshot = async (snap) => {
     const r = await env.control('POST', '/api/awws', { snapshot: snap });
@@ -190,10 +190,12 @@ async function start(opts) {
     env.feeds.setMode(mode);
     await env.control('POST', '/api/calendar/refresh', {});
   };
-  await until(async () => {
-    const d = await env.control('GET', '/api/calendar');
-    return d && JSON.stringify(d).indexOf('Maple Grove') > 0;
-  }, 15000, 'the hub server did not read the sample calendars');
+  if (opts.calendars !== false) {
+    await until(async () => {
+      const d = await env.control('GET', '/api/calendar');
+      return d && JSON.stringify(d).indexOf('Maple Grove') > 0;
+    }, 15000, 'the hub server did not read the sample calendars');
+  }
   if (opts.snapshot !== false) await env.setSnapshot(sample.snapshot());
   await until(() => getOk(env.PAGE + '/'), 10000, 'the preview did not start');
   env.browser = await chromium.launch();

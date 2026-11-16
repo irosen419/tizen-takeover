@@ -12,7 +12,8 @@
  *
  *   --scale 2 --out <folder>   sharper copies (3840x2160) somewhere else
  *   --only <text>              only the shots whose name holds <text>
- *   --clip <folder>            also record the short walk-through as a video
+ *   --clip <folder>            record the short walk-through as a video instead
+ *                              (with --only, the matching pictures too)
  *
  * Needs Playwright and port 8095 free. Prints the files it wrote.
  */

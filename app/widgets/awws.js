@@ -851,7 +851,7 @@
   }
 
   // The agenda: events from both calendar lists and open to-dos with a
-  // dueISO, on their day, from today for `days` days. Ended events are left out.
+  // dueISO, on their day, from today for the given number of days. Ended events are left out.
   // [{ key, day, kind, allDay, s, title, cal, place, now, todo }], sorted.
   function agendaItems(info, b, days) {
     var t = now();
@@ -1711,6 +1711,7 @@
       else sec.list.style.flexShrink = '0';
     }
     trim(root, [when, f]);
+    if (wide) trim(left, [when]);
     if (overH(root) && lead) lead.className += ' is-small';
   }
 

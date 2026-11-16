@@ -18,6 +18,9 @@
  *     feeds.close()
  *   });
  *   sample.snapshot({ today: '2026-11-16', sentAt: '2026-11-16T13:10:00Z' })
+ *
+ * From the command line it prints the snapshot moved to today:
+ *   node dev/awws-sample.js | HUB_TOKEN=... node pi/hubctl.js awws set -
  */
 'use strict';
 
@@ -206,3 +209,12 @@ function startPi(opts) {
 }
 
 module.exports = { feedServer, snapshot, startPi, chicagoToday, MODES, TZ, CALENDARS };
+
+// node dev/awws-sample.js: prints the sample snapshot moved to today, sent a
+// minute ago, for ./hub awws set - (or node pi/hubctl.js awws set -).
+if (require.main === module) {
+  const sent = new Date(Date.now() - 60000).toISOString().replace(/\.\d+Z$/, 'Z');
+  const snap = snapshot({ today: chicagoToday(), sentAt: sent });
+  delete snap.receivedAt;
+  process.stdout.write(JSON.stringify(snap, null, 2) + '\n');
+}
