@@ -943,3 +943,7 @@ body.has-picture {
    (the body may paint into it; the face stays inside the tile). */
 .tile-h1 .tile-body.today-analog { overflow: visible; }
 .tile-h1 .today-analog .today-face { margin: -0.5rem 0; }
+
+/* Entertainment without its sub line: a little air between the title row
+   and the logos (a margin, so the chip fit still measures the body). */
+.cell[data-widget="entertainment"] .tile:not(.tile-h1) .tile-body { margin-top: 0.8rem; }
