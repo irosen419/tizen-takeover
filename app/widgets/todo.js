@@ -1018,6 +1018,14 @@
       panelBody = null;
       flash = null;
       sync.redrawLater = false;
+    },
+
+    // How many items are done (ticked here or arriving from the Pi), for
+    // app/clay.js to notice one more. Read-only.
+    doneCount: function () {
+      var n = 0;
+      for (var i = 0; i < store.items.length; i++) if (store.items[i].done) n++;
+      return n;
     }
   };
 })());

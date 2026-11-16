@@ -16,6 +16,8 @@ Out of the box:
 
 Press OK on a tile to open it in a panel in the middle of the screen; the other tiles slide out of the way. The panel has a **Full screen** button. The tiles sit on a picture of the ocean, frosted like glass.
 
+Now and then, when nobody has touched the remote for a while, Ian and his goldendoodle Ember (clay puppets) wander onto the screen in front of the tiles, do something short and leave: a stroll, a game of fetch, a stolen sock, a nap at night. Any key sends them away at once. See [docs/clay.md](docs/clay.md); `clay: false` in `app/config.js` turns them off.
+
 ## Install on the TV
 
 1. Open TizenBrew and go to **Module Manager**.
@@ -97,7 +99,7 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 ### About this hub (the version and status)
 
-At the bottom of the Clock page, **About this hub** shows the hub version and the TV's browser, then the motion choice, for example `v0.15.0 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)). The lines change by themselves while the page is open.
+At the bottom of the Clock page, **About this hub** shows the hub version and the TV's browser, then the motion choice, for example `v0.16.0 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)). The lines change by themselves while the page is open.
 
 ### Entertainment
 
@@ -317,7 +319,7 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 ## How it works
 
 - `app/index.html` is the loader TizenBrew opens. It runs `update.js`, which moves on to the newest commit's `hub.html` (see [Updating](#updating)).
-- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, then `hub.js`.
+- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, `clay.js`, then `hub.js`.
 - `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
@@ -327,7 +329,8 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
 - `app/backgrounds/` holds the background picture.
 - `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps, calls webhooks and fetches the weather when the page can’t do it directly.
-- `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/clock-test.js` tests the Clock tile and its faces; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating.
+- `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/clock-test.js` tests the Clock tile and its faces; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating; `dev/clay-test.js` tests the clay characters.
 - `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
+- `app/clay.js` brings Ian and Ember on screen now and then (with `app/clay.css`, loaded only when they first come); `app/clay/` holds their sprites and `sprites.js`, the list of them. `art/clay/` holds how they are made (see `art/clay/README.md`), and `docs/clay.md` how the scenes work. `dev/clay-test.js` tests them; `dev/clay-shots.js` films every scene.
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.
