@@ -110,7 +110,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.19.1';
+  var BUILD = 'v0.20.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -1121,6 +1121,7 @@
     { group: 'Wanderers', label: 'Now', value: function () { return clayPart('now'); } },
     { group: 'Wanderers', label: 'Visits', value: function () { return clayPart('visits'); } },
     { group: 'Wanderers', label: 'Last visit', value: function () { return clayPart('last'); } },
+    { group: 'Wanderers', label: 'Drawing', value: function () { return clayPart('drawing'); } },
     { group: 'Wanderers', label: 'Loading', value: function () { return clayPart('loading'); } },
     { group: 'Wanderers', label: 'Last problem', value: function () { return clayPart('problem'); } }
   ];
@@ -2254,7 +2255,7 @@
     try { K[name](); } catch (e) { /* the characters just don't show */ }
   }
 
-  // HUB_CLAY.status() ({ now, visits, last, loading, problem, text }), or null.
+  // HUB_CLAY.status() ({ now, visits, last, drawing, loading, problem, text }), or null.
   function clayStatus() {
     var K = clayApi('status');
     if (!K) return null;

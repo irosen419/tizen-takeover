@@ -17,7 +17,7 @@ Out of the box:
 
 Press OK on a tile to open it in a panel in the middle of the screen; the other tiles slide out of the way. The panel has a **Full screen** button. The tiles sit on a picture of the ocean, frosted like glass.
 
-Now and then, when nobody has touched the remote for a while, Ian and his goldendoodle Ember (clay puppets) wander onto the screen in front of the tiles, do something short and leave: a stroll, a game of fetch, a stolen sock, a nap at night. Any key sends them away at once. See [docs/clay.md](docs/clay.md); `clay: false` in `app/config.js` turns them off.
+Now and then, when nobody has touched the remote for a while, Ian and his goldendoodle Ember (clay puppets) wander onto the screen in front of the tiles, do a little scene of 15 to 45 seconds and leave: a stroll, a game of fetch, a stolen sock, a nap at night. They are drawn smoothly between their stop-motion poses when the TV keeps up, and step as before when it doesn't. Any key sends them away at once. See [docs/clay.md](docs/clay.md); `clay: false` in `app/config.js` turns them off.
 
 ## Install on the TV
 
@@ -104,9 +104,9 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.19.1 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand).
+- **This hub:** **Version** (for example `v0.20.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
-- **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
+- **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
 
 Everything in it changes by itself, once a second, while it is open. It doesn't count as busy: the wanderers keep coming while it is open, behind it. `HUB_TEST.about` (`open()`, `close()`, `isOpen()`, `rows()`) reads it in a laptop browser and in the tests.
 
@@ -360,7 +360,7 @@ It can't leave you worse off:
 - If GitHub can't be reached, the hub opens the last commit that started on this TV. A TV that has never got that far opens the branch, as it always did.
 - If a new commit breaks while starting (its page finished loading but `hub.js` never said it had started), the hub goes back to the last one that did at once, and doesn't try the broken one again for 6 hours.
 - If a new commit is slow (after 15 seconds its page is still waiting for files), the hub gives it more time, looking again every 5 seconds, up to 60 seconds in all. If it still hasn't started, the hub goes back and tries the new one again after 20 minutes.
-- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.19.1 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.18.0 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
+- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.18.2 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.18.0 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
 - Push a fix and the fix is tried straight away: a hold is only ever for the one commit.
 - If jsDelivr doesn't have the new commit yet, the hub stays where it is and tries again at the next check.
 
@@ -373,14 +373,14 @@ The [About panel](#about-panel-the-version-and-status) says how it's going:
 | `(newest)` after the version | GitHub confirmed this is the newest commit of the branch |
 | nothing extra, no Version check row | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
 | Version check: `can't reach GitHub` | GitHub didn't answer, or refused (too many lookups). This is the newest version the TV knows of. It asks again later |
-| Version check: `a newer version didn't start (0.19.1: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
-| Version check: `a newer version didn't start (0.19.1: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.19.1 shows no brackets |
+| Version check: `a newer version didn't start (0.18.2: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
+| Version check: `a newer version didn't start (0.18.2: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.2 shows no brackets |
 | Version check: `a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
 | Version check: `a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
 
 The version on TizenBrew's card for the hub comes from the branch's `package.json` through jsDelivr's cache, so it can lag behind by up to 12 hours. The version in the About panel is the truth.
 
-A few files still come through jsDelivr's 12-hour branch cache: `package.json`, `service.js`, the loader `app/index.html`, and `app/update.js` as the loader uses it. These rarely change. (The shell's copy of `update.js` decides holds too: until it is 0.19.1 or later, and while the commit gone back to is older than 0.19.1, a slow commit is held 6 hours like a broken one, and the notice names it by its short commit id rather than its version.) After changing one of them, purge it at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/<file>` (for example `.../app/update.js`), or wait 12 hours.
+A few files still come through jsDelivr's 12-hour branch cache: `package.json`, `service.js`, the loader `app/index.html`, and `app/update.js` as the loader uses it. These rarely change. (The shell's copy of `update.js` decides holds too: until it is 0.18.2 or later, and while the commit gone back to is older than 0.18.2, a slow commit is held 6 hours like a broken one, and the notice names it by its short commit id rather than its version.) After changing one of them, purge it at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/<file>` (for example `.../app/update.js`), or wait 12 hours.
 
 **Once, to get this version onto the TV:** jsDelivr still has the old `app/index.html`, so purge these four files once, then reopen the hub:
 
