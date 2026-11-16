@@ -224,7 +224,7 @@ async function film(page, scene, opts, dir, extra) {
     n++;
     if (extra && (await extra(page, n))) break;
     await page.evaluate((ms) => window.HUB_TEST.clay.advance(ms), 1000 / FPS);
-    if (n > 900) throw new Error(scene + ' never ended');
+    if (n > 120 * FPS) throw new Error(scene + ' never ended');
   }
   film.beats = beats;
   film.boxes = boxes;

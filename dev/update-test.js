@@ -734,7 +734,7 @@ async function checkTile() {
     });
     assert(tile.status === 0 && !/v0\.|Motion|Updates|Live|Wanderers/.test(tile.text), 'the clock tile shows more than the time: ' + tile.text);
     if (c.visit) {
-      // One visit first, stopped once it plays: the Loading row (load times) shows.
+      // One visit first, stopped once it plays: the Drawing and Loading rows show.
       await until(() => page.evaluate(() => !window.HUB_TEST.busy() && window.HUB_TEST.clay.play('fetch', { seed: 1 })), 4000, 'no visit');
       await until(() => page.evaluate(() => window.HUB_TEST.clay.state().phase === 'playing'), 10000, 'the visit did not play');
       await page.evaluate(() => window.HUB_TEST.clay.stop());
@@ -743,8 +743,9 @@ async function checkTile() {
     assert(/^v0\.20\.0/.test(a.lines[0]), 'version row: ' + a.lines[0]);
     const wand = a.rows.filter((r) => r.group === 'Wanderers').map((r) => r.label + ': ' + r.value);
     if (c.visit) {
-      assert(wand.length === 4 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 1 played · 0 slow · 0 failed' &&
-        /^Last visit: fetch stopped, \d+ s ago$/.test(wand[2]) && /^Loading: sprite list \d+ ms · fetch (\d+)\/\1 frames in \d+ ms$/.test(wand[3]), 'wanderers rows: ' + JSON.stringify(wand));
+      assert(wand.length === 5 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 1 played · 0 slow · 0 failed' &&
+        /^Last visit: fetch stopped, \d+ s ago$/.test(wand[2]) && /^Drawing: (Smooth|Stepped)\b/.test(wand[3]) &&
+        /^Loading: sprite list \d+ ms · fetch (\d+)\/\1 frames in \d+ ms$/.test(wand[4]), 'wanderers rows: ' + JSON.stringify(wand));
     } else {
       assert(wand.length === 2 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 0 played · 0 slow · 0 failed', 'wanderers rows: ' + JSON.stringify(wand));
     }

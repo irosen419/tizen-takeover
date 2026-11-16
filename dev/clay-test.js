@@ -20,7 +20,9 @@
  * from the sprite list drops in), breathing, leaning, MOVE_WITH_POSE and the
  * blend experiment; at the real speed only transform and opacity change;
  * slow frames go stepped and are remembered, no requestAnimationFrame is
- * stepped; every scene's length is in its range. The About panel: its keys,
+ * stepped; every scene's length is in its range; the coming gait art's
+ * shape (6- and 7-picture cycles, lifts, shares, Ian side-on) works and
+ * today's art is unchanged by it. The About panel: its keys,
  * its rows (Drawing too), a long problem that wraps and every row 25 %
  * longer still fitting, and that a visit loads and plays with it open.
  * Needs Playwright and port 8095 free.
@@ -989,7 +991,117 @@ async function checkLengths() {
   }, 8000, 'Ian never walked');
   assert(g.gait.keys.length === 4 && g.gait.stride === 100 && g.shown === g.gait.keys[Math.floor(g.gait.d / 25 + 1e-6) % 4], 'with the longer cycle: ' + JSON.stringify(g.gait) + ' shows ' + g.shown);
   await page.evaluate(() => { window.HUB_TEST.clay.stop(); });
+  // With 8-picture cycles for every gait, every scene still loads 40 or
+  // fewer pictures (fetch and sock-heist leave the carrying cycles out).
+  const eight = await page.evaluate(([plays]) => {
+    const S = window.CLAY_SPRITES;
+    const names = ['ian.walk', 'ian.run', 'ember.trot', 'ember.run', 'ember.ball-trot', 'ember.sock-run'];
+    S.strides = {};
+    for (const n of names) {
+      S.sequences[n] = [];
+      for (let i = 1; i <= 8; i++) {
+        const key = 'test/' + n + '-' + i;
+        S.sprites[key] = Object.assign({}, S.sprites[n.indexOf('ian') === 0 ? 'ian/walk-1' : 'ember/trot-1']);
+        S.sequences[n].push(key);
+      }
+      S.strides[n] = 160;
+    }
+    const out = {};
+    for (const [n, o] of plays) {
+      const d = window.HUB_TEST.clay.dry(n, Object.assign({ seed: 5, dir: 'right' }, o));
+      out[n + (o.outfit ? '-' + o.outfit : o.pose ? '-' + o.pose : o.nap !== undefined ? '-' + o.nap : '')] = { frames: d.frames, gaits: d.gaits };
+    }
+    return out;
+  }, [PLAYS]);
+  const over = Object.keys(eight).filter((k) => eight[k].frames > 40);
+  assert(!over.length, 'over 40 pictures with 8-picture cycles: ' + over.map((k) => k + ' ' + eight[k].frames).join(', '));
+  assert(eight.stroll.gaits['ian.walk'] === 8 && eight.fetch.frames <= 40 && !eight.fetch.gaits['ember.ball-trot'], 'fetch: ' + JSON.stringify(eight.fetch));
+  if (process.env.CLAY_EIGHT) console.log(JSON.stringify(eight));
   noErrors(page);
+}
+
+// The shape of the coming gait art: 6- and 7-picture cycles with their
+// strides, lifts (pictures drawn above the floor, the shadow staying down,
+// and no hand-made bob on top), shares (pictures covering different parts of
+// the stride) and Ian standing side-on to stop out of a walk.
+async function checkGaitArt() {
+  const page = await newHub();
+  await page.evaluate(() => window.HUB_TEST.clay.setSpeed(0));
+  await playing(page, 'shrug', { seed: 1 });
+  await page.evaluate(() => window.HUB_TEST.clay.stop());
+  const plan = await page.evaluate(([plays, L]) => {
+    const S = window.CLAY_SPRITES;
+    const sets = { 'ian.walk': 6, 'ian.run': 6, 'ember.trot': 6, 'ember.run': 7, 'ember.ball-trot': 6, 'ember.sock-run': 7 };
+    S.strides = { 'ian.walk': 86, 'ian.run': 230, 'ember.trot': 90, 'ember.run': 120, 'ember.ball-trot': 90, 'ember.sock-run': 120 };
+    S.lifts = {};
+    for (const n of Object.keys(sets)) {
+      S.sequences[n] = [];
+      for (let i = 1; i <= sets[n]; i++) {
+        const key = 'art/' + n + '-' + i;
+        S.sprites[key] = Object.assign({}, S.sprites[n.indexOf('ian') === 0 ? 'ian/walk-1' : 'ember/trot-1']);
+        S.sequences[n].push(key);
+      }
+    }
+    S.lifts['art/ian.walk-2'] = 6;
+    S.lifts['art/ember.run-1'] = 14;
+    S.lifts['art/ember.run-4'] = 11;
+    S.lifts['art/ian.run-5'] = 12;
+    S.shares = { 'ian.walk': [2, 1, 1, 1, 1, 1], 'ember.trot': [1, 1] };
+    S.sprites['ian/stand-side'] = Object.assign({}, S.sprites['ian/walk-1']);
+    const bad = [];
+    const frames = {};
+    for (const [n, o] of plays) {
+      for (const dir of ['left', 'right']) {
+        const d = window.HUB_TEST.clay.dry(n, Object.assign({ seed: 9, dir: dir }, o));
+        if (!d) { bad.push(n + ' did not build'); continue; }
+        frames[n + (o.outfit ? '-' + o.outfit : o.pose ? '-' + o.pose : o.nap !== undefined ? '-' + o.nap : '')] = { frames: d.frames, seconds: d.seconds, gaits: d.gaits };
+        if (d.frames > 40) bad.push(n + ': ' + d.frames + ' pictures');
+        if (d.seconds < L[n][0] || d.seconds > L[n][1]) bad.push(n + ' ' + dir + ': ' + d.seconds + ' s');
+      }
+    }
+    const stroll = window.HUB_TEST.clay.dry('stroll', { seed: 3, dir: 'right' });
+    return { bad, frames, side: stroll.keys.indexOf('ian/stand-side') >= 0, gaits: stroll.gaits };
+  }, [PLAYS, LENGTHS]);
+  if (process.env.CLAY_EIGHT) console.log(JSON.stringify(plan.frames));
+  assert(!plan.bad.length, plan.bad.slice(0, 6).join('; '));
+  assert(plan.side && plan.gaits['ian.walk'] === 6, 'stroll with the new art: ' + JSON.stringify(plan));
+  await playing(page, 'stroll', { seed: 3, dir: 'right' });
+  const ty = (s) => Number((/translate3d\([-\d.]+px, ?([-\d.]+)px/.exec(s) || [])[1]);
+  let lifted = null;
+  let plain = null;
+  let sharesOk = 0;
+  for (let i = 0; i < 400 && !(lifted && plain && sharesOk > 20); i++) {
+    await page.evaluate(() => window.HUB_TEST.clay.advance(23));
+    const a = (await page.evaluate(() => window.HUB_TEST.clay.actors()))[0];
+    if (!a.gait || a.gait.d === null) continue;
+    assert(!a.gait.bob, 'a gait with lifts kept its bob');
+    const cuts = [0, 2 / 7, 3 / 7, 4 / 7, 5 / 7, 6 / 7];
+    assert(JSON.stringify(a.gait.cuts.map((c) => c.toFixed(4))) === JSON.stringify(cuts.map((c) => c.toFixed(4))), 'cuts: ' + JSON.stringify(a.gait.cuts));
+    const f = ((a.gait.d / 86) + 1e-6) % 1;
+    let k = 5;
+    while (k > 0 && f < cuts[k]) k--;
+    assert(a.shown === a.gait.keys[k], 'by shares, ' + a.gait.d.toFixed(1) + ' px should show ' + a.gait.keys[k] + ', shows ' + a.shown);
+    sharesOk++;
+    const gap = ty(a.shadow) - ty(a.transform);
+    if (a.shown === 'art/ian.walk-2') { lifted = { lift: a.lift, gap: gap }; } else { plain = { lift: a.lift, gap: gap }; }
+  }
+  assert(lifted && plain, 'saw no lifted and plain pictures: ' + JSON.stringify({ lifted, plain }));
+  assert(lifted.lift === 6 && plain.lift === 0 && Math.abs((lifted.gap - plain.gap) - 6) < 0.6,
+    'the lifted picture should be 6 px higher over the same shadow: ' + JSON.stringify({ lifted, plain }));
+  await page.evaluate(() => window.HUB_TEST.clay.stop());
+  // Today's list (no lifts, no shares) keeps the hand-made bob and even spacing.
+  const today = await newHub();
+  await today.evaluate(() => window.HUB_TEST.clay.setSpeed(0));
+  await playing(today, 'stroll', { seed: 3, dir: 'right' });
+  const t = await until(async () => {
+    await today.evaluate(() => window.HUB_TEST.clay.advance(35));
+    const a = (await today.evaluate(() => window.HUB_TEST.clay.actors()))[0];
+    return a.gait && a.gait.d > 30 ? a : false;
+  }, 8000, 'Ian never walked');
+  assert(t.gait.bob && t.gait.cuts === null && t.lift === 0 && t.frame !== 'ian/stand-side', 'today\'s art: ' + JSON.stringify(t.gait) + ' ' + t.lift);
+  await today.evaluate(() => window.HUB_TEST.clay.stop());
+  noErrors(page);
+  noErrors(today);
 }
 
 /* ---------- the About panel (app/hub.js) ---------- */
@@ -1373,6 +1485,7 @@ async function main() {
   await check('22. At the real speed: smooth by requestAnimationFrame, only transform and opacity change; the About panel says so', checkSmoothLive);
   await check('23. Slow frames go stepped and are remembered; no requestAnimationFrame is stepped from the start', checkStepped);
   await check('24. Every scene\'s length is in its range, with 26 pictures or fewer', checkLengths);
+  await check('25. The coming gait art: 6- and 7-picture cycles, lifts over a grounded shadow and no bob, shares, Ian side-on; today\'s art unchanged', checkGaitArt);
 }
 
 main().catch((e) => {

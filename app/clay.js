@@ -62,7 +62,7 @@
   var FLOOR_GAP = 6;           // feet this far above the bottom of the screen
   var EDGE = 140;              // off-screen margin for entering and leaving
   var MAX_PROPS = 3;
-  var MAX_FRAMES = 26;         // no scene uses more pictures than this, so it loads quickly
+  var MAX_FRAMES = 40;         // no scene loads more pictures than this (26 or fewer today; room for longer walk cycles)
 
   // Drawing between ticks (see "drawing" below).
   var MIN_FPS = 20;            // smooth drawing needs at least this many frames a second, else stepped
@@ -496,7 +496,7 @@
   Actor.prototype.walk = function (keys, to, step, every, o) {
     o = o || {};
     return this.add({ op: 'walk', keys: this.use(keys), to: to, step: step, every: every || 1, dys: o.dy,
-      keepFace: !!o.keepFace, ease: o.ease || 'both', stride: o.stride || 0 });
+      keepFace: !!o.keepFace, ease: o.ease || 'both', stride: o.stride || 0, cuts: o.cuts || null });
   };
   // Move along a parabola to (x, y) in `ticks`, peaking `height` px above the straight line.
   Actor.prototype.arc = function (keys, x, y, height, ticks) {
@@ -512,10 +512,38 @@
 
   function keyAt(list, i) { return list[i % list.length]; }
 
-  // A gait's picture after d px: floor(d / stride * pictures), round and round.
-  function gaitFrame(c, d) {
+  // Which picture of a gait shows after d px, round and round. Evenly spaced
+  // by default: floor(d / stride * pictures). With c.cuts (where each picture
+  // starts, as a share of the stride: 0 first, then rising, all under 1) the
+  // pictures can cover different shares of the stride.
+  function gaitIndex(c, d) {
     var n = c.keys.length;
-    return c.keys[Math.floor(d / c.stride * n + 1e-6) % n];
+    if (!c.cuts) return Math.floor(d / c.stride * n + 1e-6) % n;
+    var u = d / c.stride + 1e-6;
+    var f = u - Math.floor(u);
+    var i = n - 1;
+    while (i > 0 && f < c.cuts[i]) i--;
+    return i;
+  }
+
+  function gaitFrame(c, d) { return c.keys[gaitIndex(c, d)]; }
+
+  // Where the picture showing after d px began (for pose-locked moving).
+  function gaitFrameStart(c, d) {
+    var i = gaitIndex(c, d);
+    var u = d / c.stride + 1e-6;
+    var whole = Math.floor(u);
+    // Just after a round ends, gaitIndex already shows picture 0 of the next.
+    var start = c.cuts ? c.cuts[i] : i / c.keys.length;
+    return (whole + start) * c.stride;
+  }
+
+  // How far above the floor line a picture is drawn (CLAY_SPRITES.lifts, for
+  // the flight phases of a run); 0 for most.
+  function liftOf(key) {
+    var L = M && M.lifts;
+    var v = L && key ? L[key] : 0;
+    return typeof v === 'number' && v > 0 ? v : 0;
   }
 
   // A walk's tick lengths, as fractions of its step: the first three ticks
@@ -866,8 +894,7 @@
     }
     if (g && (moveWithPose === null ? MOVE_WITH_POSE : moveWithPose) && !(p >= 1 && g.last)) {
       // Stop-motion: the position moves only when the picture changes.
-      var seg = g.c.stride / g.c.keys.length;
-      x = g.c.x0 + g.c.sign * Math.floor(d / seg + 1e-6) * seg;
+      x = g.c.x0 + g.c.sign * gaitFrameStart(g.c, d);
       y = C.y;
     } else if (C.arc) {
       // Along the real parabola: the tick's share of the arc, p of the way through.
@@ -882,7 +909,10 @@
     var e = (1 - Math.cos(Math.PI * p)) / 2;
     x += P.dx + (C.dx - P.dx) * e;
     y += P.dy + (C.dy - P.dy) * e;
-    var tf = 'translate3d(' + num(x, smooth) + 'px,' + num(y, smooth) + 'px,0)';
+    // A picture in mid-air (a lift in the sprite list) is drawn that much
+    // higher; the shadow below stays on the ground.
+    a.lift = liftOf(f);
+    var tf = 'translate3d(' + num(x, smooth) + 'px,' + num(y - a.lift, smooth) + 'px,0)';
     if (smooth && a.kind !== 'prop') tf += life(a, sc, C, P, dt);
     if (a.scale !== 1) tf += ' scale(' + a.scale + ')';
     if (C.flip) tf += ' scaleX(-1)';
@@ -1446,14 +1476,17 @@
   // list has a longer run cycle (over two pictures), that instead.
   var EMBER_ZOOM = { seq: 'ember.zoomies', longer: 'ember.run', keys: ['ember/zoomies', 'ember/run-1', 'ember/run-2'], step: 50, stride: 150, dy: [-3, -10, -2] };
   // Ember carrying the ball or the sock: a cycle when the list has one, else
-  // the one picture slid along (kept short; see docs/clay.md).
-  var BALL_TROT = { seq: 'ember.ball-trot', keys: ['ember/stand-ball'], step: 18, stride: 72, dy: [0, -6, -3, 0] };
-  var SOCK_RUN = { seq: 'ember.sock-run', keys: ['ember/sock-run'], step: 46, stride: 138, dy: [0, -10, -4] };
+  // the one picture slid along (kept short; see docs/clay.md). Optional:
+  // a scene that would go over MAX_FRAMES with them is built without.
+  var BALL_TROT = { seq: 'ember.ball-trot', keys: ['ember/stand-ball'], step: 18, stride: 72, dy: [0, -6, -3, 0], optional: true };
+  var SOCK_RUN = { seq: 'ember.sock-run', keys: ['ember/sock-run'], step: 46, stride: 138, dy: [0, -10, -4], optional: true };
+  var plainExtras = false;     // while building: leave the optional cycles out
 
   // The sequence a gait takes its pictures from: its own, or (zoomies) a
   // longer cycle of another; null for its own fallback pictures.
   function gaitSeq(g) {
     var Q = M && M.sequences ? M.sequences : {};
+    if (g.optional && plainExtras) return null;
     if (g.seq && Q[g.seq] && Q[g.seq].length) return g.seq;
     if (g.longer && Q[g.longer] && Q[g.longer].length > 2) return g.longer;
     return null;
@@ -1471,10 +1504,51 @@
     return q === g.longer && q === EMBER_RUN.seq ? EMBER_RUN.stride : g.stride;
   }
 
+  // Where each picture of a sequence starts, as a share of its stride, from
+  // CLAY_SPRITES.shares[seq] (each picture's share; they need not add up to
+  // exactly 1, they are scaled to). null for even spacing, and when the list
+  // doesn't match the sequence.
+  function gaitCuts(q, n) {
+    var s = q && M.shares ? M.shares[q] : null;
+    if (!s || !s.length || s.length !== n) return null;
+    var sum = 0;
+    for (var i = 0; i < n; i++) {
+      if (typeof s[i] !== 'number' || !(s[i] > 0)) return null;
+      sum += s[i];
+    }
+    var cuts = [];
+    var at = 0;
+    for (var j = 0; j < n; j++) { cuts.push(at / sum); at += s[j]; }
+    return cuts;
+  }
+
+  // Whether any picture of a gait has a lift: then the pictures carry the
+  // bounce themselves, and the hand-made bob (dy) is left out.
+  function gaitLifts(keys) {
+    for (var i = 0; i < keys.length; i++) if (liftOf(keys[i])) return true;
+    return false;
+  }
+
+  // Ian coming to a stop out of a walk and standing for `ticks`: when the
+  // sprite list has him standing side-on (ian/stand-side), the first two of
+  // those ticks show that, so he doesn't turn to the front mid-stride. The
+  // same length either way.
+  function halt(ian, ticks) {
+    if (M.sprites['ian/stand-side'] && ticks > 2) ian.pose('ian/stand-side', 2).pose('ian/stand', ticks - 2);
+    else ian.pose('ian/stand', ticks);
+    return ian;
+  }
+
   // Walk with a gait to x. o: { step, ease } (see Actor.walk).
   function go(a, gait, to, o) {
     o = o || {};
-    return a.walk(gaitKeys(gait), to, o.step || gait.step, 1, { dy: gait.dy, stride: gaitStride(gait), ease: o.ease });
+    var keys = gaitKeys(gait);
+    return a.walk(keys, to, o.step || gait.step, 1, {
+      dy: gaitLifts(keys) ? null : gait.dy,
+      stride: gaitStride(gait),
+      cuts: gaitCuts(gaitSeq(gait), keys.length),
+      ease: o.ease
+    });
   }
 
   var SCENES = {};
@@ -1491,8 +1565,7 @@
     var duo = S.actor('duo', 'duo', { shadow: 130, mirror: S.dir === 'right' });
     var mid = S.across(S.rand(0.42, 0.54));
     var ex = mid - S.sgn * 112;
-    go(ian.at(S.start, F).face(S.dir), IAN_WALK, mid)
-      .pose('ian/stand', 3)
+    halt(go(ian.at(S.start, F).face(S.dir), IAN_WALK, mid), 3)
       .cycle(['ian/stand-wave', 'ian/stand'], 12, 3)
       .pose('ian/stand-wave', 4)
       .pose('ian/stand', 4)
@@ -1894,7 +1967,9 @@
       .wait(4)
       .face(S.dir)
       .pose('ember/stand-2', 2);
-    go(ember, EMBER_RUN, S.end + S.sgn * 60, { ease: 'in' }).hide();
+    // A quick trot after him (a run cycle too would make this scene the
+    // biggest to load once the cycles are longer).
+    go(ember, EMBER_TROT, S.end + S.sgn * 60, { step: 30, ease: 'in' }).hide();
     // The bowl appears in front of her nose as he puts it down; it fades
     // once they have gone.
     bowl.after('bowl').at(ex + S.sgn * 48, F).fade(0)
@@ -2024,8 +2099,7 @@
     var poof = S.actor('poof', 'prop', { scale: 3 });
     var x = S.across(S.rand(0.3, 0.4));
     var ex = x - S.sgn * 120;
-    go(ian.at(S.start, F).face(S.dir), IAN_WALK, x)
-      .pose('ian/stand', 5)
+    halt(go(ian.at(S.start, F).face(S.dir), IAN_WALK, x), 5)
       .signal('dress')
       .pose('ian/stand', 1)
       .cycle([key], 40, 1, IAN_WEATHER[kind])
@@ -2093,7 +2167,19 @@
   };
 
   // { actors, night, W, H, k }, or null when the scene doesn't fit here.
+  // A scene too big with the optional cycles (BALL_TROT, SOCK_RUN) is built
+  // again without them.
   function build(name, o) {
+    try {
+      return buildOnce(name, o);
+    } catch (e) {
+      if (!e.tooBig) throw e;
+      plainExtras = true;
+      try { return buildOnce(name, o); } finally { plainExtras = false; }
+    }
+  }
+
+  function buildOnce(name, o) {
     var fn = SCENES[name];
     if (!fn) throw new Error('no scene ' + name);
     var rnd = makeRandom(o.seed);
@@ -2103,7 +2189,11 @@
     for (var i = 0; i < S.actors.length; i++) if (S.actors[i].kind === 'prop') props++;
     if (props > MAX_PROPS) throw new Error(name + ' has more than ' + MAX_PROPS + ' props');
     var frames = frameKeys(S.actors).length;
-    if (frames > MAX_FRAMES) throw new Error(name + ' uses ' + frames + ' pictures, over ' + MAX_FRAMES);
+    if (frames > MAX_FRAMES) {
+      var big = new Error(name + ' uses ' + frames + ' pictures, over ' + MAX_FRAMES);
+      big.tooBig = true;
+      throw big;
+    }
     return { actors: S.actors, night: !!S.night || name === 'night', W: S.W, H: S.H, k: S.k };
   }
 
@@ -2344,7 +2434,9 @@
         var P = a.prev || C;
         out.push({ name: a.name, frame: C.frame || null, shown: a.shown || null, x: C.x + C.dx, y: C.y + C.dy,
           px: P.x + P.dx, py: P.y + P.dy, jumped: a.jumpTick === scene.tick, walking: !!C.gaitAt, arc: !!C.arc,
-          gait: C.gaitAt ? { keys: C.gaitAt.c.keys, stride: C.gaitAt.c.stride, d: a.drawD, d0: C.gaitAt.d0, d1: C.gaitAt.d1 } : null,
+          gait: C.gaitAt ? { keys: C.gaitAt.c.keys, stride: C.gaitAt.c.stride, cuts: C.gaitAt.c.cuts, bob: !!C.gaitAt.c.dys,
+            d: a.drawD, d0: C.gaitAt.d0, d1: C.gaitAt.d1 } : null,
+          lift: a.lift || 0,
           opacities: (function () {
             var o = {};
             for (var key in a.imgs || {}) if (a.imgs.hasOwnProperty(key) && a.imgs[key].style.opacity && a.imgs[key].style.opacity !== '0') o[key] = a.imgs[key].style.opacity;
