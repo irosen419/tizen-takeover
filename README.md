@@ -315,5 +315,6 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps, calls webhooks and fetches the weather when the page can’t do it directly.
 - `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating.
 - `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
+- `app/clay/` holds clay sprites of Ian and Ember for the hub to animate; the hub doesn't use them yet. `art/clay/` holds how they are made (see `art/clay/README.md`).
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.

@@ -2,3 +2,5 @@ pi/.env
 pi/data/
 dev/.live-data/
 node_modules/
+art/clay/cut/
+__pycache__/
