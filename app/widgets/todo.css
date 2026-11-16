@@ -134,6 +134,20 @@
   color: var(--text);
   word-wrap: break-word;
 }
+/* Notes under a title: smaller and quieter, only when an item has notes.
+   One line on the tile, cut between lines like the title. */
+.todo-tile-notes {
+  margin-top: 0.1rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  max-height: 1.4em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
 .todo-flag {
   margin-top: 0.15rem;
   font-size: 0.7rem;
@@ -316,6 +330,22 @@
   color: var(--text);
   word-wrap: break-word;
 }
+/* Notes in the panel: up to three lines (four in full screen), wrapped, then
+   cut between lines with "..." where the engine can. */
+.todo-notes {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  max-height: 4.2em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.todo-row.is-done .todo-notes { color: var(--text-3); }
 .todo-due {
   display: block;
   margin-top: 0.2rem;
@@ -516,6 +546,7 @@
 .panel.is-full .todo-title { font-size: 1.3rem; }
 .panel.is-full .todo-main .todo-tick { width: 1.35rem; height: 1.35rem; margin-top: 0.2rem; }
 .panel.is-full .todo-due { font-size: 0.85rem; margin-top: 0.25rem; }
+.panel.is-full .todo-notes { font-size: 1rem; margin-top: 0.2rem; max-height: 5.6em; -webkit-line-clamp: 4; }
 .panel.is-full .todo-acts { padding-bottom: 0.6rem; }
 .panel.is-full .todo-act,
 .panel.is-full .todo-act-slot { width: 2.6rem; height: 2.6rem; }

@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.2.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.3.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -74,6 +74,16 @@ Turn the TV on with Home Hub open (it needs to know the Pi's address; that is se
 If the TV is off you will see `Sent, but no screen is listening`. That is normal: commands are only for a screen that is on right now. To-dos are kept and show up when the TV turns on.
 
 Run `./hub help` for every command.
+
+### To-do notes
+
+A to-do can carry notes, plain text up to 300 characters. The TV shows them under the title, in smaller gray text, and shows nothing extra for an item without notes.
+
+- `./hub todo add "Buy milk" --notes "Oat, not dairy"` adds an item with notes. The terminal says `Added "Buy milk" to Now, with notes.`
+- `./hub todo notes "Buy milk" "Oat, not dairy"` sets or changes the notes of an item (by id or exact title); `./hub todo notes "Buy milk" --clear` removes them.
+- `./hub todo list` prints each item's notes on the line under it.
+
+This needs server 0.3.0. After pulling it: `git pull`, then `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.3.0`. Nothing changes in `.env`, and the TV needs nothing: it picks up its part by itself. An older server keeps notes it is sent through `todo/ops` but ignores `--notes` on `todo add`.
 
 ## Tile layout
 
@@ -103,9 +113,9 @@ This adds one new file, `awws.js`, next to `server.js`. Docker uses this folder 
 
 1. `cd tizen-takeover && git pull && cd pi`
 2. With Docker: `docker compose restart hub`. With systemd: `sudo systemctl restart home-hub`.
-3. `./hub status` should say `version 0.2.0`, and `./hub awws show` should say `No A World Worth Saving snapshot yet.` If it says `The server said no: no such call.` instead, the server is still running the old code: do step 2 again.
+3. `./hub status` should say `version 0.2.0` (or newer), and `./hub awws show` should say `No A World Worth Saving snapshot yet.` If it says `The server said no: no such call.` instead, the server is still running the old code: do step 2 again.
 
-From the cloud, a mailbox `ping` answers `Home Hub live server 0.2.0 is running.` once this is in place.
+From the cloud, a mailbox `ping` answers `Home Hub live server 0.2.0 is running.` (or a newer version) once this is in place.
 
 ## Calendars
 
@@ -314,7 +324,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.2.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.3.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

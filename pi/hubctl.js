@@ -7,8 +7,9 @@
  *   ./hub home                       close whatever is open
  *   ./hub say "Dinner in 10" [--seconds 8]
  *   ./hub reload                     load the hub afresh
- *   ./hub todo add "Buy milk" [--section now|next|waiting] [--due 2026-12-24]
+ *   ./hub todo add "Buy milk" [--section now|next|waiting] [--due 2026-12-24] [--notes "Oat, not dairy"]
  *   ./hub todo list
+ *   ./hub todo notes <id or exact title> "Oat, not dairy"   (or --clear)
  *   ./hub todo done <id or exact title>
  *   ./hub todo remove <id or exact title>
  *   ./hub calendar status            each calendar, and the next event
@@ -211,7 +212,8 @@ function matchItem(items, what) {
 const SECTION_NAMES = { now: 'Now', next: 'Next', waiting: 'Waiting on' };
 
 function todoAddText(r) {
-  return 'Added "' + r.item.title + '" to ' + SECTION_NAMES[r.item.section] + (r.item.due ? ', due ' + r.item.due : '') + '.';
+  return 'Added "' + r.item.title + '" to ' + SECTION_NAMES[r.item.section] + (r.item.due ? ', due ' + r.item.due : '') +
+    (r.item.notes ? ', with notes' : '') + '.';
 }
 
 function todoListLines(items) {
@@ -221,7 +223,10 @@ function todoListLines(items) {
     const inSec = items.filter((i) => i.section === sec);
     if (!inSec.length) return;
     out.push(SECTION_NAMES[sec] + ':');
-    inSec.forEach((i) => out.push('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (i.due ? ' (due ' + i.due + ')' : '') + '   id ' + i.id));
+    inSec.forEach((i) => {
+      out.push('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (i.due ? ' (due ' + i.due + ')' : '') + '   id ' + i.id);
+      if (i.notes) out.push('      notes: ' + i.notes);
+    });
   });
   return out;
 }
@@ -230,16 +235,29 @@ function todoChangeText(sub, item) {
   return (sub === 'done' ? 'Ticked "' : 'Removed "') + item.title + '".';
 }
 
+// item is the item after the change (from the server's answer).
+function todoNotesText(item) {
+  return item.notes ? 'Notes on "' + item.title + '": ' + item.notes : 'Removed the notes from "' + item.title + '".';
+}
+
+// Sets (or, with empty notes, removes) the notes of one item. Returns the
+// item as the server now holds it.
+async function setNotes(callFn, item, notes) {
+  const r = await callFn('POST', '/api/todo/ops', { ops: [{ op: 'set', id: item.id, fields: { notes: notes || null } }] });
+  return (r.items || []).find((i) => i.id === item.id) || item;
+}
+
 async function todo(args) {
   const sub = args[0];
   const rest = args.slice(1);
   if (sub === 'add') {
-    const a = parseArgs(rest, ['section', 'due']);
+    const a = parseArgs(rest, ['section', 'due', 'notes']);
     const title = a.words.join(' ').trim();
     if (!title) stop('Say what to add, for example: ./hub todo add "Buy milk"');
     const body = { title: title };
     if (a.opts.section) body.section = a.opts.section;
     if (a.opts.due) body.due = a.opts.due;
+    if (a.opts.notes) body.notes = a.opts.notes;
     const r = await call('POST', '/api/todo', body);
     say(todoAddText(r));
     return;
@@ -260,7 +278,18 @@ async function todo(args) {
     say(todoChangeText(sub, item));
     return;
   }
-  stop('Use one of: todo add, todo list, todo done, todo remove. Run ./hub help for examples.');
+  if (sub === 'notes') {
+    const a = parseArgs(rest, []);
+    const what = (a.words[0] || '').trim();
+    const notes = a.words.slice(1).join(' ').trim();
+    if (!what || (!notes && !a.opts.clear)) {
+      stop('Say which to-do and the notes, for example: ./hub todo notes "Buy milk" "Oat, not dairy" (or --clear to remove them).');
+    }
+    const item = await findItem(what);
+    say(todoNotesText(await setNotes(call, item, a.opts.clear ? '' : notes)));
+    return;
+  }
+  stop('Use one of: todo add, todo list, todo notes, todo done, todo remove. Run ./hub help for examples.');
 }
 
 /* ---------- calendar ---------- */
@@ -692,7 +721,9 @@ const HELP = [
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
   '  ./hub reload                load the hub afresh',
   '  ./hub todo add "Buy milk"   add a to-do (add --section next, --due 2026-12-24)',
-  '  ./hub todo list             show the to-do list with ids',
+  '  ./hub todo list             show the to-do list with ids and notes',
+  '  ./hub todo add "Buy milk" --notes "Oat, not dairy"   a to-do with notes (up to 300 characters)',
+  '  ./hub todo notes "Buy milk" "Oat, not dairy"   set the notes of a to-do (--clear removes them)',
   '  ./hub todo done "Buy milk"  tick a to-do, by id or exact title',
   '  ./hub todo remove "Buy milk"',
   '  ./hub calendar status       each calendar, and the next event',
@@ -757,6 +788,8 @@ module.exports = {
   todoAddText: todoAddText,
   todoListLines: todoListLines,
   todoChangeText: todoChangeText,
+  todoNotesText: todoNotesText,
+  setNotes: setNotes,
   calendarStatusLines: calendarStatusLines,
   calendarRefreshLines: calendarRefreshLines,
   layoutLines: layoutLines,

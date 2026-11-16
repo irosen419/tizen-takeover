@@ -161,6 +161,8 @@ A USB or Bluetooth keyboard plugged into the TV works too: with the box focused,
 
 Full screen shows Now on the left and the rest on the right.
 
+**Notes:** an item can carry notes (up to 300 characters), such as "Oat milk, not dairy". They show under its title in smaller gray text: one line on the tile, up to three in the panel and four in full screen, cut with "..." if longer. An item without notes shows nothing extra. Notes are added from the Pi or by Claude (`./hub todo add "Buy milk" --notes "Oat, not dairy"`, `./hub todo notes "Buy milk" "..."`, or the mailbox's `todo.add` with `notes` and `todo.notes`), not from the remote. Ticking, moving or removing an item on the TV keeps its notes, and a change to them shows on the TV by itself, with no restart.
+
 The list is saved on the TV itself. With [live updates](#live-updates) on, it is also kept on the Pi and changes go both ways; the line under the title says where the list is: `On this TV` (no Pi), `In sync`, `Saved here, 2 to send` (changed while the Pi was away; sent when it's back) or `Saved here` (the Pi is away, nothing waiting). A warning shows on the tile if something goes wrong:
 
 - **This TV isn't saving the list.** The TV won't let the hub save anything. The list works until the hub closes, then it's gone.
@@ -330,6 +332,8 @@ The preview's hub server also reads four sample calendars from a small local fee
 `node dev/calendar-test.js` checks the calendar's date logic in Node (days in the Pi's zone, all-day ends, midnight crossings, both 2026 clock changes). `node dev/calendar-shots.js` takes the `docs/screenshots/calendar-*` pictures with the clock fixed at Sunday 15 November 2026, 10:40 AM, and checks the keys on the way (needs port 8095 free).
 
 `node dev/live-test.js` runs the checks from the design doc in a headless browser (Playwright): no server, a server that starts late, commands, the to-do list both ways, the TV off then on, the server stopping, refusals and wrong replies, and the same again on the fallback for old browsers. It needs port 8095 free and nothing from the internet. It can't prove the real TV's browser or the home network; the first run on the TV is still a real test.
+
+`node dev/todo-notes-shots.js` checks to-do notes the same way, in English and in Spanish: they show under the title only when an item has them, are cut between lines, never sideways, and survive a tick on the TV. `--out <folder> --scale 2` also writes screenshots.
 
 `node dev/clock-test.js` checks the Clock tile in a headless browser (Playwright): Digital 12-hour and 24-hour, Analog with no digital time, the tile changing at once when the face or clock is picked on the page, the page on Analog without a digital time or the 12/24 choice (and the arrows still fine), the second hand turning once a second from one timer that stops on Digital, and the date window fitting at 13 tile sizes, in English and in Spanish ("SÁB", "MIÉ"). `CLOCK_TEST_SHOTS=<folder>` also saves screenshots and a short clip (needs ffmpeg). It needs port 8095 free.
 
