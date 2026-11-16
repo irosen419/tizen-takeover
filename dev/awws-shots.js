@@ -249,6 +249,20 @@ async function states() {
   });
 }
 
+// Moves along the open switcher to the layout called name, then OK.
+async function pickLayout(page, name) {
+  const names = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.switcher-item'), (n) => n.textContent));
+  const want = names.indexOf(name);
+  if (want < 0) throw new Error('no layout ' + name + ' in ' + names.join(', '));
+  for (let i = 0; i < 8; i++) {
+    const at = names.indexOf(await page.evaluate(() => (document.querySelector('.switcher-item.is-focused') || {}).textContent || ''));
+    if (at === want) break;
+    await H.key(page, at < want ? 'ArrowRight' : 'ArrowLeft');
+    await H.sleep(350);
+  }
+  await H.key(page, 'Enter');
+}
+
 // A walk through: AWWS one screen, the switcher to AWWS desk, the to-do
 // board with a filter, back, the Main layout, the Glance's launcher, Next
 // visit, Back.
@@ -260,14 +274,9 @@ async function clip(dir) {
   await H.focusTile(page, 'awws');
   await slow(600);
   await H.key(page, 'ArrowUp');                       // the switcher drops down
+  await H.until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
   await slow(900);
-  for (let i = 0; i < 6; i++) {
-    const name = await page.evaluate(() => (document.querySelector('.switcher-item.is-focused') || {}).textContent || '');
-    if (name === 'AWWS desk') break;
-    await H.key(page, 'ArrowRight');
-    await slow(350);
-  }
-  await H.key(page, 'Enter');
+  await pickLayout(page, 'AWWS desk');
   await H.until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="awws-todo"]')), 10000, 'AWWS desk did not load');
   await slow(1800);
   await H.openPanel(page, 'awws-todo');
@@ -284,14 +293,9 @@ async function clip(dir) {
   await H.key(page, 'ArrowUp', 2);
   await slow(400);
   await H.key(page, 'ArrowUp');                       // the switcher again
+  await H.until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open again');
   await slow(700);
-  for (let i = 0; i < 6; i++) {
-    const name = await page.evaluate(() => (document.querySelector('.switcher-item.is-focused') || {}).textContent || '');
-    if (name === 'Main') break;
-    await H.key(page, 'ArrowLeft');
-    await slow(300);
-  }
-  await H.key(page, 'Enter');
+  await pickLayout(page, 'Main');
   await H.until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="nowplaying"]')), 10000, 'Main did not load');
   await slow(1500);
   await H.openPanel(page, 'awws');

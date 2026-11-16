@@ -69,7 +69,7 @@ const SPANISH = {
   booked: '{n} reservadas',
   figures: { outreach: 'Bibliotecarias', pipeline: 'Libros', khaya: 'Reescritura', handoffs: 'Traspasos', money: 'Dinero', reach: 'Alcance' },
   spreads: '{done} de {total} páginas dobles',
-  handoffsLine: '{open} abiertos · {blocked} bloqueados',
+  handoffsLine: 'abiertos: {open} · bloqueados: {blocked}',
   bookBlocked: '{title}, {format}',
   waitingOn: 'esperando: {name}',
   bookStage: '{title}: {stage}',
@@ -252,8 +252,13 @@ async function openHub(env, o) {
     storage['homeHub.layout'] = JSON.stringify(o.layout);
     storage['homeHub.layoutChoice'] = JSON.stringify({ id: 'test', piSig: '' });
   }
+  // Once per tab: a reload (a new layout from the switcher) keeps what the hub saved.
   await page.addInitScript((items) => {
-    try { for (const k in items) localStorage.setItem(k, items[k]); } catch (e) { /* ignore */ }
+    try {
+      if (sessionStorage.getItem('awws-test-seeded')) return;
+      sessionStorage.setItem('awws-test-seeded', '1');
+      for (const k in items) localStorage.setItem(k, items[k]);
+    } catch (e) { /* ignore */ }
   }, storage);
   if (o.spanish) await page.addInitScript((s) => { window.HUB_AWWS_STRINGS = s; }, SPANISH);
   if (o.config) await page.addInitScript(o.config);
