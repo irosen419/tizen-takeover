@@ -1,14 +1,25 @@
 /*
- * Clock. The tile shows the time and the date, nothing else. OK opens the
- * Clock page: a digital or an analog face, a 12-hour or 24-hour clock, and
- * "About this hub" at the bottom (the version, the TV's browser, the motion
- * choice, and the live updates and updates lines when they have something
- * to say). The face and the 12/24 choice are remembered on this TV; the
- * 12/24 choice applies to the tile too.
+ * Clock. OK on the tile opens the Clock page: a digital or an analog face,
+ * a 12-hour or 24-hour clock, and "About this hub" at the bottom (the
+ * version, the TV's browser, the motion choice, and the live updates and
+ * updates lines when they have something to say). Both choices are
+ * remembered on this TV, and the tile follows them:
  *
- * Nothing here animates. The page ticks once a second while it is open
- * (the analog hands are turned with an SVG transform attribute); the tile
- * every 15 seconds.
+ *   Digital  the time and the date, nothing else, 12- or 24-hour.
+ *   Analog   only the analog face (the page's own, drawFace), as large as
+ *            the tile allows and centred, with the date in its window:
+ *            "MON 16" when the face is big enough to read it, "16" on a
+ *            small face (a 1x1 or a strip), no window on a tiny one. No
+ *            digital time anywhere. The 12/24 choice doesn't apply, so the
+ *            page hides it (it stays remembered for Digital).
+ *
+ * A change on the page redraws the tile at once (ctx.redrawTile).
+ *
+ * Nothing here animates. The hands are turned with an SVG transform
+ * attribute. The page ticks once a second while it is open; the digital
+ * tile every 15 seconds; the analog tile once a second (one setTimeout
+ * loop just after each whole second, only while that face is on the tile,
+ * stopped whenever the tile is drawn again).
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -17,7 +28,9 @@
   var FACE_KEY = 'homeHub.clock.face';     // 'digital' | 'analog'
   var HOURS_KEY = 'homeHub.clock.hours';   // '12' | '24'
 
-  var els = null;     // the tile's parts
+  var els = null;     // the digital tile's parts, or null
+  var tileFace = null; // the analog tile's face, or null
+  var tileTimer = null;
   var page = null;    // the open page's parts, or null
   var pageTimer = null;
 
@@ -143,30 +156,17 @@
     }
   }
 
-  /* ---------- the page ---------- */
-
-  function option(parent, key, label, selected) {
-    var b = div('clock-opt f' + (selected ? ' is-selected' : ''), parent);
-    b.setAttribute('data-key', key);
-    span('clock-opt-dot', b);
-    span('clock-opt-label', b, label);
-    if (selected) b.setAttribute('data-autofocus', '');
-    return b;
-  }
-
-  function group(parent, label, opts) {
-    var g = div('clock-group', parent);
-    div('clock-group-label', g, label);
-    var seg = div('clock-seg', g);
-    for (var i = 0; i < opts.length; i++) option(seg, opts[i][0], opts[i][1], opts[i][2]);
-    return g;
-  }
+  /* ---------- the analog face, on the tile and the page ---------- */
 
   // The analog face, 200 units across: hairline minute ticks, bolder hour
   // ticks, the four quarter numerals, the day-date window in the lower half,
   // and three hands, each a group turned about the centre.
-  function drawFace(parent) {
-    var svg = svgEl('svg', { viewBox: '0 0 200 200', 'class': 'clock-svg', focusable: 'false', 'aria-hidden': 'true' }, parent);
+  //
+  // win: 'full' ("SUN 15", the default), 'day' ("15" in a smaller window
+  // with bigger figures, for a small face) or 'none'.
+  function drawFace(parent, win) {
+    win = win || 'full';
+    var svg = svgEl('svg', { viewBox: '0 0 200 200', 'class': 'clock-svg' + (win === 'full' ? '' : ' clock-svg-small'), focusable: 'false', 'aria-hidden': 'true' }, parent);
     svgEl('circle', { cx: 100, cy: 100, r: 98, 'class': 'clock-dial' }, svg);
     svgEl('circle', { cx: 100, cy: 100, r: 86, 'class': 'clock-dial-ring' }, svg);
     for (var i = 0; i < 60; i++) {
@@ -187,9 +187,20 @@
       var t = svgEl('text', { x: nums[n][1], y: nums[n][2], 'class': 'clock-num', 'text-anchor': 'middle', dy: '0.35em' }, svg);
       t.textContent = String(nums[n][0]);
     }
-    // The day-date window: "SUN 15".
-    svgEl('rect', { x: 74, y: 118, width: 52, height: 21, rx: 4, ry: 4, 'class': 'clock-window' }, svg);
-    var wtext = svgEl('text', { x: 100, y: 128.5, 'class': 'clock-window-text', 'text-anchor': 'middle', dy: '0.35em' }, svg);
+    // The day-date window: "SUN 15" (room for 44 units of text), or "15".
+    // The text sits a little low in its 21 units, so an accent on a
+    // capital (SÁB, MIÉ) has room above it.
+    var wtext = null;
+    var wmax = 0;
+    if (win === 'day') {
+      svgEl('rect', { x: 84, y: 117, width: 32, height: 23, rx: 4, ry: 4, 'class': 'clock-window' }, svg);
+      wtext = svgEl('text', { x: 100, y: 128.5, 'class': 'clock-window-text clock-window-day', 'text-anchor': 'middle', dy: '0.36em' }, svg);
+      wmax = 26;
+    } else if (win !== 'none') {
+      svgEl('rect', { x: 74, y: 118, width: 52, height: 21, rx: 4, ry: 4, 'class': 'clock-window' }, svg);
+      wtext = svgEl('text', { x: 100, y: 128.5, 'class': 'clock-window-text', 'text-anchor': 'middle', dy: '0.38em' }, svg);
+      wmax = 44;
+    }
 
     var hh = svgEl('g', { 'class': 'clock-hand clock-hand-h' }, svg);
     svgEl('line', { x1: 100, y1: 114, x2: 100, y2: 52 }, hh);
@@ -199,36 +210,113 @@
     svgEl('line', { x1: 100, y1: 126, x2: 100, y2: 16 }, sh);
     svgEl('circle', { cx: 100, cy: 100, r: 4.6, 'class': 'clock-cap' }, svg);
     svgEl('circle', { cx: 100, cy: 100, r: 1.7, 'class': 'clock-cap-dot' }, svg);
-    return { svg: svg, h: hh, m: mh, s: sh, win: wtext };
+    return { svg: svg, h: hh, m: mh, s: sh, win: wtext, winMode: win, winMax: wmax };
   }
 
   function turn(g, deg) { g.setAttribute('transform', 'rotate(' + deg.toFixed(2) + ' 100 100)'); }
 
-  // "SUN 15" in the window. A longer weekday (another language) is squeezed
-  // to the window's width rather than spilling past it.
-  function drawWindow(now) {
-    var w = page.analog.win;
-    var text = dateText(now, { weekday: 'short' }).replace(/\.$/, '').toUpperCase() + ' ' + now.getDate();
+  // The hands and the window for now. Text is only touched when it changes.
+  function setFace(f, now) {
+    var s = now.getSeconds();
+    var m = now.getMinutes();
+    turn(f.s, s * 6);
+    turn(f.m, m * 6 + s * 0.1);
+    turn(f.h, (now.getHours() % 12) * 30 + m * 0.5);
+    drawWindow(f, now);
+  }
+
+  // "SUN 15" (or "15") in the window. A longer weekday (another language,
+  // "MIÉ", "SÁB") is squeezed to the window's width rather than spilling
+  // past it; when the face can't be measured (not on screen yet) anything
+  // longer than "SUN 15" is squeezed anyway.
+  function drawWindow(f, now) {
+    var w = f.win;
+    if (!w) return;
+    var day = String(now.getDate());
+    var text = f.winMode === 'day' ? day :
+      dateText(now, { weekday: 'short' }).replace(/\.$/, '').toUpperCase() + ' ' + day;
     if (w.textContent === text) return;
     w.textContent = text;
     w.removeAttribute('textLength');
     w.removeAttribute('lengthAdjust');
     var len = 0;
     try { len = w.getComputedTextLength(); } catch (e) { len = 0; }
-    if (len > 44) {
-      w.setAttribute('textLength', '44');
+    if (len > f.winMax || (!len && text.length > (f.winMode === 'day' ? 2 : 6))) {
+      w.setAttribute('textLength', String(f.winMax));
       w.setAttribute('lengthAdjust', 'spacingAndGlyphs');
     }
   }
 
-  // Once a second while the page is open: the readout, the date, the hands.
+  /* ---------- the analog tile ---------- */
+
+  // Which window a face this many pixels across can read: "MON 16" from
+  // about 7.5rem (the window text is then ~10px), "16" from 3rem.
+  function windowFor(px) {
+    var r = rem();
+    return px >= 7.5 * r ? 'full' : px >= 3 * r ? 'day' : 'none';
+  }
+
+  function drawAnalogTile(el, size) {
+    var box = div('today-face', el);
+    var px = Math.min(box.clientWidth, box.clientHeight);
+    // Not laid out (hidden): judge by the grid size instead.
+    var win = px > 0 ? windowFor(px) :
+      size && size.rows >= 2 && size.cols >= 2 ? 'full' : 'day';
+    tileFace = drawFace(box, win);
+    box.setAttribute('data-window', win);
+    tileTick();
+    startTileTicking();
+  }
+
+  function tileTick() {
+    if (tileFace) setFace(tileFace, new Date());
+  }
+
+  // One loop, just after each whole second, while the analog face is on
+  // the tile. Every renderTile stops it first, so a redraw never leaves
+  // two running.
+  function startTileTicking() {
+    stopTileTicking();
+    function loop() {
+      if (!tileFace) { tileTimer = null; return; }
+      tileTick();
+      tileTimer = setTimeout(loop, 1010 - (new Date().getTime() % 1000));
+    }
+    tileTimer = setTimeout(loop, 1010 - (new Date().getTime() % 1000));
+  }
+
+  function stopTileTicking() {
+    if (tileTimer) clearTimeout(tileTimer);
+    tileTimer = null;
+  }
+
+  /* ---------- the page ---------- */
+
+  function option(parent, key, label, selected) {
+    var b = div('clock-opt f' + (selected ? ' is-selected' : ''), parent);
+    b.setAttribute('data-key', key);
+    span('clock-opt-dot', b);
+    span('clock-opt-label', b, label);
+    if (selected) b.setAttribute('data-autofocus', '');
+    return b;
+  }
+
+  function group(parent, label, opts) {
+    var g = div('clock-group', parent);
+    div('clock-group-label', g, label);
+    var seg = div('clock-seg', g);
+    for (var i = 0; i < opts.length; i++) option(seg, opts[i][0], opts[i][1], opts[i][2]);
+    return g;
+  }
+
+  // Once a second while the page is open: the digital time, the date, the hands.
   // Text is only touched when it changes.
   function pageTick() {
     if (!page) return;
     var now = new Date();
     var t = timeParts(now);
     var shape = t.digits + '|' + t.ampm;
-    if (page.shown !== shape) {
+    if (page.digits && page.shown !== shape) {
       var refit = !page.shown || page.shown.length !== shape.length;
       page.shown = shape;
       page.digits.textContent = t.digits;
@@ -242,14 +330,7 @@
     var mdy = dateText(now, { month: 'long', day: 'numeric', year: 'numeric' });
     if (page.dow.textContent !== dow) page.dow.textContent = dow;
     if (page.mdy.textContent !== mdy) page.mdy.textContent = mdy;
-    if (page.analog) {
-      var s = now.getSeconds();
-      var m = now.getMinutes();
-      turn(page.analog.s, s * 6);
-      turn(page.analog.m, m * 6 + s * 0.1);
-      turn(page.analog.h, (now.getHours() % 12) * 30 + m * 0.5);
-      drawWindow(now);
-    }
+    if (page.analog) setFace(page.analog, now);
   }
 
   function startTicking() {
@@ -299,7 +380,7 @@
   }
 
   // The analog face as large as the room allows: the full height of the
-  // display, leaving the readout beside it at least ~12rem. Measured once
+  // display, leaving the date beside it at least ~12rem. Measured once
   // per draw (and when the about lines change), never each second.
   function fitFace() {
     if (!page || !page.analog) return;
@@ -323,18 +404,15 @@
     var root = div('clock-page is-' + face + (full ? ' is-full' : ''), body);
     var main = div('clock-main', root);
     var display = div('clock-display', main);
-    page = { root: root, display: display, full: full, shown: null, analog: null, fitBox: null };
+    page = { root: root, display: display, full: full, shown: null, analog: null, fitBox: null, digits: null, ampm: null };
 
     if (face === 'analog') {
+      // Only the face and, beside it, the date: no digital time.
       var an = div('clock-analog', display);
       page.faceBox = div('clock-face', an);
       page.analog = drawFace(page.faceBox);
       var side = div('clock-side', an);
-      var readout = div('clock-readout', side);
-      page.digits = span('clock-digits', readout);
-      page.ampm = span('clock-ampm', readout);
       dateEls(side);
-      page.fitBox = readout;
     } else {
       var dg = div('clock-digital', display);
       var big = div('clock-big', dg);
@@ -346,7 +424,11 @@
 
     var controls = div('clock-controls', main);
     group(controls, 'Face', [['face-digital', 'Digital', face === 'digital'], ['face-analog', 'Analog', face === 'analog']]);
-    group(controls, 'Clock', [['hours-12', '12-hour', hours === '12'], ['hours-24', '24-hour', hours === '24']]);
+    // 12/24 only means something on the digital face; Analog leaves it
+    // out (focus and the arrows simply have one group fewer).
+    if (face === 'digital') {
+      group(controls, 'Clock', [['hours-12', '12-hour', hours === '12'], ['hours-24', '24-hour', hours === '24']]);
+    }
     // Opened on the face choice: the first thing people change.
     var marked = controls.querySelectorAll('[data-autofocus]');
     for (var i = 1; i < marked.length; i++) marked[i].removeAttribute('data-autofocus');
@@ -364,7 +446,9 @@
     var nextHours = key === 'hours-12' ? '12' : key === 'hours-24' ? '24' : hours;
     if (nextFace === face && nextHours === hours) return;
     if (nextFace !== face) { face = nextFace; save(FACE_KEY, face); }
-    if (nextHours !== hours) { hours = nextHours; save(HOURS_KEY, hours); ctx.redrawTile(); }
+    if (nextHours !== hours) { hours = nextHours; save(HOURS_KEY, hours); }
+    // The tile follows both choices, live.
+    ctx.redrawTile();
     ctx.redrawPanel();
   }
 
@@ -379,9 +463,21 @@
     },
 
     renderTile: function (el, ctx) {
+      // Whatever was there before is gone (hub.js empties the body).
+      stopTileTicking();
+      tileFace = null;
+      els = null;
       var size = ctx.size ? ctx.size() : null;
-      var form = size && size.tier === 'strip' ? 'strip' : size && size.width === 'narrow' ? 'narrow' : 'wide';
       el.classList.add('today-tile');
+      if (face === 'analog') {
+        // Only the face, filling the tile's box, centred.
+        el.classList.remove('today-strip');
+        el.classList.add('today-analog');
+        drawAnalogTile(el, size);
+        return;
+      }
+      el.classList.remove('today-analog');
+      var form = size && size.tier === 'strip' ? 'strip' : size && size.width === 'narrow' ? 'narrow' : 'wide';
       if (form === 'strip') el.classList.add('today-strip');
       else el.classList.remove('today-strip');
       // One row: the time, and the date stacked to its right. Bigger
