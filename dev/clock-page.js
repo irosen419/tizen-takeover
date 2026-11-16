@@ -6,7 +6,7 @@
  * idle timer alone), read it, and close it again.
  *
  *   const clockPage = require('./clock-page');
- *   const lines = await clockPage.lines(page);          // ['v0.14.0 · Chrome 120', 'Motion: ...']
+ *   const lines = await clockPage.lines(page);          // ['v0.15.0 · Chrome 120', 'Motion: ...']
  *   const text = await clockPage.line(page, 'updates'); // the updates line, or null
  *   await clockPage.waitFor(page, (about) => about.live === 'Live', 3000, 'no Live line');
  *
