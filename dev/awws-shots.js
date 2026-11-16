@@ -320,7 +320,8 @@ async function clip(dir) {
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  if (!ONLY && !arg('--out')) {
+  // A full run replaces the old pictures; --only, --out and --clip leave them.
+  if (!ONLY && !CLIP && !arg('--out')) {
     for (const f of fs.readdirSync(OUT)) if (/^awws-.*\.jpg$/.test(f)) fs.unlinkSync(path.join(OUT, f));
   }
   env = await H.start({});
