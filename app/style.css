@@ -642,16 +642,33 @@ body.has-picture {
 
 /* ---------- Today: one row tall ---------- */
 
-/* A one-row tile has room for the time and the date only. */
+/* A one-row tile has room for the time and the date only: the date sits to
+   the right of the time, the weekday over "Month Date", the whole row centred
+   so the padding is even all round. */
+.tile-body.today-compact {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+}
 .tile-body.today-compact .today-place,
 .tile-body.today-compact .today-status { display: none; }
 .tile-body.today-compact .today-time {
   margin-top: 0;
+  flex: none;
   font-size: 2.9rem;
   line-height: 1.1;
 }
-.tile-body.today-compact .today-ampm { font-size: 1.2rem; }
-.tile-body.today-compact .today-date { font-size: 1.05rem; }
+.tile-body.today-compact .today-ampm { font-size: 1rem; margin-left: 0.3rem; }
+.tile-body.today-compact .today-date {
+  margin-left: 0.9rem;
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+.tile-body.today-compact .today-dow,
+.tile-body.today-compact .today-md { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-body.today-compact .today-sep { display: none; }
 
 /* ---------- Entertainment: one row tall ---------- */
 

@@ -21,7 +21,9 @@
     var space = time.lastIndexOf(' ');
     els.digits.textContent = space > 0 ? time.substring(0, space) : time;
     els.ampm.textContent = space > 0 ? time.substring(space + 1) : '';
-    els.date.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    // Two parts so a one-row tile can stack them: "Sunday" over "November 15".
+    els.dow.textContent = now.toLocaleDateString('en-US', { weekday: 'long' });
+    els.md.textContent = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
   }
 
   return {
@@ -55,6 +57,16 @@
       time.appendChild(digits);
       time.appendChild(ampm);
       var date = div('today-date', el);
+      var dow = document.createElement('span');
+      dow.className = 'today-dow';
+      var sep = document.createElement('span');
+      sep.className = 'today-sep';
+      sep.textContent = ', ';
+      var md = document.createElement('span');
+      md.className = 'today-md';
+      date.appendChild(dow);
+      date.appendChild(sep);
+      date.appendChild(md);
       // One-line rows that end in "..." rather than wrap, so a wider TV font
       // can't push the tile past its edge. The live updates row and the
       // updates row are only there when they have something to say; with
@@ -77,7 +89,7 @@
       el.classList.remove('today-rows-3');
       el.classList.remove('today-rows-4');
       if (rows > 2) el.classList.add('today-rows-' + rows);
-      els = { digits: digits, ampm: ampm, date: date };
+      els = { digits: digits, ampm: ampm, dow: dow, md: md };
       tick();
     },
 
