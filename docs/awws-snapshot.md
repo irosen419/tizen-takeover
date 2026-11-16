@@ -39,7 +39,7 @@ One JSON object. `v` and `sentAt` are required. Every section is optional.
   "khaya":    { "asOf": "...", "done": 11, "total": 12 },
   "pipeline": { "asOf": "...", "stages": [ ... ], "items": [ ... ] },
   "money":    { "asOf": "...", "currency": "USD", "spent": 0, "earned": 0 },
-  "reach":    { "asOf": "...", "visits": { "week": 0, "prev": 0 } }
+  "reach":    { "asOf": "...", "subscribers": 2, "subscribersAsOf": "2026-11-16" }
 }
 ```
 
@@ -124,7 +124,7 @@ Open items, plus items ticked in the last 7 days. Order in `items` is the order 
 
 ### `money`
 
-Stored like any other section. The TV does not show it unless `HUB_CONFIG.widgets.awws.showMoney` is `true` in `app/config.js` (it ships `false`). Until Ian says yes to money on the living room TV, the sender should leave this section out.
+Stored like any other section. Ian said yes to money figures on the living room TV on 2026-11-16, so the sender may include this section, and `HUB_CONFIG.widgets.awws.showMoney` in `app/config.js` ships `true`. With it, the Glance shows a money line ("Spent $1,841 · earned $1,265") in its Progress list and in its launcher. To keep money off the TV (for guests, say), set `showMoney` to `false`; the Pi still stores the section. The Money tile itself is still a placeholder.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -136,11 +136,14 @@ Stored like any other section. The TV does not show it unless `HUB_CONFIG.widget
 
 ### `reach`
 
+Newsletter subscribers are counted by hand for now, and the site traffic figures come later, so every field here is optional. The section must hold at least one of `visits`, `buyClicks`, `subscribers` and `scans`; a reach section with none of them is refused and the Pi says which fields it may hold.
+
 | Field | Type | Notes |
 |---|---|---|
-| `visits` | object | required: `{ "week": 412, "prev": 388, "days": [ ... ] }`. `week` and `prev` are whole numbers; `days` is optional, at most 28 whole numbers, oldest first |
+| `visits` | object | optional: `{ "week": 412, "prev": 388, "days": [ ... ] }`. `week` and `prev` are whole numbers; `days` is optional, at most 28 whole numbers, oldest first |
 | `buyClicks` | object | optional, same shape as `visits` |
-| `subscribers` | whole number | optional |
+| `subscribers` | whole number | optional: newsletter subscribers |
+| `subscribersAsOf` | date or time | optional: when the subscribers were last counted by hand, `2026-11-16` or `2026-11-16T15:10:00Z`. Left out, the TV uses the section's `asOf` |
 | `scans` | list, at most 10 | optional: `{ "school": "...", "count": 14 }`; `school` is text, 40 |
 
 ## What the Pi keeps
@@ -182,6 +185,8 @@ From the cloud, through the Claude mailbox (`pi/CLAUDE.md`): `awws.set {"snapsho
 - `awws` (Glance): counts from `todos`, the first Now items for Ian, and one-line figures from `handoffs`, `outreach`, `pipeline` and `khaya` when they are there.
 - `awws-todo`: the board, by section and owner, with overdue items in amber (`dueISO` before today) and open items per workstream.
 - `awws-agenda`: items with a `dueISO` join the calendar events on their day.
-- `awws-outreach`, `awws-pipeline`, `awws-money`, `awws-reach` are placeholders for now. Their sections are already checked and stored, so the tiles can be built without touching the Pi again.
+- `awws-reach`: site visits this week as the big figure, with the change from last week and a line of the last 14 days, then buy clicks, flier scans by school and subscribers with the day they were last counted. With only `subscribers` (as today) it leads with them: "2 subscribers, at last check Nov 16". Every size works with subscribers alone, traffic alone, or both. The Glance's launcher opens it too. It is on no layout yet; place it with the Layout Studio or `./hub layout set`.
+- `money`: the Glance's money line, while `showMoney` is `true` (above).
+- `awws-outreach`, `awws-pipeline` and `awws-money` are placeholders for now. Their sections are already checked and stored, so the tiles can be built without touching the Pi again.
 
 The TV keeps its last copy (`homeHub.awws.v1`), so the tiles have something to show straight after the TV turns on.

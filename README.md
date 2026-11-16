@@ -175,7 +175,7 @@ When something is missing the tile says so in plain words: "Calendar needs the P
 
 ## A World Worth Saving
 
-Four tiles for the book project, all with a globe icon. They read two things from the hub server on the Raspberry Pi:
+Five tiles for the book project, all with a globe icon. They read two things from the hub server on the Raspberry Pi:
 
 - **Calendars, by name.** Visits come from the calendar named "School Visits"; project dates from "A World Worth Saving". Any other calendar on the Pi (the family one, say) never shows on these tiles. The names are in `app/config.js`, under `widgets.awws.calendars`.
 - **A snapshot of the project**, sent to the Pi by a Claude sync through the mailbox, or by hand with `./hub awws set` (the file is described in [docs/awws-snapshot.md](docs/awws-snapshot.md)): the to-do board, handoffs, librarians, books, the rewrite, money and reach. Each copy that arrives is checked and the tiles redraw only when what they show changes.
@@ -188,14 +188,19 @@ The tiles:
 - **Next visit** (`awws-visits`): "15 days" to the next visit, the school, the day, time and place, then the visits after it.
 - **This week** (`awws-agenda`): project dates and to-dos that are due, day by day. A wide tile has seven day columns with a dot per item; a hollow dot is a to-do.
 - **To-do board** (`awws-todo`): how many Now items are yours, the overdue count in amber, then the items with their owner (Ian, Claude or Both), due date and what they wait on.
+- **Reach** (`awws-reach`): site visits this week as the big number, up or down from last week, and a line of the last 14 days; then buy clicks, flier scans by school, and newsletter subscribers with the day they were last counted. Subscribers are counted by hand for now, so today it shows "2 subscribers, at last check Nov 16"; the visits take over as the big number once the sync sends them. Its panel has each figure with a longer trend.
 
-Librarians, Books, Money and Reach (`awws-outreach`, `awws-pipeline`, `awws-money`, `awws-reach`) hold their spot with a "Soon" tag for now. [docs/tile-sizes.md](docs/tile-sizes.md) says what each tile shows at each size.
+Librarians, Books and Money (`awws-outreach`, `awws-pipeline`, `awws-money`) hold their spot with a "Soon" tag for now. [docs/tile-sizes.md](docs/tile-sizes.md) says what each tile shows at each size.
+
+Reach is a real tile but is on no layout yet. To place it, open the Layout Studio and drop it where you want it, or on the Pi run `./hub layout show`, change one tile in the list to `{"widget": "awws-reach", "x": 9, "y": 3, "w": 3, "h": 3}` (any free spot and size), and send the list back with `./hub layout set layout.json`. The Glance's panel opens Reach as well.
+
+![Reach at every size, with visits, buy clicks, scans and subscribers](docs/screenshots/awws-sizes-reach-a.jpg)
 
 Two layouts in the switcher use them: **AWWS desk** (above) and **AWWS one screen**, the Glance as a big dashboard with Today, Weather and Calendar beside it. **Main** keeps the Glance at 3 × 4.
 
 ![AWWS one screen: the Glance as a dashboard of four parts](docs/screenshots/awws-layout-one-screen.jpg)
 
-Open the Glance and it lists Next visit, This week and To-do board with a line each; OK opens one in the same panel, and Back goes back to the list. In full screen it shows the dashboard instead, and OK on a part opens it. In the To-do board, Left and Right pick whose items show: All, Ian, Claude or Both.
+Open the Glance and it lists Next visit, This week, To-do board and Reach with a line each; OK opens one in the same panel, and Back goes back to the list. In full screen it shows the dashboard instead, and OK on a part opens it. In the To-do board, Left and Right pick whose items show: All, Ian, Claude or Both.
 
 ![The To-do board panel, showing Ian's items](docs/screenshots/awws-panel-todo-ian.jpg)
 
@@ -209,12 +214,12 @@ Settings, in `app/config.js`:
 widgets: {
   awws: {
     calendars: { visits: ['School Visits'], awws: ['A World Worth Saving'] },
-    showMoney: false
+    showMoney: true
   }
 }
 ```
 
-`showMoney: true` adds money to the Glance's list and dashboard. Every word on the tiles is in one `STRINGS` object at the top of `app/widgets/awws.js`; `window.HUB_AWWS_STRINGS` replaces any of them (the tests use it to try the tiles in Spanish, which runs about a quarter longer).
+`showMoney: true` adds a money line ("Spent $1,841 · earned $1,265") to the Glance's list and dashboard. Ian said yes to money on the TV on 2026-11-16; set it to `false` to keep money figures off the TV (for guests, say). Every word on the tiles is in one `STRINGS` object at the top of `app/widgets/awws.js`; `window.HUB_AWWS_STRINGS` replaces any of them (the tests use it to try the tiles in Spanish, which runs about a quarter longer).
 
 To try it on a laptop, with `node dev/preview.js` running, send the sample snapshot to the preview's hub server:
 
@@ -222,11 +227,13 @@ To try it on a laptop, with `node dev/preview.js` running, send the sample snaps
 node dev/awws-sample.js | HUB_TOKEN=preview-token-not-a-secret-000000 node pi/hubctl.js awws set -
 ```
 
+Add `--reach subscribers` to `node dev/awws-sample.js` (only the hand-counted subscribers, as today) or `--reach traffic` (visits, buy clicks and scans, no subscribers) to try Reach with the other shapes of its data.
+
 The preview's sample calendars aren't named "School Visits", so Next visit says that calendar is missing; the tests and screenshots bring their own.
 
-`node dev/awws-test.js` runs the real hub and the real hub server from `pi/` in a headless browser (Playwright), with the clock fixed at Monday 16 November 2026, 10:40 AM in Chicago and the sample calendars and snapshot from `dev/awws-sample.js`. It checks every AWWS tile at 11 sizes in English and in Spanish (no console errors, never blank, nothing clipped, no type under 0.85rem on a tile or 1rem in a panel), that a Family event never shows, the countdown across midnight in Chicago (with the TV in Chicago and in Tokyo), overdue in amber, a calendar without a snapshot and the other way round, an old Pi with no snapshot, broken snapshots and a broken saved copy, the same snapshot sent twice, the Glance's list and Back, the owner filter, full screen, and the layout switcher with five layouts. It needs port 8095 free.
+`node dev/awws-test.js` runs the real hub and the real hub server from `pi/` in a headless browser (Playwright), with the clock fixed at Monday 16 November 2026, 10:40 AM in Chicago and the sample calendars and snapshot from `dev/awws-sample.js`. It checks every AWWS tile at 11 sizes in English and in Spanish (no console errors, never blank, nothing clipped, no type under 0.85rem on a tile or 1rem in a panel), that a Family event never shows, the countdown across midnight in Chicago (with the TV in Chicago and in Tokyo), overdue in amber, a calendar without a snapshot and the other way round, an old Pi with no snapshot, broken snapshots and a broken saved copy, the same snapshot sent twice, the Glance's list and Back, the owner filter, full screen, and the layout switcher with five layouts. For Reach it checks every size in both languages with subscribers alone, traffic alone and both, its panel and full screen, no reach section, and the Glance opening it; and that `showMoney` shows and hides the money line. It needs port 8095 free.
 
-`node dev/awws-shots.js` takes the `docs/screenshots/awws-*` pictures, each in English and in Spanish (`-es`): the layouts, the size sheets, the panels and the states. `--out <folder>` saves them elsewhere, `--scale 2` doubles the pixels, `--only <text>` takes only the shots whose name holds the text, and `--clip <folder>` records a short walk through the tiles into that folder instead of the pictures (mp4 with ffmpeg, otherwise webm).
+`node dev/awws-shots.js` takes the `docs/screenshots/awws-*` pictures, each in English and in Spanish (`-es`): the layouts, the size sheets, the panels and the states. A layout holds each widget once, so the Reach size sheets are put together from one page per tile. `--out <folder>` saves them elsewhere, `--scale 2` doubles the pixels, `--only <text>` takes only the shots whose name holds the text, and `--clip <folder>` records a short walk through the tiles into that folder instead of the pictures (mp4 with ffmpeg, otherwise webm).
 
 ## Live updates
 
