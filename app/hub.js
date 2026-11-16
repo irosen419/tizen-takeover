@@ -2157,7 +2157,10 @@
 
   function noteInput() {
     lastInputAt = new Date().getTime();
-    clayHook('input');
+    // Keys pressed while the About panel is open (scrolling it, and closing it)
+    // are not "using the remote" for the wanderers: they keep to their own
+    // schedule, so the panel can be watched and left without restarting it.
+    if (!ab.on) clayHook('input');
   }
   document.addEventListener('keydown', noteInput, true);
   document.addEventListener('click', noteInput, true);

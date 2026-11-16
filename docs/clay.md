@@ -49,7 +49,7 @@ The sprites are in `app/clay/sprites/`, made by `art/clay/tools/` (see `art/clay
 
 ## If they don't show up
 
-Press Left on a left-most tile: the **About panel** slides in from the left, and its **Wanderers** group says what they are doing and how it has gone since the page loaded. It changes by itself, once a second, while it is open. The panel doesn't hold them back: a visit loads and plays with it open, behind it, so you can watch the countdown turn into loading and then into `On screen now`. Right or Back closes it. `HUB_CLAY.status()` gives the same as `{ now, visits, last, loading, problem, text }` (`text` is all of it on one line).
+Press Left on a left-most tile: the **About panel** slides in from the left, and its **Wanderers** group says what they are doing and how it has gone since the page loaded. It changes by itself, once a second, while it is open. The panel doesn't hold them back: a visit loads and plays with it open, behind it, so you can watch the countdown turn into loading and then into `On screen now`. Right or Back closes it. Keys pressed while it is open, the one that closes it included, don't count as using the remote, so their wait isn't restarted (the Left that opens it does count). `HUB_CLAY.status()` gives the same as `{ now, visits, last, loading, problem, text }` (`text` is all of it on one line).
 
 Times read `42 s` up to 99 seconds, then `1 min 42 s`.
 
