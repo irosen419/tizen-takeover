@@ -16,6 +16,10 @@
  *   ./hub layout show                the home-screen tile layout
  *   ./hub layout set <file.json|->   a new layout (a list of tiles, or { layout: [...] })
  *   ./hub layout reset               back to the layout in app/config.js
+ *   ./hub spotify status             is Spotify connected, and what is playing
+ *   ./hub spotify login              connect Spotify (once): a link to open, then paste the address back
+ *   ./hub spotify code "<address>"   the second half of login, without the prompt
+ *   ./hub spotify logout             forget the Spotify sign-in
  *   ./hub status                     is the server up, which screens are on
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub token                      create the password, once
@@ -36,7 +40,7 @@ const crypto = require('crypto');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
-const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment'];
+const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today'];
 
 /* ---------- settings ---------- */
 
@@ -401,6 +405,101 @@ async function layout(args) {
   stop('Use one of: layout show, layout set <file.json|->, layout reset. Run ./hub help for examples.');
 }
 
+/* ---------- Spotify ---------- */
+
+const SPOTIFY_SETUP = 'Spotify is not set up yet: add SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to pi/.env, then restart the server (docker compose restart hub). See "Spotify" in pi/README.md.';
+
+function spotifyOld() {
+  return ['This server does not know Spotify yet. Run git pull, then docker compose restart hub.'];
+}
+
+function spotifyStatusLines(sp) {
+  if (!sp) return spotifyOld();
+  if (!sp.configured) return [sp.problem ? 'Spotify is not set up: ' + sp.problem + '. Fix it, then restart the server.' : SPOTIFY_SETUP];
+  if (!sp.signedIn) return ['Spotify is set up but not signed in. Run ./hub spotify login (once).'];
+  const out = ['Spotify: signed in' + (sp.user ? ' as ' + sp.user : '') + '.'];
+  const t = sp.track;
+  const song = t ? '"' + t.title + '"' + (t.artist ? ' by ' + t.artist : '') : '';
+  if (sp.state === 'playing') out.push('Playing ' + song + (sp.device ? ' on ' + sp.device : '') + '.');
+  else if (sp.state === 'paused') out.push('Paused: ' + song + (sp.device ? ' on ' + sp.device : '') + '.');
+  else if (sp.state === 'error') out.push('Problem: ' + (sp.note || 'Spotify could not be read') + '.' + (song ? ' Last seen: ' + song + '.' : ''));
+  else out.push('Nothing is playing.' + (song ? ' Last played: ' + song + '.' : ''));
+  if (sp.lastOkAt) out.push('Last answer from Spotify ' + ago(sp.lastOkAt) + '.');
+  return out;
+}
+
+function spotifyLoginLines(r) {
+  return [
+    'Connect Spotify to Home Hub (once):',
+    '',
+    '1. Open this link on your phone or computer and choose Agree:',
+    '',
+    r.url,
+    '',
+    '2. The browser then goes to an address starting with',
+    '   ' + r.redirectUri + '?code=',
+    '   and shows an error page ("can\'t be reached"). That is expected.',
+    '3. Copy that whole address from the address bar and paste it here.',
+    '',
+    'The link works for ' + r.minutes + ' minutes.'
+  ];
+}
+
+function spotifyCodeText(r) {
+  return 'Spotify is connected' + (r.user ? ' (signed in as ' + r.user + ')' : '') + '. The TV shows what is playing within a few seconds.';
+}
+
+function spotifyLogoutText(r) {
+  return r.changed ? 'Signed out of Spotify. Run ./hub spotify login to connect again.' : 'Spotify was not signed in. Nothing changed.';
+}
+
+// One line of typed input, or '' when there is none (not a terminal, or closed).
+function readLine(prompt) {
+  return new Promise((resolve) => {
+    const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout, terminal: false });
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; rl.close(); resolve(v); };
+    process.stdout.write(prompt);
+    rl.once('line', (line) => finish(String(line).trim()));
+    rl.once('close', () => finish(''));
+  });
+}
+
+async function spotifyCmd(args) {
+  const sub = args[0];
+  if (sub === 'status') {
+    const r = await call('GET', '/api/spotify');
+    spotifyStatusLines(r.spotify).forEach(say);
+    return;
+  }
+  if (sub === 'login') {
+    const r = await call('POST', '/api/spotify/login', {});
+    spotifyLoginLines(r).forEach(say);
+    say('');
+    const input = await readLine('Paste the address here and press Enter: ');
+    if (!input) {
+      say('');
+      stop('Nothing was pasted. When you have the address, run: ./hub spotify code "<the address>" (keep the quotes).');
+    }
+    const done = await call('POST', '/api/spotify/code', { input: input }, 30000);
+    say(spotifyCodeText(done));
+    return;
+  }
+  if (sub === 'code') {
+    const input = args.slice(1).join(' ').trim();
+    if (!input) stop('Paste the address after the command, in quotes: ./hub spotify code "http://127.0.0.1:.../spotify/callback?code=..."');
+    const done = await call('POST', '/api/spotify/code', { input: input }, 30000);
+    say(spotifyCodeText(done));
+    return;
+  }
+  if (sub === 'logout') {
+    const r = await call('POST', '/api/spotify/logout', {});
+    say(spotifyLogoutText(r));
+    return;
+  }
+  stop('Use one of: spotify status, spotify login, spotify code "<address>", spotify logout. Run ./hub help for examples.');
+}
+
 /* ---------- token ---------- */
 
 function token() {
@@ -437,6 +536,7 @@ function statusLines(r) {
     out.push(plural(r.calendar.calendars, 'calendar') + ' set up' + (r.calendar.lastRefresh ? ', last read at ' + new Date(r.calendar.lastRefresh).toLocaleTimeString() : ', not read yet') + '.');
   }
   if (r.mailbox) out.push(mailboxShort(r.mailbox));
+  if (r.spotify && r.spotify.configured) out.push(spotifyShort(r.spotify));
   const list = r.screens || [];
   if (!list.length) {
     out.push('No screen is connected right now.');
@@ -448,6 +548,15 @@ function statusLines(r) {
     out.push('  ' + sc.address + ', since ' + t.toLocaleTimeString() + (sc.via === 'poll' ? ' (fallback mode)' : ''));
   });
   return out;
+}
+
+// One line for ./hub status.
+function spotifyShort(sp) {
+  if (!sp.signedIn) return 'Spotify: not signed in (run ./hub spotify login).';
+  if (sp.state === 'playing' && sp.track) return 'Spotify: playing "' + sp.track.title + '".';
+  if (sp.state === 'paused' && sp.track) return 'Spotify: paused.';
+  if (sp.state === 'error') return 'Spotify: ' + (sp.note || 'could not be read') + '.';
+  return 'Spotify: nothing playing.';
 }
 
 async function status() {
@@ -498,7 +607,7 @@ async function mailbox(args) {
 
 const HELP = [
   'Home Hub commands (run from the pi folder):',
-  '  ./hub show weather          open a widget: weather, todo, calendar or entertainment',
+  '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying or today (the clock)',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
@@ -512,6 +621,9 @@ const HELP = [
   '  ./hub layout show           the home-screen tile layout',
   '  ./hub layout set file.json  a new tile layout (a list of tiles; - reads it from input)',
   '  ./hub layout reset          back to the layout in app/config.js',
+  '  ./hub spotify status        is Spotify connected, and what is playing',
+  '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
+  '  ./hub spotify logout        forget the Spotify sign-in',
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub token                 create the password in pi/.env (only once)'
@@ -548,6 +660,7 @@ async function main(argv) {
   if (cmd === 'layout') return layout(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
+  if (cmd === 'spotify') return spotifyCmd(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
 }
@@ -567,7 +680,11 @@ module.exports = {
   layoutSetText: layoutSetText,
   layoutResetText: layoutResetText,
   statusLines: statusLines,
-  mailboxLines: mailboxLines
+  mailboxLines: mailboxLines,
+  spotifyStatusLines: spotifyStatusLines,
+  spotifyLoginLines: spotifyLoginLines,
+  spotifyCodeText: spotifyCodeText,
+  spotifyLogoutText: spotifyLogoutText
 };
 
 if (require.main === module) {
