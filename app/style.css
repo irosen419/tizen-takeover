@@ -856,3 +856,30 @@ body.has-picture {
 .ent-tile-mark { width: 2.2rem; height: 2.2rem; margin: auto; color: var(--text); }
 .tile-h3.tile-ww .today-time { font-size: 7rem; }
 .tile-h3.tile-ww .today-ampm { font-size: 2.2rem; }
+
+/* The analog clock tile: only the face (the Clock page's own, styled in
+   widgets/today.css), as large as the tile's box allows and centred. The
+   SVG is 200 units square and fills the box, so it scales by the smaller
+   of the two sides (preserveAspectRatio's default, xMidYMid meet). In a
+   strip the face is the row's height, in the middle of the strip. */
+.tile-body.today-analog {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+}
+.today-face {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.today-face .clock-svg {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+}
+/* A strip has little height: the face takes some of the strip's padding
+   (the body may paint into it; the face stays inside the tile). */
+.tile-h1 .tile-body.today-analog { overflow: visible; }
+.tile-h1 .today-analog .today-face { margin: -0.5rem 0; }
