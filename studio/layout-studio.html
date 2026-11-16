@@ -234,14 +234,36 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
 .big { font-weight: 300; line-height: 1.15; letter-spacing: -0.02em; white-space: nowrap; padding-block: 0.05em; }
 .big small { font-size: 0.32em; font-weight: 400; letter-spacing: 0.02em; margin-left: 0.3em; color: var(--tile-mute); }
 .push { margin-top: auto; }
-/* Clock */
-.ck-place { font-size: calc(var(--r) * 0.8); }
-.ck-time { font-size: calc(var(--r) * 3.6); overflow: hidden; text-overflow: ellipsis; }
-.t-tall .ck-time { font-size: calc(var(--r) * 4.4); }
-.ck-date { font-size: calc(var(--r) * 1.1); }
-.ck-status { font-size: max(7.5px, calc(var(--r) * 0.72)); color: var(--tile-mute); }
+/* Clock. The tile: only the time and the date, centered (the strip keeps them side by side).
+   Times marked data-fit shrink to their width, like fitWidth in app/widgets/today.js. */
+.pv.ck { justify-content: center; }
+.ck-time { font-size: calc(var(--r) * 4.4); line-height: 1.3; }
+.t-tall .ck-time { font-size: calc(var(--r) * 5.6); }
+.ck-date { font-size: calc(var(--r) * 1.2); line-height: 1.35; opacity: 0.86; }
 .t-strip .ck-time { font-size: calc(var(--r) * 2.9); flex: 0 0 auto; overflow: visible; }
-.t-strip .ck-date { margin-left: calc(var(--r) * 0.9); font-size: calc(var(--r) * 1); line-height: 1.4; min-width: 0; flex: 1 1 0; }
+.t-strip .ck-date { margin-left: calc(var(--r) * 0.9); font-size: calc(var(--r) * 1); line-height: 1.4; min-width: 0; flex: 1 1 0; opacity: 1; }
+/* Clock page (Clicked and Full screen), digital face: the time and date, the two choices, About this hub. */
+.ck-pg { gap: 0; }
+.ck-main { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; gap: 0.8em; overflow: hidden; }
+.ck-disp { flex: 1 1 auto; min-width: 0; max-height: 100%; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+.ck-big { flex: none; font-size: 4.2em; font-weight: 200; line-height: 1.3; letter-spacing: -0.03em; }
+.ck-big small { font-size: 0.29em; margin-left: 0.25em; }
+.ck-full { flex: none; font-size: 0.95em; line-height: 1.35; opacity: 0.86; }
+.ck-ctl { flex: 0 0 34%; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0.2em; }
+.ck-gl { font-size: 0.6em; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; color: var(--tile-mute); line-height: 1.35; }
+.ck-gl + .ck-seg { margin-bottom: 0.25em; }
+.ck-seg { display: flex; gap: 0.15em; padding: 0.12em; border: 1px solid rgba(255,255,255,0.18); border-radius: 99px; background: rgba(0,0,0,0.18); min-width: 0; }
+.ck-opt { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 0.3em; padding: 0.15em 0.4em; border-radius: 99px; font-size: 0.66em; line-height: 1.35; color: var(--tile-mute); }
+.ck-opt i { flex: none; width: 0.42em; height: 0.42em; border-radius: 50%; background: #ff7a59; }
+.ck-opt.on { background: rgba(255,255,255,0.16); color: var(--tile-fg); font-weight: 600; }
+.ck-opt.fx { background: #fff; color: #050506; }
+.ck-about { flex: none; display: flex; gap: 0.8em; align-items: flex-start; margin-top: 0.4em; padding-top: 0.35em; border-top: 1px solid rgba(255,255,255,0.14); min-width: 0; }
+.ck-at { flex: 0 0 24%; min-width: 0; font-size: 0.56em; line-height: 1.6; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--tile-mute); overflow-wrap: anywhere; }
+.ck-al { flex: 1 1 auto; min-width: 0; font-size: 0.62em; line-height: 1.4; opacity: 0.86; }
+.full .ck-main { padding: 0 0.4em; gap: 1.2em; }
+.full .ck-big { font-size: min(5.6em, 14.5cqw); }   /* the --e floor would otherwise outgrow a small card */
+.full .ck-full { font-size: min(1.05em, 3.4cqw); }
+.full .ck-ctl { flex-basis: 30%; }
 /* Entertainment */
 .lg { display: grid; place-items: center; aspect-ratio: 1; width: 100%; border-radius: 22%; font-weight: 800; line-height: 1.3; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08); letter-spacing: -0.02em; }
 .lg.miss { opacity: 0.35; }
@@ -427,7 +449,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
 
   // What the TV shows today (app/config.js, HUB_CONFIG.layout), with each widget's plain-language job.
   var WIDGETS = {
-    today:         { title: 'Clock',                 sub: 'Time and date, plus the live status line' },
+    today:         { title: 'Clock',                 sub: 'Time and date; opens the Clock page' },
     entertainment: { title: 'Entertainment',         sub: 'Apps, Xbox and live TV' },
     weather:       { title: 'Weather',               sub: 'Today, the next hours and the week' },
     todo:          { title: 'To-do',                 sub: 'Your list, kept on the Pi' },
@@ -442,7 +464,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     { id: 'todo', x: 0, y: 2, w: 3, h: 4 }, { id: 'calendar', x: 3, y: 2, w: 3, h: 4 }, { id: 'nowplaying', x: 6, y: 2, w: 3, h: 2 },
     { id: 'awws', x: 9, y: 2, w: 3, h: 2 }, { id: 'ambiance', x: 6, y: 4, w: 3, h: 2 }, { id: 'mirror', x: 9, y: 4, w: 3, h: 2 }
   ];
-  // The TV's own built-in layout (app/config.js, v0.12.2). The submit summary compares against this, not Stock.
+  // The TV's own built-in layout (HUB_CONFIG.layout in app/config.js, same since v0.12.0). The submit summary compares against this, not Stock.
   var TV_DEFAULT = [
     { id: 'today', x: 0, y: 0, w: 3, h: 1 }, { id: 'calendar', x: 3, y: 0, w: 3, h: 4 }, { id: 'awws', x: 6, y: 0, w: 3, h: 4 },
     { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 1, w: 3, h: 4 }, { id: 'mirror', x: 9, y: 2, w: 3, h: 4 },
@@ -457,7 +479,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   /* ---------- what shows at each size: the facts ----------
      One object, keyed by widget id and then by cell (strip, standard, tall,
      panel = Clicked, full = Full screen), with en and es text per cell.
-     Checked against the TV code (PR 17, v0.12.2: app/hub.js sizeOf, app/widgets/*).
+     Checked against the TV code (PR 19, v0.13.0: app/hub.js sizeOf, app/widgets/*).
      title and sample hold the words the previews draw. built: false marks a
      view the TV does not have yet. Mirrored in tile-sizes.md. */
   var PLANNED_CELLS = {
@@ -483,21 +505,23 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     today: {
       title: { en: 'Clock', es: 'Reloj' },
       sample: {
-        en: { place: 'Living room', time: '11:24', ampm: 'PM', dow: 'Wednesday', md: 'November 18', dowShort: 'Wed', mdShort: 'Nov 18', long: 'Wednesday, November 18',
-              status: ['v0.12.2 · Chrome 153', 'Motion: push (auto, measuring)', 'Live'], nb: 'Not built yet', nbLine: 'A Clock page is planned.' },
-        es: { place: 'Salón principal', time: '11:24', ampm: 'p. m.', dow: 'Miércoles', md: '18 de noviembre', dowShort: 'Mié.', mdShort: '18 nov.', long: 'Miércoles, 18 de noviembre',
-              status: ['v0.12.2 · Chrome 153', 'Movimiento: empuje (automático, midiendo)', 'En directo · Última actualización 23:20'], nb: 'Todavía no está hecho', nbLine: 'Está prevista una página del Reloj.' }
+        en: { time: '11:24', ampm: 'PM', dow: 'Wednesday', md: 'November 18', dowShort: 'Wed', mdShort: 'Nov 18', long: 'Wednesday, November 18', fullDate: 'Wednesday, November 18, 2026',
+              face: 'Face', faces: ['Digital', 'Analog'], clock: 'Clock', hours: ['12-hour', '24-hour'], about: 'About this hub',
+              status: ['v0.13.0 · Chrome 153', 'Motion: push (auto, measuring)', 'Live'] },
+        es: { time: '11:24', ampm: 'p. m.', dow: 'Miércoles', md: '18 de noviembre', dowShort: 'Mié.', mdShort: '18 nov.', long: 'Miércoles, 18 de noviembre', fullDate: 'Miércoles, 18 de noviembre de 2026',
+              face: 'Esfera', faces: ['Digital', 'Analógica'], clock: 'Reloj', hours: ['12 horas', '24 horas'], about: 'Acerca de este centro',
+              status: ['v0.13.0 · Chrome 153', 'Movimiento: empuje (automático, midiendo)', 'En directo · Última actualización 23:20'] }
       },
-      strip: { en: 'The time, with the date stacked right beside it: the weekday over the month and day. A part too long for the room takes its short form (Wed, Sep 30). No place name, no status lines. A narrow strip (1–2 columns) shows the time only; at 6+ columns the date is a little bigger.',
-               es: 'La hora y, justo a su lado, la fecha en dos líneas: el día de la semana sobre el mes y el día. Si una parte no cabe, pasa a su forma corta (mié., 30 sept.). Sin nombre del lugar ni líneas de estado. En una tira estrecha (1–2 columnas) solo se ve la hora; con 6 columnas o más, la fecha es algo más grande.' },
-      standard: { en: 'Place name (Living room), big time, full date, then the status lines: version and browser, motion, and live updates and updates when they have news. Narrow tiles shorten the date to “Wed, Nov 18”.',
-                  es: 'Nombre del lugar (Salón principal), la hora en grande, la fecha completa y las líneas de estado: versión y navegador, movimiento, y directo y actualizaciones cuando hay novedades. En mosaicos estrechos la fecha se acorta a «Mié 18 de noviembre».' },
-      tall: { en: 'The same as Standard with a bigger clock (biggest at 6+ columns). The status lines stay at the bottom.',
-              es: 'Igual que Estándar, con un reloj más grande (el mayor a partir de 6 columnas). Las líneas de estado siguen abajo.' },
-      panel: { built: false, en: 'Not built yet. The clock tile is static today: the remote’s focus skips it and it does not open. A Clock page is planned.',
-               es: 'Todavía no está hecho. Hoy el reloj es fijo: el mando lo salta y no se abre. Está prevista una página del Reloj.' },
-      full: { built: false, en: 'Not built yet. It comes with the planned Clock page.',
-              es: 'Todavía no está hecho. Llegará con la página del Reloj prevista.' }
+      strip: { en: 'The time, with the date stacked right beside it: the weekday over the month and day. A part too long for the room takes its short form (Wed, Sep 30). A narrow strip (1–2 columns) shows the time only, shrunk to fit; at 6+ columns the date is a little bigger.',
+               es: 'La hora y, justo a su lado, la fecha en dos líneas: el día de la semana sobre el mes y el día. Si una parte no cabe, pasa a su forma corta (mié., 30 sept.). En una tira estrecha (1–2 columnas) solo se ve la hora, reducida para que quepa; con 6 columnas o más, la fecha es algo más grande.' },
+      standard: { en: 'Only the time and the date, centered in the tile: the big time over “Wednesday, November 18” (it may wrap once, then ends in “…”). No place name and no status lines: those moved to the Clock page. Narrow tiles shorten the date to “Wed, Nov 18”. The time shrinks to fit the width.',
+                  es: 'Solo la hora y la fecha, centradas en el mosaico: la hora en grande sobre «Miércoles, 18 de noviembre» (puede ocupar dos líneas y luego termina en «…»). Sin nombre del lugar ni líneas de estado: ahora están en la página del Reloj. En mosaicos estrechos la fecha se acorta a «mié., 18 nov.». La hora se reduce para caber a lo ancho.' },
+      tall: { en: 'The same as Standard with a bigger clock (biggest at 6+ columns).',
+              es: 'Igual que Estándar, con un reloj más grande (el mayor a partir de 6 columnas).' },
+      panel: { en: 'The tile now takes focus and OK opens the Clock page. Digital face by default: the big time over “Wednesday, November 18, 2026”. Analog instead shows a dial with a day-date window (WED 18), with the time, then the weekday over the date, beside it. On the right, Face (Digital or Analog) and Clock (12-hour or 24-hour), both remembered on the TV; 12/24 changes the tile too. At the bottom, About this hub: version and browser, motion, and live updates and updates when they have news.',
+               es: 'Ahora el mosaico recibe el foco y OK abre la página del Reloj. Por defecto, esfera digital: la hora en grande sobre «Miércoles, 18 de noviembre de 2026». La analógica muestra una esfera con ventanilla de día y fecha (MIÉ 18) y, a su lado, la hora y debajo el día de la semana sobre la fecha. A la derecha, Esfera (Digital o Analógica) y Reloj (12 o 24 horas), que el televisor recuerda; 12/24 cambia también el mosaico. Abajo, Acerca de este centro: versión y navegador, movimiento, y directo y actualizaciones cuando hay novedades.' },
+      full: { en: 'The same page filling the screen: a much bigger time (or a bigger analog face), bigger Face and Clock choices, and About this hub along the bottom.',
+              es: 'La misma página a pantalla completa: la hora mucho más grande (o una esfera analógica mayor), las opciones de Esfera y Reloj más grandes y Acerca de este centro abajo.' }
     },
     entertainment: {
       title: { en: 'Entertainment', es: 'Entretenimiento' },
@@ -964,7 +988,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function buildSummary(id) {
     var L = [];
     L.push('HOME HUB LAYOUT SUBMISSION ' + id);
-    L.push('Grid is 12 columns x 6 rows; positions are zero-based (x across, y down); sizes are w x h cells. Compared with the TV\'s built-in layout (app/config.js, v0.12.2); a layout sent from the Pi may differ.');
+    L.push('Grid is 12 columns x 6 rows; positions are zero-based (x across, y down); sizes are w x h cells. Compared with the TV\'s built-in layout (app/config.js); the layout showing on the TV may differ.');
     L.push('Layout: ' + ((layoutById(cur) || {}).name || 'Stock') + (layoutDiffers() ? ' (edited)' : ''));
     L.push('');
     var any = false;
@@ -1074,9 +1098,10 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     grid: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
-    play: '<path d="M9 7.5v9l7.5-4.5z" fill="#fff" stroke="none"/>'
+    play: '<path d="M9 7.5v9l7.5-4.5z" fill="#fff" stroke="none"/>',
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
   };
-  var WICON = { entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera' };
+  var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';
@@ -1100,11 +1125,10 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function tilePreview(id, tier) {
     var M = SIZE_MATRIX[id], S = M.sample[lang], U = I18N[lang], T = M.title[lang], cls = 'pv t-' + tier, h = '';
     if (id === 'today') {
-      var time = '<div class="big ck-time">' + esc(S.time) + '<small>' + esc(S.ampm) + '</small></div>';
+      var fit = tier === 'strip' ? '' : ' data-fit="var(--r) * ' + (tier === 'tall' ? '5.6' : '4.4') + '"';
+      var time = '<div class="big ck-time"' + fit + '>' + esc(S.time) + '<small>' + esc(S.ampm) + '</small></div>';
       if (tier === 'strip') return '<div class="' + cls + '">' + time + '<div class="ck-date"><div class="l1" data-short="' + esc(S.dowShort) + '">' + esc(S.dow) + '</div><div class="l1" data-short="' + esc(S.mdShort) + '">' + esc(S.md) + '</div></div></div>';
-      h = '<div class="ck-place cap mu l1">' + esc(S.place) + '</div>' + time + '<div class="ck-date l1">' + esc(S.long) + '</div><div class="ck-status push">' +
-        S.status.map(function (s) { return '<div class="l1">' + esc(s) + '</div>'; }).join('') + '</div>';
-      return '<div class="' + cls + '">' + h + '</div>';
+      return '<div class="' + cls + ' ck">' + time + '<div class="ck-date c2">' + esc(S.long) + '</div></div>';
     }
     if (id === 'entertainment') {
       if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="en-row">' + logo(0) + more(10) + '</div></div>';
@@ -1159,7 +1183,16 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function panelPreview(id, full) {
     var M = SIZE_MATRIX[id], S = M.sample[lang], U = I18N[lang], cls = 'pp' + (full ? ' full' : ''), b = '';
     var hint = '<div class="pp-hint l1">' + esc(full ? U.shrink : U.close) + '</div>';
-    if (id === 'today') return '<div class="' + cls + ' nb"><b>' + esc(S.nb) + '</b><span>' + esc(S.nbLine) + '</span></div>';
+    if (id === 'today') {
+      // The default face (digital); the focus starts on the chosen face, so Digital is the white pill.
+      var opt = function (label, on, fx) { return '<span class="ck-opt' + (on ? ' on' : '') + (fx ? ' fx' : '') + '">' + (on ? '<i></i>' : '') + '<span class="l1">' + esc(label) + '</span></span>'; };
+      b = '<div class="ck-main"><div class="ck-disp"><div class="big ck-big" data-fit="' + (full ? 'min(5.6em, 14.5cqw)' : '4.2em') + '">' + esc(S.time) + '<small>' + esc(S.ampm) + '</small></div>' +
+        '<div class="ck-full c2">' + esc(S.fullDate) + '</div></div><div class="ck-ctl">' +
+        '<div class="ck-gl l1">' + esc(S.face) + '</div><div class="ck-seg">' + opt(S.faces[0], true, true) + opt(S.faces[1]) + '</div>' +
+        '<div class="ck-gl l1">' + esc(S.clock) + '</div><div class="ck-seg">' + opt(S.hours[0], true) + opt(S.hours[1]) + '</div></div></div>' +
+        '<div class="ck-about"><div class="ck-at">' + esc(S.about) + '</div><div class="ck-al">' + S.status.map(function (x) { return '<div class="l1">' + esc(x) + '</div>'; }).join('') + '</div></div>';
+      return '<div class="' + cls + '">' + panelHead(id, full, '') + '<div class="pp-body ck-pg">' + b + '</div></div>';
+    }
     if (id === 'entertainment') {
       var item = function (i) { return '<div>' + logo(i, i === 4) + '<div class="xs l1">' + esc(S.names[i]) + '</div>' + (full && S.states[i] ? '<div class="xs l1 mu">' + esc(S.states[i]) + '</div>' : '') + '</div>'; };
       if (!full) { for (var i = 0; i < 11; i++) b += item(i); b = '<div class="pp-grid">' + b + '</div>'; }
@@ -1245,6 +1278,17 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function fitShort(root) {
     Array.prototype.forEach.call(root.querySelectorAll('[data-short]'), function (n) {
       if (n.scrollWidth > n.clientWidth + 1) n.textContent = n.getAttribute('data-short');
+    });
+    // Like the TV's fitWidth: a time too wide for its box shrinks in 10% steps (kept relative, so it scales with the card).
+    // On the Clock page the time also gives way when it and the date are too tall for the room (as the TV's fitFace does).
+    Array.prototype.forEach.call(root.querySelectorAll('[data-fit]'), function (n) {
+      var base = n.getAttribute('data-fit'), f = 1, box = n.parentNode;
+      var tooBig = function () { return n.scrollWidth > n.clientWidth + 1 || (box.className.indexOf('ck-disp') >= 0 && box.scrollHeight > box.clientHeight + 1); };
+      n.style.fontSize = '';
+      for (var i = 0; i < 14 && n.clientWidth && tooBig(); i++) {
+        f = f * 0.9;
+        n.style.fontSize = 'calc(' + base + ' * ' + f.toFixed(3) + ')';
+      }
     });
   }
   function renderCell(key) {
