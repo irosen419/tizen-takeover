@@ -35,6 +35,8 @@ Apps that aren't installed show dimmed with "Not installed". Install the app fro
 | OK | Open the widget | Open the item, or switch to full screen | Open the item, or leave full screen | Open the app | |
 | Back | Stays on the hub | Close the panel | Back to the panel | Back to the apps grid | Close the dashboard |
 
+On the home screen, Up from a tile in the top row drops the **layout bar** (pick another layout; Back closes it), and Left from a tile at the left edge slides in the **About panel** (the hub's version and how things are going, see [About panel](#about-panel-the-version-and-status)). Right or Back closes the About panel and focus stays on the tile; Up and Down scroll it if it is taller than the screen.
+
 The Home button always goes to Samsung's own home bar. Open the hub from TizenBrew, or set it to start on its own (below).
 
 ## Xbox
@@ -98,9 +100,15 @@ Press OK on it to open the Clock page. At the top right of the page are the choi
 
 The tile changes as soon as you pick, behind the page. Both choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
 
-### About this hub (the version and status)
+### About panel (the version and status)
 
-At the bottom of the Clock page, **About this hub** shows the hub version and the TV's browser, then the motion choice, for example `v0.17.0 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)). The lines change by themselves while the page is open.
+The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
+
+- **This hub:** **Version** (for example `v0.18.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand).
+- **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
+- **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
+
+Everything in it changes by itself, once a second, while it is open. It doesn't count as busy: the wanderers keep coming while it is open, behind it. `HUB_TEST.about` (`open()`, `close()`, `isOpen()`, `rows()`) reads it in a laptop browser and in the tests.
 
 ### Entertainment
 
@@ -258,16 +266,16 @@ live: { server: HUB_PI + ':8097' },
 
 `server: ''` turns live updates off, and the hub works exactly as before. On a laptop, `?live=http://127.0.0.1:8097` in the address uses another server for one visit, and `?live=off` turns it off.
 
-**About this hub** on the Clock page says how it's going, in small text, never a pop-up:
+**Live updates** in the [About panel](#about-panel-the-version-and-status) says how it's going, in small text, never a pop-up:
 
-| About this hub says | Meaning |
+| Live updates says | Meaning |
 | --- | --- |
-| nothing | Live updates are off, or this TV has never reached the Pi (it keeps trying quietly) |
-| `Live` | Connected |
-| `Live: lost the Pi at 7:10 AM` | Was connected, the Pi can't be reached now. The hub uses saved data and retries |
-| `Live: the Pi refused this TV` | The TV isn't on the Pi's allowed list (`HUB_TV_IPS`). Retries every 5 minutes |
-| `Live: unexpected reply from the Pi` | Something else answers at that address. Retries every 5 minutes |
-| `Live: the hub needs an update` | The Pi's server is newer than this hub understands |
+| nothing (no row) | Live updates are off, or this TV has never reached the Pi (it keeps trying quietly) |
+| `connected` | Connected |
+| `lost the Pi at 7:10 AM` | Was connected, the Pi can't be reached now. The hub uses saved data and retries |
+| `the Pi refused this TV` | The TV isn't on the Pi's allowed list (`HUB_TV_IPS`). Retries every 5 minutes |
+| `unexpected reply from the Pi` | Something else answers at that address. Retries every 5 minutes |
+| `the hub needs an update` | The Pi's server is newer than this hub understands |
 
 Commands the Pi can send: `show` a widget (`weather`, `todo`, `calendar`, `entertainment`, optionally full screen), `home` (close whatever is open), `say` a short message for a few seconds, and `reload` (which goes through the loader, so it also picks up the newest version). A command sent while the TV is off is dropped, so nothing old fires when the TV turns on.
 
@@ -355,18 +363,18 @@ It can't leave you worse off:
 
 GitHub allows 60 lookups an hour from one home without an account. The hub uses about 4 an hour, plus one each time it starts.
 
-**About this hub** on the Clock page says how it's going:
+The [About panel](#about-panel-the-version-and-status) says how it's going:
 
-| About this hub says | Meaning |
+| The About panel says | Meaning |
 | --- | --- |
 | `(newest)` after the version | GitHub confirmed this is the newest commit of the branch |
-| nothing extra | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
-| `Updates: can't reach GitHub` | GitHub didn't answer, or refused (too many lookups). This is the newest version the TV knows of. It asks again later |
-| `Updates: a newer version didn't start` | The newest commit didn't start, so the TV went back to this one. It tries again after 6 hours, or straight away when an even newer commit comes |
-| `Updates: a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
-| `Updates: a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
+| nothing extra, no Version check row | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
+| Version check: `can't reach GitHub` | GitHub didn't answer, or refused (too many lookups). This is the newest version the TV knows of. It asks again later |
+| Version check: `a newer version didn't start` | The newest commit didn't start, so the TV went back to this one. It tries again after 6 hours, or straight away when an even newer commit comes |
+| Version check: `a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
+| Version check: `a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
 
-The version on TizenBrew's card for the hub comes from the branch's `package.json` through jsDelivr's cache, so it can lag behind by up to 12 hours. The version under About this hub on the Clock page is the truth.
+The version on TizenBrew's card for the hub comes from the branch's `package.json` through jsDelivr's cache, so it can lag behind by up to 12 hours. The version in the About panel is the truth.
 
 A few files still come through jsDelivr's 12-hour branch cache: `package.json`, `service.js`, the loader `app/index.html`, and `app/update.js` as the loader uses it. These rarely change. After changing one of them, purge it at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/<file>` (for example `.../app/update.js`), or wait 12 hours.
 
@@ -377,7 +385,7 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/hub.html`
 - `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/package.json`
 
-`node dev/update-test.js` tests all of this in a headless browser (Playwright), against a pretend TizenBrew and a pretend GitHub: the first start, a new commit, GitHub away, a broken commit, a commit jsDelivr hasn't got, waiting for a quiet moment, the `reload` command, an old commit from before the loader, damaged memory, the laptop preview, and About this hub on the Clock page with up to four lines, in the panel and full screen. It needs port 8095 free and nothing from the internet. Set `UPDATE_TEST_SHOTS` to a folder to also save screenshots. It can't prove the real TV, TizenBrew or jsDelivr; the first run on the TV is still a real test.
+`node dev/update-test.js` tests all of this in a headless browser (Playwright), against a pretend TizenBrew and a pretend GitHub: the first start, a new commit, GitHub away, a broken commit, a commit jsDelivr hasn't got, waiting for a quiet moment, the `reload` command, an old commit from before the loader, damaged memory, the laptop preview, the About panel with three to five rows above the Wanderers (each fitting, nothing cut), and a Clock page with no hub facts whose face fits, in the panel and full screen. It needs port 8095 free and nothing from the internet. Set `UPDATE_TEST_SHOTS` to a folder to also save screenshots. It can't prove the real TV, TizenBrew or jsDelivr; the first run on the TV is still a real test.
 
 ## How it works
 
@@ -394,6 +402,6 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps, calls webhooks and fetches the weather when the page can’t do it directly.
 - `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/clock-test.js` tests the Clock tile and its faces; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating; `dev/clay-test.js` tests the clay characters.
 - `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
-- `app/clay.js` brings Ian and Ember on screen now and then (with `app/clay.css`, loaded only when they first come); `app/clay/` holds their sprites and `sprites.js`, the list of them. `art/clay/` holds how they are made (see `art/clay/README.md`), and `docs/clay.md` how the scenes work. `dev/clay-test.js` tests them; `dev/clay-shots.js` films every scene.
+- `app/clay.js` brings Ian and Ember on screen now and then (with its own few styles, added only when they first come); `app/clay/` holds their sprites and `sprites.js`, the list of them. `art/clay/` holds how they are made (see `art/clay/README.md`), and `docs/clay.md` how the scenes work. `dev/clay-test.js` tests them; `dev/clay-shots.js` films every scene.
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.

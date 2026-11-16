@@ -17,7 +17,7 @@
  *   HUB_LIVE.everConnected()   this browser has reached the server at least once
  *
  * States: off, quiet (never reached from this browser), connecting, live,
- * lost, refused, badreply, needsupdate. text is the line for About this hub on the Clock page.
+ * lost, refused, badreply, needsupdate. text is what the About panel shows for live updates.
  *
  * In the page address: ?live=<address> uses another server, ?live=off turns
  * live updates off, ?livepoll=1 uses the long-poll fallback from the start.

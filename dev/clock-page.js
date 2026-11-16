@@ -1,17 +1,20 @@
 /*
- * For the tests that read the hub's status lines (version, motion, live
- * updates, updates). They live in "About this hub" on the Clock page, so
- * these open the page the way OK on the Clock tile would (through
- * HUB_TEST.openPanel, which doesn't count as a key press and so leaves the
- * idle timer alone), read it, and close it again.
+ * For the tests that read the hub's status (version, browser, motion, live
+ * updates, updates, the clay wanderers). It lives in the About panel (Left
+ * from a left-most tile), so these open it through HUB_TEST.about.open(),
+ * which doesn't count as a key press and so leaves the idle timer alone,
+ * read it, and close it again.
  *
  *   const clockPage = require('./clock-page');
- *   const lines = await clockPage.lines(page);          // ['v0.17.0 · Chrome 120', 'Motion: ...']
- *   const text = await clockPage.line(page, 'updates'); // the updates line, or null
+ *   const lines = await clockPage.lines(page);          // ['v0.18.0', 'Chrome 120', 'push (auto, 58 fps)']
+ *   const text = await clockPage.line(page, 'updates'); // the updates text, or null
  *   await clockPage.waitFor(page, (about) => about.live === 'Live', 3000, 'no Live line');
  *
- * waitFor keeps the page open while it waits, so it also checks that the
- * page redraws by itself when a status changes.
+ * lines are the shown values of every row but the Wanderers ones, in order;
+ * live and updates are those rows' source texts ('Live: lost the Pi at
+ * 9:41 AM', 'Updates: can't reach GitHub'); rows is every row as
+ * { group, label, value, raw }. waitFor keeps the panel open while it waits,
+ * so it also checks that the panel redraws by itself when a status changes.
  *
  * The face and 12/24 choices (dev/clock-test.js):
  *
@@ -27,14 +30,16 @@
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-// { lines: [...], live: text or null, updates: text or null } from the open page.
+// { lines, live, updates, rows } from the open About panel.
 function read(page) {
   return page.evaluate(() => {
-    const text = (sel) => { const e = document.querySelector(sel); return e ? e.textContent : null; };
+    const rows = window.HUB_TEST.about.rows();
+    const raw = (label) => { const r = rows.filter((x) => x.label === label)[0]; return r ? r.raw : null; };
     return {
-      lines: Array.prototype.map.call(document.querySelectorAll('.clock-about-line'), (e) => e.textContent),
-      live: text('.clock-about-live'),
-      updates: text('.clock-about-updates')
+      lines: rows.filter((r) => r.group !== 'Wanderers').map((r) => r.value),
+      live: raw('Live updates'),
+      updates: raw('Version check'),
+      rows: rows
     };
   });
 }
@@ -57,7 +62,7 @@ async function open(page) {
   const ok = await page.evaluate(() => window.HUB_TEST.openPanel('today'));
   if (!ok) throw new Error('the Clock page did not open');
   await settle(page, () => window.HUB_TEST.open() === 'today' && !window.HUB_TEST.busy() &&
-    !!document.querySelector('.clock-about-line'), 4000, 'the Clock page did not open');
+    !!document.querySelector('.clock-page'), 4000, 'the Clock page did not open');
   return true;
 }
 
@@ -68,12 +73,26 @@ async function close(page) {
   await settle(page, () => window.HUB_TEST.open() === null && !window.HUB_TEST.busy(), 4000, 'the Clock page did not close');
 }
 
+// Opens the About panel. Returns true when this call opened it.
+async function openAbout(page) {
+  await settle(page, () => !window.HUB_TEST.busy(), 4000, 'the hub stayed busy');
+  if (await page.evaluate(() => window.HUB_TEST.about.isOpen())) return false;
+  const now = await page.evaluate(() => window.HUB_TEST.open());
+  if (now) throw new Error('a panel is open: ' + now);
+  if (!(await page.evaluate(() => window.HUB_TEST.about.open()))) throw new Error('the About panel did not open');
+  return true;
+}
+
+async function closeAbout(page) {
+  await page.evaluate(() => window.HUB_TEST.about.close());
+}
+
 async function about(page) {
-  const opened = await open(page);
+  const opened = await openAbout(page);
   try {
     return await read(page);
   } finally {
-    if (opened) await close(page);
+    if (opened) await closeAbout(page);
   }
 }
 
@@ -82,16 +101,16 @@ async function lines(page) { return (await about(page)).lines; }
 // kind: 'live' or 'updates'.
 async function line(page, kind) { return (await about(page))[kind]; }
 
-// Opens the page, waits until fn(about) is truthy, closes the page. Returns
-// fn's value. A reload on the way is fine: the page is opened again.
+// Opens the About panel, waits until fn(about) is truthy, closes it.
+// Returns fn's value. A reload on the way is fine: it is opened again.
 async function waitFor(page, fn, ms, text) {
-  const wasOpen = await page.evaluate(() => window.HUB_TEST.open() === 'today');
+  const wasOpen = await page.evaluate(() => window.HUB_TEST.about.isOpen());
   const end = Date.now() + ms;
   let last;
   try {
     while (Date.now() < end) {
       try {
-        await open(page);
+        await openAbout(page);
         last = await read(page);
         const v = fn(last);
         if (v) return v;
@@ -99,7 +118,7 @@ async function waitFor(page, fn, ms, text) {
       await sleep(100);
     }
   } finally {
-    if (!wasOpen) { try { await close(page); } catch (e) { /* the page went away */ } }
+    if (!wasOpen) { try { await closeAbout(page); } catch (e) { /* the page went away */ } }
   }
   throw new Error(text + ' (last: ' + JSON.stringify(last) + ')');
 }
@@ -161,4 +180,4 @@ async function pick(page, key) {
   throw new Error('could not reach ' + key + ' with the arrows (focus on ' + (await state(page)).focused + ')');
 }
 
-module.exports = { open, close, read, about, lines, line, waitFor, state, tile, pick };
+module.exports = { open, close, openAbout, closeAbout, read, about, lines, line, waitFor, state, tile, pick };

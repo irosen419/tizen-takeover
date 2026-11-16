@@ -36,8 +36,7 @@
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
  *     onStatus: function (ctx) {}          // the motion, live updates or updates status
- *                                          // changed (ctx.motionStatus(), ctx.live.status(),
- *                                          // ctx.updates())
+ *                                          // changed (ctx.live.status())
  *   });
  *
  * Everything except id and title is optional. Every call into a widget is
@@ -59,9 +58,6 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.17.0'
- *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
- *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
  *   ctx.service(path, timeoutMs, cb)   GET JSON from the local service.js;
  *                             cb(err, data), err unless data.ok is true
@@ -91,8 +87,8 @@
  *                             docs/live-updates.md), or undefined when live.js
  *                             isn't loaded. jsDelivr can serve a mix of old and
  *                             new files, so always check it exists first:
- *     ctx.live.status()         { state, text, since }; text is the line for
- *                               "About this hub" on the Clock page, '' when
+ *     ctx.live.status()         { state, text, since }; text is what the
+ *                               About panel shows for live updates, '' when
  *                               there is nothing to say
  *     ctx.live.get(resource)    the data last received, e.g. get('todo').items
  *     ctx.live.on(resource, fn) fn(data, rev) each time new data arrives
@@ -102,8 +98,8 @@
  *     ctx.live.everConnected()  this TV has reached the server at least once
  *   ctx.updates()             where this hub stands with updates (app/update.js):
  *                             { managed, pinned, sha, state, text, newest, checkedAt },
- *                             or undefined when update.js isn't loaded. text is the
- *                             line for "About this hub" on the Clock page, '' when
+ *                             or undefined when update.js isn't loaded. text is what
+ *                             the About panel shows for the version check, '' when
  *                             there is nothing to say;
  *                             newest is true when this is the branch's newest commit
  *
@@ -117,7 +113,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.17.0';
+  var BUILD = 'v0.18.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -1080,6 +1076,164 @@
     toast(p.name + ' layout', 1800);
   }
 
+  /* ---------- the About panel ---------- */
+
+  // Press Left on a left-most tile and a strip of facts about the hub slides
+  // in from the left: the version, the TV's browser, motion, live updates,
+  // updates, and how the clay wanderers are doing. Right or Back closes it
+  // (focus stays on the tile it came from); Up and Down scroll it when it is
+  // taller than the screen; a click outside closes it. It is not "busy": the
+  // wanderers keep their schedule while it is open, so their status can be
+  // watched live (they walk behind it). Made like the layout bar.
+  //
+  // Each row is { group, label, value }: value() returns the text, or '' to
+  // leave the row out. To show something new, add a row to ABOUT_ROWS (a new
+  // group name starts a new group); nothing else needs to change.
+  var aboutEl = document.getElementById('about');
+  var ab = { on: false, box: null, sig: '', rows: [], drawn: [], timer: null, hideTimer: null };
+
+  function noPrefix(text, prefix) {
+    text = text ? String(text) : '';
+    return text.indexOf(prefix) === 0 ? text.slice(prefix.length) : text;
+  }
+
+  function clayPart(name) {
+    var st = clayStatus();
+    return st && typeof st[name] === 'string' ? st[name] : '';
+  }
+
+  var ABOUT_ROWS = [
+    { group: 'This hub', label: 'Version', value: function () {
+      var u = updateStatus();
+      return BUILD + (u && u.newest === true ? ' (newest)' : '');
+    } },
+    { group: 'This hub', label: 'Browser', value: function () { return browserText; } },
+    { group: 'This hub', label: 'Motion', value: function () { return noPrefix(motionStatus(), 'Motion: '); } },
+    { group: 'Updates', label: 'Live updates', value: function () {
+      var L = liveFacade();
+      var t = L ? (L.status() || {}).text || '' : '';
+      return t === 'Live' ? 'connected' : noPrefix(t, 'Live: ');
+    }, raw: function () { var L = liveFacade(); return L ? (L.status() || {}).text || '' : ''; } },
+    { group: 'Updates', label: 'Version check', value: function () {
+      var u = updateStatus();
+      return noPrefix(u && typeof u.text === 'string' ? u.text : '', 'Updates: ');
+    }, raw: function () { var u = updateStatus(); return u && typeof u.text === 'string' ? u.text : ''; } },
+    { group: 'Wanderers', label: 'Now', value: function () { return clayPart('now'); } },
+    { group: 'Wanderers', label: 'Visits', value: function () { return clayPart('visits'); } },
+    { group: 'Wanderers', label: 'Last visit', value: function () { return clayPart('last'); } },
+    { group: 'Wanderers', label: 'Loading', value: function () { return clayPart('loading'); } },
+    { group: 'Wanderers', label: 'Last problem', value: function () { return clayPart('problem'); } }
+  ];
+
+  // A number keeps its unit on the same line: "1 s ago", never "1" then "s ago".
+  function keepUnits(text) {
+    return text.replace(/(\d) (ms|s|min|h|of)(?=$|[ ,.)·])/g, '$1\u00a0$2');
+  }
+
+  // The rows that have something to say now: [{ row, text }].
+  function aboutValues() {
+    var out = [];
+    for (var i = 0; i < ABOUT_ROWS.length; i++) {
+      var text = '';
+      try { text = ABOUT_ROWS[i].value() || ''; } catch (e) { text = ''; }
+      if (text) out.push({ row: ABOUT_ROWS[i], text: keepUnits(String(text)) });
+    }
+    return out;
+  }
+
+  function drawAbout(list) {
+    aboutEl.innerHTML = '';
+    ab.box = el('div', 'about-box', aboutEl);
+    ab.rows = [];
+    ab.drawn = [];
+    var group = null;
+    var sig = [];
+    for (var i = 0; i < list.length; i++) {
+      var r = list[i].row;
+      if (r.group !== group) {
+        group = r.group;
+        el('div', 'about-group', ab.box).textContent = group;
+      }
+      var row = el('div', 'about-row', ab.box);
+      el('div', 'about-label', row).textContent = r.label;
+      var value = el('div', 'about-value', row);
+      value.textContent = list[i].text;
+      ab.rows.push(value);
+      ab.drawn.push(r);
+      sig.push(r.label);
+    }
+    ab.sig = sig.join('|');
+  }
+
+  // Once a second while open: only text that changed is touched; a row
+  // that comes or goes redraws the strip.
+  function refreshAbout() {
+    ab.timer = null;
+    if (!ab.on) return;
+    try {
+      var list = aboutValues();
+      var sig = [];
+      for (var i = 0; i < list.length; i++) sig.push(list[i].row.label);
+      if (sig.join('|') !== ab.sig) {
+        var top = ab.box ? ab.box.scrollTop : 0;
+        drawAbout(list);
+        ab.box.scrollTop = top;
+        placeAboutGlass();
+      } else {
+        for (var j = 0; j < list.length; j++) {
+          if (ab.rows[j].textContent !== list[j].text) ab.rows[j].textContent = list[j].text;
+        }
+      }
+    } catch (e) { /* the strip just stays as it is */ }
+    ab.timer = setTimeout(refreshAbout, 1010 - (new Date().getTime() % 1000));
+  }
+
+  function placeAboutGlass() {
+    if (hasPicture && ab.box) {
+      setGlassOrigin(ab.box, aboutEl.offsetLeft + ab.box.offsetLeft + ab.box.clientLeft,
+        aboutEl.offsetTop + ab.box.offsetTop + ab.box.clientTop);
+    }
+  }
+
+  function openAbout() {
+    if (ab.on || busy || open || frameOpen || sw.on || typingBox()) return;
+    clearTimeout(ab.hideTimer);
+    drawAbout(aboutValues());
+    ab.on = true;
+    aboutEl.classList.add('is-on');
+    placeAboutGlass();
+    void aboutEl.offsetWidth;              // so the slide starts from off screen
+    aboutEl.classList.add('is-shown');
+    clearTimeout(ab.timer);
+    ab.timer = setTimeout(refreshAbout, 1010 - (new Date().getTime() % 1000));
+  }
+
+  function closeAbout() {
+    if (!ab.on) return;
+    ab.on = false;
+    clearTimeout(ab.timer);
+    ab.timer = null;
+    aboutEl.classList.remove('is-shown');
+    clearTimeout(ab.hideTimer);
+    ab.hideTimer = setTimeout(function () { if (!ab.on) { aboutEl.classList.remove('is-on'); aboutEl.innerHTML = ''; } }, 260);
+  }
+
+  // Up and Down: a step at a time, only when it is taller than its room.
+  function scrollAbout(dir) {
+    var box = ab.box;
+    if (!box || box.scrollHeight <= box.clientHeight) return;
+    var step = Math.round(box.clientHeight * 0.6);
+    box.scrollTop = Math.max(0, Math.min(box.scrollHeight - box.clientHeight, box.scrollTop + (dir === 'down' ? step : -step)));
+  }
+
+  // A click anywhere outside the strip closes it, and does nothing else.
+  document.addEventListener('click', function (e) {
+    if (!ab.on || aboutEl.contains(e.target)) return;
+    e.stopPropagation();
+    e.preventDefault();
+    closeAbout();
+  }, true);
+
   /* ---------- building the stage ---------- */
 
   function pickWidgets() {
@@ -1100,10 +1254,7 @@
     var ctx = {
       id: w.id,
       config: (cfg.widgets && cfg.widgets[w.id]) || {},
-      build: BUILD,
       hasTizen: hasPageTizen,
-      motionStatus: motionStatus,
-      browser: function () { return browserText; },
       toast: toast,
       service: service,
       getJSON: function (url, timeoutMs, cb) { xhrJSON(url, timeoutMs, false, cb); },
@@ -1123,7 +1274,6 @@
       setSub: function (text) { if (open === rec) setPanelSub(text); },
       setTileSub: function (text) { setTileSub(rec, text); },
       live: liveFacade(),
-      updates: updateStatus,
       focus: function (node) { if (open === rec) focusPanel(node); },
       _bind: function (r) { rec = r; }
     };
@@ -1212,7 +1362,8 @@
     }
     var next = pickNext(from, rects, dir);
     if (next >= 0) focusHome(next);
-    else if (dir === 'up' || dir === 'left') openSwitcher();   // off the top or left edge: the layout bar
+    else if (dir === 'up') openSwitcher();       // off the top edge: the layout bar
+    else if (dir === 'left') openAbout();        // off the left edge: the About panel
   }
 
   /* ---------- the panel ---------- */
@@ -1512,6 +1663,7 @@
    */
   function openPanel(rec) {
     if (busy || open || !rec.expandable) return;
+    closeAbout();                          // a panel the Pi opens goes over it: close it first
     clayHook('stop');
     open = rec;
     mode = 'panel';
@@ -1713,6 +1865,7 @@
 
   function openFrame(url) {
     if (!url) return toast('This dashboard has no address yet.');
+    closeAbout();
     clayHook('stop');
     frameOpen = true;
     frameEl.src = url;
@@ -1756,6 +1909,12 @@
     if (busy) return;
     // The TV keyboard can send a stray Enter after Done or Back after Cancel.
     if ((code === KEY.ENTER || isBack(code)) && Date.now() - typingEndedAt < 300) return;
+
+    if (ab.on) {
+      if (dir === 'right' || isBack(code)) closeAbout();
+      else if (dir === 'up' || dir === 'down') scrollAbout(dir);
+      return;
+    }
 
     if (sw.on) {
       if (code === KEY.ENTER) chooseLayout();
@@ -2030,6 +2189,27 @@
   window.HUB_TEST.open = function () { return open ? open.w.id : null; };
   window.HUB_TEST.mode = function () { return mode; };
   window.HUB_TEST.busy = function () { return busy; };
+  // The About panel: open() and close() as Left and Right would (open only
+  // when it could), isOpen(), and rows(): [{ group, label, value, raw }]
+  // (raw: the source text, e.g. 'Live: lost the Pi at 9:41 AM'), as shown
+  // (the no-break spaces that keep a number with its unit read as spaces).
+  window.HUB_TEST.about = {
+    open: function () { openAbout(); return ab.on; },
+    close: function () { closeAbout(); return !ab.on; },
+    isOpen: function () { return ab.on; },
+    rows: function () {
+      var out = [];
+      if (!ab.on || !ab.box) return out;
+      for (var i = 0; i < ab.drawn.length; i++) {
+        var r = ab.drawn[i];
+        var value = ab.rows[i].textContent.replace(/\u00a0/g, ' ');
+        var raw = value;
+        try { if (r.raw) raw = r.raw(); } catch (e) { /* the value then */ }
+        out.push({ group: r.group, label: r.label, value: value, raw: raw });
+      }
+      return out;
+    }
+  };
   window.HUB_TEST.idle = hubIdle;
   window.HUB_TEST.setIdle = function (value) { idleOverride = value === true || value === false ? value : null; };
   window.HUB_TEST.setIdleMs = function (ms) { IDLE_MS = ms; };
@@ -2071,6 +2251,13 @@
     try { K[name](); } catch (e) { /* the characters just don't show */ }
   }
 
+  // HUB_CLAY.status() ({ now, visits, last, loading, problem, text }), or null.
+  function clayStatus() {
+    var K = clayApi('status');
+    if (!K) return null;
+    try { return K.status() || null; } catch (e) { return null; }
+  }
+
   function startClay() {
     var K = clayApi('start');
     if (!K) return;
@@ -2078,6 +2265,11 @@
       K.start({
         config: cfg.clay,
         quiet: function () { return !busy && !open && !frameOpen && !sw.on && !typingBox(); },
+        // Why quiet() is false, for the status line: 'typing' | 'panel' | 'frame' | 'switcher' | 'moving' | ''.
+        busyWhy: function () {
+          return typingBox() ? 'typing' : open ? 'panel' : frameOpen ? 'frame' :
+            sw.on ? 'switcher' : busy ? 'moving' : '';
+        },
         // Each tile's rect, measured now (a scene measures once, as it starts).
         tiles: function () {
           measureHome();

@@ -118,7 +118,7 @@ const COMMITS = {
   [A]: (rest) => readWorking(rest),
   [B]: (rest) => {
     const body = readWorking(rest);
-    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.17.0-B'));
+    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.18.0-B'));
     return body;
   },
   [BROKEN]: (rest) => {
@@ -283,7 +283,7 @@ async function record(page) {
 }
 
 const look = {
-  // "About this hub" on the Clock page (opened, read and closed again).
+  // The About panel (opened, read and closed again).
   lines: (page) => clockPage.lines(page),
   updateLine: (page) => clockPage.line(page, 'updates'),
   status: (page) => page.evaluate(() => window.HUB_UPDATE ? window.HUB_UPDATE.status() : null),
@@ -369,11 +369,12 @@ async function check1() {
   await waitAt(page, A, 'app/hub.html');
   const rec = await until(async () => { const r = await record(page); return r && r.good === A ? r : false; }, 3000, 'good is not A');
   assert(!rec.trying, 'trying was not cleared: ' + JSON.stringify(rec));
-  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.17.0', 'record: ' + JSON.stringify(rec));
+  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.18.0', 'record: ' + JSON.stringify(rec));
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
-  assert(/^v0\.17\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
-  assert(lines.length === 2, 'status lines: ' + JSON.stringify(lines));
+  assert(/^v0\.18\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  // Version, browser, motion: no version check row when this is the newest.
+  assert(lines.length === 3, 'About rows: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
   assert(asks.length === 1, 'GitHub was asked ' + asks.length + ' times');
   assert(asks[0].url === 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/commits/main', 'GitHub address: ' + asks[0].url);
@@ -399,7 +400,7 @@ async function check2() {
   await go(page, shellUrl());
   await waitAt(page, B, 'app/hub.html');
   const lines = await look.lines(page);
-  assert(/^v0\.17\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.18\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   const rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared');
   noMissingFiles(logSince(at));
@@ -475,7 +476,7 @@ async function check4() {
   await waitAt(page, B, 'app/hub.html');
   rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared on B: ' + JSON.stringify(rec));
-  assert(/^v0\.17\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
+  assert(/^v0\.18\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
   noErrors(context);
 }
 
@@ -505,7 +506,7 @@ async function check6() {
   await waitIdle(page);
   await page.evaluate(() => window.HUB_TEST.checkUpdates());
   await until(async () => (await look.status(page)).state === 'waiting', 5000, 'not waiting');
-  // The to-do panel is open, so read the text the Clock page would show.
+  // The to-do panel is open, so read the text the About panel would show.
   assert((await look.status(page)).text === 'Updates: a newer version is ready', 'update text ' + (await look.status(page)).text);
   await sleep(2500);
   assert(where(page).ref === A, 'reloaded with a panel open');
@@ -669,7 +670,7 @@ async function check11() {
   assert(github.requests.length === asked && !context.log.requests.some((u) => /api\.github\.com/.test(u)), 'GitHub was asked');
   assert((await look.updateLine(page)) === null, 'an update line showed');
   const lines = await look.lines(page);
-  assert(lines.length === 2 && lines[0].indexOf('(newest)') < 0, 'status lines: ' + JSON.stringify(lines));
+  assert(lines.length === 3 && lines[0].indexOf('(newest)') < 0, 'status lines: ' + JSON.stringify(lines));
   const st = await look.status(page);
   assert(st && st.managed === false && st.text === '' && st.newest === false, 'status: ' + JSON.stringify(st));
   await openPanelAndClose(page);
@@ -677,14 +678,19 @@ async function check11() {
   noErrors(context);
 }
 
-// "About this hub" on the Clock page with two, three and four lines, in
-// the panel and full screen: nothing clipped, nothing over the clock.
+// The About panel with three, four and five rows before the Wanderers ones
+// (version, browser, motion, then updates and live updates), and once with
+// a visit's load times: every row inside the strip, none over another,
+// nothing cut off, the strip on the screen. The Clock page has no About
+// section any more, and its time and date fit, in the panel and full screen.
+// (That the rows refresh by themselves is checked in dev/clay-test.js.)
 async function checkTile() {
   const s = await stranger(403, 'application/json', JSON.stringify({ ok: false, error: 'screen not allowed' }));
   const cases = [
-    { rows: 2, mode: 'sha', query: '' },
-    { rows: 3, mode: 'abort', query: '' },
-    { rows: 4, mode: 'abort', query: 'live=' + encodeURIComponent(s.url) }
+    { rows: 3, mode: 'sha', query: '' },
+    { rows: 4, mode: 'abort', query: '' },
+    { rows: 5, mode: 'abort', query: 'live=' + encodeURIComponent(s.url) },
+    { rows: 5, mode: 'abort', query: 'live=' + encodeURIComponent(s.url), visit: true }
   ];
   for (const c of cases) {
     const { context, page } = await contextWithGood(A, c.query);
@@ -696,32 +702,61 @@ async function checkTile() {
       const body = document.querySelector('.cell[data-widget="today"] .tile-body');
       return { text: body.textContent, status: body.querySelectorAll('.today-status-line, .today-place').length };
     });
-    assert(tile.status === 0 && !/v0\.|Motion|Updates|Live/.test(tile.text), 'the clock tile shows more than the time: ' + tile.text);
+    assert(tile.status === 0 && !/v0\.|Motion|Updates|Live|Wanderers/.test(tile.text), 'the clock tile shows more than the time: ' + tile.text);
+    if (c.visit) {
+      // One visit first, stopped once it plays: the Loading row (load times) shows.
+      await until(() => page.evaluate(() => !window.HUB_TEST.busy() && window.HUB_TEST.clay.play('fetch', { seed: 1 })), 4000, 'no visit');
+      await until(() => page.evaluate(() => window.HUB_TEST.clay.state().phase === 'playing'), 10000, 'the visit did not play');
+      await page.evaluate(() => window.HUB_TEST.clay.stop());
+    }
+    const a = await clockPage.waitFor(page, (x) => x.lines.length === c.rows ? x : null, 10000, c.rows + ' rows');
+    assert(/^v0\.18\.0/.test(a.lines[0]), 'version row: ' + a.lines[0]);
+    const wand = a.rows.filter((r) => r.group === 'Wanderers').map((r) => r.label + ': ' + r.value);
+    if (c.visit) {
+      assert(wand.length === 4 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 1 played · 0 slow · 0 failed' &&
+        /^Last visit: fetch stopped, \d+ s ago$/.test(wand[2]) && /^Loading: sprite list \d+ ms · fetch (\d+)\/\1 frames in \d+ ms$/.test(wand[3]), 'wanderers rows: ' + JSON.stringify(wand));
+    } else {
+      assert(wand.length === 2 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 0 played · 0 slow · 0 failed', 'wanderers rows: ' + JSON.stringify(wand));
+    }
+    await clockPage.openAbout(page);
+    await sleep(400);
+    const fit = await page.evaluate(() => {
+      const box = document.querySelector('.about-box').getBoundingClientRect();
+      const rows = Array.prototype.map.call(document.querySelectorAll('.about-group, .about-row'), (e) => e.getBoundingClientRect());
+      const problems = [];
+      for (let i = 0; i < rows.length; i++) {
+        if (rows[i].left < box.left - 0.5 || rows[i].right > box.right + 0.5 || rows[i].bottom > box.bottom + 0.5) problems.push('row ' + i + ' outside the strip');
+        if (i && rows[i].top < rows[i - 1].bottom - 0.5) problems.push('row ' + i + ' overlaps');
+      }
+      Array.prototype.forEach.call(document.querySelectorAll('.about-label, .about-value, .about-group'), (e) => {
+        if (e.scrollWidth > e.clientWidth + 1) problems.push('"' + e.textContent + '" is cut off');
+      });
+      if (box.bottom > window.innerHeight || box.top < 0) problems.push('the strip is off the screen');
+      return { problems, height: box.height };
+    });
+    assert(!fit.problems.length, c.rows + ' rows: ' + fit.problems.join(', '));
+    await clockPage.closeAbout(page);
+    // The Clock page: no About section, the time and date fit.
     await clockPage.open(page);
-    await clockPage.waitFor(page, (a) => a.lines.length === c.rows, 10000, c.rows + ' rows');
     for (const mode of ['panel', 'full']) {
       if (mode === 'full') {
         await page.evaluate(() => document.querySelector('#panel .panel-btn').click());
         await until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy()), 4000, 'no full screen');
-        await clockPage.waitFor(page, (a) => a.lines.length === c.rows, 3000, c.rows + ' rows in full screen');
       }
       await sleep(200);
-      const fit = await page.evaluate(() => {
-        const body = document.querySelector('#panel .panel-body').getBoundingClientRect();
+      const clock = await page.evaluate(() => {
         const r = (sel) => document.querySelector(sel).getBoundingClientRect();
-        const rows = Array.prototype.map.call(document.querySelectorAll('.clock-about-line'), (e) => e.getBoundingClientRect());
         const problems = [];
-        if (r('.clock-about').top < r('.clock-main').bottom - 0.5) problems.push('about over the clock');
+        if (document.querySelector('.clock-about, [class*="clock-about"]')) problems.push('an About section is there');
+        if (/v0\.\d|Motion|Wanderers/.test(document.querySelector('.clock-page').textContent)) problems.push('the page shows hub facts');
         if (r('.clock-fulldate').bottom > r('.clock-display').bottom + 0.5) problems.push('date below its box');
-        for (let i = 1; i < rows.length; i++) if (rows[i].top < rows[i - 1].bottom - 0.5) problems.push('row ' + i + ' overlaps');
-        if (rows[rows.length - 1].bottom > body.bottom + 0.5) problems.push('last row below the panel by ' + (rows[rows.length - 1].bottom - body.bottom));
-        return { problems, spare: body.bottom - rows[rows.length - 1].bottom, clock: r('.clock-display').height };
+        if (r('.clock-big').bottom > r('.clock-display').bottom + 0.5) problems.push('time below its box');
+        return { problems, clock: r('.clock-display').height };
       });
-      assert(!fit.problems.length, c.rows + ' rows, ' + mode + ': ' + fit.problems.join(', '));
+      assert(!clock.problems.length, 'Clock page, ' + mode + ': ' + clock.problems.join(', '));
       if (SHOTS) {
-        await page.screenshot({ path: path.join(SHOTS, 'clock-' + mode + '-' + c.rows + '-rows.png') });
-        console.log('      ' + c.rows + ' rows, ' + mode + ': ' + JSON.stringify(await clockPage.lines(page)) + ', clock box ' +
-          fit.clock.toFixed(0) + ' px tall, ' + fit.spare.toFixed(1) + ' px to spare');
+        await page.screenshot({ path: path.join(SHOTS, 'clock-' + mode + '-' + c.rows + (c.visit ? '-visit' : '') + '.png') });
+        console.log('      ' + c.rows + ' rows' + (c.visit ? ' and a visit' : '') + ': About strip ' + fit.height.toFixed(0) + ' px tall; Clock page ' + mode + ', clock box ' + clock.clock.toFixed(0) + ' px tall');
       }
     }
     await context.close();
@@ -812,7 +847,7 @@ async function main() {
   await check('9. A pinned shell address: no lookup, that commit\'s hub.html', check9);
   await check('10. Tampered or damaged memory is ignored; localStorage that throws is fine', check10);
   await check('11. Laptop preview: /hub.html with the query, no GitHub, no update text', check11);
-  await check('12. The Clock page fits two, three and four status lines at 1920x1080, panel and full screen', checkTile);
+  await check('12. The About panel fits its rows at 1920x1080; the Clock page has no About section and fits, panel and full screen', checkTile);
   await check('13. The shell: dark, quiet text after 1.2 s, and the normal start time', checkShell);
 }
 

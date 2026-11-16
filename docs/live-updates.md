@@ -53,17 +53,17 @@ The Pi side is just as plain. With no TV connected it holds no open lines and no
 
 ## What you see when something is wrong
 
-Small text under About this hub on the Clock page, never a pop-up, never a blank screen. Each problem has its own words:
+Small text in the About panel (Left from a tile at the left edge of the home screen), under Updates, Live updates; never a pop-up, never a blank screen. Each problem has its own words. The panel leaves out the `Live: ` that `HUB_LIVE.status().text` starts with, and shows `Live` as `connected`:
 
-| Situation | About this hub says | What the hub does |
-|---|---|---|
-| Live updates not set up | nothing | exactly what it does today |
-| Pi never reached from this TV | nothing | exactly what it does today, keeps trying quietly |
-| Connected | `Live` | |
-| Was connected, Pi now unreachable | `Live: lost the Pi at 7:10 AM` | uses saved data, retries |
-| Pi refuses this TV (not on its allowed list) | `Live: the Pi refused this TV` | retries every 5 minutes |
-| Something else answers at that address | `Live: unexpected reply from the Pi` | retries every 5 minutes |
-| Pi server is newer than the hub understands | `Live: the hub needs an update` | keeps data it understands |
+| Situation | `HUB_LIVE.status().text` | The About panel's Live updates row | What the hub does |
+|---|---|---|---|
+| Live updates not set up | `''` | no row | exactly what it does today |
+| Pi never reached from this TV | `''` | no row | exactly what it does today, keeps trying quietly |
+| Connected | `Live` | `connected` | |
+| Was connected, Pi now unreachable | `Live: lost the Pi at 7:10 AM` | `lost the Pi at 7:10 AM` | uses saved data, retries |
+| Pi refuses this TV (not on its allowed list) | `Live: the Pi refused this TV` | `the Pi refused this TV` | retries every 5 minutes |
+| Something else answers at that address | `Live: unexpected reply from the Pi` | `unexpected reply from the Pi` | retries every 5 minutes |
+| Pi server is newer than the hub understands | `Live: the hub needs an update` | `the hub needs an update` | keeps data it understands |
 
 The To-do tile says where its list lives: `On this TV` (no Pi), `In sync`, or `Saved here, 2 to send` when you changed things while the Pi was away.
 
@@ -276,7 +276,7 @@ The full contract, field by field, is [`docs/awws-snapshot.md`](awws-snapshot.md
 
 ### The hub's client
 
-States: `off`, `quiet` (never reached from this TV), `connecting`, `live`, `lost`, `refused`, `badreply`, `needsupdate`. `HUB_LIVE.status()` returns `{ state, text, since }`; `text` is the line for About this hub on the Clock page and is `''` for `off`, `quiet` and `connecting`.
+States: `off`, `quiet` (never reached from this TV), `connecting`, `live`, `lost`, `refused`, `badreply`, `needsupdate`. `HUB_LIVE.status()` returns `{ state, text, since }`; `text` is what the About panel shows for live updates and is `''` for `off`, `quiet` and `connecting`.
 
 1. `GET /live/state`, 8 second limit. Success: hand each resource to its listeners, then subscribe.
 2. Subscribe with `EventSource`. `hello` with a different epoch or a higher rev than step 1 saw: go to 1. `change`: apply if its rev is newer. `command`: run once per id. `ping` with a higher rev: go to 1. Nothing for 50 seconds: treat as dropped.

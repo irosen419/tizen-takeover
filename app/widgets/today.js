@@ -1,9 +1,8 @@
 /*
- * Clock. OK on the tile opens the Clock page: a digital or an analog face,
- * a 12-hour or 24-hour clock, and "About this hub" at the bottom (the
- * version, the TV's browser, the motion choice, and the live updates and
- * updates lines when they have something to say). Both choices are
- * remembered on this TV, and the tile follows them:
+ * Clock. OK on the tile opens the Clock page: a digital or an analog face
+ * and a 12-hour or 24-hour clock. (The version and the other facts about
+ * the hub are in the About panel, Left from a left-most tile: app/hub.js.)
+ * Both choices are remembered on this TV, and the tile follows them:
  *
  *   Digital  the time and the date, nothing else, 12- or 24-hour.
  *   Analog   only the analog face (the page's own, drawFace), as large as
@@ -348,40 +347,9 @@
     pageTimer = null;
   }
 
-  // The lines that used to sit on the clock tile, same data and guards.
-  function aboutLines(ctx) {
-    var out = [];
-    var updates;
-    try { updates = typeof ctx.updates === 'function' ? ctx.updates() : undefined; } catch (e) { updates = undefined; }
-    var newest = !!(updates && updates.newest === true);
-    var updateText = updates && typeof updates.text === 'string' ? updates.text : '';
-    var browser = '';
-    try { browser = ctx.browser ? ctx.browser() : ''; } catch (e) { browser = ''; }
-    out.push({ cls: 'clock-about-build', text: ctx.build + (newest ? ' (newest)' : '') + (browser ? ' · ' + browser : '') });
-    var motion = '';
-    try { motion = ctx.motionStatus ? ctx.motionStatus() : ''; } catch (e) { motion = ''; }
-    if (motion) out.push({ cls: 'clock-about-motion', text: motion });
-    var live = '';
-    try { live = ctx.live ? ctx.live.status().text || '' : ''; } catch (e) { live = ''; }
-    if (live) out.push({ cls: 'clock-about-live', text: live });
-    if (updateText) out.push({ cls: 'clock-about-updates', text: updateText });
-    return out;
-  }
-
-  function drawAbout(box, ctx) {
-    box.innerHTML = '';
-    div('clock-about-title', box, 'About this hub');
-    var list = div('clock-about-lines', box);
-    var lines = aboutLines(ctx);
-    for (var i = 0; i < lines.length; i++) {
-      var line = div('clock-about-line ' + lines[i].cls, list, lines[i].text);
-      line.title = lines[i].text;
-    }
-  }
-
   // The analog face as large as the room allows: the full height of the
   // display, leaving the date beside it at least ~12rem. Measured once
-  // per draw (and when the about lines change), never each second.
+  // per draw, never each second.
   function fitFace() {
     if (!page || !page.analog) return;
     var box = page.display;
@@ -432,9 +400,6 @@
     // Opened on the face choice: the first thing people change.
     var marked = controls.querySelectorAll('[data-autofocus]');
     for (var i = 1; i < marked.length; i++) marked[i].removeAttribute('data-autofocus');
-
-    page.about = div('clock-about', root);
-    drawAbout(page.about, ctx);
 
     fitFace();
     pageTick();
@@ -513,13 +478,6 @@
       stopTicking();
       page = null;
       ctx.redrawTile();
-    },
-
-    // The motion, live updates or updates status changed: the about lines.
-    onStatus: function (ctx) {
-      if (!page || !page.about || !ctx.isOpen || !ctx.isOpen()) return;
-      drawAbout(page.about, ctx);
-      fitFace();
     }
   };
 })());

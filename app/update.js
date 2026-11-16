@@ -22,7 +22,7 @@
  *   HUB_UPDATE.status()        { managed, pinned, sha, state, text, newest, checkedAt }
  *
  * States: off (not under TizenBrew's proxy, or nothing known), current,
- * unreachable, held, notready, waiting. text is the line for About this hub on the Clock page.
+ * unreachable, held, notready, waiting. text is what the About panel shows for the version check.
  *
  * The commit to load only ever comes from https://api.github.com for the
  * owner, repo and branch in the page's own address. Everything read back from

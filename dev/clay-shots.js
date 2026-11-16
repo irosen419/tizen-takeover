@@ -327,7 +327,7 @@ async function vanishShots(work) {
     if (pressedAt < 0 && i === 80) {
       keep(path.join(sub, 'f' + String(i - 1).padStart(5, '0') + '.jpg'), 'vanish-before.jpg');
       const before = await p.evaluate(() => document.querySelector('#grid .tile.is-focused').parentNode.getAttribute('data-widget'));
-      await p.keyboard.press('ArrowLeft');
+      await p.keyboard.press('ArrowRight');
       const st = await p.evaluate(() => ({ layer: !!document.querySelector('.clay-layer'), focus: document.querySelector('#grid .tile.is-focused').parentNode.getAttribute('data-widget') }));
       expect(!st.layer && st.focus !== before, 'vanish: layer ' + st.layer + ', focus ' + before + ' -> ' + st.focus);
       pressedAt = i;
@@ -341,7 +341,7 @@ async function vanishShots(work) {
   // A second key press a moment later, to show focus keeps moving at once.
   for (let i = 0; i < count + 1; i++) fs.copyFileSync(path.join(sub, 'f' + String(i).padStart(5, '0') + '.jpg'), path.join(dir, 'f' + String(n + i).padStart(5, '0') + '.jpg'));
   n = pad(dir, n + count + 1, 6);
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
   await frame(page, path.join(dir, 'f' + String(n).padStart(5, '0') + '.jpg'));
   n = pad(dir, n + 1, 14);
   after = n;
