@@ -15,6 +15,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const hubServer = require('./server');
+const awws = require('./awws');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
 const NO_CALENDAR = { configured: false, calendars: 0, timer: false, refreshing: false };
@@ -209,7 +210,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.1.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.2.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -230,7 +231,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.1.0');
+    assert.strictEqual(r.json.server, '0.2.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -417,7 +418,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.1.0');
+    assert.strictEqual(r.json.server, '0.2.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
@@ -727,6 +728,200 @@ async function main() {
     const s5 = (await request(h5.port, 'GET', '/live/state')).json;
     assert.deepStrictEqual(s5.resources.layout, { rev: 7, data: { layout: null } });
     assert.strictEqual(s5.epoch, bent.epoch);
+    assert.ok(!fs.readdirSync(d).some((f) => /^state\.bad-/.test(f)), 'not moved aside');
+    await stop(h5);
+  });
+
+  /* ---------- A World Worth Saving snapshot ---------- */
+
+  const AWWS_EMPTY = { v: 1, sentAt: null, receivedAt: null };
+  const SAMPLE_TEXT = fs.readFileSync(path.join(__dirname, 'fixtures', 'awws-sample.json'), 'utf8');
+  // The made-up sample, sent a minute ago (its own sentAt may be ahead of this computer's clock).
+  const awwsSample = (minutesAgo) => {
+    const s = JSON.parse(SAMPLE_TEXT);
+    s.sentAt = new Date(Date.now() - (minutesAgo === undefined ? 1 : minutesAgo) * 60000).toISOString();
+    return s;
+  };
+  const ALL_SECTIONS = ['todos', 'handoffs', 'outreach', 'khaya', 'pipeline', 'money', 'reach'];
+
+  await check('awws API: needs the token; starts empty ("Not synced yet")', async () => {
+    assert.strictEqual((await request(P, 'GET', '/api/awws')).status, 401);
+    assert.strictEqual((await request(P, 'POST', '/api/awws', { body: { snapshot: null } })).status, 401);
+    assert.strictEqual((await request(P, 'POST', '/api/awws', { token: 'wrong', body: { snapshot: null } })).status, 401);
+    const g = await request(P, 'GET', '/api/awws', { token: TOKEN });
+    assert.deepStrictEqual(g.json, { ok: true, rev: 0, data: AWWS_EMPTY, tz: 'America/Chicago' });
+    const st = (await request(P, 'GET', '/live/state')).json;
+    assert.deepStrictEqual(st.resources.awws, { rev: 0, data: AWWS_EMPTY });
+    const m = await request(P, 'PUT', '/api/awws', { token: TOKEN, body: { snapshot: null } });
+    assert.strictEqual(m.status, 405);
+    assert.strictEqual(m.headers.allow, 'GET, POST');
+  });
+
+  await check('awws API: a snapshot is stored, arrives as a change event, and is in /live/state and the poll', async () => {
+    const es = await openEvents(P);
+    await es.waitFor((e) => e.event === 'hello');
+    const before = (await request(P, 'GET', '/live/state')).json.rev;
+    const snap = awwsSample();
+    const r = await request(P, 'POST', '/api/awws', { token: TOKEN, body: { snapshot: snap } });
+    assert.strictEqual(r.status, 200, r.text);
+    assert.strictEqual(r.json.ok, true);
+    assert.strictEqual(r.json.rev, before + 1);
+    assert.strictEqual(r.json.changed, true);
+    assert.deepStrictEqual(r.json.accepted, ALL_SECTIONS);
+    assert.deepStrictEqual(r.json.cleared, []);
+    assert.deepStrictEqual(r.json.rejected, []);
+    assert.ok(r.json.bytes > 1000 && r.json.bytes < 49152);
+    const ch = await es.waitFor((e) => e.event === 'change' && e.data.resource === 'awws');
+    assert.strictEqual(ch.data.rev, before + 1);
+    assert.strictEqual(ch.data.data.sentAt, snap.sentAt);
+    assert.ok(typeof ch.data.data.receivedAt === 'string');
+    assert.strictEqual(ch.data.data.todos.items.length, snap.todos.items.length);
+    es.close();
+    await waitUntil(() => h._debug().sse === 0);
+    const st = (await request(P, 'GET', '/live/state')).json;
+    assert.deepStrictEqual(st.resources.awws, { rev: before + 1, data: ch.data.data });
+    const p = (await request(P, 'GET', '/live/poll?epoch=old&rev=0')).json;
+    assert.deepStrictEqual(p.resources.awws.data, ch.data.data);
+    const p2 = (await request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + before + '&cursor=' + p.cursor)).json;
+    assert.deepStrictEqual(Object.keys(p2.resources), ['awws']);
+    const g = (await request(P, 'GET', '/api/awws', { token: TOKEN })).json;
+    assert.deepStrictEqual(g.data, ch.data.data);
+    assert.strictEqual(g.rev, before + 1);
+  });
+
+  await check('awws API: the same contents again still store the new sentAt and push to screens (changed false)', async () => {
+    const es = await openEvents(P);
+    await es.waitFor((e) => e.event === 'hello');
+    const before = (await request(P, 'GET', '/api/awws', { token: TOKEN })).json;
+    const snap = awwsSample(0);
+    const r = await request(P, 'POST', '/api/awws', { token: TOKEN, body: { snapshot: snap } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.changed, false);
+    assert.strictEqual(r.json.rev, before.rev + 1);
+    const ch = await es.waitFor((e) => e.event === 'change' && e.data.resource === 'awws');
+    assert.strictEqual(ch.data.data.sentAt, snap.sentAt);
+    assert.notStrictEqual(ch.data.data.sentAt, before.data.sentAt);
+    es.close();
+    await waitUntil(() => h._debug().sse === 0);
+  });
+
+  await check('awws API: a bad section is refused by name with 200; the others are stored', async () => {
+    const before = (await request(P, 'GET', '/api/awws', { token: TOKEN })).json;
+    const snap = { v: 1, sentAt: new Date().toISOString(), khaya: { done: 12, total: 12 }, money: { currency: 'dollars', spent: 1, earned: 1 } };
+    const r = await request(P, 'POST', '/api/awws', { token: TOKEN, body: { snapshot: snap } });
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.json.accepted, ['khaya']);
+    assert.deepStrictEqual(r.json.rejected, [{ section: 'money', error: '"currency" must be three capital letters, like USD' }]);
+    const after = (await request(P, 'GET', '/api/awws', { token: TOKEN })).json.data;
+    assert.strictEqual(after.khaya.done, 12);
+    assert.deepStrictEqual(after.money, before.data.money);
+    assert.deepStrictEqual(after.todos, before.data.todos);
+  });
+
+  await check('awws API: a wrong snapshot, or one where every section is refused, is 400 and changes nothing', async () => {
+    const rev = (await request(P, 'GET', '/live/state')).json.rev;
+    const now = new Date().toISOString();
+    const cases = [
+      [{}, /send \{ "snapshot"/],
+      [[], /send \{ "snapshot"/],
+      [{ snapshot: 'big' }, /must be a JSON object/],
+      [{ snapshot: { v: 2, sentAt: now, khaya: { done: 0, total: 1 } } }, /"v" must be 1/],
+      [{ snapshot: { v: 1, sentAt: new Date(Date.now() + 3600000).toISOString(), khaya: { done: 0, total: 1 } } }, /10 minutes in the future/],
+      [{ snapshot: { v: 1, sentAt: now } }, /no sections/],
+      [{ snapshot: { v: 1, sentAt: now, khaya: { done: 3, total: 2 }, reach: {} } }, /every section was rejected: khaya: "done" \(3\) is more than "total" \(2\); reach: "visits" is missing/]
+    ];
+    for (const [body, re] of cases) {
+      const r = await request(P, 'POST', '/api/awws', { token: TOKEN, body: body });
+      assert.strictEqual(r.status, 400, JSON.stringify(body));
+      assert.strictEqual(r.json.ok, false);
+      assert.ok(re.test(r.json.error), r.json.error);
+    }
+    assert.strictEqual((await request(P, 'GET', '/live/state')).json.rev, rev);
+  });
+
+  await check('body limit: 64 KB on POST /api/awws, still 8 KB on every other call', async () => {
+    // About 21 KB: over the old 8 KB, fine here.
+    const mid = { v: 1, sentAt: new Date().toISOString(), todos: { items: [] } };
+    for (let i = 0; i < 160; i++) mid.todos.items.push({ id: 'm' + i, title: 'Item number ' + i + ' ' + 'z'.repeat(60), owner: 'ian', section: 'later' });
+    const midText = JSON.stringify({ snapshot: mid });
+    assert.ok(midText.length > 16 * 1024 && midText.length < 48 * 1024, 'size ' + midText.length);
+    const ok = await request(P, 'POST', '/api/awws', { token: TOKEN, raw: midText });
+    assert.strictEqual(ok.status, 200, ok.text);
+    assert.strictEqual(ok.json.accepted[0], 'todos');
+    // About 60 KB: through the door, then refused by the 48 KB snapshot cap.
+    const big = JSON.stringify({ snapshot: { v: 1, sentAt: new Date().toISOString(), khaya: { done: 0, total: 1 }, pad: 'p'.repeat(60 * 1024 - 200) } });
+    assert.ok(big.length < 64 * 1024 && big.length > 59 * 1024);
+    const b = await request(P, 'POST', '/api/awws', { token: TOKEN, raw: big });
+    assert.strictEqual(b.status, 400);
+    assert.ok(/at most 48 KB \(49,152 bytes\)/.test(b.json.error), b.json.error);
+    // Over 64 KB: refused at the door.
+    const huge = await request(P, 'POST', '/api/awws', { token: TOKEN, raw: JSON.stringify({ snapshot: { pad: 'p'.repeat(66 * 1024) } }) });
+    assert.strictEqual(huge.status, 413);
+    assert.deepStrictEqual(huge.json, { ok: false, error: 'request body too large (at most 64 KB)' });
+    // Other calls keep 8 KB.
+    const tiles = [];
+    for (let i = 0; i < 24; i++) tiles.push({ widget: 't' + i, x: (i % 6) * 2, y: Math.floor(i / 6), w: 2, h: 1, note: 'n'.repeat(400) });
+    const lay = await request(P, 'POST', '/api/layout', { token: TOKEN, raw: JSON.stringify({ layout: tiles }) });
+    assert.strictEqual(lay.status, 413);
+    assert.deepStrictEqual(lay.json, { ok: false, error: 'request body too large (at most 8 KB)' });
+    for (const p of ['/api/todo', '/api/todo/ops', '/api/command']) {
+      const r = await request(P, 'POST', p, { token: TOKEN, raw: JSON.stringify({ title: 'x'.repeat(20000) }) });
+      assert.strictEqual(r.status, 413, p);
+      assert.ok(/at most 8 KB/.test(r.json.error), p);
+    }
+    const scr = await request(P, 'POST', '/todo/ops', { raw: JSON.stringify({ ops: [], pad: 'x'.repeat(20000) }) });
+    assert.strictEqual(scr.status, 413);
+  });
+
+  await check('awws API: null clears everything; clearing again changes nothing', async () => {
+    const before = (await request(P, 'GET', '/live/state')).json.rev;
+    const r = await request(P, 'POST', '/api/awws', { token: TOKEN, body: { snapshot: null } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.changed, true);
+    assert.strictEqual(r.json.rev, before + 1);
+    assert.ok(r.json.cleared.indexOf('todos') >= 0);
+    assert.deepStrictEqual((await request(P, 'GET', '/api/awws', { token: TOKEN })).json.data, AWWS_EMPTY);
+    const again = await request(P, 'POST', '/api/awws', { token: TOKEN, body: { snapshot: null } });
+    assert.deepStrictEqual(again.json, { ok: true, rev: before + 1, changed: false, bytes: 0, accepted: [], cleared: [], rejected: [] });
+    assert.strictEqual((await request(P, 'GET', '/live/state')).json.rev, before + 1);
+  });
+
+  await check('awws in the state file: survives a restart; an old file without it, or a damaged one, reads as empty', async () => {
+    const d = tmpDir();
+    const lines = [];
+    const h2 = await start({ dataDir: d, log: (s) => lines.push(s) });
+    const snap = awwsSample();
+    await request(h2.port, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Keep me too' } });
+    const set = await request(h2.port, 'POST', '/api/awws', { token: TOKEN, body: { snapshot: snap } });
+    assert.strictEqual(set.status, 200);
+    await stop(h2);
+    // The log notes the call without any of the snapshot's text.
+    const note = lines.find((l) => /control POST \/api\/awws -> 200/.test(l));
+    assert.ok(note && /7 sections stored, [\d.]+ KB, rev 2/.test(note), note);
+    assert.ok(lines.every((l) => l.indexOf('Maple Grove') < 0 && l.indexOf('Luma') < 0));
+    const h3 = await start({ dataDir: d });
+    const g = (await request(h3.port, 'GET', '/api/awws', { token: TOKEN })).json;
+    assert.strictEqual(g.rev, 2);
+    assert.strictEqual(g.data.sentAt, snap.sentAt);
+    assert.deepStrictEqual(awws.sectionsIn(g.data), ALL_SECTIONS);
+    await stop(h3);
+    // A file from before the snapshot existed.
+    const old = JSON.parse(fs.readFileSync(path.join(d, 'state.json'), 'utf8'));
+    delete old.resources.awws;
+    fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify(old));
+    const h4 = await start({ dataDir: d });
+    const s4 = (await request(h4.port, 'GET', '/live/state')).json;
+    assert.deepStrictEqual(s4.resources.awws, { rev: 0, data: AWWS_EMPTY });
+    assert.strictEqual(s4.epoch, old.epoch);
+    assert.strictEqual(s4.resources.todo.data.items[0].title, 'Keep me too');
+    await stop(h4);
+    // A damaged one: the broken section goes, the rest of the file stays.
+    const bent = JSON.parse(fs.readFileSync(path.join(d, 'state.json'), 'utf8'));
+    bent.resources.awws = { rev: 5, data: { v: 1, sentAt: snap.sentAt, receivedAt: 'soon', khaya: { done: 9, total: 3 }, reach: { visits: { week: 1, prev: 2 } } } };
+    fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify(bent));
+    const h5 = await start({ dataDir: d });
+    const s5 = (await request(h5.port, 'GET', '/live/state')).json;
+    assert.deepStrictEqual(s5.resources.awws, { rev: 5, data: { v: 1, sentAt: snap.sentAt, receivedAt: null, reach: { asOf: snap.sentAt, visits: { week: 1, prev: 2 } } } });
     assert.ok(!fs.readdirSync(d).some((f) => /^state\.bad-/.test(f)), 'not moved aside');
     await stop(h5);
   });

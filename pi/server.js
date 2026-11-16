@@ -17,6 +17,8 @@
  *   POST /api/todo/ops   several to-do changes at once
  *   GET  /api/layout     the home-screen tile layout (null = the hub's own)
  *   POST /api/layout     set it, { layout: [...] }, or { layout: null } to reset
+ *   GET  /api/awws       the A World Worth Saving snapshot (awws.js)
+ *   POST /api/awws       store one, { snapshot: {...} }, or { snapshot: null } to clear
  *   GET  /api/status     version, rev, connected screens, calendar summary
  *   GET  /api/calendar   the calendar events (never the secret links)
  *   POST /api/calendar/refresh   read every calendar now and wait for it
@@ -29,8 +31,9 @@
  *
  * Commands are never stored for a TV that is off. Only the fallback poll
  * remembers them, for 10 seconds, at most 20. With no TV connected the
- * server holds nothing open. Data (the to-do list, the calendar events and
- * the tile layout) lives in data/state.json. The calendar reader is in calendar.js.
+ * server holds nothing open. Data (the to-do list, the calendar events, the
+ * tile layout and the A World Worth Saving snapshot) lives in data/state.json.
+ * The calendar reader is in calendar.js, the snapshot checks in awws.js.
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -41,15 +44,17 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const calendar = require('./calendar');
+const awws = require('./awws');
 const mailbox = require('./mailbox');
 
-const SERVER_VERSION = '0.1.0';
+const SERVER_VERSION = '0.2.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
 const DEFAULT_ORIGINS = ['http://127.0.0.1:8081'];
 const MIN_TOKEN = 24;
 const BODY_LIMIT = 8 * 1024;
+const AWWS_BODY_LIMIT = 64 * 1024; // POST /api/awws only; the snapshot itself is at most 48 KB
 const MAX_SSE = 20;
 const MAX_POLLS = 20;
 const MAX_COMMANDS = 20;
@@ -89,6 +94,10 @@ function toList(v) {
   if (Array.isArray(v)) return v.map((s) => String(s).trim()).filter(Boolean);
   if (typeof v === 'string') return v.split(',').map((s) => s.trim()).filter(Boolean);
   return [];
+}
+
+function plural(n, word) {
+  return n + ' ' + word + (n === 1 ? '' : 's');
 }
 
 function randomBase36(n) {
@@ -415,7 +424,8 @@ function freshState() {
     resources: {
       todo: { rev: 0, data: { items: [] } },
       calendar: { rev: 0, data: calendar.unconfiguredData() },
-      layout: { rev: 0, data: { layout: null } }
+      layout: { rev: 0, data: { layout: null } },
+      awws: { rev: 0, data: awws.emptyData() }
     }
   };
 }
@@ -457,6 +467,8 @@ function loadState(dir, log) {
     st.resources.calendar = calendar.cleanResource(st.resources.calendar);
     // Older files have no layout either: null, the hub's built-in one.
     st.resources.layout = cleanLayoutResource(st.resources.layout);
+    // Older files have no A World Worth Saving snapshot: empty, "Not synced yet".
+    st.resources.awws = awws.cleanResource(st.resources.awws);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -571,10 +583,12 @@ function start(options) {
     return h;
   }
 
-  function readBody(req, res, cb) {
+  function readBody(req, res, cb, limitBytes) {
+    const limit = limitBytes || BODY_LIMIT;
+    const tooLarge = 'request body too large (at most ' + Math.round(limit / 1024) + ' KB)';
     const declared = Number(req.headers['content-length']);
-    if (declared > BODY_LIMIT) {
-      sendJson(res, 413, { ok: false, error: 'request body too large (at most 8 KB)' }, { Connection: 'close' });
+    if (declared > limit) {
+      sendJson(res, 413, { ok: false, error: tooLarge }, { Connection: 'close' });
       req.resume();
       return;
     }
@@ -584,9 +598,9 @@ function start(options) {
     req.on('data', (c) => {
       if (done) return;
       size += c.length;
-      if (size > BODY_LIMIT) {
+      if (size > limit) {
         done = true;
-        sendJson(res, 413, { ok: false, error: 'request body too large (at most 8 KB)' }, { Connection: 'close' });
+        sendJson(res, 413, { ok: false, error: tooLarge }, { Connection: 'close' });
         setTimeout(() => req.destroy(), 1000).unref();
         return;
       }
@@ -650,6 +664,37 @@ function start(options) {
     state = next;
     broadcast('change', { resource: name, rev: state.rev, data: state.resources[name].data });
     wakePolls();
+  }
+
+  // POST /api/awws. Returns [body, note] for reply(200, ...), or throws a
+  // 400 error that changes nothing. The note for the log never holds titles.
+  function postAwws(body) {
+    if (!isObj(body) || !Object.prototype.hasOwnProperty.call(body, 'snapshot')) {
+      throw bad('send { "snapshot": { ... } }, or { "snapshot": null } to clear it');
+    }
+    const cur = state.resources.awws.data;
+    if (body.snapshot === null) {
+      const empty = awws.emptyData();
+      const changed = JSON.stringify(cur) !== JSON.stringify(empty);
+      const cleared = awws.sectionsIn(cur);
+      if (changed) changeResource('awws', empty);
+      return [{
+        ok: true, rev: state.resources.awws.rev, changed: changed, bytes: 0, accepted: [], cleared: cleared, rejected: []
+      }, changed ? 'cleared, rev ' + state.rev : 'cleared, nothing was stored'];
+    }
+    const now = Date.now();
+    const m = awws.merge(cur, awws.normalizeSnapshot(body.snapshot, now), now);
+    // Stored and pushed even when no section changed: the new sentAt is what
+    // tells the TV the data is still fresh.
+    changeResource('awws', m.data);
+    const note = [plural(m.accepted.length, 'section') + ' stored'];
+    if (m.cleared.length) note.push(m.cleared.length + ' cleared');
+    if (m.rejected.length) note.push(m.rejected.length + ' rejected');
+    note.push(awws.sizeText(m.bytes), m.changed ? 'rev ' + state.rev : 'rev ' + state.rev + ' (same contents)');
+    return [{
+      ok: true, rev: state.resources.awws.rev, changed: m.changed, bytes: m.bytes,
+      accepted: m.accepted, cleared: m.cleared, rejected: m.rejected
+    }, note.join(', ')];
   }
 
   function opsAndReply(res, body, extra) {
@@ -881,6 +926,7 @@ function start(options) {
     '/api/todo': ['GET', 'POST'],
     '/api/todo/ops': ['POST'],
     '/api/layout': ['GET', 'POST'],
+    '/api/awws': ['GET', 'POST'],
     '/api/status': ['GET'],
     '/api/calendar': ['GET'],
     '/api/calendar/refresh': ['POST']
@@ -933,6 +979,14 @@ function start(options) {
         if (route === '/api/layout' && method === 'GET') {
           const l = state.resources.layout;
           return reply(200, { ok: true, rev: l.rev, layout: l.data.layout });
+        }
+        if (route === '/api/awws' && method === 'GET') {
+          const a = state.resources.awws;
+          return reply(200, { ok: true, rev: a.rev, data: a.data, tz: calTz });
+        }
+        if (route === '/api/awws') {
+          const answer = postAwws(body);
+          return reply(200, answer[0], answer[1]);
         }
         if (route === '/api/todo' && method === 'GET') {
           return reply(200, { ok: true, rev: state.rev, items: todoItems() });
@@ -988,7 +1042,7 @@ function start(options) {
       req.resume(); // no body is needed
       return run(undefined);
     }
-    readBody(req, res, run);
+    readBody(req, res, run, route === '/api/awws' ? AWWS_BODY_LIMIT : BODY_LIMIT);
     return undefined;
   }
 
