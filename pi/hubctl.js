@@ -478,7 +478,31 @@ function spotifyStatusLines(sp) {
   else if (sp.state === 'error') out.push('Problem: ' + (sp.note || 'Spotify could not be read') + '.' + (song ? ' Last seen: ' + song + '.' : ''));
   else out.push('Nothing is playing.' + (song ? ' Last played: ' + song + '.' : ''));
   if (sp.lastOkAt) out.push('Last answer from Spotify ' + ago(sp.lastOkAt) + '.');
+  const vibe = vibeLine(sp.vibe, sp.track);
+  if (vibe) out.push(vibe);
   return out;
+}
+
+// One line on the song's vibe (for the TV's visualizer), or '' from an
+// older server. Example: "Vibe: features, 120 BPM, energy 0.8."
+function vibeLine(v, track) {
+  if (!v || typeof v !== 'object') return '';
+  const n = (x) => String(Math.round(x * 100) / 100);
+  let text;
+  if (v.now && v.now.source === 'features') {
+    text = 'Vibe: features, ' + (v.now.tempo ? Math.round(v.now.tempo) + ' BPM, ' : '') + 'energy ' + n(v.now.energy) + ', mood ' + n(v.now.valence) + '.';
+  } else if (v.now && v.now.source === 'genres') {
+    text = 'Vibe: from genres' + (v.now.genres && v.now.genres.length ? ' (' + v.now.genres.join(', ') + ')' : '') + '.';
+  } else if (!track) {
+    text = 'Vibe: none (nothing has played yet).';
+  } else if (track.kind === 'episode') {
+    text = 'Vibe: none (songs only, not podcasts).';
+  } else {
+    text = v.pending ? 'Vibe: looking it up.' : 'Vibe: none yet.';
+  }
+  if (v.lookups === 'off') text += ' Vibe lookups: off (SPOTIFY_VIBE=off).';
+  if (v.problem) text += ' Last lookup problem: ' + v.problem + (v.problemAt ? ' (' + ago(v.problemAt) + ')' : '') + '.';
+  return text;
 }
 
 function spotifyLoginLines(r) {
@@ -742,6 +766,7 @@ module.exports = {
   statusLines: statusLines,
   mailboxLines: mailboxLines,
   spotifyStatusLines: spotifyStatusLines,
+  vibeLine: vibeLine,
   spotifyLoginLines: spotifyLoginLines,
   spotifyCodeText: spotifyCodeText,
   spotifyLogoutText: spotifyLogoutText

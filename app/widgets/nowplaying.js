@@ -24,6 +24,15 @@
  * ("Last played"), and say what to do when Spotify is not connected yet or
  * the Pi cannot be reached. The last song is also kept on this TV
  * (localStorage) for the times the Pi is away.
+ *
+ * Full screen, while a song plays or is paused, a visualizer fills the panel
+ * (nowplaying-viz.js), in the album's colors and at the song's tempo, and
+ * the page shrinks to a small card in the upper left (fitCard). At the still
+ * wash level, without nowplaying-viz.js, or with HUB_CONFIG.widgets.
+ * nowplaying.visualizer false, the page keeps its big picture layout. The Pi
+ * adds the song's "vibe" (data.vibe) a moment after the song; it is not part
+ * of signature(), so it changes the visualizer in place, never redraws the
+ * page.
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -217,6 +226,23 @@
     if (v.kind !== 'playing' && v.kind !== 'paused') return 0;
     var d = v.track.durationMs || 0;
     return d ? Math.min(p, d) : p;
+  }
+
+  // The song's vibe from the Pi (pi/vibe.js), checked again here: null when
+  // there is none (an older Pi, a podcast, not known yet) or it belongs to
+  // another song.
+  function vibeOf(v) {
+    var x = data && data.vibe;
+    if (!x || typeof x !== 'object' || !v.track || v.track.kind === 'episode') return null;
+    if (v.kind !== 'playing' && v.kind !== 'paused') return null;
+    if (x.id && x.id !== v.track.id) return null;
+    if ((x.source !== 'features' && x.source !== 'genres') || typeof x.energy !== 'number' || typeof x.valence !== 'number') return null;
+    function u(n, d) { return typeof n === 'number' && isFinite(n) ? Math.max(0, Math.min(1, n)) : d; }
+    return {
+      source: x.source,
+      tempo: typeof x.tempo === 'number' && x.tempo >= 40 && x.tempo <= 220 ? x.tempo : 0,
+      energy: u(x.energy, 0.5), valence: u(x.valence, 0.5), dance: u(x.dance, 0.5), acoustic: u(x.acoustic, 0.3)
+    };
   }
 
   function fraction(v) {
@@ -432,6 +458,7 @@
       page.bar = el('div', 'np-bar np-bar-page', foot);
       page.fill = el('div', 'np-fill', page.bar);
       var chips = el('div', 'np-chips', foot);
+      page.chips = chips;
       if (v.device) el('span', 'np-chip', chips, 'On ' + v.device);
       if (v.shuffle) el('span', 'np-chip', chips, 'Shuffle');
       if (v.repeat === 'track') el('span', 'np-chip', chips, 'Repeat one');
@@ -440,13 +467,18 @@
     } else if (hasSong && v.kind === 'idle') {
       el('div', 'np-chips', foot);
     }
+    // Full screen with the visualizer moving: a small card in the upper left.
+    page.compact = full && hasSong && (v.kind === 'playing' || v.kind === 'paused') && safe(vizCompact)() === true;
+    if (page.compact) root.className += ' np-card';
     pageTick();
     fitPage(body);
+    safe(vizSync)();
   }
 
   // The picture as large as the room allows, then the words in what is left.
   function fitPage(body) {
     if (!page) return;
+    if (page.compact) { fitCard(body); return; }
     var r = rem();
     var h = body.clientHeight;
     var w = body.clientWidth;
@@ -472,12 +504,120 @@
     if (used() > roomH && page.note) page.note.style.display = 'none';
   }
 
+  // The small card: a 7.5rem picture, the words beside it, at most about a
+  // third of the screen wide. Title two lines, artist and album one each;
+  // when it runs tall the album goes first, then the chips, then the
+  // title's second line.
+  function fitCard(body) {
+    var r = rem();
+    page.root.style.height = '';
+    var px = sizeArt(page.art, 7.5 * r);
+    var maxW = Math.min(27 * r, Math.max(18 * r, body.clientWidth * 0.36));
+    page.info.style.width = Math.max(8 * r, maxW - 2 * r - px - 1.1 * r) + 'px';
+    clamp(page.title, 2);
+    if (page.artist) clamp(page.artist, 1);
+    if (page.album) clamp(page.album, 1);
+    var limit = 15.5 * r;
+    if (page.root.offsetHeight > limit && page.album) page.album.style.display = 'none';
+    if (page.root.offsetHeight > limit && page.chips) page.chips.style.display = 'none';
+    if (page.root.offsetHeight > limit) clamp(page.title, 1);
+    trimChips();
+  }
+
+  // The card's chips stay on one row: those that do not fit are hidden.
+  function trimChips() {
+    if (!page || !page.compact || !page.chips) return;
+    var list = page.chips.children;
+    var i;
+    for (i = 0; i < list.length; i++) list[i].style.display = '';
+    var room = page.chips.clientWidth;
+    for (i = 0; i < list.length; i++) {
+      if (list[i].offsetLeft - page.chips.offsetLeft + list[i].offsetWidth > room + 1) list[i].style.display = 'none';
+    }
+  }
+
   function pageTick() {
     if (!page || !page.elapsed) return;
     var v = page.v;
     var t = clock(position(v));
     if (page.elapsed.textContent !== t) page.elapsed.textContent = t;
     page.fill.style.transform = 'scaleX(' + fraction(v).toFixed(4) + ')';
+  }
+
+  /* ---------- the visualizer (full screen only) ---------- */
+
+  // Shows, updates or stops the visualizer for the page as it is now. It
+  // lives in the panel itself, behind the body, so a redraw of the page does
+  // not touch it.
+  // What the visualizer needs to choose its level (before any layout).
+  function vizChoice(v) {
+    return {
+      id: v.track.id || v.track.title,
+      vibe: vibeOf(v),
+      config: (C && C.config) || {},
+      motionFade: !!document.body && document.body.classList.contains('motion-fade')
+    };
+  }
+
+  // True when the visualizer will run at a level that goes with the card.
+  function vizCompact() {
+    var V = window.HUB_NP_VIZ;
+    if (!V || !V.plan || !V.compact || !page || !page.v.track) return false;
+    return V.compact(V.plan(vizChoice(page.v))) === true;
+  }
+
+  function vizSync() {
+    var V = window.HUB_NP_VIZ;
+    if (!V || !V.sync) return;
+    var v = page && page.v;
+    var ok = !!page && page.full && page.hasSong && (v.kind === 'playing' || v.kind === 'paused') &&
+      !!C && C.isOpen && C.isOpen() && C.mode && C.mode() === 'full';
+    var body = page && page.root.parentNode;
+    var host = body && body.parentNode;
+    if (!ok || !host) {
+      V.sync(null);
+      if (page) { page.root.classList.remove('npv-on'); page.vizOn = false; bpmChip(); }
+      return;
+    }
+    var hr = host.getBoundingClientRect();
+    var ar = page.art.getBoundingClientRect();
+    var ir = page.info.getBoundingClientRect();
+    var k = host.offsetWidth ? hr.width / host.offsetWidth : 1;     // a panel still scaling in
+    var info = vizChoice(v);
+    info.art = v.track.artTiny || v.track.artSmall || '';
+    info.playing = v.kind === 'playing';
+    info.positionMs = position(v);
+    info.durationMs = v.track.durationMs || 0;
+    info.center = { x: (ar.left - hr.left + ar.width / 2) / k, y: (ar.top - hr.top + ar.height / 2) / k, size: ar.width / k };
+    // The card has its own dark backing: no shade under the words then.
+    info.textLeft = page.compact ? host.offsetWidth : (ir.left - hr.left) / k;
+    // A step down to the still wash brings the big picture back.
+    info.relayout = function () { if (page && C && C.isOpen && C.isOpen() && C.redrawPanel) C.redrawPanel(); };
+    var on = V.sync(host, info);
+    if (on) page.root.classList.add('npv-on');
+    else page.root.classList.remove('npv-on');
+    page.vizOn = !!on;
+    bpmChip();
+    // The level it settled on wants the other layout (say a saved answer
+    // arrived): lay the page out again, once.
+    var want = !!on && V.compact(V.plan(info)) === true;
+    if (want !== !!page.compact && C && C.redrawPanel && !page.relaid) {
+      page.relaid = true;
+      setTimeout(function () { if (page && C.isOpen && C.isOpen()) C.redrawPanel(); }, 0);
+    }
+  }
+
+  // A small "124 BPM" among the chips while the visualizer shows and the
+  // tempo is measured (not guessed from genres). Kept up to date in place.
+  function bpmChip() {
+    if (!page || !page.chips) return;
+    var vb = page.full && page.vizOn ? vibeOf(page.v) : null;
+    var text = vb && vb.source === 'features' && vb.tempo ? Math.round(vb.tempo) + ' BPM' : '';
+    var chip = page.chips.querySelector('.np-chip-bpm');
+    if (!text) { if (chip) chip.parentNode.removeChild(chip); return; }
+    if (!chip) chip = el('span', 'np-chip np-chip-bpm', page.chips);
+    if (chip.textContent !== text) chip.textContent = text;
+    trimChips();
   }
 
   /* ---------- keeping up ---------- */
@@ -494,7 +634,10 @@
         }
       }
     }
-    if (page && page.v.kind === 'playing') pageTick();
+    if (page && page.v.kind === 'playing') {
+      pageTick();
+      if (page.full && window.HUB_NP_VIZ) window.HUB_NP_VIZ.tick(position(page.v));
+    }
   }
 
   // The part of the data that changes how the tile looks, not where the song is.
@@ -522,7 +665,7 @@
     if (!force && sig === lastSig) {
       var i;
       for (i = 0; i < tiles.length; i++) { tiles[i].v = view(); paintBar(tiles[i]); }
-      if (page) { page.v = view(); pageTick(); }
+      if (page) { page.v = view(); pageTick(); safe(vizSync)(); }
       return;
     }
     lastSig = sig;
@@ -570,6 +713,7 @@
         page = null;
         body.innerHTML = '';
         el('div', 'np-fallback', body, 'Now Playing couldn’t be shown.');
+        safe(vizSync)();
       }
     },
 
@@ -579,6 +723,7 @@
 
     onClose: function (ctx) {
       page = null;
+      safe(vizSync)();
     },
 
     onStatus: safe(function () { refresh(false); })

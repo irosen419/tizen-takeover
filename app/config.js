@@ -216,6 +216,20 @@ var HUB_CONFIG = {
       location: { name: 'Deep Ellum', latitude: 32.78, longitude: -96.78 },
       // 'fahrenheit' (wind in mph) or 'celsius' (wind in km/h)
       units: 'fahrenheit'
-    }
+    },
+
+    /*
+     * Now Playing: what plays on Spotify (set up on the Pi, see pi/README.md).
+     *
+     * visualizer: a classic-style light show (trails, tunnels, kaleidoscopes)
+     * in the album's colors that moves with the song, filling the full screen
+     * page only, with the song as a small card in the corner. true lets the
+     * TV pick how much it can show (it checks its own frame rate); false
+     * turns it off; 'classic' (or 'full'), 'lite' (smaller and lighter),
+     * 'glow' (soft glows only) or 'wash' (a still wash of color, with the big
+     * picture) fixes a level. ?viz=off|wash|glow|lite|classic on the address
+     * tries one for a visit.
+     */
+    nowplaying: { visualizer: true }
   }
 };

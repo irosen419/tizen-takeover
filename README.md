@@ -11,7 +11,7 @@ Out of the box:
 - **To-do:** a list kept on the TV. Add, tick off and move things with the remote.
 - **Weather:** the temperature, today's high and low and the chance of rain, then the next 12 hours and the week. It finds the TV's city by itself.
 - **Calendar:** today's agenda on the tile, then Day, Week and Month in the panel, from your Google calendars through the Pi.
-- **Now Playing:** what is playing on Spotify: the album picture, the song and the artist, and a thin line that fills as the song goes. Open it for a big picture, the album, the time and where it is playing. The Pi asks Spotify; set it up once with `./hub spotify login` (see [Now Playing](#now-playing)).
+- **Now Playing:** what is playing on Spotify: the album picture, the song and the artist, and a thin line that fills as the song goes. Open it for a big picture, the album, the time and where it is playing. In full screen, a classic-style visualizer in the album's colors fills the screen and the song moves to a small card in the corner. The Pi asks Spotify; set it up once with `./hub spotify login` (see [Now Playing](#now-playing)).
 - **A World Worth Saving:** the book project at a glance: the next school visit, this week, and the to-do board, from the Pi.
 - **Coming soon:** Ambiance and Mirror. These tiles hold their spot with a "Soon" tag until they're built.
 
@@ -104,8 +104,9 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.20.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand).
+- **This hub:** **Version** (for example `v0.23.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
+- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
 
 Everything in it changes by itself, once a second, while it is open. It doesn't count as busy: the wanderers keep coming while it is open, behind it. `HUB_TEST.about` (`open()`, `close()`, `isOpen()`, `rows()`) reads it in a laptop browser and in the tests.
@@ -191,6 +192,38 @@ What is playing on your Spotify. The Raspberry Pi is the only thing that talks t
 The tile changes with its size on the grid (see [docs/tile-sizes.md](docs/tile-sizes.md)): one column or a narrow strip is just the album picture; a strip shows the picture with the song and artist on one line each; a 2-row tile puts the picture beside the song, artist and a "Now playing" label with three little moving bars; a tall narrow tile stacks the picture over the words. A thin line at the bottom fills as the song plays. Long titles wrap, then end in "…". Press OK for the page: a big picture, the song, artist and album, the time played and the length, and chips for where it plays ("On Living room"), Shuffle and Repeat. Its Full screen button makes it bigger.
 
 When nothing plays, it says so and keeps the last song, dimmed, as "Last played". Other plain-words states: "Not connected yet" (run `./hub spotify login` on the Pi), "Not set up" (no ID and secret in the Pi's `.env`), "Can't reach Spotify" (a small notice under the last song; it keeps trying), "Can't reach the Pi" (last song kept, marked), and "The Pi needs an update".
+
+### The visualizer (full screen only)
+
+In full screen, while a song plays or is paused, a visualizer in the spirit of the old Winamp, MilkDrop and iTunes ones fills the whole screen: bright lines that roam everywhere and leave trails, tunnels and swirls behind, in the album picture's colors. The song shrinks to a small card in the upper left (the picture, the song in two lines, the artist, the album, the time and the chips, on dark glass). The small page and the tile never have it.
+
+It plays six scenes, a phrase each (16 or 32 beats), in an order that belongs to the song (the same every time it plays):
+
+- **Spirograph:** looping hypotrochoid pens that wander and turn.
+- **Tunnel:** polygons or stars rushing out of a wandering point, a new ring on each beat.
+- **Kaleidoscope:** a few pens mirrored 6 to 12 times around the middle.
+- **Ribbons:** two or three waves across the screen that leave silky sheets.
+- **Starburst:** sparks and rays thrown out on each beat, swirled into a whirlpool.
+- **Lattice:** a turning wireframe of a rose curve that morphs.
+
+It follows the song's **vibe**, which the Pi looks up once per song (see "Spotify" in [pi/README.md](pi/README.md)): the tempo sets the beat (a brief kick in width, brightness and zoom; never faster than 2.5 a second, so fast songs kick on every other beat), energy how many pens and sparks, how thick and bright and how fast the trails move, danceability against acousticness whether it leans to the sharp scenes (tunnel, kaleidoscope, starburst) or the flowing ones (spirograph, ribbons, lattice), and mood (valence) how far the colors swing round the album's hues. The intensity eases in at the start of the song, swells and settles at the end. Everything is timed from the song's position, so a seek lands in the right scene; paused, it settles into a still picture and stops drawing; the next song morphs out of the last one. There is no sound to react to (Spotify sends none): it moves at the song's speed and feel, not to its actual beats. A "124 BPM" chip shows when the tempo is the song's real one. A song with no vibe (a podcast, a song ReccoBeats doesn't know, the lookups turned off) gets a gentle 100 BPM; a song known only by its artist's genres gets a guess. When the picture can't be read for colors, the mood picks them.
+
+It draws on one small canvas (480 × 270), stretched over the screen, at up to 30 frames a second: each frame, the last one is drawn back a little zoomed and turned and faded into a deep tint of the album's main color, then a few new shapes go on top. After it starts it times its own frame rate twice; two poor results step it down one level, and the answer is remembered on this TV until the next version:
+
+| Level | What it shows |
+|---|---|
+| `classic` | 480 × 270 at 30 fps; where lines cross their colors add up toward white |
+| `lite` | 320 × 180 at 24 fps, fewer pens and sparks, plain colors |
+| `glow` | soft glows that drift, moved by the graphics chip alone; the card stays |
+| `wash` | a still wash of the album's colors, and the big picture layout back |
+
+The plainest motion setting (`fade`) starts at the still wash.
+
+- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'classic'`, `'lite'`, `'glow'` or `'wash'` to fix a level; `'full'` still means `'classic'`). Off, the page is the big picture layout as before.
+- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow`, `?viz=lite` or `?viz=classic` (`?viz=full` is the same as `classic`) to the address.
+- **See what it chose:** the About panel's **Visualizer** row.
+
+![Now Playing full screen: the kaleidoscope scene on an upbeat song, with the song card in the upper left](docs/screenshots/nowplaying-viz-upbeat.jpg)
 
 ## A World Worth Saving
 
@@ -302,6 +335,8 @@ The preview's hub server also reads four sample calendars from a small local fee
 
 `node dev/layout-test.js` checks the tile layout sent from the Pi (`./hub layout set`, see `pi/README.md`) the same way: a saved layout at start, tiles that move in place with focus and glass following, waiting while a panel is open, one reload for a new set of widgets, and no reload loop. It also needs port 8095 free.
 
+`node dev/nowplaying-test.js` checks Now Playing in a headless browser (Playwright) against the Spotify stand-in in `dev/mock-spotify.js`: every tile size and state, long Spanish words, the page and full screen, and the visualizer: only in full screen, edge to edge, with the song as a small card in the upper left (and long Spanish words fitting it); the canvas changing while playing and its loop stopping when paused, hidden or closed; a vibe that arrives late; calm songs getting flowing scenes and hard ones sharp scenes; the scene following the song's position after a seek and changing on phrase boundaries; the off switches and the still wash with the big picture; the glow level animating only `transform` and `opacity`; the mood's colors when the picture can't be read; a new song morphing on the same canvas; the frame-rate check, kept per version, and every step down to the still wash; a rough frame rate with the processor slowed 6 times; and every file in `app/` being plain ES5. `node dev/visualizer-shots.js --out <folder> [--clip]` takes pictures of every scene, calm and hard songs, paused, the card with long Spanish words, each level and the visualizer off (and a short clip through two scene changes and a new song). Both need port 8095 free. `node pi/vibe-test.js` checks the Pi's vibe lookups.
+
 ## Writing a widget
 
 A widget is one file in `app/widgets/` that registers itself, a `<script>` tag for it in `hub.html` before `hub.js`, and a `layout` entry. To replace a "Soon" placeholder, register a widget with the same `id`; a real widget always wins over a placeholder.
@@ -360,7 +395,7 @@ It can't leave you worse off:
 - If GitHub can't be reached, the hub opens the last commit that started on this TV. A TV that has never got that far opens the branch, as it always did.
 - If a new commit breaks while starting (its page finished loading but `hub.js` never said it had started), the hub goes back to the last one that did at once, and doesn't try the broken one again for 6 hours.
 - If a new commit is slow (after 15 seconds its page is still waiting for files), the hub gives it more time, looking again every 5 seconds, up to 60 seconds in all. If it still hasn't started, the hub goes back and tries the new one again after 20 minutes.
-- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.20.0 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.19.1 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
+- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.23.0 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.19.1 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
 - Push a fix and the fix is tried straight away: a hold is only ever for the one commit.
 - If jsDelivr doesn't have the new commit yet, the hub stays where it is and tries again at the next check.
 
@@ -373,8 +408,8 @@ The [About panel](#about-panel-the-version-and-status) says how it's going:
 | `(newest)` after the version | GitHub confirmed this is the newest commit of the branch |
 | nothing extra, no Version check row | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
 | Version check: `can't reach GitHub` | GitHub didn't answer, or refused (too many lookups). This is the newest version the TV knows of. It asks again later |
-| Version check: `a newer version didn't start (0.20.0: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
-| Version check: `a newer version didn't start (0.20.0: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.1 shows no brackets |
+| Version check: `a newer version didn't start (0.23.0: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
+| Version check: `a newer version didn't start (0.23.0: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.1 shows no brackets |
 | Version check: `a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
 | Version check: `a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
 

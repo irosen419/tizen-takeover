@@ -19,7 +19,7 @@ const awws = require('./awws');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
 const NO_CALENDAR = { configured: false, calendars: 0, timer: false, refreshing: false };
-const NO_SPOTIFY = { timer: false, fails: 0, signedIn: false, pending: false, delay: 0 };
+const NO_SPOTIFY = { timer: false, fails: 0, signedIn: false, pending: false, delay: 0, vibe: { busy: null, queued: null, kept: 0, lookups: 0, waitUntil: 0 } };
 let passed = 0;
 let failed = 0;
 const tmpDirs = [];

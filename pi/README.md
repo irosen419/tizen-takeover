@@ -259,9 +259,34 @@ The sign-in link works for 15 minutes. After that, or after a restart of the ser
 
 The sign-in is a long-lived key saved in `data/spotify.json` on the Pi (readable by you only, never in git, never sent to the TV, never in a log). It renews itself every hour. Spotify can end it: if you remove the app's access at [spotify.com/account/apps](https://www.spotify.com/account/apps), or after a long while, the tile says `Not connected yet` and `./hub spotify login` fixes it. `./hub spotify logout` forgets it on purpose. Changing the client secret in the dashboard means pasting the new one into `.env` and restarting.
 
+### The song's vibe (for the visualizer)
+
+In full screen, Now Playing has a classic-style visualizer that moves with the song (see "Now Playing" in the main README). For that, the Pi looks up each new song's **vibe** once: its tempo, energy, mood, danceability and acousticness.
+
+1. It asks [ReccoBeats](https://reccobeats.com), a free service with no sign-up: `GET https://api.reccobeats.com/v1/audio-features?ids=<the song's Spotify ID>`.
+2. If ReccoBeats doesn't know the song, it guesses from the first artist's genres, which it reads from Spotify with the sign-in it already has.
+3. If neither works (a podcast, a home recording), the TV moves gently at 100 BPM.
+
+The lookup runs on its own, one song at a time, so the tile never waits for it; the song shows at once and the visualizer picks up the vibe a moment later. Answers are kept in `data/vibes.json` (the last 500 songs), so a song played again is not asked about again; a song nobody knew is tried again after a day.
+
+**Privacy:** ReccoBeats sees the Spotify IDs of the songs you play and the Pi's internet address, nothing else: no sign-in, no token, no name, no account. The TV never talks to ReccoBeats or Spotify itself. To stop it, add this line to `.env` and run `docker compose restart hub`:
+
+```
+SPOTIFY_VIBE=off
+```
+
+With it off, the Pi still guesses from Spotify's genres (no one new sees anything), and `./hub spotify status` says `Vibe lookups: off (SPOTIFY_VIBE=off).`
+
+`./hub spotify status` (and the mailbox's `spotify.status`) ends with a **Vibe** line for the song playing, for example:
+
+- `Vibe: features, 124 BPM, energy 0.78, mood 0.82.` (ReccoBeats knew it)
+- `Vibe: from genres (indie pop, dream pop).` (a guess from the artist)
+- `Vibe: looking it up.`, `Vibe: none yet.`, `Vibe: none (songs only, not podcasts).`
+- and, when the last lookup failed, `Last lookup problem: ReccoBeats answered HTTP 500 (40 seconds ago).` It is retried after half an hour; nothing else is affected.
+
 ### Commands
 
-- `./hub spotify status` says what is playing, and whether Spotify is reachable.
+- `./hub spotify status` says what is playing, and whether Spotify is reachable. Its last line is the song's vibe (above).
 - `./hub spotify login`, `./hub spotify code "<address>"`, `./hub spotify logout` as above.
 - `./hub show nowplaying` opens the page on the TV (add `--full` for full screen).
 
