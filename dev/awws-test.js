@@ -4,7 +4,7 @@
  * Runs the real hub in headless Chromium against the preview (dev/preview.js)
  * and the real hub server from pi/ (its clock set to Monday 16 November 2026,
  * 10:40 AM in Chicago, see dev/awws-pi.js), with the sample calendars and
- * snapshot from dev/awws-sample.js sent the way a sync sends them (POST /api/awws)
+ * snapshot from dev/awws-sample.js sent the way a sync sends them
  * (POST /api/awws). Checks:
  *   every AWWS widget at every size, in English and in Spanish: no console
  *   errors, never blank, nothing clipped, no type under 0.85rem on a tile or
