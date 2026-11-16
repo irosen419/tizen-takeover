@@ -19,6 +19,7 @@ const awws = require('./awws');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
 const NO_CALENDAR = { configured: false, calendars: 0, timer: false, refreshing: false };
+const NO_SPOTIFY = { timer: false, fails: 0, signedIn: false, pending: false, delay: 0 };
 let passed = 0;
 let failed = 0;
 const tmpDirs = [];
@@ -291,7 +292,7 @@ async function main() {
     for (const type of ['home', 'reload']) {
       assert.strictEqual((await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: type } })).json.delivered, 0);
     }
-    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR });
+    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR, spotify: NO_SPOTIFY });
   });
 
   /* ---------- to-do ---------- */
@@ -587,7 +588,7 @@ async function main() {
     }, 3000);
     const c = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'show', data: { widget: 'todo' } } });
     assert.strictEqual(c.json.delivered, 0);
-    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR });
+    assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR, spotify: NO_SPOTIFY });
   });
 
   /* ---------- layout ---------- */

@@ -1,0 +1,1026 @@
+{
+ "about": "Clay sprites of Ian and Ember. Made by art/clay/tools; do not edit by hand.",
+ "unit": 160,
+ "sprites": {
+  "duo/belly-rub": {
+   "file": "sprites/duo/belly-rub.webp",
+   "w": 117,
+   "h": 139,
+   "cx": 53.2,
+   "sheet": "duo-love",
+   "faces": "front",
+   "about": "He kneels beside her scratching her belly with both hands, laughing; she lies on her back, wriggling in bliss, one back leg kicking the air."
+  },
+  "duo/carry": {
+   "file": "sprites/duo/carry.webp",
+   "w": 96,
+   "h": 150,
+   "cx": 50.2,
+   "sheet": "duo-love",
+   "faces": "front",
+   "about": "He carries her in both arms like a giant baby, leaning back and staggering under her weight; she looks delighted."
+  },
+  "duo/greet": {
+   "file": "sprites/duo/greet.webp",
+   "w": 106,
+   "h": 163,
+   "cx": 42.8,
+   "sheet": "duo-play",
+   "faces": "front",
+   "about": "He stands upright, laughing; she stands up on her back legs with her front paws on his chest, licking his chin."
+  },
+  "duo/high-five": {
+   "file": "sprites/duo/high-five.webp",
+   "w": 131,
+   "h": 134,
+   "cx": 52.2,
+   "sheet": "duo-love",
+   "faces": "front",
+   "about": "He crouches holding one palm out; she sits and slaps a front paw onto it, a high five."
+  },
+  "duo/hug": {
+   "file": "sprites/duo/hug.webp",
+   "w": 82,
+   "h": 135,
+   "cx": 36.9,
+   "sheet": "duo-love",
+   "faces": "front",
+   "about": "He crouches with both arms around her neck in a big hug, eyes closed; she sits and licks his cheek, knocking his glasses crooked."
+  },
+  "duo/movie": {
+   "file": "sprites/duo/movie.webp",
+   "w": 98,
+   "h": 126,
+   "cx": 47.6,
+   "sheet": "duo-fix",
+   "faces": "back",
+   "about": "Seen from directly BEHIND: the two sit side by side on the floor, his arm around her shoulders, both looking away from the camera into the distance."
+  },
+  "duo/pals": {
+   "file": "sprites/duo/pals.webp",
+   "w": 97,
+   "h": 163,
+   "cx": 43.9,
+   "sheet": "duo-fix",
+   "faces": "front",
+   "about": "He stands upright facing the camera with his arms folded, grinning; she sits beside him facing the camera, tongue out."
+  },
+  "duo/squash": {
+   "file": "sprites/duo/squash.webp",
+   "w": 93,
+   "h": 121,
+   "cx": 44.2,
+   "sheet": "duo-play",
+   "faces": "front",
+   "about": "He lies flat on his stomach, squashed, arms spread, glasses crooked, chin on the floor; she sits proudly on his back, tongue out."
+  },
+  "duo/stand": {
+   "file": "sprites/duo/stand.webp",
+   "w": 102,
+   "h": 163,
+   "cx": 48.0,
+   "sheet": "duo-love",
+   "faces": "front",
+   "about": "He stands upright facing the camera with one hand resting on her head; she stands on all four legs beside him, looking up at him."
+  },
+  "duo/tug": {
+   "file": "sprites/duo/tug.webp",
+   "w": 172,
+   "h": 156,
+   "cx": 68.2,
+   "sheet": "duo-fix",
+   "faces": "front",
+   "about": "Tug of war, seen from the side: he leans back pulling one end of a white sock with two black stripes with both hands; she faces him, rump low, pulling the other end in her teeth."
+  },
+  "duo/walk": {
+   "file": "sprites/duo/walk.webp",
+   "w": 88,
+   "h": 163,
+   "cx": 37.6,
+   "sheet": "duo-play",
+   "faces": "right",
+   "about": "Walking together, side view facing right: he strolls with his hands in his jeans pockets; she trots at his side looking up at him."
+  },
+  "ember/ball-down": {
+   "file": "sprites/ember/ball-down.webp",
+   "w": 96,
+   "h": 64,
+   "cx": 46.1,
+   "sheet": "ember-toys",
+   "faces": "right",
+   "about": "Lying down, side view facing right, guarding a yellow tennis ball between her front paws."
+  },
+  "ember/beg": {
+   "file": "sprites/ember/beg.webp",
+   "w": 47,
+   "h": 94,
+   "cx": 22.7,
+   "sheet": "ember-toys",
+   "faces": "front",
+   "about": "Sitting up on her haunches facing the camera, front paws tucked at her chest, head tilted, pleading."
+  },
+  "ember/belly": {
+   "file": "sprites/ember/belly.webp",
+   "w": 94,
+   "h": 71,
+   "cx": 42.2,
+   "sheet": "ember-floor",
+   "faces": "front",
+   "about": "Lying on her back, seen from the side, belly up, all four paws flopped in the air, head lolling toward the camera, tongue hanging out, blissful."
+  },
+  "ember/bow": {
+   "file": "sprites/ember/bow.webp",
+   "w": 68,
+   "h": 79,
+   "cx": 35.9,
+   "sheet": "ember-jump",
+   "faces": "right",
+   "about": "Play bow, side view facing right: chest and elbows flat on the ground, rump high in the air, tail wagging, cheeky grin."
+  },
+  "ember/chew": {
+   "file": "sprites/ember/chew.webp",
+   "w": 107,
+   "h": 70,
+   "cx": 62.5,
+   "sheet": "ember-toys",
+   "faces": "right",
+   "about": "Lying down, side view facing right, gnawing happily on a cream-coloured bone held upright between her front paws."
+  },
+  "ember/dig": {
+   "file": "sprites/ember/dig.webp",
+   "w": 52,
+   "h": 101,
+   "cx": 26.8,
+   "sheet": "ember-play",
+   "faces": "right",
+   "about": "Digging furiously, side view facing right: head down, front paws scrabbling at the ground, rump up."
+  },
+  "ember/down": {
+   "file": "sprites/ember/down.webp",
+   "w": 103,
+   "h": 70,
+   "cx": 53.0,
+   "sheet": "ember-floor",
+   "faces": "right",
+   "about": "Lying down sphinx-style, side view facing right: belly on the ground, front paws stretched out ahead, head up and alert."
+  },
+  "ember/guilty": {
+   "file": "sprites/ember/guilty.webp",
+   "w": 101,
+   "h": 48,
+   "cx": 51.5,
+   "sheet": "ember-fix2",
+   "faces": "right",
+   "about": "Lying flat, side view facing right, chin pressed to the ground between her front paws, ears drooping, eyes rolled up in a guilty look."
+  },
+  "ember/howl": {
+   "file": "sprites/ember/howl.webp",
+   "w": 68,
+   "h": 96,
+   "cx": 41.4,
+   "sheet": "ember-feels",
+   "faces": "right",
+   "about": "Sitting, side view facing right, nose pointed straight up at the sky, howling, mouth a small O."
+  },
+  "ember/jump-catch": {
+   "file": "sprites/ember/jump-catch.webp",
+   "w": 62,
+   "h": 118,
+   "cx": 27.6,
+   "sheet": "ember-jump",
+   "faces": "right",
+   "about": "Leaping straight up, side view facing right, to catch something: body nearly vertical, front paws tucked to her chest, head thrown back, mouth wide open."
+  },
+  "ember/jump-crouch": {
+   "file": "sprites/ember/jump-crouch.webp",
+   "w": 84,
+   "h": 90,
+   "cx": 49.1,
+   "sheet": "ember-jump",
+   "faces": "right",
+   "about": "Coiled to spring, side view facing right: rump down, chest low, front paws planted, eyes locked on something above and ahead."
+  },
+  "ember/jump-land": {
+   "file": "sprites/ember/jump-land.webp",
+   "w": 70,
+   "h": 99,
+   "cx": 34.6,
+   "sheet": "ember-jump",
+   "faces": "right",
+   "about": "Landing from a leap, side view facing right: front paws touching down first, rump and back legs still high in the air."
+  },
+  "ember/jump-leap": {
+   "file": "sprites/ember/jump-leap.webp",
+   "w": 95,
+   "h": 84,
+   "cx": 49.2,
+   "sheet": "ember-jump",
+   "faces": "right",
+   "about": "Mid-air in a long leap, side view facing right: body stretched full length, front paws reaching forward, back legs trailing, ears streaming back."
+  },
+  "ember/lick": {
+   "file": "sprites/ember/lick.webp",
+   "w": 51,
+   "h": 99,
+   "cx": 25.7,
+   "sheet": "ember-play",
+   "faces": "front",
+   "about": "Facing the camera very close, giving it a big sloppy lick: huge pink tongue stretched up toward the viewer, eyes happy."
+  },
+  "ember/look-up": {
+   "file": "sprites/ember/look-up.webp",
+   "w": 63,
+   "h": 105,
+   "cx": 37.0,
+   "sheet": "ember-fix2",
+   "faces": "front",
+   "about": "Sitting facing the camera, head tipped right back to stare straight up at the sky, mouth a little open, waiting for something to fall."
+  },
+  "ember/paws-up": {
+   "file": "sprites/ember/paws-up.webp",
+   "w": 48,
+   "h": 121,
+   "cx": 23.0,
+   "sheet": "ember-play",
+   "faces": "front",
+   "about": "Standing up on her back legs facing the camera, front paws hooked over an invisible ledge at chest height, peering over it."
+  },
+  "ember/pounce": {
+   "file": "sprites/ember/pounce.webp",
+   "w": 64,
+   "h": 98,
+   "cx": 31.2,
+   "sheet": "ember-play",
+   "faces": "right",
+   "about": "Pouncing, side view facing right: front paws together stabbing down at the ground, rump and tail high, ears up."
+  },
+  "ember/roll": {
+   "file": "sprites/ember/roll.webp",
+   "w": 89,
+   "h": 87,
+   "cx": 44.1,
+   "sheet": "ember-floor",
+   "faces": "front",
+   "about": "Half-way through rolling over, seen from the side: on her shoulder and side, legs kicking in the air, ears flopped on the ground, wriggling."
+  },
+  "ember/run-1": {
+   "file": "sprites/ember/run-1.webp",
+   "w": 103,
+   "h": 80,
+   "cx": 53.4,
+   "sheet": "ember-move",
+   "faces": "right",
+   "about": "Galloping flat out, side view facing right, at full stretch with all four paws off the ground: front legs reaching far forward, back legs kicked out behind, ears streaming back, tongue out."
+  },
+  "ember/run-2": {
+   "file": "sprites/ember/run-2.webp",
+   "w": 83,
+   "h": 93,
+   "cx": 43.0,
+   "sheet": "ember-move",
+   "faces": "right",
+   "about": "Galloping flat out, side view facing right, the gathered pose: all four paws bunched together under her arched body, ears flying up."
+  },
+  "ember/scratch": {
+   "file": "sprites/ember/scratch.webp",
+   "w": 64,
+   "h": 92,
+   "cx": 37.4,
+   "sheet": "ember-feels",
+   "faces": "front",
+   "about": "Sitting facing the camera at a slight angle, scratching behind her ear with a back paw, eyes half shut in bliss."
+  },
+  "ember/shake": {
+   "file": "sprites/ember/shake.webp",
+   "w": 68,
+   "h": 93,
+   "cx": 33.5,
+   "sheet": "ember-feels",
+   "faces": "front",
+   "about": "Shaking herself off, facing the camera: whole coat twisting, ears and jowls flung out to one side, eyes squeezed shut."
+  },
+  "ember/sit": {
+   "file": "sprites/ember/sit.webp",
+   "w": 42,
+   "h": 94,
+   "cx": 20.3,
+   "sheet": "ember-floor",
+   "faces": "front",
+   "about": "Sitting upright facing the camera, front paws together, happy open-mouth smile, tongue showing."
+  },
+  "ember/sit-side": {
+   "file": "sprites/ember/sit-side.webp",
+   "w": 66,
+   "h": 88,
+   "cx": 39.2,
+   "sheet": "ember-fix",
+   "faces": "right",
+   "about": "Sitting upright, side view facing right, looking straight ahead, mouth closed, tail curled on the ground behind her."
+  },
+  "ember/skid": {
+   "file": "sprites/ember/skid.webp",
+   "w": 101,
+   "h": 92,
+   "cx": 58.6,
+   "sheet": "ember-move",
+   "faces": "right",
+   "about": "Skidding to a stop, side view facing right: front legs braced stiff out in front, rump dropped low, ears flung forward, eyes wide."
+  },
+  "ember/sleep": {
+   "file": "sprites/ember/sleep.webp",
+   "w": 82,
+   "h": 54,
+   "cx": 41.2,
+   "sheet": "ember-floor",
+   "faces": "front",
+   "about": "Curled up tight in a doughnut, fast asleep, nose tucked against her tail, eyes closed."
+  },
+  "ember/sniff": {
+   "file": "sprites/ember/sniff.webp",
+   "w": 78,
+   "h": 80,
+   "cx": 35.0,
+   "sheet": "ember-feels",
+   "faces": "right",
+   "about": "Walking slowly, side view facing right, nose pressed to the ground, following a scent, tail up."
+  },
+  "ember/sock-proud": {
+   "file": "sprites/ember/sock-proud.webp",
+   "w": 95,
+   "h": 84,
+   "cx": 41.4,
+   "sheet": "ember-fix",
+   "faces": "right",
+   "about": "Standing on all four legs, side view facing right, holding a white striped sock in her mouth."
+  },
+  "ember/sock-run": {
+   "file": "sprites/ember/sock-run.webp",
+   "w": 102,
+   "h": 89,
+   "cx": 53.2,
+   "sheet": "ember-toys",
+   "faces": "right",
+   "about": "Galloping away, side view facing right, with a white sock with two black stripes dangling from her mouth, ears flying, gleeful and guilty."
+  },
+  "ember/soggy": {
+   "file": "sprites/ember/soggy.webp",
+   "w": 44,
+   "h": 88,
+   "cx": 23.3,
+   "sheet": "ember-fix",
+   "faces": "front",
+   "about": "Sitting facing the camera, soaked through: her curls flattened and hanging in wet strings, ears limp, thoroughly miserable."
+  },
+  "ember/spin": {
+   "file": "sprites/ember/spin.webp",
+   "w": 59,
+   "h": 87,
+   "cx": 31.6,
+   "sheet": "ember-feels",
+   "faces": "front",
+   "about": "Chasing her own tail, seen from the side: body bent into a tight C, nose almost catching the tip of her tail."
+  },
+  "ember/stand": {
+   "file": "sprites/ember/stand.webp",
+   "w": 92,
+   "h": 96,
+   "cx": 47.6,
+   "sheet": "ember-move",
+   "faces": "right",
+   "about": "Standing square on all four legs, side view facing right, head up, mouth closed, calm."
+  },
+  "ember/stand-2": {
+   "file": "sprites/ember/stand-2.webp",
+   "w": 76,
+   "h": 95,
+   "cx": 36.7,
+   "sheet": "ember-fix",
+   "faces": "right",
+   "about": "Standing square on all four legs, side view facing right, head up, mouth open in a pant."
+  },
+  "ember/stand-ball": {
+   "file": "sprites/ember/stand-ball.webp",
+   "w": 88,
+   "h": 95,
+   "cx": 44.0,
+   "sheet": "ember-toys",
+   "faces": "right",
+   "about": "Standing on all four legs, side view facing right, proudly holding a yellow tennis ball in her mouth, tail high."
+  },
+  "ember/stand-bark": {
+   "file": "sprites/ember/stand-bark.webp",
+   "w": 78,
+   "h": 95,
+   "cx": 38.1,
+   "sheet": "ember-feels",
+   "faces": "right",
+   "about": "Standing on all four legs, side view facing right, head lifted, barking, mouth open."
+  },
+  "ember/stand-look": {
+   "file": "sprites/ember/stand-look.webp",
+   "w": 68,
+   "h": 95,
+   "cx": 37.0,
+   "sheet": "ember-jump",
+   "faces": "front",
+   "about": "Standing on all four legs, body turned three-quarters toward the camera, looking at the camera with a happy open mouth."
+  },
+  "ember/stand-tilt": {
+   "file": "sprites/ember/stand-tilt.webp",
+   "w": 42,
+   "h": 94,
+   "cx": 20.6,
+   "sheet": "ember-floor",
+   "faces": "front",
+   "about": "Standing on all four legs facing the camera, head cocked far to one side, one ear dangling, curious."
+  },
+  "ember/stand-wag": {
+   "file": "sprites/ember/stand-wag.webp",
+   "w": 73,
+   "h": 95,
+   "cx": 37.4,
+   "sheet": "ember-play",
+   "faces": "right",
+   "about": "Standing on all four legs, side view facing right, looking back over her shoulder at the camera, tail wagging."
+  },
+  "ember/stick": {
+   "file": "sprites/ember/stick.webp",
+   "w": 115,
+   "h": 94,
+   "cx": 50.9,
+   "sheet": "ember-toys",
+   "faces": "right",
+   "about": "Trotting, side view facing right, head held high, carrying a long brown stick crosswise in her mouth."
+  },
+  "ember/trot-1": {
+   "file": "sprites/ember/trot-1.webp",
+   "w": 84,
+   "h": 94,
+   "cx": 42.4,
+   "sheet": "ember-move",
+   "faces": "right",
+   "about": "Trotting, side view facing right: one front leg and the opposite back leg stepping forward, tail up, cheerful."
+  },
+  "ember/trot-2": {
+   "file": "sprites/ember/trot-2.webp",
+   "w": 85,
+   "h": 90,
+   "cx": 44.7,
+   "sheet": "ember-move",
+   "faces": "right",
+   "about": "Trotting, side view facing right, the opposite step: the other front leg and the other back leg forward."
+  },
+  "ember/zoomies": {
+   "file": "sprites/ember/zoomies.webp",
+   "w": 77,
+   "h": 83,
+   "cx": 40.4,
+   "sheet": "ember-play",
+   "faces": "right",
+   "about": "Zoomies, side view facing right: sprinting low with her rump tucked under, eyes wide and wild, ears pinned back, tongue flapping."
+  },
+  "ian/back": {
+   "file": "sprites/ian/back.webp",
+   "w": 63,
+   "h": 163,
+   "cx": 31.1,
+   "sheet": "ian-fix",
+   "faces": "back",
+   "about": "Seen from directly BEHIND: standing with his hands in his jeans pockets, looking away from the camera, hood hanging down his back."
+  },
+  "ian/call": {
+   "file": "sprites/ian/call.webp",
+   "w": 64,
+   "h": 156,
+   "cx": 31.8,
+   "sheet": "ian-fetch",
+   "faces": "right",
+   "about": "Crouched, side view facing right, slapping both hands on his knees to call the dog over, big encouraging smile."
+  },
+  "ian/checklist": {
+   "file": "sprites/ian/checklist.webp",
+   "w": 62,
+   "h": 162,
+   "cx": 30.6,
+   "sheet": "ian-home",
+   "faces": "front",
+   "about": "Standing facing the camera, holding a clipboard in one hand and ticking it with a pencil in the other, satisfied."
+  },
+  "ian/cheer": {
+   "file": "sprites/ian/cheer.webp",
+   "w": 77,
+   "h": 161,
+   "cx": 39.0,
+   "sheet": "ian-fetch",
+   "faces": "front",
+   "about": "Jumping for joy facing the camera, both fists punched in the air, huge open-mouth grin."
+  },
+  "ian/climb": {
+   "file": "sprites/ian/climb.webp",
+   "w": 88,
+   "h": 174,
+   "cx": 44.7,
+   "sheet": "ian-perch",
+   "faces": "front",
+   "about": "Hauling himself up over an invisible ledge, facing the camera: both forearms flat on top of it, chin just above, one knee hooked up beside him, straining."
+  },
+  "ian/cold": {
+   "file": "sprites/ian/cold.webp",
+   "w": 50,
+   "h": 163,
+   "cx": 24.5,
+   "sheet": "ian-weather",
+   "faces": "front",
+   "about": "Standing facing the camera with his hood UP over his head, hugging himself tightly, shoulders hunched, knees together, shivering."
+  },
+  "ian/dance-1": {
+   "file": "sprites/ian/dance-1.webp",
+   "w": 83,
+   "h": 163,
+   "cx": 37.2,
+   "sheet": "ian-feels",
+   "faces": "front",
+   "about": "Dancing, facing the camera: hips out to one side, one arm pointing up to the sky, the other pointing down, happy."
+  },
+  "ian/dance-2": {
+   "file": "sprites/ian/dance-2.webp",
+   "w": 74,
+   "h": 163,
+   "cx": 38.3,
+   "sheet": "ian-feels",
+   "faces": "front",
+   "about": "Dancing, facing the camera: the mirror move, hips out the other way, both arms bent in a goofy shuffle, one foot off the floor."
+  },
+  "ian/facepalm": {
+   "file": "sprites/ian/facepalm.webp",
+   "w": 63,
+   "h": 160,
+   "cx": 30.6,
+   "sheet": "ian-feels",
+   "faces": "front",
+   "about": "Standing facing the camera with one hand flat over his face, shoulders slumped."
+  },
+  "ian/hang": {
+   "file": "sprites/ian/hang.webp",
+   "w": 63,
+   "h": 171,
+   "cx": 31.6,
+   "sheet": "ian-fix",
+   "faces": "front",
+   "about": "Dangling at full stretch, facing the camera: both arms straight up above his head, hands curled as if gripping the edge of something that is NOT drawn, body and legs hanging loose, looking down nervously."
+  },
+  "ian/hot": {
+   "file": "sprites/ian/hot.webp",
+   "w": 68,
+   "h": 161,
+   "cx": 36.7,
+   "sheet": "ian-fix",
+   "faces": "front",
+   "about": "Standing facing the camera, wilting in the heat: fanning his face with one hand, the other arm hanging limp, tongue out, eyelids drooping. He is wearing his usual thick black rectangular glasses."
+  },
+  "ian/jump-crouch": {
+   "file": "sprites/ian/jump-crouch.webp",
+   "w": 84,
+   "h": 157,
+   "cx": 45.6,
+   "sheet": "ian-jump",
+   "faces": "right",
+   "about": "Winding up for a big jump, side view facing right: deep crouch, knees bent, arms swung far back, eyes fixed ahead."
+  },
+  "ian/jump-land": {
+   "file": "sprites/ian/jump-land.webp",
+   "w": 98,
+   "h": 137,
+   "cx": 46.1,
+   "sheet": "ian-jump",
+   "faces": "right",
+   "about": "Landing from a jump, side view facing right: deep squat, one hand touching the ground, the other arm out for balance."
+  },
+  "ian/jump-leap": {
+   "file": "sprites/ian/jump-leap.webp",
+   "w": 121,
+   "h": 141,
+   "cx": 64.7,
+   "sheet": "ian-jump",
+   "faces": "right",
+   "about": "Mid-air in a long jump, side view facing right: body stretched out, both arms reaching forward, legs trailing behind, hood flapping."
+  },
+  "ian/jump-tuck": {
+   "file": "sprites/ian/jump-tuck.webp",
+   "w": 89,
+   "h": 150,
+   "cx": 46.3,
+   "sheet": "ian-jump",
+   "faces": "front",
+   "about": "Mid-air in a joyful jump, facing the camera: knees pulled up, both arms thrown up, mouth open laughing."
+  },
+  "ian/kneel-pet": {
+   "file": "sprites/ian/kneel-pet.webp",
+   "w": 83,
+   "h": 115,
+   "cx": 45.3,
+   "sheet": "ian-perch",
+   "faces": "right",
+   "about": "Kneeling on one knee, side view facing right, leaning forward with one hand reaching down and forward, fingers wiggling, as if scratching a dog's belly, smiling."
+  },
+  "ian/laptop": {
+   "file": "sprites/ian/laptop.webp",
+   "w": 68,
+   "h": 122,
+   "cx": 32.7,
+   "sheet": "ian-fix",
+   "faces": "front",
+   "about": "Sitting cross-legged, facing the camera at a slight angle, a plain silver laptop open on his lap, typing, absorbed. The laptop lid is completely blank: no logo, no symbol, no sticker."
+  },
+  "ian/late": {
+   "file": "sprites/ian/late.webp",
+   "w": 68,
+   "h": 162,
+   "cx": 31.3,
+   "sheet": "ian-home",
+   "faces": "front",
+   "about": "Standing facing the camera, staring at the wristwatch on his raised forearm, eyebrows shot up, mouth a small O: he is late."
+  },
+  "ian/laugh": {
+   "file": "sprites/ian/laugh.webp",
+   "w": 61,
+   "h": 158,
+   "cx": 31.0,
+   "sheet": "ian-feels",
+   "faces": "front",
+   "about": "Doubled over laughing, facing the camera at a slight angle, one arm across his belly, the other hand slapping his knee, eyes squeezed shut."
+  },
+  "ian/lie-chin": {
+   "file": "sprites/ian/lie-chin.webp",
+   "w": 101,
+   "h": 76,
+   "cx": 57.3,
+   "sheet": "ian-perch",
+   "faces": "right",
+   "about": "Lying on his stomach, side view facing right, propped on his elbows with his chin in his hands, feet kicked up behind him, daydreaming."
+  },
+  "ian/nap": {
+   "file": "sprites/ian/nap.webp",
+   "w": 130,
+   "h": 48,
+   "cx": 71.0,
+   "sheet": "ian-perch",
+   "faces": "front",
+   "about": "Lying flat on his back, seen from the side, hands behind his head, one knee up, eyes closed, fast asleep."
+  },
+  "ian/point": {
+   "file": "sprites/ian/point.webp",
+   "w": 73,
+   "h": 161,
+   "cx": 23.1,
+   "sheet": "ian-fetch",
+   "faces": "right",
+   "about": "Pointing ahead with his whole arm, side view facing right, other hand cupped at his mouth as he shouts, excited."
+  },
+  "ian/popcorn": {
+   "file": "sprites/ian/popcorn.webp",
+   "w": 66,
+   "h": 132,
+   "cx": 32.7,
+   "sheet": "ian-home",
+   "faces": "front",
+   "about": "Sitting cross-legged facing the camera, hugging a red-and-white striped popcorn bucket, tossing one piece of popcorn toward his open mouth."
+  },
+  "ian/run-1": {
+   "file": "sprites/ian/run-1.webp",
+   "w": 97,
+   "h": 152,
+   "cx": 48.8,
+   "sheet": "ian-move",
+   "faces": "right",
+   "about": "Running flat out, side view facing right, at full stretch with both feet off the ground: front leg reaching far forward, back leg kicked up behind, arms pumping, grinning."
+  },
+  "ian/run-2": {
+   "file": "sprites/ian/run-2.webp",
+   "w": 66,
+   "h": 162,
+   "cx": 28.9,
+   "sheet": "ian-move",
+   "faces": "right",
+   "about": "Running flat out, side view facing right, the passing pose: one foot planted on the ground under his body, the other knee lifted high in front, arms swapped."
+  },
+  "ian/sit-edge": {
+   "file": "sprites/ian/sit-edge.webp",
+   "w": 87,
+   "h": 158,
+   "cx": 42.7,
+   "sheet": "ian-perch",
+   "faces": "front",
+   "about": "Sitting on an invisible ledge, facing the camera, legs dangling and feet swinging, hands resting on the edge beside him, content."
+  },
+  "ian/skid": {
+   "file": "sprites/ian/skid.webp",
+   "w": 72,
+   "h": 161,
+   "cx": 31.6,
+   "sheet": "ian-move",
+   "faces": "right",
+   "about": "Skidding to a stop, side view facing right, leaning back, heels dug in, arms windmilling, eyebrows up in alarm."
+  },
+  "ian/sneak": {
+   "file": "sprites/ian/sneak.webp",
+   "w": 59,
+   "h": 160,
+   "cx": 25.4,
+   "sheet": "ian-feels",
+   "faces": "right",
+   "about": "Sneaking on exaggerated tiptoe, side view facing right, knees high, shoulders hunched, one finger to his lips."
+  },
+  "ian/stand": {
+   "file": "sprites/ian/stand.webp",
+   "w": 68,
+   "h": 163,
+   "cx": 33.5,
+   "sheet": "ian-move",
+   "faces": "front",
+   "about": "Standing upright and relaxed, facing the camera, arms at his sides, warm half-smile."
+  },
+  "ian/stand-coffee": {
+   "file": "sprites/ian/stand-coffee.webp",
+   "w": 65,
+   "h": 163,
+   "cx": 32.9,
+   "sheet": "ian-weather",
+   "faces": "front",
+   "about": "Standing upright facing the camera, holding a white coffee mug in both hands at his chest, sleepy contented smile."
+  },
+  "ian/stand-phone": {
+   "file": "sprites/ian/stand-phone.webp",
+   "w": 66,
+   "h": 163,
+   "cx": 32.4,
+   "sheet": "ian-home",
+   "faces": "front",
+   "about": "Standing upright facing the camera, looking down at a phone held in one hand at his chest, thumb scrolling."
+  },
+  "ian/stand-proud": {
+   "file": "sprites/ian/stand-proud.webp",
+   "w": 79,
+   "h": 163,
+   "cx": 39.2,
+   "sheet": "ian-jump",
+   "faces": "front",
+   "about": "Standing upright facing the camera, hands on his hips, proud grin."
+  },
+  "ian/stand-shrug": {
+   "file": "sprites/ian/stand-shrug.webp",
+   "w": 98,
+   "h": 163,
+   "cx": 48.5,
+   "sheet": "ian-feels",
+   "faces": "front",
+   "about": "Standing upright facing the camera, shrugging: shoulders up, palms turned up at shoulder height, eyebrows raised."
+  },
+  "ian/stand-thumbs": {
+   "file": "sprites/ian/stand-thumbs.webp",
+   "w": 68,
+   "h": 163,
+   "cx": 35.3,
+   "sheet": "ian-perch",
+   "faces": "front",
+   "about": "Standing upright facing the camera, giving a thumbs-up at chest height, pleased."
+  },
+  "ian/stand-wave": {
+   "file": "sprites/ian/stand-wave.webp",
+   "w": 77,
+   "h": 163,
+   "cx": 42.3,
+   "sheet": "ian-fix",
+   "faces": "front",
+   "about": "Standing upright facing the camera, one open hand raised beside his head in a friendly wave, smiling."
+  },
+  "ian/sunny": {
+   "file": "sprites/ian/sunny.webp",
+   "w": 59,
+   "h": 163,
+   "cx": 30.5,
+   "sheet": "ian-weather",
+   "faces": "front",
+   "about": "Standing facing the camera in dark sunglasses instead of his usual glasses, holding an iced coffee with a straw, relaxed and cool."
+  },
+  "ian/throw-1": {
+   "file": "sprites/ian/throw-1.webp",
+   "w": 106,
+   "h": 158,
+   "cx": 51.7,
+   "sheet": "ian-fetch",
+   "faces": "right",
+   "about": "Winding up to throw a ball, side view facing right: weight on the back foot, throwing arm cocked far behind him, front arm pointing ahead. His hand is cupped but EMPTY: no ball."
+  },
+  "ian/throw-2": {
+   "file": "sprites/ian/throw-2.webp",
+   "w": 79,
+   "h": 160,
+   "cx": 36.2,
+   "sheet": "ian-fetch",
+   "faces": "right",
+   "about": "Just after the throw, side view facing right: lunging forward, throwing arm flung out in front, hand open and EMPTY, back foot off the ground."
+  },
+  "ian/umbrella": {
+   "file": "sprites/ian/umbrella.webp",
+   "w": 88,
+   "h": 174,
+   "cx": 51.0,
+   "sheet": "ian-weather",
+   "faces": "front",
+   "about": "Standing facing the camera under an open bright red umbrella that he holds above his head, glancing up at the sky."
+  },
+  "ian/walk-1": {
+   "file": "sprites/ian/walk-1.webp",
+   "w": 79,
+   "h": 162,
+   "cx": 34.6,
+   "sheet": "ian-move",
+   "faces": "right",
+   "about": "Walking, side view facing right, at the widest point of a stride: legs wide apart like open scissors, front heel just touching down, back foot on its toes, arms swinging opposite to the legs."
+  },
+  "ian/walk-2": {
+   "file": "sprites/ian/walk-2.webp",
+   "w": 44,
+   "h": 163,
+   "cx": 21.4,
+   "sheet": "ian-move",
+   "faces": "right",
+   "about": "Walking, side view facing right, the passing pose: standing tall on one straight leg, the other knee bent with its foot lifted just off the ground beside it, both arms hanging close to his sides."
+  },
+  "ian/windy": {
+   "file": "sprites/ian/windy.webp",
+   "w": 81,
+   "h": 159,
+   "cx": 43.5,
+   "sheet": "ian-weather",
+   "faces": "right",
+   "about": "Leaning hard into a strong wind, side view facing right, one arm raised to shield his face, hood and drawstrings streaming out behind him."
+  },
+  "ian/yawn": {
+   "file": "sprites/ian/yawn.webp",
+   "w": 113,
+   "h": 163,
+   "cx": 56.2,
+   "sheet": "ian-fix",
+   "faces": "front",
+   "about": "Standing facing the camera in a big morning stretch: both arms up and out, back arched, eyes shut, mouth wide in a huge yawn. He is wearing his usual thick black rectangular glasses."
+  },
+  "props/ball": {
+   "file": "sprites/props/ball.webp",
+   "w": 14,
+   "h": 14,
+   "cx": 6.5,
+   "sheet": "props-toys",
+   "about": "A yellow tennis ball with a white seam."
+  },
+  "props/bang": {
+   "file": "sprites/props/bang.webp",
+   "w": 8,
+   "h": 26,
+   "cx": 3.5,
+   "sheet": "props-fx",
+   "about": "A fat red exclamation mark."
+  },
+  "props/bone": {
+   "file": "sprites/props/bone.webp",
+   "w": 23,
+   "h": 26,
+   "cx": 11.0,
+   "sheet": "props-toys",
+   "about": "A cream-coloured dog bone."
+  },
+  "props/bowl": {
+   "file": "sprites/props/bowl.webp",
+   "w": 32,
+   "h": 23,
+   "cx": 15.4,
+   "sheet": "props-toys",
+   "about": "A red dog bowl heaped with brown kibble."
+  },
+  "props/frisbee": {
+   "file": "sprites/props/frisbee.webp",
+   "w": 32,
+   "h": 26,
+   "cx": 15.6,
+   "sheet": "props-toys",
+   "about": "A bright orange frisbee, tilted as if flying."
+  },
+  "props/heart": {
+   "file": "sprites/props/heart.webp",
+   "w": 19,
+   "h": 17,
+   "cx": 9.0,
+   "sheet": "props-fx",
+   "about": "A plump red heart."
+  },
+  "props/note": {
+   "file": "sprites/props/note.webp",
+   "w": 19,
+   "h": 26,
+   "cx": 8.9,
+   "sheet": "props-fx",
+   "about": "A single black musical note."
+  },
+  "props/poof": {
+   "file": "sprites/props/poof.webp",
+   "w": 48,
+   "h": 46,
+   "cx": 23.5,
+   "sheet": "props-fx",
+   "about": "A puffy white dust cloud, the kind kicked up by a landing."
+  },
+  "props/sock": {
+   "file": "sprites/props/sock.webp",
+   "w": 22,
+   "h": 32,
+   "cx": 11.0,
+   "sheet": "props-toys",
+   "about": "A limp white sports sock with two black stripes around the cuff."
+  },
+  "props/star": {
+   "file": "sprites/props/star.webp",
+   "w": 17,
+   "h": 19,
+   "cx": 8.0,
+   "sheet": "props-fx",
+   "about": "A yellow four-pointed sparkle star."
+  },
+  "props/stick": {
+   "file": "sprites/props/stick.webp",
+   "w": 67,
+   "h": 58,
+   "cx": 32.5,
+   "sheet": "props-toys",
+   "about": "A knobbly brown stick, lying level."
+  },
+  "props/zed": {
+   "file": "sprites/props/zed.webp",
+   "w": 13,
+   "h": 18,
+   "cx": 5.9,
+   "sheet": "props-fx",
+   "about": "A single chunky lavender capital letter Z, for snoring."
+  }
+ },
+ "sequences": {
+  "ian.walk": [
+   "ian/walk-1",
+   "ian/walk-2"
+  ],
+  "ian.run": [
+   "ian/run-1",
+   "ian/run-2"
+  ],
+  "ian.jump": [
+   "ian/jump-crouch",
+   "ian/jump-leap",
+   "ian/jump-land"
+  ],
+  "ian.throw": [
+   "ian/throw-1",
+   "ian/throw-2"
+  ],
+  "ian.dance": [
+   "ian/dance-1",
+   "ian/dance-2"
+  ],
+  "ian.wave": [
+   "ian/stand",
+   "ian/stand-wave"
+  ],
+  "ember.trot": [
+   "ember/trot-1",
+   "ember/trot-2"
+  ],
+  "ember.run": [
+   "ember/run-1",
+   "ember/run-2"
+  ],
+  "ember.jump": [
+   "ember/jump-crouch",
+   "ember/jump-leap",
+   "ember/jump-land"
+  ],
+  "ember.catch": [
+   "ember/jump-crouch",
+   "ember/jump-catch",
+   "ember/jump-land"
+  ],
+  "ember.roll": [
+   "ember/down",
+   "ember/roll",
+   "ember/belly"
+  ],
+  "ember.fetch": [
+   "ember/run-1",
+   "ember/run-2",
+   "ember/stand-ball"
+  ],
+  "ember.sock-heist": [
+   "ember/sniff",
+   "ember/sock-proud",
+   "ember/sock-run"
+  ]
+ }
+}

@@ -59,7 +59,7 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.15.0'
+ *   ctx.build                 'v0.17.0'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -117,7 +117,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.15.0';
+  var BUILD = 'v0.17.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -934,6 +934,7 @@
     layoutKey = key;
     measureHome();
     placeGlass();
+    clayHook('layout');
     // A tile of another size may want another layout: draw it again.
     for (var r = 0; r < resized.length; r++) drawTile(resized[r]);
   }
@@ -1038,6 +1039,7 @@
     if (sw.on || busy || open || frameOpen) return;
     sw.presets = switcherPresets();
     if (sw.presets.length < 2) return;     // nothing to switch between
+    clayHook('stop');
     clearTimeout(sw.hideTimer);
     drawSwitcher();
     sw.on = true;
@@ -1510,6 +1512,7 @@
    */
   function openPanel(rec) {
     if (busy || open || !rec.expandable) return;
+    clayHook('stop');
     open = rec;
     mode = 'panel';
     busy = true;
@@ -1710,6 +1713,7 @@
 
   function openFrame(url) {
     if (!url) return toast('This dashboard has no address yet.');
+    clayHook('stop');
     frameOpen = true;
     frameEl.src = url;
     frameWrap.hidden = false;
@@ -1985,7 +1989,10 @@
     return U && typeof U === 'object' && typeof U[name] === 'function' ? U : null;
   }
 
-  function noteInput() { lastInputAt = new Date().getTime(); }
+  function noteInput() {
+    lastInputAt = new Date().getTime();
+    clayHook('input');
+  }
   document.addEventListener('keydown', noteInput, true);
   document.addEventListener('click', noteInput, true);
 
@@ -2045,6 +2052,53 @@
     return true;
   };
 
+  /* ---------- clay characters ---------- */
+
+  // app/clay.js: Ian and Ember wander across the home screen now and then
+  // while nobody uses the remote (docs/clay.md). The hub lends it a read-only
+  // view (is a panel, the dashboard or the layout bar open, where are the
+  // tiles, two widget getters, the live status) and tells it about input, panels and layout changes. Every call
+  // is wrapped, so without clay.js, or with a broken one, nothing changes.
+
+  function clayApi(name) {
+    var K = window.HUB_CLAY;
+    return K && typeof K === 'object' && typeof K[name] === 'function' ? K : null;
+  }
+
+  function clayHook(name) {
+    var K = clayApi(name);
+    if (!K) return;
+    try { K[name](); } catch (e) { /* the characters just don't show */ }
+  }
+
+  function startClay() {
+    var K = clayApi('start');
+    if (!K) return;
+    try {
+      K.start({
+        config: cfg.clay,
+        quiet: function () { return !busy && !open && !frameOpen && !sw.on && !typingBox(); },
+        // Each tile's rect, measured now (a scene measures once, as it starts).
+        tiles: function () {
+          measureHome();
+          var out = [];
+          for (var i = 0; i < widgets.length; i++) {
+            var h = widgets[i].home;
+            if (h) out.push({ id: widgets[i].w.id, left: h.left, top: h.top, width: h.width, height: h.height });
+          }
+          return out;
+        },
+        // Read-only getters some widgets offer: weather.current(), todo.doneCount().
+        widget: function (id) { return registry.hasOwnProperty(id) ? registry[id] : null; },
+        liveStatus: function () { var L = liveFacade(); return L ? L.status() : null; }
+      });
+    } catch (e) {
+      liveWarn('clay could not start: ' + (e && e.message));
+    }
+  }
+
+  window.HUB_TEST.clay = window.HUB_CLAY && window.HUB_CLAY.test ? window.HUB_CLAY.test : null;
+
   /* ---------- start ---------- */
 
   setupMotion();
@@ -2055,10 +2109,12 @@
   setupBackground();
   startLive();
   startUpdates();
+  startClay();
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
+    clayHook('layout');
     resizeTimer = setTimeout(function () { measureHome(); placeGlass(); }, 150);
   });
 
