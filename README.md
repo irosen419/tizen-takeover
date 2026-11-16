@@ -99,7 +99,7 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 ### About this hub (the version and status)
 
-At the bottom of the Clock page, **About this hub** shows the hub version and the TV's browser, then the motion choice, for example `v0.15.0 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)). The lines change by themselves while the page is open.
+At the bottom of the Clock page, **About this hub** shows the hub version and the TV's browser, then the motion choice, for example `v0.16.0 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)). The lines change by themselves while the page is open.
 
 ### Entertainment
 
