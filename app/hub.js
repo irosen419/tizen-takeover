@@ -35,7 +35,9 @@
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
- *     onStatus: function (ctx) {}          // the motion status text changed
+ *     onStatus: function (ctx) {}          // the motion, live updates or updates status
+ *                                          // changed (ctx.motionStatus(), ctx.live.status(),
+ *                                          // ctx.updates())
  *   });
  *
  * Everything except id and title is optional. Every call into a widget is
@@ -57,7 +59,7 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.12.2'
+ *   ctx.build                 'v0.13.0'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -89,8 +91,9 @@
  *                             docs/live-updates.md), or undefined when live.js
  *                             isn't loaded. jsDelivr can serve a mix of old and
  *                             new files, so always check it exists first:
- *     ctx.live.status()         { state, text, since }; text is the clock tile's
- *                               line, '' when there is nothing to say
+ *     ctx.live.status()         { state, text, since }; text is the line for
+ *                               "About this hub" on the Clock page, '' when
+ *                               there is nothing to say
  *     ctx.live.get(resource)    the data last received, e.g. get('todo').items
  *     ctx.live.on(resource, fn) fn(data, rev) each time new data arrives
  *     ctx.live.onStatus(fn)     fn(status) when the state changes (the hub also
@@ -100,7 +103,8 @@
  *   ctx.updates()             where this hub stands with updates (app/update.js):
  *                             { managed, pinned, sha, state, text, newest, checkedAt },
  *                             or undefined when update.js isn't loaded. text is the
- *                             clock tile's line, '' when there is nothing to say;
+ *                             line for "About this hub" on the Clock page, '' when
+ *                             there is nothing to say;
  *                             newest is true when this is the branch's newest commit
  *
  * Later widgets get their data from the Raspberry Pi in one of two ways. A
@@ -113,7 +117,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.12.2';
+  var BUILD = 'v0.13.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -1887,6 +1891,20 @@
   window.HUB_TEST.layout = function () { return layoutKey ? JSON.parse(layoutKey) : null; };
   window.HUB_TEST.layoutWaiting = function () { return pendingLayout !== undefined; };
   window.HUB_TEST.checkUpdates = function () { var U = updateApi('check'); if (U) U.check(); };
+  // Open a widget's panel, or close the open one, as OK and Back would, but
+  // without counting as a key press (so the idle timer isn't touched).
+  window.HUB_TEST.openPanel = function (id) {
+    if (busy || open || frameOpen) return false;
+    for (var i = 0; i < widgets.length; i++) {
+      if (widgets[i].w.id === id && widgets[i].expandable) { focusHome(i); openPanel(widgets[i]); return true; }
+    }
+    return false;
+  };
+  window.HUB_TEST.closePanel = function () {
+    if (busy || !open) return false;
+    closePanel();
+    return true;
+  };
 
   /* ---------- start ---------- */
 

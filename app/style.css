@@ -337,28 +337,19 @@ body {
   font-weight: 600;
 }
 
-/* ---------- Today ---------- */
+/* ---------- Clock: the tile ---------- */
 
-.today-place {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 0.85rem;
-  line-height: 1.3;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
+/* Only the time and the date, in the middle of the tile. The Clock page
+   (widgets/today.css) has the rest. */
+.tile-body.today-tile { justify-content: center; }
 .today-time {
-  margin-top: auto;
   font-size: 4.4rem;
   font-weight: 300;
-  line-height: 1.25;
+  line-height: 1.2;
   letter-spacing: -0.02em;
   color: var(--text);
+  white-space: nowrap;
 }
-.today-time { white-space: nowrap; }
 .today-ampm {
   font-size: 1.5rem;
   font-weight: 400;
@@ -368,25 +359,17 @@ body {
 }
 .today-date {
   font-size: 1.2rem;
-  line-height: 1.3;
+  line-height: 1.35;
   color: var(--text-2);
 }
-.today-date {
-  white-space: nowrap;
+/* Two rows or more: the date may wrap once ("miércoles, / 30 de septiembre"),
+   then ends in "...". Old WebKit's line clamp. */
+.tile:not(.tile-h1) .today-date {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-.today-status {
-  margin-top: auto;
-  padding-top: 0.3rem;
-  font-size: 0.75rem;
-  line-height: 1.3;
-  color: var(--text-3);
-}
-.today-status-line {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-wrap: break-word;
 }
 
 /* ---------- Entertainment: home tile ---------- */
@@ -645,26 +628,6 @@ body.has-picture {
 .motion-push .tile,
 .motion-expand .tile { will-change: transform, opacity; }
 
-/* ---------- Today: the extra status rows ---------- */
-
-/* A third row (live updates or updates) and a fourth (both) show only while
-   they have something to say. The clock is a little smaller for each, so all
-   rows fit in the tile at 1920x1080 with room to spare. Each row still ends
-   in "..." if too long. */
-.tile-body.today-rows-3 .today-time {
-  font-size: 3.9rem;
-  line-height: 1.15;
-}
-.tile-body.today-rows-3 .today-status { padding-top: 0.2rem; }
-.tile-body.today-rows-4 .today-time {
-  font-size: 3.5rem;
-  line-height: 1.1;
-}
-.tile-body.today-rows-4 .today-status {
-  padding-top: 0.15rem;
-  line-height: 1.25;
-}
-
 /* ---------- tile sizes ---------- */
 
 /* hub.js puts two classes on every tile from its size on the grid:
@@ -768,7 +731,7 @@ body.has-picture {
 .tile-h3.tile-wn .planned-mark { width: 5rem; height: 5rem; margin-bottom: 1.2rem; }
 .tile-h3.tile-wn .planned-text { font-size: 1rem; }
 
-/* Today in a strip: the time, and the date stacked to its right, the weekday
+/* The clock tile in a strip: the time, and the date stacked to its right, the weekday
    over "Month Date", both centred in the row so they sit as far from the
    border as a placeholder strip's text (the strip padding above). The time
    keeps its size; a date part too long for the rest takes its short form
@@ -784,13 +747,14 @@ body.has-picture {
   font-size: 2.9rem;
   line-height: 1.1;
 }
-.today-strip .today-ampm { font-size: 1rem; margin-left: 0.3rem; }
+.today-strip .today-ampm { font-size: 1rem; margin-left: 0.25rem; }
 .today-strip .today-date {
   flex: 0 1 auto;
   min-width: 0;
-  margin-left: 0.9rem;
+  margin-left: 0.7rem;
   font-size: 1rem;
   line-height: 1.4;
+  white-space: nowrap;
 }
 .today-strip .today-dow,
 .today-strip .today-md {
@@ -800,7 +764,7 @@ body.has-picture {
 }
 .today-strip .today-sep { display: none; }
 .tile-ww .today-strip .today-date { font-size: 1.3rem; }
-/* Narrow strips: only the time, and it shrinks to fit (see fitTime). */
+/* Narrow strips: only the time, and it shrinks to fit (fitWidth in today.js). */
 .tile-wn .today-strip .today-time { flex: 0 1 auto; min-width: 0; }
 .tile-wn .today-strip .today-date { display: none; }
 

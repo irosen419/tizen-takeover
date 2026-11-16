@@ -213,7 +213,10 @@ async function focusCalendarTile(page) {
       const f = document.querySelector('.tile.is-focused');
       return f ? f.parentNode.getAttribute('data-widget') : '';
     });
-    await key(page, at === 'entertainment' || at === 'weather' ? 'ArrowDown' : at === 'nowplaying' || at === 'awws' ? 'ArrowLeft' : at === 'todo' ? 'ArrowRight' : 'ArrowDown');
+    // Ian's layout (app/config.js): the calendar is top left of centre, with
+    // Ambiance and Entertainment below it, the clock and the to-do list to its left.
+    await key(page, at === 'entertainment' || at === 'ambiance' || at === 'nowplaying' ? 'ArrowUp' :
+      at === 'weather' || at === 'awws' || at === 'mirror' ? 'ArrowLeft' : 'ArrowRight');
   }
   const on = await page.evaluate(() => !!document.querySelector('.cell[data-widget="calendar"] .tile.is-focused'));
   expect(on, 'could not focus the calendar tile with the arrows');

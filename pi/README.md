@@ -244,7 +244,7 @@ The TV carries on as normal without it.
 | What you see | What it means | What to do |
 |---|---|---|
 | `could not listen on port 8097: that port is already in use` in the log | Something else uses door 8097 | Put `HUB_PORT=8098` (or another free number) in `.env`, restart, and tell the hub the new port |
-| The TV's clock tile says `Live: the Pi refused this TV` | The TV's address is not allowed | Check `HUB_TV_IPS` in `.env`. Empty allows any home device. Run `./hub status` while the TV tries, and check the log for its address |
+| About this hub on the TV's Clock page says `Live: the Pi refused this TV` | The TV's address is not allowed | Check `HUB_TV_IPS` in `.env`. Empty allows any home device. Run `./hub status` while the TV tries, and check the log for its address |
 | `Sent, but no screen is listening` | No TV is connected right now | Turn the TV on with Home Hub open. `./hub status` lists connected screens |
 | `The server is not running on this Pi (nothing answered on port 8097).` | The server is stopped | `docker compose up -d`, then look at the log |
 | `The server rejected the token in pi/.env.` | The running server has a different token | Restart the server so it reads `.env` again: `docker compose restart hub` |
