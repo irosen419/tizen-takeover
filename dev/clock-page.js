@@ -6,12 +6,22 @@
  * idle timer alone), read it, and close it again.
  *
  *   const clockPage = require('./clock-page');
- *   const lines = await clockPage.lines(page);          // ['v0.13.1 · Chrome 120', 'Motion: ...']
+ *   const lines = await clockPage.lines(page);          // ['v0.14.0 · Chrome 120', 'Motion: ...']
  *   const text = await clockPage.line(page, 'updates'); // the updates line, or null
  *   await clockPage.waitFor(page, (about) => about.live === 'Live', 3000, 'no Live line');
  *
  * waitFor keeps the page open while it waits, so it also checks that the
  * page redraws by itself when a status changes.
+ *
+ * The face and 12/24 choices (dev/clock-test.js):
+ *
+ *   await clockPage.open(page);
+ *   await clockPage.pick(page, 'face-analog');   // with the arrows and OK, like the remote
+ *   const s = await clockPage.state(page);       // { face, keys, readout, focused, text }
+ *   const t = await clockPage.tile(page);        // { face, digits, ampm, window, windowMode, text }
+ *
+ * On Analog the page has no digital time (readout false) and no 12/24
+ * group (keys has no hours-*); on Digital it has both.
  */
 'use strict';
 
@@ -94,4 +104,61 @@ async function waitFor(page, fn, ms, text) {
   throw new Error(text + ' (last: ' + JSON.stringify(last) + ')');
 }
 
-module.exports = { open, close, read, about, lines, line, waitFor };
+// The open page: which face, the option keys in order, whether a digital
+// time is shown, the focused option, and the display's text.
+function state(page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('.clock-page');
+    const f = document.querySelector('#panel .is-focused');
+    return {
+      face: root ? (/\bis-analog\b/.test(root.className) ? 'analog' : 'digital') : null,
+      keys: Array.prototype.map.call(document.querySelectorAll('.clock-opt'), (e) => e.getAttribute('data-key')),
+      readout: !!document.querySelector('.clock-page .clock-digits, .clock-page .clock-readout, .clock-page .clock-ampm'),
+      focused: f ? f.getAttribute('data-key') || f.className : null,
+      text: root ? (root.querySelector('.clock-display') || root).textContent : ''
+    };
+  });
+}
+
+// The Clock tile on the home screen.
+function tile(page) {
+  return page.evaluate(() => {
+    const body = document.querySelector('.cell[data-widget="today"] .tile-body');
+    if (!body) return null;
+    const q = (sel) => body.querySelector(sel);
+    const win = q('.clock-window-text');
+    return {
+      face: q('.today-face svg') ? 'analog' : q('.today-time') ? 'digital' : null,
+      digits: q('.today-digits') ? q('.today-digits').textContent : null,
+      ampm: q('.today-ampm') && q('.today-ampm').style.display !== 'none' ? q('.today-ampm').textContent : '',
+      window: win ? win.textContent : null,
+      windowMode: q('.today-face') ? q('.today-face').getAttribute('data-window') : null,
+      second: q('.clock-hand-s') ? q('.clock-hand-s').getAttribute('transform') : null,
+      text: body.textContent
+    };
+  });
+}
+
+// Moves to an option with the arrows and presses OK, as the remote would.
+async function pick(page, key) {
+  for (let i = 0; i < 8; i++) {
+    const at = (await state(page)).focused || '';
+    if (at === key) {
+      await page.keyboard.press('Enter');
+      await settle(page, () => !window.HUB_TEST.busy(), 4000, 'the hub stayed busy');
+      await sleep(80);
+      return;
+    }
+    const wantGroup = key.split('-')[0];
+    const atGroup = at.split('-')[0];
+    let k;
+    if (atGroup !== 'face' && atGroup !== 'hours') k = 'ArrowDown';
+    else if (wantGroup !== atGroup) k = wantGroup === 'hours' ? 'ArrowDown' : 'ArrowUp';
+    else k = /analog|24/.test(key) ? 'ArrowRight' : 'ArrowLeft';
+    await page.keyboard.press(k);
+    await sleep(80);
+  }
+  throw new Error('could not reach ' + key + ' with the arrows (focus on ' + (await state(page)).focused + ')');
+}
+
+module.exports = { open, close, read, about, lines, line, waitFor, state, tile, pick };
