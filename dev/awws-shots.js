@@ -94,12 +94,14 @@ async function done(page, label, allowNetwork) {
   await page.ctx.close();
 }
 
-// Runs fn(lang suffix, spanish) once in English and once in Spanish.
+// Runs fn(name, spanish, nm) once in English and once in Spanish. nm(part)
+// names a further shot of the same run: awws-<name><part>[-es].jpg.
 async function both(name, fn) {
   for (const es of [false, true]) {
     const full = name + (es ? '-es' : '');
+    const nm = (part) => name + part + (es ? '-es' : '');
     if (!wanted(full)) continue;
-    try { await fn(full, es); } catch (e) {
+    try { await fn(full, es, nm); } catch (e) {
       problems.push(full + ': ' + (e && e.message));
       console.log('PROBLEM ' + full + ': ' + (e && e.message));
     }
@@ -128,45 +130,45 @@ async function sheets() {
 
 async function panels() {
   // The Glance's launcher, a view opened from it, and full screen.
-  await both('panel-glance-launcher', async (full, es) => {
+  await both('panel-glance', async (full, es, nm) => {
     const page = await env.newPage({ layout: L.main, spanish: es, scale: SCALE });
     await H.openPanel(page, 'awws');
-    await shot(page, full);
+    await shot(page, nm('-launcher'));
     await H.key(page, 'ArrowDown');
     await H.key(page, 'Enter');
     await H.idle(page);
-    await shot(page, full.replace('launcher', 'this-week'));
+    await shot(page, nm('-this-week'));
     await H.key(page, 'Escape');
     await H.idle(page);
     await H.fullScreen(page);
-    await shot(page, full.replace('launcher', 'full'));
+    await shot(page, nm('-full'));
     await done(page, full);
   });
-  await both('panel-visits', async (full, es) => {
+  await both('panel-visits', async (full, es, nm) => {
     const page = await env.newPage({ layout: L.desk, spanish: es, scale: SCALE });
     await H.openPanel(page, 'awws-visits');
     await shot(page, full);
     await H.fullScreen(page);
-    await shot(page, full + '-full');
+    await shot(page, nm('-full'));
     await done(page, full);
   });
-  await both('panel-agenda', async (full, es) => {
+  await both('panel-agenda', async (full, es, nm) => {
     const page = await env.newPage({ layout: L.desk, spanish: es, scale: SCALE });
     await H.openPanel(page, 'awws-agenda');
     await H.key(page, 'ArrowDown', 2);
     await shot(page, full);
     await H.fullScreen(page);
-    await shot(page, full + '-full');
+    await shot(page, nm('-full'));
     await done(page, full);
   });
-  await both('panel-todo', async (full, es) => {
+  await both('panel-todo', async (full, es, nm) => {
     const page = await env.newPage({ layout: L.desk, spanish: es, scale: SCALE });
     await H.openPanel(page, 'awws-todo');
     await H.key(page, 'ArrowRight');
-    await shot(page, full + '-ian');
+    await shot(page, nm('-ian'));
     await H.key(page, 'ArrowLeft');
     await H.fullScreen(page);
-    await shot(page, full + '-full');
+    await shot(page, nm('-full'));
     await done(page, full);
   });
 }
@@ -190,22 +192,29 @@ async function states() {
     await env.setSnapshot(sample.snapshot());
   });
   // Not synced yet: nothing stored on the Pi.
-  await both('state-not-synced', async (full, es) => {
+  await both('state-not-synced', async (full, es, nm) => {
     await env.control('POST', '/api/awws', { snapshot: null });
     const page = await env.newPage({ layout: STATE_LAYOUT, spanish: es, scale: SCALE });
     await shot(page, full);
     await H.openPanel(page, 'awws-todo');
-    await shot(page, full + '-panel');
+    await shot(page, nm('-panel'));
     await done(page, full);
     await env.setSnapshot(sample.snapshot());
   });
   // The calendar names in config.js aren't on the Pi.
-  await both('state-calendar-missing', async (full, es) => {
+  await both('state-calendar-missing', async (full, es, nm) => {
     const page = await env.newPage({ layout: STATE_LAYOUT, spanish: es, scale: SCALE,
-      config: () => { window.HUB_CONFIG.widgets.awws.calendars = { visits: ['School Trips'], awws: ['Book Project'] }; } });
+      config: () => {
+        // Runs before config.js: catch its HUB_CONFIG on the way in and rename the calendars.
+        let cfg;
+        Object.defineProperty(window, 'HUB_CONFIG', { configurable: true, get: () => cfg, set: (v) => {
+          cfg = v;
+          if (v && v.widgets && v.widgets.awws) v.widgets.awws.calendars = { visits: ['School Trips'], awws: ['Book Project'] };
+        } });
+      } });
     await shot(page, full);
     await H.openPanel(page, 'awws-visits');
-    await shot(page, full + '-panel');
+    await shot(page, nm('-panel'));
     await done(page, full);
   });
   // School Visits can't be read.

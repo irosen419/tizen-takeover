@@ -72,6 +72,7 @@
     nowWord: 'now',
     todayCap: 'today',
     comingUp: 'Coming up',
+    figuresHead: 'Progress',
     then: 'Then',
     noVisits: 'No visits booked',
     noVisitsWhen: 'in the next 60 days',
@@ -91,7 +92,6 @@
     notSynced: 'Not synced yet',
     soon: 'Soon',
     views: { visits: 'Next visit', agenda: 'This week', todo: 'To-do board' },
-    launchHint: 'OK opens · Back returns',
     // This week
     nothingToday: 'Nothing today',
     nothingWeek: 'Nothing this week',
@@ -923,6 +923,7 @@
       if (blocked) {
         var name = fill(STRINGS.bookBlocked, { title: clean(blocked.title), format: clean(blocked.format).toLowerCase() }).replace(/\s+$/, '');
         f.forms = clean(blocked.waitingOn) ? [name + STRINGS.sep + fill(STRINGS.waitingOn, { name: clean(blocked.waitingOn) }), name] : [name];
+        f.forms.push(clean(blocked.title));
         f.warn = true;
       } else if (best) {
         var stage = clean(stages[count(best.stage) || 0]);
@@ -933,7 +934,7 @@
     } else if (key === 'khaya' && sec && count(sec.total) && count(sec.done) !== null) {
       var done = Math.min(count(sec.done), count(sec.total));
       f.label = clean(sec.label) || f.label;
-      f.forms = [fill(STRINGS.spreads, { done: fmtNum(done), total: fmtNum(count(sec.total)) })];
+      f.forms = [fill(STRINGS.spreads, { done: fmtNum(done), total: fmtNum(count(sec.total)) }), fmtNum(done) + '/' + fmtNum(count(sec.total))];
       f.bar = done / count(sec.total);
     } else if (key === 'handoffs' && sec && count(sec.open) !== null && count(sec.blocked) !== null) {
       f.forms = [fill(STRINGS.handoffsLine, { open: fmtNum(count(sec.open)), blocked: fmtNum(count(sec.blocked)) })];
@@ -1070,8 +1071,8 @@
     var box = el('div', 'aw-msg', root);
     el('div', 'aw-msg-head', box, msg.head);
     if (msg.short) el('div', 'aw-msg-line', box, msg.short);
-    mark(root);
     trim(root, [box.lastChild !== box.firstChild ? box.lastChild : null]);
+    mark(root);   // after the fit: the globe hangs over the edge on purpose
   }
 
   // A message in a panel: big head, the full line, faint globe.
@@ -1310,7 +1311,8 @@
       panelMessage(root, { head: STRINGS.noVisits, line: STRINGS.noVisitsWhen }, notes.join(' '));
       return;
     }
-    var wrap = el('div', 'aw-vlist' + (opts.full ? ' is-cols' : ''), root);
+    // Full screen: two columns once one would run off the screen.
+    var wrap = el('div', 'aw-vlist' + (opts.full && list.length > 4 ? ' is-cols' : ''), root);
     for (var i = 0; i < list.length; i++) {
       var ev = list[i];
       var row = el('div', 'aw-vpanel f', wrap);
@@ -1427,7 +1429,12 @@
     var cols = wk.childNodes;
     for (var c = 0; c < cols.length; c++) {
       var fit = cols[c].fit;
-      fitRows(fit.list, fit.more, fit.rows, max);
+      var shown = fitRows(fit.list, fit.more, fit.rows, max);
+      // No room for a title and "+N": the first title alone, the dots tell the rest.
+      if (!shown && fit.rows.length) {
+        fit.more.style.display = 'none';
+        if (!fitRows(fit.list, null, fit.rows, 1)) fit.more.style.display = '';
+      }
       if (fit.more.style.display !== 'none') fit.more.textContent = '+' + (fit.rows.length - fit.list.childNodes.length);
     }
     if (overH(root)) trim(root, [f]);
@@ -1455,16 +1462,18 @@
     var lastDay = null;
     var box = null;
     var first = true;
+    var where = halves[0];
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       if (it.day !== lastDay) {
         lastDay = it.day;
-        var where = opts.full && it.day >= td + 7 ? halves[1] : halves[0];
+        // Full screen: whole days, the second column from about half the rows.
+        if (opts.full && i >= Math.ceil(items.length / 2)) where = halves[1];
         box = el('div', 'aw-aday', where);
         var head = el('div', 'aw-aday-head' + (it.day === td ? ' is-today' : ''), box);
         el('span', 'aw-aday-rel', head, relDay(it.day, td, false));
-        if (Math.abs(it.day - td) <= 1 || it.day >= td + 7) el('span', 'aw-aday-date', head, dateText(it.day, it.day >= td + 7 ? 'long' : 'short'));
-        else el('span', 'aw-aday-date', head, dateText(it.day, 'short'));
+        // A day a week or more away is named by its date already.
+        if (it.day < td + 7) el('span', 'aw-aday-date', head, dateText(it.day, 'short'));
       }
       var row = el('div', 'aw-arow f' + (it.now ? ' is-now' : '') + (it.kind === 'todo' ? ' is-todo' : ''), box);
       row.setAttribute('data-key', 'a-' + it.key);
@@ -1473,7 +1482,12 @@
       el('span', 'aw-arow-when', row, itemWhen(it));
       var text = el('div', 'aw-arow-text', row);
       el('div', 'aw-arow-title aw-cut', text, it.title);
-      var sub = it.kind === 'todo' ? (it.todo.due ? STRINGS.due + ' ' + it.todo.due : STRINGS.due) : it.place;
+      // A to-do's day is in the heading already: its line says whose it is.
+      var sub = it.place;
+      if (it.kind === 'todo') {
+        sub = STRINGS.owners[it.todo.owner] || '';
+        if (clean(it.todo.waitingOn)) sub += STRINGS.sep + fill(STRINGS.waitingOn, { name: clean(it.todo.waitingOn) });
+      }
       if (sub) el('div', 'aw-arow-sub aw-cut', text, sub);
     }
     for (var k = 0; k < notes.length; k++) el('div', 'aw-pnote', root, notes[k]);
@@ -1507,21 +1521,38 @@
       else el('span', 'aw-strip-title is-quiet', line, STRINGS.nowForYou);
       return;
     }
-    var h = heroCount(root, ianNow, STRINGS.nowForYou);
-    var meta = el('div', 'aw-meta', root);
-    meta.textContent = fill(STRINGS.ownerCount, { name: STRINGS.owners.claude, n: fmtNum(b.totals.claude.now) }) + STRINGS.sep +
-      fill(STRINGS.ownerCount, { name: STRINGS.owners.both, n: fmtNum(b.totals.both.now) });
+    var tall = size.tier === 'tall';
+    // A wide, short tile: the count on the left, Ian's Now items on the right.
+    var split = size.width === 'wide' && !tall;
+    var left = split ? el('div', 'aw-split-a', el('div', 'aw-split', root)) : root;
+    var h = heroCount(left, ianNow, STRINGS.nowForYou);
+    var meta = el('div', 'aw-meta', left);
+    // Overdue first, so it is the part that stays when the line is short.
     var late = overdueCount(b, 'all');
-    if (late) {
-      el('span', 'aw-sep', meta, STRINGS.sep);
-      el('span', 'aw-late-count', meta, plural(late, STRINGS.overdueCount1, STRINGS.overdueCount));
+    if (late) el('span', 'aw-late-count', meta, plural(late, STRINGS.overdueCount1, STRINGS.overdueCount));
+    var owners = ['claude', 'both'];
+    for (var o = 0; o < owners.length; o++) {
+      if (meta.childNodes.length) el('span', 'aw-sep', meta, STRINGS.sep);
+      el('span', '', meta, fill(STRINGS.ownerCount, { name: STRINGS.owners[owners[o]], n: fmtNum(b.totals[owners[o]].now) }));
     }
     fitHero(h);
-    if (overW(meta)) {
-      while (meta.lastChild && meta.childNodes.length > 1 && overW(meta)) meta.removeChild(meta.lastChild);
-      if (overW(meta)) meta.className += ' aw-cut';
+    while (overW(meta) && meta.childNodes.length > 1) {
+      meta.removeChild(meta.lastChild);
+      if (meta.lastChild && meta.lastChild.className === 'aw-sep') meta.removeChild(meta.lastChild);
     }
-    var tall = size.tier === 'tall';
+    if (overW(meta)) meta.className += ' aw-cut';
+    if (split) {
+      var right = el('div', 'aw-split-b', left.parentNode);
+      var sec = listSection(right, STRINGS.nowForYouHead, ianItems.length ? ianItems : nowItems, 30, null, function (it) {
+        return todoRow(it, { meta: true });
+      });
+      sec.box.style.display = '';
+      var more2 = el('div', 'aw-more', sec.box);
+      var n = fitRows(sec.list, more2, sec.rows, sec.max, true);
+      fitMeta(sec.rows.slice(0, n));
+      trim(left, [meta]);
+      return;
+    }
     var list = el('div', 'aw-list aw-todo-list', root);
     var more = el('div', 'aw-more', root);
     var source = tall ? nowItems : (ianItems.length ? ianItems : nowItems);
@@ -1637,7 +1668,8 @@
       when = el('div', 'aw-when', left);
     } else {
       h = heroCount(left, ianNow, STRINGS.nowForYou);
-      lead = el('div', 'aw-lead is-quiet aw-cut', left, vinfo.state === 'data' ? STRINGS.noVisits : message(vinfo.state, vinfo).head);
+      // Why there is no visit may take two lines.
+      lead = el('div', 'aw-lead is-quiet aw-two', left, vinfo.state === 'data' ? STRINGS.noVisits : message(vinfo.state, vinfo).head);
     }
     // The foot: "9 now for you · 5 replies waiting", or why the board is missing.
     var parts = [];
@@ -1655,7 +1687,7 @@
     // Now for you: the right column of a wide tile, or under the hero when tall.
     if (b && (wide || tall)) {
       var items = nowForIan(b);
-      if (items.length && (next || wide)) sections.push(listSection(wide ? right : root, STRINGS.nowForYouHead, items, 3, f, function (it) {
+      if (items.length) sections.push(listSection(wide ? right : root, STRINGS.nowForYouHead, items, 3, f, function (it) {
         return todoRow(it, { meta: false });
       }));
     }
@@ -1849,7 +1881,7 @@
   }
 
   function dashFigures(q) {
-    label(q, STRINGS.titles.awws);
+    label(q, STRINGS.figuresHead, 'aw-cut');
     var keys = figureKeys();
     var box = el('div', 'aw-figs', q);
     var rows = [];
@@ -1872,7 +1904,7 @@
         rows[j].v.className += ' aw-cut';
       }
     }
-    while (box.lastChild && overH(q) && box.childNodes.length > 1) box.removeChild(box.lastChild);
+    while (box.lastChild && box.childNodes.length > 1 && (overH(q) || overH(box))) box.removeChild(box.lastChild);
   }
 
   /* ---------- the Glance panel: a launcher ---------- */
@@ -1931,7 +1963,6 @@
       var s = row(soon[k], STRINGS.titles[soon[k]], f.missing ? '' : f.forms[0], true);
       if (f.missing) s.parentNode.removeChild(s);
     }
-    el('div', 'aw-pnote', root, STRINGS.launchHint);
   }
 
   /* ---------- panels: which view, focus, keys ---------- */

@@ -93,6 +93,14 @@
 }
 .aw-lead.is-small { font-size: 1rem; }
 .aw-lead.is-quiet { color: var(--text-2); }
+/* Two lines at most, cut at the end of the second. */
+.aw-two {
+  overflow: hidden;
+  max-height: 2.7em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
 .aw-when {
   flex: 0 0 auto;
   margin-top: 0.1rem;
@@ -528,7 +536,7 @@
 }
 .aw-fig-label {
   flex: 0 0 auto;
-  width: 8.2rem;
+  width: 7rem;
   padding-right: 0.8rem;
   font-size: 0.9rem;
   line-height: 1.35;
