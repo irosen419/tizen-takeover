@@ -5,8 +5,17 @@
  *
  * Saved as homeHub.todo.v1 = { v: 1, items: [item] }, where an item is
  * { id, title, section: 'now' | 'next' | 'waiting', done, doneAt, createdAt,
- * due: 'YYYY-MM-DD' (optional) }. Fields this file doesn't know are kept as
- * they are.
+ * due: 'YYYY-MM-DD' (optional), notes: 'plain text' (optional, at most 300
+ * characters) }. Fields this file doesn't know are kept as they are.
+ *
+ * Notes come only from the Pi (./hub todo add --notes, the mailbox's
+ * todo.add and todo.notes); the TV shows them under the title, quietly, and
+ * shows nothing at all for an item without notes. The TV never edits them,
+ * and every change it sends keeps them.
+ *
+ * Every word is in STRINGS. window.HUB_TODO_STRINGS, when set before this
+ * file loads, replaces any of them key by key (the screenshots use it to try
+ * Spanish; the TV stays English).
  *
  * With live updates (ctx.live, see docs/live-updates.md) the list is also
  * kept on the hub server on the Pi. The copy on the TV stays the working
@@ -57,9 +66,28 @@
     error: 'The to-do list ran into a problem.'
   };
 
+  // window.HUB_TODO_STRINGS replaces words key by key (lists as a whole).
+  function mergeStrings(dst, src) {
+    if (!src || typeof src !== 'object') return;
+    for (var k in src) {
+      if (!src.hasOwnProperty(k) || !dst.hasOwnProperty(k)) continue;
+      var v = src[k];
+      var d = dst[k];
+      if (d && typeof d === 'object' && !isArray(d)) {
+        if (v && typeof v === 'object' && !isArray(v)) mergeStrings(d, v);
+      } else if (isArray(d)) {
+        if (isArray(v) && v.length === d.length) dst[k] = v;
+      } else if (typeof v === 'string') {
+        dst[k] = v;
+      }
+    }
+  }
+  try { mergeStrings(STRINGS, window.HUB_TODO_STRINGS); } catch (e) { /* keep English */ }
+
   var STORE_KEY = 'homeHub.todo.v1';
   var BAD_KEY = 'homeHub.todo.v1.bad';
   var MAX_TITLE = 80;
+  var MAX_NOTES = 300;
   var MAX_OPEN = 60;
   var TILE_ROWS = 8;
   var SECTIONS = ['now', 'next', 'waiting'];
@@ -232,6 +260,11 @@
       it.done = it.done === true;
       it.doneAt = it.done ? (typeof it.doneAt === 'number' ? it.doneAt : now) : null;
       if (typeof it.createdAt !== 'number') it.createdAt = now;
+      // Notes: tidy text, or no field at all (never an empty one).
+      if (it.notes !== undefined) {
+        var notes = typeof it.notes === 'string' ? tidy(it.notes).substring(0, MAX_NOTES) : '';
+        if (notes) it.notes = notes; else delete it.notes;
+      }
       if (it.due !== undefined && !(typeof it.due === 'string' && /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(it.due))) delete it.due;
       // "in" also catches ids that clash with built-in names, such as "constructor".
       if (typeof it.id !== 'string' || !it.id || (it.id in seen)) it.id = newId();
@@ -617,6 +650,7 @@
     el('span', 'todo-tick', '', row);
     var text = el('div', 'todo-tile-text', '', row);
     el('div', 'todo-tile-title', item.title, text);
+    if (item.notes) el('div', 'todo-tile-notes', item.notes, text);
     if (item.due && item.due < now) el('div', 'todo-flag', STRINGS.overdue, text);
     return row;
   }
@@ -752,6 +786,7 @@
     tick.innerHTML = ICON_TICK;
     var text = el('span', 'todo-text', '', main);
     el('span', 'todo-title', item.title, text);
+    if (item.notes) el('span', 'todo-notes', item.notes, text);
     var due = item.done ? '' : dueText(item.due, now);
     if (due) el('span', 'todo-due' + (item.due < now ? ' is-overdue' : ''), due, text);
 

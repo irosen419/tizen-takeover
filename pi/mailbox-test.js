@@ -315,6 +315,35 @@ async function main() {
     assert.ok(/No to-do has the id or title "Nope"/.test(r.message));
   });
 
+  await check('todo.add with notes, todo.list shows them, todo.notes sets and clears them', async () => {
+    const notes = 'Comprar leche de avena, no la de vaca. Preguntar por el pan sin gluten en la panadería de la esquina.';
+    let r = await run(fake, h, 'todo.add', { title: 'Comprar leche', notes: '  ' + notes + '\n' });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.strictEqual(r.message, 'Added "Comprar leche" to Now, with notes.');
+    assert.strictEqual(r.data.item.notes, notes);
+    const id = r.data.item.id;
+    r = await run(fake, h, 'todo.add', { title: 'Sin notas', notes: '' });
+    assert.strictEqual(r.message, 'Added "Sin notas" to Now.');
+    assert.ok(!('notes' in r.data.item));
+    const plainId = r.data.item.id;
+    r = await run(fake, h, 'todo.list');
+    assert.strictEqual(r.message, 'Now:\n  [ ] Sin notas   id ' + plainId + '\n  [ ] Comprar leche   id ' + id + '\n      notes: ' + notes);
+    assert.deepStrictEqual(r.data.items[1], { id: id, title: 'Comprar leche', section: 'now', done: false, notes: notes });
+    assert.ok(!('notes' in r.data.items[0]));
+    r = await run(fake, h, 'todo.notes', { title: 'sin notas', notes: 'Ahora sí' });
+    assert.strictEqual(r.message, 'Notes on "Sin notas": Ahora sí');
+    assert.strictEqual(r.data.notes, 'Ahora sí');
+    r = await run(fake, h, 'todo.notes', { id: plainId, notes: null });
+    assert.strictEqual(r.message, 'Removed the notes from "Sin notas".');
+    r = await run(fake, h, 'todo.notes', { id: id, notes: '' });
+    assert.strictEqual(r.message, 'Removed the notes from "Comprar leche".');
+    assert.ok((await todoItems(h)).every((i) => !('notes' in i)));
+    r = await run(fake, h, 'todo.notes', { title: 'Nope', notes: 'x' });
+    assert.strictEqual(r.ok, false);
+    await run(fake, h, 'todo.remove', { id: id });
+    await run(fake, h, 'todo.remove', { id: plainId });
+  });
+
   await check('calendar.status and calendar.refresh', async () => {
     let r = await run(fake, h, 'calendar.status');
     assert.strictEqual(r.ok, true);
@@ -476,6 +505,10 @@ async function main() {
     ['todo.add missing title', () => ({ raw: envelope('todo.add', {}) }), /needs "title"/],
     ['todo.add bad section', () => ({ raw: envelope('todo.add', { title: 'A', section: 'later' }) }), /"section" must be one of/],
     ['todo.done with id and title', () => ({ raw: envelope('todo.done', { id: 'abc', title: 'A' }) }), /exactly one/],
+    ['todo.add notes too long', () => ({ raw: envelope('todo.add', { title: 'A', notes: 'n'.repeat(301) }) }), /"notes" is longer than 300 characters/],
+    ['todo.add notes not text', () => ({ raw: envelope('todo.add', { title: 'A', notes: 5 }) }), /"notes" must be text/],
+    ['todo.notes without notes', () => ({ raw: envelope('todo.notes', { title: 'A' }) }), /needs "notes"/],
+    ['todo.add with "note" (singular)', () => ({ raw: envelope('todo.add', { title: 'A', note: 'x' }) }), /does not take "note"/],
     ['layout.set not a list', () => ({ raw: envelope('layout.set', { layout: 'big' }) }), /"layout" must be a list/],
     ['full not a boolean', () => ({ raw: envelope('show', { widget: 'todo', full: 'yes' }) }), /"full" must be true or false/],
     ['awws.set without a snapshot', () => ({ raw: envelope('awws.set', {}) }), /"awws\.set" needs "snapshot"/],

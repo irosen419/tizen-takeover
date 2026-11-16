@@ -10,8 +10,9 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Close whatever is open: `./hub home`
 - Short message on the TV: `./hub say "Dinner in 10" --seconds 8`
 - Load the hub afresh: `./hub reload`
-- Add a to-do: `./hub todo add "Buy milk" --section now --due 2026-12-24` (section and due are optional; sections are `now`, `next`, `waiting`)
-- See the to-do list with ids: `./hub todo list`
+- Add a to-do: `./hub todo add "Buy milk" --section now --due 2026-12-24 --notes "Oat, not dairy"` (section, due and notes are optional; sections are `now`, `next`, `waiting`; notes are plain text up to 300 characters)
+- See the to-do list with ids and notes: `./hub todo list`
+- Set or change a to-do's notes: `./hub todo notes "Buy milk" "Oat, not dairy"` (id or exact title); `--clear` removes them
 - Tick a to-do: `./hub todo done "Buy milk"` (id or exact title)
 - Remove a to-do: `./hub todo remove "Buy milk"` (id or exact title)
 - Calendars and the next event: `./hub calendar status`
@@ -51,7 +52,8 @@ Commands and args (`args` may be left out when empty; unknown args are refused):
 
 - `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach), `home`, `reload`
 - `say {"text": "Dinner in 10", "seconds": 8}` (text up to 140 characters, seconds 1-60)
-- `todo.add {"title": "Buy milk", "section": "next", "due": "2026-12-24"}`, `todo.list`
+- `todo.add {"title": "Buy milk", "section": "next", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
+- `todo.notes {"title": "Buy milk", "notes": "Oat, not dairy"}` or `{"id": "...", "notes": "..."}` (exactly one of id and title) sets an item's notes; `"notes": ""` or `null` removes them
 - `todo.done {"title": "Buy milk"}` or `{"id": "..."}` (exactly one), `todo.remove` the same
 - `calendar.status`, `calendar.refresh`
 - `layout.show`, `layout.set {"layout": [{"widget":"weather","x":0,"y":0,"w":3,"h":2}, ...]}`, `layout.reset`
