@@ -20,7 +20,7 @@ Ian and his goldendoodle Ember are stop-motion clay puppets. They have no tile. 
 
 Most scenes last 10 to 25 seconds; the night nap about 45. A reaction (`cheer`, `shrug`) plays at the next visit. Otherwise the time of day decides, then chance, never the same scene twice in a row.
 
-Any key press or click sends them away in the same instant, before the hub acts on the key. So does a panel or a dashboard opening (also from the Pi), the page being hidden, or the layout changing (from the Pi or a resize). They measure the tiles each time a scene starts, so they work with any layout.
+Any key press or click sends them away in the same instant, before the hub acts on the key. So does a panel, a dashboard or the layout bar opening (a panel also when the Pi opens it), the page being hidden, or the layout changing (picked in the layout bar, sent by the Pi, or a resize); no scene starts while any of those is open. They measure the tiles each time a scene starts, so they work with any layout.
 
 ## Settings
 

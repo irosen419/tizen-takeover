@@ -61,6 +61,35 @@ var HUB_CONFIG = {
     { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
   ],
 
+  /* Saved layouts for the switcher: press Up on a top tile (or Left on a
+     left-most one) and a bar of pills drops from the top. Pick one and it is applied (and sent to the Pi, so it
+     is remembered). "Stock" is the built-in layout above. Copy a layout here
+     from the Layout Studio's saved list; widgets this hub doesn't have are
+     skipped, and a layout may leave widgets out to hide them. */
+  layouts: [
+    { id: 'stock', name: 'Stock', layout: null },
+    { id: 'main', name: 'Main', layout: [
+      { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
+      { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
+      { widget: 'todo',          x: 0, y: 2, w: 3, h: 4 },
+      { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },
+      { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
+      { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
+      { widget: 'ambiance',      x: 3, y: 4, w: 3, h: 2 },
+      { widget: 'mirror',        x: 6, y: 4, w: 3, h: 2 },
+      { widget: 'entertainment', x: 9, y: 4, w: 3, h: 2 }
+    ] },
+    { id: 'get-ready', name: 'Get ready', layout: [
+      { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
+      { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
+      { widget: 'todo',          x: 0, y: 2, w: 3, h: 4 },
+      { widget: 'mirror',        x: 3, y: 0, w: 6, h: 4 },
+      { widget: 'calendar',      x: 3, y: 4, w: 6, h: 2 },
+      { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
+      { widget: 'ambiance',      x: 9, y: 4, w: 3, h: 2 }
+    ] }
+  ],
+
   widgets: {
     /*
      * Entertainment: the app launcher.

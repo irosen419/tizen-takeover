@@ -84,14 +84,17 @@ Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion
 
 ### Clock
 
-The Clock tile shows only the time and the date, at any size. In a one-row strip the date sits beside the time, the weekday over the month and day; a longer one there takes its short form ("Wed", "Sep 30") rather than end in "...".
+The Clock tile follows the face chosen on the Clock page:
 
-Press OK on it to open the Clock page. At the top right of the page are two choices, picked with the arrows and OK:
+- **Digital:** only the time and the date, at any size, 12- or 24-hour. In a one-row strip the date sits beside the time, the weekday over the month and day; a longer one there takes its short form ("Wed", "Sep 30") rather than end in "...".
+- **Analog:** only the analog face, as large as the tile allows and centred (in a one-row strip, the height of the row), with the date in its window: "SUN 15" when the face is big enough to read it (two rows and up), just "15" on a small face (a strip, 1×1), and no window on a tiny one. No digital time anywhere on the tile. The second hand steps once a second.
 
-- **Face:** **Digital** (a big time with the full date under it, the default) or **Analog** (a round face with ticks and 12, 3, 6 and 9, the day and date in a small window in its lower half, and the time and date beside it). The second hand steps once a second; nothing sweeps.
-- **Clock:** **12-hour** (`9:41 PM`, the default) or **24-hour** (`21:41`). This applies to the tile too.
+Press OK on it to open the Clock page. At the top right of the page are the choices, picked with the arrows and OK:
 
-Both choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
+- **Face:** **Digital** (a big time with the full date under it, the default) or **Analog** (a round face with ticks and 12, 3, 6 and 9, the day and date in a small window in its lower half, and the date beside it, with no digital time). The second hand steps once a second; nothing sweeps.
+- **Clock:** **12-hour** (`9:41 PM`, the default) or **24-hour** (`21:41`), on the page and the tile. Only shown with the Digital face; on Analog it doesn't apply, and is kept for when you go back to Digital.
+
+The tile changes as soon as you pick, behind the page. Both choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
 
 ### About this hub (the version and status)
 
@@ -215,6 +218,8 @@ The preview's hub server also reads four sample calendars from a small local fee
 
 `node dev/live-test.js` runs the checks from the design doc in a headless browser (Playwright): no server, a server that starts late, commands, the to-do list both ways, the TV off then on, the server stopping, refusals and wrong replies, and the same again on the fallback for old browsers. It needs port 8095 free and nothing from the internet. It can't prove the real TV's browser or the home network; the first run on the TV is still a real test.
 
+`node dev/clock-test.js` checks the Clock tile in a headless browser (Playwright): Digital 12-hour and 24-hour, Analog with no digital time, the tile changing at once when the face or clock is picked on the page, the page on Analog without a digital time or the 12/24 choice (and the arrows still fine), the second hand turning once a second from one timer that stops on Digital, and the date window fitting at 13 tile sizes, in English and in Spanish ("SÁB", "MIÉ"). `CLOCK_TEST_SHOTS=<folder>` also saves screenshots and a short clip (needs ffmpeg). It needs port 8095 free.
+
 `node dev/layout-test.js` checks the tile layout sent from the Pi (`./hub layout set`, see `pi/README.md`) the same way: a saved layout at start, tiles that move in place with focus and glass following, waiting while a panel is open, one reload for a new set of widgets, and no reload loop. It also needs port 8095 free.
 
 ## Writing a widget
@@ -315,7 +320,7 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
 - `app/backgrounds/` holds the background picture.
 - `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps, calls webhooks and fetches the weather when the page can’t do it directly.
-- `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating; `dev/clay-test.js` tests the clay characters.
+- `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/clock-test.js` tests the Clock tile and its faces; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating; `dev/clay-test.js` tests the clay characters.
 - `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
 - `app/clay.js` brings Ian and Ember on screen now and then (with `app/clay.css`, loaded only when they first come); `app/clay/` holds their sprites and `sprites.js`, the list of them. `art/clay/` holds how they are made (see `art/clay/README.md`), and `docs/clay.md` how the scenes work. `dev/clay-test.js` tests them; `dev/clay-shots.js` films every scene.
 

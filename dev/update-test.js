@@ -372,7 +372,7 @@ async function check1() {
   assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.14.0', 'record: ' + JSON.stringify(rec));
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
-  assert(/^v0\.13\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.14\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   assert(lines.length === 2, 'status lines: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
   assert(asks.length === 1, 'GitHub was asked ' + asks.length + ' times');
@@ -399,7 +399,7 @@ async function check2() {
   await go(page, shellUrl());
   await waitAt(page, B, 'app/hub.html');
   const lines = await look.lines(page);
-  assert(/^v0\.13\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.14\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   const rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared');
   noMissingFiles(logSince(at));
@@ -475,7 +475,7 @@ async function check4() {
   await waitAt(page, B, 'app/hub.html');
   rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared on B: ' + JSON.stringify(rec));
-  assert(/^v0\.13\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
+  assert(/^v0\.14\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
   noErrors(context);
 }
 

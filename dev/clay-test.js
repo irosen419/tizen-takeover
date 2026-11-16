@@ -7,6 +7,7 @@
  * no console errors, leaves nothing behind and only ever changes transform
  * and opacity; a key press clears the screen in the same tick and focus
  * still moves; a panel clears and blocks scenes; a layout change ends one;
+ * the layout bar blocks scenes and a layout picked there is measured anew;
  * clay: false and ?clay=off load nothing; a missing sprite skips the scene;
  * night hours pick night scenes; a ticked to-do item queues a cheer.
  * Needs Playwright and port 8095 free.
@@ -452,6 +453,49 @@ async function checkChoosing() {
   noErrors(page);
 }
 
+async function checkSwitcher() {
+  const page = await newHub();
+  await until(() => page.evaluate(() => !window.HUB_TEST.busy()), 4000, 'busy');
+  // Up to a top tile; one more Up drops the layout bar.
+  for (let i = 0; i < 4 && (await look.focused(page)) !== 'awws' && (await look.focused(page)) !== 'calendar'; i++) await page.keyboard.press('ArrowUp');
+  const top = await look.focused(page);
+  assert(top === 'calendar' || top === 'awws', 'not on a top tile: ' + top);
+  await playing(page, 'stroll', { seed: 11 });
+  await page.keyboard.press('ArrowUp');
+  const bar = () => page.evaluate(() => document.getElementById('switcher').classList.contains('is-shown'));
+  assert(await bar(), 'the layout bar did not open');
+  assert(!(await look.layer(page)), 'the scene stayed under the bar');
+  assert(!(await page.evaluate(() => window.HUB_TEST.clay.play('zoomies'))), 'play() worked with the bar open');
+  await page.evaluate(() => window.HUB_TEST.clay.dueIn(0));
+  await sleep(3000);
+  assert((await look.state(page)).phase === 'waiting', 'a scene came while the bar was open');
+  // Pick another layout: the tiles move, and the next scene measures them anew.
+  const before = await page.evaluate(() => JSON.stringify(window.HUB_TEST.layout()));
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Enter');
+  await until(async () => !(await bar()), 3000, 'the bar did not close');
+  await until(() => page.evaluate((b) => JSON.stringify(window.HUB_TEST.layout()) !== b, before), 3000, 'the layout did not change');
+  await page.evaluate(() => window.HUB_TEST.clay.setSpeed(0));
+  for (let ledge = 0; ledge < 3; ledge++) {
+    await playing(page, 'perch', { seed: 12, pose: 'lie-chin', ledge: ledge });
+    await page.evaluate(() => { window.HUB_TEST.clay.step(); window.HUB_TEST.clay.step(); });
+    const where = await page.evaluate(() => {
+      const rects = window.HUB_TEST.homeRects();
+      const top = Math.min.apply(null, Object.values(rects).map((r) => r.top));
+      const actor = document.querySelector('.clay-actor');
+      const m = /translate3d\(([-\d.]+)px, ?([-\d.]+)px/.exec(actor.style.transform);
+      const x = parseFloat(m[1]);
+      const y = parseFloat(m[2]);
+      const on = Object.keys(rects).filter((id) => rects[id].top > top + 8 && Math.abs(rects[id].top + 2 - y) <= 1 &&
+        x >= rects[id].left && x <= rects[id].left + rects[id].width);
+      return { x, y, on };
+    });
+    assert(where.on.length === 1, 'perch ' + ledge + ' is not on a ledge of the new layout: ' + JSON.stringify(where));
+    await page.evaluate(() => window.HUB_TEST.clay.stop());
+  }
+  noErrors(page);
+}
+
 /* ---------- run ---------- */
 
 async function main() {
@@ -477,6 +521,7 @@ async function main() {
   await check('4. A key press clears the screen before the hub handles it; focus moves', checkKeyClears);
   await check('5. A panel clears a scene and blocks new ones until idle again', checkPanelBlocks);
   await check('6. A layout from the Pi or a resize ends a scene; ledges follow the new layout', checkLayoutEnds);
+  await check('6b. The layout bar ends a scene and blocks new ones; a layout picked there is measured anew', checkSwitcher);
   await check('7. clay: false, on: false and ?clay=off load and show nothing', checkOff);
   await check('8. A missing sprite skips that scene; a missing sprite list skips all; the hub is fine', checkMissing);
   await check('9. Night hours pick night scenes; a ticked to-do item queues a cheer', checkChoosing);
