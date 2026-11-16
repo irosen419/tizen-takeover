@@ -118,7 +118,7 @@ const COMMITS = {
   [A]: (rest) => readWorking(rest),
   [B]: (rest) => {
     const body = readWorking(rest);
-    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.18.0-B'));
+    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.19.0-B'));
     return body;
   },
   [BROKEN]: (rest) => {
@@ -369,10 +369,10 @@ async function check1() {
   await waitAt(page, A, 'app/hub.html');
   const rec = await until(async () => { const r = await record(page); return r && r.good === A ? r : false; }, 3000, 'good is not A');
   assert(!rec.trying, 'trying was not cleared: ' + JSON.stringify(rec));
-  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.18.0', 'record: ' + JSON.stringify(rec));
+  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.19.0', 'record: ' + JSON.stringify(rec));
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
-  assert(/^v0\.18\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.19\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   // Version, browser, motion: no version check row when this is the newest.
   assert(lines.length === 3, 'About rows: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
@@ -400,7 +400,7 @@ async function check2() {
   await go(page, shellUrl());
   await waitAt(page, B, 'app/hub.html');
   const lines = await look.lines(page);
-  assert(/^v0\.18\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.19\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   const rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared');
   noMissingFiles(logSince(at));
@@ -476,7 +476,7 @@ async function check4() {
   await waitAt(page, B, 'app/hub.html');
   rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared on B: ' + JSON.stringify(rec));
-  assert(/^v0\.18\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
+  assert(/^v0\.19\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
   noErrors(context);
 }
 
@@ -710,7 +710,7 @@ async function checkTile() {
       await page.evaluate(() => window.HUB_TEST.clay.stop());
     }
     const a = await clockPage.waitFor(page, (x) => x.lines.length === c.rows ? x : null, 10000, c.rows + ' rows');
-    assert(/^v0\.18\.0/.test(a.lines[0]), 'version row: ' + a.lines[0]);
+    assert(/^v0\.19\.0/.test(a.lines[0]), 'version row: ' + a.lines[0]);
     const wand = a.rows.filter((r) => r.group === 'Wanderers').map((r) => r.label + ': ' + r.value);
     if (c.visit) {
       assert(wand.length === 4 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 1 played · 0 slow · 0 failed' &&

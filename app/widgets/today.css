@@ -86,7 +86,7 @@
 .clock-window { fill: rgba(0, 0, 0, 0.38); stroke: rgba(255, 255, 255, 0.22); stroke-width: 0.8; }
 .clock-window-text {
   fill: #e9ebef;
-  font-size: 10.5px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.08em;
   font-family: "SamsungOne", "Samsung Sans", "Helvetica Neue", Arial, sans-serif;
@@ -98,7 +98,7 @@
 .clock-svg-small .clock-tick-h { stroke-width: 3.4; }
 .clock-svg-small .clock-num { font-size: 23px; font-weight: 400; }
 .clock-svg-small .clock-hand-s line { stroke-width: 2; }
-.clock-window-day { font-size: 15px; letter-spacing: 0; }
+.clock-window-day { font-size: 17px; letter-spacing: 0; }
 .clock-hand line { stroke-linecap: round; }
 .clock-hand-h line { stroke: #f4f5f7; stroke-width: 6; }
 .clock-hand-m line { stroke: #f4f5f7; stroke-width: 3.6; }
