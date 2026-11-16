@@ -1,0 +1,183 @@
+# The A World Worth Saving snapshot
+
+Written 2026-11-16. This is the contract between whoever sends A World Worth Saving data (a scheduled Claude routine, or a person with a file) and the hub server on the Pi, which stores it and pushes it to the TV.
+
+The calendars are not part of this. School visits and A World Worth Saving dates come from the Pi's calendar reader, which is already running. Everything else the A World Worth Saving tiles show comes from this one snapshot.
+
+A sample with made-up data is in [`pi/fixtures/awws-sample.json`](../pi/fixtures/awws-sample.json). This repository is public, so the sample must stay made up.
+
+## How it travels
+
+```
+ The sources (to-do board, reply drafts, ...)      only a signed-in Claude can read these
+        |
+        v
+ A Claude routine builds one small JSON snapshot
+        |
+        |  mailbox command awws.set (Cloudflare R2, see pi/CLAUDE.md)
+        v
+ Hub server on the Pi      checks it, keeps it in data/state.json as the resource "awws"
+        |
+        |  the live line the TV already keeps open
+        v
+ The awws tiles on the TV
+```
+
+On the Pi itself the same thing is `./hub awws set file.json`.
+
+## The shape
+
+One JSON object. `v` and `sentAt` are required. Every section is optional.
+
+```json
+{
+  "v": 1,
+  "sentAt": "2026-11-16T15:10:00Z",
+  "todos":    { "asOf": "...", "items": [ ... ] },
+  "handoffs": { "asOf": "...", "open": 2, "blocked": 1 },
+  "outreach": { "asOf": "...", "replied": 9, "booked": 3, "visited": 1, "waitingOnIan": 5 },
+  "khaya":    { "asOf": "...", "done": 11, "total": 12 },
+  "pipeline": { "asOf": "...", "stages": [ ... ], "items": [ ... ] },
+  "money":    { "asOf": "...", "currency": "USD", "spent": 0, "earned": 0 },
+  "reach":    { "asOf": "...", "visits": { "week": 0, "prev": 0 } }
+}
+```
+
+### Rules for the whole snapshot
+
+- **A section you leave out is kept as it was.** Send only `todos` every half hour and `reach` twice a day, and neither blanks the other.
+- **A section sent as `null` is removed** from the Pi and the TV.
+- **Each section is checked by itself.** A section that breaks a rule is refused by name and the Pi keeps its last good copy of it. The other sections in the same snapshot are still stored. The answer lists what was accepted, cleared and rejected.
+- **48 KB at most** (49,152 bytes of JSON), both for what is sent and for everything the Pi holds after merging. The mailbox carries files up to 64 KB, so this leaves room for the envelope. Over the cap, nothing is stored and the answer says how big it was.
+- **Times** are UTC, written `2026-11-16T15:10:00Z` (fractions of a second are allowed). **Dates** are `2026-12-01`. **Months** are `2026-11`.
+- `sentAt` is when the sender built the snapshot. It may not be more than 10 minutes in the future. The TV calls the snapshot stale, and says "as of 9:10 AM", once `sentAt` is over 2 hours old.
+- `asOf` on a section is when its source was read. Left out, the Pi fills in `sentAt`.
+- **Text** is trimmed, and control characters become spaces. Text longer than its limit is cut to the limit and ends in "…". Lengths are counted in characters, so "ñ" is one.
+- **No email addresses and no links.** A section with text that holds an email address, `http://`, `https://` or `www.` is refused. Also leave out notes text and librarians' last names; the Pi cannot check those, so the sender must.
+- **Unknown fields are dropped**, at the top and inside sections, so a newer sender does not break an older Pi.
+- Whole numbers are 0 or more and at most 1,000,000 unless a section says otherwise.
+
+### `todos`: the to-do board
+
+Open items, plus items ticked in the last 7 days. Order in `items` is the order shown.
+
+| Field | Type | Notes |
+|---|---|---|
+| `items` | list, at most 200 | required (may be empty) |
+| `items[].id` | text | required, unique, 1 to 40 of `A-Z a-z 0-9 _ -` |
+| `items[].title` | text, 80 | required |
+| `items[].owner` | `ian`, `claude` or `both` | required |
+| `items[].section` | `now`, `next` or `later` | required |
+| `items[].stream` | text, 24 | the workstream, e.g. "Outreach" |
+| `items[].due` | text, 40 | the board's own words, shown as written: "Dec 1, 12:15 PM", "On hold" |
+| `items[].dueISO` | date or time | only when `due` is a real date. This is what puts the item on the agenda and marks it overdue |
+| `items[].waitingOn` | text, 40 | who or what it waits on |
+| `items[].done` | true or false | default false |
+| `items[].doneAt` | time | when it was ticked |
+| `totals` | object | optional: `{ "ian": { "now": 17, "next": 9, "later": 30 }, "claude": { ... }, "both": { ... } }`. The true open counts on the board. Send it when the list had to be cut to fit; without it the TV counts the open items it was given |
+
+### `handoffs`
+
+| Field | Type | Notes |
+|---|---|---|
+| `open` | whole number | required |
+| `blocked` | whole number | required |
+| `items` | list, at most 20 | optional |
+| `items[].id` | text | required, as in `todos` |
+| `items[].title` | text, 80 | required |
+| `items[].state` | `open` or `blocked` | required |
+
+### `outreach`: librarians and schools
+
+| Field | Type | Notes |
+|---|---|---|
+| `replied`, `booked`, `visited` | whole numbers | required |
+| `waitingOnIan` | whole number | required: replies waiting on Ian |
+| `emailed` | whole number | optional until there is a source for it |
+| `schools` | list, at most 30 | optional |
+| `schools[].school` | text, 40 | required; the school, never a person's name |
+| `schools[].state` | `waiting-ian`, `waiting-them`, `booked` or `visited` | required |
+| `schools[].since` | date | optional |
+| `log` | list, at most 30 | optional: `{ "date": "2026-11-14", "school": "...", "what": "Replied, asked for dates" }`; `what` is text, 80 |
+
+### `khaya`: rewrite progress
+
+| Field | Type | Notes |
+|---|---|---|
+| `done` | whole number | required, at most `total` |
+| `total` | whole number, 1 or more | required |
+| `label` | text, 40 | optional, e.g. "Rewrite" |
+
+### `pipeline`: books and content
+
+| Field | Type | Notes |
+|---|---|---|
+| `stages` | list of 2 to 7 texts, 16 each | required, in order, e.g. `["Write", "Art", "Layout", "Proof", "Live"]` |
+| `items` | list, at most 12 | required |
+| `items[].id` | text | required, as in `todos` |
+| `items[].title` | text, 40 | required |
+| `items[].format` | text, 24 | e.g. "Hardcover" |
+| `items[].stage` | whole number, 0 to the number of stages | required: how many stages are finished |
+| `items[].next` | text, 80 | the next step |
+| `items[].waitingOn` | text, 40 | |
+| `items[].blocked` | true or false | default false |
+
+### `money`
+
+Stored like any other section. The TV does not show it unless `HUB_CONFIG.widgets.awws.showMoney` is `true` in `app/config.js` (it ships `false`). Until Ian says yes to money on the living room TV, the sender should leave this section out.
+
+| Field | Type | Notes |
+|---|---|---|
+| `currency` | three capital letters | required, e.g. `USD` |
+| `spent`, `earned` | numbers, 0 to 1,000,000,000 | required: totals to date, rounded to cents by the Pi |
+| `months` | list, at most 12 | optional: `{ "month": "2026-11", "spent": 120.5, "earned": 80 }`, oldest first |
+| `claude` | object | optional: `{ "month": "2026-11", "cost": 41.2 }` |
+| `nextTransfer` | object | optional: `{ "date": "2026-12-01", "amount": 250 }`; `amount` may be left out |
+
+### `reach`
+
+| Field | Type | Notes |
+|---|---|---|
+| `visits` | object | required: `{ "week": 412, "prev": 388, "days": [ ... ] }`. `week` and `prev` are whole numbers; `days` is optional, at most 28 whole numbers, oldest first |
+| `buyClicks` | object | optional, same shape as `visits` |
+| `subscribers` | whole number | optional |
+| `scans` | list, at most 10 | optional: `{ "school": "...", "count": 14 }`; `school` is text, 40 |
+
+## What the Pi keeps
+
+The resource `awws` in `data/state.json`, sent to the TV with everything else:
+
+```json
+{ "v": 1, "sentAt": "2026-11-16T15:10:00Z", "receivedAt": "2026-11-16T15:10:12Z",
+  "todos": { ... }, "khaya": { ... } }
+```
+
+`receivedAt` is the Pi's own clock when it last stored something. Before any snapshot arrives, and after `./hub awws clear`, it is `{ "v": 1, "sentAt": null, "receivedAt": null }` and the tiles say "Not synced yet". A push to the TV happens only when what is stored really changes.
+
+## Sending and reading
+
+On the Pi:
+
+- `./hub awws show`: when the snapshot was sent, its size, and one line per section.
+- `./hub awws set file.json`: store a snapshot (`-` reads it from input). The file is the snapshot itself, or `{ "snapshot": { ... } }`.
+- `./hub awws clear`: remove everything.
+
+Control API (token needed, see `docs/live-updates.md`):
+
+| Call | Body | Answer |
+|---|---|---|
+| `GET /api/awws` | | `{ ok, rev, data }` |
+| `POST /api/awws` | `{ "snapshot": { ... } }` or `{ "snapshot": null }` to clear | `{ ok, rev, changed, bytes, accepted: [], cleared: [], rejected: [{ section, error }] }` |
+
+`POST /api/awws` answers `400` and changes nothing when the snapshot as a whole is wrong (not an object, wrong `v`, bad `sentAt`, no sections at all, over 48 KB) or when every section in it was rejected. Otherwise it answers `200`, even with some sections rejected; read `rejected`.
+
+From the cloud, through the Claude mailbox (`pi/CLAUDE.md`): `awws.set {"snapshot": { ... }}`, `awws.show`, `awws.clear`. The reply's `message` is the same text `./hub` prints, and `data` carries `accepted`, `cleared` and `rejected`.
+
+## What the TV does with it
+
+- `awws` (Glance): counts from `todos`, the first Now items for Ian, and one-line figures from `handoffs`, `outreach`, `pipeline` and `khaya` when they are there.
+- `awws-todo`: the board, by section and owner, with overdue items in amber (`dueISO` before today) and open items per workstream.
+- `awws-agenda`: items with a `dueISO` join the calendar events on their day.
+- `awws-outreach`, `awws-pipeline`, `awws-money`, `awws-reach` are placeholders for now. Their sections are already checked and stored, so the tiles can be built without touching the Pi again.
+
+The TV keeps its last copy (`homeHub.awws.v1`), so the tiles have something to show straight after the TV turns on.
