@@ -155,6 +155,8 @@ label.f { display: flex; flex-direction: column; gap: 5px; font-size: 0.85rem; f
 .notes li { background: var(--panel-2); border-radius: 10px; padding: 9px 11px; display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; }
 .notes .k { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
 .notes .k.idea { color: var(--proposal); }
+.notes .sent { display: inline-block; margin-left: 6px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.04em; color: var(--mute); border: 1px solid var(--line); border-radius: 99px; padding: 0 7px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; vertical-align: baseline; }
+.notes li > div { min-width: 0; }
 .notes p { margin: 2px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
 .x { border: 0; background: transparent; color: var(--mute); border-radius: 6px; padding: 2px 8px; font-size: 1.1rem; line-height: 1.2; }
 .x:hover { color: var(--danger); }
@@ -440,6 +442,12 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     { id: 'todo', x: 0, y: 2, w: 3, h: 4 }, { id: 'calendar', x: 3, y: 2, w: 3, h: 4 }, { id: 'nowplaying', x: 6, y: 2, w: 3, h: 2 },
     { id: 'awws', x: 9, y: 2, w: 3, h: 2 }, { id: 'ambiance', x: 6, y: 4, w: 3, h: 2 }, { id: 'mirror', x: 9, y: 4, w: 3, h: 2 }
   ];
+  // The TV's own built-in layout (app/config.js, v0.12.2). The submit summary compares against this, not Stock.
+  var TV_DEFAULT = [
+    { id: 'today', x: 0, y: 0, w: 3, h: 1 }, { id: 'calendar', x: 3, y: 0, w: 3, h: 4 }, { id: 'awws', x: 6, y: 0, w: 3, h: 4 },
+    { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 1, w: 3, h: 4 }, { id: 'mirror', x: 9, y: 2, w: 3, h: 4 },
+    { id: 'ambiance', x: 3, y: 4, w: 6, h: 1 }, { id: 'nowplaying', x: 0, y: 5, w: 3, h: 1 }, { id: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
+  ];
   var KINDS = [
     { k: 'change', label: 'Change request' },
     { k: 'idea',   label: 'New widget idea' },
@@ -596,7 +604,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
           cells: { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' },
           dims: { strip: '1 row', standard: '2 rows', tall: '3+ rows', panel: 'Panel', full: 'Whole screen' },
           nowOn: 'On the screen now', where: 'On the screen at {s}: {t}', off: 'Off the screen', soon: 'Soon',
-          comment: 'Comment', add: 'Add comment', cancel: 'Cancel', yours: 'Your comment', del: 'Delete this comment',
+          comment: 'Comment', add: 'Add comment', cancel: 'Cancel', yours: 'Your comment', del: 'Delete this comment', sent: 'Sent', sentTitle: 'Already sent to Claude',
           kinds: { change: 'Change request', idea: 'New widget idea', note: 'Note' }, kindGroup: 'Kind of comment',
           fullBtn: 'Full screen', exitBtn: 'Exit full screen', close: 'Back to close', shrink: 'Back to shrink', notBuilt: 'Not built yet. This spot is reserved for it.' },
     es: { title: 'Qué se ve en cada tamaño', lang: 'Idioma',
@@ -605,7 +613,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
           cells: { strip: 'Tira', standard: 'Estándar', tall: 'Alta', panel: 'Al pulsar', full: 'Pantalla completa' },
           dims: { strip: '1 fila', standard: '2 filas', tall: '3 filas o más', panel: 'Panel', full: 'Toda la pantalla' },
           nowOn: 'En pantalla ahora', where: 'En pantalla a {s}: {t}', off: 'Fuera de la pantalla', soon: 'Próximamente',
-          comment: 'Comentar', add: 'Añadir comentario', cancel: 'Cancelar', yours: 'Tu comentario', del: 'Borrar este comentario',
+          comment: 'Comentar', add: 'Añadir comentario', cancel: 'Cancelar', yours: 'Tu comentario', del: 'Borrar este comentario', sent: 'Enviado', sentTitle: 'Ya se envió a Claude',
           kinds: { change: 'Pedir un cambio', idea: 'Idea de widget nuevo', note: 'Nota' }, kindGroup: 'Tipo de comentario',
           fullBtn: 'Pantalla completa', exitBtn: 'Salir de pantalla completa', close: 'Atrás para cerrar', shrink: 'Atrás para reducir', notBuilt: 'Todavía no está hecho. Este espacio queda reservado.' }
   };
@@ -616,7 +624,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   var lib = { layouts: [], defaultId: 'stock' }, cur = 'stock', db = null, comments = null, dragging = false, submitState = { mode: 'idle' };
 
   function fresh() {
-    return { layout: BASE.map(function (b) { return { id: b.id, x: b.x, y: b.y, w: b.w, h: b.h }; }), hidden: [], proposals: [], notes: {}, general: '' };
+    return { layout: BASE.map(function (b) { return { id: b.id, x: b.x, y: b.y, w: b.w, h: b.h }; }), hidden: [], proposals: [], notes: {}, general: '', generalSent: '' };
   }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -625,6 +633,11 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function proposalOf(id) { for (var i = 0; i < state.proposals.length; i++) if (state.proposals[i].id === id) return state.proposals[i]; return null; }
   function titleOf(id) { var p = proposalOf(id); return p ? p.name : (WIDGETS[id] ? WIDGETS[id].title : id); }
   function isChanged(e) { var b = baseOf(e.id); return !b || b.x !== e.x || b.y !== e.y || b.w !== e.w || b.h !== e.h; }
+  function tvOf(id) { for (var i = 0; i < TV_DEFAULT.length; i++) if (TV_DEFAULT[i].id === id) return TV_DEFAULT[i]; return null; }
+  function differsFromTv(e) { var b = tvOf(e.id); return !b || b.x !== e.x || b.y !== e.y || b.w !== e.w || b.h !== e.h; }
+  function unsent(list) { return (list || []).filter(function (n) { return !n.sent; }); }
+  function generalUnsent() { var g = state.general.trim(); return !!g && g !== (state.generalSent || ''); }
+  function sentTag(label, title) { return ' <span class="sent" title="' + esc(title) + '">' + esc(label) + '</span>'; }
   function noteCount(id) { return (state.notes[id] || []).length; }
 
   /* ---------- geometry ---------- */
@@ -766,7 +779,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     h += '<div class="row"><button class="btn danger" type="button" id="btnRemove">' + (p ? 'Delete proposal' : 'Take off the screen') + '</button></div>';
     h += '<h4>Comments</h4>';
     h += list.length ? '<ul class="notes">' + list.map(function (n, i) {
-      return '<li><div><span class="k ' + n.k + '">' + esc(kindLabel(n.k)) + '</span><p>' + esc(n.t) + '</p></div><button class="x" type="button" data-del="' + i + '" aria-label="Delete this comment">×</button></li>';
+      return '<li><div><span class="k ' + n.k + '">' + esc(kindLabel(n.k)) + '</span>' + (n.sent ? sentTag('Sent', 'Already sent to Claude') : '') + '<p>' + esc(n.t) + '</p></div><button class="x" type="button" data-del="' + i + '" aria-label="Delete this comment">×</button></li>';
     }).join('') + '</ul>' : '<p class="empty">No comments on this tile yet.</p>';
     h += '<div class="seg" role="group" aria-label="Kind of comment">' + KINDS.map(function (k) { return '<button type="button" data-kind="' + k.k + '" aria-pressed="' + (kind === k.k) + '">' + k.label + '</button>'; }).join('') + '</div>';
     h += '<label class="f" for="noteText">Your comment<textarea id="noteText" maxlength="1000" placeholder="' + esc(kindHint()) + '"></textarea></label>';
@@ -843,9 +856,9 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   }
   function counts() {
     var moved = 0, notes = 0;
-    state.layout.forEach(function (e) { if (!proposalOf(e.id) && isChanged(e)) moved++; });
-    Object.keys(state.notes).forEach(function (k) { notes += state.notes[k].length; });
-    return { moved: moved, removed: state.hidden.length, proposals: state.proposals.length, notes: notes + (state.general.trim() ? 1 : 0) };
+    state.layout.forEach(function (e) { if (!proposalOf(e.id) && differsFromTv(e)) moved++; });
+    Object.keys(state.notes).forEach(function (k) { notes += unsent(state.notes[k]).length; });
+    return { moved: moved, removed: state.hidden.length, proposals: state.proposals.length, notes: notes + (generalUnsent() ? 1 : 0) };
   }
 
   $('btnSave').addEventListener('click', function () {
@@ -951,13 +964,15 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function buildSummary(id) {
     var L = [];
     L.push('HOME HUB LAYOUT SUBMISSION ' + id);
-    L.push('Grid is 12 columns x 6 rows; positions are zero-based (x across, y down); sizes are w x h cells. Compared with the layout on the TV today.');
+    L.push('Grid is 12 columns x 6 rows; positions are zero-based (x across, y down); sizes are w x h cells. Compared with the TV\'s built-in layout (app/config.js, v0.12.2); a layout sent from the Pi may differ.');
+    L.push('Layout: ' + ((layoutById(cur) || {}).name || 'Stock') + (layoutDiffers() ? ' (edited)' : ''));
     L.push('');
     var any = false;
     state.layout.forEach(function (e) {
       if (proposalOf(e.id)) return;
-      var b = baseOf(e.id);
-      if (isChanged(e)) { any = true; L.push('- ' + titleOf(e.id) + ': ' + b.w + 'x' + b.h + ' at (' + b.x + ',' + b.y + ') -> ' + e.w + 'x' + e.h + ' at (' + e.x + ',' + e.y + ')'); }
+      var b = tvOf(e.id);
+      if (!b) { any = true; L.push('- ' + titleOf(e.id) + ': not in the TV\'s built-in layout; here ' + e.w + 'x' + e.h + ' at (' + e.x + ',' + e.y + ')'); return; }
+      if (differsFromTv(e)) { any = true; L.push('- ' + titleOf(e.id) + ': ' + b.w + 'x' + b.h + ' at (' + b.x + ',' + b.y + ') -> ' + e.w + 'x' + e.h + ' at (' + e.x + ',' + e.y + ')'); }
     });
     state.hidden.forEach(function (h) { any = true; L.push('- ' + titleOf(h) + ': REMOVED from the home screen'); });
     if (!any) L.push('- No tile moved or resized.');
@@ -965,20 +980,23 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       L.push(''); L.push('New widget proposals (start a planning thread for each):');
       state.proposals.forEach(function (p) { var e = entry(p.id); L.push('- "' + p.name + '"' + (e ? ' wanted at (' + e.x + ',' + e.y + ') ' + e.w + 'x' + e.h : '') + (p.desc ? ': ' + p.desc : '')); });
     }
-    var nl = [];
+    var nl = [], already = 0;
+    Object.keys(state.notes).forEach(function (k) { already += state.notes[k].length - unsent(state.notes[k]).length; });
+    if (state.general.trim() && !generalUnsent()) already++;
     Object.keys(state.notes).forEach(function (k) {
       if (k.indexOf('size:') === 0) return;
-      state.notes[k].forEach(function (n) { nl.push('[' + kindLabel(n.k) + (n.k === 'idea' ? ' -> start a planning thread' : '') + '] ' + titleOf(k) + ': ' + n.t); });
+      unsent(state.notes[k]).forEach(function (n) { nl.push('[' + kindLabel(n.k) + (n.k === 'idea' ? ' -> start a planning thread' : '') + '] ' + titleOf(k) + ': ' + n.t); });
     });
     if (nl.length) { L.push(''); L.push('Comments:'); nl.forEach(function (x) { L.push(x); }); }
     var sl = [];
     SZ_ORDER.forEach(function (w) {
       CELLS.forEach(function (c) {
-        (state.notes[sizeKey(w, c)] || []).forEach(function (n) { sl.push('[' + kindLabel(n.k) + (n.k === 'idea' ? ' -> start a planning thread' : '') + '] ' + titleOf(w) + ' at ' + TIER_EN[c] + ': ' + n.t); });
+        unsent(state.notes[sizeKey(w, c)]).forEach(function (n) { sl.push('[' + kindLabel(n.k) + (n.k === 'idea' ? ' -> start a planning thread' : '') + '] ' + titleOf(w) + ' at ' + TIER_EN[c] + ': ' + n.t); });
       });
     });
     if (sl.length) { L.push(''); L.push('Comments on what shows at each size:'); sl.forEach(function (x) { L.push(x); }); }
-    if (state.general.trim()) { L.push(''); L.push('General note: ' + state.general.trim()); }
+    if (generalUnsent()) { L.push(''); L.push('General note: ' + state.general.trim()); }
+    if (already) { L.push(''); L.push(already + ' earlier comment' + (already === 1 ? ' was' : 's were') + ' already sent and ' + (already === 1 ? 'is' : 'are') + ' not repeated.'); }
     L.push(''); L.push('Layout JSON (hub format): ' + JSON.stringify(state.layout.filter(function (e) { return !proposalOf(e.id); }).map(function (e) { return { widget: e.id, x: e.x, y: e.y, w: e.w, h: e.h }; })));
     L.push('Full details are saved in this artifact at submissions/' + id + '.');
     var text = L.join('\n');
@@ -995,7 +1013,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     var a = $('submitArea'), c = counts(), m = submitState;
     if (m.mode === 'idle') { a.innerHTML = ''; return; }
     if (m.mode === 'confirm') {
-      a.innerHTML = '<div class="confirm"><p><strong>Send to Claude?</strong> ' + c.moved + ' tile' + (c.moved === 1 ? '' : 's') + ' moved or resized, ' + c.removed + ' removed, ' + c.proposals + ' proposed widget' + (c.proposals === 1 ? '' : 's') + ', ' + c.notes + ' comment' + (c.notes === 1 ? '' : 's') + '. Claude starts building from this.</p>' +
+      a.innerHTML = '<div class="confirm"><p><strong>Send to Claude?</strong> ' + c.moved + ' tile' + (c.moved === 1 ? '' : 's') + ' moved or resized compared with the TV’s built-in layout, ' + c.removed + ' removed, ' + c.proposals + ' proposed widget' + (c.proposals === 1 ? '' : 's') + ', ' + c.notes + ' new comment' + (c.notes === 1 ? '' : 's') + '. Claude starts building from this.</p>' +
         '<div class="row"><button class="btn primary" id="go" type="button">Send now</button><button class="btn" id="no" type="button">Keep editing</button></div></div>';
       return;
     }
@@ -1015,6 +1033,9 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function send() {
     var id = 's-' + Date.now().toString(36);
     lastSummary = buildSummary(id);
+    // What this summary carries; marked as sent only once Claude has it.
+    var carried = [], gen = state.general.trim();
+    Object.keys(state.notes).forEach(function (k) { unsent(state.notes[k]).forEach(function (n) { carried.push(n); }); });
     submitState = { mode: 'sending' }; renderSubmit();
     var record = { state: JSON.stringify(state), summary: lastSummary, submittedAt: Date.now() };
     var saved = db ? db.doc('submissions/' + id).set(record).catch(function () { return null; }) : Promise.resolve(null);
@@ -1025,6 +1046,9 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
         return comments.anchorFor($('hdr'));
       }).then(function (anchor) { return comments.sendToClaude({ anchor: anchor, text: lastSummary }); });
     }).then(function () {
+      carried.forEach(function (n) { if (!n.sent) n.sent = id; });
+      state.generalSent = gen;
+      renderSide(); renderSizes();
       submitState = { mode: 'sent' }; renderSubmit();
       if (db) db.doc('drafts/current').set({ state: JSON.stringify(state), cur: cur, savedAt: Date.now() }).then(function () { dirty = false; savedAt = Date.now(); updateStatus(); }).catch(function () {});
     }).catch(function (e) {
@@ -1190,7 +1214,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     h += '<div class="szc-pv" aria-hidden="true">' + (cell === 'panel' || cell === 'full' ? panelPreview(id, cell === 'full') : tilePreview(id, cell)) + '</div>';
     h += '<p class="szc-desc' + (c.built === false ? ' nb' : '') + '">' + esc(c[lang]) + '</p>';
     if (list.length) h += '<ul class="notes">' + list.map(function (n, i) {
-      return '<li><div><span class="k ' + n.k + '">' + esc(U.kinds[n.k] || n.k) + '</span><p>' + esc(n.t) + '</p></div><button class="x" type="button" data-sz-del="' + i + '" aria-label="' + esc(U.del) + '">×</button></li>';
+      return '<li><div><span class="k ' + n.k + '">' + esc(U.kinds[n.k] || n.k) + '</span>' + (n.sent ? sentTag(U.sent, U.sentTitle) : '') + '<p>' + esc(n.t) + '</p></div><button class="x" type="button" data-sz-del="' + i + '" aria-label="' + esc(U.del) + '">×</button></li>';
     }).join('') + '</ul>';
     if (ed) {
       h += '<div class="szc-ed"><div class="seg" role="group" aria-label="' + esc(U.kindGroup) + '">' + KINDS.map(function (k) {
@@ -1316,7 +1340,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       if (snap.exists) {
         var data = snap.data(), s = JSON.parse(data.state);
         if (s && Array.isArray(s.layout)) {
-          base = { layout: s.layout, hidden: s.hidden || [], proposals: s.proposals || [], notes: s.notes || {}, general: s.general || '' };
+          base = { layout: s.layout, hidden: s.hidden || [], proposals: s.proposals || [], notes: s.notes || {}, general: s.general || '', generalSent: s.generalSent || '' };
           state = base; cur = layoutById(data.cur) ? data.cur : lib.defaultId; savedAt = data.savedAt;
           // Unsaved tile changes in the draft win; otherwise the default layout opens.
           if (!layoutDiffers()) { applyLayout(def); cur = lib.defaultId; }
