@@ -17,6 +17,7 @@
  *   ./hub layout set <file.json|->   a new layout (a list of tiles, or { layout: [...] })
  *   ./hub layout reset               back to the layout in app/config.js
  *   ./hub status                     is the server up, which screens are on
+ *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub token                      create the password, once
  *   ./hub help
  *
@@ -35,7 +36,7 @@ const crypto = require('crypto');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
-const WIDGETS = ['weather', 'todo', 'entertainment'];
+const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment'];
 
 /* ---------- settings ---------- */
 
@@ -165,17 +166,28 @@ function screens(n) {
   return n === 1 ? '1 screen' : n + ' screens';
 }
 
+// The text for each answer lives in these small functions, so the Claude
+// mailbox (mailbox.js) reports exactly what ./hub prints.
+function commandText(r) {
+  if (r.delivered > 0) return 'Sent. ' + screens(r.delivered) + ' showed it.';
+  return 'Sent, but no screen is listening (is the TV on with Home Hub open?).';
+}
+
 async function command(type, data) {
   const r = await call('POST', '/api/command', { type: type, data: data || {} });
-  if (r.delivered > 0) say('Sent. ' + screens(r.delivered) + ' showed it.');
-  else say('Sent, but no screen is listening (is the TV on with Home Hub open?).');
+  say(commandText(r));
 }
 
 /* ---------- to-do helpers ---------- */
 
 async function findItem(what) {
   const r = await call('GET', '/api/todo');
-  const items = r.items || [];
+  return matchItem(r.items || [], what);
+}
+
+// The item with this id, or the one with this exact title (case is ignored
+// when nothing matches exactly). Stops with a plain message otherwise.
+function matchItem(items, what) {
   let hit = items.find((i) => i.id === what);
   if (hit) return hit;
   let matches = items.filter((i) => i.title === what);
@@ -190,6 +202,26 @@ async function findItem(what) {
 
 const SECTION_NAMES = { now: 'Now', next: 'Next', waiting: 'Waiting on' };
 
+function todoAddText(r) {
+  return 'Added "' + r.item.title + '" to ' + SECTION_NAMES[r.item.section] + (r.item.due ? ', due ' + r.item.due : '') + '.';
+}
+
+function todoListLines(items) {
+  if (!items.length) return ['The to-do list is empty.'];
+  const out = [];
+  Object.keys(SECTION_NAMES).forEach((sec) => {
+    const inSec = items.filter((i) => i.section === sec);
+    if (!inSec.length) return;
+    out.push(SECTION_NAMES[sec] + ':');
+    inSec.forEach((i) => out.push('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (i.due ? ' (due ' + i.due + ')' : '') + '   id ' + i.id));
+  });
+  return out;
+}
+
+function todoChangeText(sub, item) {
+  return (sub === 'done' ? 'Ticked "' : 'Removed "') + item.title + '".';
+}
+
 async function todo(args) {
   const sub = args[0];
   const rest = args.slice(1);
@@ -201,19 +233,12 @@ async function todo(args) {
     if (a.opts.section) body.section = a.opts.section;
     if (a.opts.due) body.due = a.opts.due;
     const r = await call('POST', '/api/todo', body);
-    say('Added "' + r.item.title + '" to ' + SECTION_NAMES[r.item.section] + (r.item.due ? ', due ' + r.item.due : '') + '.');
+    say(todoAddText(r));
     return;
   }
   if (sub === 'list') {
     const r = await call('GET', '/api/todo');
-    const items = r.items || [];
-    if (!items.length) { say('The to-do list is empty.'); return; }
-    Object.keys(SECTION_NAMES).forEach((sec) => {
-      const inSec = items.filter((i) => i.section === sec);
-      if (!inSec.length) return;
-      say(SECTION_NAMES[sec] + ':');
-      inSec.forEach((i) => say('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (i.due ? ' (due ' + i.due + ')' : '') + '   id ' + i.id));
-    });
+    todoListLines(r.items || []).forEach(say);
     return;
   }
   if (sub === 'done' || sub === 'remove') {
@@ -224,7 +249,7 @@ async function todo(args) {
       ? { op: 'set', id: item.id, fields: { done: true } }
       : { op: 'remove', id: item.id };
     await call('POST', '/api/todo/ops', { ops: [op] });
-    say((sub === 'done' ? 'Ticked "' : 'Removed "') + item.title + '".');
+    say(todoChangeText(sub, item));
     return;
   }
   stop('Use one of: todo add, todo list, todo done, todo remove. Run ./hub help for examples.');
@@ -267,46 +292,53 @@ function allDayStart(text, tz) {
   return Date.parse(text + 'T00:00:00Z') - offset;
 }
 
+function calendarStatusLines(d) {
+  if (!d || !d.configured || !(d.calendars || []).length) return [NO_CALENDARS];
+  const out = [];
+  const tz = zoneOk(d.tz) ? d.tz : 'America/Chicago';
+  d.calendars.forEach((c) => {
+    const at = c.updatedAt ? when(Date.parse(c.updatedAt), tz) : '';
+    if (c.ok) {
+      out.push(c.name + ': ' + plural(c.count, 'event') + ', read at ' + at + (c.skipped ? ' (' + c.skipped + ' left out: repeats this reader cannot follow)' : ''));
+    } else if (c.count > 0 && at) {
+      out.push(c.name + ': ' + c.error + ', showing the ' + plural(c.count, 'event') + ' from ' + at);
+    } else {
+      out.push(c.name + ': ' + c.error + ', no events to show');
+    }
+  });
+  if (d.truncated) out.push('Only the first 500 events are kept.');
+  const now = Date.now();
+  let next = null;
+  (d.events || []).forEach((e) => {
+    const t = e.allDay ? allDayStart(e.start, tz) : Date.parse(e.start);
+    if (!(t > now)) return;
+    if (!next || t < next.t) next = { t: t, e: e };
+  });
+  if (next) out.push('Next: ' + when(next.t, tz, next.e.allDay) + ', ' + next.e.title);
+  else out.push('No upcoming events in the next 60 days.');
+  return out;
+}
+
+function calendarRefreshLines(r) {
+  const list = r.calendars || [];
+  if (!list.length) return [NO_CALENDARS];
+  if (!r.done) return ['Still reading the calendars after 25 seconds. Run ./hub calendar status in a minute.'];
+  const events = list.reduce((n, c) => n + (c.count || 0), 0);
+  const out = ['Refreshed. ' + plural(list.length, 'calendar') + ', ' + plural(events, 'event') + (r.changed ? ' (changed).' : ' (no change).')];
+  list.filter((c) => !c.ok).forEach((c) => out.push(c.name + ': ' + c.error + '.'));
+  return out;
+}
+
 async function calendar(args) {
   const sub = args[0];
   if (sub === 'status') {
     const r = await call('GET', '/api/calendar');
-    const d = r.data || {};
-    if (!d.configured || !(d.calendars || []).length) { say(NO_CALENDARS); return; }
-    const tz = zoneOk(d.tz) ? d.tz : 'America/Chicago';
-    d.calendars.forEach((c) => {
-      const at = c.updatedAt ? when(Date.parse(c.updatedAt), tz) : '';
-      if (c.ok) {
-        say(c.name + ': ' + plural(c.count, 'event') + ', read at ' + at + (c.skipped ? ' (' + c.skipped + ' left out: repeats this reader cannot follow)' : ''));
-      } else if (c.count > 0 && at) {
-        say(c.name + ': ' + c.error + ', showing the ' + plural(c.count, 'event') + ' from ' + at);
-      } else {
-        say(c.name + ': ' + c.error + ', no events to show');
-      }
-    });
-    if (d.truncated) say('Only the first 500 events are kept.');
-    const now = Date.now();
-    let next = null;
-    (d.events || []).forEach((e) => {
-      const t = e.allDay ? allDayStart(e.start, tz) : Date.parse(e.start);
-      if (!(t > now)) return;
-      if (!next || t < next.t) next = { t: t, e: e };
-    });
-    if (next) say('Next: ' + when(next.t, tz, next.e.allDay) + ', ' + next.e.title);
-    else say('No upcoming events in the next 60 days.');
+    calendarStatusLines(r.data || {}).forEach(say);
     return;
   }
   if (sub === 'refresh') {
     const r = await call('POST', '/api/calendar/refresh', {}, 40000);
-    const list = r.calendars || [];
-    if (!list.length) { say(NO_CALENDARS); return; }
-    if (!r.done) {
-      say('Still reading the calendars after 25 seconds. Run ./hub calendar status in a minute.');
-      return;
-    }
-    const events = list.reduce((n, c) => n + (c.count || 0), 0);
-    say('Refreshed. ' + plural(list.length, 'calendar') + ', ' + plural(events, 'event') + (r.changed ? ' (changed).' : ' (no change).'));
-    list.filter((c) => !c.ok).forEach((c) => say(c.name + ': ' + c.error + '.'));
+    calendarRefreshLines(r).forEach(say);
     return;
   }
   stop('Use one of: calendar status, calendar refresh. Run ./hub help for examples.');
@@ -314,16 +346,23 @@ async function calendar(args) {
 
 /* ---------- layout ---------- */
 
-function describeLayout(layout) {
-  if (!layout) {
-    say('The TV uses its built-in layout (HUB_CONFIG.layout in app/config.js).');
-    return;
-  }
-  say(plural(layout.length, 'tile') + ' on the 12 x 6 grid:');
+function layoutLines(layout) {
+  if (!layout) return ['The TV uses its built-in layout (HUB_CONFIG.layout in app/config.js).'];
+  const out = [plural(layout.length, 'tile') + ' on the 12 x 6 grid:'];
   const width = Math.max.apply(null, layout.map((t) => t.widget.length));
   layout.forEach((t) => {
-    say('  ' + t.widget + ' '.repeat(width - t.widget.length) + '  at x ' + t.x + ', y ' + t.y + ', ' + t.w + ' wide, ' + t.h + ' high');
+    out.push('  ' + t.widget + ' '.repeat(width - t.widget.length) + '  at x ' + t.x + ', y ' + t.y + ', ' + t.w + ' wide, ' + t.h + ' high');
   });
+  return out;
+}
+
+function layoutSetText(r) {
+  if (!r.changed) return 'That is already the layout. Nothing changed.';
+  return 'Layout saved (' + plural(r.layout.length, 'tile') + '). Screens that are on change now.';
+}
+
+function layoutResetText(r) {
+  return r.changed ? 'Back to the built-in layout. Screens that are on change now.' : 'The TV already uses its built-in layout. Nothing changed.';
 }
 
 function readLayoutFile(name) {
@@ -344,20 +383,19 @@ async function layout(args) {
   const sub = args[0];
   if (sub === 'show') {
     const r = await call('GET', '/api/layout');
-    describeLayout(r.layout);
+    layoutLines(r.layout).forEach(say);
     return;
   }
   if (sub === 'set') {
     const name = args[1];
     if (!name) stop('Say which file holds the layout, or - to read it from standard input. For example: ./hub layout set layout.json');
     const r = await call('POST', '/api/layout', { layout: readLayoutFile(name) });
-    if (!r.changed) { say('That is already the layout. Nothing changed.'); return; }
-    say('Layout saved (' + plural(r.layout.length, 'tile') + '). Screens that are on change now.');
+    say(layoutSetText(r));
     return;
   }
   if (sub === 'reset') {
     const r = await call('POST', '/api/layout', { layout: null });
-    say(r.changed ? 'Back to the built-in layout. Screens that are on change now.' : 'The TV already uses its built-in layout. Nothing changed.');
+    say(layoutResetText(r));
     return;
   }
   stop('Use one of: layout show, layout set <file.json|->, layout reset. Run ./hub help for examples.');
@@ -391,24 +429,69 @@ function token() {
 
 /* ---------- status ---------- */
 
-async function status() {
-  const r = await call('GET', '/api/status');
+function statusLines(r) {
   const mins = Math.round(r.uptime / 60);
   const up = mins < 1 ? 'less than a minute' : mins < 120 ? mins + ' minutes' : Math.round(mins / 60) + ' hours';
-  say('The server is running (version ' + r.server + ', up ' + up + ', data revision ' + r.rev + ').');
+  const out = ['The server is running (version ' + r.server + ', up ' + up + ', data revision ' + r.rev + ').'];
   if (r.calendar && r.calendar.configured) {
-    say(plural(r.calendar.calendars, 'calendar') + ' set up' + (r.calendar.lastRefresh ? ', last read at ' + new Date(r.calendar.lastRefresh).toLocaleTimeString() : ', not read yet') + '.');
+    out.push(plural(r.calendar.calendars, 'calendar') + ' set up' + (r.calendar.lastRefresh ? ', last read at ' + new Date(r.calendar.lastRefresh).toLocaleTimeString() : ', not read yet') + '.');
   }
+  if (r.mailbox) out.push(mailboxShort(r.mailbox));
   const list = r.screens || [];
   if (!list.length) {
-    say('No screen is connected right now.');
-    return;
+    out.push('No screen is connected right now.');
+    return out;
   }
-  say(screens(list.length) + ' connected:');
+  out.push(screens(list.length) + ' connected:');
   list.forEach((sc) => {
     const t = new Date(sc.since);
-    say('  ' + sc.address + ', since ' + t.toLocaleTimeString() + (sc.via === 'poll' ? ' (fallback mode)' : ''));
+    out.push('  ' + sc.address + ', since ' + t.toLocaleTimeString() + (sc.via === 'poll' ? ' (fallback mode)' : ''));
   });
+  return out;
+}
+
+async function status() {
+  const r = await call('GET', '/api/status');
+  statusLines(r).forEach(say);
+}
+
+/* ---------- Claude mailbox ---------- */
+
+function ago(iso) {
+  const s = Math.round((Date.now() - Date.parse(iso)) / 1000);
+  if (!(s >= 0)) return 'just now';
+  if (s < 90) return s + ' seconds ago';
+  if (s < 5400) return Math.round(s / 60) + ' minutes ago';
+  return Math.round(s / 3600) + ' hours ago';
+}
+
+// One line for ./hub status.
+function mailboxShort(m) {
+  if (!m.configured) return 'Claude mailbox: off.';
+  if (m.connected) return 'Claude mailbox: connected' + (m.lastOkAt ? ', checked ' + ago(m.lastOkAt) : '') + '.';
+  if (!m.lastOkAt && !m.lastError) return 'Claude mailbox: starting.';
+  return 'Claude mailbox: NOT connected (' + (m.lastError || 'no answer yet') + ').';
+}
+
+function mailboxLines(m) {
+  if (!m) return ['This server does not know the Claude mailbox yet. Run git pull, then docker compose restart hub.'];
+  if (!m.configured) {
+    return ['The Claude mailbox is off' + (m.problem ? ': ' + m.problem : '') + '.',
+      'To turn it on, add the HUB_MAILBOX_ lines to pi/.env (see "Claude mailbox" in pi/README.md), then docker compose restart hub.'];
+  }
+  const out = [mailboxShort(m)];
+  out.push('Bucket ' + m.bucket + ' at ' + m.host + ', checked every ' + m.pollSeconds + ' seconds.');
+  if (m.connected && m.lastError) out.push('Last problem (now fixed): ' + m.lastError + '.');
+  if (m.lastCommandId) out.push('Last command: ' + m.lastCommand + ' (' + m.lastCommandId + '), ' + ago(m.lastCommandAt) + (m.lastCommandOk ? ', ok.' : ', failed.'));
+  else out.push('No command has come in since the server started.');
+  if (m.pendingResults) out.push(m.pendingResults + ' result(s) waiting to be written back.');
+  return out;
+}
+
+async function mailbox(args) {
+  if (args[0] !== 'status') stop('Use: ./hub mailbox status. Run ./hub help for examples.');
+  const r = await call('GET', '/api/status');
+  mailboxLines(r.mailbox).forEach(say);
 }
 
 /* ---------- help ---------- */
@@ -430,6 +513,7 @@ const HELP = [
   '  ./hub layout set file.json  a new tile layout (a list of tiles; - reads it from input)',
   '  ./hub layout reset          back to the layout in app/config.js',
   '  ./hub status                is the server running, which screens are on',
+  '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub token                 create the password in pi/.env (only once)'
 ].join('\n');
 
@@ -463,12 +547,33 @@ async function main(argv) {
   if (cmd === 'calendar') return calendar(rest);
   if (cmd === 'layout') return layout(rest);
   if (cmd === 'status') return status();
+  if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
 }
 
-main(process.argv.slice(2)).then(() => process.exit(0), (e) => {
-  if (e instanceof Stop) say(e.message);
-  else say('Something went wrong: ' + (e && e.message));
-  process.exit(1);
-});
+module.exports = {
+  Stop: Stop,
+  WIDGETS: WIDGETS,
+  SECTION_NAMES: SECTION_NAMES,
+  commandText: commandText,
+  matchItem: matchItem,
+  todoAddText: todoAddText,
+  todoListLines: todoListLines,
+  todoChangeText: todoChangeText,
+  calendarStatusLines: calendarStatusLines,
+  calendarRefreshLines: calendarRefreshLines,
+  layoutLines: layoutLines,
+  layoutSetText: layoutSetText,
+  layoutResetText: layoutResetText,
+  statusLines: statusLines,
+  mailboxLines: mailboxLines
+};
+
+if (require.main === module) {
+  main(process.argv.slice(2)).then(() => process.exit(0), (e) => {
+    if (e instanceof Stop) say(e.message);
+    else say('Something went wrong: ' + (e && e.message));
+    process.exit(1);
+  });
+}

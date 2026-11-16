@@ -22,6 +22,9 @@
  *   POST /api/calendar/refresh   read every calendar now and wait for it
  *   GET  /health         no token, just "is it running"
  *
+ * The Claude mailbox (mailbox.js, off unless HUB_MAILBOX_ settings are in
+ * .env) polls a Cloudflare R2 bucket and runs the same control API calls.
+ *
  * The full contract is in docs/live-updates.md ("Reference for builders").
  *
  * Commands are never stored for a TV that is off. Only the fallback poll
@@ -38,6 +41,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const calendar = require('./calendar');
+const mailbox = require('./mailbox');
 
 const SERVER_VERSION = '0.1.0';
 const PROTOCOL = 1;
@@ -872,73 +876,71 @@ function start(options) {
     return out;
   }
 
-  function control(req, res, route, door) {
-    const what = req.method + ' ' + route;
-    const done = (status, body, note) => {
-      sendJson(res, status, body);
-      log('control ' + what + ' -> ' + status + (note ? ' ' + note : '') + (door === 'tunnel' ? ' (side door)' : ''));
-    };
-    const failed = (e) => {
-      const status = e && e.status ? e.status : 500;
-      if (status === 500) log('error: ' + (e && e.message));
-      done(status, { ok: false, error: e && e.status ? e.message : 'the server had a problem' });
-    };
-    if (!tokenOk) return done(503, { ok: false, error: 'no token set on the server' });
-    if (!checkToken(req)) return done(401, { ok: false, error: 'wrong token' });
+  const ROUTES = {
+    '/api/command': ['POST'],
+    '/api/todo': ['GET', 'POST'],
+    '/api/todo/ops': ['POST'],
+    '/api/layout': ['GET', 'POST'],
+    '/api/status': ['GET'],
+    '/api/calendar': ['GET'],
+    '/api/calendar/refresh': ['POST']
+  };
 
-    const routes = {
-      '/api/command': ['POST'],
-      '/api/todo': ['GET', 'POST'],
-      '/api/todo/ops': ['POST'],
-      '/api/layout': ['GET', 'POST'],
-      '/api/status': ['GET'],
-      '/api/calendar': ['GET'],
-      '/api/calendar/refresh': ['POST']
+  function statusBody() {
+    return {
+      ok: true, server: SERVER_VERSION, rev: state.rev, epoch: state.epoch,
+      uptime: Math.round((Date.now() - startedAt) / 1000), screens: screenList(),
+      calendar: { configured: calReader.configured, calendars: calList.length, lastRefresh: calReader.lastRefresh() },
+      mailbox: mbox ? mbox.info() : { configured: false, problem: mailboxCfg.problem || '' }
     };
-    if (!routes[route]) return done(404, { ok: false, error: 'no such call' });
-    if (routes[route].indexOf(req.method) < 0) {
-      res.setHeader('Allow', routes[route].join(', '));
-      return done(405, { ok: false, error: 'use ' + routes[route].join(' or ') + ' for ' + route });
-    }
+  }
 
-    if (route === '/api/status') {
-      return done(200, {
-        ok: true, server: SERVER_VERSION, rev: state.rev, epoch: state.epoch,
-        uptime: Math.round((Date.now() - startedAt) / 1000), screens: screenList(),
-        calendar: { configured: calReader.configured, calendars: calList.length, lastRefresh: calReader.lastRefresh() }
-      });
-    }
-    if (route === '/api/calendar') {
-      const c = state.resources.calendar;
-      return done(200, { ok: true, rev: c.rev, data: c.data });
-    }
-    if (route === '/api/calendar/refresh') {
-      req.resume(); // no body is needed
-      let waitTimer = null;
-      const late = new Promise((resolve) => { waitTimer = setTimeout(() => resolve(null), calWaitMs); });
-      Promise.race([calReader.refresh().then((r) => ({ r: r })), late]).then((w) => {
-        clearTimeout(waitTimer);
-        const finished = !!(w && w.r);
-        done(200, {
-          ok: true, done: finished || !calReader.configured, changed: finished ? w.r.changed : false,
-          calendars: state.resources.calendar.data.calendars
-        }, finished ? (w.r.changed ? 'changed' : 'no change') : 'still reading');
-      }).catch(failed);
-      return undefined;
-    }
-    if (route === '/api/layout' && req.method === 'GET') {
-      const l = state.resources.layout;
-      return done(200, { ok: true, rev: l.rev, layout: l.data.layout });
-    }
-    if (route === '/api/todo' && req.method === 'GET') {
-      return done(200, { ok: true, rev: state.rev, items: todoItems() });
-    }
-    readBody(req, res, (body) => {
+  // The control API itself, once the caller is known to be allowed. The HTTP
+  // side door and main door use it, and so does the Claude mailbox
+  // (mailbox.js), so every change goes through the same checks. Resolves to
+  // { status, body, note }; it never rejects.
+  function api(method, route, body) {
+    return new Promise((resolve) => {
+      const reply = (status, b, note) => resolve({ status: status, body: b, note: note });
+      const failed = (e) => {
+        const status = e && e.status ? e.status : 500;
+        if (status === 500) log('error: ' + (e && e.message));
+        reply(status, { ok: false, error: e && e.status ? e.message : 'the server had a problem' });
+      };
       try {
+        if (!ROUTES[route]) return reply(404, { ok: false, error: 'no such call' });
+        if (ROUTES[route].indexOf(method) < 0) {
+          return reply(405, { ok: false, error: 'use ' + ROUTES[route].join(' or ') + ' for ' + route });
+        }
+        if (route === '/api/status') return reply(200, statusBody());
+        if (route === '/api/calendar') {
+          const c = state.resources.calendar;
+          return reply(200, { ok: true, rev: c.rev, data: c.data });
+        }
+        if (route === '/api/calendar/refresh') {
+          let waitTimer = null;
+          const late = new Promise((r) => { waitTimer = setTimeout(() => r(null), calWaitMs); });
+          Promise.race([calReader.refresh().then((r) => ({ r: r })), late]).then((w) => {
+            clearTimeout(waitTimer);
+            const finished = !!(w && w.r);
+            reply(200, {
+              ok: true, done: finished || !calReader.configured, changed: finished ? w.r.changed : false,
+              calendars: state.resources.calendar.data.calendars
+            }, finished ? (w.r.changed ? 'changed' : 'no change') : 'still reading');
+          }).catch(failed);
+          return undefined;
+        }
+        if (route === '/api/layout' && method === 'GET') {
+          const l = state.resources.layout;
+          return reply(200, { ok: true, rev: l.rev, layout: l.data.layout });
+        }
+        if (route === '/api/todo' && method === 'GET') {
+          return reply(200, { ok: true, rev: state.rev, items: todoItems() });
+        }
         if (route === '/api/command') {
           const cmd = normalizeCommand(body);
           const r = sendCommand(cmd);
-          return done(200, { ok: true, delivered: r.delivered }, cmd.type + ', delivered ' + r.delivered);
+          return reply(200, { ok: true, delivered: r.delivered }, cmd.type + ', delivered ' + r.delivered);
         }
         if (route === '/api/layout') {
           if (!isObj(body) || body.layout === undefined) throw bad('send { "layout": [ ... ] }, or { "layout": null } for the built-in layout');
@@ -946,7 +948,7 @@ function start(options) {
           const changed = JSON.stringify(layout) !== JSON.stringify(state.resources.layout.data.layout);
           if (changed) changeResource('layout', { layout: layout });
           const l = state.resources.layout;
-          return done(200, { ok: true, rev: l.rev, changed: changed, layout: l.data.layout },
+          return reply(200, { ok: true, rev: l.rev, changed: changed, layout: l.data.layout },
             (layout ? layout.length + ' tiles' : 'built-in') + (changed ? ', rev ' + state.rev : ', no change'));
         }
         if (route === '/api/todo') {
@@ -958,17 +960,36 @@ function start(options) {
           if (items.length >= MAX_ITEMS) throw bad('the to-do list is full (' + MAX_ITEMS + ' items)');
           items.unshift(item);
           changeTodo(items);
-          return done(200, { ok: true, rev: state.rev, item: item }, 'added ' + item.id);
+          return reply(200, { ok: true, rev: state.rev, item: item }, 'added ' + item.id);
         }
         // /api/todo/ops
         if (!isObj(body)) throw bad('the body must be a JSON object');
         const items = applyOps(todoItems(), body.ops, Date.now());
         changeTodo(items);
-        return done(200, { ok: true, rev: state.rev, items: todoItems() }, 'rev ' + state.rev);
+        return reply(200, { ok: true, rev: state.rev, items: todoItems() }, 'rev ' + state.rev);
       } catch (e) {
         failed(e);
       }
+      return undefined;
     });
+  }
+
+  function control(req, res, route, door) {
+    const what = req.method + ' ' + route;
+    const done = (status, body, note) => {
+      sendJson(res, status, body);
+      log('control ' + what + ' -> ' + status + (note ? ' ' + note : '') + (door === 'tunnel' ? ' (side door)' : ''));
+    };
+    if (!tokenOk) return done(503, { ok: false, error: 'no token set on the server' });
+    if (!checkToken(req)) return done(401, { ok: false, error: 'wrong token' });
+    if (ROUTES[route] && ROUTES[route].indexOf(req.method) < 0) res.setHeader('Allow', ROUTES[route].join(', '));
+    const run = (body) => api(req.method, route, body).then((r) => done(r.status, r.body, r.note));
+    if (req.method !== 'POST' || route === '/api/calendar/refresh' || !ROUTES[route]) {
+      req.resume(); // no body is needed
+      return run(undefined);
+    }
+    readBody(req, res, run);
+    return undefined;
   }
 
   function screen(req, res, route, query) {
@@ -1044,6 +1065,23 @@ function start(options) {
 
   /* --- listeners --- */
 
+  /* --- the Claude mailbox (mailbox.js) --- */
+
+  // opt.mailboxEnv is the .env settings (HUB_MAILBOX_...). Off when not set.
+  const mailboxCfg = mailbox.configFromEnv(opt.mailboxEnv || {});
+  let mbox = null;
+  if (mailboxCfg.configured) {
+    mbox = mailbox.createMailbox({
+      config: mailboxCfg, api: api, version: SERVER_VERSION, log: log,
+      onRestart: typeof opt.onRestart === 'function' ? opt.onRestart : null,
+      now: typeof opt.mailboxNow === 'function' ? opt.mailboxNow : undefined,
+      s3: opt.mailboxS3, manual: opt.mailboxManual === true
+    });
+    mbox.start();
+  } else {
+    log('Claude mailbox: off' + (mailboxCfg.problem ? ' (' + mailboxCfg.problem + ')' : ' (no HUB_MAILBOX_ settings in .env)'));
+  }
+
   const servers = [];
   function makeServer(door) {
     const s = http.createServer(handler(door));
@@ -1087,6 +1125,8 @@ function start(options) {
     tunnelPort: null,
     ready: null,
     close: close,
+    api: api,
+    mailbox: mbox,
     _debug: () => {
       forgetOld();
       return {
@@ -1116,6 +1156,7 @@ function start(options) {
     if (closing) { if (cb) setImmediate(cb); return; }
     closing = true;
     calReader.close();
+    if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
@@ -1164,7 +1205,14 @@ if (require.main === module) {
     dataDir: env.HUB_DATA_DIR || 'data',
     calendarEnv: env,
     timezone: env.HUB_TIMEZONE || '',
-    refreshMinutes: env.CALENDAR_REFRESH_MINUTES || ''
+    refreshMinutes: env.CALENDAR_REFRESH_MINUTES || '',
+    mailboxEnv: env,
+    // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
+    // or systemd (Restart=always) starts the server again, with any new code.
+    onRestart: () => {
+      hub.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 3000).unref();
+    }
   });
   hub.ready.catch(() => process.exit(1));
   let stopping = false;

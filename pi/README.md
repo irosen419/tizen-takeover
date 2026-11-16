@@ -272,6 +272,112 @@ The server can open a second door only for that: set `HUB_TUNNEL_PORT=8098` in `
 
 Point the tunnel at `http://127.0.0.1:8098` and nothing else. Never point a tunnel at the main door (8097).
 
+## Claude mailbox
+
+### What it is, and why
+
+Claude runs in the cloud and cannot reach your Pi (that is good: nothing on the internet can). The mailbox is a way round that, with no open door on the Pi:
+
+- You have a storage bucket on Cloudflare R2 called `home-hub-mailbox`. Think of it as a shared folder on the internet.
+- Claude drops a small note in it, such as "add Buy milk to the to-do list".
+- Every 10 seconds the Pi looks in the bucket, does what the note says, and leaves a reply note next to it.
+
+The Pi only ever goes *out* to Cloudflare; nothing comes in. It can only do the things `./hub` does (show a widget, say a message, to-dos, calendar status and refresh, layout, status, and restart the server). It cannot run any other command, git or Docker. Notes older than a day, or that do not look exactly right, are refused and never run.
+
+### One-time setup
+
+You need the Cloudflare account where the `home-hub-mailbox` bucket was made.
+
+1. On a computer, sign in to the [Cloudflare dashboard](https://dash.cloudflare.com).
+2. On the left, click **R2 Object Storage**, then **Manage R2 API Tokens** (on the right of the R2 page; on some screens it is under **API**).
+3. Click **Create API token** (pick the **Account API token** kind if it asks).
+4. Give it a name such as `home-hub-pi`. Under **Permissions**, choose **Object Read & Write**.
+5. Under **Specify bucket(s)**, choose **Apply to specific buckets only** and pick `home-hub-mailbox`. Leave the rest as it is and click **Create API Token**.
+6. The next page shows three things you need. Copy each one now (the secret is shown only once):
+   - **Access Key ID**
+   - **Secret Access Key**
+   - the S3 endpoint, under **Use jurisdiction-specific endpoints for S3 clients**, which looks like `https://<a long number>.r2.cloudflarestorage.com`
+
+   Keep this page open until step 9. The Access Key ID and Secret Access Key are passwords: never put them in git, a chat, an email or a screenshot.
+7. On the Pi, open the settings file:
+
+   ```sh
+   cd ~/code/tizen-takeover/pi
+   nano .env
+   ```
+
+8. Go to the end of the file and type these three lines, pasting your own values after each `=` (no spaces, no quotes):
+
+   ```
+   HUB_MAILBOX_ENDPOINT=https://...r2.cloudflarestorage.com
+   HUB_MAILBOX_ACCESS_KEY_ID=...
+   HUB_MAILBOX_SECRET_ACCESS_KEY=...
+   ```
+
+   If the endpoint you copied ends with `/home-hub-mailbox`, that is fine too.
+9. Save and close: press Ctrl+O, then Enter, then Ctrl+X.
+10. Get the new code and restart the server:
+
+    ```sh
+    git pull
+    docker compose restart hub
+    ```
+
+11. Wait about 15 seconds, then check it:
+
+    ```sh
+    ./hub mailbox status
+    ```
+
+    You should see `Claude mailbox: connected, checked 5 seconds ago.` and `Bucket home-hub-mailbox at ...`. `./hub status` also has a `Claude mailbox:` line.
+
+This is Pi-only: the TV app does not change, and nothing on jsDelivr needs refreshing.
+
+### If it says something else
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `The Claude mailbox is off.` | The three lines are not in `.env`, or have a `#` in front | Check step 8, then `docker compose restart hub` |
+| `The Claude mailbox is off: HUB_MAILBOX_... missing in pi/.env` | One of the three lines is missing or empty | Add it, then restart |
+| `NOT connected (R2 answered HTTP 403 SignatureDoesNotMatch)` | The secret key is wrong (often a missing character) | Paste it again, or make a new token, then restart |
+| `NOT connected (R2 answered HTTP 403 AccessDenied)` or `InvalidAccessKeyId` | The token is wrong, deleted, or not allowed on this bucket | Make a new token for `home-hub-mailbox` (steps 2 to 6) |
+| `NOT connected (R2 answered HTTP 404 NoSuchBucket)` | The endpoint is for another account, or the bucket has a different name | Copy the endpoint again |
+| `NOT connected (network problem ...)` or `cannot find ...` | The Pi cannot reach the internet right now | It keeps trying by itself, at most once a minute |
+| `This server does not know the Claude mailbox yet.` | The server is still running the old code | `git pull`, then `docker compose restart hub` |
+
+The log (`docker compose logs hub`) says when the mailbox connects, when it first loses the connection and when it is back; it never shows the keys.
+
+### If a key leaks
+
+In the Cloudflare dashboard, go back to **R2 Object Storage**, **Manage R2 API Tokens**, and delete that token. The old keys stop working at once. Then make a new one (steps 3 to 6) and put the new values in `.env` (steps 7 to 10).
+
+### Cost
+
+At one look every 10 seconds the Pi makes about 8,600 list calls a day (about 260,000 a month), plus one small status write a minute (about 43,000 a month). R2's free tier includes 1 million such calls a month, and the notes are tiny, so this stays free. Setting `HUB_MAILBOX_POLL_SECONDS=30` in `.env` cuts it to a third; Claude's commands then take up to 30 seconds to happen.
+
+### How it works (for builders)
+
+- Claude writes `inbox/<id>.json`: `{"id": "<id>", "created": "<ISO time>", "cmd": "<name>", "args": {...}}`. The id is 6 to 64 letters, digits, `_` or `-` and must match the file name; `created` must be within the last 24 hours and at most 5 minutes ahead; the file must be under 64 KB; only `id`, `created`, `cmd` and `args` are allowed.
+- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
+- The Pi writes `outbox/<id>.json`: `{id, cmd, ok, state, message, data, started, finished}`. `message` is the same text `./hub` prints (several lines for lists). First it writes `state: "running"` as a claim, then the final result with `state: "done"`; a command with an outbox file is never run again, even after a crash. Then it deletes the inbox file.
+- At most 20 commands per look, oldest `created` first, one at a time.
+- `status.json` is rewritten every minute and after each command: version, uptime, how many screens are listening, the mailbox's last command and last error, and a calendar summary (counts only).
+- About once an hour, results older than 7 days and leftover inbox files older than 24 hours are deleted.
+- `restart` writes its result, then stops the server; Docker (`restart: unless-stopped`) starts it again with whatever code is on the Pi. It does not run `git pull`. Without Docker or systemd the server just stops.
+- Settings: `HUB_MAILBOX_ENDPOINT`, `HUB_MAILBOX_BUCKET` (default `home-hub-mailbox`), `HUB_MAILBOX_ACCESS_KEY_ID`, `HUB_MAILBOX_SECRET_ACCESS_KEY`, `HUB_MAILBOX_POLL_SECONDS` (default 10, at least 3). The code is `mailbox.js`; tests are `node pi/mailbox-test.js`.
+
+### How Claude sends a command
+
+Claude uses the Cloudflare REST API through its own connection (no R2 keys needed on that side; the account id below is not a secret). The full steps for Claude are in `pi/CLAUDE.md`. In short:
+
+```sh
+B=https://api.cloudflare.com/client/v4/accounts/f24d1741cf57727291b631def49ffacb/r2/buckets/home-hub-mailbox/objects
+curl -sS -X PUT "$B/inbox%2F<id>.json" -H 'content-type: application/json' --data @cmd.json   # send
+curl -sS "$B/outbox%2F<id>.json"                                                              # the reply
+curl -sS "$B/status.json"                                                                     # is the Pi alive
+curl -sS "$B?prefix=outbox/"                                                                  # list replies
+```
+
 ## Where your data lives, and backups
 
 Everything is in `data/state.json` in this folder (the to-do list, the tile layout, and the latest calendar events; never the calendar links). It is rewritten safely on each change. If it ever gets damaged, the server moves it aside as `data/state.bad-<time>.json` and starts an empty list instead of failing.
@@ -290,4 +396,5 @@ To restore, stop the server, copy the file back to `data/state.json`, and start 
 - Never put the token in git, in a chat, or in a screenshot. `.env` is listed in `.gitignore` so git skips it.
 - `./hub` never prints the token, and the server never logs it.
 - The calendar secret addresses are also only in `.env`. The server never logs them or shows them in any answer.
+- The Claude mailbox keys (`HUB_MAILBOX_ACCESS_KEY_ID`, `HUB_MAILBOX_SECRET_ACCESS_KEY`) are only in `.env` too, and are never logged or written to the bucket. If one leaks, delete the token in Cloudflare ("If a key leaks" above).
 - If you think it leaked, delete the `HUB_TOKEN=` line from `.env`, run `./hub token`, and restart the server.
