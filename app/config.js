@@ -52,8 +52,8 @@ var HUB_CONFIG = {
     { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
   ],
 
-  /* Saved layouts for the switcher: press Left on the left-most tile and a
-     list slides out. Pick one and it is applied (and sent to the Pi, so it
+  /* Saved layouts for the switcher: press Up on a top tile (or Left on a
+     left-most one) and a bar of pills drops from the top. Pick one and it is applied (and sent to the Pi, so it
      is remembered). "Stock" is the built-in layout above. Copy a layout here
      from the Layout Studio's saved list; widgets this hub doesn't have are
      skipped, and a layout may leave widgets out to hide them. */

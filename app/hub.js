@@ -951,12 +951,14 @@
 
   /* ---------- layout switcher ---------- */
 
-  // Press Left on the left-most tile and a list of saved layouts (HUB_CONFIG.layouts)
-  // slides out. OK applies one at once. The TV can't write to the Pi (that
+  // Press Up on a top tile, or Left on a left-most one, and a bar of saved
+  // layouts (HUB_CONFIG.layouts) drops from the top. Left and Right move, OK
+  // applies one at once, and the one showing now has a star. The TV can't write to the Pi (that
   // needs its token), so the pick is kept here, with the Pi's layout at that
   // moment; it stays until someone sets another layout on the Pi.
   var CHOICE_KEY = 'homeHub.layoutChoice';
   var switcherEl = document.getElementById('switcher');
+  var STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.6l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.4l-5.8 3.1 1.1-6.5L2.6 9.4l6.5-.9z"/></svg>';
   var sw = { on: false, index: 0, presets: [], nodes: [], built: false, hideTimer: null };
 
   // Order-free text for a layout, so two lists of the same tiles compare equal.
@@ -1002,24 +1004,23 @@
 
   function drawSwitcher() {
     switcherEl.innerHTML = '';
-    el('div', 'switcher-title', switcherEl).textContent = 'Layouts';
-    el('div', 'switcher-sub', switcherEl).textContent = 'Pick how the home screen looks';
+    sw.bar = el('div', 'switcher-bar', switcherEl);
     var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
     sw.nodes = [];
     sw.index = 0;
     for (var i = 0; i < sw.presets.length; i++) {
-      var node = el('div', 'switcher-item', switcherEl);
+      var node = el('div', 'switcher-item', sw.bar);
       node.setAttribute('role', 'menuitem');
-      el('span', 'switcher-name', node).textContent = sw.presets[i].name;
       if (presetSig(sw.presets[i]) === current) {
         node.classList.add('is-active');
-        el('span', 'switcher-now', node).textContent = 'Showing now';
+        node.setAttribute('aria-current', 'true');
+        el('span', 'switcher-star', node).innerHTML = STAR_SVG;
         sw.index = i;
       }
+      el('span', 'switcher-name', node).textContent = sw.presets[i].name;
       node.addEventListener('click', (function (n) { return function () { sw.index = n; chooseLayout(); }; })(i));
       sw.nodes.push(node);
     }
-    el('div', 'switcher-hint', switcherEl).textContent = 'OK to switch. Back or Right to close.';
     focusSwitcher(sw.index);
   }
 
@@ -1037,7 +1038,12 @@
     drawSwitcher();
     sw.on = true;
     switcherEl.classList.add('is-on');
-    void switcherEl.offsetWidth;           // so the slide starts from off screen
+    // Glass: the bar shows the blurred picture behind where it comes to rest.
+    if (hasPicture) {
+      setGlassOrigin(sw.bar, switcherEl.offsetLeft + sw.bar.offsetLeft + sw.bar.clientLeft,
+        switcherEl.offsetTop + sw.bar.offsetTop + sw.bar.clientTop);
+    }
+    void switcherEl.offsetWidth;           // so the drop starts from off screen
     switcherEl.classList.add('is-shown');
   }
 
@@ -1052,8 +1058,8 @@
 
   function moveSwitcher(dir) {
     var n = sw.nodes.length;
-    if (dir === 'down' && sw.index < n - 1) focusSwitcher(sw.index + 1);
-    else if (dir === 'up' && sw.index > 0) focusSwitcher(sw.index - 1);
+    if (dir === 'right' && sw.index < n - 1) focusSwitcher(sw.index + 1);
+    else if (dir === 'left' && sw.index > 0) focusSwitcher(sw.index - 1);
   }
 
   function chooseLayout() {
@@ -1200,7 +1206,7 @@
     }
     var next = pickNext(from, rects, dir);
     if (next >= 0) focusHome(next);
-    else if (dir === 'left') openSwitcher();   // nothing further left: the layout list
+    else if (dir === 'up' || dir === 'left') openSwitcher();   // off the top or left edge: the layout bar
   }
 
   /* ---------- the panel ---------- */
@@ -1745,8 +1751,8 @@
 
     if (sw.on) {
       if (code === KEY.ENTER) chooseLayout();
-      else if (dir === 'up' || dir === 'down') moveSwitcher(dir);
-      else if (dir === 'right' || isBack(code)) closeSwitcher();
+      else if (dir === 'left' || dir === 'right') moveSwitcher(dir);
+      else if (dir === 'down' || isBack(code)) closeSwitcher();
       return;
     }
 
