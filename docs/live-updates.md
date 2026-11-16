@@ -53,9 +53,9 @@ The Pi side is just as plain. With no TV connected it holds no open lines and no
 
 ## What you see when something is wrong
 
-Small text on the clock tile, never a pop-up, never a blank screen. Each problem has its own words:
+Small text under About this hub on the Clock page, never a pop-up, never a blank screen. Each problem has its own words:
 
-| Situation | The clock tile says | What the hub does |
+| Situation | About this hub says | What the hub does |
 |---|---|---|
 | Live updates not set up | nothing | exactly what it does today |
 | Pi never reached from this TV | nothing | exactly what it does today, keeps trying quietly |
@@ -157,7 +157,7 @@ On a laptop-style preview, with the Pi server running on the same machine:
 4. `show weather`, `home`, `say`: the screen follows.
 5. A to-do added on the Pi appears on the screen; one ticked on the screen reaches the Pi.
 6. **TV off then on:** close the page, add to-dos and send a `show` command, confirm the server answers at once and keeps nothing queued, open the page again: the new to-dos are there, the old command does not fire, nothing is blank.
-7. Server stops while connected: the clock tile says so, the to-do list still works, changes are kept and sent when the server returns.
+7. Server stops while connected: the Clock page says so, the to-do list still works, changes are kept and sent when the server returns.
 8. A screen the server refuses, and a wrong reply at the address: each shows its own words.
 9. Old browser path: the same checks with the push line switched off, so the fallback is used.
 
@@ -254,7 +254,7 @@ Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text
 
 ### The hub's client
 
-States: `off`, `quiet` (never reached from this TV), `connecting`, `live`, `lost`, `refused`, `badreply`, `needsupdate`. `HUB_LIVE.status()` returns `{ state, text, since }`; `text` is the line for the clock tile and is `''` for `off`, `quiet` and `connecting`.
+States: `off`, `quiet` (never reached from this TV), `connecting`, `live`, `lost`, `refused`, `badreply`, `needsupdate`. `HUB_LIVE.status()` returns `{ state, text, since }`; `text` is the line for About this hub on the Clock page and is `''` for `off`, `quiet` and `connecting`.
 
 1. `GET /live/state`, 8 second limit. Success: hand each resource to its listeners, then subscribe.
 2. Subscribe with `EventSource`. `hello` with a different epoch or a higher rev than step 1 saw: go to 1. `change`: apply if its rev is newer. `command`: run once per id. `ping` with a higher rev: go to 1. Nothing for 50 seconds: treat as dropped.
