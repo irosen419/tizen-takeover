@@ -781,10 +781,10 @@ body.has-picture {
 .today-strip .today-time {
   flex: 0 0 auto;
   margin-top: 0;
-  font-size: 3.3rem;
-  line-height: 1.15;
+  font-size: 2.9rem;
+  line-height: 1.1;
 }
-.today-strip .today-ampm { font-size: 1.2rem; margin-left: 0.35rem; }
+.today-strip .today-ampm { font-size: 1rem; margin-left: 0.3rem; }
 .today-strip .today-date {
   flex: 0 1 auto;
   min-width: 0;
