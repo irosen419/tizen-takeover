@@ -727,7 +727,48 @@
 
   /* ---------- tile ---------- */
 
+  // A one-row strip: temperature, icon and condition on one line; a wide
+  // strip adds the high, low and rain on the right.
+  function drawStrip(body, size) {
+    var m = model();
+    var root = el('div', 'wx-tile wx-strip', body);
+    if (!m) {
+      el('div', 'wx-strip-cond', root, message(stateNow()).head);
+      return;
+    }
+    el('div', 'wx-strip-temp', root, temp(m.temp));
+    icon(m.icon, 'wx-strip-icon', root);
+    el('div', 'wx-strip-cond', root, m.text || '');
+    if (size.width === 'wide') {
+      var range = el('div', 'wx-range wx-strip-range', root);
+      el('span', 'wx-hl-key', range, 'H');
+      el('span', 'wx-hl-val', range, temp(m.hi));
+      el('span', 'wx-hl-key wx-hl-gap', range, 'L');
+      el('span', 'wx-hl-val', range, temp(m.lo));
+      var rain = el('div', 'wx-rain' + rainClass(m.rain), root);
+      icon('wx-drop', 'wx-rain-icon', rain);
+      el('span', 'wx-rain-val', rain, pct(m.rain));
+    }
+  }
+
+  // A tall tile: the next few hours in a row, each with its icon.
+  function drawTileHours(root, m, size) {
+    var hours = m.hours || [];
+    var want = size.width === 'wide' ? 8 : size.width === 'narrow' ? 3 : 5;
+    var row = el('div', 'wx-tile-hours', root);
+    for (var i = 0; i < hours.length && i < want; i++) {
+      var h = hours[i];
+      var col = el('div', 'wx-th' + (h.now ? ' is-now' : ''), row);
+      el('div', 'wx-th-hour', col, h.now ? 'Now' : h.hour + ' ' + h.ampm);
+      icon(h.icon, 'wx-th-icon', col);
+      el('div', 'wx-th-temp', col, temp(h.temp));
+    }
+    if (!row.firstChild) root.removeChild(row);
+  }
+
   function drawTile(body) {
+    var size = C && C.size ? C.size() : null;
+    if (size && size.tier === 'strip') return drawStrip(body, size);
     var state = stateNow();
     var m = model();
     var root = el('div', 'wx-tile', body);
@@ -748,6 +789,7 @@
     el('div', 'wx-tile-temp', now, temp(m.temp));
     icon(m.icon, 'wx-tile-icon', now);
     if (m.text) el('div', 'wx-tile-cond', root, m.text);
+    if (size && size.tier === 'tall') drawTileHours(root, m, size);
 
     var foot = el('div', 'wx-tile-foot', root);
     var range = el('div', 'wx-range', foot);

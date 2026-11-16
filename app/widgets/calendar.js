@@ -55,6 +55,7 @@
     nothingElse: 'Nothing else today',
     nothingComing: 'Nothing coming up',
     nextLabel: 'Next',
+    comingUp: 'Coming up',
     more: '+{n} more',
     nothingDay: 'Nothing on this day.',
     outside: 'The Pi only reads from yesterday to 60 days ahead.',
@@ -723,7 +724,69 @@
     mark.innerHTML = (window.HUB_ICONS && window.HUB_ICONS.calendar) || '';
   }
 
+  // A one-row strip: the next thing on one line. What's on now or next today,
+  // else today's all-day event, else the next day with something on.
+  function drawStrip(body) {
+    var root = el('div', 'cal-tile cal-strip', body);
+    var state = stateNow();
+    if (state !== 'data') {
+      el('div', 'cal-strip-title', root, message(state).head);
+      return;
+    }
+    var a = agenda(index, now());
+    var u = a.upcoming[0];
+    var line = el('div', 'cal-strip-line', root);
+    if (u) {
+      bar(line, u.ev.cal);
+      var when = el('span', 'cal-strip-when', line);
+      if (u.now) el('span', 'cal-now-tag', when, STRINGS.now);
+      else when.textContent = timeText(zone, u.ev.s);
+      el('span', 'cal-strip-title', line, titleOf(u.ev));
+    } else if (a.allDay.length) {
+      bar(line, a.allDay[0].cal);
+      el('span', 'cal-strip-when cal-trow-tag', line, STRINGS.allDay);
+      el('span', 'cal-strip-title', line, titleOf(a.allDay[0]));
+    } else if (a.next) {
+      bar(line, a.next.cal);
+      el('span', 'cal-strip-when', line, relDay(a.next.startDay, a.today) + (a.next.allDay ? '' : ' ' + timeText(zone, a.next.s)));
+      el('span', 'cal-strip-title', line, titleOf(a.next));
+    } else {
+      el('span', 'cal-strip-title is-quiet', line, a.had ? STRINGS.nothingElse : STRINGS.nothingComing);
+    }
+  }
+
+  // A tall tile with room under today's events: the next days' events, as
+  // many as fit. The today list keeps its rows; this list gives way.
+  function drawLater(root, list, a) {
+    var later = [];
+    for (var i = 0; i < index.events.length && later.length < TILE_ROWS; i++) {
+      if (index.events[i].startDay > a.today) later.push(index.events[i]);
+    }
+    if (!later.length) return;
+    var box = el('div', 'cal-later', root);
+    var foot = root.querySelector('.cal-tile-foot');
+    if (foot) root.insertBefore(box, foot);
+    el('div', 'cal-next-label', box, STRINGS.comingUp);
+    var rows = el('div', 'cal-tile-list cal-later-list', box);
+    list.style.flexShrink = '0';
+    for (i = 0; i < later.length; i++) {
+      var ev = later[i];
+      var row = el('div', 'cal-trow', rows);
+      bar(row, ev.cal);
+      var text = el('div', 'cal-trow-text', row);
+      el('div', 'cal-trow-when', text, relDay(ev.startDay, a.today) + (ev.allDay ? ' · ' + STRINGS.allDay : ' ' + timeText(zone, ev.s)));
+      el('div', 'cal-trow-title', text, titleOf(ev));
+    }
+    while (rows.lastChild && rows.scrollHeight > rows.clientHeight + 1) rows.removeChild(rows.lastChild);
+    if (!rows.firstChild) {
+      root.removeChild(box);
+      list.style.flexShrink = '';
+    }
+  }
+
   function drawTile(body) {
+    var size = C && C.size ? C.size() : null;
+    if (size && size.tier === 'strip') return drawStrip(body);
     var root = el('div', 'cal-tile', body);
     var state = stateNow();
     // Without data the zone isn't known yet, so the date waits for it too.
@@ -767,6 +830,13 @@
       for (i = 0; i < notes.length; i++) el('div', 'cal-tile-note' + (notes[i].warn ? ' is-warn' : ''), foot, notes[i].text);
     }
     fitRows(list, more, rows);
+    // A small tile with no room for even one row: the date gives way.
+    if (list.firstChild && list.scrollHeight > list.clientHeight + 1) {
+      root.removeChild(head);
+      while (list.firstChild) list.removeChild(list.firstChild);
+      fitRows(list, more, rows);
+    }
+    if (size && size.tier === 'tall' && a.upcoming.length && list.childNodes.length === rows.length) drawLater(root, list, a);
   }
 
   function alldayRow(ev) {

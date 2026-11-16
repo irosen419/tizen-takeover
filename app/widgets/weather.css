@@ -572,3 +572,73 @@
 .panel.is-full .wx-msg-big { font-size: 2rem; }
 .panel.is-full .wx-msg-text { font-size: 1.2rem; }
 .panel.is-full .wx-mark-panel { width: 18rem; height: 18rem; }
+
+/* ---------- tile: other sizes ---------- */
+
+/* A tall tile: the next hours between the condition and the footer. */
+.wx-tile-hours {
+  flex: 0 0 auto;
+  display: flex;
+  margin-top: auto;
+  padding-top: 0.8rem;
+}
+.wx-th { flex: 1 1 0; min-width: 0; text-align: center; }
+.wx-th-hour {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-th.is-now .wx-th-hour { color: var(--text); font-weight: 600; }
+.wx-th-icon { width: 2rem; height: 2rem; margin: 0.3rem auto 0.2rem; display: block; color: var(--text); }
+.wx-th-temp { font-size: 1.05rem; line-height: 1.35; color: var(--text); }
+
+/* A strip: one line. */
+.wx-tile.wx-strip {
+  flex-direction: row;
+  align-items: center;
+}
+.wx-strip-temp {
+  flex: 0 0 auto;
+  font-size: 2.6rem;
+  font-weight: 300;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.wx-strip-icon {
+  flex: 0 0 auto;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin: 0 0.8rem 0 0.6rem;
+  color: var(--text);
+}
+.wx-strip-cond {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wx-strip-range { margin-left: 0.8rem; }
+.tile-wn .wx-strip-cond { display: none; }
+.tile-w1 .wx-strip-icon { display: none; }
+.tile-w1 .wx-strip-temp { margin: 0 auto; font-size: 2rem; }
+
+/* Narrow: a smaller temperature beside the icon, and the footer may wrap. */
+.tile-wn .wx-tile-temp { font-size: 3rem; }
+.tile-wn .wx-tile-icon { width: 2.6rem; height: 2.6rem; }
+.tile-wn .wx-tile-foot { flex-wrap: wrap; }
+.tile-wn .wx-hl-gap { margin-left: 0.5rem; }
+.tile-wn .wx-rain { margin-left: auto; }
+.tile-wn .wx-tile-cond {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

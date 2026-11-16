@@ -523,3 +523,46 @@
 .panel.is-full .todo-pill { padding-right: 2.85rem; font-size: 1rem; border-radius: 1.45rem; }
 .panel.is-full .todo-sec-empty { font-size: 1.1rem; }
 .panel.is-full .todo-warn { font-size: 0.9rem; }
+
+/* ---------- one-row strip ---------- */
+
+/* The count, then the first Now item on one line ending in "...". */
+.todo-tile.todo-strip {
+  flex-direction: row;
+  align-items: center;
+  padding-top: 0;
+}
+.todo-strip-num {
+  flex: 0 0 auto;
+  margin-right: 0.7rem;
+  font-size: 2.6rem;
+  font-weight: 300;
+  line-height: 1.2;
+  color: var(--text);
+}
+.todo-strip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.todo-strip-text.is-late { color: var(--todo-warn); }
+
+/* ---------- small tiles ---------- */
+
+.tile-h1 .todo-tile,
+.tile-wn .todo-tile { overflow: hidden; }
+.tile-wn .todo-hero-num { font-size: 3.2rem; }
+.tile-wn .todo-hero-cap { font-size: 1rem; }
+.tile-wn .todo-meta,
+.tile-wn .todo-more {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-w1 .todo-strip-num { margin: 0 auto; }
+.tile-w1 .todo-strip-text { display: none; }

@@ -82,7 +82,7 @@ Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion
 
 ### The status line
 
-The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.12.1 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)).
+The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.12.2 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)).
 
 ### Entertainment
 
@@ -126,7 +126,7 @@ Open the tile to see the whole list, in four parts: **Now**, **Next**, **Waiting
 - **Add something:** the box at the top has focus when the list is empty. Press OK and type with the TV's keyboard, then press Done. The new item goes to the top of Now and the box is ready for the next one. Back stops typing and keeps the text.
 - **Tick it off:** OK on an item. It stays where it is, crossed out, until you close the list, so a wrong press is fixed with another OK. Next time it shows under Done today. OK on a Done today item puts it back.
 - **Move it:** press Right on an item to reach its two round buttons: the arrow moves it along (its label says where: **To Next**, **To Waiting on** or **To Now**), the bin removes it.
-- **Remove it:** OK on the bin (**Remove**), then OK again on the red **Confirm**. Moving away or pressing Back cancels.
+- **Remove it:** OK on the bin (**Remove**), then OK again on **Press again**. Moving away or pressing Back cancels.
 
 Done items stay under Done today until the end of the day, then they're cleared.
 

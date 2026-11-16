@@ -23,6 +23,35 @@
     return node;
   }
 
+  function outer(node) {
+    var cs = window.getComputedStyle(node);
+    if (cs.position === 'absolute' || cs.display === 'none') return 0;
+    return node.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
+  }
+
+  // Clamps the text to the lines that fit in the body (old WebKit's line
+  // clamp ends the last one in "..."). Measured, because a longer language
+  // or a bigger TV font changes how many lines there are. In a tall tile the
+  // mark sits above the text; if even then nothing fits, the mark goes.
+  function fitLines(body, text, mark) {
+    var room = body.clientHeight;
+    if (!room) return;
+    var lh = parseFloat(window.getComputedStyle(text).lineHeight) || 20;
+    var lines = Math.max(1, Math.floor((room - outer(mark) - outer(text) + text.offsetHeight) / lh));
+    function clamp(n) {
+      text.style.display = '-webkit-box';
+      text.style.webkitBoxOrient = 'vertical';
+      text.style.webkitLineClamp = String(n);
+      text.style.overflow = 'hidden';
+    }
+    if (text.offsetHeight <= lines * lh + 1) return;
+    clamp(lines);
+    if (outer(mark) && outer(mark) + outer(text) > room + 1) {
+      mark.style.display = 'none';
+      clamp(Math.max(1, Math.floor((room - outer(text) + text.offsetHeight) / lh)));
+    }
+  }
+
   function placeholder(p) {
     return {
       id: p.id,
@@ -31,11 +60,16 @@
       expandable: true,
       planned: true,
 
-      renderTile: function (body) {
-        body.appendChild(el('p', 'planned-text', p.text));
+      renderTile: function (body, ctx) {
+        var text = el('p', 'planned-text', p.text);
+        body.appendChild(text);
         var mark = el('span', 'planned-mark');
         mark.innerHTML = (window.HUB_ICONS && HUB_ICONS[p.icon]) || '';
         body.appendChild(mark);
+        var size = ctx && ctx.size ? ctx.size() : null;
+        // A strip has one line that ends in "..." (CSS); other sizes get as
+        // many whole lines as fit, then "...".
+        if (!size || size.tier !== 'strip') fitLines(body, text, mark);
       },
 
       renderPanel: function (body) {

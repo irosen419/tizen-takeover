@@ -52,7 +52,6 @@ var HUB_CONFIG = {
     { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
   ],
 
-
   widgets: {
     /*
      * Entertainment: the app launcher.

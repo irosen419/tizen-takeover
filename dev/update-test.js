@@ -33,6 +33,7 @@ const path = require('path');
 const crypto = require('crypto');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
+const clockLayout = require('./clock-layout');
 
 const ROOT = path.join(__dirname, '..');
 const OWNER = 'irosen419';
@@ -117,7 +118,7 @@ const COMMITS = {
   [A]: (rest) => readWorking(rest),
   [B]: (rest) => {
     const body = readWorking(rest);
-    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.12.1-B'));
+    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.12.2-B'));
     return body;
   },
   [BROKEN]: (rest) => {
@@ -233,6 +234,8 @@ async function newContext(options) {
     context.log.external.push(url);
     return route.abort();
   });
+  // The status lines (this test's window on updates) need a clock two rows tall.
+  await clockLayout.route(context);
   context.on('page', (page) => watchPage(context, page));
   return context;
 }
@@ -367,10 +370,10 @@ async function check1() {
   await waitAt(page, A, 'app/hub.html');
   const rec = await until(async () => { const r = await record(page); return r && r.good === A ? r : false; }, 3000, 'good is not A');
   assert(!rec.trying, 'trying was not cleared: ' + JSON.stringify(rec));
-  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.12.1', 'record: ' + JSON.stringify(rec));
+  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.12.2', 'record: ' + JSON.stringify(rec));
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
-  assert(/^v0\.12\.1 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.12\.2 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   assert(lines.length === 2, 'status lines: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
   assert(asks.length === 1, 'GitHub was asked ' + asks.length + ' times');
@@ -397,7 +400,7 @@ async function check2() {
   await go(page, shellUrl());
   await waitAt(page, B, 'app/hub.html');
   const lines = await look.lines(page);
-  assert(/^v0\.12\.1-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.12\.2-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   const rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared');
   noMissingFiles(logSince(at));
@@ -473,7 +476,7 @@ async function check4() {
   await waitAt(page, B, 'app/hub.html');
   rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared on B: ' + JSON.stringify(rec));
-  assert(/^v0\.12\.1-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
+  assert(/^v0\.12\.2-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
   noErrors(context);
 }
 
@@ -684,13 +687,6 @@ async function checkTile() {
   ];
   for (const c of cases) {
     const { context, page } = await contextWithGood(A, c.query);
-    // This check is about a two-row clock tile, so use the earlier layout where it is two rows tall.
-    await context.addInitScript(() => {
-      try { localStorage.setItem('homeHub.layout', JSON.stringify([
-        { widget: 'today', x: 0, y: 0, w: 3, h: 2 }, { widget: 'entertainment', x: 3, y: 0, w: 6, h: 2 }, { widget: 'weather', x: 9, y: 0, w: 3, h: 2 },
-        { widget: 'todo', x: 0, y: 2, w: 3, h: 4 }, { widget: 'calendar', x: 3, y: 2, w: 3, h: 4 }, { widget: 'nowplaying', x: 6, y: 2, w: 3, h: 2 },
-        { widget: 'awws', x: 9, y: 2, w: 3, h: 2 }, { widget: 'ambiance', x: 6, y: 4, w: 3, h: 2 }, { widget: 'mirror', x: 9, y: 4, w: 3, h: 2 }])); } catch (e) { /* ignore */ }
-    });
     github.mode = c.mode;
     await go(page, shellUrl(c.query));
     await waitAt(page, A, 'app/hub.html');

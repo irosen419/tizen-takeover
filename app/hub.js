@@ -35,7 +35,6 @@
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
- *     onLayout: function (ctx) {},         // a new layout moved or resized the tiles
  *     onStatus: function (ctx) {}          // the motion status text changed
  *   });
  *
@@ -58,7 +57,7 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.12.1'
+ *   ctx.build                 'v0.12.2'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
@@ -74,6 +73,15 @@
  *   ctx.isOpen(), ctx.mode()  'panel' | 'full' | null
  *   ctx.setMode(mode), ctx.close()
  *   ctx.redrawTile(), ctx.redrawPanel()
+ *   ctx.size()                the tile's size on the grid now:
+ *                             { cols, rows, tier, width }, where tier is
+ *                             'strip' (1 row), 'standard' (2) or 'tall' (3+)
+ *                             and width is 'narrow' (1-2 columns), 'standard'
+ *                             (3-5) or 'wide' (6+). The tile also carries the
+ *                             classes tile-h1 / tile-h2 / tile-h3 and tile-wn /
+ *                             tile-wm / tile-ww for CSS (and tile-w1 when one
+ *                             column wide). A layout from the Pi
+ *                             that changes a tile's size calls renderTile again.
  *   ctx.setSub(text)          the small line in the panel head
  *   ctx.setTileSub(text)      the small line under the tile's title ('' hides it)
  *   ctx.focus(el)             move panel focus to el
@@ -105,7 +113,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.12.1';
+  var BUILD = 'v0.12.2';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -833,6 +841,40 @@
     cell.style.height = (entry.h / 6 * 100) + '%';
   }
 
+  // A tile's size in grid cells, with a rough height tier and width class
+  // that widgets and the CSS use to pick a layout (see ctx.size()).
+  function sizeOf(entry) {
+    var cols = entry && entry.w > 0 ? entry.w : 1;
+    var rows = entry && entry.h > 0 ? entry.h : 1;
+    return {
+      cols: cols,
+      rows: rows,
+      tier: rows <= 1 ? 'strip' : rows === 2 ? 'standard' : 'tall',
+      width: cols <= 2 ? 'narrow' : cols >= 6 ? 'wide' : 'standard'
+    };
+  }
+
+  var SIZE_CLASSES = ['tile-h1', 'tile-h2', 'tile-h3', 'tile-wn', 'tile-wm', 'tile-ww', 'tile-w1'];
+
+  // Puts the size classes on the tile: tile-h1 (one row, a strip), tile-h2,
+  // tile-h3 (three rows or more), and tile-wn (one or two columns), tile-wm
+  // (three to five) or tile-ww (six or more), plus tile-w1 on a tile one
+  // column wide. Returns true when the size changed.
+  function applySize(rec, entry) {
+    var size = sizeOf(entry);
+    var old = rec.size;
+    rec.size = size;
+    var want = [size.tier === 'strip' ? 'tile-h1' : size.tier === 'standard' ? 'tile-h2' : 'tile-h3',
+      size.width === 'narrow' ? 'tile-wn' : size.width === 'wide' ? 'tile-ww' : 'tile-wm'];
+    if (size.cols === 1) want.push('tile-w1');
+    for (var i = 0; i < SIZE_CLASSES.length; i++) {
+      var c = SIZE_CLASSES[i];
+      if (want.indexOf(c) >= 0) rec.tile.classList.add(c);
+      else rec.tile.classList.remove(c);
+    }
+    return !old || old.cols !== size.cols || old.rows !== size.rows;
+  }
+
   // The widget ids a layout puts on screen, each once, sorted.
   function shownIds(layout) {
     var ids = [];
@@ -873,15 +915,17 @@
     for (var j = 0; j < layout.length; j++) {
       if (layout[j] && !at.hasOwnProperty(layout[j].widget)) at[layout[j].widget] = layout[j];
     }
-    for (var k = 0; k < widgets.length; k++) placeCell(widgets[k].cell, at[widgets[k].w.id]);
+    var resized = [];
+    for (var k = 0; k < widgets.length; k++) {
+      var entry = at[widgets[k].w.id];
+      placeCell(widgets[k].cell, entry);
+      if (applySize(widgets[k], entry)) resized.push(widgets[k]);
+    }
     layoutKey = key;
     measureHome();
     placeGlass();
-    for (var m = 0; m < widgets.length; m++) {
-      // A widget with an onLayout hook handles its own redraw; the rest are drawn again at the new size.
-      if (typeof widgets[m].w.onLayout === 'function') call(widgets[m], 'onLayout', [widgets[m].ctx]);
-      else drawTile(widgets[m]);
-    }
+    // A tile of another size may want another layout: draw it again.
+    for (var r = 0; r < resized.length; r++) drawTile(resized[r]);
   }
 
   // Other widgets: build afresh. A note in sessionStorage keyed by the layout
@@ -934,6 +978,10 @@
       setMode: function (m) { if (open === rec && m !== mode && (m === 'panel' || m === 'full')) switchMode(m); },
       close: function () { if (open === rec) closePanel(); },
       redrawTile: function () { if (rec) drawTile(rec); },
+      size: function () {
+        var z = (rec && rec.size) || sizeOf(null);
+        return { cols: z.cols, rows: z.rows, tier: z.tier, width: z.width };
+      },
       redrawPanel: function () { if (open === rec) drawPanelBody(true); },
       setSub: function (text) { if (open === rec) setPanelSub(text); },
       setTileSub: function (text) { setTileSub(rec, text); },
@@ -956,7 +1004,7 @@
       if (!w || placed.hasOwnProperty(w.id)) continue;   // one tile per widget
       placed[w.id] = true;
       var ctx = makeCtx(w);
-      var rec = { w: w, ctx: ctx, expandable: w.expandable !== false };
+      var rec = { w: w, ctx: ctx, expandable: w.expandable !== false, size: null };
       ctx._bind(rec);
       delete ctx._bind;
 
@@ -977,6 +1025,7 @@
       }
       rec.cell = cell;
       rec.tile = tile;
+      applySize(rec, entry);
       rec.body = el('div', 'tile-body', tile);
       rec.index = widgets.length;
       widgets.push(rec);
