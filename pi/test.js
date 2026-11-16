@@ -829,7 +829,7 @@ async function main() {
       [{ snapshot: { v: 2, sentAt: now, khaya: { done: 0, total: 1 } } }, /"v" must be 1/],
       [{ snapshot: { v: 1, sentAt: new Date(Date.now() + 3600000).toISOString(), khaya: { done: 0, total: 1 } } }, /10 minutes in the future/],
       [{ snapshot: { v: 1, sentAt: now } }, /no sections/],
-      [{ snapshot: { v: 1, sentAt: now, khaya: { done: 3, total: 2 }, reach: {} } }, /every section was rejected: khaya: "done" \(3\) is more than "total" \(2\); reach: "visits" is missing/]
+      [{ snapshot: { v: 1, sentAt: now, khaya: { done: 3, total: 2 }, reach: {} } }, /every section was rejected: khaya: "done" \(3\) is more than "total" \(2\); reach: the section must hold at least one of "visits", "buyClicks", "subscribers" or "scans"/]
     ];
     for (const [body, re] of cases) {
       const r = await request(P, 'POST', '/api/awws', { token: TOKEN, body: body });

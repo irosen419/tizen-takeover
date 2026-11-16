@@ -23,7 +23,7 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Is the Claude mailbox (Cloudflare R2) connected: `./hub mailbox status`
 - All commands: `./hub help`
 
-Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda` and `awws-todo`. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
+Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo` and `awws-reach`. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
 
 ## From the cloud: the Claude mailbox
 
@@ -49,7 +49,7 @@ Write `cmd.json` in your scratchpad folder. The reply is `{"id", "cmd", "ok", "s
 
 Commands and args (`args` may be left out when empty; unknown args are refused):
 
-- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo), `home`, `reload`
+- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach), `home`, `reload`
 - `say {"text": "Dinner in 10", "seconds": 8}` (text up to 140 characters, seconds 1-60)
 - `todo.add {"title": "Buy milk", "section": "next", "due": "2026-12-24"}`, `todo.list`
 - `todo.done {"title": "Buy milk"}` or `{"id": "..."}` (exactly one), `todo.remove` the same
@@ -72,5 +72,5 @@ Other calls: list replies `curl -sS "$B?prefix=outbox/"` (an array of `{key, ...
 - Never show, print, copy or log a calendar link (the `CALENDAR_*_URL` lines in `.env`). They are secret keys to the owner's calendars. If one may have leaked, tell the owner to reset it in Google Calendar (README.md, "If a secret address leaks").
 - To put an event on the TV, add it through the Google Calendar connector, then run `./hub calendar refresh`. Google may take a while to include it; if it is not there yet, say so and try again in a few minutes.
 - Do not edit `data/state.json` by hand while the server runs; use `./hub todo ...`.
-- The A World Worth Saving snapshot must never contain email addresses, links, notes text or librarians' last names. The Pi refuses a section with an email address or a link, but it cannot spot notes or names, so leave them out yourself. Send the `money` section only once the owner has said yes to money figures on the TV.
+- The A World Worth Saving snapshot must never contain email addresses, links, notes text or librarians' last names. The Pi refuses a section with an email address or a link, but it cannot spot notes or names, so leave them out yourself. The owner said yes to money figures on the TV on 2026-11-16, so the `money` section may be sent. To keep money off the TV (for guests, say), set `showMoney: false` under `widgets.awws` in `app/config.js`; the Pi still stores the section.
 - Setup and troubleshooting are in `README.md` in this folder.

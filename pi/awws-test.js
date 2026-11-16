@@ -187,6 +187,36 @@ async function main() {
     assert.deepStrictEqual(r.clean.visits, { week: 0, prev: 1000000, days: [1, 2, 3] });
   });
 
+  await check('reach: subscribers alone (counted by hand), with the last-check date as a date or a time', () => {
+    const r = one('reach', { subscribers: 2, subscribersAsOf: '2026-11-16' });
+    assert.ok(r.clean, r.error);
+    assert.deepStrictEqual(r.clean, { asOf: SENT, subscribers: 2, subscribersAsOf: '2026-11-16' });
+    const t = one('reach', { subscribers: 0, subscribersAsOf: '2026-11-16T14:05:00Z' });
+    assert.ok(t.clean, t.error);
+    assert.strictEqual(t.clean.subscribersAsOf, '2026-11-16T14:05:00Z');
+    assert.strictEqual(t.clean.subscribers, 0, 'no subscribers yet is still a figure');
+    const data = awws.merge(awws.emptyData(), awws.normalizeSnapshot(snap({ reach: { subscribers: 2, subscribersAsOf: '2026-11-16' } }), NOW), NOW).data;
+    const lines = awws.summaryLines(data, { when: (ms) => new Date(ms).toISOString().slice(11, 16) });
+    assert.strictEqual(lines[1], '  reach  2 subscribers at last check 2026-11-16, as of 15:10');
+    assert.deepStrictEqual(awws.summaryData(data).sections.reach, { asOf: SENT, subscribers: 2, subscribersAsOf: '2026-11-16', scans: 0 });
+  });
+
+  await check('reach: traffic alone (visits, buy clicks, scans) with no subscribers', () => {
+    const r = one('reach', { visits: { week: 412, prev: 388, days: [40, 50] }, buyClicks: { week: 23, prev: 27 }, scans: [{ school: 'Pine Hill', count: 4 }] });
+    assert.ok(r.clean, r.error);
+    assert.ok(!('subscribers' in r.clean) && !('subscribersAsOf' in r.clean));
+    const b = one('reach', { buyClicks: { week: 1, prev: 0 } });
+    assert.ok(b.clean, 'buy clicks alone: ' + b.error);
+    assert.ok(!('visits' in b.clean), 'visits stays out when it was not sent');
+    const s = one('reach', { scans: [] });
+    assert.ok(s.clean, 'an empty scan list still counts: ' + s.error);
+    const data = awws.merge(awws.emptyData(), awws.normalizeSnapshot(snap({ reach: r.clean }), NOW), NOW).data;
+    const line = awws.summaryLines(data, { when: (ms) => new Date(ms).toISOString().slice(11, 16) })[1];
+    assert.strictEqual(line, '  reach  412 visits this week, 388 the week before; 23 buy clicks this week, 27 the week before; 1 school with flier scans, as of 15:10');
+    assert.deepStrictEqual(awws.summaryData(data).sections.reach,
+      { asOf: SENT, visitsWeek: 412, visitsPrev: 388, buyClicksWeek: 23, buyClicksPrev: 27, scans: 1 });
+  });
+
   /* ---------- each rule, at least once ---------- */
 
   const items3 = (over) => todosWith([todo({ id: 't01' }), todo({ id: 't02' }), todo(Object.assign({ id: 't03' }, over))]);
@@ -234,7 +264,11 @@ async function main() {
     ['money: month not a month', 'money', Object.assign({}, MIN.money, { months: [{ month: '2026-13', spent: 1, earned: 1 }] }), /"month" must be a month like 2026-11 \(month 1\)/],
     ['money: claude without cost', 'money', Object.assign({}, MIN.money, { claude: { month: '2026-11' } }), /"claude\.cost" is missing/],
     ['money: nextTransfer date', 'money', Object.assign({}, MIN.money, { nextTransfer: { date: 'Dec 1' } }), /"nextTransfer\.date" must be a real date/],
-    ['reach: visits missing', 'reach', { subscribers: 4 }, /"visits" is missing/],
+    ['reach: none of its figures', 'reach', {}, /^the section must hold at least one of "visits", "buyClicks", "subscribers" or "scans"$/],
+    ['reach: only the last-check date', 'reach', { asOf: SENT, subscribersAsOf: '2026-11-16' }, /at least one of "visits", "buyClicks", "subscribers" or "scans"/],
+    ['reach: subscribersAsOf not a date or time', 'reach', { subscribers: 2, subscribersAsOf: 'Nov 16' }, /^"subscribersAsOf" must be a date like 2026-11-16 or a UTC time like 2026-11-16T15:10:00Z$/],
+    ['reach: subscribersAsOf a time with an offset', 'reach', { subscribers: 2, subscribersAsOf: '2026-11-16T09:00:00-06:00' }, /"subscribersAsOf" must be/],
+    ['reach: buyClicks without prev', 'reach', { buyClicks: { week: 3 } }, /"buyClicks\.prev" is missing/],
     ['reach: more than 28 days', 'reach', { visits: { week: 1, prev: 1, days: many(29, () => 1) } }, /"visits\.days" has 29 entries; at most 28/],
     ['reach: a day that is not whole', 'reach', { visits: { week: 1, prev: 1, days: [1, 2.5] } }, /"visits\.days" must be a whole number .*\(day 2\)/],
     ['reach: more than 10 scans', 'reach', { visits: { week: 1, prev: 1 }, scans: many(11, () => ({ school: 'S', count: 1 })) }, /at most 10/],

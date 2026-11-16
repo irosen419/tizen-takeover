@@ -23,6 +23,7 @@ const SECTIONS = ['todos', 'handoffs', 'outreach', 'khaya', 'pipeline', 'money',
 const OWNERS = ['ian', 'claude', 'both'];
 const TODO_SECTIONS = ['now', 'next', 'later'];
 const SCHOOL_STATES = ['waiting-ian', 'waiting-them', 'booked', 'visited'];
+const REACH_FIGURES = ['visits', 'buyClicks', 'subscribers', 'scans'];
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const TIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(\.\d{1,9})?Z$/;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -393,15 +394,23 @@ const CHECK = {
       if (days !== undefined) c.days = days.map((v, n) => wholeOf({ d: v }, 'd', 'day ' + (n + 1), true, { label: k + '.days' }));
       return c;
     };
-    const out = { visits: counts('visits', true) };
+    const out = {};
+    put(out, 'visits', counts('visits', false));
     put(out, 'buyClicks', counts('buyClicks', false));
     put(out, 'subscribers', wholeOf(s, 'subscribers', ''));
+    put(out, 'subscribersAsOf', shapedOf(s, 'subscribersAsOf', (v) => isDate(v) || isTime(v),
+      'a date like 2026-11-16 or a UTC time like 2026-11-16T15:10:00Z', ''));
     const scans = listOf(s, 'scans', 10, '');
     if (scans !== undefined) {
       out.scans = eachEntry(scans, 'scan', (e, where) => ({
         school: textOf(e, 'school', 40, where, true),
         count: wholeOf(e, 'count', where, true)
       }));
+    }
+    // Traffic figures come later than the hand-counted subscribers, so any
+    // one of them will do, but a reach section with none says nothing.
+    if (!REACH_FIGURES.some((k) => has(out, k))) {
+      throw wrong('the section must hold at least one of ' + REACH_FIGURES.map((k) => '"' + k + '"').join(', ').replace(/, ([^,]*)$/, ' or $1'));
     }
     return out;
   }
@@ -537,7 +546,14 @@ function sectionCounts(name, s) {
   if (name === 'khaya') return { done: s.done, total: s.total };
   if (name === 'pipeline') return { stages: s.stages.length, items: s.items.length, blocked: s.items.filter((i) => i.blocked).length };
   if (name === 'money') return { months: (s.months || []).length };
-  return { visitsWeek: s.visits.week, visitsPrev: s.visits.prev, scans: (s.scans || []).length };
+  // reach: only the figures it holds (traffic and subscribers come apart).
+  const c = {};
+  if (s.visits) { c.visitsWeek = s.visits.week; c.visitsPrev = s.visits.prev; }
+  if (s.buyClicks) { c.buyClicksWeek = s.buyClicks.week; c.buyClicksPrev = s.buyClicks.prev; }
+  if (s.subscribers !== undefined) c.subscribers = s.subscribers;
+  if (s.subscribersAsOf !== undefined) c.subscribersAsOf = s.subscribersAsOf;
+  c.scans = (s.scans || []).length;
+  return c;
 }
 
 // A compact picture of what is stored: no titles, no names, no amounts.
@@ -563,7 +579,14 @@ function sectionLine(name, s) {
   if (name === 'khaya') return c.done + ' of ' + c.total + ' done';
   if (name === 'pipeline') return plural(c.items, 'item') + ' in ' + c.stages + ' stages' + (c.blocked ? ', ' + c.blocked + ' blocked' : '');
   if (name === 'money') return 'figures in ' + s.currency + (c.months ? ', ' + plural(c.months, 'month') : '') + ' (the TV shows them only when showMoney is on)';
-  return c.visitsWeek + ' visits this week, ' + c.visitsPrev + ' the week before';
+  const parts = [];
+  if (c.visitsWeek !== undefined) parts.push(c.visitsWeek + ' visits this week, ' + c.visitsPrev + ' the week before');
+  if (c.buyClicksWeek !== undefined) parts.push(plural(c.buyClicksWeek, 'buy click') + ' this week, ' + c.buyClicksPrev + ' the week before');
+  if (c.subscribers !== undefined) {
+    parts.push(plural(c.subscribers, 'subscriber') + (c.subscribersAsOf ? ' at last check ' + c.subscribersAsOf.slice(0, 10) : ''));
+  }
+  if (c.scans) parts.push(plural(c.scans, 'school') + ' with flier scans');
+  return parts.join('; ');
 }
 
 function plainWhen(ms) {

@@ -95,7 +95,7 @@ The full description of the file, field by field, is in [`docs/awws-snapshot.md`
 - `./hub awws set snapshot.json` stores a snapshot from a file. With Docker the file must be in this folder; `./hub awws set - < snapshot.json` reads it from input instead.
 - `./hub awws clear` removes it. The tiles then say "Not synced yet".
 
-The Pi checks each part (it calls them sections) on its own. A section that breaks a rule is refused by name and the Pi keeps its last good copy; the other sections are still stored. The snapshot must never hold email addresses or links, and the Pi refuses a section that does. It must not hold notes or librarians' last names either; the Pi cannot tell those apart from other words, so the sender has to leave them out. The money section stays out until you say yes to money figures on the living room TV.
+The Pi checks each part (it calls them sections) on its own. A section that breaks a rule is refused by name and the Pi keeps its last good copy; the other sections are still stored. The snapshot must never hold email addresses or links, and the Pi refuses a section that does. It must not hold notes or librarians' last names either; the Pi cannot tell those apart from other words, so the sender has to leave them out. You said yes to money figures on the TV on 2026-11-16, so the money section may be sent; to keep money off the TV (for guests, say), set `showMoney: false` under `widgets.awws` in `app/config.js`.
 
 ### After pulling this change
 

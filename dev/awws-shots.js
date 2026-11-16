@@ -6,7 +6,9 @@
  * then headless Chromium at 1920x1080 with the clock fixed at Monday
  * 16 November 2026, 10:40 AM in Chicago. Writes docs/screenshots/awws-*.jpg:
  * the two AWWS layouts, the Main layout, a size sheet for each tile size,
- * the placeholders, the panels and full screens, and the states. Every shot
+ * the placeholders, Reach at every size (two sheets with all its figures,
+ * one with the hand-counted subscribers alone), the panels and full
+ * screens, and the states. Every shot
  * is taken in English and again with the Spanish words (-es), which are
  * longer and carry accents.
  *
@@ -78,10 +80,63 @@ const SHEETS = [
   ['9x6', [{ widget: 'awws', x: 0, y: 0, w: 9, h: 6 }, { widget: 'awws-visits', x: 9, y: 0, w: 3, h: 2 },
     { widget: 'awws-agenda', x: 9, y: 2, w: 3, h: 2 }, { widget: 'awws-todo', x: 9, y: 4, w: 3, h: 2 }]],
   ['placeholders', [{ widget: 'awws-outreach', x: 0, y: 0, w: 3, h: 2 }, { widget: 'awws-pipeline', x: 3, y: 0, w: 3, h: 4 },
-    { widget: 'awws-money', x: 6, y: 0, w: 6, h: 1 }, { widget: 'awws-reach', x: 6, y: 1, w: 2, h: 2 }]]
+    { widget: 'awws-money', x: 6, y: 0, w: 6, h: 1 }]]
 ];
 
+// Reach at every size the other sheets use. A layout holds a widget once, so
+// each tile is taken alone in its spot and the sheet is put together after
+// (see composite). Two sheets, because every size doesn't fit on one screen.
+function at(x, y, w, h) { return { widget: 'awws-reach', x: x, y: y, w: w, h: h }; }
+const REACH_A = [at(0, 0, 6, 2), at(6, 0, 3, 1), at(9, 0, 2, 1), at(11, 0, 1, 1), at(6, 1, 6, 1),
+  at(0, 2, 6, 4), at(6, 2, 3, 4), at(9, 2, 2, 2), at(9, 4, 3, 2)];
+const REACH_B = [at(0, 0, 12, 1), at(0, 1, 4, 2), at(4, 1, 5, 3), at(9, 1, 3, 3), at(0, 4, 12, 2)];
+// [name, the reach section's shape (dev/awws-sample.js), layout]
+const REACH_SHEETS = [['reach-a', 'both', REACH_A], ['reach-b', 'both', REACH_B], ['reach-subscribers', 'subscribers', REACH_A]];
+// The AWWS desk with Reach where Entertainment was, for the panel shots.
+const REACH_DESK = L.desk.map((t) => (t.widget === 'entertainment' ? at(t.x, t.y, t.w, t.h) : t));
+
 function wanted(name) { return !ONLY || name.indexOf(ONLY) >= 0; }
+
+/*
+ * One sheet from tiles of one widget: each entry of layout is opened alone
+ * at its own place on the grid, its tile is cut out, and the pieces go back
+ * onto the first page's background, where they stood. Only the first tile
+ * keeps the focus ring, as on the other sheets.
+ */
+async function composite(layout, es, name) {
+  const parts = [];
+  let base = null;
+  for (let i = 0; i < layout.length; i++) {
+    const page = await env.newPage({ layout: [layout[i]], spanish: es, scale: SCALE });
+    if (i > 0) await page.evaluate(() => document.querySelectorAll('#grid .is-focused').forEach((n) => n.classList.remove('is-focused')));
+    await H.sleep(200);
+    const r = await page.evaluate((id) => {
+      const b = document.querySelector('.cell[data-widget="' + id + '"]').getBoundingClientRect();
+      return { x: b.left, y: b.top, width: b.width, height: b.height };
+    }, layout[i].widget);
+    const pad = 10;
+    const clip = { x: Math.max(0, r.x - pad), y: Math.max(0, r.y - pad), width: r.width + 2 * pad, height: r.height + 2 * pad };
+    clip.width = Math.min(clip.width, 1920 - clip.x);
+    clip.height = Math.min(clip.height, 1080 - clip.y);
+    parts.push({ clip: clip, png: await page.screenshot({ clip: clip, type: 'png' }) });
+    if (!base) base = await page.screenshot({ type: 'png' });
+    await done(page, name + ' ' + layout[i].w + 'x' + layout[i].h);
+  }
+  const ctx = await env.browser.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: SCALE });
+  try {
+    const page = await ctx.newPage();
+    const img = (png, c) => '<img style="position:absolute;left:' + c.x + 'px;top:' + c.y + 'px;width:' + c.width + 'px;height:' + c.height +
+      'px" src="data:image/png;base64,' + png.toString('base64') + '">';
+    let html = '<body style="margin:0;width:1920px;height:1080px;overflow:hidden;position:relative">' +
+      img(base, { x: 0, y: 0, width: 1920, height: 1080 });
+    for (const p of parts) html += img(p.png, p.clip);
+    await page.setContent(html + '</body>');
+    await page.evaluate(() => Promise.all(Array.prototype.map.call(document.images, (i) => i.decode())));
+    await shot(page, name);
+  } finally {
+    await ctx.close();
+  }
+}
 
 async function shot(page, name) {
   const file = path.join(OUT, 'awws-' + name + '.jpg');
@@ -127,6 +182,16 @@ async function layouts() {
 
 async function sheets() {
   for (const s of SHEETS) await home('sizes-' + s[0], s[1], null);
+  for (const s of REACH_SHEETS) {
+    await both('sizes-' + s[0], async (full, es) => {
+      if (s[1] !== 'both') await env.setSnapshot(H.sample.snapshot({ reach: s[1] }));
+      try {
+        await composite(s[2], es, full);
+      } finally {
+        if (s[1] !== 'both') await env.setSnapshot(H.sample.snapshot());
+      }
+    });
+  }
 }
 
 async function panels() {
@@ -144,6 +209,26 @@ async function panels() {
     await H.fullScreen(page);
     await shot(page, nm('-full'));
     await done(page, full);
+  });
+  // Reach: its panel and full screen; then with the subscribers alone.
+  await both('panel-reach', async (full, es, nm) => {
+    const page = await env.newPage({ layout: REACH_DESK, spanish: es, scale: SCALE });
+    await H.openPanel(page, 'awws-reach');
+    await shot(page, full);
+    await H.fullScreen(page);
+    await shot(page, nm('-full'));
+    await done(page, full);
+  });
+  await both('panel-reach-subscribers', async (full, es) => {
+    await env.setSnapshot(H.sample.snapshot({ reach: 'subscribers' }));
+    try {
+      const page = await env.newPage({ layout: REACH_DESK, spanish: es, scale: SCALE });
+      await H.openPanel(page, 'awws-reach');
+      await shot(page, full);
+      await done(page, full);
+    } finally {
+      await env.setSnapshot(H.sample.snapshot());
+    }
   });
   await both('panel-visits', async (full, es, nm) => {
     const page = await env.newPage({ layout: L.desk, spanish: es, scale: SCALE });

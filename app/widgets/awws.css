@@ -628,7 +628,8 @@
 .aw-lrow,
 .aw-vpanel,
 .aw-arow,
-.aw-prow {
+.aw-prow,
+.aw-rsec {
   border-radius: 0.7rem;
   border: var(--edge) solid transparent;
   margin: 0.1rem 0;
@@ -637,11 +638,13 @@
 .aw-lrow.is-focused,
 .aw-vpanel.is-focused,
 .aw-arow.is-focused,
-.aw-prow.is-focused { background: var(--card-2); border-color: var(--focus); }
+.aw-prow.is-focused,
+.aw-rsec.is-focused { background: var(--card-2); border-color: var(--focus); }
 .aw-lrow.is-pressed,
 .aw-vpanel.is-pressed,
 .aw-arow.is-pressed,
-.aw-prow.is-pressed { opacity: 0.75; }
+.aw-prow.is-pressed,
+.aw-rsec.is-pressed { opacity: 0.75; }
 
 .aw-pmsg { position: relative; z-index: 1; max-width: 34rem; padding-top: 0.6rem; }
 .aw-pmsg-head { font-size: 1.5rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
@@ -652,11 +655,13 @@
 .aw-panel.is-full .aw-pmsg-line { font-size: 1.2rem; }
 .aw-panel.is-full .aw-mark.is-panel { width: 18rem; height: 18rem; }
 
-/* The launcher: one row per view, its one-line status beside it. */
+/* The launcher: one row per view, its one-line status beside it. Four views
+   and three Soon rows (Money included) fit the panel without scrolling, so
+   the Soon rows, which take no focus, are never out of sight. */
 .aw-lrow {
   display: flex;
   align-items: baseline;
-  padding: 0.55rem 0.9rem;
+  padding: 0.42rem 0.9rem;
 }
 .aw-lrow-name {
   flex: 0 0 auto;
@@ -669,7 +674,7 @@
 }
 .aw-lrow-status { flex: 1 1 auto; min-width: 0; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); }
 .aw-lrow.is-focused .aw-lrow-status { color: var(--text); }
-.aw-lrow.is-soon { cursor: default; padding-top: 0.4rem; padding-bottom: 0.4rem; }
+.aw-lrow.is-soon { cursor: default; padding-top: 0.26rem; padding-bottom: 0.26rem; }
 .aw-lrow.is-soon .aw-lrow-name { color: var(--text-3); font-size: 1.1rem; }
 .aw-lrow.is-soon .aw-lrow-status { color: var(--text-3); font-size: 1rem; }
 .aw-lrow-soon {
@@ -686,7 +691,7 @@
   white-space: nowrap;
 }
 .aw-lrow-status + .aw-lrow-soon { margin-left: 0.8rem; }
-.aw-ldiv { height: 0; margin: 0.5rem 0.9rem 0.4rem; border-top: 0.06rem solid var(--aw-hair); }
+.aw-ldiv { height: 0; margin: 0.4rem 0.9rem 0.3rem; border-top: 0.06rem solid var(--aw-hair); }
 
 /* Next visit: every booked visit. */
 .aw-vpanel {
@@ -810,3 +815,118 @@
   white-space: nowrap;
 }
 .aw-panel.is-full .aw-trow-title { font-size: 1.25rem; }
+
+/* ---------- Reach ---------- */
+
+/* Under the hero: the change and last week, or the subscribers' last check. */
+.aw-rcmp {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+/* A second figure: "23 buy clicks · down 4". */
+.aw-rline {
+  flex: 0 0 auto;
+  margin-top: 0.55rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-rline-num { color: var(--text); font-weight: 600; }
+.aw-rquiet { color: var(--text-3); }
+.aw-rchg { white-space: nowrap; }
+/* The small up or down arrow beside the words, in the text's own color. */
+.aw-arrow {
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-right: 0.28em;
+  vertical-align: 0.02em;
+}
+.aw-arrow svg { display: block; width: 100%; height: 100%; }
+
+/* The sparkline: a line and a dot, no axes. The JS draws it to the box. */
+.aw-spark {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0.6rem;
+  overflow: hidden;
+  color: var(--text-2);
+}
+.aw-spark svg { display: block; overflow: visible; }
+.aw-spark-dot { fill: var(--text); }
+.aw-spark.is-fixed { flex: 0 0 auto; height: 3.4rem; }
+.aw-split-b > .aw-rspark-head:first-child { margin-top: 0.3rem; }
+.aw-split-a > .aw-rspark-head { margin-top: 1rem; }
+.aw-split-a > .aw-rspark-head + .aw-spark { margin-top: 0.4rem; }
+.aw-split-b > .aw-rscans:first-child > .aw-label { margin-top: 0.3rem; }
+.aw-reach .aw-hero,
+.aw-reach .aw-rcmp { position: relative; z-index: 1; }
+.aw-split-b > .aw-spark { margin-top: 0.4rem; }
+.aw-rfoot { padding-top: 0.6rem; }
+.aw-rfoot .aw-rline-num { color: var(--text-2); font-weight: 400; }
+
+/* Scans: plain bars, a step smaller on a tile. */
+.aw-rscans { flex: 0 1 auto; }
+.aw-tile .aw-rbars .aw-brow { padding: 0.32rem 0; }
+.aw-tile .aw-rbars .aw-brow-label { flex: 0 1 48%; font-size: 0.9rem; }
+.aw-tile .aw-rbars .aw-brow-track { height: 0.45rem; }
+.aw-tile .aw-rbars .aw-brow-value { min-width: 1.8rem; margin-left: 0.6rem; font-size: 1rem; }
+.aw-tile .aw-rbars { border-top: 0; }
+
+/* A strip: the big number, then its words. */
+.aw-rstrip {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-rstrip .aw-rchg { color: var(--text-2); }
+
+/* The panel: one focusable part per figure. */
+.aw-rsec { padding: 0.6rem 0.9rem 0.7rem; }
+.aw-rsec > .aw-rsec-head { margin-top: 0; }
+.aw-rbig { display: flex; flex-wrap: wrap; align-items: baseline; margin-top: 0.2rem; }
+.aw-rbig-num {
+  margin-right: 0.6rem;
+  font-size: 2.6rem;
+  font-weight: 300;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+}
+.aw-rbig-cap { font-size: 1.15rem; line-height: 1.35; color: var(--text-2); white-space: nowrap; }
+.aw-rsec .aw-rcmp { font-size: 1.05rem; }
+.aw-spark.is-panel { flex: 0 0 auto; height: 4.6rem; margin-top: 0.7rem; }
+.aw-rspark-cap { margin-top: 0.3rem; font-size: 1rem; line-height: 1.35; color: var(--text-3); }
+.aw-rbars { margin-top: 0.3rem; }
+.aw-rpanel.is-cols { display: flex; align-items: flex-start; }
+.aw-rcol { flex: 1 1 0; min-width: 0; }
+.aw-rpanel.is-cols .aw-rcol + .aw-rcol { margin-left: 1.6rem; }
+.aw-panel.is-full .aw-rbig-num { font-size: 3.4rem; }
+.aw-panel.is-full .aw-rbig-cap { font-size: 1.4rem; }
+.aw-panel.is-full .aw-rsec .aw-rcmp { font-size: 1.2rem; }
+.aw-panel.is-full .aw-spark.is-panel { height: 7rem; }
+.aw-panel.is-full .aw-rspark-cap { font-size: 1.1rem; }
+/* Two rows leave room under the hero for one more figure: a step smaller. */
+.tile-h2 .aw-reach .aw-hero-num { font-size: 3.8rem; }
+.tile-h2.tile-wn .aw-reach .aw-hero-num { font-size: 3.4rem; }
+.aw-rnote {
+  flex: 0 0 auto;
+  margin-top: auto;
+  max-width: 72%;
+  position: relative;
+  z-index: 1;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.aw-rpanel .aw-brow-label { flex: 0 1 45%; }
