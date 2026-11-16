@@ -13,15 +13,23 @@
  *     changes, no filters, no layout reads while a scene runs.
  *   - One fixed, click-through layer above the tiles and below the scrim, the
  *     panel, the dashboard frame and the toast. It never takes focus.
- *   - A scene's frames load (new Image()) before it starts; if one fails, or
- *     they take longer than 8 s, the scene is quietly skipped. Its DOM is
- *     removed when it ends. Nothing loads until the first scene: then
- *     clay.css and clay/sprites.js (the sprite list), then the frames.
+ *   - A scene's frames load (new Image()) before it starts. If one fails
+ *     (onerror, or it loads 0 px wide) the scene is skipped and left out for
+ *     10 minutes; if they take over 30 s the visit is skipped and the same
+ *     scene comes at the next visit (the files go on loading into the cache,
+ *     nothing is cancelled). Its DOM is removed when it ends. Nothing loads
+ *     until the first scene: then the styles go in (one <style>, from STYLE
+ *     below, no request) and clay/sprites.js (the sprite list) loads, then
+ *     the frames. A failed sprite list is tried again at the next visit.
+ *     After a visit, the next one's scene is picked and its frames load
+ *     while they wait (one scene ahead, never sooner than the visit is due).
  *   - Any key or click, a panel opening, the page hiding or the layout
  *     changing ends a scene at once.
  *
  * Every entry point is wrapped, so if anything here breaks, the hub carries
- * on exactly as without it.
+ * on exactly as without it. HUB_CLAY.status() says, in one line, what they
+ * are doing or why they are not coming, and the last problem (the Clock
+ * page shows it under "About this hub").
  *
  * Scenes are small scripts: each actor (a character, a duo sprite or a prop)
  * gets a list of steps that play one after another, tick by tick, and actors
@@ -34,20 +42,50 @@
   'use strict';
 
   var TICK_MS = 140;           // about 7 frames a second: stop-motion
-  var LOAD_MS = 8000;          // frames must load within this, or the scene is skipped
+  var LOAD_MS = 30000;         // the sprite list, or a scene's frames, must load within this, or
+                               // the visit is skipped (and tried again at the next one; the
+                               // files go on loading into the cache)
+  var AHEAD_MS = 3000;         // after a visit ends, this long until the next one's frames start loading
   var CHECK_MS = 5000;         // how often to look again while a panel is open or the page is hidden
-  var RETRY_ASSETS_MS = 10 * 60000;
+  var BROKEN_MS = 10 * 60000;  // a scene whose frames failed is left out this long
   var MAX_TICKS = 700;         // no scene runs longer than this (100 s), whatever its script says
   var DESIGN_H = 1080;         // scenes are written for a 1080-row screen
   var FLOOR_GAP = 6;           // feet this far above the bottom of the screen
   var EDGE = 140;              // off-screen margin for entering and leaving
   var MAX_PROPS = 3;
 
+  // The styles, put in once at the first visit (no request, no load event to wait for).
+  // One click-through layer above the tiles (cells have no z-index) and below
+  // the scrim (10), the ghost, the panel, the dashboard frame and the toast.
+  // Each actor and each shadow is its own layer; on a tick only an image's
+  // opacity and an actor's transform change. Nothing here animates by itself.
+  var STYLE =
+    '.clay-layer{position:fixed;top:0;left:0;width:100%;height:100%;overflow:hidden;' +
+      'pointer-events:none;z-index:9;transform-origin:0 0}' +
+    '.clay-actor,.clay-shadow{position:absolute;top:0;left:0;width:0;height:0;' +
+      'transform-origin:0 0;will-change:transform}' +
+    '.clay-actor img{position:absolute;display:block;max-width:none;opacity:0}' +
+    // A soft contact shadow under the feet: a painted gradient, no blur.
+    '.clay-shadow{border-radius:50%;background:radial-gradient(ellipse closest-side,' +
+      'rgba(0,0,0,0.45),rgba(0,0,0,0.22) 55%,rgba(0,0,0,0))}';
+
   var host = null;             // from hub.js: { quiet(), tiles(), widget(id), liveStatus() }
   var settings = null;         // null = off
   var assets = 'none';         // 'none' | 'loading' | 'ready' | 'failed'
-  var assetsFailedAt = 0;
   var assetWaiters = [];
+  var styled = false;          // the <style> is in
+  var spriteScript = null;     // the <script> of the last try
+  var spriteSettled = true;    // it fired onload or onerror (else it may still come)
+  var spriteStart = 0;
+  var spriteMs = null;         // how long it took to fire onload or onerror
+  var spriteHow = '';          // which of the two it fired
+  var spriteEvent = '';        // how the last try ended: 'onload' | 'onerror' | 'timeout' | 'already there'
+  var spriteTry = null;        // the waiting try's finish(how)
+  var loadMs = LOAD_MS;        // tests shorten it
+  var lastLoad = null;         // the last scene's frames: { name, got, of, t0, ms, timedOut }
+  var settling = [];           // Images still loading after their scene gave up on them (kept alive)
+  var ahead = null;            // the next visit, chosen early: { name, seed, info }
+  var aheadTimer = null;
   var M = null;                // window.CLAY_SPRITES once loaded
 
   var scene = null;            // the scene loading or playing
@@ -57,7 +95,13 @@
   var due = 0;                 // not before this: the pause after the last scene
   var lastName = '';
   var last = null;             // { name, result } of the last scene
-  var broken = {};             // scene name -> true when its frames would not load
+  var broken = {};             // scene name -> when its frames would not load (left out for BROKEN_MS)
+  var started = false;         // start() was called
+  var offWhy = '';             // when off: 'config' | '?clay=off'
+  var played = 0;              // scenes that came on screen since the page loaded
+  var slow = 0;                // visits skipped because loading took over loadMs
+  var failedN = 0;             // visits that failed for any other reason
+  var problem = null;          // { text, at }: the last thing that went wrong, kept for status()
   var hourOverride = null;
   var tickMs = TICK_MS;
   var pending = null;          // a reaction to play next: 'cheer' | 'shrug'
@@ -68,6 +112,17 @@
 
   function warn(text) {
     try { if (window.console && console.warn) console.warn('Clay: ' + text); } catch (e) { /* ignore */ }
+  }
+
+  // Something went wrong: kept for status() until something else goes wrong.
+  function fail(text) {
+    problem = { text: text, at: now() };
+    warn(text);
+  }
+
+  function errText(e) {
+    var m = e && e.message ? e.message : String(e);
+    return m.length > 80 ? m.slice(0, 77) + '...' : m;
   }
 
   function readQuery(name) {
@@ -85,9 +140,13 @@
     } catch (e) { return false; }
   }
 
+  function hostQuiet() {
+    try { return !host || host.quiet() !== false; } catch (e) { return false; }
+  }
+
   function quiet() {
     if (isHidden()) return false;
-    try { return !host || host.quiet() !== false; } catch (e) { return false; }
+    return hostQuiet();
   }
 
   /* ---------- settings ---------- */
@@ -105,13 +164,16 @@
 
   // null when the characters are off.
   function readSettings(c) {
+    offWhy = '?clay=off';
     if (readQuery('clay') === 'off') return null;
+    offWhy = 'config';
     if (c === false || (c && typeof c === 'object' && c.on === false)) return null;
     if (c !== undefined && c !== true && (!c || typeof c !== 'object')) return null;
+    offWhy = '';
     c = c && typeof c === 'object' ? c : {};
     return {
       idleAfter: seconds(c.idleAfter, 20, 1, 3600),
-      every: range(c.every, [90, 240]),
+      every: range(c.every, [90, 150]),
       nightEvery: range(c.nightEvery, [300, 600])
     };
   }
@@ -135,93 +197,173 @@
 
   /* ---------- loading ---------- */
 
-  // clay.css and clay/sprites.js, once. cb(ok).
+  function addStyle() {
+    if (styled) return;
+    var el = document.createElement('style');
+    el.type = 'text/css';
+    el.id = 'clay-style';
+    el.appendChild(document.createTextNode(STYLE));
+    (document.getElementsByTagName('head')[0] || document.documentElement).appendChild(el);
+    styled = true;
+  }
+
+  function validSprites(S) {
+    return !!(S && typeof S === 'object' && S.sprites && typeof S.sprites === 'object' &&
+      S.sequences && typeof S.sequences === 'object');
+  }
+
+  function timeoutText() {
+    return 'sprite list did not load (no onload or onerror in ' + Math.round(loadMs / 1000) + ' s)';
+  }
+
+  // The styles and clay/sprites.js. cb(ok). Once it worked it is never done
+  // again; after a failure the next call (the next visit) tries again. A
+  // timeout leaves the <script> loading: the next try waits for that one.
   function loadAssets(cb) {
     if (assets === 'ready') return cb(true);
-    if (assets === 'failed' && now() - assetsFailedAt < RETRY_ASSETS_MS) return cb(false);
     assetWaiters.push(cb);
     if (assets === 'loading') return;
     assets = 'loading';
-    var left = 2;
-    var ok = true;
     var finished = false;
-    var guard = setTimeout(function () { finish(false); }, LOAD_MS);
-    function one(good) {
-      if (!good) ok = false;
-      if (--left === 0) finish(ok);
-    }
-    function finish(good) {
+    var guard = null;
+    function finish(how) {
       if (finished) return;
       finished = true;
+      spriteTry = null;
       clearTimeout(guard);
+      spriteEvent = how;
       var S = window.CLAY_SPRITES;
-      if (good && S && typeof S === 'object' && S.sprites && S.sequences) {
-        M = S;
-        assets = 'ready';
+      if (how === 'no styles') {
+        assets = 'failed';
+      } else if (how === 'onload' || how === 'already there') {
+        if (validSprites(S)) {
+          M = S;
+          assets = 'ready';
+        } else {
+          assets = 'failed';
+          fail('sprite list loaded but is not valid (' + how + ', ' +
+            (S === undefined ? 'CLAY_SPRITES missing' : 'no sprites or sequences') + ')');
+        }
       } else {
         assets = 'failed';
-        assetsFailedAt = now();
-        warn('the sprite list or clay.css did not load');
+        fail(how === 'onerror' ? 'sprite list did not load (onerror)' : timeoutText());
       }
       var list = assetWaiters;
       assetWaiters = [];
       for (var i = 0; i < list.length; i++) {
-        try { list[i](assets === 'ready'); } catch (e) { warn('after loading: ' + (e && e.message)); }
+        try { list[i](assets === 'ready'); } catch (e) { fail('error after loading: ' + errText(e)); }
       }
     }
-    var head = document.getElementsByTagName('head')[0] || document.documentElement;
-    var link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'clay.css';
-    link.onload = function () { one(true); };
-    link.onerror = function () { one(false); };
-    head.appendChild(link);
-    if (window.CLAY_SPRITES) {
-      one(true);
-    } else {
-      var script = document.createElement('script');
-      script.src = 'clay/sprites.js';
-      script.onload = function () { one(true); };
-      script.onerror = function () { one(false); };
-      head.appendChild(script);
+    try {
+      addStyle();
+    } catch (e) {
+      fail('the styles could not be added: ' + errText(e));
+      return finish('no styles');
     }
+    if (window.CLAY_SPRITES) return finish('already there');
+    guard = setTimeout(function () { finish('timeout'); }, loadMs);
+    spriteTry = finish;
+    if (spriteScript && !spriteSettled) return;      // the last one is still on its way
+    var head = document.getElementsByTagName('head')[0] || document.documentElement;
+    if (spriteScript && spriteScript.parentNode) spriteScript.parentNode.removeChild(spriteScript);
+    var script = document.createElement('script');
+    function settled(how) {
+      return function () {
+        if (script !== spriteScript) return;
+        spriteSettled = true;
+        spriteMs = now() - spriteStart;
+        spriteHow = how;
+        if (spriteTry) spriteTry(how);
+        else if (how === 'onload' && problem && problem.text === timeoutText()) problem.text += ', then came in ' + spriteMs + ' ms';
+      };
+    }
+    script.onload = settled('onload');
+    script.onerror = settled('onerror');
+    spriteScript = script;
+    spriteSettled = false;
+    spriteStart = now();
+    spriteMs = null;
+    spriteHow = '';
+    script.src = 'clay/sprites.js';
+    head.appendChild(script);
   }
 
   function spriteUrl(key) { return 'clay/' + M.sprites[key].file; }
 
-  // Loads every frame. cb(images by key) or cb(null, why). Returns cancel().
-  function preload(keys, cb) {
+  function unsettle(img) {
+    for (var i = 0; i < settling.length; i++) if (settling[i] === img) { settling.splice(i, 1); return; }
+  }
+
+  // Loads every frame. cb(images by key) or cb(null, why, kind), kind
+  // 'slow' (over loadMs), 'broken' (onerror, or onload 0 px wide: it did not
+  // decode) or 'cancelled'. info ({ name }) gets got, of, t0, ms and
+  // timedOut, and keeps counting frames that come after a timeout: those
+  // are never dropped, so they land in the cache for the next try.
+  // Returns cancel(), which only stops waiting.
+  function preload(keys, info, cb) {
     var images = {};
     var left = keys.length;
     var finished = false;
-    var guard = setTimeout(function () { finish(null, 'frames took too long'); }, LOAD_MS);
-    function finish(result, why) {
+    info.got = 0;
+    info.of = keys.length;
+    info.t0 = now();
+    info.ms = null;
+    info.timedOut = false;
+    var guard = setTimeout(function () {
+      info.timedOut = true;
+      finish(null, 'its frames took over ' + Math.round(loadMs / 1000) + ' s (' + info.got + ' of ' + info.of + ' in)', 'slow');
+    }, loadMs);
+    function finish(result, why, kind) {
       if (finished) return;
       finished = true;
       clearTimeout(guard);
-      if (!result) {
-        for (var k in images) {
-          if (images.hasOwnProperty(k)) { images[k].onload = null; images[k].onerror = null; }
-        }
-      }
-      cb(result, why);
+      if (kind === 'broken') info.failed = true;
+      cb(result, why, kind);
     }
-    function loaded() { if (--left === 0) finish(images); }
-    function failed(key) { return function () { finish(null, 'missing ' + key); }; }
+    function loaded(key, img) {
+      return function () {
+        unsettle(img);
+        if (!(img.naturalWidth > 0)) return finish(null, 'frame ' + key + ' failed (loaded, 0 px wide: did not decode)', 'broken');
+        info.got++;
+        if (--left === 0) {
+          info.ms = now() - info.t0;
+          finish(images);
+        }
+      };
+    }
+    function failed(key, img) {
+      return function () {
+        unsettle(img);
+        finish(null, 'frame ' + key + ' failed (onerror)', 'broken');
+      };
+    }
     for (var i = 0; i < keys.length; i++) {
       var key = keys[i];
       if (!M.sprites.hasOwnProperty(key)) {
-        setTimeout(failed(key), 0);
+        setTimeout(function () { finish(null, 'frame ' + key + ' is not in the sprite list', 'broken'); }, 0);
         return function () { finished = true; clearTimeout(guard); };
       }
       var img = new Image();
-      img.onload = loaded;
-      img.onerror = failed(key);
+      img.onload = loaded(key, img);
+      img.onerror = failed(key, img);
       images[key] = img;
+      settling.push(img);
       img.src = spriteUrl(key);
     }
-    if (!keys.length) setTimeout(function () { finish(images); }, 0);
-    return function () { finish(null, 'cancelled'); };
+    if (!keys.length) setTimeout(function () { info.ms = 0; finish(images); }, 0);
+    return function () { finish(null, 'cancelled', 'cancelled'); };
+  }
+
+  // Every frame key a built scene uses.
+  function frameKeys(actors) {
+    var keys = [];
+    var seen = {};
+    for (var i = 0; i < actors.length; i++) {
+      for (var key in actors[i].frames) {
+        if (actors[i].frames.hasOwnProperty(key) && !seen[key]) { seen[key] = true; keys.push(key); }
+      }
+    }
+    return keys;
   }
 
   /* ---------- the stage a scene plays on ---------- */
@@ -515,13 +657,13 @@
       if (sc.idleTicks > 1 || sc.tick > MAX_TICKS) return end('done');
       if (tickMs > 0) sc.timer = setTimeout(tick, tickMs);
     } catch (e) {
-      warn('scene ' + sc.name + ': ' + (e && e.message));
+      fail('error in scene ' + sc.name + ': ' + errText(e));
       end('error');
     }
   }
 
   // Ends the scene now and takes its DOM away. result: 'done' | 'interrupted' |
-  // 'stopped' | 'failed: ...' | 'error'.
+  // 'stopped' | 'slow: ...' | 'failed: ...' | 'error'.
   function end(result) {
     var sc = scene;
     if (!sc) return;
@@ -533,6 +675,9 @@
     sc.layer = null;
     last = { name: sc.name, result: result, ticks: sc.tick };
     if (sc.phase === 'playing') lastName = sc.name;
+    if (result.indexOf('slow:') === 0) slow++;
+    else if (result.indexOf('failed:') === 0 && result !== 'failed: does not fit here') failedN++;
+    else if (result === 'error') failedN++;
     var t = now();
     if (result === 'done') {
       var r = sc.night ? settings.nightEvery : settings.every;
@@ -543,6 +688,9 @@
     } else {
       due = t + settings.every[0] * 1000;
     }
+    // Loading too slowly: the same scene, the same way, at the next visit.
+    if (result.indexOf('slow:') === 0) ahead = { name: sc.name, seed: sc.seed, info: null };
+    if (result !== 'stopped') aheadSoon();
     arm();
   }
 
@@ -551,18 +699,19 @@
     opts = opts || {};
     if (scene) end('stopped');
     var my = ++gen;
-    scene = { name: name, phase: 'loading', tick: 0, idleTicks: 0 };
+    scene = { name: name, seed: opts.seed, phase: 'loading', step: 'sprite list', tick: 0, idleTicks: 0 };
     stopTimer();
     loadAssets(function (ok) {
       if (my !== gen || !scene) return;
-      if (!ok) return end('failed: no sprite list');
+      if (!ok) return end((spriteEvent === 'timeout' ? 'slow: ' : 'failed: ') + 'no sprite list');
       var sc = scene;
+      sc.step = 'frames';
       var built;
       try {
         built = build(name, opts);
       } catch (e) {
-        warn('scene ' + name + ' could not be built: ' + (e && e.message));
-        broken[name] = true;
+        fail('scene ' + name + ' could not be built: ' + errText(e));
+        broken[name] = now();
         return end('error');
       }
       if (!built) return end('failed: does not fit here');
@@ -572,18 +721,20 @@
       sc.H = built.H;
       sc.k = built.k;
       sc.signals = {};
-      var keys = [];
-      var seen = {};
-      for (var i = 0; i < sc.actors.length; i++) {
-        for (var key in sc.actors[i].frames) {
-          if (sc.actors[i].frames.hasOwnProperty(key) && !seen[key]) { seen[key] = true; keys.push(key); }
-        }
-      }
-      sc.cancel = preload(keys, function (images, why) {
+      lastLoad = { name: name };
+      sc.cancel = preload(frameKeys(sc.actors), lastLoad, function (images, why, kind) {
         sc.cancel = null;
         if (my !== gen || scene !== sc) return;
         if (!images) {
-          if (why !== 'cancelled') { warn('scene ' + name + ' skipped: ' + why); broken[name] = true; }
+          if (kind === 'slow') {
+            // Not broken: only slow. The frames go on loading into the cache.
+            fail('scene ' + name + ' skipped: ' + why);
+            return end('slow: ' + why);
+          }
+          if (kind === 'broken') {
+            fail('scene ' + name + ' skipped: ' + why);
+            broken[name] = now();
+          }
           return end('failed: ' + why);
         }
         if (!quiet()) return end('interrupted');
@@ -591,14 +742,47 @@
           sc.layer = buildLayer(sc, images);
           document.body.appendChild(sc.layer);
         } catch (e) {
-          warn('scene ' + name + ': ' + (e && e.message));
+          fail('scene ' + name + ' could not be shown: ' + errText(e));
           return end('error');
         }
         sc.phase = 'playing';
+        played++;
         tick();
       });
     });
     return true;
+  }
+
+  /* ---------- the next visit's frames, ahead of time ---------- */
+
+  // A little after a visit ends (never in a key handler: from a timer), and
+  // only once the sprite list is in: pick the next visit's scene now and
+  // start loading its frames, so the visit starts from the cache. One scene
+  // ahead at most. It never changes when the next visit comes, only which
+  // scene a plain random pick gives (a reaction still goes first).
+  function aheadSoon() {
+    if (aheadTimer) clearTimeout(aheadTimer);
+    aheadTimer = setTimeout(loadAhead, AHEAD_MS);
+  }
+
+  function loadAhead() {
+    aheadTimer = null;
+    try {
+      if (!settings || scene || assets !== 'ready' || !quiet()) return;
+      if (ahead && ahead.info) return;                 // already loading or loaded
+      if (!ahead) {
+        var name = pick(bagFor(hourNow()));
+        if (!name) return;
+        ahead = { name: name, seed: Math.floor(Math.random() * 1e9), info: null };
+      }
+      var built = build(ahead.name, { seed: ahead.seed });
+      if (!built) { ahead = null; return; }
+      ahead.info = { name: ahead.name };
+      preload(frameKeys(built.actors), ahead.info, function () { /* only for the cache */ });
+    } catch (e) {
+      ahead = null;
+      warn('loading ahead: ' + errText(e));
+    }
   }
 
   /* ---------- choosing ---------- */
@@ -645,19 +829,18 @@
     } catch (e2) { /* no reaction */ }
   }
 
-  // The next scene's name, by context, else at random without repeating the last.
-  function choose() {
-    var h = hourNow();
-    var night = isNight(h);
-    lookForReactions(night);
-    if (!night && pending) {
-      var p = pending;
-      pending = null;
-      return p;
-    }
+  function usable(name, t) {
+    if (broken[name] && t - broken[name] < BROKEN_MS) return false;
+    delete broken[name];
+    return true;
+  }
+
+  // The scenes that may come at hour h, with their weights.
+  function bagFor(h) {
     var bag = [];
-    function put(name, weight) { if (!broken[name]) bag.push({ name: name, weight: weight }); }
-    if (night) {
+    var t = now();
+    function put(name, weight) { if (usable(name, t)) bag.push({ name: name, weight: weight }); }
+    if (isNight(h)) {
       put('night', 1);
     } else {
       put('stroll', 3);
@@ -669,6 +852,11 @@
       if (h >= 19 && h < 22) put('evening', 4);
       if (outfit()) put('weather', 2);
     }
+    return bag;
+  }
+
+  // At random by weight, without repeating the last scene.
+  function pick(bag) {
     if (bag.length > 1) {
       for (var i = 0; i < bag.length; i++) if (bag[i].name === lastName) { bag.splice(i, 1); break; }
     }
@@ -681,6 +869,24 @@
       if (r < 0) return bag[k].name;
     }
     return bag[bag.length - 1].name;
+  }
+
+  // The next scene's name, by context, else `prefer` (chosen ahead) when it
+  // may still come now, else at random without repeating the last.
+  function choose(prefer) {
+    var h = hourNow();
+    var night = isNight(h);
+    lookForReactions(night);
+    if (!night && pending) {
+      var p = pending;
+      pending = null;
+      return p;
+    }
+    var bag = bagFor(h);
+    if (prefer) {
+      for (var i = 0; i < bag.length; i++) if (bag[i].name === prefer) return prefer;
+    }
+    return pick(bag);
   }
 
   /* ---------- scheduling ---------- */
@@ -715,11 +921,14 @@
         return;
       }
       if (t < nextAt()) return arm();
-      var name = choose();
+      var was = ahead;
+      ahead = null;
+      if (aheadTimer) { clearTimeout(aheadTimer); aheadTimer = null; }
+      var name = choose(was ? was.name : null);
       if (!name) { due = t + settings.every[0] * 1000; return arm(); }
-      begin(name, {});
+      begin(name, { seed: was && was.name === name ? was.seed : Math.floor(Math.random() * 1e9) });
     } catch (e) {
-      warn('scheduler: ' + (e && e.message));
+      fail('error in the scheduler: ' + errText(e));
       due = now() + settings.every[1] * 1000;
       arm();
     }
@@ -752,6 +961,7 @@
   }
 
   function start(h) {
+    started = true;
     host = h || null;
     settings = readSettings(host ? host.config : undefined);
     if (!settings) return;
@@ -1185,6 +1395,85 @@
     return { actors: S.actors, night: !!S.night || name === 'night', W: S.W, H: S.H, k: S.k };
   }
 
+  /* ---------- status, for the Clock page ---------- */
+
+  function ago(t) {
+    var s = Math.max(0, Math.round((now() - t) / 1000));
+    if (s < 60) return s + ' s ago';
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + ' min ago';
+    return Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago';
+  }
+
+  function outcome(l) {
+    var r = l.result;
+    var word = r === 'done' ? 'finished' :
+      r === 'interrupted' ? 'interrupted' :
+      r === 'stopped' ? 'stopped' :
+      r === 'failed: does not fit here' ? 'did not fit' :
+      r === 'error' ? 'hit an error' :
+      r.indexOf('slow:') === 0 ? 'too slow' : 'failed';
+    return l.name + ' ' + word;
+  }
+
+  function busyWhy() {
+    try {
+      var w = host && typeof host.busyWhy === 'function' ? host.busyWhy() : '';
+      return typeof w === 'string' ? w : '';
+    } catch (e) { return ''; }
+  }
+
+  function overLimit() { return ' (over ' + Math.round(loadMs / 1000) + ' s)'; }
+
+  // How the sprite list's last try went, or '' before the first.
+  function spriteText() {
+    if (spriteEvent === 'already there' && spriteMs === null) return 'sprite list in';
+    if (!spriteScript) return '';
+    if (spriteMs === null) return 'sprite list not in after ' + (now() - spriteStart) + ' ms';
+    var s = 'sprite list ' + (spriteHow === 'onerror' ? 'onerror after ' : '') + spriteMs + ' ms';
+    return spriteMs > loadMs ? s + overLimit() : s;
+  }
+
+  // How the last scene's frames came, or ''.
+  function framesText(L) {
+    if (!L || L.of === undefined) return '';
+    var s = L.name + ' ' + L.got + '/' + L.of + ' frames';
+    if (L.ms !== null) return s + ' in ' + L.ms + ' ms' + (L.timedOut ? overLimit() : '');
+    if (L.failed) return s + ', then one failed';
+    return s + (L.timedOut ? ' after ' : ' so far, ') + (now() - L.t0) + ' ms';
+  }
+
+  // { text, detail }: text says what they are doing or why not, the visits
+  // so far and the last outcome; detail ('' before anything loaded) how long
+  // loading took and the last problem, and when. Always safe to call.
+  function status() {
+    try {
+      var parts = [];
+      if (!started) return { text: 'not started', detail: '' };
+      if (!settings) return { text: 'off (' + (offWhy || 'config') + ')', detail: '' };
+      if (scene) {
+        parts.push(scene.phase === 'playing' ? 'playing ' + scene.name : 'loading ' + scene.name + ' (' + scene.step + ')');
+      } else if (isHidden()) {
+        parts.push('not yet: page reports hidden');
+      } else if (!hostQuiet()) {
+        var why = busyWhy();
+        parts.push('not yet: hub busy' + (why ? ' (' + why + ')' : ''));
+      } else {
+        parts.push('next visit in ' + Math.max(0, Math.ceil((nextAt() - now()) / 1000)) + ' s');
+      }
+      parts.push(played + ' played, ' + slow + ' slow, ' + failedN + ' failed' + (last ? '; last ' + outcome(last) : ''));
+      var detail = [];
+      var a = spriteText();
+      if (a) detail.push(a);
+      var b = framesText(lastLoad);
+      if (b) detail.push(b);
+      if (problem) detail.push('problem ' + ago(problem.at) + ': ' + problem.text);
+      return { text: parts.join(' · '), detail: detail.join(' · ') };
+    } catch (e) {
+      return { text: 'status failed: ' + errText(e), detail: '' };
+    }
+  }
+
   /* ---------- for tests ---------- */
 
   var test = {
@@ -1219,6 +1508,15 @@
         chars: c.chars,
         props: c.props,
         assets: assets,
+        spriteEvent: spriteEvent,
+        spriteMs: spriteMs,
+        played: played,
+        slow: slow,
+        failed: failedN,
+        broken: (function () { var b = []; for (var k in broken) if (broken.hasOwnProperty(k)) b.push(k); return b; })(),
+        lastLoad: lastLoad,
+        ahead: ahead ? { name: ahead.name, got: ahead.info ? ahead.info.got : 0, of: ahead.info ? ahead.info.of : 0 } : null,
+        problem: problem,
         pending: pending
       };
     },
@@ -1228,13 +1526,15 @@
     // ms per tick; 0 = only when step() is called (frame-exact screenshots); null = the real 140.
     setSpeed: function (ms) { tickMs = typeof ms === 'number' && ms >= 0 ? ms : TICK_MS; },
     step: function () { if (scene && scene.phase === 'playing' && !scene.timer) tick(); return test.state(); },
+    // How long the sprite list or a scene's frames may take; null = the real 30 s.
+    setLoadMs: function (ms) { loadMs = typeof ms === 'number' && ms > 0 ? ms : LOAD_MS; },
     // Makes the next visit due in ms (the idle rules still apply).
     dueIn: function (ms) { readyAt = now() + (ms || 0); due = 0; arm(); }
   };
 
   function safe(fn) {
     return function () {
-      try { return fn.apply(null, arguments); } catch (e) { warn(e && e.message); return undefined; }
+      try { return fn.apply(null, arguments); } catch (e) { fail('error: ' + errText(e)); return undefined; }
     };
   }
 
@@ -1243,6 +1543,7 @@
     input: safe(input),
     stop: safe(interrupt),
     layout: safe(interrupt),
+    status: status,
     test: test
   };
 })();

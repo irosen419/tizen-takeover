@@ -118,7 +118,7 @@ const COMMITS = {
   [A]: (rest) => readWorking(rest),
   [B]: (rest) => {
     const body = readWorking(rest);
-    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.17.0-B'));
+    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.18.0-B'));
     return body;
   },
   [BROKEN]: (rest) => {
@@ -369,11 +369,11 @@ async function check1() {
   await waitAt(page, A, 'app/hub.html');
   const rec = await until(async () => { const r = await record(page); return r && r.good === A ? r : false; }, 3000, 'good is not A');
   assert(!rec.trying, 'trying was not cleared: ' + JSON.stringify(rec));
-  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.17.0', 'record: ' + JSON.stringify(rec));
+  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.18.0', 'record: ' + JSON.stringify(rec));
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
-  assert(/^v0\.17\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
-  assert(lines.length === 2, 'status lines: ' + JSON.stringify(lines));
+  assert(/^v0\.18\.0 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(lines.length === 3 && /^Wanderers: /.test(lines[2]), 'status lines: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
   assert(asks.length === 1, 'GitHub was asked ' + asks.length + ' times');
   assert(asks[0].url === 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/commits/main', 'GitHub address: ' + asks[0].url);
@@ -399,7 +399,7 @@ async function check2() {
   await go(page, shellUrl());
   await waitAt(page, B, 'app/hub.html');
   const lines = await look.lines(page);
-  assert(/^v0\.17\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.18\.0-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   const rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared');
   noMissingFiles(logSince(at));
@@ -475,7 +475,7 @@ async function check4() {
   await waitAt(page, B, 'app/hub.html');
   rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared on B: ' + JSON.stringify(rec));
-  assert(/^v0\.17\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
+  assert(/^v0\.18\.0-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
   noErrors(context);
 }
 
@@ -669,7 +669,7 @@ async function check11() {
   assert(github.requests.length === asked && !context.log.requests.some((u) => /api\.github\.com/.test(u)), 'GitHub was asked');
   assert((await look.updateLine(page)) === null, 'an update line showed');
   const lines = await look.lines(page);
-  assert(lines.length === 2 && lines[0].indexOf('(newest)') < 0, 'status lines: ' + JSON.stringify(lines));
+  assert(lines.length === 3 && lines[0].indexOf('(newest)') < 0, 'status lines: ' + JSON.stringify(lines));
   const st = await look.status(page);
   assert(st && st.managed === false && st.text === '' && st.newest === false, 'status: ' + JSON.stringify(st));
   await openPanelAndClose(page);
@@ -677,14 +677,18 @@ async function check11() {
   noErrors(context);
 }
 
-// "About this hub" on the Clock page with two, three and four lines, in
-// the panel and full screen: nothing clipped, nothing over the clock.
+// "About this hub" on the Clock page with three to six lines (the version,
+// motion, live updates, updates, the wanderers and their loading detail),
+// in the panel and full screen: nothing clipped, nothing over the clock.
+// (That the wanderers' lines refresh by themselves is checked in
+// dev/clay-test.js.)
 async function checkTile() {
   const s = await stranger(403, 'application/json', JSON.stringify({ ok: false, error: 'screen not allowed' }));
   const cases = [
-    { rows: 2, mode: 'sha', query: '' },
-    { rows: 3, mode: 'abort', query: '' },
-    { rows: 4, mode: 'abort', query: 'live=' + encodeURIComponent(s.url) }
+    { rows: 3, mode: 'sha', query: '' },
+    { rows: 4, mode: 'abort', query: '' },
+    { rows: 5, mode: 'abort', query: 'live=' + encodeURIComponent(s.url) },
+    { rows: 6, mode: 'abort', query: 'live=' + encodeURIComponent(s.url), visit: true }
   ];
   for (const c of cases) {
     const { context, page } = await contextWithGood(A, c.query);
@@ -696,9 +700,24 @@ async function checkTile() {
       const body = document.querySelector('.cell[data-widget="today"] .tile-body');
       return { text: body.textContent, status: body.querySelectorAll('.today-status-line, .today-place').length };
     });
-    assert(tile.status === 0 && !/v0\.|Motion|Updates|Live/.test(tile.text), 'the clock tile shows more than the time: ' + tile.text);
+    assert(tile.status === 0 && !/v0\.|Motion|Updates|Live|Wanderers/.test(tile.text), 'the clock tile shows more than the time: ' + tile.text);
+    if (c.visit) {
+      // One visit first, stopped once it plays: the detail line (load times) shows.
+      await until(() => page.evaluate(() => !window.HUB_TEST.busy() && window.HUB_TEST.clay.play('fetch', { seed: 1 })), 4000, 'no visit');
+      await until(() => page.evaluate(() => window.HUB_TEST.clay.state().phase === 'playing'), 10000, 'the visit did not play');
+      await page.evaluate(() => window.HUB_TEST.clay.stop());
+    }
     await clockPage.open(page);
     await clockPage.waitFor(page, (a) => a.lines.length === c.rows, 10000, c.rows + ' rows');
+    const clayLine = () => page.evaluate(() => { const e = document.querySelector('.clock-about-clay'); return e ? e.textContent : null; });
+    const first = await clayLine();
+    const lastLine = await page.evaluate(() => document.querySelector('.clock-about-line:last-child').textContent);
+    if (c.visit) {
+      assert(first === 'Wanderers: not yet: hub busy (panel open) · 1 played, 0 slow, 0 failed; last fetch stopped', 'wanderers line: ' + first);
+      assert(/^Wanderers detail: sprite list \d+ ms · fetch (\d+)\/\1 frames in \d+ ms$/.test(lastLine), 'detail line: ' + lastLine);
+    } else {
+      assert(first === 'Wanderers: not yet: hub busy (panel open) · 0 played, 0 slow, 0 failed' && first === lastLine, 'wanderers line: ' + first);
+    }
     for (const mode of ['panel', 'full']) {
       if (mode === 'full') {
         await page.evaluate(() => document.querySelector('#panel .panel-btn').click());
@@ -812,7 +831,7 @@ async function main() {
   await check('9. A pinned shell address: no lookup, that commit\'s hub.html', check9);
   await check('10. Tampered or damaged memory is ignored; localStorage that throws is fine', check10);
   await check('11. Laptop preview: /hub.html with the query, no GitHub, no update text', check11);
-  await check('12. The Clock page fits two, three and four status lines at 1920x1080, panel and full screen', checkTile);
+  await check('12. The Clock page fits three to six status lines at 1920x1080, panel and full screen', checkTile);
   await check('13. The shell: dark, quiet text after 1.2 s, and the normal start time', checkShell);
 }
 

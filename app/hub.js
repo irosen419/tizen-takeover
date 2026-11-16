@@ -59,8 +59,12 @@
  *
  * ctx, one per widget:
  *   ctx.id, ctx.config        HUB_CONFIG.widgets[id] || {}
- *   ctx.build                 'v0.17.0'
+ *   ctx.build                 'v0.18.0'
  *   ctx.motionStatus()        e.g. 'Motion: push (auto, 58 fps)'
+ *   ctx.clayStatus()          the clay wanderers' status: { text, detail }, e.g. text 'next visit in
+ *                             42 s · 0 played, 0 slow, 0 failed' and detail (how long loading
+ *                             took, the last problem; often ''); both '' without app/clay.js.
+ *                             It changes by itself, so read it again
  *   ctx.browser()             the TV's browser, e.g. 'Chrome 63 · Tizen 5.0' ('' if unknown)
  *   ctx.toast(text, ms)
  *   ctx.service(path, timeoutMs, cb)   GET JSON from the local service.js;
@@ -117,7 +121,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.17.0';
+  var BUILD = 'v0.18.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -1103,6 +1107,7 @@
       build: BUILD,
       hasTizen: hasPageTizen,
       motionStatus: motionStatus,
+      clayStatus: clayStatus,
       browser: function () { return browserText; },
       toast: toast,
       service: service,
@@ -2071,6 +2076,19 @@
     try { K[name](); } catch (e) { /* the characters just don't show */ }
   }
 
+  // HUB_CLAY.status() as { text, detail }, '' where there is none.
+  function clayStatus() {
+    var out = { text: '', detail: '' };
+    var K = clayApi('status');
+    if (!K) return out;
+    try {
+      var s = K.status();
+      if (s && typeof s.text === 'string') out.text = s.text;
+      if (s && typeof s.detail === 'string') out.detail = s.detail;
+    } catch (e) { /* nothing to say */ }
+    return out;
+  }
+
   function startClay() {
     var K = clayApi('start');
     if (!K) return;
@@ -2078,6 +2096,11 @@
       K.start({
         config: cfg.clay,
         quiet: function () { return !busy && !open && !frameOpen && !sw.on && !typingBox(); },
+        // Why quiet() is false, for the status line.
+        busyWhy: function () {
+          return typingBox() ? 'typing' : open ? 'panel open' : frameOpen ? 'full-screen page open' :
+            sw.on ? 'layout bar open' : busy ? 'moving' : '';
+        },
         // Each tile's rect, measured now (a scene measures once, as it starts).
         tiles: function () {
           measureHome();

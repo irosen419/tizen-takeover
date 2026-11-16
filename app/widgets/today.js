@@ -1,8 +1,10 @@
 /*
  * Clock. OK on the tile opens the Clock page: a digital or an analog face,
  * a 12-hour or 24-hour clock, and "About this hub" at the bottom (the
- * version, the TV's browser, the motion choice, and the live updates and
- * updates lines when they have something to say). Both choices are
+ * version, the TV's browser, the motion choice, the live updates and
+ * updates lines when they have something to say, and the clay wanderers'
+ * status, with a second line on their loading once there is something to
+ * say, refreshed each second). Both choices are
  * remembered on this TV, and the tile follows them:
  *
  *   Digital  the time and the date, nothing else, 12- or 24-hour.
@@ -331,6 +333,7 @@
     if (page.dow.textContent !== dow) page.dow.textContent = dow;
     if (page.mdy.textContent !== mdy) page.mdy.textContent = mdy;
     if (page.analog) setFace(page.analog, now);
+    try { refreshAbout(); } catch (e) { /* the about lines just stay as they are */ }
   }
 
   function startTicking() {
@@ -365,6 +368,10 @@
     try { live = ctx.live ? ctx.live.status().text || '' : ''; } catch (e) { live = ''; }
     if (live) out.push({ cls: 'clock-about-live', text: live });
     if (updateText) out.push({ cls: 'clock-about-updates', text: updateText });
+    var clay = null;
+    try { clay = typeof ctx.clayStatus === 'function' ? ctx.clayStatus() : null; } catch (e) { clay = null; }
+    if (clay && clay.text) out.push({ cls: 'clock-about-clay', text: 'Wanderers: ' + clay.text });
+    if (clay && clay.text && clay.detail) out.push({ cls: 'clock-about-clay-detail', text: 'Wanderers detail: ' + clay.detail });
     return out;
   }
 
@@ -373,9 +380,34 @@
     div('clock-about-title', box, 'About this hub');
     var list = div('clock-about-lines', box);
     var lines = aboutLines(ctx);
+    var shape = [];
     for (var i = 0; i < lines.length; i++) {
       var line = div('clock-about-line ' + lines[i].cls, list, lines[i].text);
       line.title = lines[i].text;
+      shape.push(lines[i].cls);
+    }
+    if (page && page.about === box) { page.aboutShape = shape.join(' '); page.aboutList = list; }
+  }
+
+  // Once a second: some lines (the wanderers' countdown) change by
+  // themselves. The same lines: only the text changes. Others: redraw and
+  // fit the face again (that measures, so only then).
+  function refreshAbout() {
+    if (!page || !page.about || !page.ctx || !page.aboutList) return;
+    var lines = aboutLines(page.ctx);
+    var shape = [];
+    for (var i = 0; i < lines.length; i++) shape.push(lines[i].cls);
+    if (shape.join(' ') !== page.aboutShape) {
+      drawAbout(page.about, page.ctx);
+      fitFace();
+      return;
+    }
+    var rows = page.aboutList.childNodes;
+    for (var j = 0; j < lines.length && j < rows.length; j++) {
+      if (rows[j].textContent !== lines[j].text) {
+        rows[j].textContent = lines[j].text;
+        rows[j].title = lines[j].text;
+      }
     }
   }
 
@@ -404,7 +436,7 @@
     var root = div('clock-page is-' + face + (full ? ' is-full' : ''), body);
     var main = div('clock-main', root);
     var display = div('clock-display', main);
-    page = { root: root, display: display, full: full, shown: null, analog: null, fitBox: null, digits: null, ampm: null };
+    page = { root: root, display: display, full: full, shown: null, analog: null, fitBox: null, digits: null, ampm: null, ctx: ctx };
 
     if (face === 'analog') {
       // Only the face and, beside it, the date: no digital time.

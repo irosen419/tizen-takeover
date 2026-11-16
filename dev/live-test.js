@@ -276,8 +276,9 @@ async function check1() {
   const page = await openHub(context, '');
   await sleep(1500);
   const lines = await look.statusLines(page);
-  assert(lines.length === 2, 'expected 2 status lines, got ' + JSON.stringify(lines));
-  assert(lines[0].indexOf('v0.17.0') === 0, 'first status line: ' + lines[0]);
+  // The version, motion and the wanderers.
+  assert(lines.length === 3 && /^Wanderers: /.test(lines[2]), 'expected 3 status lines, got ' + JSON.stringify(lines));
+  assert(lines[0].indexOf('v0.18.0') === 0, 'first status line: ' + lines[0]);
   assert((await look.todoSub(page)) === 'On this TV', 'to-do sub line: ' + (await look.todoSub(page)));
   assert((await look.state(page)) === 'off', 'live state: ' + (await look.state(page)));
   await addOnScreen(page, 'Milk');
@@ -301,7 +302,7 @@ async function check1() {
   await old.route('**/live.js', (route) => route.fulfill({ status: 404, body: 'not found' }));
   const page2 = await openHub(old, liveQuery(false));
   assert((await look.tiles(page2)) >= 8, 'the grid is missing tiles without live.js');
-  assert((await look.statusLines(page2)).length === 2, 'a third status line without live.js');
+  assert((await look.statusLines(page2)).length === 3, 'a live line without live.js');
   assert((await look.todoSub(page2)) === 'On this TV', 'to-do sub line without live.js');
   await addOnScreen(page2, 'Eggs');
   await closePanel(page2);
@@ -323,7 +324,7 @@ async function check2() {
   await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0);
   await sleep(3000);
   assert((await look.state(page)) === 'quiet', 'state: ' + (await look.state(page)));
-  assert((await look.statusLines(page)).length === 2, 'a third status line showed');
+  assert((await look.statusLines(page)).length === 3, 'a live line showed');
   assert((await look.todoSub(page)) === 'On this TV', 'to-do sub line: ' + (await look.todoSub(page)));
   assert((await look.toast(page)) === null, 'a toast showed: ' + (await look.toast(page)));
   await addOnScreen(page, 'Bread');

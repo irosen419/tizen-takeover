@@ -27,7 +27,7 @@ Any key press or click sends them away in the same instant, before the hub acts 
 In `app/config.js`:
 
 ```js
-clay: { on: true, idleAfter: 20, every: [90, 240], nightEvery: [300, 600] },
+clay: { on: true, idleAfter: 20, every: [90, 150], nightEvery: [300, 600] },
 ```
 
 - `idleAfter`: seconds without a key press (and with no panel open) before a visit. The first visit comes that long, plus a few seconds, after the last key.
@@ -37,13 +37,44 @@ clay: { on: true, idleAfter: 20, every: [90, 240], nightEvery: [300, 600] },
 
 ## How it stays light on the TV
 
-- Nothing loads at start but `clay.js`. At the first visit it loads `clay.css` and `clay/sprites.js` (the list of sprites), then the frames that scene needs (a few KB each). A scene starts only once all its frames are in; if one is missing or they take more than 8 seconds, the scene is skipped quietly and not tried again until the hub reloads.
+- Nothing loads at start but `clay.js`. At the first visit it adds its few styles (from `clay.js` itself, no request) and loads `clay/sprites.js` (the list of sprites), then the frames that scene needs (a few KB each). A scene starts only once all its frames are in.
+- Loading may be slow on the TV. The sprite list and a scene's frames each get 30 seconds; past that the visit is skipped, but nothing is cancelled: the files keep loading into the browser's cache, and the next visit tries the same scene again. A sprite list that failed is tried again at the next visit. A frame that really fails (an error, or a picture that loads but does not decode) leaves that scene out for 10 minutes.
+- Once the sprite list is in, a few seconds after each visit the next visit's scene is picked and its frames start loading, so the visit starts from the cache. Only one scene ahead, and it never makes a visit come sooner.
 - One timer, about 7 ticks a second. On a tick a character only changes which of its stacked pictures shows (opacity 0 or 1) and where it stands (`transform`). Props may also fade in steps. No filters, no shadows that blur, no CSS animations, no layout reads while a scene runs.
 - One click-through layer above the tiles and below the panel, the dashboard and toasts. It is removed when the scene ends.
 - At most two characters (or one picture of the two) and three props on screen.
 - Every entry point is wrapped: if anything clay-related fails, the hub carries on as if it weren't there.
 
 The sprites are in `app/clay/sprites/`, made by `art/clay/tools/` (see `art/clay/README.md`). They are drawn at the size they are shown: Ian standing is 160 px tall on the 1080p screen.
+
+## If they don't show up
+
+The Clock page shows two lines about them under **About this hub** (the second only once something has loaded), and `HUB_CLAY.status()` gives the same as `{ text, detail }`. They change by themselves while the page is open. While you read them the Clock page is itself open, so the first line then says `not yet: hub busy (panel open)`; the rest is what happened before.
+
+`Wanderers:` what they are doing, then `N played, N slow, N failed` since the page loaded, and the last visit's outcome (`last stroll finished`, `interrupted`, `stopped`, `did not fit`, `too slow`, `failed`, `hit an error`).
+
+- `off (config)`: `clay: false` or `on: false` in `app/config.js`. `off (?clay=off)`: the address says so.
+- `not started`: hub.js never started them (an older or broken hub.js).
+- `next visit in 42 s`: waiting for the next visit; the remote has to stay untouched until then.
+- `not yet: hub busy (panel open)` (or `full-screen page open`, `layout bar open`, `typing`, `moving`): nothing comes while that is open; idle counts again after it.
+- `not yet: page reports hidden`: the browser says the page is hidden (`document.hidden`), so no visit starts. If this shows while the hub is plainly on screen, the TV's browser reports it wrongly.
+- `loading stroll (sprite list)` or `loading stroll (frames)`: a visit is loading.
+- `playing stroll`: a scene is on screen.
+
+`Wanderers detail:` how loading went, and the last problem with how long ago (it stays after later good visits):
+
+- `sprite list 812 ms`: how long `clay/sprites.js` took. `sprite list onerror after 40 ms`: it failed. `sprite list not in after 30000 ms`: no onload or onerror yet. `(over 30 s)`: it came, but after the limit.
+- `stroll 18/18 frames in 2304 ms`: the last scene's frames, how many came of how many, and how long. `12/18 frames after 30000 ms`: still coming after the limit (the count goes on as they arrive). `3/18 frames, then one failed`: a frame failed.
+- `problem 3 min ago:` then one of
+  - `sprite list did not load (onerror)`: `clay/sprites.js` answered with an error.
+  - `sprite list did not load (no onload or onerror in 30 s)`: no answer in time (`, then came in 41234 ms` when it came later; the next visit uses it).
+  - `sprite list loaded but is not valid (onload, ...)`: the file loaded but `CLAY_SPRITES` is missing or has no sprites or sequences.
+  - `the styles could not be added: ...`: putting the `<style>` in threw.
+  - `scene stroll skipped: frame ember/trot-1 failed (onerror)`: that picture did not load; the scene is left out for 10 minutes.
+  - `scene stroll skipped: frame ember/trot-1 failed (loaded, 0 px wide: did not decode)`: the file came but the browser could not decode it (WebP on an old browser, a damaged file); left out for 10 minutes.
+  - `scene stroll skipped: frame X is not in the sprite list`: a scene asks for a picture `sprites.js` doesn't have.
+  - `scene stroll skipped: its frames took over 30 s (12 of 18 in)`: slow; the same scene comes at the next visit.
+  - `scene stroll could not be built: ...`, `scene stroll could not be shown: ...`, `error in scene stroll: ...`, `error in the scheduler: ...`, `error: ...`: an exception, with its message.
 
 ## Adding a scene
 
@@ -64,10 +95,10 @@ SCENES.bark = function (S) {
 - x is where the sprite's centre of weight (`cx`) goes; y is where its bottom goes (the feet when standing). Sprites have no baseline, so a pose like `ian/sit-edge` on a ledge needs its own offset (see `PERCH`).
 - Steps: `at(x, y)`, `face(dir)` (a `right` sprite is mirrored to face left), `pose(key, ticks, dy)`, `cycle(keys, ticks, every, { dy, dx })`, `walk(keys, toX, step, every, { dy, keepFace })`, `arc(keys, x, y, height, ticks)`, `move(dx, dy, ticks, { key, fade })`, `wait(ticks)`, `hide()`, `fade(opacity)`, `ground(y)` (where the shadow sits), `signal(name)` and `after(name)` (wait for another actor). The helpers `go(actor, GAIT, toX)` and `shuffle(actor, key, toX)` walk with a gait.
 - Return `false` when the scene doesn't fit (`perch` with no ledge).
-- Add it to `choose()` with a weight, and to `PLAYS` in `dev/clay-test.js`, which plays every scene and checks the rules above.
+- Add it to `bagFor()` with a weight, and to `PLAYS` in `dev/clay-test.js`, which plays every scene and checks the rules above.
 
 ## Testing and filming
 
-- `node dev/clay-test.js` checks the rules: nothing loads before the first visit, nothing plays before idle, every scene plays to the end within the limits and changes only transform and opacity, a key press clears the screen before the hub handles it, panels and layout changes end scenes, `clay: false` and `?clay=off` load nothing, a missing sprite skips a scene, night hours pick night scenes, a ticked to-do item queues a cheer.
+- `node dev/clay-test.js` checks the rules: nothing loads before the first visit, nothing plays before idle, every scene plays to the end within the limits and changes only transform and opacity, a key press clears the screen before the hub handles it, panels and layout changes end scenes, `clay: false` and `?clay=off` load nothing, a missing sprite skips a scene, night hours pick night scenes, a ticked to-do item queues a cheer, the status lines say what happened (off, waiting, playing, busy, hidden, a missing or slow or invalid sprite list, a missing or undecodable frame), no stylesheet is fetched, a failed or slow load is tried again at the next visit, a slow scene is not marked broken and plays at a later visit, the next scene's frames load ahead, and the default pause is 90 to 150 s.
 - `node dev/clay-shots.js [folder]` films every scene frame by frame (`HUB_TEST.clay.setSpeed(0)` and `step()`): stills of each, one MP4 each at the real speed, a highlights reel, a key press making them vanish, and `all-scenes.jpg`. Needs ffmpeg for the videos.
-- In a laptop browser: `HUB_TEST.clay.play('fetch')`, `.stop()`, `.state()`, `.scenes()`, `.setHour(23)`, `.setSpeed(ms)`.
+- In a laptop browser: `HUB_TEST.clay.play('fetch')`, `.stop()`, `.state()`, `.scenes()`, `.setHour(23)`, `.setSpeed(ms)`, `.setLoadMs(ms)`; `HUB_CLAY.status()`.

@@ -45,9 +45,10 @@ var HUB_CONFIG = {
      docs/clay.md). Any key press sends them away at once.
        idleAfter   seconds without a key press before the first visit
        every       seconds between visits: a random wait in [shortest, longest]
+                   (at most 2.5 minutes by default)
        nightEvery  the same from 10 PM to 6 AM, when Ember just naps in a corner
      clay: false (or on: false) turns them off; so does ?clay=off on the address. */
-  clay: { on: true, idleAfter: 20, every: [90, 240], nightEvery: [300, 600] },
+  clay: { on: true, idleAfter: 20, every: [90, 150], nightEvery: [300, 600] },
 
   layout: [
     { widget: 'today',         x: 0, y: 0, w: 3, h: 1 },
