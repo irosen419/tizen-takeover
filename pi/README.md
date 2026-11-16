@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.1.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.2.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -84,6 +84,28 @@ Where each tile sits on the home screen can be changed from the Pi, without edit
 - `./hub layout reset` goes back to the layout in `app/config.js`.
 
 A tile is `{ "widget": "weather", "x": 0, "y": 0, "w": 3, "h": 2 }` on a grid 12 wide and 6 high: whole numbers, inside the grid, no two tiles overlapping, each widget once, at most 24 tiles. The server refuses anything else and says why. A TV that is on moves its tiles at once (if the set of widgets changed it reloads once). It waits while a panel is open. The TV keeps the last layout, so it starts with it even when the Pi is away.
+
+## A World Worth Saving snapshot
+
+The A World Worth Saving tiles on the TV (to-dos, handoffs, outreach and the rest) show one small file of figures, called the **snapshot**. A scheduled Claude routine builds it from places only a signed-in Claude can read and sends it to the Pi through the Claude mailbox (below), usually every half hour. The Pi checks it, keeps it in `data/state.json` and passes it to the TV. School visits and other dates still come from the calendars, not from the snapshot.
+
+The full description of the file, field by field, is in [`docs/awws-snapshot.md`](../docs/awws-snapshot.md). A made-up example is `fixtures/awws-sample.json` in this folder.
+
+- `./hub awws show` says when the snapshot was sent, how big it is (at most 48 KB), and one line per part, such as `khaya     11 of 12 done, as of 9:00 AM`. Before any snapshot it says `No A World Worth Saving snapshot yet.`
+- `./hub awws set snapshot.json` stores a snapshot from a file. With Docker the file must be in this folder; `./hub awws set - < snapshot.json` reads it from input instead.
+- `./hub awws clear` removes it. The tiles then say "Not synced yet".
+
+The Pi checks each part (it calls them sections) on its own. A section that breaks a rule is refused by name and the Pi keeps its last good copy; the other sections are still stored. The snapshot must never hold email addresses or links, and the Pi refuses a section that does. It must not hold notes or librarians' last names either; the Pi cannot tell those apart from other words, so the sender has to leave them out. The money section stays out until you say yes to money figures on the living room TV.
+
+### After pulling this change
+
+This adds one new file, `awws.js`, next to `server.js`. Docker uses this folder as it is (it is mounted into the container, and nothing is built), so a restart is enough. No rebuild, and no change to `.env`:
+
+1. `cd tizen-takeover && git pull && cd pi`
+2. With Docker: `docker compose restart hub`. With systemd: `sudo systemctl restart home-hub`.
+3. `./hub status` should say `version 0.2.0`, and `./hub awws show` should say `No A World Worth Saving snapshot yet.` If it says `The server said no: no such call.` instead, the server is still running the old code: do step 2 again.
+
+From the cloud, a mailbox `ping` answers `Home Hub live server 0.2.0 is running.` once this is in place.
 
 ## Calendars
 
@@ -193,7 +215,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.1.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.2.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 
@@ -282,7 +304,7 @@ Claude runs in the cloud and cannot reach your Pi (that is good: nothing on the 
 - Claude drops a small note in it, such as "add Buy milk to the to-do list".
 - Every 10 seconds the Pi looks in the bucket, does what the note says, and leaves a reply note next to it.
 
-The Pi only ever goes *out* to Cloudflare; nothing comes in. It can only do the things `./hub` does (show a widget, say a message, to-dos, calendar status and refresh, layout, status, and restart the server). It cannot run any other command, git or Docker. Notes older than a day, or that do not look exactly right, are refused and never run.
+The Pi only ever goes *out* to Cloudflare; nothing comes in. It can only do the things `./hub` does (show a widget, say a message, to-dos, calendar status and refresh, layout, the A World Worth Saving snapshot, status, and restart the server). It cannot run any other command, git or Docker. Notes older than a day, or that do not look exactly right, are refused and never run.
 
 ### One-time setup
 
@@ -358,7 +380,7 @@ At one look every 10 seconds the Pi makes about 8,600 list calls a day (about 26
 ### How it works (for builders)
 
 - Claude writes `inbox/<id>.json`: `{"id": "<id>", "created": "<ISO time>", "cmd": "<name>", "args": {...}}`. The id is 6 to 64 letters, digits, `_` or `-` and must match the file name; `created` must be within the last 24 hours and at most 5 minutes ahead; the file must be under 64 KB; only `id`, `created`, `cmd` and `args` are allowed.
-- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
+- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
 - The Pi writes `outbox/<id>.json`: `{id, cmd, ok, state, message, data, started, finished}`. `message` is the same text `./hub` prints (several lines for lists). First it writes `state: "running"` as a claim, then the final result with `state: "done"`; a command with an outbox file is never run again, even after a crash. Then it deletes the inbox file.
 - At most 20 commands per look, oldest `created` first, one at a time.
 - `status.json` is rewritten every minute and after each command: version, uptime, how many screens are listening, the mailbox's last command and last error, and a calendar summary (counts only).
@@ -380,7 +402,7 @@ curl -sS "$B?prefix=outbox/"                                                    
 
 ## Where your data lives, and backups
 
-Everything is in `data/state.json` in this folder (the to-do list, the tile layout, and the latest calendar events; never the calendar links). It is rewritten safely on each change. If it ever gets damaged, the server moves it aside as `data/state.bad-<time>.json` and starts an empty list instead of failing.
+Everything is in `data/state.json` in this folder (the to-do list, the tile layout, the A World Worth Saving snapshot, and the latest calendar events; never the calendar links). It is rewritten safely on each change. If it ever gets damaged, the server moves it aside as `data/state.bad-<time>.json` and starts an empty list instead of failing.
 
 To back up, copy that file somewhere safe:
 

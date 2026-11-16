@@ -19,6 +19,7 @@ const crypto = require('crypto');
 const hubServer = require('./server');
 const mailbox = require('./mailbox');
 const hubctl = require('./hubctl');
+const awws = require('./awws');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
 const KEY_ID = 'AKIDTESTKEYID0123456789';
@@ -340,6 +341,92 @@ async function main() {
     assert.strictEqual(r.message, 'Back to the built-in layout. Screens that are on change now.');
   });
 
+  const awwsSample = () => {
+    const s = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'awws-sample.json'), 'utf8'));
+    s.sentAt = new Date(Date.now() - 60000).toISOString();
+    return s;
+  };
+
+  await check('awws.show, awws.set, awws.clear: same words as ./hub, compact data', async () => {
+    let r = await run(fake, h, 'awws.show');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.message, 'No A World Worth Saving snapshot yet. The TV tiles say "Not synced yet".');
+    assert.deepStrictEqual(r.data, { sentAt: null, receivedAt: null, bytes: 0, sections: {} });
+    const snap = awwsSample();
+    r = await run(fake, h, 'awws.set', { snapshot: snap });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.ok(/^Stored todos, handoffs, outreach, khaya, pipeline, money and reach \([\d.]+ KB of 48 KB\)\. Screens that are on change now\.$/.test(r.message), r.message);
+    assert.deepStrictEqual(Object.keys(r.data), ['changed', 'bytes', 'accepted', 'cleared', 'rejected']);
+    assert.strictEqual(r.data.changed, true);
+    assert.strictEqual(r.data.accepted.length, 7);
+    const stored = (await h.api('GET', '/api/awws')).body;
+    assert.strictEqual(r.message, awws.setText(Object.assign({}, r.data)));
+    assert.strictEqual(stored.data.sentAt, snap.sentAt);
+    r = await run(fake, h, 'awws.show');
+    assert.strictEqual(r.message, hubctl.awwsShowLines(stored).join('\n'));
+    assert.ok(/^Snapshot sent .*\. [\d.]+ KB of 48 KB\.\n  todos     25 items/.test(r.message), r.message);
+    assert.strictEqual(r.data.sentAt, snap.sentAt);
+    assert.strictEqual(r.data.sections.todos.items, 25);
+    assert.strictEqual(r.data.sections.khaya.total, 12);
+    assert.strictEqual(r.data.bytes, Buffer.byteLength(JSON.stringify(stored.data)));
+    const shown = JSON.stringify(r);
+    assert.ok(shown.indexOf('Maple Grove') < 0 && shown.indexOf('Luma') < 0 && shown.indexOf('1840') < 0, 'no titles, names or amounts');
+    r = await run(fake, h, 'awws.set', { snapshot: { v: 1, sentAt: new Date().toISOString(), money: { currency: 'usd', spent: 1, earned: 1 }, khaya: null } });
+    assert.strictEqual(r.ok, true);
+    assert.deepStrictEqual(r.data.cleared, ['khaya']);
+    assert.deepStrictEqual(r.data.rejected, [{ section: 'money', error: '"currency" must be three capital letters, like USD' }]);
+    assert.ok(/\nRejected money: "currency" must be three capital letters, like USD\./.test(r.message), r.message);
+    r = await run(fake, h, 'awws.set', { snapshot: { v: 1, sentAt: new Date().toISOString(), khaya: { done: 3, total: 2 } } });
+    assert.strictEqual(r.ok, false);
+    assert.ok(/^The server said no: nothing was stored, because every section was rejected: khaya: "done" \(3\)/.test(r.message), r.message);
+    r = await run(fake, h, 'awws.clear');
+    assert.strictEqual(r.ok, true);
+    assert.ok(/^Cleared the A World Worth Saving snapshot \(todos, handoffs, outreach, pipeline, money and reach\)\./.test(r.message), r.message);
+    assert.strictEqual(r.data.changed, true);
+    r = await run(fake, h, 'awws.set', { snapshot: null });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.message, 'There is no A World Worth Saving snapshot to clear. Nothing changed.');
+    assert.strictEqual(r.data.changed, false);
+  });
+
+  await check('awws.set: a snapshot near the 48 KB cap goes through the mailbox', async () => {
+    const snap = { v: 1, sentAt: new Date().toISOString(), todos: { items: [] } };
+    let i = 0;
+    while (Buffer.byteLength(JSON.stringify(snap)) < 48 * 1024 - 400) {
+      snap.todos.items.push({ id: 'n' + i, title: 'Near the cap ' + i + ' ' + 'q'.repeat(60), owner: 'both', section: 'later', stream: 'Books', due: 'Some day soon, after the school visits', waitingOn: 'w'.repeat(40) });
+      i++;
+      if (i >= 200) break;
+    }
+    const size = Buffer.byteLength(JSON.stringify(snap));
+    assert.ok(size > 47 * 1024 && size <= 49152, 'size ' + size);
+    const env = envelope('awws.set', { snapshot: snap });
+    assert.ok(Buffer.byteLength(JSON.stringify(env)) < 64 * 1024);
+    const r = await run(fake, h, 'awws.set', { snapshot: snap }, { id: env.id });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.deepStrictEqual(r.data.accepted, ['todos']);
+    const stored = (await h.api('GET', '/api/awws')).body.data;
+    assert.strictEqual(stored.todos.items.length, snap.todos.items.length);
+    await h.api('POST', '/api/awws', { snapshot: null });
+  });
+
+  await check('awws.set: "__proto__" and "constructor" keys in a snapshot do no harm', async () => {
+    const id = newId();
+    const text = '{"id":"' + id + '","created":"' + new Date().toISOString() + '","cmd":"awws.set","args":{"snapshot":' +
+      '{"v":1,"sentAt":"' + new Date().toISOString() + '","__proto__":{"polluted":1},"constructor":{"prototype":{"bad":1}},' +
+      '"khaya":{"done":1,"total":2,"__proto__":{"isAdmin":true}}}}}';
+    fake.put('inbox/' + id + '.json', text);
+    await h.mailbox.pollOnce();
+    const r = fake.json('outbox/' + id + '.json');
+    assert.strictEqual(r.ok, true, r.message);
+    assert.deepStrictEqual(r.data.accepted, ['khaya']);
+    assert.strictEqual(({}).polluted, undefined);
+    assert.strictEqual(({}).isAdmin, undefined);
+    assert.strictEqual(({}).bad, undefined);
+    const stored = (await h.api('GET', '/api/awws')).body.data;
+    assert.strictEqual(JSON.stringify(stored).indexOf('__proto__'), -1);
+    await h.api('POST', '/api/awws', { snapshot: null });
+  });
+
   await check('status: same lines as ./hub status, with the mailbox line', async () => {
     const r = await run(fake, h, 'status');
     assert.strictEqual(r.ok, true);
@@ -390,7 +477,12 @@ async function main() {
     ['todo.add bad section', () => ({ raw: envelope('todo.add', { title: 'A', section: 'later' }) }), /"section" must be one of/],
     ['todo.done with id and title', () => ({ raw: envelope('todo.done', { id: 'abc', title: 'A' }) }), /exactly one/],
     ['layout.set not a list', () => ({ raw: envelope('layout.set', { layout: 'big' }) }), /"layout" must be a list/],
-    ['full not a boolean', () => ({ raw: envelope('show', { widget: 'todo', full: 'yes' }) }), /"full" must be true or false/]
+    ['full not a boolean', () => ({ raw: envelope('show', { widget: 'todo', full: 'yes' }) }), /"full" must be true or false/],
+    ['awws.set without a snapshot', () => ({ raw: envelope('awws.set', {}) }), /"awws\.set" needs "snapshot"/],
+    ['awws.set snapshot not an object', () => ({ raw: envelope('awws.set', { snapshot: [1, 2] }) }), /"snapshot" must be an object/],
+    ['awws.set snapshot nested too deep', () => ({ raw: envelope('awws.set', { snapshot: { a: { b: { c: { d: { e: { f: { g: { h: { i: { j: 1 } } } } } } } } } } }) }), /nested more than 8 levels deep/],
+    ['awws.set over 64 KB', () => ({ raw: envelope('awws.set', { snapshot: { v: 1, sentAt: new Date().toISOString(), todos: { items: [], pad: 'x'.repeat(66 * 1024) } } }) }), /larger than 64 KB/],
+    ['awws.show with args', () => ({ raw: envelope('awws.show', { full: true }) }), /"awws\.show" does not take "full" \(it takes no args\)/]
   ];
   for (const [name, make, re] of rejects) {
     await check('rejected: ' + name, async () => {
