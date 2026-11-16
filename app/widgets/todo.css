@@ -336,9 +336,8 @@
 .todo-main.is-focused .todo-tick { border-color: var(--text); }
 .todo-main.is-pressed { opacity: 0.75; }
 
-/* Done: a green tick with a white check, the title gray with a white
-   strikethrough (the white line shows on newer browsers; older ones draw it
-   in the title's own gray). The white outline stays. */
+/* Done: a green tick with a white check inside the white outline, the title
+   and its strikethrough both gray. */
 .todo-row.is-done .todo-tick {
   color: #fff;
   border-color: #fff;
@@ -350,8 +349,6 @@
 .todo-row.is-done .todo-title {
   color: var(--text-3);
   text-decoration: line-through;
-  -webkit-text-decoration-color: #fff;
-  text-decoration-color: #fff;
 }
 .todo-row.is-done .todo-main.is-focused .todo-tick { border-color: #fff; }
 .todo-row.is-done .todo-main.is-focused .todo-title { color: var(--text-2); }
