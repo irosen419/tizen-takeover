@@ -126,7 +126,6 @@ var HUB_CONFIG = {
      * its first letter.
      */
     entertainment: {
-      sub: 'Apps, Xbox and live TV',
       sections: [
         {
           label: 'Watch',

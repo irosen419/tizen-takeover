@@ -540,7 +540,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   // What the TV shows today (app/config.js, HUB_CONFIG.layout), with each widget's plain-language job.
   var WIDGETS = {
     today:         { title: 'Clock',                 sub: 'Time and date; opens the Clock page' },
-    entertainment: { title: 'Entertainment',         sub: 'Apps, Xbox and live TV' },
+    entertainment: { title: 'Entertainment',         sub: '' },
     weather:       { title: 'Weather',               sub: 'Today, the next hours and the week' },
     todo:          { title: 'To-do',                 sub: 'Your list, kept on the Pi' },
     calendar:      { title: 'Calendar',              sub: 'Today’s agenda, then day, week and month' },
@@ -668,15 +668,15 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     entertainment: {
       title: { en: 'Entertainment', es: 'Entretenimiento' },
       sample: {
-        en: { sub: 'Apps, Xbox and live TV', names: ['Netflix', 'Prime Video', 'Disney+', 'Hulu', 'Peacock', 'Apple TV', 'YouTube', 'Xbox', 'Pluto TV', 'Twitch', 'All apps'],
+        en: { sub: '', names: ['Netflix', 'Prime Video', 'Disney+', 'Hulu', 'Peacock', 'Apple TV', 'YouTube', 'Xbox', 'Pluto TV', 'Twitch', 'All apps'],
               states: ['', '', '', '', 'Not installed', '', 'No ads', 'HDMI 1', '', '', 'On this TV'], secs: ['Watch', 'Play', 'Free TV', 'More'] },
-        es: { sub: 'Aplicaciones, Xbox y televisión en directo', names: ['Netflix', 'Prime Video', 'Disney+', 'Hulu', 'Peacock', 'Apple TV', 'YouTube', 'Xbox', 'Pluto TV', 'Twitch', 'Todas las aplicaciones'],
+        es: { sub: '', names: ['Netflix', 'Prime Video', 'Disney+', 'Hulu', 'Peacock', 'Apple TV', 'YouTube', 'Xbox', 'Pluto TV', 'Twitch', 'Todas las aplicaciones'],
               states: ['', '', '', '', 'No instalada', '', 'Sin anuncios', 'HDMI 1', '', '', 'En este televisor'], secs: ['Ver', 'Jugar', 'Televisión gratis', 'Más'] }
       },
       strip: { en: 'Icon and title on the left, a row of app logos on the right ending in “+N”. Strip logos are one size at any width; a narrow strip drops the title, and with no room for two logos only the TV icon shows.',
                es: 'Icono y título a la izquierda; a la derecha, una fila de logotipos que termina en «+N». En una tira los logotipos tienen siempre el mismo tamaño; una tira estrecha quita el título y, si no caben dos logotipos, solo se ve el icono de la tele.' },
-      standard: { en: 'Icon, title and “Apps, Xbox and live TV”, then one row of logos at the bottom, the last one “+N”. Narrow tiles (1–2 columns) allow smaller logos in more rows; if not even two fit, only the TV icon shows.',
-                  es: 'Icono, título y «Aplicaciones, Xbox y televisión en directo»; abajo, una fila de logotipos, el último «+N». En mosaicos estrechos (1–2 columnas) los logotipos pueden ser más pequeños y en más filas; si no caben ni dos, solo se ve el icono de la tele.' },
+      standard: { en: 'Icon and title, then one row of logos at the bottom, the last one “+N”. Narrow tiles (1–2 columns) allow smaller logos in more rows; if not even two fit, only the TV icon shows.',
+                  es: 'Icono y título; abajo, una fila de logotipos, el último «+N». En mosaicos estrechos (1–2 columnas) los logotipos pueden ser más pequeños y en más filas; si no caben ni dos, solo se ve el icono de la tele.' },
       tall: { en: 'More rows of bigger logos, as many as fit (all 11 at 3×4); blank spaces even out the last row.',
               es: 'Más filas de logotipos más grandes, todos los que quepan (los 11 a 3×4); huecos en blanco igualan la última fila.' },
       panel: { en: 'A panel about a third of the screen: every app in one flat grid, six to a row, each with its name and a small line (No ads, HDMI 1, Not installed). All apps opens the TV’s own app list.',
