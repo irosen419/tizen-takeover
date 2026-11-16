@@ -200,7 +200,9 @@
       wmax = 30;
     } else if (win !== 'none') {
       svgEl('rect', { x: 68, y: 116.65, width: 64, height: 26, rx: 4.5, ry: 4.5, 'class': 'clock-window' }, svg);
-      wtext = svgEl('text', { x: 100, y: 129.65, 'class': 'clock-window-text', 'text-anchor': 'middle', dy: '0.368em' }, svg);
+      // x 100.4, not 100: the text's letter-spacing adds a trailing gap
+      // after the last figure, which pulls the visible ink left of centre.
+      wtext = svgEl('text', { x: 100.4, y: 129.65, 'class': 'clock-window-text', 'text-anchor': 'middle', dy: '0.368em' }, svg);
       wmax = 56;
     }
 
