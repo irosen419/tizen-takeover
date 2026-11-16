@@ -6,7 +6,7 @@ A custom home screen that runs as a [TizenBrew](https://github.com/reisxd/TizenB
 
 Out of the box:
 
-- **Today:** the time, the date, the build and whether it is the newest.
+- **Clock:** the time and the date. Open it for a big digital or analog clock, a 12-hour or 24-hour choice, and the hub's version and status.
 - **Entertainment:** Netflix, Prime Video, Disney+, Hulu, Peacock, Apple TV, YouTube (TizenTube), Xbox on HDMI 1, Pluto TV, Twitch and a list of every app on the TV.
 - **To-do:** a list kept on the TV. Add, tick off and move things with the remote.
 - **Weather:** the temperature, today's high and low and the chance of rain, then the next 12 hours and the week. It finds the TV's city by itself.
@@ -80,9 +80,20 @@ Everything lives in `app/config.js`.
 
 Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion=push`, `?motion=expand`, `?motion=fade` or `?motion=auto` at the end of the address does the same for one visit.
 
-### The status line
+### Clock
 
-The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.12.2 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)).
+The Clock tile shows only the time and the date, at any size. In a one-row strip the date sits beside the time, the weekday over the month and day; a longer one there takes its short form ("Wed", "Sep 30") rather than end in "...".
+
+Press OK on it to open the Clock page. At the top right of the page are two choices, picked with the arrows and OK:
+
+- **Face:** **Digital** (a big time with the full date under it, the default) or **Analog** (a round face with ticks and 12, 3, 6 and 9, the day and date in a small window in its lower half, and the time and date beside it). The second hand steps once a second; nothing sweeps.
+- **Clock:** **12-hour** (`9:41 PM`, the default) or **24-hour** (`21:41`). This applies to the tile too.
+
+Both choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
+
+### About this hub (the version and status)
+
+At the bottom of the Clock page, **About this hub** shows the hub version and the TV's browser, then the motion choice, for example `v0.13.1 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)). The lines change by themselves while the page is open.
 
 ### Entertainment
 
@@ -170,9 +181,9 @@ live: { server: HUB_PI + ':8097' },
 
 `server: ''` turns live updates off, and the hub works exactly as before. On a laptop, `?live=http://127.0.0.1:8097` in the address uses another server for one visit, and `?live=off` turns it off.
 
-The clock tile says how it's going, in small text, never a pop-up:
+**About this hub** on the Clock page says how it's going, in small text, never a pop-up:
 
-| The clock tile says | Meaning |
+| About this hub says | Meaning |
 | --- | --- |
 | nothing | Live updates are off, or this TV has never reached the Pi (it keeps trying quietly) |
 | `Live` | Connected |
@@ -265,9 +276,9 @@ It can't leave you worse off:
 
 GitHub allows 60 lookups an hour from one home without an account. The hub uses about 4 an hour, plus one each time it starts.
 
-The clock tile says how it's going:
+**About this hub** on the Clock page says how it's going:
 
-| The clock tile says | Meaning |
+| About this hub says | Meaning |
 | --- | --- |
 | `(newest)` after the version | GitHub confirmed this is the newest commit of the branch |
 | nothing extra | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
@@ -276,7 +287,7 @@ The clock tile says how it's going:
 | `Updates: a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
 | `Updates: a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
 
-The version on TizenBrew's card for the hub comes from the branch's `package.json` through jsDelivr's cache, so it can lag behind by up to 12 hours. The clock tile is the truth.
+The version on TizenBrew's card for the hub comes from the branch's `package.json` through jsDelivr's cache, so it can lag behind by up to 12 hours. The version under About this hub on the Clock page is the truth.
 
 A few files still come through jsDelivr's 12-hour branch cache: `package.json`, `service.js`, the loader `app/index.html`, and `app/update.js` as the loader uses it. These rarely change. After changing one of them, purge it at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/<file>` (for example `.../app/update.js`), or wait 12 hours.
 
@@ -287,7 +298,7 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/hub.html`
 - `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/package.json`
 
-`node dev/update-test.js` tests all of this in a headless browser (Playwright), against a pretend TizenBrew and a pretend GitHub: the first start, a new commit, GitHub away, a broken commit, a commit jsDelivr hasn't got, waiting for a quiet moment, the `reload` command, an old commit from before the loader, damaged memory, the laptop preview, and the clock tile with up to four lines. It needs port 8095 free and nothing from the internet. Set `UPDATE_TEST_SHOTS` to a folder to also save screenshots. It can't prove the real TV, TizenBrew or jsDelivr; the first run on the TV is still a real test.
+`node dev/update-test.js` tests all of this in a headless browser (Playwright), against a pretend TizenBrew and a pretend GitHub: the first start, a new commit, GitHub away, a broken commit, a commit jsDelivr hasn't got, waiting for a quiet moment, the `reload` command, an old commit from before the loader, damaged memory, the laptop preview, and About this hub on the Clock page with up to four lines, in the panel and full screen. It needs port 8095 free and nothing from the internet. Set `UPDATE_TEST_SHOTS` to a folder to also save screenshots. It can't prove the real TV, TizenBrew or jsDelivr; the first run on the TV is still a real test.
 
 ## How it works
 
@@ -297,7 +308,7 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
 - `app/icons.js` holds the white line icons; `app/logos.js` the app logos.
-- `app/widgets/` holds one file per widget: `today.js`, `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) and `planned.js` (the "Soon" placeholders).
+- `app/widgets/` holds one file per widget: `today.js` (the Clock, with its page's styles in `today.css`), `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) and `planned.js` (the "Soon" placeholders).
 - `app/hub.js` builds the home screen, moves focus, opens panels and runs the animations.
 - `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
 - `app/backgrounds/` holds the background picture.

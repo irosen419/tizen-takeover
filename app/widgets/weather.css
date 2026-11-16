@@ -16,7 +16,7 @@
 
 /* ---------- tile ---------- */
 
-/* A twin of the Today tile: the same quiet label on top, the same big light numerals. */
+/* Kin to the Clock tile: the same big light numerals. */
 .wx-tile {
   position: relative;
   flex: 1 1 auto;

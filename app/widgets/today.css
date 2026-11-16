@@ -1,0 +1,259 @@
+/* The Clock page (the tile's own rules are in style.css). Every class starts
+   with clock-.
+
+   The panel is already glass, so inside it there are no boxes in boxes:
+   the face, one hairline over "About this hub", and the two choice pills.
+   Nothing animates; the page only swaps text and turns the hands (an SVG
+   transform attribute) once a second. No flex gap, no grid, no filters.
+   Every text keeps a line-height of 1.25 or more so accents (Á, Ñ, é) and
+   descenders never clip, and long words wrap or end in "...". */
+
+.clock-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.clock-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+.clock-display {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;      /* last line of defence: nothing paints over the controls */
+}
+
+/* ---------- digital ---------- */
+
+.clock-digital { width: 100%; min-width: 0; padding: 0 0.2rem; }
+.clock-big {
+  font-size: 7.4rem;
+  font-weight: 200;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+  color: var(--text);
+}
+.clock-ampm {
+  margin-left: 0.8rem;
+  font-size: 2.1rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--text-2);
+}
+.clock-readout .clock-ampm { margin-left: 0.5rem; }
+.clock-fulldate {
+  margin-top: 0.35rem;
+  padding-top: 0.08em;   /* room above a capital's accent */
+  font-size: 1.5rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  word-wrap: break-word;
+  /* At most two lines, then "...". Old WebKit's line clamp. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---------- analog ---------- */
+
+.clock-analog {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.clock-face {
+  flex: 0 0 auto;
+  width: 12rem;          /* today.js sets the real size from the room there is */
+  height: 12rem;
+}
+.clock-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.clock-dial { fill: rgba(255, 255, 255, 0.045); stroke: rgba(255, 255, 255, 0.2); stroke-width: 1.2; }
+.clock-dial-ring { fill: none; stroke: rgba(255, 255, 255, 0.06); stroke-width: 0.8; }
+.clock-tick-m { stroke: rgba(255, 255, 255, 0.32); stroke-width: 0.9; stroke-linecap: round; }
+.clock-tick-h { stroke: #f4f5f7; stroke-width: 2.6; stroke-linecap: round; }
+.clock-num {
+  fill: #f4f5f7;
+  font-size: 19px;
+  font-weight: 300;
+  font-family: "SamsungOne", "Samsung Sans", "Helvetica Neue", Arial, sans-serif;
+}
+.clock-window { fill: rgba(0, 0, 0, 0.38); stroke: rgba(255, 255, 255, 0.22); stroke-width: 0.8; }
+.clock-window-text {
+  fill: #e9ebef;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-family: "SamsungOne", "Samsung Sans", "Helvetica Neue", Arial, sans-serif;
+}
+.clock-hand line { stroke-linecap: round; }
+.clock-hand-h line { stroke: #f4f5f7; stroke-width: 6; }
+.clock-hand-m line { stroke: #f4f5f7; stroke-width: 3.6; }
+.clock-hand-s line { stroke: #ff7a59; stroke-width: 1.4; }
+.clock-cap { fill: #ff7a59; }
+.clock-cap-dot { fill: #0e0f12; }
+
+.clock-side {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 2rem;
+}
+.clock-readout {
+  font-size: 3.6rem;
+  font-weight: 200;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  color: var(--text);
+}
+.clock-readout .clock-ampm { font-size: 1.3rem; }
+/* Beside the face: the weekday on its own line, then "November 15, 2026"
+   (it may wrap once). Each part ends in "..." rather than run on. */
+.clock-side .clock-fulldate { display: block; font-size: 1.3rem; }
+.clock-side .clock-sep { display: none; }
+.clock-side .clock-dow {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clock-side .clock-mdy {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-wrap: break-word;
+}
+
+/* ---------- the two choices ---------- */
+
+.clock-controls {
+  flex: 0 0 auto;
+  width: 14.5rem;
+  margin-left: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.clock-group + .clock-group { margin-top: 1.1rem; }
+.clock-group-label {
+  margin: 0 0 0.4rem 0.2rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A two-part pill: the chosen part filled, the other plain. */
+.clock-seg {
+  display: flex;
+  padding: 0.2rem;
+  border-radius: 1.6rem;
+  border: 0.08rem solid var(--line);
+  background: rgba(0, 0, 0, 0.18);
+}
+.clock-opt {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.42rem 0.6rem;
+  border-radius: 1.4rem;
+  border: var(--edge) solid transparent;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.clock-opt + .clock-opt { margin-left: 0.2rem; }
+.clock-opt-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.clock-opt-dot {
+  display: none;
+  flex: 0 0 auto;
+  width: 0.42rem;
+  height: 0.42rem;
+  margin-right: 0.45rem;
+  border-radius: 50%;
+  background: #ff7a59;
+}
+.clock-opt.is-selected {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text);
+  font-weight: 600;
+}
+.clock-opt.is-selected .clock-opt-dot { display: block; }
+/* Focus: the same white pill as every other button in the hub. */
+.clock-opt.is-focused {
+  background: #fff;
+  border-color: var(--focus);
+  color: #050506;
+}
+.clock-opt.is-pressed { opacity: 0.7; }
+
+/* ---------- about this hub ---------- */
+
+.clock-about {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 0.06rem solid var(--line);
+}
+.clock-about-title {
+  flex: 0 0 auto;
+  width: 9rem;
+  padding-right: 1rem;
+  font-size: 0.7rem;
+  line-height: 1.6;      /* sits on the first line's baseline */
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  word-wrap: break-word;   /* a longer name wraps under itself */
+}
+.clock-about-lines { flex: 1 1 auto; min-width: 0; }
+.clock-about-line {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clock-fallback { font-size: 1rem; line-height: 1.4; color: var(--text-2); }
+
+/* ---------- full screen ---------- */
+
+.clock-page.is-full .clock-main { padding: 0 1rem; }
+.clock-page.is-full .clock-big { font-size: 15rem; line-height: 1.1; }
+.clock-page.is-full .clock-ampm { margin-left: 1.4rem; font-size: 3.6rem; }
+.clock-page.is-full .clock-fulldate { margin-top: 0.6rem; font-size: 2.6rem; }
+.clock-page.is-full .clock-readout { font-size: 6rem; }
+.clock-page.is-full .clock-readout .clock-ampm { margin-left: 0.8rem; font-size: 2rem; }
+.clock-page.is-full .clock-side { margin-left: 3.5rem; }
+.clock-page.is-full .clock-side .clock-fulldate { font-size: 2rem; }
+.clock-page.is-full .clock-controls { width: 19rem; margin-left: 2.4rem; }
+.clock-page.is-full .clock-group + .clock-group { margin-top: 1.6rem; }
+.clock-page.is-full .clock-group-label { font-size: 0.85rem; }
+.clock-page.is-full .clock-opt { padding: 0.6rem 0.8rem; font-size: 1.1rem; }
+.clock-page.is-full .clock-about { margin-top: 1.2rem; padding-top: 1rem; }
+.clock-page.is-full .clock-about-title { width: 11rem; font-size: 0.8rem; line-height: 1.75; }
+.clock-page.is-full .clock-about-line { font-size: 0.95rem; }

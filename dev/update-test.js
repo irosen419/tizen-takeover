@@ -33,7 +33,7 @@ const path = require('path');
 const crypto = require('crypto');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
-const clockLayout = require('./clock-layout');
+const clockPage = require('./clock-page');
 
 const ROOT = path.join(__dirname, '..');
 const OWNER = 'irosen419';
@@ -118,7 +118,7 @@ const COMMITS = {
   [A]: (rest) => readWorking(rest),
   [B]: (rest) => {
     const body = readWorking(rest);
-    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.12.2-B'));
+    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.13.1-B'));
     return body;
   },
   [BROKEN]: (rest) => {
@@ -234,8 +234,6 @@ async function newContext(options) {
     context.log.external.push(url);
     return route.abort();
   });
-  // The status lines (this test's window on updates) need a clock two rows tall.
-  await clockLayout.route(context);
   context.on('page', (page) => watchPage(context, page));
   return context;
 }
@@ -264,7 +262,7 @@ async function go(page, url) {
 
 function hubDrawn(page) {
   return page.evaluate(() => !!window.HUB_TEST && document.querySelectorAll('#grid .tile').length >= 8 &&
-    !!document.querySelector('.today-status-line'));
+    !!document.querySelector('.cell[data-widget="today"] .today-time'));
 }
 
 // Waits until the page is on ref's file and the hub has drawn.
@@ -285,8 +283,9 @@ async function record(page) {
 }
 
 const look = {
-  lines: (page) => page.$$eval('.today-status-line', (els) => els.map((e) => e.textContent)),
-  updateLine: (page) => page.evaluate(() => { const e = document.querySelector('.today-status-updates'); return e ? e.textContent : null; }),
+  // "About this hub" on the Clock page (opened, read and closed again).
+  lines: (page) => clockPage.lines(page),
+  updateLine: (page) => clockPage.line(page, 'updates'),
   status: (page) => page.evaluate(() => window.HUB_UPDATE ? window.HUB_UPDATE.status() : null),
   open: (page) => page.evaluate(() => window.HUB_TEST.busy() ? 'busy' : window.HUB_TEST.open())
 };
@@ -370,10 +369,10 @@ async function check1() {
   await waitAt(page, A, 'app/hub.html');
   const rec = await until(async () => { const r = await record(page); return r && r.good === A ? r : false; }, 3000, 'good is not A');
   assert(!rec.trying, 'trying was not cleared: ' + JSON.stringify(rec));
-  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.12.2', 'record: ' + JSON.stringify(rec));
+  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.13.1', 'record: ' + JSON.stringify(rec));
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
-  assert(/^v0\.12\.2 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.13\.1 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   assert(lines.length === 2, 'status lines: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
   assert(asks.length === 1, 'GitHub was asked ' + asks.length + ' times');
@@ -400,7 +399,7 @@ async function check2() {
   await go(page, shellUrl());
   await waitAt(page, B, 'app/hub.html');
   const lines = await look.lines(page);
-  assert(/^v0\.12\.2-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.13\.1-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   const rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared');
   noMissingFiles(logSince(at));
@@ -417,8 +416,8 @@ async function check3() {
     await waitAt(page, A, 'app/hub.html');
     const took = Date.now() - t0;
     assert(took < 9000, mode + ': took ' + took + ' ms');
-    await until(async () => (await look.updateLine(page)) === 'Updates: can\'t reach GitHub', 3000,
-      mode + ': update line ' + JSON.stringify(await look.updateLine(page)));
+    await clockPage.waitFor(page, (a) => a.updates === 'Updates: can\'t reach GitHub', 3000,
+      mode + ': update line ');
     const lines = await look.lines(page);
     assert(lines[0].indexOf('(newest)') < 0, mode + ': first line says newest');
     noErrors(context);
@@ -430,8 +429,8 @@ async function check3() {
     const at = mark();
     await go(page2, shellUrl());
     await waitAt(page2, 'main', 'app/hub.html');
-    await until(async () => (await look.updateLine(page2)) === 'Updates: can\'t reach GitHub', 3000,
-      mode + ' (nothing stored): update line ' + JSON.stringify(await look.updateLine(page2)));
+    await clockPage.waitFor(page2, (a) => a.updates === 'Updates: can\'t reach GitHub', 3000,
+      mode + ' (nothing stored): update line ');
     await openPanelAndClose(page2);
     noMissingFiles(logSince(at));
     noErrors(fresh);
@@ -456,8 +455,8 @@ async function check4() {
   await waitAt(page, A, 'app/hub.html', 25000);
   const after = Date.now() - leftAt;
   assert(after > 12000, 'went back after only ' + after + ' ms');
-  await until(async () => (await look.updateLine(page)) === 'Updates: a newer version didn\'t start', 3000,
-    'update line ' + JSON.stringify(await look.updateLine(page)));
+  await clockPage.waitFor(page, (a) => a.updates === 'Updates: a newer version didn\'t start', 3000,
+    'update line ');
   let rec = await record(page);
   assert(rec.trying === BROKEN && rec.good === A && rec.note === 'held', 'record: ' + JSON.stringify(rec));
 
@@ -476,7 +475,7 @@ async function check4() {
   await waitAt(page, B, 'app/hub.html');
   rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared on B: ' + JSON.stringify(rec));
-  assert(/^v0\.12\.2-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
+  assert(/^v0\.13\.1-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
   noErrors(context);
 }
 
@@ -487,8 +486,8 @@ async function check5() {
   await go(page, shellUrl());
   await until(() => logSince(at).some((e) => e.ref === MISSING && e.rest === 'package.json'), 5000, 'no preflight');
   await waitAt(page, A, 'app/hub.html');
-  await until(async () => (await look.updateLine(page)) === 'Updates: a newer version isn\'t ready yet', 3000,
-    'update line ' + JSON.stringify(await look.updateLine(page)));
+  await clockPage.waitFor(page, (a) => a.updates === 'Updates: a newer version isn\'t ready yet', 3000,
+    'update line ');
   const rec = await record(page);
   assert(rec.trying !== MISSING, 'the missing commit was tried');
   assert(!logSince(at).some((e) => e.ref === MISSING && e.rest !== 'package.json'), 'more than package.json was asked of it');
@@ -506,7 +505,8 @@ async function check6() {
   await waitIdle(page);
   await page.evaluate(() => window.HUB_TEST.checkUpdates());
   await until(async () => (await look.status(page)).state === 'waiting', 5000, 'not waiting');
-  assert((await look.updateLine(page)) === 'Updates: a newer version is ready', 'update line ' + (await look.updateLine(page)));
+  // The to-do panel is open, so read the text the Clock page would show.
+  assert((await look.status(page)).text === 'Updates: a newer version is ready', 'update text ' + (await look.status(page)).text);
   await sleep(2500);
   assert(where(page).ref === A, 'reloaded with a panel open');
 
@@ -677,7 +677,8 @@ async function check11() {
   noErrors(context);
 }
 
-// The clock tile with two, three and four rows: nothing clipped.
+// "About this hub" on the Clock page with two, three and four lines, in
+// the panel and full screen: nothing clipped, nothing over the clock.
 async function checkTile() {
   const s = await stranger(403, 'application/json', JSON.stringify({ ok: false, error: 'screen not allowed' }));
   const cases = [
@@ -690,29 +691,38 @@ async function checkTile() {
     github.mode = c.mode;
     await go(page, shellUrl(c.query));
     await waitAt(page, A, 'app/hub.html');
-    await until(async () => (await look.lines(page)).length === c.rows, 10000,
-      c.rows + ' rows: ' + JSON.stringify(await look.lines(page)));
-    await sleep(300);
-    const fit = await page.evaluate(() => {
+    // The tile itself shows only the time and the date.
+    const tile = await page.evaluate(() => {
       const body = document.querySelector('.cell[data-widget="today"] .tile-body');
-      const r = (sel) => body.querySelector(sel).getBoundingClientRect();
-      const rows = Array.prototype.map.call(body.querySelectorAll('.today-status-line'), (e) => e.getBoundingClientRect());
-      const b = body.getBoundingClientRect();
-      const problems = [];
-      if (r('.today-time').top < r('.today-place').bottom - 0.5) problems.push('time over place');
-      if (r('.today-date').top < r('.today-time').bottom - 0.5) problems.push('date over time');
-      if (rows[0].top < r('.today-date').bottom - 0.5) problems.push('rows over date');
-      for (let i = 1; i < rows.length; i++) if (rows[i].top < rows[i - 1].bottom - 0.5) problems.push('row ' + i + ' overlaps');
-      if (rows[rows.length - 1].bottom > b.bottom + 0.5) problems.push('last row below the tile by ' + (rows[rows.length - 1].bottom - b.bottom));
-      // The rows sit at the bottom (margin-top: auto); what is left above them is the room to spare.
-      return { problems, spare: rows[0].top - r('.today-date').bottom, time: getComputedStyle(body.querySelector('.today-time')).fontSize };
+      return { text: body.textContent, status: body.querySelectorAll('.today-status-line, .today-place').length };
     });
-    assert(!fit.problems.length, c.rows + ' rows: ' + fit.problems.join(', '));
-    if (SHOTS) {
-      await page.screenshot({ path: path.join(SHOTS, 'tile-' + c.rows + '-rows.png'),
-        clip: await page.$eval('.cell[data-widget="today"]', (e) => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; }) });
-      await page.screenshot({ path: path.join(SHOTS, 'home-' + c.rows + '-rows.png') });
-      console.log('      ' + c.rows + ' rows: ' + JSON.stringify(await look.lines(page)) + ', clock ' + fit.time + ', ' + fit.spare.toFixed(1) + ' px to spare');
+    assert(tile.status === 0 && !/v0\.|Motion|Updates|Live/.test(tile.text), 'the clock tile shows more than the time: ' + tile.text);
+    await clockPage.open(page);
+    await clockPage.waitFor(page, (a) => a.lines.length === c.rows, 10000, c.rows + ' rows');
+    for (const mode of ['panel', 'full']) {
+      if (mode === 'full') {
+        await page.evaluate(() => document.querySelector('#panel .panel-btn').click());
+        await until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy()), 4000, 'no full screen');
+        await clockPage.waitFor(page, (a) => a.lines.length === c.rows, 3000, c.rows + ' rows in full screen');
+      }
+      await sleep(200);
+      const fit = await page.evaluate(() => {
+        const body = document.querySelector('#panel .panel-body').getBoundingClientRect();
+        const r = (sel) => document.querySelector(sel).getBoundingClientRect();
+        const rows = Array.prototype.map.call(document.querySelectorAll('.clock-about-line'), (e) => e.getBoundingClientRect());
+        const problems = [];
+        if (r('.clock-about').top < r('.clock-main').bottom - 0.5) problems.push('about over the clock');
+        if (r('.clock-fulldate').bottom > r('.clock-display').bottom + 0.5) problems.push('date below its box');
+        for (let i = 1; i < rows.length; i++) if (rows[i].top < rows[i - 1].bottom - 0.5) problems.push('row ' + i + ' overlaps');
+        if (rows[rows.length - 1].bottom > body.bottom + 0.5) problems.push('last row below the panel by ' + (rows[rows.length - 1].bottom - body.bottom));
+        return { problems, spare: body.bottom - rows[rows.length - 1].bottom, clock: r('.clock-display').height };
+      });
+      assert(!fit.problems.length, c.rows + ' rows, ' + mode + ': ' + fit.problems.join(', '));
+      if (SHOTS) {
+        await page.screenshot({ path: path.join(SHOTS, 'clock-' + mode + '-' + c.rows + '-rows.png') });
+        console.log('      ' + c.rows + ' rows, ' + mode + ': ' + JSON.stringify(await clockPage.lines(page)) + ', clock box ' +
+          fit.clock.toFixed(0) + ' px tall, ' + fit.spare.toFixed(1) + ' px to spare');
+      }
     }
     await context.close();
   }
@@ -802,7 +812,7 @@ async function main() {
   await check('9. A pinned shell address: no lookup, that commit\'s hub.html', check9);
   await check('10. Tampered or damaged memory is ignored; localStorage that throws is fine', check10);
   await check('11. Laptop preview: /hub.html with the query, no GitHub, no update text', check11);
-  await check('12. The clock tile fits two, three and four rows at 1920x1080', checkTile);
+  await check('12. The Clock page fits two, three and four status lines at 1920x1080, panel and full screen', checkTile);
   await check('13. The shell: dark, quiet text after 1.2 s, and the normal start time', checkShell);
 }
 

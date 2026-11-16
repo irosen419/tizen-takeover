@@ -20,7 +20,7 @@ const os = require('os');
 const path = require('path');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
-const clockLayout = require('./clock-layout');
+const clockPage = require('./clock-page');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
@@ -154,8 +154,6 @@ async function newContext(options) {
     }
     return route.continue();
   });
-  // The status lines need a clock two rows tall.
-  await clockLayout.route(context);
   return context;
 }
 
@@ -178,8 +176,9 @@ async function openHub(context, query) {
 function liveQuery(poll) { return 'live=' + encodeURIComponent(LIVE) + (poll ? '&livepoll=1' : ''); }
 
 const look = {
-  statusLines: (page) => page.$$eval('.today-status-line', (els) => els.map((e) => e.textContent)),
-  liveLine: (page) => page.evaluate(() => { const e = document.querySelector('.today-status-live'); return e ? e.textContent : null; }),
+  // "About this hub" on the Clock page (opened, read and closed again).
+  statusLines: (page) => clockPage.lines(page),
+  liveLine: (page) => clockPage.line(page, 'live'),
   todoSub: (page) => page.evaluate(() => { const e = document.querySelector('.cell[data-widget="todo"] .tile-sub'); return e ? e.textContent : null; }),
   panelSub: (page) => page.evaluate(() => { const e = document.querySelector('#panel .panel-sub'); return e ? e.textContent : null; }),
   tileTitles: (page) => page.$$eval('.cell[data-widget="todo"] .todo-tile-title', (els) => els.map((e) => e.textContent)),
@@ -271,14 +270,14 @@ async function check1() {
     const res = await route.fetch();
     let body = await res.text();
     assert(/live:\s*\{\s*server:[^}]*\}/.test(body), 'config.js has no live setting');
-    body = clockLayout.rewrite(body.replace(/live:\s*\{\s*server:[^}]*\}/, "live: { server: '' }"));
+    body = body.replace(/live:\s*\{\s*server:[^}]*\}/, "live: { server: '' }");
     await route.fulfill({ response: res, body: body });
   });
   const page = await openHub(context, '');
   await sleep(1500);
   const lines = await look.statusLines(page);
   assert(lines.length === 2, 'expected 2 status lines, got ' + JSON.stringify(lines));
-  assert(lines[0].indexOf('v0.12.2') === 0, 'first status line: ' + lines[0]);
+  assert(lines[0].indexOf('v0.13.1') === 0, 'first status line: ' + lines[0]);
   assert((await look.todoSub(page)) === 'On this TV', 'to-do sub line: ' + (await look.todoSub(page)));
   assert((await look.state(page)) === 'off', 'live state: ' + (await look.state(page)));
   await addOnScreen(page, 'Milk');
@@ -340,7 +339,7 @@ async function check3() {
   const page = shared.page;
   await startPi();
   await until(async () => (await look.state(page)) === 'live', 20000, 'the hub did not connect by itself');
-  await until(async () => (await look.liveLine(page)) === 'Live', 3000, 'no "Live" line on the clock tile');
+  await clockPage.waitFor(page, (a) => a.live === 'Live', 3000, 'no "Live" line on the Clock page');
   await until(async () => (await look.todoSub(page)) === 'In sync', 5000, 'to-do sub line is not "In sync"');
   const titles = (await serverItems()).map((i) => i.title);
   assert(titles.indexOf('Made on the TV') >= 0 && titles.indexOf('Bread') >= 0, 'the TV\'s items did not reach the Pi: ' + JSON.stringify(titles));
@@ -466,8 +465,8 @@ async function check7(poll) {
   const page = await openHub(context, liveQuery(poll));
   await until(async () => (await look.state(page)) === 'live', 10000, 'not live');
   await stopPi();
-  await until(async () => /^Live: lost the Pi at \d{1,2}:\d{2}\s?[AP]M$/.test((await look.liveLine(page)) || ''), 15000,
-    'the clock tile does not say the Pi is lost: ' + (await look.liveLine(page)));
+  await clockPage.waitFor(page, (a) => /^Live: lost the Pi at \d{1,2}:\d{2}\s?[AP]M$/.test(a.live || ''), 15000,
+    'the Clock page does not say the Pi is lost');
   await until(async () => (await look.todoSub(page)) === 'Saved here', 3000, 'to-do sub line: ' + (await look.todoSub(page)));
   const title = poll ? 'While away (poll)' : 'While away';
   await addOnScreen(page, title);
@@ -499,7 +498,7 @@ async function check8() {
   for (const c of cases) {
     const context = await newContext();
     const page = await openHub(context, 'live=' + encodeURIComponent(c[0]));
-    await until(async () => (await look.liveLine(page)) === c[1], 10000, 'expected "' + c[1] + '", got ' + (await look.liveLine(page)));
+    await clockPage.waitFor(page, (a) => a.live === c[1], 10000, 'expected "' + c[1] + '"');
     assert((await look.state(page)) === c[2], 'state: ' + (await look.state(page)));
     assert((await look.todoSub(page)) === 'On this TV', 'to-do sub line: ' + (await look.todoSub(page)));
     assert((await look.tiles(page)) >= 8, 'tiles are missing');
@@ -568,7 +567,7 @@ async function main() {
   await check('4. show, home, say: the screen follows', () => check4(false));
   await check('5. To-do: an add on the Pi shows, a tick on the screen reaches the Pi', () => check5(false));
   await check('6. TV off then on: nothing queued, new to-dos there, old command silent', () => check6(false));
-  await check('7. Server stops: the clock tile says so, changes are kept and sent later', () => check7(false));
+  await check('7. Server stops: the Clock page says so, changes are kept and sent later', () => check7(false));
   await check('8. Refused, wrong reply, newer server: each has its own words', check8);
   await check('9a. Fallback (?livepoll=1): show, home, say', () => check4(true));
   await check('9b. Fallback: to-do both ways', () => check5(true));
