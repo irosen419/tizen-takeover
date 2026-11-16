@@ -1,6 +1,11 @@
-"""export.py OUT_DIR: scale every cut-out to one common size and write WebP
-sprites plus sprites.json into OUT_DIR (app/clay). Ian standing is IAN_H pixels
-tall; everything else is sized against him."""
+"""export.py OUT_DIR [UNIT]: scale every cut-out to one common size and write
+WebP sprites, sprites.json and sprites.js into OUT_DIR (app/clay). Ian standing
+is UNIT pixels tall (default 160, his size on the 1080p hub: the TV shows the
+sprites at their natural size); everything else is sized against him.
+
+sprites.json is the full list, with the descriptions, for people and tools.
+sprites.js is the same list cut down to what app/clay.js needs (file, w, h,
+cx, faces and the sequences), as a script, so the TV never fetches JSON."""
 import json, os, sys
 import numpy as np
 from PIL import Image
@@ -9,7 +14,7 @@ sys.path.insert(0, HERE)
 import sheets
 ROOT = os.path.dirname(HERE)          # art/clay
 OUT = sys.argv[1]
-IAN_H = 400            # Ian, standing, in sprite pixels: about twice his size on the 1080p hub
+IAN_H = int(sys.argv[2]) if len(sys.argv) > 2 else 160   # Ian, standing, in sprite pixels
 EMBER_REL = 0.58       # Ember standing on four legs, to the top of her head, against his height
 
 def resize(im, scale):
@@ -75,4 +80,21 @@ manifest = {
     'sequences': sheets.SEQUENCES,
 }
 json.dump(manifest, open(os.path.join(OUT, 'sprites.json'), 'w'), indent=1)
+
+# The TV's copy: one line per sprite, only the fields the code reads.
+lines = []
+for key, e in sorted(sprites.items()):
+    short = {'file': e['file'], 'w': e['w'], 'h': e['h'], 'cx': e['cx']}
+    if 'faces' in e:
+        short['faces'] = e['faces']
+    lines.append('    ' + json.dumps(key) + ': ' + json.dumps(short, separators=(', ', ': ')))
+seqs = ['    ' + json.dumps(k) + ': ' + json.dumps(v, separators=(', ', ': ')) for k, v in sheets.SEQUENCES.items()]
+with open(os.path.join(OUT, 'sprites.js'), 'w') as f:
+    f.write('/* Clay sprites for app/clay.js. Made by art/clay/tools/export.py from the\n'
+            '   same cut-outs as sprites.json (which has the descriptions); do not edit by hand. */\n')
+    f.write('var CLAY_SPRITES = {\n  unit: %d,\n  sprites: {\n' % IAN_H)
+    f.write(',\n'.join(lines))
+    f.write('\n  },\n  sequences: {\n')
+    f.write(',\n'.join(seqs))
+    f.write('\n  }\n};\n')
 print(len(sprites), 'sprites,', total // 1024, 'KB')
