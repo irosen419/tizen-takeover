@@ -77,7 +77,7 @@ var HUB_CONFIG = {
       { widget: 'mirror',        x: 3, y: 0, w: 6, h: 4 },
       { widget: 'calendar',      x: 3, y: 4, w: 6, h: 2 },
       { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
-      { widget: 'entertainment', x: 9, y: 4, w: 3, h: 2 }
+      { widget: 'ambiance',      x: 9, y: 4, w: 3, h: 2 }
     ] }
   ],
 
