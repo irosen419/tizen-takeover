@@ -222,7 +222,7 @@ async function checkNothingAtStart() {
   assert(st.on && st.phase === 'waiting' && st.assets === 'none', 'state: ' + JSON.stringify(st));
   assert(st.nextIn > 15000, 'the first visit is due too soon: ' + st.nextIn);
   const s0 = await look.st(page);
-  const m = /^due back in (\d+) s$/.exec(s0.now);
+  const m = /^Due back in (\d+) s$/.exec(s0.now);
   assert(s0.visits === '0 played · 0 slow · 0 failed' && !s0.last && !s0.loading && !s0.problem, 'status: ' + JSON.stringify(s0));
   assert(m && Math.abs(Number(m[1]) * 1000 - st.nextIn) < 1500, 'status: ' + s0.now + ' (next in ' + st.nextIn + ' ms)');
   assert(!(await page.evaluate(() => document.getElementById('clay-style'))), 'the clay styles are in before the first visit');
@@ -408,7 +408,7 @@ async function checkOff() {
     const st = await look.state(page);
     assert(!st.on && st.phase === 'off', JSON.stringify(opts) + ': ' + JSON.stringify(st));
     const text = (await look.st(page)).now;
-    const want = opts.query ? 'off (?clay=off)' : 'off (config)';
+    const want = opts.query ? 'Off (?clay=off)' : 'Off (config)';
     assert(text === want, JSON.stringify(opts) + ': status ' + JSON.stringify(text));
     assert(!(await page.evaluate(() => window.HUB_TEST.clay.play('stroll'))), JSON.stringify(opts) + ': play() worked');
     await page.keyboard.press('ArrowRight');
@@ -429,7 +429,7 @@ async function checkMissing() {
   let st = await look.state(page);
   assert(st.phase === 'waiting' && st.last.result === 'failed: frame ember/trot-1 failed (onerror)', 'state: ' + JSON.stringify(st));
   let s1 = await look.st(page);
-  assert(/^due back in \d+ s$/.test(s1.now) && s1.visits === '0 played · 0 slow · 1 failed' && /^stroll failed, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
+  assert(/^Due back in \d+ s$/.test(s1.now) && s1.visits === '0 played · 0 slow · 1 failed' && /^stroll failed, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
   assert(/^sprite list \d+ ms · stroll \d+\/\d+ frames, then one failed$/.test(s1.loading), 'loading: ' + s1.loading);
   assert(/^scene stroll skipped: frame ember\/trot-1 failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
   assert(st.broken.indexOf('stroll') >= 0, 'stroll is not marked broken: ' + JSON.stringify(st.broken));
@@ -456,7 +456,7 @@ async function checkMissing() {
   st = await look.state(page);
   assert(st.assets === 'failed' && st.spriteEvent === 'onerror' && !(await look.layer(page)), 'state: ' + JSON.stringify(st));
   s1 = await look.st(page);
-  assert(s1.visits === '0 played · 0 slow · 1 failed' && /^fetch failed, \d+ s ago$/.test(s1.last) && /^due back in \d+ s$/.test(s1.now), 'status: ' + JSON.stringify(s1));
+  assert(s1.visits === '0 played · 0 slow · 1 failed' && /^fetch failed, \d+ s ago$/.test(s1.last) && /^Due back in \d+ s$/.test(s1.now), 'status: ' + JSON.stringify(s1));
   assert(/^sprite list onerror after \d+ ms$/.test(s1.loading), 'loading: ' + s1.loading);
   assert(/^sprite list did not load \(onerror\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
   const f0 = await look.focused(page);
@@ -471,15 +471,15 @@ async function checkStatus() {
   await page.evaluate(() => window.HUB_TEST.clay.setSpeed(0));
   await playing(page, 'stroll', { seed: 21, dir: 'right' });
   let s1 = await look.st(page);
-  assert(s1.now === 'on screen now: stroll' && s1.visits === '1 played · 0 slow · 0 failed', 'playing: ' + JSON.stringify(s1));
+  assert(s1.now === 'On screen now: stroll' && s1.visits === '1 played · 0 slow · 0 failed', 'playing: ' + JSON.stringify(s1));
   await page.evaluate(() => window.HUB_TEST.clay.stop());
   s1 = await look.st(page);
-  assert(/^due back in \d+ s$/.test(s1.now) && /^stroll stopped, \d+ s ago$/.test(s1.last), 'after stop: ' + JSON.stringify(s1));
+  assert(/^Due back in \d+ s$/.test(s1.now) && /^stroll stopped, \d+ s ago$/.test(s1.last), 'after stop: ' + JSON.stringify(s1));
   // A panel open: busy, and which.
   await page.evaluate(() => window.HUB_TEST.openPanel('weather'));
   await until(() => page.evaluate(() => window.HUB_TEST.open() === 'weather' && !window.HUB_TEST.busy()), 4000, 'the panel did not open');
   s1 = await look.st(page);
-  assert(s1.now === 'waiting: hub busy (a page is open)', 'panel: ' + s1.now);
+  assert(s1.now === 'Waiting: hub busy (a page is open)', 'panel: ' + s1.now);
   await page.evaluate(() => window.HUB_TEST.closePanel());
   await until(() => page.evaluate(() => window.HUB_TEST.open() === null && !window.HUB_TEST.busy()), 4000, 'the panel did not close');
   // The page says it is hidden (as a TV may while the hub is in front).
@@ -489,7 +489,7 @@ async function checkStatus() {
     document.dispatchEvent(new Event('visibilitychange'));
   });
   s1 = await look.st(page);
-  assert(s1.now === 'waiting: page reports hidden', 'hidden: ' + s1.now);
+  assert(s1.now === 'Waiting: page reports hidden', 'hidden: ' + s1.now);
   assert(!(await page.evaluate(() => window.HUB_TEST.clay.play('zoomies'))) || (await look.state(page)).phase !== 'playing', 'played while hidden');
   noErrors(page);
 }
@@ -515,7 +515,7 @@ async function checkSpriteList() {
   page = await newHub({ slowOnce: { 'clay/sprites.js': 3500 } });
   await page.evaluate(() => { window.HUB_TEST.clay.setLoadMs(2000); window.HUB_TEST.clay.play('fetch', { seed: 32 }); });
   s1 = await look.st(page);
-  assert(/^loading fetch \(sprite list\), \d+ s$/.test(s1.now), 'loading: ' + s1.now);
+  assert(/^Loading fetch \(sprite list\), \d+ s$/.test(s1.now), 'loading: ' + s1.now);
   await until(async () => (await look.state(page)).last, 10000, 'fetch did not give up');
   st = await look.state(page);
   s1 = await look.st(page);
@@ -547,7 +547,7 @@ async function checkSpriteList() {
   assert(asks === 2, 'sprites.js asked for ' + asks + ' times');
   assert(waited < 10000, 'the retry took ' + waited + ' ms');
   s1 = await look.st(page);
-  assert(/^on screen now: \S+$/.test(s1.now) && s1.visits === '1 played · 0 slow · 1 failed' && /^\S+ failed, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
+  assert(/^On screen now: \S+$/.test(s1.now) && s1.visits === '1 played · 0 slow · 1 failed' && /^\S+ failed, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
   assert(!page.ctx.requests.some((u) => /clay\.css/.test(u)), 'clay.css was asked for');
   noErrors(page, /Clay: sprite list/);
 }
@@ -611,7 +611,7 @@ async function checkSlowFrames() {
   assert(first.broken.length === 0 && first.slow === 1 && first.failed === 0, 'state after the slow visit: ' + JSON.stringify(first));
   assert(/^slow: its frames took over 1 s \(\d+ of \d+ in\)$/.test(first.last.result), 'result: ' + first.last.result);
   const s1 = await look.st(page);
-  assert(s1.visits === '0 played · 1 slow · 0 failed' && /^\S+ too slow, \d+ s ago$/.test(s1.last) && /^due back in \d+ s$/.test(s1.now), 'status: ' + JSON.stringify(s1));
+  assert(s1.visits === '0 played · 1 slow · 0 failed' && /^\S+ too slow, \d+ s ago$/.test(s1.last) && /^Due back in \d+ s$/.test(s1.now), 'status: ' + JSON.stringify(s1));
   const second = await until(async () => {
     const st = await look.state(page);
     return st.phase === 'playing' ? st : false;
@@ -826,8 +826,8 @@ async function checkAboutRows() {
   const n1 = await about.value(page, 'Now');
   await sleep(3200);
   const n2 = await about.value(page, 'Now');
-  const m1 = /^due back in (?:(\d+) min )?(\d+) s$/.exec(n1);
-  const m2 = /^due back in (?:(\d+) min )?(\d+) s$/.exec(n2);
+  const m1 = /^Due back in (?:(\d+) min )?(\d+) s$/.exec(n1);
+  const m2 = /^Due back in (?:(\d+) min )?(\d+) s$/.exec(n2);
   const secs = (m) => Number(m[1] || 0) * 60 + Number(m[2]);
   assert(m1 && m2 && secs(m2) <= secs(m1) - 2, 'the countdown did not tick: ' + n1 + ' / ' + n2);
   // A visit that fails: Last visit, Loading and Last problem come in by themselves.
@@ -876,16 +876,16 @@ async function checkAboutNotBusy() {
     const v = await about.value(page, 'Now');
     if (v && seen[seen.length - 1] !== v) seen.push(v);
     st = await look.state(page);
-    if (st.phase === 'playing' && /^on screen now: /.test(v || '')) break;
+    if (st.phase === 'playing' && /^On screen now: /.test(v || '')) break;
     await sleep(100);
   }
   const kinds = [];
   for (const v of seen) {
-    const k = /^due back in /.test(v) ? 'countdown' : /^loading \S+(, \d+ of \d+ frames| \([a-z ]+\)), \d+ s$/.test(v) ? 'loading' : /^on screen now: \S+$/.test(v) ? 'on screen' : 'other: ' + v;
+    const k = /^Due back in /.test(v) ? 'countdown' : /^Loading \S+(, \d+ of \d+ frames| \([a-z ]+\)), \d+ s$/.test(v) ? 'loading' : /^On screen now: \S+$/.test(v) ? 'on screen' : 'other: ' + v;
     if (kinds[kinds.length - 1] !== k) kinds.push(k);
   }
   assert(kinds.join(' > ') === 'countdown > loading > on screen', 'the panel showed: ' + seen.join(' | '));
-  assert(seen.some((v) => /^loading \S+, \d+ of \d+ frames, [1-9]\d* s$/.test(v)), 'no frame count while loading: ' + seen.join(' | '));
+  assert(seen.some((v) => /^Loading \S+, \d+ of \d+ frames, [1-9]\d* s$/.test(v)), 'no frame count while loading: ' + seen.join(' | '));
   assert(await about.isOpen(page), 'the panel closed');
   assert(await look.layer(page), 'no clay layer while the panel is open');
   const z = await page.evaluate(() => [Number(getComputedStyle(document.getElementById('about')).zIndex), Number(getComputedStyle(document.querySelector('.clay-layer')).zIndex)]);

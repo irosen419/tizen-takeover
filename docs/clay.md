@@ -49,19 +49,19 @@ The sprites are in `app/clay/sprites/`, made by `art/clay/tools/` (see `art/clay
 
 ## If they don't show up
 
-Press Left on a left-most tile: the **About panel** slides in from the left, and its **Wanderers** group says what they are doing and how it has gone since the page loaded. It changes by itself, once a second, while it is open. The panel doesn't hold them back: a visit loads and plays with it open, behind it, so you can watch the countdown turn into loading and then into `on screen now`. Right or Back closes it. `HUB_CLAY.status()` gives the same as `{ now, visits, last, loading, problem, text }` (`text` is all of it on one line).
+Press Left on a left-most tile: the **About panel** slides in from the left, and its **Wanderers** group says what they are doing and how it has gone since the page loaded. It changes by itself, once a second, while it is open. The panel doesn't hold them back: a visit loads and plays with it open, behind it, so you can watch the countdown turn into loading and then into `On screen now`. Right or Back closes it. `HUB_CLAY.status()` gives the same as `{ now, visits, last, loading, problem, text }` (`text` is all of it on one line).
 
 Times read `42 s` up to 99 seconds, then `1 min 42 s`.
 
 **Now**: what they are doing, or what comes next.
 
-- `due back in 1 min 42 s`: waiting for the next visit; the remote has to stay untouched until then (a key press starts the wait for quiet again).
-- `loading stroll, 12 of 18 frames, 7 s`: a visit is loading its frames: how many are in, and for how long. `loading stroll (sprite list), 3 s`: it is still waiting for `clay/sprites.js`.
-- `on screen now: stroll`: a scene is playing.
-- `waiting: hub busy (a page is open)` (or `the layout bar is open`, `you are typing`, `the hub is moving`): nothing comes while that is open; the wait for quiet starts again after it.
-- `waiting: page reports hidden`: the browser says the page is hidden (`document.hidden`), so no visit starts. If this shows while the hub is plainly on screen, the TV's browser reports it wrongly.
-- `off (config)`: `clay: false` or `on: false` in `app/config.js`. `off (?clay=off)`: the address says so.
-- `not started`: hub.js never started them (an older or broken hub.js).
+- `Due back in 1 min 42 s`: waiting for the next visit; the remote has to stay untouched until then (a key press starts the wait for quiet again).
+- `Loading stroll, 12 of 18 frames, 7 s`: a visit is loading its frames: how many are in, and for how long. `Loading stroll (sprite list), 3 s`: it is still waiting for `clay/sprites.js`.
+- `On screen now: stroll`: a scene is playing.
+- `Waiting: hub busy (a page is open)` (or `the layout bar is open`, `you are typing`, `the hub is moving`): nothing comes while that is open; the wait for quiet starts again after it.
+- `Waiting: page reports hidden`: the browser says the page is hidden (`document.hidden`), so no visit starts. If this shows while the hub is plainly on screen, the TV's browser reports it wrongly.
+- `Off (config)`: `clay: false` or `on: false` in `app/config.js`. `Off (?clay=off)`: the address says so.
+- `Not started`: hub.js never started them (an older or broken hub.js).
 
 **Visits**: `3 played · 1 slow · 0 failed` since the page loaded. Slow visits were skipped because loading took over 30 seconds; failed ones because something did not load at all.
 

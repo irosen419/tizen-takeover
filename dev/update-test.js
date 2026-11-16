@@ -713,10 +713,10 @@ async function checkTile() {
     assert(/^v0\.18\.0/.test(a.lines[0]), 'version row: ' + a.lines[0]);
     const wand = a.rows.filter((r) => r.group === 'Wanderers').map((r) => r.label + ': ' + r.value);
     if (c.visit) {
-      assert(wand.length === 4 && /^Now: due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 1 played · 0 slow · 0 failed' &&
+      assert(wand.length === 4 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 1 played · 0 slow · 0 failed' &&
         /^Last visit: fetch stopped, \d+ s ago$/.test(wand[2]) && /^Loading: sprite list \d+ ms · fetch (\d+)\/\1 frames in \d+ ms$/.test(wand[3]), 'wanderers rows: ' + JSON.stringify(wand));
     } else {
-      assert(wand.length === 2 && /^Now: due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 0 played · 0 slow · 0 failed', 'wanderers rows: ' + JSON.stringify(wand));
+      assert(wand.length === 2 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 0 played · 0 slow · 0 failed', 'wanderers rows: ' + JSON.stringify(wand));
     }
     await clockPage.openAbout(page);
     await sleep(400);

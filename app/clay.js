@@ -1452,19 +1452,19 @@
   // Now: what they are doing, or what comes next.
   function nowText() {
     if (scene) {
-      if (scene.phase === 'playing') return 'on screen now: ' + scene.name;
+      if (scene.phase === 'playing') return 'On screen now: ' + scene.name;
       var secs = Math.floor((now() - scene.t0) / 1000) + ' s';
       if (scene.step === 'frames' && lastLoad && lastLoad.name === scene.name && lastLoad.of !== undefined) {
-        return 'loading ' + scene.name + ', ' + lastLoad.got + ' of ' + lastLoad.of + ' frames, ' + secs;
+        return 'Loading ' + scene.name + ', ' + lastLoad.got + ' of ' + lastLoad.of + ' frames, ' + secs;
       }
-      return 'loading ' + scene.name + ' (' + scene.step + '), ' + secs;
+      return 'Loading ' + scene.name + ' (' + scene.step + '), ' + secs;
     }
-    if (isHidden()) return 'waiting: page reports hidden';
+    if (isHidden()) return 'Waiting: page reports hidden';
     if (!hostQuiet()) {
       var why = busyWhy();
-      return 'waiting: hub busy' + (why ? ' (' + why + ')' : '');
+      return 'Waiting: hub busy' + (why ? ' (' + why + ')' : '');
     }
-    return 'due back in ' + howLong(nextAt() - now());
+    return 'Due back in ' + howLong(nextAt() - now());
   }
 
   // "N ms" under a second, else "N.N s".
@@ -1499,8 +1499,8 @@
   function status() {
     try {
       var out = { now: '', visits: '', last: '', loading: '', problem: '', text: '' };
-      if (!started) out.now = 'not started';
-      else if (!settings) out.now = 'off (' + (offWhy || 'config') + ')';
+      if (!started) out.now = 'Not started';
+      else if (!settings) out.now = 'Off (' + (offWhy || 'config') + ')';
       else {
         out.now = nowText();
         out.visits = played + ' played · ' + slow + ' slow · ' + failedN + ' failed';
