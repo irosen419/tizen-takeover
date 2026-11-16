@@ -11,9 +11,10 @@ MODEL = os.environ.get('GEMINI_IMAGE_MODEL', 'gemini-nano-banana-2.1')
 def gen(sid):
     s = sheets.SHEETS[sid]
     parts = []
-    for r in sheets.REFS[s['who']]:
+    for r in sheets.REFS[s['who']] + [p for p, _ in s['refs']]:
         data = open(os.path.join(ROOT, r), 'rb').read()
-        parts.append({'inline_data': {'mime_type': 'image/jpeg', 'data': base64.b64encode(data).decode()}})
+        mime = {'.png': 'image/png', '.webp': 'image/webp'}.get(os.path.splitext(r)[1], 'image/jpeg')
+        parts.append({'inline_data': {'mime_type': mime, 'data': base64.b64encode(data).decode()}})
     parts.append({'text': sheets.prompt(sid)})
     body = {'contents': [{'role': 'user', 'parts': parts}],
             'generationConfig': {'responseModalities': ['IMAGE'],

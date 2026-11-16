@@ -5,7 +5,8 @@ sprites at their natural size); everything else is sized against him.
 
 sprites.json is the full list, with the descriptions, for people and tools.
 sprites.js is the same list cut down to what app/clay.js needs (file, w, h,
-cx, faces and the sequences), as a script, so the TV never fetches JSON."""
+cx, faces, the sequences, strides and lifts), as a script, so the TV never
+fetches JSON."""
 import json, os, sys
 import numpy as np
 from PIL import Image
@@ -73,11 +74,19 @@ for name, frames in sheets.SEQUENCES.items():
     missing = [f for f in frames if f not in sprites]
     if missing:
         raise SystemExit(f'sequence {name} names missing sprites: {missing}')
+for name in sheets.STRIDES:
+    if name not in sheets.SEQUENCES:
+        raise SystemExit(f'stride for unknown sequence {name}')
+for key in sheets.LIFTS:
+    if key not in sprites:
+        raise SystemExit(f'lift for missing sprite {key}')
 manifest = {
     'about': 'Clay sprites of Ian and Ember. Made by art/clay/tools; do not edit by hand.',
     'unit': IAN_H,
     'sprites': dict(sorted(sprites.items())),
     'sequences': sheets.SEQUENCES,
+    'strides': sheets.STRIDES,
+    'lifts': sheets.LIFTS,
 }
 json.dump(manifest, open(os.path.join(OUT, 'sprites.json'), 'w'), indent=1)
 
@@ -96,5 +105,8 @@ with open(os.path.join(OUT, 'sprites.js'), 'w') as f:
     f.write(',\n'.join(lines))
     f.write('\n  },\n  sequences: {\n')
     f.write(',\n'.join(seqs))
+    for field, table in (('strides', sheets.STRIDES), ('lifts', sheets.LIFTS)):
+        f.write('\n  },\n  %s: {\n' % field)
+        f.write(',\n'.join('    ' + json.dumps(k) + ': ' + json.dumps(v) for k, v in table.items()))
     f.write('\n  }\n};\n')
 print(len(sprites), 'sprites,', total // 1024, 'KB')

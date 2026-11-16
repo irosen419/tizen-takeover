@@ -122,12 +122,13 @@ def cut(sid):
         os.remove(os.path.join(outdir, f))
     ok = len(mains) == len(names)
     msg = f"{sid}: found {len(mains)} of {len(names)}" + ('' if ok else '  <-- MISMATCH, nothing named')
-    meta = {'calib_h': mains[0]['box'][3] - mains[0]['box'][1], 'poses': {}}
+    meta = {'calib_h': mains[0]['box'][3] - mains[0]['box'][1], 'poses': {}, 'boxes': {}}
     for i, b in enumerate(mains):
         name = names[i] if ok else f'_{i + 1}'
         if name is None:
             continue
         x0, y0, x1, y1 = b['box']
+        meta['boxes'][name] = [int(v) for v in b['box']]     # where it sat on the sheet (for lifts)
         pad = 8
         x0, y0, x1, y1 = max(x0 - pad, 0), max(y0 - pad, 0), min(x1 + pad, im.width), min(y1 + pad, im.height)
         crop = rgba[y0:y1, x0:x1].copy()
