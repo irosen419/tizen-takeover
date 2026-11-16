@@ -23,6 +23,14 @@
  * http://127.0.0.1:8095/preview?calendar=MODE while it runs (the Pi reads the
  * feeds again at once). Modes: sample, empty, fail, partial, many, and off
  * (only at start: no calendars set up).
+ *
+ * Spotify: the hub server also gets a stand-in for Spotify (dev/mock-spotify.js)
+ * and is signed in to it, so Now Playing has something to show. Start with
+ * SPOTIFY_MODE=MODE node dev/preview.js, or switch while it runs with
+ * GET http://127.0.0.1:8095/preview?spotify=MODE (and ?spotify=next for the
+ * next song). Modes: playing, paused, idle, long (long Spanish text),
+ * episode, advert, down, ratelimit, forbidden, revoked, plus signin (set up,
+ * not signed in) and off (no Spotify settings). HUB_SPOTIFY=off leaves it out.
  */
 var http = require('http');
 var fs = require('fs');
@@ -41,6 +49,8 @@ var MODES = ['ok', 'fail', 'slow', 'badjson', 'nolookup', 'nogeocode', 'forecast
 var weatherMode = process.env.WEATHER_MODE || 'ok';
 var calendarMode = process.env.CALENDAR_MODE || 'sample';
 var calendarFeeds = null;
+var spotifyMode = process.env.SPOTIFY_MODE || 'playing';
+var mockSpotify = null;
 
 // Same four addresses as service.js, each with the sample file that stands in for it.
 var FETCH_ALLOWED = [
@@ -213,6 +223,15 @@ var service = http.createServer(function (req, res) {
       weatherMode = String(q.weather);
       log('weather mode: ' + weatherMode);
     }
+    if (q.spotify !== undefined) {
+      var sp = String(q.spotify);
+      if (!mockSpotify || !liveServer) return send(res, 400, { ok: false, error: 'no sample Spotify running' });
+      if (sp === 'next') mockSpotify.next();
+      else if (!mockSpotify.set(sp)) return send(res, 400, { ok: false, error: 'unknown Spotify mode', modes: mockSpotify.modes.concat(['next']) });
+      else spotifyMode = sp;
+      log('Spotify mode: ' + sp);
+      liveServer.spotify.poll();
+    }
     if (q.calendar !== undefined) {
       if (!calendarFeeds || !calendarFeeds.setMode(String(q.calendar))) {
         return send(res, 400, { ok: false, error: calendarFeeds ? 'unknown calendar mode' : 'no sample calendars running' });
@@ -221,7 +240,7 @@ var service = http.createServer(function (req, res) {
       log('calendar mode: ' + calendarMode + ' (asking the hub server to read again)');
       refreshCalendars();
     }
-    return send(res, 200, { ok: true, weather: weatherMode, calendar: calendarMode });
+    return send(res, 200, { ok: true, weather: weatherMode, calendar: calendarMode, spotify: spotifyMode });
   }
   send(res, 404, { ok: false, error: 'not found' });
 });
@@ -248,9 +267,13 @@ var liveServer = null;
       log('Calendar: the sample feeds did not start (' + (e && e.message) + ')');
       return null;
     });
-  feeds.then(function (f) {
-    calendarFeeds = f;
-    start(f);
+  try { fs.unlinkSync(path.join(LIVE_DATA_DIR, 'spotify.json')); } catch (e) { /* none */ }
+  var spotifyUp = process.env.HUB_SPOTIFY === 'off' || spotifyMode === 'off' ? Promise.resolve(null) :
+    require('./mock-spotify').start({ mode: spotifyMode === 'signin' ? 'playing' : spotifyMode }).catch(function () { return null; });
+  Promise.all([feeds, spotifyUp]).then(function (both) {
+    calendarFeeds = both[0];
+    mockSpotify = both[1];
+    start(both[0]);
   });
   function start(f) {
   try {
@@ -262,8 +285,15 @@ var liveServer = null;
       dataDir: LIVE_DATA_DIR,
       calendars: f ? f.calendars : [],
       allowHttp: true,
-      timezone: sample.TZ
+      timezone: sample.TZ,
+      spotifyEnv: mockSpotify ? {
+        SPOTIFY_CLIENT_ID: mockSpotify.clientId, SPOTIFY_CLIENT_SECRET: mockSpotify.clientSecret,
+        SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + LIVE_PORT + '/spotify/callback'
+      } : {},
+      spotify: { accounts: mockSpotify && mockSpotify.url, api: mockSpotify && mockSpotify.url, allowHttp: true,
+        playMs: 1500, idleMs: 1500, awayMs: 1500 }
     });
+    signInToMock();
     log('Calendar: ' + (f ? 'sample calendars, mode "' + calendarMode + '"; switch with /preview?calendar=' + sample.MODES.join('|') :
       'none set up (CALENDAR_MODE=off)'));
     var hub = 'http://127.0.0.1:' + LIVE_PORT;
@@ -277,6 +307,20 @@ var liveServer = null;
   }
   }
 })();
+
+// Signs the hub server in to the stand-in Spotify, as ./hub spotify login does.
+function signInToMock() {
+  if (!mockSpotify || spotifyMode === 'signin' || !liveServer) return;
+  try {
+    var l = liveServer.spotify.loginUrl();
+    http.get(l.url, function (res) {
+      res.resume();
+      liveServer.spotify.finishLogin(res.headers.location || '').then(function () {
+        log('Spotify:  sample Spotify, mode "' + spotifyMode + '"; switch with /preview?spotify=' + mockSpotify.modes.join('|') + '|next');
+      }, function (e) { log('Spotify:  sign-in to the sample failed (' + e.message + ')'); });
+    }).on('error', function () { /* the sample is gone */ });
+  } catch (e) { log('Spotify:  ' + e.message); }
+}
 
 // Asks the hub server to read the calendars again now (the control API).
 function refreshCalendars() {

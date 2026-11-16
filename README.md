@@ -11,7 +11,8 @@ Out of the box:
 - **To-do:** a list kept on the TV. Add, tick off and move things with the remote.
 - **Weather:** the temperature, today's high and low and the chance of rain, then the next 12 hours and the week. It finds the TV's city by itself.
 - **Calendar:** today's agenda on the tile, then Day, Week and Month in the panel, from your Google calendars through the Pi.
-- **Coming soon:** Now Playing, A World Worth Saving, Ambiance and Mirror. These tiles hold their spot with a "Soon" tag until they're built.
+- **Now Playing:** what is playing on Spotify: the album picture, the song and the artist, and a thin line that fills as the song goes. Open it for a big picture, the album, the time and where it is playing. The Pi asks Spotify; set it up once with `./hub spotify login` (see [Now Playing](#now-playing)).
+- **Coming soon:** A World Worth Saving, Ambiance and Mirror. These tiles hold their spot with a "Soon" tag until they're built.
 
 Press OK on a tile to open it in a panel in the middle of the screen; the other tiles slide out of the way. The panel has a **Full screen** button. The tiles sit on a picture of the ocean, frosted like glass.
 
@@ -173,6 +174,14 @@ The panel has three views. The row at the top holds **Today**, **Day**, **Week**
 Up from the first event (or the top row of the month) goes back to the row of tabs. **Today** jumps back to today. Back closes the panel, as everywhere.
 
 When something is missing the tile says so in plain words: "Calendar needs the Pi" (live updates off, or the Pi never reached), "Loading the calendar…", "No calendars set up yet" (no links in the Pi's `.env`), "Nothing coming up", "Can't reach the Pi". A calendar the Pi couldn't read shows as "Work: couldn't be read". The TV keeps its last copy of the calendar, so the tile has something to show straight after the TV turns on; when that copy is old and the Pi is away it says "Last updated 2:40 PM".
+
+## Now Playing
+
+What is playing on your Spotify. The Raspberry Pi is the only thing that talks to Spotify (it holds the app's secret and your sign-in); the TV only receives the song, the artist, the album and the picture over the live line. **Setup is a few minutes, once:** see "Spotify" in [pi/README.md](pi/README.md).
+
+The tile changes with its size on the grid (see [docs/tile-sizes.md](docs/tile-sizes.md)): one column or a narrow strip is just the album picture; a strip shows the picture with the song and artist on one line each; a 2-row tile puts the picture beside the song, artist and a "Now playing" label with three little moving bars; a tall narrow tile stacks the picture over the words. A thin line at the bottom fills as the song plays. Long titles wrap, then end in "…". Press OK for the page: a big picture, the song, artist and album, the time played and the length, and chips for where it plays ("On Living room"), Shuffle and Repeat. Its Full screen button makes it bigger.
+
+When nothing plays, it says so and keeps the last song, dimmed, as "Last played". Other plain-words states: "Not connected yet" (run `./hub spotify login` on the Pi), "Not set up" (no ID and secret in the Pi's `.env`), "Can't reach Spotify" (a small notice under the last song; it keeps trying), "Can't reach the Pi" (last song kept, marked), and "The Pi needs an update".
 
 ## Live updates
 

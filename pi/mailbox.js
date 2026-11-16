@@ -475,6 +475,38 @@ const COMMANDS = {
       };
     }
   },
+  'spotify.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/spotify');
+      return { message: lines(hubctl.spotifyStatusLines(r.spotify)), data: { spotify: r.spotify || null } };
+    }
+  },
+  // The two halves of ./hub spotify login. The link holds the app's public
+  // client ID and a one-time state, never the secret. The pasted address
+  // holds a code that works once, for a few minutes, and only with the secret
+  // that stays on the Pi.
+  'spotify.login': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/spotify/login', {});
+      return { message: lines(hubctl.spotifyLoginLines(r)), data: { url: r.url, redirectUri: r.redirectUri, minutes: r.minutes } };
+    }
+  },
+  'spotify.code': {
+    args: { address: [V.text(4000), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/spotify/code', { input: a.address });
+      return { message: hubctl.spotifyCodeText(r), data: { user: r.user || '' } };
+    }
+  },
+  'spotify.logout': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/spotify/logout', {});
+      return { message: hubctl.spotifyLogoutText(r), data: { changed: !!r.changed } };
+    }
+  },
   ping: {
     args: {},
     run: async (a, ctx) => ({ message: 'Pong. Home Hub live server ' + ctx.version + ' is running.', data: { version: ctx.version } })

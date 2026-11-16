@@ -185,6 +185,80 @@ A public calendar, such as a Holidays calendar, has a normal public address and 
 
 The server never writes a calendar link in its log, so `docker compose logs hub` is safe to show.
 
+## Spotify (Now Playing)
+
+The Now Playing tile shows what is playing on your Spotify. The Pi asks Spotify every few seconds (every 5 s while the TV is on and something plays, every 10 s when nothing does, once a minute when no TV is on) and sends the song to the TV. The TV never sees your Spotify secret or sign-in.
+
+Spotify asks for two things, once: a **redirect address** added to your Spotify app, and **your OK** (signing in). Both are below. The app's **client ID** and **client secret** are already in `.env` (`SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET`).
+
+**Check first:** `./hub spotify status` should say `Spotify is set up but not signed in.` If it says `not set up yet`, a line in `.env` is missing or has a typo (it names which one); fix it, then `docker compose restart hub`.
+
+### Step 1: add the redirect address to your Spotify app (once)
+
+1. Open the [Spotify developer dashboard](https://developer.spotify.com/dashboard) and click your app.
+2. Click **Settings**.
+3. Under **Redirect URIs**, type exactly this and click **Add**, then **Save** at the bottom:
+
+   ```
+   http://127.0.0.1:8097/spotify/callback
+   ```
+
+   (If you changed `HUB_PORT` in `.env`, use that number instead of 8097.) Spotify only accepts `127.0.0.1` here, never the Pi's own address or `localhost`; that is why step 2 has a paste.
+4. The app must list the **Web API** under "APIs used". It does if you ticked it when you made the app. The Spotify account that owns the app must be Premium, and you must be the account you sign in with in step 2.
+
+### Step 2: sign in (once, about a minute)
+
+On the Pi, in `tizen-takeover/pi` after `git pull` and `docker compose restart hub`:
+
+```sh
+./hub spotify login
+```
+
+It prints a long link and waits.
+
+1. Open the link on a **laptop or computer** (a phone browser may hide the address). Sign in to Spotify if it asks, then click **Agree**.
+2. The browser then goes to an address that starts with `http://127.0.0.1:8097/spotify/callback?code=` and shows an **error page** ("can't be reached", or "refused to connect"). That is expected: it is the laptop's own 127.0.0.1, not the Pi.
+3. Click the address bar, select the **whole address** and copy it.
+4. Back in the Pi's terminal, paste it where it says `Paste the address here`, and press Enter.
+
+You should see `Spotify is connected (signed in as <your name>). The TV shows what is playing within a few seconds.` Play something on Spotify and watch the tile.
+
+If you cannot paste into the terminal (or it just returns to the prompt), run it in one line instead, keeping the quotes:
+
+```sh
+./hub spotify code "http://127.0.0.1:8097/spotify/callback?code=...&state=..."
+```
+
+**Or let Claude do the paste:** tell Claude "run Spotify login", open the link it gives you, click Agree, and paste the address of the error page into the chat. Claude sends it to the Pi through the mailbox below (`spotify.login`, then `spotify.code`). The one-time code in that address works once, for a few minutes, and only with the secret that stays on the Pi, so it is safe to paste.
+
+The sign-in link works for 15 minutes. After that, or after a restart of the server, run `./hub spotify login` again.
+
+### What gets stored, and for how long
+
+The sign-in is a long-lived key saved in `data/spotify.json` on the Pi (readable by you only, never in git, never sent to the TV, never in a log). It renews itself every hour. Spotify can end it: if you remove the app's access at [spotify.com/account/apps](https://www.spotify.com/account/apps), or after a long while, the tile says `Not connected yet` and `./hub spotify login` fixes it. `./hub spotify logout` forgets it on purpose. Changing the client secret in the dashboard means pasting the new one into `.env` and restarting.
+
+### Commands
+
+- `./hub spotify status` says what is playing, and whether Spotify is reachable.
+- `./hub spotify login`, `./hub spotify code "<address>"`, `./hub spotify logout` as above.
+- `./hub show nowplaying` opens the page on the TV (add `--full` for full screen).
+
+### If it says something else
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `Spotify is not set up yet` | `SPOTIFY_CLIENT_ID` or `SPOTIFY_CLIENT_SECRET` is missing, or has a typo | Add or fix both lines in `.env` (32 letters and digits each), then `docker compose restart hub` |
+| Spotify's page says `INVALID_CLIENT: Invalid redirect URI` | Step 1 was not saved, or the address differs by one character | Check **Redirect URIs** in the dashboard against the address `./hub spotify login` shows (`redirect_uri=` in the link) |
+| `Spotify says the request was declined` | You clicked Cancel | Run `./hub spotify login` again and choose **Agree** |
+| `Spotify did not accept that code` | The code was used already, or is older than a few minutes | Run `./hub spotify login` again and use the new link |
+| `That address belongs to an older sign-in link` | You opened an earlier link | Use the newest link from the last `./hub spotify login` |
+| `Spotify did not accept the client ID or secret` | One of them is wrong in `.env` | Copy them again from the dashboard, restart |
+| The tile says `Can't reach Spotify` (and `Spotify refused the request` in the log) | Spotify answered 403. In development mode only the app's owner and people added under **User Management** may use it | Add your Spotify email under the app's **User Management**, or make sure you signed in as the owner |
+| Nothing on the tile while music plays | Spotify only reports playback from a signed-in Spotify app or device (not "private session" or some web players) | Turn private session off, and play from the phone or computer app. `./hub spotify status` says what the Pi sees |
+| Pause or skip does not show for a few seconds | The Pi looks every 5 seconds | Normal |
+
+Spotify's rules can limit how often the Pi may ask; if it asks for a pause the Pi waits as long as told and the log says so (`asked us to slow down`).
+
 ## Run without Docker
 
 If you prefer, install Node 14 or newer (`node --version` shows yours) and run it directly:
