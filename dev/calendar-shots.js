@@ -269,6 +269,9 @@ async function mainShots() {
   await tileShot(page, 'calendar-1-home-tile');
 
   await openPanel(page);
+  const swatches = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.cal-legend .cal-swatch'), (n) => getComputedStyle(n).backgroundColor));
+  expect(swatches.length === 4 && swatches[2] === 'rgb(255, 107, 107)' && swatches[0] === 'rgb(124, 196, 255)',
+    'COLOR from the Pi wins (Work is red), the others keep the palette: ' + JSON.stringify(swatches));
   expect((await selected(page)) === 'Call with the contractor', 'Day opens on the event happening now, got "' + (await selected(page)) + '"');
   await shot(page, 'calendar-2-day');
 

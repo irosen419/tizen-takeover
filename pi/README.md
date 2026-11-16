@@ -75,6 +75,16 @@ If the TV is off you will see `Sent, but no screen is listening`. That is normal
 
 Run `./hub help` for every command.
 
+## Tile layout
+
+Where each tile sits on the home screen can be changed from the Pi, without editing `app/config.js`:
+
+- `./hub layout show` lists the tiles, or says the TV uses its built-in layout.
+- `./hub layout set layout.json` sends a new layout. The file holds a list of tiles, or `{ "layout": [ ... ] }`. With Docker the file must be in this folder; `./hub layout set - < layout.json` reads it from input instead.
+- `./hub layout reset` goes back to the layout in `app/config.js`.
+
+A tile is `{ "widget": "weather", "x": 0, "y": 0, "w": 3, "h": 2 }` on a grid 12 wide and 6 high: whole numbers, inside the grid, no two tiles overlapping, each widget once, at most 24 tiles. The server refuses anything else and says why. A TV that is on moves its tiles at once (if the set of widgets changed it reloads once). It waits while a panel is open. The TV keeps the last layout, so it starts with it even when the Pi is away.
+
 ## Calendars
 
 The Pi can read your Google calendars and send the coming events to the TV. Each calendar has a private link, called the **secret address**. The Pi reads that link every few minutes. Nobody needs to sign in to Google on the Pi.
@@ -132,6 +142,16 @@ CALENDAR_2_DETAILS=busy
 ```
 
 The TV then shows each event as `Busy`, with its time but no title and no place. Restart the server after the change, as in step 9.
+
+### Choose a calendar's color
+
+The secret address does not carry Google's colors, so the TV gives each calendar a color by its number (1 to 9). To match Google, or just to pick your own, add a line per calendar:
+
+```
+CALENDAR_3_COLOR=red
+```
+
+Use `red`, `orange`, `yellow`, `green`, `teal`, `blue`, `purple`, `pink` or `gray`, or a code like `#d50000`. These names are tuned to be readable on the TV. A color the server does not understand is logged by calendar name and the default is used. Restart the server after the change, as in step 9.
 
 ### New events and waiting
 
@@ -254,7 +274,7 @@ Point the tunnel at `http://127.0.0.1:8098` and nothing else. Never point a tunn
 
 ## Where your data lives, and backups
 
-Everything is in `data/state.json` in this folder (the to-do list, and the latest calendar events; never the calendar links). It is rewritten safely on each change. If it ever gets damaged, the server moves it aside as `data/state.bad-<time>.json` and starts an empty list instead of failing.
+Everything is in `data/state.json` in this folder (the to-do list, the tile layout, and the latest calendar events; never the calendar links). It is rewritten safely on each change. If it ever gets damaged, the server moves it aside as `data/state.bad-<time>.json` and starts an empty list instead of failing.
 
 To back up, copy that file somewhere safe:
 

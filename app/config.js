@@ -4,7 +4,8 @@
  * The home screen is a grid of widget tiles (12 columns by 6 rows). Each
  * layout entry places one widget: x and y are the top-left cell, w and h
  * the size in cells. A layout entry for a widget that doesn't exist is
- * skipped.
+ * skipped. This is the built-in layout: a layout sent from the Pi
+ * (./hub layout set) takes its place until ./hub layout reset.
  */
 
 /* The Raspberry Pi on the home network. Home Assistant and the later widget
@@ -40,16 +41,17 @@ var HUB_CONFIG = {
   live: { server: HUB_PI + ':8097' },
 
   layout: [
-    { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
-    { widget: 'entertainment', x: 3, y: 0, w: 6, h: 2 },
+    { widget: 'today',         x: 0, y: 0, w: 3, h: 1 },
+    { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },
+    { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
     { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
-    { widget: 'todo',          x: 0, y: 2, w: 3, h: 4 },
-    { widget: 'calendar',      x: 3, y: 2, w: 3, h: 4 },
-    { widget: 'nowplaying',    x: 6, y: 2, w: 3, h: 2 },
-    { widget: 'awws',          x: 9, y: 2, w: 3, h: 2 },
-    { widget: 'ambiance',      x: 6, y: 4, w: 3, h: 2 },
-    { widget: 'mirror',        x: 9, y: 4, w: 3, h: 2 }
+    { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
+    { widget: 'mirror',        x: 9, y: 2, w: 3, h: 4 },
+    { widget: 'ambiance',      x: 3, y: 4, w: 6, h: 1 },
+    { widget: 'nowplaying',    x: 0, y: 5, w: 3, h: 1 },
+    { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
   ],
+
 
   widgets: {
     /*

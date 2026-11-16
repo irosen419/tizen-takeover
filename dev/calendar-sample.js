@@ -9,7 +9,7 @@
  *
  *   const sample = require('./calendar-sample');
  *   sample.feedServer({ today: () => '2026-11-15' }).then((feeds) => {
- *     feeds.calendars        // [{ name, url, details }] for server.start({ calendars })
+ *     feeds.calendars        // [{ name, url, details, color }] for server.start({ calendars })
  *     feeds.setMode('fail')  // sample | empty | fail | partial | many
  *     feeds.close()
  *   });
@@ -65,7 +65,7 @@ function feed(name, cal, today, events) {
 const CALENDARS = [
   { name: 'Family', path: '/family.ics' },
   { name: 'Ian', path: '/ian.ics' },
-  { name: 'Work', path: '/work.ics', details: 'busy' },
+  { name: 'Work', path: '/work.ics', details: 'busy', color: 'red' },
   { name: 'US Holidays', path: '/holidays.ics' }
 ];
 
@@ -147,7 +147,7 @@ function feedServer(opts) {
     srv.listen(opts.port || 0, '127.0.0.1', () => {
       const base = 'http://127.0.0.1:' + srv.address().port;
       resolve({
-        calendars: CALENDARS.map((c) => ({ name: c.name, url: base + c.path, details: c.details || 'show' })),
+        calendars: CALENDARS.map((c) => ({ name: c.name, url: base + c.path, details: c.details || 'show', color: c.color || '' })),
         setMode: (m) => { if (MODES.indexOf(m) < 0) return false; mode = m; return true; },
         mode: () => mode,
         close: () => new Promise((r) => { srv.close(() => r()); if (srv.closeAllConnections) srv.closeAllConnections(); })

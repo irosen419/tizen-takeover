@@ -15,6 +15,8 @@
  *   GET  /api/todo       the to-do list
  *   POST /api/todo       add one to-do
  *   POST /api/todo/ops   several to-do changes at once
+ *   GET  /api/layout     the home-screen tile layout (null = the hub's own)
+ *   POST /api/layout     set it, { layout: [...] }, or { layout: null } to reset
  *   GET  /api/status     version, rev, connected screens, calendar summary
  *   GET  /api/calendar   the calendar events (never the secret links)
  *   POST /api/calendar/refresh   read every calendar now and wait for it
@@ -24,8 +26,8 @@
  *
  * Commands are never stored for a TV that is off. Only the fallback poll
  * remembers them, for 10 seconds, at most 20. With no TV connected the
- * server holds nothing open. Data (the to-do list and the calendar events)
- * lives in data/state.json. The calendar reader is in calendar.js.
+ * server holds nothing open. Data (the to-do list, the calendar events and
+ * the tile layout) lives in data/state.json. The calendar reader is in calendar.js.
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -59,6 +61,10 @@ const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const DUE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const WIDGET_RE = /^[a-z][a-z0-9_-]{0,39}$/;
 const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const GRID_COLS = 12;
+const GRID_ROWS = 6;
+const MAX_TILES = 24;
+const TILE_ID_RE = /^[a-z0-9-]{1,32}$/;
 
 /* ---------- small helpers ---------- */
 
@@ -317,6 +323,53 @@ function applyOps(items, ops, now) {
   return list;
 }
 
+/* ---------- layout ---------- */
+
+// Checks a home-screen layout: null (the hub's built-in one) or a list of
+// { widget, x, y, w, h } on the 12 x 6 grid. Returns a tidy copy with only
+// those fields, or throws a 400 error that names the entry and the problem.
+function normalizeLayout(raw) {
+  if (raw === null) return null;
+  if (!Array.isArray(raw)) throw bad('"layout" must be a list of tiles, or null for the built-in layout');
+  if (!raw.length) throw bad('the layout has no tiles (send null to go back to the built-in layout)');
+  if (raw.length > MAX_TILES) throw bad('too many tiles (at most ' + MAX_TILES + ')');
+  const out = [];
+  const seen = {};
+  raw.forEach((e, n) => {
+    const where = ' (tile ' + (n + 1) + ')';
+    if (!isObj(e)) throw bad('each tile must be an object' + where);
+    const id = e.widget;
+    if (typeof id !== 'string' || !TILE_ID_RE.test(id)) {
+      throw bad('"widget" must be 1 to 32 of a-z, 0-9 or "-"' + where);
+    }
+    const name = ' (tile ' + (n + 1) + ', ' + id + ')';
+    if (Object.prototype.hasOwnProperty.call(seen, id)) throw bad('"' + id + '" is in the layout twice' + name);
+    ['x', 'y', 'w', 'h'].forEach((k) => {
+      if (typeof e[k] !== 'number' || !Number.isInteger(e[k])) throw bad('"' + k + '" must be a whole number' + name);
+    });
+    if (e.x < 0 || e.y < 0) throw bad('"x" and "y" must be 0 or more' + name);
+    if (e.w < 1 || e.h < 1) throw bad('"w" and "h" must be 1 or more' + name);
+    if (e.x + e.w > GRID_COLS) throw bad('the tile runs past the right edge (x + w is at most ' + GRID_COLS + ')' + name);
+    if (e.y + e.h > GRID_ROWS) throw bad('the tile runs past the bottom edge (y + h is at most ' + GRID_ROWS + ')' + name);
+    const hit = out.find((o) => e.x < o.x + o.w && o.x < e.x + e.w && e.y < o.y + o.h && o.y < e.y + e.h);
+    if (hit) throw bad('the tile overlaps "' + hit.widget + '"' + name);
+    seen[id] = true;
+    out.push({ widget: id, x: e.x, y: e.y, w: e.w, h: e.h });
+  });
+  return out;
+}
+
+// The layout resource from a state file; anything damaged or missing means
+// "the built-in layout".
+function cleanLayoutResource(r) {
+  const rev = isObj(r) && typeof r.rev === 'number' && r.rev >= 0 ? r.rev : 0;
+  let layout = null;
+  try {
+    if (isObj(r) && isObj(r.data) && r.data.layout !== undefined) layout = normalizeLayout(r.data.layout);
+  } catch (e) { /* a broken layout falls back to the built-in one */ }
+  return { rev: rev, data: { layout: layout } };
+}
+
 /* ---------- commands ---------- */
 
 function normalizeCommand(body) {
@@ -357,7 +410,8 @@ function freshState() {
     rev: 0,
     resources: {
       todo: { rev: 0, data: { items: [] } },
-      calendar: { rev: 0, data: calendar.unconfiguredData() }
+      calendar: { rev: 0, data: calendar.unconfiguredData() },
+      layout: { rev: 0, data: { layout: null } }
     }
   };
 }
@@ -397,6 +451,8 @@ function loadState(dir, log) {
     st.resources.todo = { rev: typeof todo.rev === 'number' ? todo.rev : 0, data: { items: items } };
     // Older files have no calendar; a damaged one is rebuilt from known fields.
     st.resources.calendar = calendar.cleanResource(st.resources.calendar);
+    // Older files have no layout either: null, the hub's built-in one.
+    st.resources.layout = cleanLayoutResource(st.resources.layout);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -834,6 +890,7 @@ function start(options) {
       '/api/command': ['POST'],
       '/api/todo': ['GET', 'POST'],
       '/api/todo/ops': ['POST'],
+      '/api/layout': ['GET', 'POST'],
       '/api/status': ['GET'],
       '/api/calendar': ['GET'],
       '/api/calendar/refresh': ['POST']
@@ -869,6 +926,10 @@ function start(options) {
       }).catch(failed);
       return undefined;
     }
+    if (route === '/api/layout' && req.method === 'GET') {
+      const l = state.resources.layout;
+      return done(200, { ok: true, rev: l.rev, layout: l.data.layout });
+    }
     if (route === '/api/todo' && req.method === 'GET') {
       return done(200, { ok: true, rev: state.rev, items: todoItems() });
     }
@@ -878,6 +939,15 @@ function start(options) {
           const cmd = normalizeCommand(body);
           const r = sendCommand(cmd);
           return done(200, { ok: true, delivered: r.delivered }, cmd.type + ', delivered ' + r.delivered);
+        }
+        if (route === '/api/layout') {
+          if (!isObj(body) || body.layout === undefined) throw bad('send { "layout": [ ... ] }, or { "layout": null } for the built-in layout');
+          const layout = normalizeLayout(body.layout);
+          const changed = JSON.stringify(layout) !== JSON.stringify(state.resources.layout.data.layout);
+          if (changed) changeResource('layout', { layout: layout });
+          const l = state.resources.layout;
+          return done(200, { ok: true, rev: l.rev, changed: changed, layout: l.data.layout },
+            (layout ? layout.length + ' tiles' : 'built-in') + (changed ? ', rev ' + state.rev : ', no change'));
         }
         if (route === '/api/todo') {
           if (!isObj(body)) throw bad('the body must be a JSON object');
@@ -1077,7 +1147,8 @@ module.exports = {
   plainAddress: plainAddress,
   normalizeItem: normalizeItem,
   applyOps: applyOps,
-  normalizeCommand: normalizeCommand
+  normalizeCommand: normalizeCommand,
+  normalizeLayout: normalizeLayout
 };
 
 /* ---------- run directly ---------- */
