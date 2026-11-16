@@ -40,7 +40,7 @@ const awws = require('./awws');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
-const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo'];
+const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach'];
 
 /* ---------- settings ---------- */
 
@@ -552,7 +552,7 @@ async function mailbox(args) {
 const HELP = [
   'Home Hub commands (run from the pi folder):',
   '  ./hub show weather          open a widget: weather, todo, calendar, entertainment,',
-  '                              awws, awws-visits, awws-agenda or awws-todo',
+  '                              awws, awws-visits, awws-agenda, awws-todo or awws-reach',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
