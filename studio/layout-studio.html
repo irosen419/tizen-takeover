@@ -325,6 +325,96 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
 .t-strip.pl { flex-direction: column; align-items: stretch; justify-content: center; gap: 0.15em; }
 .t-strip.pl .ph { max-width: none; }
 
+/* A World Worth Saving: the tiles (--r units) */
+.aw-cd { display: flex; align-items: baseline; gap: 0.4em; min-width: 0; flex: none; }
+.aw-cd .big { font-size: calc(var(--r) * 3.4); flex: none; }
+.aw-cd .u { font-size: calc(var(--r) * 1.15); color: var(--tile-mute); flex: 0 1 auto; }
+.t-strip .aw-cd { flex: 1 1 auto; }
+.t-strip .aw-cd .big { font-size: calc(var(--r) * 2.8); }
+.t-strip .aw-cd .u { font-size: calc(var(--r) * 1.0); }
+.aw-school { font-size: calc(var(--r) * 1.15); flex: none; }
+.aw-when { font-size: calc(var(--r) * 0.9); color: var(--tile-mute); flex: none; }
+.aw-lab { font-size: calc(var(--r) * 0.72); font-weight: 700; color: var(--tile-mute); margin-top: calc(var(--r) * 0.45); flex: none; }
+.aw-foot { font-size: calc(var(--r) * 0.85); color: var(--tile-mute); flex: none; }
+.aw-meta { font-size: calc(var(--r) * 0.9); color: var(--tile-mute); flex: none; }
+.rows.aw { flex: none; font-size: calc(var(--r) * 0.95); }
+.rows.aw .rw { padding: 0.35em 0; }
+.aw-sline { display: flex; align-items: stretch; gap: 0.55em; flex: 1 1 auto; min-width: 0; font-size: calc(var(--r) * 0.95); line-height: 1.3; }
+.aw-sline > div { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; justify-content: center; }
+.aw-sw { font-size: 0.82em; color: var(--tile-mute); }
+.t-strip .td-stext.c2 { line-height: 1.3; }
+.cbar.t { background: #3ccbb9; }
+.cbar.h { background: transparent; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6); }
+.aw-own { flex: none; font-size: 0.72em; line-height: 1.35; border: 1px solid rgba(255,255,255,0.28); border-radius: 0.45em; padding: 0.05em 0.45em; margin-top: 0.1em; color: var(--tile-mute); }
+.aw-due { font-size: 0.8em; color: var(--tile-mute); }
+.aw-late, .aw-due.aw-late { color: #f0a93a; }
+.aw-vrow { display: flex; align-items: center; gap: 0.6em; padding: 0.3em 0; border-bottom: 1px solid rgba(255,255,255,0.1); min-width: 0; font-size: calc(var(--r) * 0.95); flex: none; }
+.aw-vrow .cbar { align-self: stretch; }
+.aw-vrow b { flex: none; font-weight: 600; }
+.aw-vrow .l1 { flex: 1 1 auto; }
+.aw-vrow .mu { flex: none; font-size: 0.85em; }
+.aw-chg { display: flex; gap: 0.35em; align-items: baseline; min-width: 0; flex: none; font-size: calc(var(--r) * 0.9); }
+.aw-chg .ar { flex: none; font-size: 0.7em; }
+.aw-chg .l1 { flex: 1 1 auto; }
+.aw-sparkw { position: relative; flex: none; height: calc(var(--r) * 3); margin: calc(var(--r) * 0.4) 0.3em 0 0; }
+.aw-sparkw svg { display: block; width: 100%; height: 100%; }
+.aw-sparkw i { position: absolute; width: 0.45em; height: 0.45em; margin: -0.225em 0 0 -0.225em; border-radius: 50%; background: #fff; }
+.aw-scan { display: grid; grid-template-columns: minmax(0, 1fr) 36% 1.5em; gap: 0.5em; align-items: center; font-size: calc(var(--r) * 0.85); padding: 0.1em 0; flex: none; min-width: 0; }
+.aw-scan b { font-weight: 400; text-align: right; }
+.aw-track { height: 0.4em; border-radius: 99px; background: rgba(255,255,255,0.14); position: relative; overflow: hidden; }
+.aw-track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: #dfe3ea; }
+/* A World Worth Saving: the panel and full screen (em units) */
+.aw-lr { display: grid; grid-template-columns: minmax(0, 31%) minmax(0, 1fr) auto; gap: 0.7em; align-items: center; padding: 0.08em 0.5em; font-size: 0.74em; border-radius: 0.45em; min-width: 0; flex: none; }
+.aw-lr.lo { color: var(--tile-mute); }
+.aw-lr.lo > :nth-child(2) { color: var(--tile-fg); }
+.aw-lr.on, .aw-vr.on, .aw-rsec.on, .aw-ar.on { box-shadow: inset 0 0 0 0.12em var(--tile-fg); background: rgba(0,0,0,0.28); }
+.aw-hr { border-top: 1px solid rgba(255,255,255,0.14); margin: 0.1em 0.5em; flex: none; }
+.aw-soon { font-size: 0.66em; line-height: 1.3; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; border: 1px solid rgba(255,255,255,0.3); border-radius: 99px; padding: 0.05em 0.6em; color: var(--tile-fg); max-width: 8em; }
+.aw-vr { display: flex; gap: 0.6em; padding: 0.3em 0.5em; font-size: 0.8em; border-radius: 0.45em; min-width: 0; flex: none; }
+.aw-vr .cbar { align-self: stretch; }
+.aw-vr .aw-vcd { flex: 0 0 4.4em; font-size: 1.05em; }
+.aw-vr > div { min-width: 0; flex: 1 1 auto; }
+.aw-dh { display: flex; gap: 0.5em; align-items: baseline; font-size: 0.76em; min-width: 0; flex: none; }
+.aw-dh b { font-weight: 600; min-width: 0; }
+.aw-dh .mu { flex: none; }
+.aw-ar { display: grid; grid-template-columns: 3px 5.2em minmax(0, 1fr); gap: 0.55em; align-items: start; padding: 0.1em 0.4em; font-size: 0.7em; border-radius: 0.4em; min-width: 0; flex: none; }
+.aw-ar .cbar { align-self: stretch; }
+.aw-tr { display: flex; gap: 0.5em; align-items: flex-start; font-size: 0.72em; padding: 0.06em 0; line-height: 1.3; min-width: 0; flex: none; }
+.aw-tr > div { min-width: 0; flex: 1 1 auto; }
+.aw-tr .aw-own { font-size: 0.8em; margin-top: 0.15em; }
+.aw-hint { margin-left: auto; font-size: 0.66em; color: var(--tile-mute); min-width: 0; }
+.aw-rsec { display: flex; flex-direction: column; gap: 0.1em; padding: 0.3em 0.5em; border-radius: 0.5em; min-width: 0; flex: none; }
+.aw-fig { display: flex; align-items: baseline; gap: 0.35em; min-width: 0; flex: none; }
+.aw-fig .big { font-size: 1.7em; flex: none; }
+.aw-fig .l1 { font-size: 0.8em; }
+.pp .aw-chg { font-size: 0.72em; }
+.pp .aw-sparkw { height: 1.8em; margin-top: 0.15em; }
+.full .aw-sparkw { height: 1.3em; }
+.full .aw-rsec { padding-block: 0.15em; }
+.pp .aw-scan { font-size: 0.72em; }
+.aw-q4 { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 0.35em 1.3em; }
+.aw-q { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 0.06em; font-size: 0.62em; }
+.aw-q + .aw-q + .aw-q { border-top: 1px solid rgba(255,255,255,0.14); padding-top: 0.35em; }
+.aw-ql { font-size: 0.78em; font-weight: 700; color: var(--tile-mute); flex: none; }
+.aw-q .aw-fig .big { font-size: 2.3em; }
+.aw-wk { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); text-align: center; gap: 0.2em; flex: none; }
+.aw-wk div { min-width: 0; }
+.aw-wk .xs { font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tile-mute); }
+.aw-wk .on .xs, .aw-wk .on b { color: var(--tile-fg); }
+.aw-wk b { display: block; font-weight: 400; font-size: 1.05em; line-height: 1.3; }
+.aw-dots { display: flex; justify-content: center; gap: 0.15em; height: 0.6em; align-items: center; }
+.aw-dots i { width: 0.45em; height: 0.45em; border-radius: 50%; background: #3ccbb9; }
+.aw-dots i.h { background: transparent; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7); }
+.aw-wr { display: grid; grid-template-columns: 3px minmax(0, 40%) minmax(0, 1fr); gap: 0.45em; align-items: center; font-size: 0.86em; padding: 0.1em 0; border-bottom: 1px solid rgba(255,255,255,0.1); min-width: 0; flex: none; }
+.aw-wr .cbar { align-self: stretch; }
+.aw-pr { display: grid; grid-template-columns: minmax(0, 36%) minmax(0, 1fr); gap: 0.5em; font-size: 0.86em; padding: 0.02em 0; border-bottom: 1px solid rgba(255,255,255,0.1); min-width: 0; flex: none; align-items: center; }
+.aw-pr > span:first-child { color: var(--tile-mute); }
+.aw-pr .aw-track { height: 0.3em; margin-top: 0.1em; }
+.aw-ni { flex: none; min-width: 0; font-size: 0.86em; line-height: 1.3; }
+.aw-ni .aw-due { font-size: 0.85em; }
+.aw-stream { display: grid; grid-template-columns: minmax(0, 34%) minmax(0, 1fr) 1.2em; gap: 0.5em; align-items: center; font-size: 0.76em; padding: 0.15em 0; min-width: 0; flex: none; }
+.aw-stream b { font-weight: 400; text-align: right; }
+
 /* Panel (clicked) and full screen */
 .pp { --e: max(8px, 3.25cqw); position: relative; width: 100%; aspect-ratio: 46 / 26; overflow: hidden; display: flex; flex-direction: column; gap: 0.45em;
   background: var(--tile); color: var(--tile-fg); border: 1px solid rgba(255,255,255,0.16); border-radius: 3.2cqw; padding: 3.4cqw 3.8cqw; font: 400 var(--e)/1.35 var(--font); }
@@ -455,7 +545,15 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     todo:          { title: 'To-do',                 sub: 'Your list, kept on the Pi' },
     calendar:      { title: 'Calendar',              sub: 'Today’s agenda, then day, week and month' },
     nowplaying:    { title: 'Now Playing',           sub: 'What’s playing on Spotify', soon: true },
-    awws:          { title: 'A World Worth Saving',  sub: 'The dashboards, starting with the to-do app', soon: true },
+    awws:          { title: 'A World Worth Saving',  sub: 'Next visit, the board and progress at a glance; opens the other AWWS views' },
+    // The other A World Worth Saving tiles (app/widgets/awws.js, v0.17.0). The last three are placeholders on the TV.
+    'awws-visits': { title: 'Next visit',            sub: 'AWWS: school visits in the next 60 days' },
+    'awws-agenda': { title: 'This week',             sub: 'AWWS: project dates and dated to-dos, day by day' },
+    'awws-todo':   { title: 'To-do board',           sub: 'AWWS: the project board for Ian, Claude and both' },
+    'awws-reach':  { title: 'Reach',                 sub: 'AWWS: site visits, buy clicks, flier scans, subscribers' },
+    'awws-outreach': { title: 'Librarians',          sub: 'AWWS: replies waiting, and schools replied, booked, visited', soon: true },
+    'awws-pipeline': { title: 'Books',               sub: 'AWWS: each book and download from writing to live', soon: true },
+    'awws-money':  { title: 'Money',                 sub: 'AWWS: what the project spent and earned', soon: true },
     ambiance:      { title: 'Ambiance',              sub: 'Pick the light vibe from the TV', soon: true },
     mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true }
   };
@@ -470,6 +568,24 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 1, w: 3, h: 4 }, { id: 'mirror', x: 9, y: 2, w: 3, h: 4 },
     { id: 'ambiance', x: 3, y: 4, w: 6, h: 1 }, { id: 'nowplaying', x: 0, y: 5, w: 3, h: 1 }, { id: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
   ];
+  // Layouts the TV ships with (HUB_CONFIG.layouts in app/config.js, v0.17.0), offered under "From the TV".
+  // Same ids as on the TV; a saved layout with the same id or name takes the preset's place.
+  var AWWS_PRESETS = [
+    { id: 'awws-desk', name: 'AWWS desk', layout: [
+      { id: 'awws-visits', x: 0, y: 0, w: 3, h: 2 }, { id: 'awws-agenda', x: 3, y: 0, w: 6, h: 2 }, { id: 'weather', x: 9, y: 0, w: 3, h: 2 },
+      { id: 'awws-todo', x: 0, y: 2, w: 4, h: 4 }, { id: 'calendar', x: 4, y: 2, w: 5, h: 4 }, { id: 'today', x: 9, y: 2, w: 3, h: 1 },
+      { id: 'entertainment', x: 9, y: 3, w: 3, h: 3 }
+    ] },
+    { id: 'awws-one-screen', name: 'AWWS one screen', layout: [
+      { id: 'awws', x: 0, y: 0, w: 9, h: 6 }, { id: 'today', x: 9, y: 0, w: 3, h: 1 },
+      { id: 'weather', x: 9, y: 1, w: 3, h: 2 }, { id: 'calendar', x: 9, y: 3, w: 3, h: 3 }
+    ] }
+  ];
+  // A preset hides the Stock tiles it leaves out, as the TV does.
+  AWWS_PRESETS.forEach(function (p) {
+    p.preset = true;
+    p.hidden = BASE.filter(function (b) { return !p.layout.some(function (e) { return e.id === b.id; }); }).map(function (b) { return b.id; });
+  });
   var KINDS = [
     { k: 'change', label: 'Change request' },
     { k: 'idea',   label: 'New widget idea' },
@@ -500,6 +616,32 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     return o;
   }
   function clonePlain(o) { return JSON.parse(JSON.stringify(o)); }
+  // The A World Worth Saving placeholders (awws-outreach, awws-pipeline, awws-money): the same, with the globe.
+  var AWWS_PLANNED_CELLS = {
+    strip: PLANNED_CELLS.strip,
+    standard: { en: 'Icon, title and Soon, then the description in as many lines as fit, with a faint globe behind. Narrow: the title is cut with “…” and Soon gets its own line.',
+                es: 'Icono, título y Próximamente; luego la descripción en las líneas que quepan, con un globo tenue detrás. Estrecho: el título se corta con «…» y Próximamente va en su propia línea.' },
+    tall: { en: 'Icon, title and Soon at the top, then a big faint globe centered above the description.',
+            es: 'Icono, título y Próximamente arriba; después, un globo grande y tenue centrado sobre la descripción.' },
+    panel: { built: false, en: 'Not built yet. The panel opens with the description, “Not built yet. This spot is reserved for it.” and a large faint globe.',
+             es: 'Todavía no está hecho. El panel se abre con la descripción, «Todavía no está hecho. Este espacio queda reservado.» y un globo grande y tenue.' },
+    full: { built: false, en: 'Not built yet. The same as Clicked at full screen, with bigger text and globe.',
+            es: 'Todavía no está hecho. Igual que al pulsar, a pantalla completa, con letra y globo más grandes.' }
+  };
+  function awwsPlanned(title, text) {
+    var o = plannedEntry(title, text), c = clonePlain(AWWS_PLANNED_CELLS);
+    CELLS_ALL.forEach(function (k) { o[k] = c[k]; });
+    return o;
+  }
+  var CELLS_ALL = ['strip', 'standard', 'tall', 'panel', 'full'];
+  /* Made-up sample data for the A World Worth Saving previews: pi/fixtures/awws-sample.json and the
+     calendars in dev/awws-sample.js, on Monday, November 16, 2026. Spanish words follow dev/awws-harness.js. */
+  var AW_TODO_EN = [['Print 30 activity sheets for Maple Grove', 'Nov 30'], ['Reply to Cedar Hollow about dates', 'Overdue · Nov 13', 1],
+    ['Approve the hardcover proof of Luma the Otter', 'waiting on Printer proof'], ['Record the read-aloud intro video', 'Nov 18, 4 PM']];
+  var AW_TODO_ES = [['Imprimir 30 hojas de actividades para Maple Grove', '30 nov'], ['Responder a Cedar Hollow sobre las fechas', 'Atrasada · 13 nov', 1],
+    ['Aprobar la prueba en tapa dura de Luma the Otter', 'esperando: prueba de imprenta'], ['Grabar el vídeo de presentación de la lectura en voz alta', '18 nov, 4 p. m.']];
+  var AW_SPARK = [41, 52, 48, 61, 57, 70, 59, 44, 55, 63, 58, 66, 72, 54];
+  var AW_SPARK_CLICKS = [2, 4, 3, 5, 4, 6, 3, 2, 3, 4, 3, 5, 4, 2];
 
   var SIZE_MATRIX = {
     today: {
@@ -611,15 +753,153 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     },
     nowplaying: plannedEntry({ en: 'Now Playing', es: 'Reproduciendo ahora' },
       { en: 'What’s playing on Spotify.', es: 'Lo que está sonando ahora mismo en Spotify.' }),
-    awws: plannedEntry({ en: 'A World Worth Saving', es: 'Un mundo que vale la pena salvar' },
-      { en: 'Open any of the dashboards, starting with the to-do app.', es: 'Abre cualquiera de los paneles, empezando por la aplicación de tareas pendientes.' }),
+    awws: {
+      title: { en: 'A World Worth Saving', es: 'Un mundo que vale la pena salvar' },
+      sample: {
+        en: { cd: '15', unit: 'days', school: 'Maple Grove Elementary', when: 'Tue, Dec 1 · 12:15 PM', place: 'Library, Room 4', nowHead: 'Now for you',
+              items: AW_TODO_EN, foot: '9 now for you · 5 replies waiting', more: '+9 more',
+              views: [['Next visit', 'Maple Grove Elementary · in 15 days'], ['This week', '4 dates · 4 to-dos due'], ['To-do board', '9 now for you · 1 overdue'], ['Reach', '412 visits this week']],
+              later: [['Librarians', '5 replies waiting · 3 booked'], ['Books', 'Luma the Otter hardcover · waiting on Printer proof'], ['Money', 'Spent $1,841 · earned $1,265']], soon: 'Soon',
+              q: ['Next visit', 'This week', 'Now for you', 'Progress'], dow: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+              week: [['Today · 2:00 PM', 'Call with the illustrator about Año Nuevo', 't'], ['Tomorrow · Due', 'Tidy the education downloads page', 'h']], weekMore: '+6 more',
+              prog: [['Librarians', '5 replies waiting · 3 booked'], ['Books', 'Luma the Otter hardcover'], ['Rewrite', '11 of 12 spreads', 92], ['Handoffs', '2 open · 1 blocked'], ['Money', 'Spent $1,841 · earned $1,265']] },
+        es: { cd: '15', unit: 'días', school: 'Maple Grove Elementary', when: 'mar 1 dic · 12:15 p. m.', place: 'Biblioteca, aula 4', nowHead: 'Ahora para ti',
+              items: AW_TODO_ES, foot: '9 ahora para ti · 5 respuestas en espera', more: '+9 más',
+              views: [['Próxima visita', 'Maple Grove Elementary · en 15 días'], ['Esta semana', '4 fechas · 4 tareas con fecha'], ['Tablero de tareas', '9 ahora para ti · 1 atrasada'], ['Alcance', '412 visitas esta semana']],
+              later: [['Bibliotecarias', '5 respuestas en espera · 3 reservadas'], ['Libros', 'Luma the Otter, tapa dura · esperando: prueba de imprenta'], ['Dinero', 'Gastado $1.841 · ganado $1.265']], soon: 'Pronto',
+              q: ['Próxima visita', 'Esta semana', 'Ahora para ti', 'Avance'], dow: ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'],
+              week: [['Hoy · 2:00 p. m.', 'Llamada con el ilustrador sobre Año Nuevo', 't'], ['Mañana · Vence', 'Ordenar la página de descargas educativas', 'h']], weekMore: '+6 más',
+              prog: [['Bibliotecarias', '5 respuestas en espera · 3 reservadas'], ['Libros', 'Luma the Otter, tapa dura'], ['Reescritura', '11 de 12 páginas dobles', 92], ['Traspasos', 'abiertos: 2 · bloqueados: 1'], ['Dinero', 'Gastado $1.841 · ganado $1.265']] }
+      },
+      strip: { en: 'One line: a green bar, the next school visit and “in 15 days”, then “· 9 now for you · 5 replies waiting” as far as it fits whole. With no visit: the number of Now items for Ian. A narrow strip shows only the big countdown. 1 column: the number of days, or Today, Tomorrow or Now.',
+               es: 'Una línea: una barra verde, la próxima visita a una escuela y «en 15 días»; luego «· 9 ahora para ti · 5 respuestas en espera» hasta donde quepa entero. Sin visita: el número de tareas de Ahora de Ian. Una tira estrecha solo muestra la cuenta atrás grande. 1 columna: el número de días, o Hoy, Mañana o Ahora.' },
+      standard: { en: 'The big countdown (15 days, or Today with the time), the school and its day and time, and a foot line “9 now for you · 5 replies waiting”. At 6+ columns the right half lists Ian’s Now items.',
+                  es: 'La cuenta atrás en grande (15 días, u Hoy con la hora), la escuela con su día y hora, y una línea al pie «9 ahora para ti · 5 respuestas en espera». Con 6 columnas o más, la mitad derecha lista las tareas de Ahora de Ian.' },
+      tall: { en: 'Standard plus lists that fit in turn: Ian’s Now items, then Coming up (the next events). At 6 × 4 and up it becomes a dashboard in four quarters: Next visit, This week (seven days with dots and the next items), Now for you, and Progress (Librarians, Books, the rewrite with a bar, Handoffs, then Money while showMoney is on, as it ships; rows that don’t fit are left out, so 6 × 4 shows the first three). 9 × 5 and up is a step bigger.',
+              es: 'Estándar más listas que van entrando por turno: las tareas de Ahora de Ian y luego Próximamente (los siguientes eventos). Desde 6 × 4 se convierte en un panel de cuatro cuartos: Próxima visita, Esta semana (siete días con puntos y lo siguiente), Ahora para ti y Avance (Bibliotecarias, Libros, la reescritura con una barra, Traspasos y, mientras showMoney esté activado, como viene, Dinero; las filas que no caben se quitan, así que 6 × 4 muestra las tres primeras). Desde 9 × 5 todo es un poco más grande.' },
+      panel: { en: 'A launcher: Next visit, This week, To-do board and Reach, each with its one-line status (“412 visits this week”, or “2 subscribers” while only those are counted); OK opens that view in the same panel and Back returns to the launcher. Below a line, Librarians and Books (and Money, “Spent $1,841 · earned $1,265”, while showMoney is on) with their figure and a Soon tag.',
+               es: 'Un lanzador: Próxima visita, Esta semana, Tablero de tareas y Alcance, cada uno con su estado en una línea («412 visitas esta semana», o «2 suscriptores» mientras solo se cuentan esos); OK abre esa vista en el mismo panel y Atrás vuelve al lanzador. Bajo una línea, Bibliotecarias y Libros (y Dinero, «Gastado $1.841 · ganado $1.265», mientras showMoney esté activado) con su cifra y la etiqueta Pronto.' },
+      full: { en: 'The dashboard in four quarters, bigger. OK on a quarter opens that view; Back returns to the dashboard.',
+              es: 'El panel de cuatro cuartos, más grande. OK en un cuarto abre esa vista; Atrás vuelve al panel.' }
+    },
+    'awws-visits': {
+      title: { en: 'Next visit', es: 'Próxima visita' },
+      sample: {
+        en: { cd: '15', unit: 'days', school: 'Maple Grove Elementary', whenShort: 'Dec 1 · 12:15 PM', line: 'Tue, Dec 1 · 12:15 PM · Library, Room 4', then: 'Then',
+              list: [['15 days', '15 d', 'Maple Grove Elementary', 'Tuesday, December 1 · 12:15 PM', 'Dec 1', 'Library, Room 4'],
+                     ['16 days', '16 d', 'Río Niño Academy', 'Wednesday, December 2 · 9:30 AM', 'Dec 2', 'Gym, Calle Ñandú 12'],
+                     ['25 days', '25 d', 'Cedar Hollow Elementary: second-grade reading assembly and the whole-school otter puppet show', 'Friday, December 11 · 1:00 PM', 'Dec 11', 'Auditorium, 400 Cedar Hollow Road']] },
+        es: { cd: '15', unit: 'días', school: 'Maple Grove Elementary', whenShort: '1 dic · 12:15 p. m.', line: 'mar 1 dic · 12:15 p. m. · Biblioteca, aula 4', then: 'Después',
+              list: [['15 días', '15 d', 'Maple Grove Elementary', 'martes, 1 de diciembre · 12:15 p. m.', '1 dic', 'Biblioteca, aula 4'],
+                     ['16 días', '16 d', 'Río Niño Academy', 'miércoles, 2 de diciembre · 9:30 a. m.', '2 dic', 'Gimnasio, Calle Ñandú 12'],
+                     ['25 días', '25 d', 'Cedar Hollow Elementary: asamblea de lectura de segundo grado y función de títeres de nutrias para toda la escuela', 'viernes, 11 de diciembre · 1:00 p. m.', '11 dic', 'Auditorio, 400 Cedar Hollow Road']] }
+      },
+      strip: { en: 'A green bar, the school, then the day and time (“Tue, Dec 1 · 12:15 PM”, with the place when it fits). When the school name would be cut, the day goes on a small line above a two-line name. A narrow strip shows only the countdown. 1 column: the number of days.',
+               es: 'Una barra verde, la escuela y luego el día y la hora («mar 1 dic · 12:15 p. m.», con el lugar si cabe). Si el nombre de la escuela se cortaría, el día pasa a una línea pequeña encima de un nombre en dos líneas. Una tira estrecha solo muestra la cuenta atrás. 1 columna: el número de días.' },
+      standard: { en: 'The big countdown, the school, and its day, time and place on one line.',
+                  es: 'La cuenta atrás en grande, la escuela y, en una línea, su día, hora y lugar.' },
+      tall: { en: 'Standard plus Then: the next visits with their countdown (“16 d”) and date.',
+              es: 'Estándar más Después: las siguientes visitas con su cuenta atrás («16 d») y la fecha.' },
+      panel: { en: 'Every visit in the next 60 days: countdown, school, the full date and time, and the place.',
+               es: 'Todas las visitas de los próximos 60 días: cuenta atrás, escuela, la fecha completa con la hora y el lugar.' },
+      full: { en: 'The same list, bigger; two columns once there are more than four visits.',
+              es: 'La misma lista, más grande; en dos columnas cuando hay más de cuatro visitas.' }
+    },
+    'awws-agenda': {
+      title: { en: 'This week', es: 'Esta semana' },
+      sample: {
+        en: { rows: [['Today · 2:00 PM', 'Call with the illustrator about Año Nuevo', 't'], ['Tomorrow · Due', 'Tidy the education downloads page', 'h'], ['Wednesday · All day', 'Pip and the Reef: layout due', 't'],
+                     ['Wednesday · 4:00 PM', 'Record the read-aloud intro video', 'h'], ['Thursday · 10:00 AM', 'Newsletter goes out', 't'], ['Thursday · Due', 'Order 40 paperbacks for December visits', 'h']],
+              moreStd: '+6 more', more: '+2 more', stripWhen: '2:00 PM',
+              days: [['Today', 'Nov 16', [['2:00 PM', 'Call with the illustrator about Año Nuevo', 'Video call', 't']]],
+                     ['Tomorrow', 'Nov 17', [['Due', 'Tidy the education downloads page', 'Claude', 'h']]],
+                     ['Wednesday', 'Nov 18', [['All day', 'Pip and the Reef: layout due', '', 't'], ['4:00 PM', 'Record the read-aloud intro video', 'Ian', 'h']]],
+                     ['Thursday', 'Nov 19', [['10:00 AM', 'Newsletter goes out', '', 't'], ['Due', 'Order 40 paperbacks for December visits', 'Ian', 'h']]],
+                     ['Friday', 'Nov 20', [['Due', 'Sign the visit form for Río Niño Academy', 'Ian', 'h']]],
+                     ['Saturday', 'Nov 21', [['11:00 AM', 'Bookstore reading: Luma the Otter', 'Libros Árbol, Main St', 't']]]] },
+        es: { rows: [['Hoy · 2:00 p. m.', 'Llamada con el ilustrador sobre Año Nuevo', 't'], ['Mañana · Vence', 'Ordenar la página de descargas educativas', 'h'], ['miércoles · Todo el día', 'Pip and the Reef: entrega de la maquetación', 't'],
+                     ['miércoles · 4:00 p. m.', 'Grabar el vídeo de presentación de la lectura en voz alta', 'h'], ['jueves · 10:00 a. m.', 'Sale el boletín', 't'], ['jueves · Vence', 'Pedir 40 libros de bolsillo para las visitas de diciembre', 'h']],
+              moreStd: '+6 más', more: '+2 más', stripWhen: '2:00 p. m.',
+              days: [['Hoy', '16 nov', [['2:00 p. m.', 'Llamada con el ilustrador sobre Año Nuevo', 'Videollamada', 't']]],
+                     ['Mañana', '17 nov', [['Vence', 'Ordenar la página de descargas educativas', 'Claude', 'h']]],
+                     ['miércoles', '18 nov', [['Todo el día', 'Pip and the Reef: entrega de la maquetación', '', 't'], ['4:00 p. m.', 'Grabar el vídeo de presentación de la lectura en voz alta', 'Ian', 'h']]],
+                     ['jueves', '19 nov', [['10:00 a. m.', 'Sale el boletín', '', 't'], ['Vence', 'Pedir 40 libros de bolsillo para las visitas de diciembre', 'Ian', 'h']]],
+                     ['viernes', '20 nov', [['Vence', 'Firmar el formulario de visita de Río Niño Academy', 'Ian', 'h']]],
+                     ['sábado', '21 nov', [['11:00 a. m.', 'Lectura en la librería: Luma the Otter', 'Libros Árbol, Main St', 't']]]] }
+      },
+      strip: { en: 'Today’s next item with its time; at 6+ columns the next ones follow while they fit whole. With nothing today: “Nothing today” and the day of the next item. 1 column: the number of items today.',
+               es: 'Lo siguiente de hoy con su hora; con 6 columnas o más siguen los demás mientras quepan enteros. Si hoy no hay nada: «Nada hoy» y el día de lo siguiente. 1 columna: el número de cosas de hoy.' },
+      standard: { en: 'Today and the next days as rows (day and time over the title) and “+N more”. At 6+ columns: seven day columns with a dot per item (hollow for a to-do) and the titles on up to two lines.',
+                  es: 'Hoy y los próximos días en filas (día y hora sobre el título) y «+N más». Con 6 columnas o más: siete columnas, una por día, con un punto por cosa (hueco si es una tarea) y los títulos en hasta dos líneas.' },
+      tall: { en: 'Standard with more rows, or, wide, taller day columns.',
+              es: 'Estándar con más filas o, en ancho, columnas de día más altas.' },
+      panel: { en: 'The next 14 days grouped by day, project dates and to-dos with a due date together; a to-do shows whose it is.',
+               es: 'Los próximos 14 días agrupados por día, con las fechas del proyecto y las tareas con fecha juntas; cada tarea dice de quién es.' },
+      full: { en: 'Two columns, split by rows, whole days only.',
+              es: 'Dos columnas, repartidas por filas y solo con días enteros.' }
+    },
+    'awws-todo': {
+      title: { en: 'To-do board', es: 'Tablero de tareas' },
+      sample: {
+        en: { n: '9', cap: 'now for you', meta: [['1 overdue', 1], ['Claude 3'], ['Both 3']], items: AW_TODO_EN, own: 'Ian', more: '+11 more',
+              filters: ['All', 'Ian', 'Claude', 'Both'], hint: '← → owner', secs: [['Now', '15'], ['Next', '5'], ['Later', '3']], done: '2 done this week',
+              next: [['Ian', 'Update the visit pack list', '']], later: [['Ian', 'Sketch ideas for book three', 'On hold']],
+              streamsHead: 'Open by workstream', streams: [['Books', 6], ['Outreach', 5], ['Visits', 5], ['Education', 3], ['Content', 2]] },
+        es: { n: '9', cap: 'ahora para ti', meta: [['1 atrasada', 1], ['Claude 3'], ['Ambos 3']], items: AW_TODO_ES, own: 'Ian', more: '+11 más',
+              filters: ['Todas', 'Ian', 'Claude', 'Ambos'], hint: '← → persona', secs: [['Ahora', '15'], ['Después', '5'], ['Más adelante', '3']], done: '2 hechas esta semana',
+              next: [['Ian', 'Actualizar la lista de la mochila de visitas', '']], later: [['Ian', 'Esbozar ideas para el tercer libro', 'En pausa']],
+              streamsHead: 'Abiertas por área', streams: [['Libros', 6], ['Difusión', 5], ['Visitas', 5], ['Educación', 3], ['Contenido', 2]] }
+      },
+      strip: { en: 'The number of Now items for Ian, then his first one on up to two lines. 1 column: that number.',
+               es: 'El número de tareas de Ahora de Ian y la primera de ellas en hasta dos líneas. 1 columna: ese número.' },
+      standard: { en: 'The big count “now for you”, then “1 overdue · Claude 3 · Both 3” (overdue in amber, kept first when the line is short), then Ian’s first item if it fits. At 6+ columns the right half lists Ian’s Now items with due dates.',
+                  es: 'El número grande «ahora para ti», luego «1 atrasada · Claude 3 · Ambos 3» (atrasada en ámbar, siempre primero si la línea es corta) y la primera tarea de Ian si cabe. Con 6 columnas o más, la mitad derecha lista las tareas de Ahora de Ian con su fecha.' },
+      tall: { en: 'Every Now item with an owner chip (Ian, Claude, Both; I, C, B when narrow), its due date or Overdue in amber, and what it waits on, then “+N more”.',
+              es: 'Cada tarea de Ahora con la etiqueta de quién es (Ian, Claude, Ambos; I, C, A en estrecho), su fecha o Atrasada en ámbar, y lo que espera; luego «+N más».' },
+      panel: { en: 'All, Ian, Claude and Both along the top: Left and Right move the filter. Then Now, Next and Later with counts, and Done this week.',
+               es: 'Todas, Ian, Claude y Ambos arriba: Izquierda y Derecha cambian el filtro. Luego Ahora, Después y Más adelante con sus números, y lo hecho esta semana.' },
+      full: { en: 'The board on the left and, on the right, a bar per work stream.',
+              es: 'El tablero a la izquierda y, a la derecha, una barra por área de trabajo.' }
+    },
+    'awws-reach': {
+      title: { en: 'Reach', es: 'Alcance' },
+      sample: {
+        en: { n: '412', unit: 'visits this week', unitShort: 'visits', change: 'up 24 · vs 388 last week', changeShort: 'up 24 · vs 388', clicks: '23 buy clicks', clicksChange: 'down 4',
+              last: 'Last 14 days', scansHead: 'Flier scans', scans: [['Maple Grove Elementary', 14], ['Lakeview School', 9], ['Río Niño Academy', 6]],
+              subs: '187 subscribers · checked Nov 16', subsLong: '187 subscribers · at last check Nov 16',
+              heads: ['Site visits', 'Buy clicks', 'Flier scans at schools', 'Newsletter subscribers'], panelChange: 'up 24 · 388 last week',
+              clicksUnit: 'buy clicks this week', clicksPanelChange: 'down 4 · 27 last week', subsN: '187', subsUnit: 'subscribers', subsWhen: 'at last check Nov 16' },
+        es: { n: '412', unit: 'visitas esta semana', unitShort: 'visitas', change: 'subió 24 · frente a 388 la semana pasada', changeShort: 'subió 24 · frente a 388', clicks: '23 clics de compra', clicksChange: 'bajó 4',
+              last: 'Últimos 14 días', scansHead: 'Escaneos del folleto', scans: [['Maple Grove Elementary', 14], ['Lakeview School', 9], ['Río Niño Academy', 6]],
+              subs: '187 suscriptores · contados el 16 nov', subsLong: '187 suscriptores · según el último recuento, del 16 nov',
+              heads: ['Visitas al sitio', 'Clics de compra', 'Escaneos del folleto en escuelas', 'Suscriptores del boletín'], panelChange: 'subió 24 · 388 la semana pasada',
+              clicksUnit: 'clics de compra esta semana', clicksPanelChange: 'bajó 4 · 27 la semana pasada', subsN: '187', subsUnit: 'suscriptores', subsWhen: 'según el último recuento, del 16 nov' }
+      },
+      strip: { en: 'The number and its words: “412 visits this week · ▲ up 24 vs 388”, then “· 23 buy clicks · 187 subscribers” as far as they fit whole. With subscribers alone: “2 subscribers · at last check Nov 16”. A narrow strip shows the number and one word. 1 column: the number and “visits” (or “subs”).',
+               es: 'El número y sus palabras: «412 visitas esta semana · ▲ subió 24 frente a 388» y luego «· 23 clics de compra · 187 suscriptores» hasta donde quepan enteros. Solo con suscriptores: «2 suscriptores · según el último recuento, del 16 nov». Una tira estrecha muestra el número y una palabra. 1 columna: el número y «visitas» (o «suscr.»).' },
+      standard: { en: 'The big number “412 visits this week” (“visits” when the words would wrap), then “▲ up 24 · vs 388 last week” and “23 buy clicks · ▼ down 4”; the arrows only help, the words say it. At 6+ columns the right half is a line of the last 14 days, the last day marked with a dot. With subscribers alone: “2 subscribers” and “at last check Nov 16”.',
+                  es: 'El número grande «412 visitas esta semana» («visitas» si las palabras pasarían de línea), luego «▲ subió 24 · frente a 388 la semana pasada» y «23 clics de compra · ▼ bajó 4»; las flechas solo ayudan, lo dicen las palabras. Con 6 columnas o más, la mitad derecha es una línea de los últimos 14 días, con un punto en el último. Solo con suscriptores: «2 suscriptores» y «según el último recuento, del 16 nov».' },
+      tall: { en: 'Standard plus the 14-day line, flier scans as bars (up to five schools) and “187 subscribers · at last check Nov 16” at the bottom. Wide: the line under the figures, the scans and subscribers on the right. Subscribers alone: a quiet line that visits and buy clicks show once the sync sends them.',
+              es: 'Estándar más la línea de 14 días, los escaneos del folleto en barras (hasta cinco escuelas) y «187 suscriptores · según el último recuento, del 16 nov» abajo. En ancho: la línea bajo las cifras, y los escaneos y suscriptores a la derecha. Solo con suscriptores: una línea discreta dice que las visitas y los clics de compra aparecerán cuando la sincronización los envíe.' },
+      panel: { en: 'Site visits and Buy clicks, each with this week, the change from last week and a line of up to 28 days; then flier scans by school and the subscribers with their last-check date. Each part takes focus, so a long panel scrolls. Subscribers alone: that part and the line about visits and buy clicks.',
+               es: 'Visitas al sitio y Clics de compra, cada uno con esta semana, el cambio frente a la anterior y una línea de hasta 28 días; luego los escaneos del folleto por escuela y los suscriptores con la fecha del último recuento. Cada parte recibe el foco, así que un panel largo se desplaza. Solo con suscriptores: esa parte y la línea sobre visitas y clics de compra.' },
+      full: { en: 'Two columns, bigger: visits and buy clicks on the left, scans and subscribers on the right.',
+              es: 'Dos columnas, más grandes: visitas y clics de compra a la izquierda; escaneos y suscriptores a la derecha.' }
+    },
+    'awws-outreach': awwsPlanned({ en: 'Librarians', es: 'Bibliotecarias' },
+      { en: 'Replies waiting on you, and how many schools replied, booked and were visited.', es: 'Las respuestas que esperan por ti, y cuántas escuelas respondieron, reservaron y recibieron la visita.' }),
+    'awws-pipeline': awwsPlanned({ en: 'Books', es: 'Libros' },
+      { en: 'Each book and download from writing to live, and what each one waits on.', es: 'Cada libro y descarga, desde la escritura hasta la publicación, y qué espera cada uno.' }),
+    'awws-money': awwsPlanned({ en: 'Money', es: 'Dinero' },
+      { en: 'What the project spent and earned, month by month.', es: 'Lo que el proyecto gastó y ganó, mes a mes.' }),
     ambiance: plannedEntry({ en: 'Ambiance', es: 'Ambiente' },
       { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),
     mirror: plannedEntry({ en: 'Mirror', es: 'Espejo' },
       { en: 'A camera mirror for mornings and nights out.', es: 'Un espejo con cámara para las mañanas y las noches de salida.' })
   };
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
-  var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying', 'awws', 'ambiance', 'mirror'];
+  var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'ambiance', 'mirror'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -835,9 +1115,12 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     selected = null; markDirty(); renderAll();
   }
   function renderTray() {
-    var t = $('tray');
-    if (!state.hidden.length) { t.innerHTML = ''; return; }
-    t.innerHTML = '<span class="lbl">Off the screen, tap to bring back:</span>' + state.hidden.map(function (id) { return '<button type="button" class="chip" data-back="' + id + '">+ ' + esc(titleOf(id)) + '</button>'; }).join('');
+    var t = $('tray'), h = '';
+    var spare = Object.keys(WIDGETS).filter(function (id) { return !entry(id) && state.hidden.indexOf(id) < 0; });
+    var chips = function (ids) { return ids.map(function (id) { return '<button type="button" class="chip" data-back="' + esc(id) + '">+ ' + esc(titleOf(id)) + '</button>'; }).join(''); };
+    if (state.hidden.length) h += '<span class="lbl">Off the screen, tap to bring back:</span>' + chips(state.hidden);
+    if (spare.length) h += '<span class="lbl">More tiles, tap to add:</span>' + chips(spare);
+    t.innerHTML = h;
   }
   $('tray').addEventListener('click', function (ev) {
     var b = ev.target.closest('[data-back]'); if (!b) return;
@@ -898,7 +1181,23 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function layoutById(id) {
     if (id === 'stock') return { id: 'stock', name: 'Stock', layout: BASE.map(function (b) { return { id: b.id, x: b.x, y: b.y, w: b.w, h: b.h }; }), hidden: [] };
     for (var i = 0; i < lib.layouts.length; i++) if (lib.layouts[i].id === id) return lib.layouts[i];
+    var p = presetOf(id);
+    return p ? { id: p.id, name: p.name, layout: clone(p.layout), hidden: p.hidden.slice(), preset: true } : null;
+  }
+  function inLib(id) { return lib.layouts.some(function (l) { return l.id === id; }); }
+  // A preset shows unless a saved layout already has its id or its name.
+  function presetOf(id) {
+    for (var i = 0; i < AWWS_PRESETS.length; i++) {
+      var p = AWWS_PRESETS[i];
+      if (p.id === id && !lib.layouts.some(function (l) { return l.id === p.id || String(l.name).toLowerCase() === p.name.toLowerCase(); })) return p;
+    }
     return null;
+  }
+  // Saved layouts and drafts may hold any widget id, the new ones too; tiles in the hub format ({ widget: ... }) are read as well.
+  function normTiles(list) {
+    return (Array.isArray(list) ? list : []).map(function (e) {
+      return e && { id: String(e.id || e.widget || ''), x: +e.x, y: +e.y, w: +e.w, h: +e.h };
+    }).filter(function (e) { return e && e.id && [e.x, e.y, e.w, e.h].every(function (n) { return isFinite(n); }); });
   }
   function realTiles() { return state.layout.filter(function (e) { return !proposalOf(e.id); }).map(function (e) { return { id: e.id, x: e.x, y: e.y, w: e.w, h: e.h }; }); }
   function layoutDiffers() {
@@ -931,14 +1230,17 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   }
   function renderLayouts() {
     var h = '<div class="lay-chips" role="group" aria-label="Saved layouts"><span class="lbl">Layouts</span>';
-    [layoutById('stock')].concat(lib.layouts).forEach(function (l) {
-      h += '<button type="button" class="lchip" data-load="' + esc(l.id) + '" aria-pressed="' + (cur === l.id) + '">' + esc(l.name) + (lib.defaultId === l.id ? ' <span class="star" title="Opens by default">★</span><small>default</small>' : '') + (cur === l.id && layoutDiffers() ? ' <small>edited</small>' : '') + '</button>';
-    });
+    var chip = function (l) {
+      return '<button type="button" class="lchip" data-load="' + esc(l.id) + '" aria-pressed="' + (cur === l.id) + '">' + esc(l.name) + (lib.defaultId === l.id ? ' <span class="star" title="Opens by default">★</span><small>default</small>' : '') + (cur === l.id && layoutDiffers() ? ' <small>edited</small>' : '') + '</button>';
+    };
+    [layoutById('stock')].concat(lib.layouts).forEach(function (l) { h += chip(l); });
+    var tv = AWWS_PRESETS.filter(function (p) { return presetOf(p.id); });
+    if (tv.length) h += '</div><div class="lay-chips" role="group" aria-label="Layouts from the TV"><span class="lbl">From the TV</span>' + tv.map(chip).join('');
     h += '</div><div class="lay-actions">';
-    if (cur !== 'stock') h += '<button class="btn" type="button" id="layUpdate"></button>';
+    if (inLib(cur)) h += '<button class="btn" type="button" id="layUpdate"></button>';
     if (lib.defaultId !== cur) h += '<button class="btn" type="button" id="layDefault">Make this the default</button>';
     h += '<input type="text" id="layName" maxlength="40" placeholder="New name" aria-label="Name for a new layout, or a new name for the loaded one"><button class="btn" type="button" id="laySaveAs">Save as new</button>';
-    if (cur !== 'stock') h += '<button class="btn danger" type="button" id="layDelete">Delete</button>';
+    if (inLib(cur)) h += '<button class="btn danger" type="button" id="layDelete">Delete</button>';
     h += '</div><p class="msg err" id="layErr" hidden></p>';
     var keep = $('layName') ? $('layName').value : '';
     $('layouts').innerHTML = h; if (keep) $('layName').value = keep;
@@ -947,7 +1249,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   // Update also renames the loaded layout when the name box holds a different name, and its label says so.
   function renameTo() {
     var l = layoutById(cur), box = $('layName'), n = box ? box.value.trim() : '';
-    return cur !== 'stock' && l && n && n !== l.name ? n : '';
+    return inLib(cur) && l && n && n !== l.name ? n : '';
   }
   function updateLabel() {
     var b = $('layUpdate'); if (!b) return;
@@ -999,6 +1301,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       if (differsFromTv(e)) { any = true; L.push('- ' + titleOf(e.id) + ': ' + b.w + 'x' + b.h + ' at (' + b.x + ',' + b.y + ') -> ' + e.w + 'x' + e.h + ' at (' + e.x + ',' + e.y + ')'); }
     });
     state.hidden.forEach(function (h) { any = true; L.push('- ' + titleOf(h) + ': REMOVED from the home screen'); });
+    TV_DEFAULT.forEach(function (b) { if (!entry(b.id) && state.hidden.indexOf(b.id) < 0) { any = true; L.push('- ' + titleOf(b.id) + ': not on this layout (built-in: ' + b.w + 'x' + b.h + ' at (' + b.x + ',' + b.y + '))'); } });
     if (!any) L.push('- No tile moved or resized.');
     if (state.proposals.length) {
       L.push(''); L.push('New widget proposals (start a planning thread for each):');
@@ -1101,7 +1404,8 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     play: '<path d="M9 7.5v9l7.5-4.5z" fill="#fff" stroke="none"/>',
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
   };
-  var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera' };
+  var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
+    'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';
@@ -1122,8 +1426,129 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       (sub ? '<div class="ph-sub l1">' + esc(sub) + '</div>' : '') + '</div>' + (soon ? '<span class="tag l1">' + esc(soon) + '</span>' : '') + '</div>';
   }
 
+  /* ---------- A World Worth Saving previews (app/widgets/awws.js, drawn 3 columns wide) ---------- */
+  function awCd(n, unit, shortUnit) {
+    return '<div class="aw-cd"><span class="big">' + esc(n) + '</span><span class="u l1"' + (shortUnit ? ' data-short="' + esc(shortUnit) + '"' : '') + '>' + esc(unit) + '</span></div>';
+  }
+  function awBar(k) { return '<span class="cbar' + (k ? ' ' + k : '') + '"></span>'; }
+  function awSpark(days) {
+    var max = Math.max.apply(null, days), min = Math.min.apply(null, days), n = days.length, pts = [];
+    for (var i = 0; i < n; i++) pts.push([i / (n - 1) * 100, 2 + (1 - (days[i] - min) / ((max - min) || 1)) * 20]);
+    return '<div class="aw-sparkw"><svg viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><polyline points="' +
+      pts.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ') +
+      '" fill="none" stroke="#dfe3ea" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg><i style="left:100%;top:' + (pts[n - 1][1] / 24 * 100).toFixed(1) + '%"></i></div>';
+  }
+  function awScan(s, max) { return '<div class="aw-scan"><span class="l1">' + esc(s[0]) + '</span><span class="aw-track"><i style="width:' + Math.round(s[1] / max * 100) + '%"></i></span><b>' + s[1] + '</b></div>'; }
+  function awChg(up, text, short) {
+    return '<div class="aw-chg"><span class="ar">' + (up ? '▲' : '▼') + '</span><span class="l1"' + (short ? ' data-short="' + esc(short) + '"' : '') + '>' + esc(text) + '</span></div>';
+  }
+  function awTodoRow(it, own) {
+    return '<div class="rw">' + (own ? '<span class="aw-own">' + esc(own) + '</span>' : '<span class="tick"></span>') + '<div><div class="l1">' + esc(it[0]) + '</div>' +
+      (it[1] ? '<div class="aw-due l1' + (it[2] ? ' aw-late' : '') + '">' + esc(it[1]) + '</div>' : '') + '</div></div>';
+  }
+  var AW_TILE = {
+    awws: function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + awCd(S.cd, S.unit) + '</div>';
+      var h = head(id, T) + awCd(S.cd, S.unit) + '<div class="aw-school l1">' + esc(S.school) + '</div>';
+      h += '<div class="aw-when l1">' + esc(S.when) + '</div>';
+      if (tier === 'standard') return '<div class="' + cls + '">' + h + '<div class="aw-foot l1 push" data-drop>' + esc(S.foot) + '</div></div>';
+      h += '<div class="aw-lab cap l1">' + esc(S.nowHead) + '</div><div class="rows aw">' +
+        S.items.slice(0, 3).map(function (it) { return '<div class="rw"><div class="l1">' + esc(it[0]) + '</div></div>'; }).join('') + '</div>';
+      return '<div class="' + cls + '">' + h + '<div class="aw-foot l1 push">' + esc(S.foot) + '</div></div>';
+    },
+    'awws-visits': function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="aw-sline">' + awBar('g') + '<div><div class="aw-sw l1">' + esc(S.whenShort) + '</div><div class="c2">' + esc(S.school) + '</div></div></div></div>';
+      var h = head(id, T) + awCd(S.cd, S.unit) + '<div class="aw-school l1">' + esc(S.school) + '</div><div class="aw-when l1">' + esc(S.line) + '</div>';
+      if (tier === 'tall') h += '<div class="aw-lab cap l1">' + esc(S.then) + '</div>' + S.list.slice(1).map(function (v) {
+        return '<div class="aw-vrow">' + awBar('g') + '<b>' + esc(v[1]) + '</b><span class="l1">' + esc(v[2]) + '</span><span class="mu">' + esc(v[4]) + '</span></div>';
+      }).join('');
+      return '<div class="' + cls + '">' + h + '</div>';
+    },
+    'awws-agenda': function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="aw-sline">' + awBar('t') + '<div><div class="aw-sw l1">' + esc(S.stripWhen) + '</div><div class="c2">' + esc(S.rows[0][1]) + '</div></div></div></div>';
+      var rows = S.rows.slice(0, tier === 'tall' ? 6 : 2);
+      return '<div class="' + cls + '">' + head(id, T) + '<div class="rows aw">' + rows.map(function (r) {
+        return '<div class="rw">' + awBar(r[2]) + '<div><div class="cl-when l1">' + esc(r[0]) + '</div><div class="l1">' + esc(r[1]) + '</div></div></div>';
+      }).join('') + '</div><div class="more l1">' + esc(tier === 'tall' ? S.more : S.moreStd) + '</div></div>';
+    },
+    'awws-todo': function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="big td-snum">' + esc(S.n) + '</div><div class="td-stext c2">' + esc(S.items[0][0]) + '</div></div>';
+      var h = head(id, T) + '<div class="td-hero"><span class="big td-num">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.cap) + '</span></div>' +
+        '<div class="aw-meta l1">' + S.meta.map(function (m) { return '<span' + (m[1] ? ' class="aw-late"' : '') + '>' + esc(m[0]) + '</span>'; }).join(' · ') + '</div>';
+      if (tier === 'standard') h += '<div class="rows aw" data-drop>' + awTodoRow(S.items[0], S.own) + '</div>';
+      if (tier === 'tall') h += '<div class="rows aw">' + S.items.map(function (it) { return awTodoRow(it, S.own); }).join('') + '</div><div class="more l1">' + esc(S.more) + '</div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    },
+    'awws-reach': function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + awCd(S.n, S.unitShort) + '</div>';
+      var h = head(id, T) + awCd(S.n, S.unit, S.unitShort) + awChg(true, S.change, S.changeShort) +
+        '<div class="aw-chg"><span class="l1">' + esc(S.clicks) + ' · <span class="ar">▼</span> ' + esc(S.clicksChange) + '</span></div>';
+      if (tier === 'tall') h += awSpark(AW_SPARK) + '<div class="aw-lab cap l1">' + esc(S.scansHead) + '</div>' + S.scans.slice(0, 2).map(function (s) { return awScan(s, 14); }).join('') +
+        '<div class="aw-foot l1 push">' + esc(S.subs) + '</div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    }
+  };
+  var AW_PANEL = {
+    awws: function (S, full) {
+      if (!full) {
+        return S.views.map(function (v, i) { return '<div class="aw-lr' + (i ? '' : ' on') + '"><span class="l1">' + esc(v[0]) + '</span><span class="l1">' + esc(v[1]) + '</span></div>'; }).join('') +
+          '<div class="aw-hr"></div>' + S.later.map(function (v) { return '<div class="aw-lr lo"><span class="l1">' + esc(v[0]) + '</span><span class="l1">' + esc(v[1]) + '</span><span class="aw-soon l1">' + esc(S.soon) + '</span></div>'; }).join('');
+      }
+      var dots = [['t'], ['h'], ['t', 'h'], ['t', 'h'], ['h'], ['t'], []];
+      var q1 = '<div class="aw-q"><div class="aw-ql cap l1">' + esc(S.q[0]) + '</div><div class="aw-fig"><span class="big">' + esc(S.cd) + '</span><span class="l1">' + esc(S.unit) + '</span></div>' +
+        '<div class="l1">' + esc(S.school) + '</div><div class="l1 mu">' + esc(S.when) + '</div><div class="l1 mu">' + esc(S.place) + '</div></div>';
+      var q2 = '<div class="aw-q"><div class="aw-ql cap l1">' + esc(S.q[1]) + '</div><div class="aw-wk">' + S.dow.map(function (d, i) {
+        return '<div' + (i ? '' : ' class="on"') + '><div class="xs l1">' + esc(d) + '</div><b>' + (16 + i) + '</b><div class="aw-dots">' + dots[i].map(function (k) { return '<i class="' + (k === 'h' ? 'h' : '') + '"></i>'; }).join('') + '</div></div>';
+      }).join('') + '</div>' + S.week.map(function (r) { return '<div class="aw-wr">' + awBar(r[2]) + '<span class="l1 mu">' + esc(r[0]) + '</span><span class="l1">' + esc(r[1]) + '</span></div>'; }).join('') +
+        '<div class="xs mu l1">' + esc(S.weekMore) + '</div></div>';
+      var q3 = '<div class="aw-q"><div class="aw-ql cap l1">' + esc(S.q[2]) + '</div>' + S.items.slice(0, 3).map(function (it) {
+        return '<div class="aw-ni"><div class="l1">' + esc(it[0]) + '</div><div class="aw-due l1' + (it[2] ? ' aw-late' : '') + '">' + esc(it[1]) + '</div></div>';
+      }).join('') + '<div class="xs mu l1">' + esc(S.more) + '</div></div>';
+      var q4 = '<div class="aw-q"><div class="aw-ql cap l1">' + esc(S.q[3]) + '</div>' + S.prog.map(function (p) {
+        return '<div class="aw-pr"><span class="l1">' + esc(p[0]) + '</span><div style="min-width:0"><div class="l1">' + esc(p[1]) + '</div>' + (p[2] ? '<div class="aw-track"><i style="width:' + p[2] + '%"></i></div>' : '') + '</div></div>';
+      }).join('') + '</div>';
+      return '<div class="aw-q4">' + q1 + q2 + q3 + q4 + '</div>';
+    },
+    'awws-visits': function (S) {
+      return S.list.map(function (v, i) {
+        return '<div class="aw-vr' + (i ? '' : ' on') + '">' + awBar('g') + '<span class="aw-vcd l1">' + esc(v[0]) + '</span><div><div class="l1">' + esc(v[2]) + '</div><div class="l1 sm">' + esc(v[3]) + '</div><div class="l1 sm mu">' + esc(v[5]) + '</div></div></div>';
+      }).join('');
+    },
+    'awws-agenda': function (S, full) {
+      var day = function (d, first) {
+        return '<div class="aw-dh"><b class="l1">' + esc(d[0]) + '</b><span class="mu">' + esc(d[1]) + '</span></div>' + d[2].map(function (r, j) {
+          return '<div class="aw-ar' + (first && !j ? ' on' : '') + '">' + awBar(r[3]) + '<span class="l1">' + esc(r[0]) + '</span><div style="min-width:0"><div class="l1">' + esc(r[1]) + '</div>' + (r[2] ? '<div class="l1 xs mu">' + esc(r[2]) + '</div>' : '') + '</div></div>';
+        }).join('');
+      };
+      if (!full) return day(S.days[0], true) + day(S.days[1]) + day([S.days[2][0], S.days[2][1], S.days[2][2].slice(0, 1)]);
+      return '<div class="cols2"><div style="flex:1 1 0">' + day(S.days[0], true) + day(S.days[1]) + day(S.days[2]) + '</div><div style="flex:1 1 0">' + day(S.days[3]) + day(S.days[4]) + day(S.days[5]) + '</div></div>';
+    },
+    'awws-todo': function (S, full) {
+      var tabs = '<div class="pp-tabs">' + S.filters.map(function (f, i) { return '<span class="chipb l1' + (i ? '' : ' on') + '">' + esc(f) + '</span>'; }).join('') + '<span class="aw-hint l1">' + esc(S.hint) + '</span></div>';
+      var row = function (it) {
+        return '<div class="aw-tr"><span class="aw-own">' + esc(S.own) + '</span><div><div class="l1">' + esc(it[0]) + '</div>' + (it[1] ? '<div class="aw-due l1' + (it[2] ? ' aw-late' : '') + '">' + esc(it[1]) + '</div>' : '') + '</div></div>';
+      };
+      var sec = function (s) { return '<div class="secl"><span class="l1">' + esc(s[0]) + '</span><span>' + esc(s[1]) + '</span></div>'; };
+      var now = sec(S.secs[0]) + S.items.slice(0, full ? 4 : 3).map(row).join('');
+      if (!full) return tabs + now + '<div class="secl" style="gap:1.6em"><span class="l1">' + esc(S.secs[1][0] + ' ' + S.secs[1][1]) + '</span><span class="l1">' + esc(S.secs[2][0] + ' ' + S.secs[2][1]) + '</span><span class="l1" style="margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400">' + esc(S.done) + '</span></div>';
+      return '<div class="cols2"><div style="flex:0 0 58%">' + tabs + now + '</div><div style="flex:1 1 0"><div class="secl"><span class="l1">' + esc(S.streamsHead) + '</span></div>' +
+        S.streams.map(function (s) { return '<div class="aw-stream"><span class="l1">' + esc(s[0]) + '</span><span class="aw-track"><i style="width:' + Math.round(s[1] / 6 * 100) + '%"></i></span><b>' + s[1] + '</b></div>'; }).join('') + '</div></div>';
+    },
+    'awws-reach': function (S, full) {
+      var visits = '<div class="aw-rsec on"><div class="secl" style="margin:0"><span class="l1">' + esc(S.heads[0]) + '</span></div><div class="aw-fig"><span class="big">' + esc(S.n) + '</span><span class="l1">' + esc(S.unit) + '</span></div>' +
+        awChg(true, S.panelChange) + awSpark(AW_SPARK) + (full ? '' : '<div class="xs mu l1">' + esc(S.last) + '</div>') + '</div>';
+      var clicks = '<div class="aw-rsec"><div class="secl" style="margin:0"><span class="l1">' + esc(S.heads[1]) + '</span></div><div class="aw-fig"><span class="big">23</span><span class="l1">' + esc(S.clicksUnit) + '</span></div>' +
+        (full ? awChg(false, S.clicksPanelChange) + awSpark(AW_SPARK_CLICKS) : '') + '</div>';
+      if (!full) return visits + clicks;
+      var side = '<div class="aw-rsec"><div class="secl" style="margin:0"><span class="l1">' + esc(S.heads[2]) + '</span></div>' + S.scans.map(function (s) { return awScan(s, 14); }).join('') + '</div>' +
+        '<div class="aw-rsec"><div class="secl" style="margin:0"><span class="l1">' + esc(S.heads[3]) + '</span></div><div class="aw-fig"><span class="big">' + esc(S.subsN) + '</span><span class="l1">' + esc(S.subsUnit) + '</span></div><div class="xs mu l1">' + esc(S.subsWhen) + '</div></div>';
+      return '<div class="cols2"><div style="flex:1 1 0">' + visits + clicks + '</div><div style="flex:1 1 0">' + side + '</div></div>';
+    }
+  };
+
   function tilePreview(id, tier) {
     var M = SIZE_MATRIX[id], S = M.sample[lang], U = I18N[lang], T = M.title[lang], cls = 'pv t-' + tier, h = '';
+    if (AW_TILE[id]) return AW_TILE[id](S, T, tier, cls, id);
     if (id === 'today') {
       var fit = tier === 'strip' ? '' : ' data-fit="var(--r) * ' + (tier === 'tall' ? '5.6' : '4.4') + '"';
       var time = '<div class="big ck-time"' + fit + '>' + esc(S.time) + '<small>' + esc(S.ampm) + '</small></div>';
@@ -1183,6 +1608,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function panelPreview(id, full) {
     var M = SIZE_MATRIX[id], S = M.sample[lang], U = I18N[lang], cls = 'pp' + (full ? ' full' : ''), b = '';
     var hint = '<div class="pp-hint l1">' + esc(full ? U.shrink : U.close) + '</div>';
+    if (AW_PANEL[id]) return '<div class="' + cls + '">' + panelHead(id, full, '') + '<div class="pp-body">' + AW_PANEL[id](S, full) + '</div></div>';
     if (id === 'today') {
       // The default face (digital); the focus starts on the chosen face, so Digital is the white pill.
       var opt = function (label, on, fx) { return '<span class="ck-opt' + (on ? ' on' : '') + (fx ? ' fx' : '') + '">' + (on ? '<i></i>' : '') + '<span class="l1">' + esc(label) + '</span></span>'; };
@@ -1278,6 +1704,13 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function fitShort(root) {
     Array.prototype.forEach.call(root.querySelectorAll('[data-short]'), function (n) {
       if (n.scrollWidth > n.clientWidth + 1) n.textContent = n.getAttribute('data-short');
+    });
+    // Like the TV's AWWS tiles: a part marked data-drop shows only when it fits whole inside the card.
+    Array.prototype.forEach.call(root.querySelectorAll('[data-drop]'), function (n) {
+      n.style.display = '';
+      var card = n.closest('.pv'); if (!card) return;
+      var cs = getComputedStyle(card), room = card.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom);
+      if (n.getBoundingClientRect().bottom > room + 1) n.style.display = 'none';
     });
     // Like the TV's fitWidth: a time too wide for its box shrinks in 10% steps (kept relative, so it scales with the card).
     // On the Clock page the time also gives way when it and the date are too tall for the room (as the TV's fitFace does).
@@ -1375,7 +1808,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     clearTimeout(T); db = d; updateStatus();
     if (!d) return;
     return d.doc('library/main').get().then(function (snap) {
-      if (snap.exists) { try { var L = JSON.parse(snap.data().data); if (L && Array.isArray(L.layouts)) lib = { layouts: L.layouts, defaultId: L.defaultId || 'stock' }; } catch (e) { /* keep defaults */ } }
+      if (snap.exists) { try { var L = JSON.parse(snap.data().data); if (L && Array.isArray(L.layouts)) lib = { layouts: L.layouts.filter(function (l) { return l && l.id && l.id !== 'stock'; }).map(function (l) { l.layout = normTiles(l.layout); l.hidden = Array.isArray(l.hidden) ? l.hidden : []; l.name = String(l.name || l.id); return l; }), defaultId: L.defaultId || 'stock' }; } catch (e) { /* keep defaults */ } }
       if (!layoutById(lib.defaultId)) lib.defaultId = 'stock';
       return d.doc('drafts/current').get();
     }).then(function (snap) {
@@ -1384,7 +1817,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       if (snap.exists) {
         var data = snap.data(), s = JSON.parse(data.state);
         if (s && Array.isArray(s.layout)) {
-          base = { layout: s.layout, hidden: s.hidden || [], proposals: s.proposals || [], notes: s.notes || {}, general: s.general || '', generalSent: s.generalSent || '' };
+          base = { layout: normTiles(s.layout), hidden: s.hidden || [], proposals: s.proposals || [], notes: s.notes || {}, general: s.general || '', generalSent: s.generalSent || '' };
           state = base; cur = layoutById(data.cur) ? data.cur : lib.defaultId; savedAt = data.savedAt;
           // Unsaved tile changes in the draft win; otherwise the default layout opens.
           if (!layoutDiffers()) { applyLayout(def); cur = lib.defaultId; }
