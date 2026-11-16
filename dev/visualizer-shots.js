@@ -5,11 +5,13 @@
  * Runs the preview's page server, the Pi's real hub server and the Spotify
  * (and ReccoBeats) stand-in from dev/mock-spotify.js, then headless Chromium
  * at 1920x1080. Each shot opens Now Playing full screen on one of the
- * stand-in's songs: calm, moody, upbeat, hard, paused, a song known only by
- * its genres, one with no vibe, the still wash, long Spanish words, and the
+ * stand-in's songs and lets it run a few seconds: each of the six scenes
+ * (held by a test hook), a calm and a hard song as they play, paused, a song
+ * known only by its genres, one with no vibe, the card with long Spanish
+ * words, the lite, glow and still wash levels, the visualizer off, and the
  * small (not full screen) page, which has no visualizer. --clip also records
- * an upbeat song pulsing, then a change to a calm one (an .mp4 when ffmpeg
- * is there, else .webm).
+ * an upbeat song through two scene changes, then a change to a calm one (an
+ * .mp4 when ffmpeg is there, else .webm).
  *
  * Needs Playwright and port 8095 free. Nothing reaches the internet.
  */
@@ -118,7 +120,8 @@ async function main() {
     const o = opts || {};
     mock.set('playing');
     await song(n);
-    const s = await open(o.query === undefined ? '&viz=full' : o.query);
+    const s = await open(o.query === undefined ? '&viz=classic' : o.query);
+    if (o.scene) await s.page.evaluate((n) => window.HUB_NP_VIZ.test.scene(n), o.scene);
     const want = mockSpotify.SONGS[n].name;
     await until(() => s.page.evaluate((t) => { const e = document.querySelector('.np-tile .np-title'); return e && e.textContent === t; }, want), 8000, 'no ' + want);
     await full(s.page, o.small);
@@ -132,47 +135,53 @@ async function main() {
   }
 
   // 0 upbeat, 1 long Spanish calm, 2 moody, 3 hard, 4 calm acoustic, 5 genres only, 6 nothing
-  await shot('viz-01-calm', 4);
-  await shot('viz-02-moody', 2);
-  await shot('viz-03-upbeat', 0);
-  await shot('viz-04-hard', 3);
-  await shot('viz-05-paused', 0, { before: async () => { mock.set('paused'); await pi.spotify.poll(); }, wait: 3500 });
-  await shot('viz-06-genres-only', 5);
-  await shot('viz-07-no-vibe', 6);
-  await shot('viz-08-still-wash', 0, { query: '&viz=wash' });
-  await shot('viz-09-spanish-long', 1, {
+  const SCENE_SONG = { spirograph: 4, tunnel: 3, kaleidoscope: 0, ribbons: 2, starburst: 0, lattice: 5 };
+  for (const name of Object.keys(SCENE_SONG)) {
+    await shot('viz-scene-' + name, SCENE_SONG[name], { scene: name, wait: 6000 });
+  }
+  await shot('viz-calm-song', 4, { wait: 6000 });
+  await shot('viz-hard-song', 3, { wait: 6000 });
+  await shot('viz-paused', 0, { before: async () => { mock.set('paused'); await pi.spotify.poll(); }, wait: 4000 });
+  await shot('viz-genres-only', 5);
+  await shot('viz-no-vibe', 6);
+  await shot('viz-spanish-card', 1, {
+    wait: 5000,
     before: async (page) => {
-      // Spanish chips run longer; the title and artist are the stand-in's own.
+      // A longer Spanish title in the card; the artist and album are the stand-in's own.
       await page.evaluate(() => {
         const t = document.querySelector('.np-page .np-title');
         t.textContent = 'Canción de la Mañana: Ñandú Áspero bajo el Ámbar de Júpiter (Versión Acústica Íntima)';
-        const chips = document.querySelectorAll('.np-page .np-chip');
-        const es = { 'On Living room': 'En Altavoz de la sala de estar', 'Shuffle': 'Orden aleatorio', 'Explicit': 'Explícito' };
-        Array.prototype.forEach.call(chips, (c) => { if (es[c.textContent]) c.textContent = es[c.textContent]; });
         const lab = document.querySelector('.np-page .np-label-text');
         if (lab) lab.textContent = 'Reproduciendo ahora';
       });
     }
   });
-  await shot('viz-10-small-page', 0, { small: true });
+  await shot('viz-level-lite', 0, { query: '&viz=lite', wait: 6000 });
+  await shot('viz-level-glow', 0, { query: '&viz=glow' });
+  await shot('viz-level-wash', 0, { query: '&viz=wash' });
+  await shot('viz-off', 0, { query: '&viz=off' });
+  await shot('viz-small-page', 0, { small: true });
 
   if (CLIP && (!ONLY || 'clip'.indexOf(ONLY) >= 0)) {
     mock.set('playing');
     await song(0);
     const vdir = fs.mkdtempSync(path.join(os.tmpdir(), 'viz-clip-'));
-    const s = await open('&viz=full', { context: { deviceScaleFactor: 1, recordVideo: { dir: vdir, size: { width: 1280, height: 720 } } } });
+    const s = await open('&viz=classic', { context: { viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1, recordVideo: { dir: vdir, size: { width: 1280, height: 720 } } } });
+    // Phrases of 8 beats (a test hook) instead of 32, so the clip shows
+    // two scene changes before the song changes.
+    await s.page.evaluate(() => window.HUB_NP_VIZ.test.phraseBeats(8));
     await until(() => s.page.evaluate(() => { const e = document.querySelector('.np-tile .np-title'); return e && e.textContent === 'Golden Hour Drive'; }), 8000, 'clip song');
     await full(s.page);
-    await sleep(5500);
+    await sleep(10500);
     await song(4);
-    await sleep(6000);
+    await sleep(6500);
     const video = s.page.video();
     await s.context.close();
     const webm = await video.path();
     const mp4 = path.join(OUT, 'viz-clip-upbeat-to-calm.mp4');
     try {
-      // Skip the hub's own start (the first ~1.5 s) and keep 12 s.
-      childProcess.execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', '1.5', '-i', webm, '-t', '12', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '22', '-movflags', '+faststart', mp4]);
+      // Skip the hub's own start (the first ~2 s) and keep 15 s.
+      childProcess.execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-ss', '2', '-i', webm, '-t', '15', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-crf', '22', '-movflags', '+faststart', mp4]);
       written.push(mp4);
     } catch (e) {
       const out = path.join(OUT, 'viz-clip-upbeat-to-calm.webm');

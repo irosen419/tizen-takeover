@@ -272,11 +272,12 @@
 
 /* ---------- the visualizer (nowplaying-viz.js), full screen only ----------
 
-   A layer under the page's words, filling the panel: an opaque wash in the
-   song's colors, three soft glows, a halo behind the picture and rings from
-   it. Only transform and opacity animate, each moving part on its own
-   layer, every soft edge a pre-drawn radial gradient. Durations and delays
-   are set inline from the song's tempo and position. */
+   A layer under the page's words, filling the panel. Levels classic and
+   lite: one small canvas, stretched to fill it (smoothly). Level glow: an
+   opaque wash in the song's colors and three soft glows; only transform and
+   opacity animate, every soft edge a pre-drawn radial gradient, durations
+   and delays set inline from the song's tempo and position. The still wash:
+   the same, not moving. */
 
 .npv {
   position: absolute;
@@ -298,9 +299,14 @@
   -webkit-transition: opacity 1200ms linear;
   transition: opacity 1200ms linear;
 }
-.npv-orb,
-.npv-bloom,
-.npv-ring {
+.npv-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.npv-orb {
   position: absolute;
   opacity: 0;
   will-change: transform, opacity;
@@ -474,50 +480,6 @@
   100% { transform: translate3d(16%, -3%, 0) scale(1); opacity: 0; }
 }
 
-/* The halo behind the picture: one swell per pulse, three strengths. */
-@-webkit-keyframes npv-pulse-1 {
-  0% { -webkit-transform: scale(0.97); opacity: 0.5; }
-  14% { -webkit-transform: scale(1.03); opacity: 0.85; }
-  100% { -webkit-transform: scale(0.97); opacity: 0.5; }
-}
-@keyframes npv-pulse-1 {
-  0% { transform: scale(0.97); opacity: 0.5; }
-  14% { transform: scale(1.03); opacity: 0.85; }
-  100% { transform: scale(0.97); opacity: 0.5; }
-}
-@-webkit-keyframes npv-pulse-2 {
-  0% { -webkit-transform: scale(0.96); opacity: 0.45; }
-  12% { -webkit-transform: scale(1.06); opacity: 1; }
-  100% { -webkit-transform: scale(0.96); opacity: 0.45; }
-}
-@keyframes npv-pulse-2 {
-  0% { transform: scale(0.96); opacity: 0.45; }
-  12% { transform: scale(1.06); opacity: 1; }
-  100% { transform: scale(0.96); opacity: 0.45; }
-}
-@-webkit-keyframes npv-pulse-3 {
-  0% { -webkit-transform: scale(0.95); opacity: 0.4; }
-  10% { -webkit-transform: scale(1.09); opacity: 1; }
-  100% { -webkit-transform: scale(0.95); opacity: 0.4; }
-}
-@keyframes npv-pulse-3 {
-  0% { transform: scale(0.95); opacity: 0.4; }
-  10% { transform: scale(1.09); opacity: 1; }
-  100% { transform: scale(0.95); opacity: 0.4; }
-}
-
-/* A ring: born at the picture's edge, bright, it spreads out and fades. */
-@-webkit-keyframes npv-ring {
-  0% { -webkit-transform: scale(0.62); opacity: 0; }
-  5% { opacity: 1; }
-  100% { -webkit-transform: scale(1); opacity: 0; }
-}
-@keyframes npv-ring {
-  0% { transform: scale(0.62); opacity: 0; }
-  5% { opacity: 1; }
-  100% { transform: scale(1); opacity: 0; }
-}
-
 /* With the visualizer behind it, the page's words get a touch more weight. */
 .np-page.npv-on .np-title,
 .np-page.npv-on .np-artist { text-shadow: 0 0.05rem 0.6rem rgba(0, 0, 0, 0.35); }
@@ -526,3 +488,34 @@
 .npv-on .np-label-text { color: rgba(255, 255, 255, 0.78); }
 .npv-on .np-chip { color: rgba(255, 255, 255, 0.86); border-color: rgba(255, 255, 255, 0.28); }
 .npv-on .np-bar { background: rgba(255, 255, 255, 0.24); }
+
+/* The small card in the upper left, while the visualizer is the star:
+   picture, label, title (two lines), artist, album, time and chips. Dark
+   glass behind it (a plain translucent color; no backdrop filter) keeps the
+   words readable over bright shapes. */
+.panel.is-full .np-page.np-card {
+  display: inline-flex;
+  align-items: flex-start;
+  max-width: 27rem;
+  padding: 0.9rem 1.1rem 0.8rem 0.9rem;
+  border-radius: 1.2rem;
+  background: rgba(8, 9, 16, 0.58);
+  box-shadow: 0 0 0 0.06rem rgba(255, 255, 255, 0.08);
+}
+.panel.is-full .np-page.np-card .np-art { margin-right: 1.1rem; }
+.panel.is-full .np-page.np-card .np-face { border-radius: 0.7rem; }
+.panel.is-full .np-page.np-card .np-info { height: auto; }
+.panel.is-full .np-page.np-card .np-label { margin-bottom: 0.25rem; }
+.panel.is-full .np-page.np-card .np-label-text { font-size: 0.75rem; }
+.panel.is-full .np-page.np-card .np-eq { width: 0.9rem; height: 0.75rem; }
+.panel.is-full .np-page.np-card .np-eq i { width: 0.22rem; }
+.panel.is-full .np-page.np-card .np-title { font-size: 1.35rem; line-height: 1.3; }
+.panel.is-full .np-page.np-card .np-artist { margin-top: 0.2rem; font-size: 1rem; line-height: 1.4; }
+.panel.is-full .np-page.np-card .np-album { margin-top: 0.05rem; font-size: 0.85rem; line-height: 1.4; }
+.panel.is-full .np-page.np-card .np-foot { margin-top: 0.55rem; }
+.panel.is-full .np-page.np-card .np-times { font-size: 0.75rem; margin-bottom: 0.25rem; }
+.panel.is-full .np-page.np-card .np-bar-page { height: 0.22rem; }
+.panel.is-full .np-page.np-card .np-chips { margin-top: 0.45rem; min-height: 0; flex-wrap: nowrap; overflow: hidden; }
+.panel.is-full .np-page.np-card .np-chip { font-size: 0.7rem; padding: 0.05rem 0.55rem; margin: 0 0.35rem 0 0; }
+.panel.is-full .np-page.np-card .np-title,
+.panel.is-full .np-page.np-card .np-artist { text-shadow: none; }
