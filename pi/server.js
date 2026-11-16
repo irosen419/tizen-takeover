@@ -9,6 +9,7 @@
  *   GET  /live/events    the push line (Server-Sent Events)
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
+ *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
  *
  * Control API (needs "Authorization: Bearer <token>"):
  *   POST /api/command    show / home / say / reload on every screen now on
@@ -20,6 +21,11 @@
  *   GET  /api/status     version, rev, connected screens, calendar summary
  *   GET  /api/calendar   the calendar events (never the secret links)
  *   POST /api/calendar/refresh   read every calendar now and wait for it
+ *   GET  /api/spotify    is Spotify set up and signed in, and what is playing
+ *   POST /api/spotify/login    make a sign-in link
+ *   POST /api/spotify/code     finish signing in, { input: the pasted address }
+ *   POST /api/spotify/logout   forget the sign-in
+ *   POST /api/spotify/refresh  ask Spotify what is playing right now
  *   GET  /health         no token, just "is it running"
  *
  * The Claude mailbox (mailbox.js, off unless HUB_MAILBOX_ settings are in
@@ -30,7 +36,8 @@
  * Commands are never stored for a TV that is off. Only the fallback poll
  * remembers them, for 10 seconds, at most 20. With no TV connected the
  * server holds nothing open. Data (the to-do list, the calendar events and
- * the tile layout) lives in data/state.json. The calendar reader is in calendar.js.
+ * the tile layout) lives in data/state.json. The calendar reader is in
+ * calendar.js, and what plays on Spotify comes from spotify.js.
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -42,6 +49,7 @@ const path = require('path');
 const crypto = require('crypto');
 const calendar = require('./calendar');
 const mailbox = require('./mailbox');
+const spotify = require('./spotify');
 
 const SERVER_VERSION = '0.1.0';
 const PROTOCOL = 1;
@@ -145,7 +153,7 @@ function loadSettings(file) {
   const fromFile = readEnvFile(file);
   const out = Object.assign({}, fromFile);
   Object.keys(process.env).forEach((k) => {
-    if (/^(HUB_|CALENDAR_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
+    if (/^(HUB_|CALENDAR_|SPOTIFY_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
   });
   return out;
 }
@@ -415,7 +423,8 @@ function freshState() {
     resources: {
       todo: { rev: 0, data: { items: [] } },
       calendar: { rev: 0, data: calendar.unconfiguredData() },
-      layout: { rev: 0, data: { layout: null } }
+      layout: { rev: 0, data: { layout: null } },
+      nowplaying: { rev: 0, data: spotify.offData() }
     }
   };
 }
@@ -457,6 +466,8 @@ function loadState(dir, log) {
     st.resources.calendar = calendar.cleanResource(st.resources.calendar);
     // Older files have no layout either: null, the hub's built-in one.
     st.resources.layout = cleanLayoutResource(st.resources.layout);
+    // And no "now playing"; picture addresses are checked again on the way in.
+    st.resources.nowplaying = spotify.cleanResource(st.resources.nowplaying, true);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -549,6 +560,28 @@ function start(options) {
     } catch (e) { /* logged */ }
   }
   calReader.start();
+
+  /* --- Spotify (spotify.js) --- */
+
+  // opt.spotifyEnv is the .env settings (SPOTIFY_CLIENT_ID ...). opt.spotify
+  // may point at a stand-in for Spotify: { accounts, api, allowHttp, ... }.
+  const spOpt = isObj(opt.spotify) ? opt.spotify : {};
+  const player = spotify.createPlayer(Object.assign({}, spOpt, {
+    config: spotify.configFromEnv(opt.spotifyEnv || {}, port || DEFAULT_PORT),
+    dataDir: dataDir,
+    log: log,
+    screens: () => sse.size + pollSeen.size,
+    current: () => state.resources.nowplaying.data,
+    publish: (data, changed) => {
+      if (!changed) {
+        // Only the song's position moved on as expected: no push, no write.
+        state.resources.nowplaying = { rev: state.resources.nowplaying.rev, data: data };
+        return;
+      }
+      try { changeResource('nowplaying', data); } catch (e) { /* changeResource already logged it */ }
+    }
+  }));
+  player.start();
 
   /* --- replies --- */
 
@@ -704,6 +737,7 @@ function start(options) {
     const client = { res: res, since: Date.now(), address: address };
     sse.add(client);
     log('screen connected (live line) ' + address);
+    player.wake();
     res.on('close', () => dropSse(client));
     res.on('error', () => dropSse(client, 'write error'));
     try {
@@ -796,6 +830,7 @@ function start(options) {
       if (pollSeen.size < MAX_POLLS) {
         pollSeen.set(address, { since: Date.now(), last: Date.now() });
         log('screen connected (poll) ' + address);
+        player.wake();
       }
     }
     ensureForgetTimer();
@@ -883,7 +918,12 @@ function start(options) {
     '/api/layout': ['GET', 'POST'],
     '/api/status': ['GET'],
     '/api/calendar': ['GET'],
-    '/api/calendar/refresh': ['POST']
+    '/api/calendar/refresh': ['POST'],
+    '/api/spotify': ['GET'],
+    '/api/spotify/login': ['POST'],
+    '/api/spotify/code': ['POST'],
+    '/api/spotify/logout': ['POST'],
+    '/api/spotify/refresh': ['POST']
   };
 
   function statusBody() {
@@ -891,7 +931,8 @@ function start(options) {
       ok: true, server: SERVER_VERSION, rev: state.rev, epoch: state.epoch,
       uptime: Math.round((Date.now() - startedAt) / 1000), screens: screenList(),
       calendar: { configured: calReader.configured, calendars: calList.length, lastRefresh: calReader.lastRefresh() },
-      mailbox: mbox ? mbox.info() : { configured: false, problem: mailboxCfg.problem || '' }
+      mailbox: mbox ? mbox.info() : { configured: false, problem: mailboxCfg.problem || '' },
+      spotify: player.status()
     };
   }
 
@@ -928,6 +969,26 @@ function start(options) {
               calendars: state.resources.calendar.data.calendars
             }, finished ? (w.r.changed ? 'changed' : 'no change') : 'still reading');
           }).catch(failed);
+          return undefined;
+        }
+        if (route === '/api/spotify') return reply(200, { ok: true, spotify: player.status() });
+        if (route === '/api/spotify/login') {
+          const l = player.loginUrl();
+          return reply(200, { ok: true, url: l.url, redirectUri: l.redirectUri, minutes: l.minutes }, 'sign-in link made');
+        }
+        if (route === '/api/spotify/code') {
+          if (!isObj(body) || typeof body.input !== 'string') throw bad('send { "input": "<the address from the browser>" }');
+          player.finishLogin(body.input).then((r) => {
+            reply(200, { ok: true, user: r.user, spotify: player.status() }, 'signed in');
+          }).catch(failed);
+          return undefined;
+        }
+        if (route === '/api/spotify/logout') {
+          const was = player.logout();
+          return reply(200, { ok: true, changed: was, spotify: player.status() }, was ? 'signed out' : 'was not signed in');
+        }
+        if (route === '/api/spotify/refresh') {
+          player.poll().then(() => reply(200, { ok: true, spotify: player.status() })).catch(failed);
           return undefined;
         }
         if (route === '/api/layout' && method === 'GET') {
@@ -1008,6 +1069,7 @@ function start(options) {
       res.writeHead(204, h);
       return res.end();
     }
+    if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
     const want = route === '/todo/ops' ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
@@ -1035,7 +1097,32 @@ function start(options) {
     });
   }
 
-  const SCREEN_ROUTES = { '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1 };
+  // Where Spotify's approval page sends the browser. It only loads when that
+  // browser can reach this server at the redirect address (a browser on the
+  // Pi, or someone swapped 127.0.0.1 for the Pi's address by hand); otherwise
+  // the address is pasted into ./hub spotify login instead. Either way the
+  // one-time code is only good together with the link this server made.
+  function spotifyCallback(res, query) {
+    const page = (status, title, text) => {
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const html = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
+        '<title>Home Hub</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;' +
+        'background:#0b0d11;color:#f4f5f7;font:18px/1.5 -apple-system,"Segoe UI",Roboto,Arial,sans-serif}' +
+        'main{max-width:30em;padding:2em}h1{font-size:1.6em;font-weight:600;margin:0 0 .5em}p{margin:0;color:#b9bdc7}</style></head>' +
+        '<body><main><h1>' + esc(title) + '</h1><p>' + esc(text) + '</p></main></body></html>';
+      res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-store' });
+      res.end(html);
+    };
+    const q = query.toString();
+    player.finishLogin(q ? '?' + q : '').then((r) => {
+      log('Spotify: sign-in finished through the callback page');
+      page(200, 'Spotify is connected', (r.user ? 'Signed in as ' + r.user + '. ' : '') + 'You can close this tab. The TV shows what is playing within a few seconds.');
+    }, (e) => {
+      page(e && e.status === 502 ? 502 : 400, 'That did not work', (e && e.status ? e.message : 'The server had a problem.'));
+    });
+  }
+
+  const SCREEN_ROUTES = { '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/spotify/callback': 1 };
 
   function handler(door) {
     return (req, res) => {
@@ -1127,11 +1214,12 @@ function start(options) {
     close: close,
     api: api,
     mailbox: mbox,
+    spotify: player,
     _debug: () => {
       forgetOld();
       return {
         sse: sse.size, polls: polls.size, commands: remembered.length, pollScreens: pollSeen.size, pingTimer: !!pingTimer,
-        calendar: calReader.debug()
+        calendar: calReader.debug(), spotify: player.debug()
       };
     }
   };
@@ -1156,6 +1244,7 @@ function start(options) {
     if (closing) { if (cb) setImmediate(cb); return; }
     closing = true;
     calReader.close();
+    player.close();
     if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));
@@ -1207,6 +1296,7 @@ if (require.main === module) {
     timezone: env.HUB_TIMEZONE || '',
     refreshMinutes: env.CALENDAR_REFRESH_MINUTES || '',
     mailboxEnv: env,
+    spotifyEnv: env,
     // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
     // or systemd (Restart=always) starts the server again, with any new code.
     onRestart: () => {
