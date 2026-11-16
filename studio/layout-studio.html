@@ -464,7 +464,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     { id: 'todo', x: 0, y: 2, w: 3, h: 4 }, { id: 'calendar', x: 3, y: 2, w: 3, h: 4 }, { id: 'nowplaying', x: 6, y: 2, w: 3, h: 2 },
     { id: 'awws', x: 9, y: 2, w: 3, h: 2 }, { id: 'ambiance', x: 6, y: 4, w: 3, h: 2 }, { id: 'mirror', x: 9, y: 4, w: 3, h: 2 }
   ];
-  // The TV's own built-in layout (app/config.js, v0.13.0). The submit summary compares against this, not Stock.
+  // The TV's own built-in layout (HUB_CONFIG.layout in app/config.js, same since v0.12.0). The submit summary compares against this, not Stock.
   var TV_DEFAULT = [
     { id: 'today', x: 0, y: 0, w: 3, h: 1 }, { id: 'calendar', x: 3, y: 0, w: 3, h: 4 }, { id: 'awws', x: 6, y: 0, w: 3, h: 4 },
     { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 1, w: 3, h: 4 }, { id: 'mirror', x: 9, y: 2, w: 3, h: 4 },
@@ -988,7 +988,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function buildSummary(id) {
     var L = [];
     L.push('HOME HUB LAYOUT SUBMISSION ' + id);
-    L.push('Grid is 12 columns x 6 rows; positions are zero-based (x across, y down); sizes are w x h cells. Compared with the TV\'s built-in layout (app/config.js, v0.13.0); a layout sent from the Pi may differ.');
+    L.push('Grid is 12 columns x 6 rows; positions are zero-based (x across, y down); sizes are w x h cells. Compared with the TV\'s built-in layout (app/config.js); the layout showing on the TV may differ.');
     L.push('Layout: ' + ((layoutById(cur) || {}).name || 'Stock') + (layoutDiffers() ? ' (edited)' : ''));
     L.push('');
     var any = false;
