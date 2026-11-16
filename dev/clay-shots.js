@@ -15,7 +15,7 @@
  *   perch-<pose>.jpg                  each perch pose on a ledge
  *   perch-other-layout.jpg            a perch on a different tile layout
  *   vanish-before.jpg, vanish-after.jpg, vanish-on-key.mp4   a key press mid-scene
- *   highlights.mp4                    four scenes back to back
+ *   highlights.mp4                    three scenes back to back (about 50 s)
  *   all-scenes.jpg                    one frame of every scene, with its name
  * Names given after OUT_DIR limit the run to those scenes (and skip the rest).
  * Needs Playwright and port 8095 free; ffmpeg for the videos (skipped without it).
@@ -72,7 +72,7 @@ const SHOTS = [
   { name: 'shrug', scene: 'shrug', opts: { seed: 16, dir: 'left' }, at: day(18, 30), stills: [0.15, 0.5, 0.85] }
 ];
 const PERCH_POSES = ['sit-edge', 'lie-chin', 'climb'];
-const HIGHLIGHTS = ['fetch', 'perch', 'zoomies', 'cheer'];
+const HIGHLIGHTS = ['fetch', 'perch', 'zoomies'];
 
 let PAGE_PORT, LIVE_PORT, PAGE, LIVE;
 let preview = null;
@@ -351,7 +351,7 @@ async function vanishShots(work) {
   await page.context_.close();
 }
 
-// Four scenes back to back, with a short clean screen between.
+// Three scenes back to back, with a short clean screen between.
 function highlights(work) {
   const have = HIGHLIGHTS.filter((n) => frameDirs[n]);
   if (have.length < 2 || !ffmpeg) return;
