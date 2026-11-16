@@ -140,8 +140,8 @@ async function main() {
     for (const f of FILMS) {
       const oldDir = path.join(OUT, 'frames', 'old-' + f.name);
       const newDir = path.join(OUT, 'frames', 'new-' + f.name);
-      const a = await film(browser, before.page, f, true, f.name === 'stroll' ? 'Before (' + OLD_REF + ')' : 'Before', oldDir);
-      const b = await film(browser, after.page, f, false, f.name === 'stroll' ? 'After (smooth)' : 'After', newDir);
+      const a = await film(browser, before.page, f, true, 'Before', oldDir);
+      const b = await film(browser, after.page, f, false, 'After', newDir);
       // Before at its real 7 frames a second, held on its last frame; after at 30.
       const scale = f.scale ? ',scale=' + f.scale + ':-2' : '';
       ffmpeg(['-framerate', '1000/' + TICK, '-i', path.join(oldDir, 'f%05d.jpg'), '-framerate', String(FPS), '-i', path.join(newDir, 'f%05d.jpg'),
