@@ -28,6 +28,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const vibeLib = require('./vibe');
 
 const ACCOUNTS = 'https://accounts.spotify.com';
 const API = 'https://api.spotify.com';
@@ -90,8 +91,20 @@ function configFromEnv(env, port) {
 function offData() {
   return {
     v: 1, configured: false, signedIn: false, state: 'off', problem: '',
-    track: null, progressMs: 0, at: 0, device: null, shuffle: false, repeat: 'off', playedAt: 0
+    track: null, progressMs: 0, at: 0, device: null, shuffle: false, repeat: 'off', playedAt: 0, vibe: null
   };
+}
+
+// SPOTIFY_VIBE=off in pi/.env: never ask ReccoBeats (see vibe.js).
+function vibeOffFromEnv(env) {
+  return /^(off|no|false|0)$/i.test(str((env || {}).SPOTIFY_VIBE).trim());
+}
+
+// A song's vibe, only when it belongs to this very track.
+function cleanVibeFor(v, track) {
+  if (!track || track.kind !== 'track' || !track.id) return null;
+  const c = vibeLib.cleanVibe(v);
+  return c && c.id === track.id ? c : null;
 }
 
 function cleanTrack(t, allowHttp) {
@@ -120,7 +133,8 @@ function cleanData(d, allowHttp) {
     problem: cleanText(d.problem, 160), track: track,
     progressMs: track ? Math.min(num(d.progressMs), track.durationMs || num(d.progressMs)) : 0,
     at: num(d.at), device: device, shuffle: d.shuffle === true,
-    repeat: d.repeat === 'track' || d.repeat === 'context' ? d.repeat : 'off', playedAt: num(d.playedAt)
+    repeat: d.repeat === 'track' || d.repeat === 'context' ? d.repeat : 'off', playedAt: num(d.playedAt),
+    vibe: cleanVibeFor(d.vibe, track)
   };
 }
 
@@ -177,10 +191,19 @@ function readPlayback(json, allowHttp) {
   };
 }
 
+// The first artist's Spotify id (for the genres in vibe.js), or ''.
+function readArtistId(json) {
+  const item = isObj(json) && isObj(json.item) ? json.item : null;
+  const a = item && Array.isArray(item.artists) && isObj(item.artists[0]) ? item.artists[0] : null;
+  const id = a ? str(a.id) : '';
+  return /^[A-Za-z0-9]{1,64}$/.test(id) ? id : '';
+}
+
 // What makes two pictures of the playback "the same" for the TV: everything
-// except the clock. The position is compared separately (a seek).
+// except the clock. The position is compared separately (a seek). The vibe
+// counts: it arrives a moment after the song, as one more push.
 function signature(d) {
-  return JSON.stringify([d.configured, d.signedIn, d.state, d.problem, d.track, d.device, d.shuffle, d.repeat]);
+  return JSON.stringify([d.configured, d.signedIn, d.state, d.problem, d.track, d.device, d.shuffle, d.repeat, d.vibe || null]);
 }
 
 // Where the song should be at time `now`, going by an earlier picture.
@@ -245,6 +268,7 @@ function stop(message, status) {
  * o.allowHttp   let http picture addresses through (the mock)
  * o.playMs, o.idleMs, o.awayMs   how often to ask
  * o.manual      no timers: tests call poll() themselves
+ * o.vibe        ReccoBeats' address (the stand-in); o.vibeOff never ask it
  */
 function createPlayer(o) {
   const cfg = o.config || { configured: false };
@@ -272,6 +296,15 @@ function createPlayer(o) {
   let lastPollAt = 0;
   let lastOkAt = 0;
   let lastProblem = '';
+
+  // The song's vibe (vibe.js): looked up in the background when a new song
+  // shows, then pushed as one more change.
+  const vibes = vibeLib.createVibes({
+    dataDir: o.dataDir, base: o.vibe, off: o.vibeOff === true, log: log, now: now,
+    timeoutMs: o.vibeTimeoutMs,
+    genres: artistGenres,
+    found: vibeArrived
+  });
 
   /* --- the saved sign-in --- */
 
@@ -355,6 +388,33 @@ function createPlayer(o) {
     }));
   }
 
+  // Spotify's genres for an artist; [] on any problem (never an error state).
+  function artistGenres(artist) {
+    if (!cfg.configured || !refreshToken) return Promise.resolve([]);
+    return apiGet('/v1/artists/' + encodeURIComponent(artist)).then((r) => {
+      if (r.status !== 200) return [];
+      const j = parseJson(r.text);
+      return j && Array.isArray(j.genres) ? j.genres : [];
+    }, () => []);
+  }
+
+  // A lookup ended: if that song still plays and its vibe is new, push it.
+  // The position is brought up to now, since the TV counts from arrival.
+  function vibeArrived(id) {
+    if (closed) return;
+    const cur = cleanData(o.current(), allowHttp);
+    if (!cur.track || cur.track.kind !== 'track' || cur.track.id !== id) return;
+    const v = cleanVibeFor(vibes.get(id), cur.track);
+    if (JSON.stringify(v) === JSON.stringify(cur.vibe)) return;
+    const t = now();
+    if (cur.state === 'playing') {
+      cur.progressMs = expectedProgress(cur, t);
+      cur.at = t;
+    }
+    cur.vibe = v;
+    o.publish(cur, true);
+  }
+
   /* --- publishing --- */
 
   function base() {
@@ -375,6 +435,7 @@ function createPlayer(o) {
   }
 
   function put(next) {
+    next.vibe = next.track ? cleanVibeFor(vibes.get(next.track.id), next.track) : null;
     const prev = cleanData(o.current(), allowHttp);
     let changed = signature(prev) !== signature(next);
     if (!changed && next.state === 'playing') {
@@ -442,7 +503,8 @@ function createPlayer(o) {
         return { ok: true, changed: put(d) };
       }
       if (r.status === 200) {
-        const p = readPlayback(parseJson(r.text), allowHttp);
+        const json = parseJson(r.text);
+        const p = readPlayback(json, allowHttp);
         fails = 0;
         lastOkAt = t;
         note('');
@@ -456,6 +518,8 @@ function createPlayer(o) {
           d.progressMs = p.track.durationMs ? Math.min(p.progressMs, p.track.durationMs) : p.progressMs;
           d.at = t;
           d.playedAt = t;
+          // Songs only: an episode has no tempo to follow.
+          if (p.track.kind === 'track' && p.track.id) vibes.want(p.track.id, readArtistId(json));
         } else {
           d.state = 'idle';
           carry(d, cleanData(o.current(), allowHttp));
@@ -617,7 +681,22 @@ function createPlayer(o) {
       track: d.track ? { title: d.track.title, artist: d.track.artist, album: d.track.album, kind: d.track.kind } : null,
       device: d.device ? d.device.name : '',
       lastOkAt: lastOkAt ? new Date(lastOkAt).toISOString() : null,
-      loginWaiting: !!(pending && pending.until > now())
+      loginWaiting: !!(pending && pending.until > now()),
+      vibe: vibeStatus(d)
+    };
+  }
+
+  // For ./hub spotify status: the song's vibe, and how the lookups go.
+  function vibeStatus(d) {
+    const s = vibes.status();
+    const v = d.vibe;
+    return {
+      lookups: s.lookups,
+      song: !!(d.track && d.track.kind === 'track'),
+      now: v ? { source: v.source, tempo: v.tempo, energy: v.energy, valence: v.valence, genres: v.genres } : null,
+      pending: !!(d.track && vibes.pending(d.track.id)),
+      problem: cleanText(s.problem, 120),
+      problemAt: s.problemAt
     };
   }
 
@@ -641,13 +720,14 @@ function createPlayer(o) {
     closed = true;
     if (timer) clearTimeout(timer);
     timer = null;
+    vibes.close();
   }
 
   return {
     start: start, close: close, poll: poll, wake: wake, status: status,
     loginUrl: loginUrl, finishLogin: finishLogin, logout: logout,
     configured: !!cfg.configured,
-    debug: () => ({ timer: !!timer, fails: fails, signedIn: !!refreshToken, pending: !!pending, delay: delay() })
+    debug: () => ({ timer: !!timer, fails: fails, signedIn: !!refreshToken, pending: !!pending, delay: delay(), vibe: vibes.debug() })
   };
 }
 
@@ -658,6 +738,8 @@ module.exports = {
   cleanData: cleanData,
   cleanResource: cleanResource,
   readPlayback: readPlayback,
+  readArtistId: readArtistId,
+  vibeOffFromEnv: vibeOffFromEnv,
   pickArt: pickArt,
   expectedProgress: expectedProgress,
   createPlayer: createPlayer

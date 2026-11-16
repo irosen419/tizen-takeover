@@ -7,7 +7,13 @@
  *   POST /api/token          swaps a code or a refresh token for an access token
  *   GET  /v1/me              the account's display name
  *   GET  /v1/me/player       what is playing
- *   GET  /art/<n>-<px>.svg   made-up album covers
+ *   GET  /v1/artists/<id>    an artist's genres
+ *   GET  /art/<n>-<px>.svg   made-up album covers (with CORS, so the TV can
+ *                            read their colors as it reads Spotify's)
+ *
+ * and stands in for ReccoBeats (pi/vibe.js) on the same address:
+ *
+ *   GET  /v1/audio-features?ids=<track id>   tempo, energy, mood... per song
  *
  * Nothing here reaches the internet, and no real Spotify account is involved.
  *
@@ -18,7 +24,10 @@
  *   mock.next()              the next song
  *   mock.seek(ms)            jump inside the song
  *   mock.reset()             back to the first song, playing, at 1:02
- *   mock.calls               { token, player, me, authorize } counters
+ *   mock.vibes(mode, delayMs)   the ReccoBeats stand-in: ok | empty | garbage |
+ *                            slow (never answers) | ratelimit | down; delayMs
+ *                            holds each answer back (the preview uses 1.2 s)
+ *   mock.calls               { token, player, me, authorize, features, artists } counters
  *   mock.close()
  */
 'use strict';
@@ -29,15 +38,29 @@ const crypto = require('crypto');
 const MODES = ['playing', 'paused', 'idle', 'long', 'episode', 'advert', 'down', 'ratelimit', 'forbidden', 'revoked'];
 
 // Made-up songs. The second has long Spanish text with accents and ñ, to
-// check that nothing clips or runs out of its box.
+// check that nothing clips or runs out of its box. Each has its own vibe for
+// the visualizer: f is what the ReccoBeats stand-in answers (null: it does
+// not know the song), genres what Spotify says of the first artist (null:
+// the artist call fails).
 const SONGS = [
-  { id: 'mock0001', name: 'Golden Hour Drive', artists: ['The Lanterns'], album: 'Slow Coast', ms: 214000, art: 0 },
+  { id: 'mock0001', name: 'Golden Hour Drive', artists: ['The Lanterns'], album: 'Slow Coast', ms: 214000, art: 0,
+    f: { tempo: 124.0, energy: 0.78, valence: 0.82, danceability: 0.84, acousticness: 0.08 }, genres: ['indie pop', 'nu disco'] },
   { id: 'mock0002', name: 'Canción para una mañana de otoño en Ciudad de México (Versión acústica en vivo)',
     artists: ['Los Ángeles del Sur', 'María José Peñalosa', 'Ñengo Ávila'],
-    album: 'Corazón, raíz y añoranza: edición de aniversario', ms: 288000, art: 1, explicit: true },
-  { id: 'mock0003', name: 'Paper Moons', artists: ['Juniper & the Tide'], album: 'Night Garden', ms: 187000, art: 2 },
-  { id: 'mock0004', name: 'Él', artists: ['Zoé'], album: 'Ámbar', ms: 201000, art: 3 }
+    album: 'Corazón, raíz y añoranza: edición de aniversario', ms: 288000, art: 1, explicit: true,
+    f: { tempo: 72.0, energy: 0.26, valence: 0.74, danceability: 0.42, acousticness: 0.88 }, genres: ['latin folk', 'bolero'] },
+  { id: 'mock0003', name: 'Paper Moons', artists: ['Juniper & the Tide'], album: 'Night Garden', ms: 187000, art: 2,
+    f: { tempo: 76.0, energy: 0.3, valence: 0.16, danceability: 0.38, acousticness: 0.52 }, genres: ['dream pop', 'slowcore'] },
+  { id: 'mock0004', name: 'Él', artists: ['Zoé'], album: 'Ámbar', ms: 201000, art: 3,
+    f: { tempo: 172.0, energy: 0.94, valence: 0.2, danceability: 0.48, acousticness: 0.02 }, genres: ['rock en espanol', 'alternative metal'] },
+  { id: 'mock0005', name: 'Linen & Light', artists: ['Maren Holt'], album: 'Kitchen Window', ms: 196000, art: 5,
+    f: { tempo: 70.0, energy: 0.22, valence: 0.78, danceability: 0.4, acousticness: 0.9 }, genres: ['folk', 'singer-songwriter'] },
+  { id: 'mock0006', name: 'Harbor Lights', artists: ['Ostara Bay'], album: 'Low Tide', ms: 233000, art: 6,
+    f: null, genres: ['indie folk', 'chamber pop'] },
+  { id: 'mock0007', name: 'Untitled Demo 3', artists: ['Basement Tapes Collective'], album: 'Demos', ms: 158000, art: 7,
+    f: null, genres: null }
 ];
+const VIBE_MODES = ['ok', 'empty', 'garbage', 'slow', 'ratelimit', 'down'];
 const EPISODE = { id: 'mockep01', name: 'Episode 212: Why octopuses dream', show: 'The Curious Hour', publisher: 'Fieldnote Radio', ms: 2892000, art: 4 };
 
 /* ---------- covers ---------- */
@@ -64,7 +87,20 @@ const COVERS = [
   // A podcast cover.
   (s) => '<rect width="640" height="640" fill="#0f4c5c"/><rect x="60" y="60" width="520" height="520" rx="40" fill="#e36414"/>' +
     '<circle cx="320" cy="300" r="120" fill="#0f4c5c"/><rect x="290" y="400" width="60" height="110" rx="20" fill="#0f4c5c"/>' +
-    '<circle cx="320" cy="300" r="60" fill="#fb8b24"/>'
+    '<circle cx="320" cy="300" r="60" fill="#fb8b24"/>',
+  // Morning linen.
+  (s) => '<rect width="640" height="640" fill="#efe6d8"/><rect y="380" width="640" height="260" fill="#d9c7ad"/>' +
+    '<circle cx="410" cy="250" r="120" fill="#f3b38a"/><path d="M90 640V300q60-40 120 0v340z" fill="#9db59a"/>' +
+    '<path d="M150 300v-80" stroke="#6f8f6c" stroke-width="8"/><circle cx="150" cy="210" r="22" fill="#e9a1a0"/>',
+  // A harbor at night.
+  (s) => '<rect width="640" height="640" fill="#0e3b46"/><rect y="400" width="640" height="240" fill="#082a33"/>' +
+    '<g fill="#ffb15e"><circle cx="120" cy="380" r="9"/><circle cx="210" cy="372" r="7"/><circle cx="360" cy="385" r="10"/><circle cx="500" cy="376" r="8"/></g>' +
+    '<g stroke="#ffb15e" stroke-width="4" opacity=".55"><path d="M120 420v60M210 410v40M360 425v70M500 415v50"/></g>' +
+    '<circle cx="470" cy="150" r="46" fill="#cfe3e0"/>',
+  // A grey demo sleeve.
+  (s) => '<rect width="640" height="640" fill="#3a3c40"/><rect x="80" y="80" width="480" height="480" fill="#4a4d52"/>' +
+    '<path d="M150 360q80-120 160-10t170-40" stroke="#c8c9cc" stroke-width="10" fill="none" stroke-linecap="round"/>' +
+    '<text x="150" y="480" font-family="monospace" font-size="44" fill="#c8c9cc">DEMO 3</text>'
 ];
 
 function cover(n, px) {
@@ -79,7 +115,9 @@ function start(options) {
   const clientId = o.clientId || 'mockclientid0123456789abcdef0123';
   const clientSecret = o.clientSecret || 'mocksecret0123456789abcdef012345';
   const expiresIn = o.expiresIn || 3600;
-  const calls = { token: 0, player: 0, me: 0, authorize: 0, refreshes: 0 };
+  const calls = { token: 0, player: 0, me: 0, authorize: 0, refreshes: 0, features: 0, artists: 0 };
+  let vibeMode = VIBE_MODES.indexOf(o.vibeMode) >= 0 ? o.vibeMode : 'ok';
+  let vibeDelay = o.vibeDelayMs || 0;
   const codes = new Map();      // code -> redirect_uri
   let refresh = '';
   let accessTokens = new Set();
@@ -133,7 +171,7 @@ function start(options) {
     }
     out.item = {
       id: item.id, type: 'track', name: item.name, duration_ms: item.ms, explicit: item.explicit === true,
-      artists: item.artists.map((a) => ({ name: a })), album: { name: item.album, images: images(item.art) }
+      artists: item.artists.map((a, i) => ({ name: a, id: 'artist' + item.id.slice(4) + 'n' + i })), album: { name: item.album, images: images(item.art) }
     };
     return out;
   }
@@ -202,12 +240,21 @@ function start(options) {
       });
       return undefined;
     }
+    if (u.pathname === '/v1/audio-features') return features(u, res);
     if (u.pathname.indexOf('/art/') === 0) {
       const m = /^\/art\/(\d+)-(\d+)\.svg$/.exec(u.pathname);
       if (!m) { res.writeHead(404); return res.end(); }
       const svg = cover(Number(m[1]), Number(m[2]));
-      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Content-Length': Buffer.byteLength(svg), 'Cache-Control': 'max-age=3600' });
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Content-Length': Buffer.byteLength(svg), 'Cache-Control': 'max-age=3600', 'Access-Control-Allow-Origin': '*' });
       return res.end(svg);
+    }
+    const artist = /^\/v1\/artists\/([A-Za-z0-9]+)$/.exec(u.pathname);
+    if (artist) {
+      if (!bearerOk(req)) return json(res, 401, { error: { status: 401, message: 'The access token expired' } });
+      calls.artists += 1;
+      const song = SONGS.filter((x) => artist[1].indexOf('artist' + x.id.slice(4) + 'n') === 0)[0];
+      if (!song || !song.genres) return json(res, 404, { error: { status: 404, message: 'Not found.' } });
+      return json(res, 200, { id: artist[1], type: 'artist', name: song.artists[0], genres: song.genres });
     }
     if (u.pathname === '/v1/me' || u.pathname === '/v1/me/player') {
       if (!bearerOk(req)) return json(res, 401, { error: { status: 401, message: 'The access token expired' } });
@@ -225,6 +272,29 @@ function start(options) {
     res.writeHead(404);
     return res.end();
   });
+
+  // The ReccoBeats stand-in, in its own reply shape.
+  function features(u, res) {
+    calls.features += 1;
+    const id = u.searchParams.get('ids') || '';
+    const answer = () => {
+      if (vibeMode === 'slow') return;            // never answers: the Pi must give up by itself
+      if (vibeMode === 'ratelimit') return json(res, 429, { error: 'Too Many Requests' }, { 'Retry-After': '2' });
+      if (vibeMode === 'down') return json(res, 500, { error: 'Internal Server Error' });
+      if (vibeMode === 'garbage') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        return res.end('<html>oops</html>');
+      }
+      const song = SONGS.filter((x) => x.id === id)[0];
+      if (vibeMode === 'empty' || !song || !song.f) return json(res, 200, { content: [] });
+      return json(res, 200, { content: [Object.assign({
+        id: 'rb-' + id, href: 'https://open.spotify.com/track/' + id, key: 5, mode: 1, loudness: -6.1,
+        speechiness: 0.04, instrumentalness: 0, liveness: 0.12
+      }, song.f)] });
+    };
+    if (vibeDelay) setTimeout(answer, vibeDelay); else answer();
+    return undefined;
+  }
 
   return new Promise((resolve, reject) => {
     server.once('error', reject);
@@ -250,6 +320,15 @@ function start(options) {
         next: () => { song = (song + 1) % SONGS.length; if (song === 1) song = 2; offsetMs = 0; startedAt = Date.now(); },
         seek: (ms) => { offsetMs = ms; startedAt = Date.now(); },
         reset: () => { mode = 'playing'; song = 0; offsetMs = 62000; startedAt = Date.now(); },
+        // Jump to a song by its index in SONGS (the shots use it).
+        play: (n) => { if (SONGS[n]) { mode = 'playing'; song = n; offsetMs = 30000; startedAt = Date.now(); } },
+        vibes: (m, delayMs) => {
+          if (VIBE_MODES.indexOf(m) < 0) return false;
+          vibeMode = m;
+          if (typeof delayMs === 'number') vibeDelay = delayMs;
+          return true;
+        },
+        vibeModes: VIBE_MODES,
         expireAccess: () => { accessTokens = new Set(); },
         close: () => new Promise((r) => server.close(() => r()))
       });
@@ -257,4 +336,4 @@ function start(options) {
   });
 }
 
-module.exports = { start: start, MODES: MODES, SONGS: SONGS, EPISODE: EPISODE };
+module.exports = { start: start, MODES: MODES, SONGS: SONGS, EPISODE: EPISODE, VIBE_MODES: VIBE_MODES };
