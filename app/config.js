@@ -216,6 +216,17 @@ var HUB_CONFIG = {
       location: { name: 'Deep Ellum', latitude: 32.78, longitude: -96.78 },
       // 'fahrenheit' (wind in mph) or 'celsius' (wind in km/h)
       units: 'fahrenheit'
-    }
+    },
+
+    /*
+     * Now Playing: what plays on Spotify (set up on the Pi, see pi/README.md).
+     *
+     * visualizer: soft colors from the album that move with the song, behind
+     * the full screen page only. true lets the TV pick how much it can show
+     * (it checks its own frame rate); false turns it off; 'wash' keeps a
+     * still wash of color, 'glow' only the slow glows, 'full' glows and
+     * rings. ?viz=off|wash|glow|full on the address tries one for a visit.
+     */
+    nowplaying: { visualizer: true }
   }
 };

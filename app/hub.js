@@ -111,6 +111,8 @@
   'use strict';
 
   var BUILD = 'v0.19.0';
+  // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
+  window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,
@@ -1122,7 +1124,12 @@
     { group: 'Wanderers', label: 'Visits', value: function () { return clayPart('visits'); } },
     { group: 'Wanderers', label: 'Last visit', value: function () { return clayPart('last'); } },
     { group: 'Wanderers', label: 'Loading', value: function () { return clayPart('loading'); } },
-    { group: 'Wanderers', label: 'Last problem', value: function () { return clayPart('problem'); } }
+    { group: 'Wanderers', label: 'Last problem', value: function () { return clayPart('problem'); } },
+    // The Now Playing visualizer, once it has shown: its level, frame rate and tempo.
+    { group: 'Now Playing', label: 'Visualizer', value: function () {
+      var V = window.HUB_NP_VIZ;
+      return V && typeof V.status === 'function' ? V.status() : '';
+    } }
   ];
 
   // A number keeps its unit on the same line: "1 s ago", never "1" then "s ago".

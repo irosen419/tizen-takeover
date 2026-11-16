@@ -24,6 +24,13 @@
  * ("Last played"), and say what to do when Spotify is not connected yet or
  * the Pi cannot be reached. The last song is also kept on this TV
  * (localStorage) for the times the Pi is away.
+ *
+ * Full screen, while a song plays or is paused, a visualizer moves behind the
+ * page (nowplaying-viz.js), in the album's colors and at the song's tempo.
+ * The Pi adds the song's "vibe" (data.vibe) a moment after the song; it is
+ * not part of signature(), so it changes the visualizer in place, never
+ * redraws the page. Without nowplaying-viz.js, or with HUB_CONFIG.widgets.
+ * nowplaying.visualizer false, the page is as before.
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -217,6 +224,23 @@
     if (v.kind !== 'playing' && v.kind !== 'paused') return 0;
     var d = v.track.durationMs || 0;
     return d ? Math.min(p, d) : p;
+  }
+
+  // The song's vibe from the Pi (pi/vibe.js), checked again here: null when
+  // there is none (an older Pi, a podcast, not known yet) or it belongs to
+  // another song.
+  function vibeOf(v) {
+    var x = data && data.vibe;
+    if (!x || typeof x !== 'object' || !v.track || v.track.kind === 'episode') return null;
+    if (v.kind !== 'playing' && v.kind !== 'paused') return null;
+    if (x.id && x.id !== v.track.id) return null;
+    if ((x.source !== 'features' && x.source !== 'genres') || typeof x.energy !== 'number' || typeof x.valence !== 'number') return null;
+    function u(n, d) { return typeof n === 'number' && isFinite(n) ? Math.max(0, Math.min(1, n)) : d; }
+    return {
+      source: x.source,
+      tempo: typeof x.tempo === 'number' && x.tempo >= 40 && x.tempo <= 220 ? x.tempo : 0,
+      energy: u(x.energy, 0.5), valence: u(x.valence, 0.5), dance: u(x.dance, 0.5), acoustic: u(x.acoustic, 0.3)
+    };
   }
 
   function fraction(v) {
@@ -432,6 +456,7 @@
       page.bar = el('div', 'np-bar np-bar-page', foot);
       page.fill = el('div', 'np-fill', page.bar);
       var chips = el('div', 'np-chips', foot);
+      page.chips = chips;
       if (v.device) el('span', 'np-chip', chips, 'On ' + v.device);
       if (v.shuffle) el('span', 'np-chip', chips, 'Shuffle');
       if (v.repeat === 'track') el('span', 'np-chip', chips, 'Repeat one');
@@ -442,6 +467,7 @@
     }
     pageTick();
     fitPage(body);
+    safe(vizSync)();
   }
 
   // The picture as large as the room allows, then the words in what is left.
@@ -480,6 +506,58 @@
     page.fill.style.transform = 'scaleX(' + fraction(v).toFixed(4) + ')';
   }
 
+  /* ---------- the visualizer (full screen only) ---------- */
+
+  // Shows, updates or stops the visualizer for the page as it is now. It
+  // lives in the panel itself, behind the body, so a redraw of the page does
+  // not touch it.
+  function vizSync() {
+    var V = window.HUB_NP_VIZ;
+    if (!V || !V.sync) return;
+    var v = page && page.v;
+    var ok = !!page && page.full && page.hasSong && (v.kind === 'playing' || v.kind === 'paused') &&
+      !!C && C.isOpen && C.isOpen() && C.mode && C.mode() === 'full';
+    var body = page && page.root.parentNode;
+    var host = body && body.parentNode;
+    if (!ok || !host) {
+      V.sync(null);
+      if (page) { page.root.classList.remove('npv-on'); page.vizOn = false; bpmChip(); }
+      return;
+    }
+    var hr = host.getBoundingClientRect();
+    var ar = page.art.getBoundingClientRect();
+    var ir = page.info.getBoundingClientRect();
+    var k = host.offsetWidth ? hr.width / host.offsetWidth : 1;     // a panel still scaling in
+    var on = V.sync(host, {
+      id: v.track.id || v.track.title,
+      art: v.track.artTiny || v.track.artSmall || '',
+      vibe: vibeOf(v),
+      playing: v.kind === 'playing',
+      positionMs: position(v),
+      durationMs: v.track.durationMs || 0,
+      config: (C && C.config) || {},
+      motionFade: !!document.body && document.body.classList.contains('motion-fade'),
+      center: { x: (ar.left - hr.left + ar.width / 2) / k, y: (ar.top - hr.top + ar.height / 2) / k, size: ar.width / k },
+      textLeft: (ir.left - hr.left) / k
+    });
+    if (on) page.root.classList.add('npv-on');
+    else page.root.classList.remove('npv-on');
+    page.vizOn = !!on;
+    bpmChip();
+  }
+
+  // A small "124 BPM" among the chips while the visualizer shows and the
+  // tempo is measured (not guessed from genres). Kept up to date in place.
+  function bpmChip() {
+    if (!page || !page.chips) return;
+    var vb = page.full && page.vizOn ? vibeOf(page.v) : null;
+    var text = vb && vb.source === 'features' && vb.tempo ? Math.round(vb.tempo) + ' BPM' : '';
+    var chip = page.chips.querySelector('.np-chip-bpm');
+    if (!text) { if (chip) chip.parentNode.removeChild(chip); return; }
+    if (!chip) chip = el('span', 'np-chip np-chip-bpm', page.chips);
+    if (chip.textContent !== text) chip.textContent = text;
+  }
+
   /* ---------- keeping up ---------- */
 
   function tick() {
@@ -494,7 +572,10 @@
         }
       }
     }
-    if (page && page.v.kind === 'playing') pageTick();
+    if (page && page.v.kind === 'playing') {
+      pageTick();
+      if (page.full && window.HUB_NP_VIZ) window.HUB_NP_VIZ.tick(position(page.v));
+    }
   }
 
   // The part of the data that changes how the tile looks, not where the song is.
@@ -522,7 +603,7 @@
     if (!force && sig === lastSig) {
       var i;
       for (i = 0; i < tiles.length; i++) { tiles[i].v = view(); paintBar(tiles[i]); }
-      if (page) { page.v = view(); pageTick(); }
+      if (page) { page.v = view(); pageTick(); safe(vizSync)(); }
       return;
     }
     lastSig = sig;
@@ -570,6 +651,7 @@
         page = null;
         body.innerHTML = '';
         el('div', 'np-fallback', body, 'Now Playing couldn’t be shown.');
+        safe(vizSync)();
       }
     },
 
@@ -579,6 +661,7 @@
 
     onClose: function (ctx) {
       page = null;
+      safe(vizSync)();
     },
 
     onStatus: safe(function () { refresh(false); })

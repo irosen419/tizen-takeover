@@ -269,3 +269,260 @@
 .panel.is-full .np-note { font-size: 1.2rem; }
 .panel.is-full .np-eq { width: 1.2rem; height: 1rem; }
 .panel.is-full .np-eq i { width: 0.3rem; }
+
+/* ---------- the visualizer (nowplaying-viz.js), full screen only ----------
+
+   A layer under the page's words, filling the panel: an opaque wash in the
+   song's colors, three soft glows, a halo behind the picture and rings from
+   it. Only transform and opacity animate, each moving part on its own
+   layer, every soft edge a pre-drawn radial gradient. Durations and delays
+   are set inline from the song's tempo and position. */
+
+.npv {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: -1;              /* under the panel's content, over the frame */
+  overflow: hidden;
+  pointer-events: none;
+}
+.npv-scene,
+.npv-wash,
+.npv-group {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+}
+.npv-scene { will-change: opacity; }
+.npv-group {
+  -webkit-transition: opacity 1200ms linear;
+  transition: opacity 1200ms linear;
+}
+.npv-orb,
+.npv-bloom,
+.npv-ring {
+  position: absolute;
+  opacity: 0;
+  will-change: transform, opacity;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+.npv-orb { opacity: 1; }
+
+/* The glows: rise (a happy song), sink (a sad one) or drift sideways, two
+   slow breaths per cycle, fading in and out at the ends of the path. */
+@-webkit-keyframes npv-rise-a {
+  0% { -webkit-transform: translate3d(0, 18%, 0) scale(0.92); opacity: 0; }
+  18% { opacity: 1; }
+  25% { -webkit-transform: translate3d(5%, 8%, 0) scale(1.1); }
+  50% { -webkit-transform: translate3d(-3%, -1%, 0) scale(0.96); }
+  75% { -webkit-transform: translate3d(4%, -10%, 0) scale(1.12); }
+  82% { opacity: 1; }
+  100% { -webkit-transform: translate3d(-2%, -20%, 0) scale(0.94); opacity: 0; }
+}
+@keyframes npv-rise-a {
+  0% { transform: translate3d(0, 18%, 0) scale(0.92); opacity: 0; }
+  18% { opacity: 1; }
+  25% { transform: translate3d(5%, 8%, 0) scale(1.1); }
+  50% { transform: translate3d(-3%, -1%, 0) scale(0.96); }
+  75% { transform: translate3d(4%, -10%, 0) scale(1.12); }
+  82% { opacity: 1; }
+  100% { transform: translate3d(-2%, -20%, 0) scale(0.94); opacity: 0; }
+}
+@-webkit-keyframes npv-rise-b {
+  0% { -webkit-transform: translate3d(-4%, 20%, 0) scale(0.95); opacity: 0; }
+  20% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-6%, 9%, 0) scale(1.12); }
+  50% { -webkit-transform: translate3d(2%, 0, 0) scale(0.98); }
+  75% { -webkit-transform: translate3d(-2%, -11%, 0) scale(1.1); }
+  80% { opacity: 1; }
+  100% { -webkit-transform: translate3d(5%, -19%, 0) scale(0.95); opacity: 0; }
+}
+@keyframes npv-rise-b {
+  0% { transform: translate3d(-4%, 20%, 0) scale(0.95); opacity: 0; }
+  20% { opacity: 1; }
+  25% { transform: translate3d(-6%, 9%, 0) scale(1.12); }
+  50% { transform: translate3d(2%, 0, 0) scale(0.98); }
+  75% { transform: translate3d(-2%, -11%, 0) scale(1.1); }
+  80% { opacity: 1; }
+  100% { transform: translate3d(5%, -19%, 0) scale(0.95); opacity: 0; }
+}
+@-webkit-keyframes npv-rise-c {
+  0% { -webkit-transform: translate3d(3%, 16%, 0) scale(0.9); opacity: 0; }
+  16% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-2%, 7%, 0) scale(1.08); }
+  50% { -webkit-transform: translate3d(5%, -3%, 0) scale(0.95); }
+  75% { -webkit-transform: translate3d(0, -10%, 0) scale(1.1); }
+  84% { opacity: 1; }
+  100% { -webkit-transform: translate3d(-4%, -18%, 0) scale(0.92); opacity: 0; }
+}
+@keyframes npv-rise-c {
+  0% { transform: translate3d(3%, 16%, 0) scale(0.9); opacity: 0; }
+  16% { opacity: 1; }
+  25% { transform: translate3d(-2%, 7%, 0) scale(1.08); }
+  50% { transform: translate3d(5%, -3%, 0) scale(0.95); }
+  75% { transform: translate3d(0, -10%, 0) scale(1.1); }
+  84% { opacity: 1; }
+  100% { transform: translate3d(-4%, -18%, 0) scale(0.92); opacity: 0; }
+}
+@-webkit-keyframes npv-sink-a {
+  0% { -webkit-transform: translate3d(0, -16%, 0) scale(1.02); opacity: 0; }
+  22% { opacity: 1; }
+  25% { -webkit-transform: translate3d(3%, -7%, 0) scale(1.1); }
+  50% { -webkit-transform: translate3d(-2%, 1%, 0) scale(1); }
+  75% { -webkit-transform: translate3d(2%, 9%, 0) scale(1.08); }
+  78% { opacity: 1; }
+  100% { -webkit-transform: translate3d(-3%, 17%, 0) scale(1); opacity: 0; }
+}
+@keyframes npv-sink-a {
+  0% { transform: translate3d(0, -16%, 0) scale(1.02); opacity: 0; }
+  22% { opacity: 1; }
+  25% { transform: translate3d(3%, -7%, 0) scale(1.1); }
+  50% { transform: translate3d(-2%, 1%, 0) scale(1); }
+  75% { transform: translate3d(2%, 9%, 0) scale(1.08); }
+  78% { opacity: 1; }
+  100% { transform: translate3d(-3%, 17%, 0) scale(1); opacity: 0; }
+}
+@-webkit-keyframes npv-sink-b {
+  0% { -webkit-transform: translate3d(-5%, -18%, 0) scale(0.98); opacity: 0; }
+  20% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-2%, -8%, 0) scale(1.08); }
+  50% { -webkit-transform: translate3d(3%, 0, 0) scale(0.97); }
+  75% { -webkit-transform: translate3d(0, 8%, 0) scale(1.1); }
+  80% { opacity: 1; }
+  100% { -webkit-transform: translate3d(4%, 16%, 0) scale(0.98); opacity: 0; }
+}
+@keyframes npv-sink-b {
+  0% { transform: translate3d(-5%, -18%, 0) scale(0.98); opacity: 0; }
+  20% { opacity: 1; }
+  25% { transform: translate3d(-2%, -8%, 0) scale(1.08); }
+  50% { transform: translate3d(3%, 0, 0) scale(0.97); }
+  75% { transform: translate3d(0, 8%, 0) scale(1.1); }
+  80% { opacity: 1; }
+  100% { transform: translate3d(4%, 16%, 0) scale(0.98); opacity: 0; }
+}
+@-webkit-keyframes npv-sink-c {
+  0% { -webkit-transform: translate3d(4%, -14%, 0) scale(1); opacity: 0; }
+  18% { opacity: 1; }
+  25% { -webkit-transform: translate3d(0, -6%, 0) scale(1.12); }
+  50% { -webkit-transform: translate3d(-4%, 2%, 0) scale(0.98); }
+  75% { -webkit-transform: translate3d(-1%, 10%, 0) scale(1.08); }
+  82% { opacity: 1; }
+  100% { -webkit-transform: translate3d(3%, 16%, 0) scale(1); opacity: 0; }
+}
+@keyframes npv-sink-c {
+  0% { transform: translate3d(4%, -14%, 0) scale(1); opacity: 0; }
+  18% { opacity: 1; }
+  25% { transform: translate3d(0, -6%, 0) scale(1.12); }
+  50% { transform: translate3d(-4%, 2%, 0) scale(0.98); }
+  75% { transform: translate3d(-1%, 10%, 0) scale(1.08); }
+  82% { opacity: 1; }
+  100% { transform: translate3d(3%, 16%, 0) scale(1); opacity: 0; }
+}
+@-webkit-keyframes npv-side-a {
+  0% { -webkit-transform: translate3d(-18%, 2%, 0) scale(0.94); opacity: 0; }
+  18% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-8%, -4%, 0) scale(1.1); }
+  50% { -webkit-transform: translate3d(1%, 2%, 0) scale(0.97); }
+  75% { -webkit-transform: translate3d(9%, -3%, 0) scale(1.1); }
+  82% { opacity: 1; }
+  100% { -webkit-transform: translate3d(18%, 2%, 0) scale(0.95); opacity: 0; }
+}
+@keyframes npv-side-a {
+  0% { transform: translate3d(-18%, 2%, 0) scale(0.94); opacity: 0; }
+  18% { opacity: 1; }
+  25% { transform: translate3d(-8%, -4%, 0) scale(1.1); }
+  50% { transform: translate3d(1%, 2%, 0) scale(0.97); }
+  75% { transform: translate3d(9%, -3%, 0) scale(1.1); }
+  82% { opacity: 1; }
+  100% { transform: translate3d(18%, 2%, 0) scale(0.95); opacity: 0; }
+}
+@-webkit-keyframes npv-side-b {
+  0% { -webkit-transform: translate3d(17%, -3%, 0) scale(0.96); opacity: 0; }
+  20% { opacity: 1; }
+  25% { -webkit-transform: translate3d(8%, 3%, 0) scale(1.08); }
+  50% { -webkit-transform: translate3d(-1%, -2%, 0) scale(0.98); }
+  75% { -webkit-transform: translate3d(-9%, 4%, 0) scale(1.12); }
+  80% { opacity: 1; }
+  100% { -webkit-transform: translate3d(-17%, -2%, 0) scale(0.96); opacity: 0; }
+}
+@keyframes npv-side-b {
+  0% { transform: translate3d(17%, -3%, 0) scale(0.96); opacity: 0; }
+  20% { opacity: 1; }
+  25% { transform: translate3d(8%, 3%, 0) scale(1.08); }
+  50% { transform: translate3d(-1%, -2%, 0) scale(0.98); }
+  75% { transform: translate3d(-9%, 4%, 0) scale(1.12); }
+  80% { opacity: 1; }
+  100% { transform: translate3d(-17%, -2%, 0) scale(0.96); opacity: 0; }
+}
+@-webkit-keyframes npv-side-c {
+  0% { -webkit-transform: translate3d(-16%, -4%, 0) scale(1); opacity: 0; }
+  16% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-7%, 3%, 0) scale(1.1); }
+  50% { -webkit-transform: translate3d(2%, -3%, 0) scale(0.97); }
+  75% { -webkit-transform: translate3d(10%, 2%, 0) scale(1.08); }
+  84% { opacity: 1; }
+  100% { -webkit-transform: translate3d(16%, -3%, 0) scale(1); opacity: 0; }
+}
+@keyframes npv-side-c {
+  0% { transform: translate3d(-16%, -4%, 0) scale(1); opacity: 0; }
+  16% { opacity: 1; }
+  25% { transform: translate3d(-7%, 3%, 0) scale(1.1); }
+  50% { transform: translate3d(2%, -3%, 0) scale(0.97); }
+  75% { transform: translate3d(10%, 2%, 0) scale(1.08); }
+  84% { opacity: 1; }
+  100% { transform: translate3d(16%, -3%, 0) scale(1); opacity: 0; }
+}
+
+/* The halo behind the picture: one swell per pulse, three strengths. */
+@-webkit-keyframes npv-pulse-1 {
+  0% { -webkit-transform: scale(0.97); opacity: 0.5; }
+  14% { -webkit-transform: scale(1.03); opacity: 0.85; }
+  100% { -webkit-transform: scale(0.97); opacity: 0.5; }
+}
+@keyframes npv-pulse-1 {
+  0% { transform: scale(0.97); opacity: 0.5; }
+  14% { transform: scale(1.03); opacity: 0.85; }
+  100% { transform: scale(0.97); opacity: 0.5; }
+}
+@-webkit-keyframes npv-pulse-2 {
+  0% { -webkit-transform: scale(0.96); opacity: 0.45; }
+  12% { -webkit-transform: scale(1.06); opacity: 1; }
+  100% { -webkit-transform: scale(0.96); opacity: 0.45; }
+}
+@keyframes npv-pulse-2 {
+  0% { transform: scale(0.96); opacity: 0.45; }
+  12% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(0.96); opacity: 0.45; }
+}
+@-webkit-keyframes npv-pulse-3 {
+  0% { -webkit-transform: scale(0.95); opacity: 0.4; }
+  10% { -webkit-transform: scale(1.09); opacity: 1; }
+  100% { -webkit-transform: scale(0.95); opacity: 0.4; }
+}
+@keyframes npv-pulse-3 {
+  0% { transform: scale(0.95); opacity: 0.4; }
+  10% { transform: scale(1.09); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.4; }
+}
+
+/* A ring: born at the picture's edge, bright, it spreads out and fades. */
+@-webkit-keyframes npv-ring {
+  0% { -webkit-transform: scale(0.62); opacity: 0; }
+  5% { opacity: 1; }
+  100% { -webkit-transform: scale(1); opacity: 0; }
+}
+@keyframes npv-ring {
+  0% { transform: scale(0.62); opacity: 0; }
+  5% { opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+/* With the visualizer behind it, the page's words get a touch more weight. */
+.np-page.npv-on .np-title,
+.np-page.npv-on .np-artist { text-shadow: 0 0.05rem 0.6rem rgba(0, 0, 0, 0.35); }
+.np-page.npv-on .np-album,
+.npv-on .np-times,
+.npv-on .np-label-text { color: rgba(255, 255, 255, 0.78); }
+.npv-on .np-chip { color: rgba(255, 255, 255, 0.86); border-color: rgba(255, 255, 255, 0.28); }
+.npv-on .np-bar { background: rgba(255, 255, 255, 0.24); }

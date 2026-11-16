@@ -12,6 +12,14 @@
  * not set up, Spotify down, the Pi lost, an old Pi), the page and its full
  * screen, the progress moving, and a changed song arriving by itself.
  *
+ * The visualizer (app/widgets/nowplaying-viz.js): only full screen while a
+ * song plays or is paused; a vibe arriving late changes it in place; its
+ * rhythm follows the tempo; it rests when paused; the off switches; the mood
+ * colors when the picture cannot be read; nothing left after closing; only
+ * transform and opacity animate; the frame-rate check steps down; the About
+ * row; every file in app/ is plain ES5; and a rough frame rate with the CPU
+ * slowed 6x (a sanity check only: a desktop says little about the TV).
+ *
  * SHOTS=/some/folder also saves screenshots there (1920x1080).
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  */
@@ -58,6 +66,7 @@ async function until(fn, ms, text) {
 }
 
 async function check(name, fn) {
+  if (process.env.NP_GREP && name.indexOf(process.env.NP_GREP) < 0) return;   // only some checks (while working on them)
   try { await fn(); results.push(true); console.log('ok   ' + name); }
   catch (e) { results.push(false); console.log('FAIL ' + name + '\n     ' + (e && e.message ? e.message : e)); }
 }
@@ -136,7 +145,23 @@ async function open(pi, layout, opts) {
     try { localStorage.setItem('homeHub.layout', JSON.stringify(lay)); } catch (e) { /* ignore */ }
   }, layout);
   if (pi) await control(pi, 'POST', '/api/layout', { layout: layout });
-  await page.goto(PAGE + '/hub.html?live=' + (pi ? encodeURIComponent(pi.url) : 'off') + '&motion=fade');
+  if (o.config) {
+    // Changes HUB_CONFIG as the TV would get it from config.js.
+    await context.route('**/config.js', async (route) => {
+      const r = await route.fetch();
+      route.fulfill({ response: r, body: (await r.text()) + '\n' + o.config + '\n' });
+    });
+  }
+  if (o.unreadableArt) {
+    // The tiny picture without permission for this page to read it (its
+    // CORS header names another site; Playwright adds one of its own when
+    // none is given).
+    await context.route('**/art/*-64.svg', async (route) => {
+      const r = await route.fetch();
+      route.fulfill({ status: 200, headers: { 'content-type': 'image/svg+xml', 'access-control-allow-origin': 'http://another.invalid' }, body: await r.text() });
+    });
+  }
+  await page.goto(PAGE + '/hub.html?live=' + (pi ? encodeURIComponent(pi.url) : 'off') + '&motion=' + (o.motion || 'fade') + (o.query || ''));
   await page.waitForSelector('.tile');
   return { page: page, context: context, errors: errors };
 }
@@ -229,6 +254,7 @@ async function main() {
     http.get({ host: '127.0.0.1', port: PAGE_PORT, path: '/', timeout: 500 }, (r) => { r.resume(); resolve(true); }).on('error', () => resolve(false));
   }), 10000, 'the preview did not start');
   browser = await chromium.launch();
+  if (process.env.NP_VIZ_ONLY) return;          // only the visualizer checks (while working on it)
 
   const pi = await startPi('signed-in');
 
@@ -544,7 +570,398 @@ async function main() {
   });
 }
 
-main().catch((e) => {
+/* ---------- the visualizer ---------- */
+
+const VIZ = () => window.HUB_NP_VIZ.debug();
+
+async function openFull(page) {
+  await page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
+  await until(() => page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy() && !!document.querySelector('.np-page .np-title')), 5000, 'the page did not open');
+  await page.keyboard.press('Enter');
+  await until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() && !!document.querySelector('.np-page.is-full')), 5000, 'full screen did not open');
+}
+
+async function closePage(page) {
+  await page.evaluate(() => window.HUB_TEST.closePanel());
+  await until(() => page.evaluate(() => window.HUB_TEST.open() === null && !window.HUB_TEST.busy()), 5000, 'the page did not close');
+}
+
+// Every inline animation on the visualizer: { cls, name, ms, state }.
+const anims = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.npv-scene:last-of-type .npv-orb, .npv-scene:last-of-type .npv-ring, .npv-scene:last-of-type .npv-bloom'), (e) => {
+  const cs = getComputedStyle(e);
+  return { cls: e.className, name: cs.animationName, ms: parseFloat(cs.animationDuration) * 1000, state: cs.animationPlayState };
+}).filter((a) => a.name !== 'none'));
+
+async function playSong(pi, n, mode) {
+  mock.play(n);
+  if (mode) mock.set(mode);
+  await control(pi, 'POST', '/api/spotify/refresh', {});
+  await until(() => { const d = pi.h._debug().spotify.vibe; return !d.busy && !d.queued; }, 8000, 'the vibe lookup never ended');
+}
+
+async function vizChecks() {
+  const pi = await startPi('signed-in');
+  mock.vibes('ok', 0);
+
+  await check('visualizer: full screen only, while a song plays or is paused; never on the tile or the small page', async () => {
+    await playSong(pi, 0);
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=full' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    assert((await s.page.evaluate(() => document.querySelectorAll('.npv').length)) === 0, 'nothing on the home screen');
+    await s.page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
+    await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy()), 4000, 'page');
+    await sleep(400);
+    assert((await s.page.evaluate(() => document.querySelectorAll('.npv').length)) === 0, 'nothing on the small page');
+    assert((await s.page.evaluate(() => document.querySelectorAll('.np-chip-bpm').length)) === 0, 'no tempo chip on the small page');
+    await s.page.keyboard.press('Enter');
+    await until(() => s.page.evaluate(() => !!document.querySelector('#panel > .npv .npv-scene') && window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy()), 5000, 'no visualizer in full screen');
+    const d = await s.page.evaluate(VIZ);
+    assert(d.level === 'full' && d.rings === 2 && d.bloom > 0 && d.tempo === 124, JSON.stringify(d));
+    assert(d.layers <= 10, 'at most ten layers: ' + d.layers);
+    const look = await s.page.evaluate(() => {
+      const root = document.querySelector('.npv');
+      const r = root.getBoundingClientRect();
+      return { z: getComputedStyle(root).zIndex, w: r.width, h: r.height, attr: root.getAttribute('data-viz'), chip: (document.querySelector('.np-chip-bpm') || {}).textContent, on: !!document.querySelector('.np-page.npv-on') };
+    });
+    assert(look.z === '-1' && look.w === 1920 && look.h === 1080 && /^full/.test(look.attr), JSON.stringify(look));
+    assert(look.chip === '124 BPM' && look.on, JSON.stringify(look));
+    // Leaving full screen takes it away; going back brings it back.
+    await s.page.keyboard.press('Enter');
+    await until(() => s.page.evaluate(() => window.HUB_TEST.mode() === 'panel' && !window.HUB_TEST.busy()), 4000, 'back to the page');
+    assert((await s.page.evaluate(() => document.querySelectorAll('.npv').length)) === 0, 'gone in the small page');
+    await closePage(s.page);
+    // Nothing playing: no visualizer, even full screen.
+    mock.set('idle');
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    await until(async () => (await tileText(s.page)).label === 'Last played', 5000, 'idle');
+    await openFull(s.page);
+    await sleep(500);
+    assert((await s.page.evaluate(() => document.querySelectorAll('.npv').length)) === 0, 'no visualizer when nothing plays');
+    await closePage(s.page);
+    mock.set('playing');
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+  });
+
+  await check('visualizer: a vibe arriving late blends in place (no page redraw, the layer stays), with its tempo chip', async () => {
+    const fresh = await startPi('signed-in');
+    mock.vibes('ok', 2500);
+    mock.play(4);
+    await control(fresh, 'POST', '/api/spotify/refresh', {});
+    const s = await open(fresh, ONLY(3, 2), { query: '&viz=full' });
+    await waitTitle(s.page, 'Linen & Light');
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => !!document.querySelector('.npv .npv-scene')), 4000, 'no visualizer');
+    const before = await s.page.evaluate(() => {
+      window.__npv = document.querySelector('.npv');
+      window.__page = document.querySelector('.np-page');
+      return window.HUB_NP_VIZ.debug();
+    });
+    assert(before.tempo === 100 && before.rings === 0, 'a calm default before the vibe: ' + JSON.stringify(before));
+    assert((await s.page.evaluate(() => document.querySelectorAll('.np-chip-bpm').length)) === 0, 'no chip yet');
+    await until(() => s.page.evaluate(() => window.HUB_NP_VIZ.debug().tempo === 70), 8000, 'the vibe never arrived');
+    const after = await s.page.evaluate(() => ({
+      sameLayer: document.querySelector('.npv') === window.__npv,
+      samePage: document.querySelector('.np-page') === window.__page,
+      scenes: document.querySelectorAll('.npv-scene').length,
+      chip: (document.querySelector('.np-chip-bpm') || {}).textContent
+    }));
+    assert(after.sameLayer && after.samePage, 'redrawn: ' + JSON.stringify(after));
+    assert(after.scenes === 2, 'the new look fades over the old: ' + after.scenes);
+    assert(after.chip === '70 BPM', 'chip: ' + after.chip);
+    await sleep(1700);
+    assert((await s.page.evaluate(() => document.querySelectorAll('.npv-scene').length)) === 1, 'the old look is removed after the fade');
+    mock.vibes('ok', 0);
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+    await stopPi(fresh);
+  });
+
+  await check('visualizer: a calm and a fast song move differently, timed in beats, never faster than 2.5 pulses a second', async () => {
+    const seen = {};
+    for (const [n, name] of [[4, 'calm'], [0, 'upbeat'], [3, 'hard'], [2, 'moody']]) {
+      await playSong(pi, n);
+      const s = await open(pi, ONLY(3, 2), { query: '&viz=full' });
+      await waitTitle(s.page, mockSpotify.SONGS[n].name);
+      await openFull(s.page);
+      await until(() => s.page.evaluate(() => window.HUB_NP_VIZ.debug().tempo === window.HUB_NP_VIZ.debug().tempo && document.querySelectorAll('.npv-scene').length === 1 && window.HUB_NP_VIZ.debug().palette === 'art'), 5000, name + ': no scene');
+      seen[name] = { d: await s.page.evaluate(VIZ), a: await anims(s.page) };
+      assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+      await s.context.close();
+    }
+    const beat = (bpm) => 60000 / bpm;
+    const near = (a, b) => Math.abs(a - b) < 2;
+    // Calm: no rings, no pulse, slow glows on whole phrases.
+    assert(seen.calm.d.rings === 0 && seen.calm.d.bloom === 0, 'calm: ' + JSON.stringify(seen.calm.d));
+    assert(seen.calm.a.length === 3 && seen.calm.a.every((x) => /^npv-rise-/.test(x.name) && near(x.ms, 16 * beat(70))), 'calm glows: ' + JSON.stringify(seen.calm.a));
+    // Upbeat: a halo on every beat, rings every two beats.
+    const up = seen.upbeat.a;
+    assert(up.filter((x) => /npv-bloom/.test(x.cls)).every((x) => near(x.ms, beat(124))), 'upbeat halo: ' + JSON.stringify(up));
+    assert(up.filter((x) => /npv-ring/.test(x.cls)).length === 2 && up.filter((x) => /npv-ring/.test(x.cls)).every((x) => near(x.ms, 2 * 2 * beat(124))), 'upbeat rings: ' + JSON.stringify(up));
+    // Hard and fast (172 BPM): the halo on every second beat.
+    assert(seen.hard.a.filter((x) => /npv-bloom/.test(x.cls)).every((x) => near(x.ms, 2 * beat(172))) && seen.hard.d.bloom === 3, 'hard: ' + JSON.stringify(seen.hard));
+    // Moody: sinking glows, no rings.
+    assert(seen.moody.d.drift === 'sink' && seen.moody.d.rings === 0, 'moody: ' + JSON.stringify(seen.moody.d));
+    for (const k of Object.keys(seen)) {
+      assert(seen[k].a.every((x) => x.ms >= 400), k + ': something pulses faster than 2.5 a second');
+    }
+    console.log('     calm ' + JSON.stringify({ rings: seen.calm.d.rings, orbMs: seen.calm.d.orbMs }) + ', upbeat ' + JSON.stringify({ pulseMs: seen.upbeat.d.pulseMs, ringEvery: seen.upbeat.d.ringEvery }) + ', hard ' + JSON.stringify({ pulseMs: seen.hard.d.pulseMs }));
+  });
+
+  await check('visualizer: phases follow the song\'s position, and a seek realigns them', async () => {
+    await playSong(pi, 0);
+    mock.seek(60000);
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=full' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => document.querySelectorAll('.npv-scene').length === 1 && window.HUB_NP_VIZ.debug().palette === 'art'), 5000, 'scene');
+    // The halo's place in its cycle matches the song's place in its beat.
+    const phase = () => s.page.evaluate(() => {
+      const b = document.querySelector('.npv-scene:last-of-type .npv-bloom');
+      const a = b.getAnimations()[0];
+      const fill = document.querySelector('.np-elapsed').textContent;
+      return { t: a.currentTime % parseFloat(getComputedStyle(b).animationDuration) / 1000, ms: parseFloat(getComputedStyle(b).animationDuration) * 1000, fill: fill };
+    });
+    const p1 = await phase();
+    mock.seek(120000);
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    await until(async () => /^2:0\d$/.test((await phase()).fill), 5000, 'the seek did not arrive');
+    const want = await s.page.evaluate(() => {
+      // The song's position as the page counts it, in beats of 124 BPM.
+      const b = document.querySelector('.npv-scene:last-of-type .npv-bloom');
+      const a = b.getAnimations()[0];
+      return { cur: a.currentTime, delay: a.effect.getTiming().delay };
+    });
+    assert(want.delay < 0 && want.delay > -p1.ms, 'a negative delay inside one beat: ' + JSON.stringify(want));
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+  });
+
+  await check('visualizer: paused, it comes to rest (the beat fades, everything holds still); playing again, it moves', async () => {
+    await playSong(pi, 0);
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=full' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => document.querySelectorAll('.npv-scene').length === 1), 5000, 'scene');
+    mock.set('paused');
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    await until(async () => (await anims(s.page)).every((x) => x.state === 'paused'), 5000, 'it did not come to rest');
+    const beatOpacity = await s.page.evaluate(() => getComputedStyle(document.querySelector('.npv-scene:last-of-type .npv-beat')).opacity);
+    assert(parseFloat(beatOpacity) < 0.05, 'the beat faded out: ' + beatOpacity);
+    assert((await s.page.evaluate(() => document.querySelectorAll('.npv .npv-scene').length)) === 1, 'a still wash stays');
+    await shot(s.page, 'np-viz-paused.jpg');
+    mock.set('playing');
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    await until(async () => (await anims(s.page)).every((x) => x.state === 'running'), 5000, 'it did not move again');
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+  });
+
+  await check('visualizer: off by ?viz=off and by HUB_CONFIG; a still wash on the plainest motion setting', async () => {
+    await playSong(pi, 0);
+    const a = await open(pi, ONLY(3, 2), { query: '&viz=off' });
+    await waitTitle(a.page, 'Golden Hour Drive');
+    await openFull(a.page);
+    await sleep(800);
+    assert((await a.page.evaluate(() => document.querySelectorAll('.npv').length)) === 0, '?viz=off');
+    assert((await a.page.evaluate(() => document.querySelectorAll('.np-chip-bpm').length)) === 0, 'no tempo chip either');
+    await a.context.close();
+    const b = await open(pi, ONLY(3, 2), { config: 'HUB_CONFIG.widgets.nowplaying = { visualizer: false };', motion: 'push' });
+    await waitTitle(b.page, 'Golden Hour Drive');
+    await openFull(b.page);
+    await sleep(800);
+    assert((await b.page.evaluate(() => document.querySelectorAll('.npv').length)) === 0, 'config off');
+    assert((await b.page.evaluate(() => window.HUB_NP_VIZ.status())) === 'off (config)', await b.page.evaluate(() => window.HUB_NP_VIZ.status()));
+    await b.context.close();
+    // The tests' own motion=fade: the still wash, nothing animated.
+    const c = await open(pi, ONLY(3, 2));
+    await waitTitle(c.page, 'Golden Hour Drive');
+    await openFull(c.page);
+    await until(() => c.page.evaluate(() => document.querySelectorAll('.npv-scene').length === 1), 5000, 'no wash');
+    const d = await c.page.evaluate(VIZ);
+    assert(d.level === 'wash' && d.source === 'motion', JSON.stringify(d));
+    assert((await anims(c.page)).length === 0, 'nothing moves in the still wash');
+    assert((await c.page.evaluate(() => document.querySelectorAll('.npv-ring, .npv-bloom').length)) === 0, 'no rings');
+    await c.context.close();
+  });
+
+  await check('visualizer: the mood\'s colors when the picture cannot be read; the page is unharmed', async () => {
+    await playSong(pi, 2);
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=full', unreadableArt: true });
+    await waitTitle(s.page, 'Paper Moons');
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => document.querySelectorAll('.npv-scene').length >= 1), 5000, 'no scene');
+    await sleep(600);
+    const d = await s.page.evaluate(VIZ);
+    assert(d.palette === 'mood' && /not readable|did not load/.test(d.problem), JSON.stringify(d));
+    assert((await s.page.evaluate(() => document.querySelector('.np-page .np-title').textContent)) === 'Paper Moons', 'the page is there');
+    // The browser itself reports the refused picture; nothing else may complain.
+    const others = s.errors.filter((e) => !/CORS|Access-Control/.test(e));
+    assert(others.length === 0, 'page errors: ' + others.join(' | '));
+    await s.context.close();
+  });
+
+  await check('visualizer: closing leaves nothing behind (no layer, no timer); a new song cross-fades', async () => {
+    await playSong(pi, 0);
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=full' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => document.querySelectorAll('.npv-scene').length === 1), 5000, 'scene');
+    mock.play(4);
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    await until(() => s.page.evaluate(() => window.HUB_NP_VIZ.debug().id === 'mock0005'), 6000, 'the new song');
+    assert((await s.page.evaluate(() => document.querySelectorAll('.npv-scene').length)) === 2, 'two looks while cross-fading');
+    await sleep(300);
+    await s.page.keyboard.press('Escape');
+    await until(() => s.page.evaluate(() => window.HUB_TEST.mode() === 'panel' && !window.HUB_TEST.busy()), 4000, 'back to the page');
+    await closePage(s.page);
+    const left = await s.page.evaluate(() => ({ n: document.querySelectorAll('.npv, .npv-scene').length, d: window.HUB_NP_VIZ.debug() }));
+    assert(left.n === 0 && left.d.timers === 0 && !left.d.shown, JSON.stringify(left));
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+  });
+
+  await check('visualizer: only transform and opacity animate; no filters, blur or blend modes', async () => {
+    await playSong(pi, 0);
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=full' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => document.querySelectorAll('.npv-scene').length === 1), 5000, 'scene');
+    const r = await s.page.evaluate(() => {
+      const bad = [];
+      let frames = 0;
+      for (const sheet of Array.from(document.styleSheets)) {
+        let rules;
+        try { rules = sheet.cssRules; } catch (e) { continue; }
+        for (const rule of Array.from(rules)) {
+          if (rule.type !== CSSRule.KEYFRAMES_RULE || !/^npv-/.test(rule.name)) continue;
+          for (const kf of Array.from(rule.cssRules)) {
+            frames++;
+            for (let i = 0; i < kf.style.length; i++) {
+              const p = kf.style[i];
+              if (window.HUB_NP_VIZ.PROPERTIES.indexOf(p) < 0 && p !== '-webkit-transform') bad.push(rule.name + ': ' + p);
+            }
+          }
+        }
+      }
+      document.querySelectorAll('.npv, .npv *').forEach((e) => {
+        const cs = getComputedStyle(e);
+        if (cs.filter !== 'none' || (cs.backdropFilter && cs.backdropFilter !== 'none') || cs.mixBlendMode !== 'normal' || cs.boxShadow !== 'none') bad.push('effect on ' + e.className);
+        const tp = cs.transitionProperty.split(',').map((x) => x.trim());
+        if (tp.some((x) => x !== 'all' && x !== 'opacity') || (tp.indexOf('all') >= 0 && parseFloat(cs.transitionDuration) > 0)) bad.push('transition on ' + e.className + ': ' + cs.transitionProperty);
+        if (cs.animationName !== 'none' && !/^npv-/.test(cs.animationName)) bad.push('animation ' + cs.animationName);
+      });
+      return { bad: bad, frames: frames };
+    });
+    assert(r.frames > 30, 'keyframes found: ' + r.frames);
+    assert(!r.bad.length, r.bad.join('; '));
+    await s.context.close();
+  });
+
+  await check('visualizer: a frame-rate check after it starts, kept per build; two stalls step it down; the About row says so', async () => {
+    await playSong(pi, 0);
+    const s = await open(pi, ONLY(3, 2), { motion: 'push' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    await openFull(s.page);
+    // Kept once it has settled (one poor window measures again before deciding).
+    await until(() => s.page.evaluate(() => !!localStorage.getItem('homeHub.npViz')), 20000, 'never measured');
+    // Headless Chromium draws without a graphics chip, so whether this
+    // machine keeps "full" says nothing about the TV; what is kept must match.
+    const kept = await s.page.evaluate(() => ({ d: window.HUB_NP_VIZ.debug(), ls: JSON.parse(localStorage.getItem('homeHub.npViz')), build: window.HUB_BUILD, attr: document.querySelector('.npv').getAttribute('data-viz') }));
+    assert(kept.ls && kept.ls.build === kept.build && kept.ls.level === kept.d.level && kept.ls.fps === kept.d.fps, JSON.stringify(kept));
+    assert(kept.attr === kept.d.level + ' ' + kept.d.fps + 'fps', kept.attr);
+    console.log('     headless check: ' + kept.d.fps + ' fps, level ' + kept.d.level);
+    await s.page.keyboard.press('Escape');
+    await until(() => s.page.evaluate(() => window.HUB_TEST.mode() === 'panel' && !window.HUB_TEST.busy()), 4000, 'page');
+    await closePage(s.page);
+    const rows = await s.page.evaluate(() => { window.HUB_TEST.about.open(); const r = window.HUB_TEST.about.rows(); window.HUB_TEST.about.close(); return r; });
+    const row = rows.filter((x) => x.label === 'Visualizer')[0];
+    const name = { full: 'rings \\+ glows', glow: 'glows', wash: 'still wash' }[kept.d.level];
+    assert(row && row.group === 'Now Playing' && new RegExp('^' + name + ', \\d+ fps, 124 BPM from features$').test(row.value), 'About: ' + JSON.stringify(row));
+    await s.context.close();
+    // A fresh TV that keeps stalling while it is measured: one step down.
+    const t = await open(pi, ONLY(3, 2), { motion: 'push' });
+    await waitTitle(t.page, 'Golden Hour Drive');
+    await t.page.evaluate(() => {
+      const until = Date.now() + 12000;
+      const iv = setInterval(() => { const end = Date.now() + 400; while (Date.now() < end) { /* a stall */ } if (Date.now() > until) clearInterval(iv); }, 900);
+    });
+    await openFull(t.page);
+    await until(() => t.page.evaluate(() => window.HUB_NP_VIZ.debug().level === 'glow'), 14000, 'it did not step down');
+    const after = await t.page.evaluate(() => ({ d: window.HUB_NP_VIZ.debug(), ls: JSON.parse(localStorage.getItem('homeHub.npViz')) }));
+    assert(after.ls.level === 'glow' && after.d.rings === 0 && after.d.bloom === 0, JSON.stringify(after));
+    // An answer kept by another build is not used: this one measures afresh.
+    await t.page.evaluate(() => localStorage.setItem('homeHub.npViz', JSON.stringify({ build: 'v0.0.1', level: 'wash', fps: 9, settled: true })));
+    await t.page.keyboard.press('Escape');
+    await until(() => t.page.evaluate(() => window.HUB_TEST.mode() === 'panel' && !window.HUB_TEST.busy()), 4000, 'page');
+    await t.page.keyboard.press('Enter');
+    await until(() => t.page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() && document.querySelectorAll('.npv-scene').length >= 1), 4000, 'full again');
+    assert((await t.page.evaluate(() => window.HUB_NP_VIZ.debug().level)) === 'full', 'an old build\'s answer is not used');
+    await t.context.close();
+  });
+
+  await check('rough smoothness with the CPU slowed 6x (desktop Chromium: a sanity check, not the TV)', async () => {
+    const out = [];
+    for (const [n, name] of [[4, 'calm'], [0, 'upbeat'], [3, 'hard']]) {
+      await playSong(pi, n);
+      const s = await open(pi, ONLY(3, 2), { query: '&viz=full' });
+      await waitTitle(s.page, mockSpotify.SONGS[n].name);
+      await openFull(s.page);
+      await until(() => s.page.evaluate(() => document.querySelectorAll('.npv-scene').length === 1 && window.HUB_NP_VIZ.debug().palette === 'art'), 5000, 'scene');
+      await sleep(1600);
+      const cdp = await s.context.newCDPSession(s.page);
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 6 });
+      await sleep(300);
+      const m = await s.page.evaluate(() => new Promise((resolve) => {
+        const times = [];
+        function f(t) { times.push(t); if (t - times[0] < 3000) requestAnimationFrame(f); else done(); }
+        function done() {
+          let worst = 0;
+          for (let i = 1; i < times.length; i++) worst = Math.max(worst, times[i] - times[i - 1]);
+          resolve({ fps: Math.round((times.length - 1) * 1000 / (times[times.length - 1] - times[0])), worst: Math.round(worst) });
+        }
+        requestAnimationFrame(f);
+      }));
+      await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      out.push(name + ' ' + m.fps + ' fps (longest frame ' + m.worst + ' ms)');
+      await s.context.close();
+    }
+    console.log('     6x slower CPU: ' + out.join(', '));
+  });
+
+  await check('every file in app/ is plain ES5', () => {
+    let acorn = null;
+    for (const p of ['acorn', '/opt/node-tools/node_modules/acorn', '/usr/local/lib/node_modules_global/acorn']) {
+      try { acorn = require(p); break; } catch (e) { /* next */ }
+    }
+    const files = [];
+    (function walk(d) {
+      fs.readdirSync(d, { withFileTypes: true }).forEach((e) => {
+        const f = path.join(d, e.name);
+        if (e.isDirectory()) walk(f); else if (/\.js$/.test(e.name)) files.push(f);
+      });
+    })(path.join(ROOT, 'app'));
+    assert(files.some((f) => /nowplaying-viz\.js$/.test(f)), 'the visualizer file is there');
+    const bad = [];
+    files.forEach((f) => {
+      const text = fs.readFileSync(f, 'utf8');
+      if (acorn) {
+        try { acorn.parse(text, { ecmaVersion: 5 }); } catch (e) { bad.push(path.relative(ROOT, f) + ': ' + e.message); }
+      } else if (/(^|[^.\w])(let|const)\s|=>|`/.test(text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ''))) {
+        bad.push(path.relative(ROOT, f) + ': ES2015 syntax');
+      }
+    });
+    if (!acorn) console.log('     (no ES5 parser found here: a simpler check was used)');
+    assert(!bad.length, bad.join(' | '));
+    const html = fs.readFileSync(path.join(ROOT, 'app', 'hub.html'), 'utf8');
+    assert(html.indexOf('widgets/nowplaying-viz.js') >= 0 && html.indexOf('widgets/nowplaying-viz.js') < html.indexOf('widgets/nowplaying.js'), 'hub.html loads the visualizer before the widget');
+  });
+
+  await stopPi(pi);
+}
+
+main().then(() => vizChecks()).catch((e) => {
   results.push(false);
   console.log('FAIL  the test itself: ' + (e && e.stack));
 }).then(async () => {
