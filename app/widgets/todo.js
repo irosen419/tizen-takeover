@@ -44,7 +44,7 @@
     sections: { now: 'Now', next: 'Next', waiting: 'Waiting on', done: 'Done today' },
     moveTo: { now: 'To Now', next: 'To Next', waiting: 'To Waiting on' },
     remove: 'Remove',
-    removeArmed: 'Press again',
+    removeArmed: 'Confirm',
     addPlaceholder: 'Add an item',
     hintOk: 'OK to type',
     hintTyping: 'Done or Enter adds it',

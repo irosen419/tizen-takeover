@@ -7,6 +7,7 @@
 .todo-panel,
 .todo-error {
   --todo-warn: #ffb36b;
+  --todo-danger: #d93036;
   --todo-hair: rgba(255, 255, 255, 0.12);
 }
 
@@ -335,11 +336,21 @@
 .todo-main.is-focused .todo-tick { border-color: var(--text); }
 .todo-main.is-pressed { opacity: 0.75; }
 
-/* Done: tick filled, title dim and struck through. */
-.todo-row.is-done .todo-tick { background: var(--text-2); border-color: var(--text-2); }
+/* Done: a green tick with a white check inside the white outline, the title
+   and its strikethrough both gray. */
+.todo-row.is-done .todo-tick {
+  color: #fff;
+  border-color: #fff;
+  background: #2fae62;
+  background: -webkit-linear-gradient(315deg, #55d88a 0%, #1f9a53 100%);
+  background: linear-gradient(135deg, #55d88a 0%, #1f9a53 100%);
+}
 .todo-row.is-done .todo-tick svg { display: block; }
-.todo-row.is-done .todo-title { color: var(--text-3); text-decoration: line-through; }
-.todo-row.is-done .todo-main.is-focused .todo-tick { background: var(--text); border-color: var(--text); }
+.todo-row.is-done .todo-title {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.todo-row.is-done .todo-main.is-focused .todo-tick { border-color: #fff; }
 .todo-row.is-done .todo-main.is-focused .todo-title { color: var(--text-2); }
 
 /* Actions: two round icon buttons. Every row keeps room for both (a done
@@ -385,7 +396,11 @@
 
 /* The label: a pill anchored to the button's right edge (the -0.16rem is
    --edge, so it covers the border) that grows leftward over the row while
-   the button has focus. The icon stays on top at its right end. */
+   the button has focus. The icon stays on top at its right end. The coloured
+   shape is ::before so it can grow with a transform from the right edge
+   while the words fade in over it. Amber while focused, red once Remove is
+   waiting for its Confirm. Darker at the left and right edges, brighter in
+   the middle, inside a white outline. */
 .todo-pill {
   display: none;
   position: absolute;
@@ -394,26 +409,88 @@
   bottom: -0.16rem;
   z-index: 0;
   align-items: center;
-  padding: 0 2.55rem 0 1rem;
+  padding: 0 2.38rem 0 1rem;
   border-radius: 1.3rem;
-  background: #fff;
-  color: #050506;
+  color: #1a1006;
   font-size: 0.9rem;
   line-height: 1.3;
   white-space: nowrap;
 }
-.todo-act.is-focused { z-index: 2; background: #fff; border-color: #fff; color: #050506; }
+.todo-pill::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  border-radius: 1.3rem;
+  border: 0.14rem solid #fff;
+  background: #ffbd6b;
+  background: -webkit-linear-gradient(left, #b8721f 0%, #ffc47a 50%, #b8721f 100%);
+  background: linear-gradient(to right, #b8721f 0%, #ffc47a 50%, #b8721f 100%);
+  -webkit-transform-origin: 100% 50%;
+  transform-origin: 100% 50%;
+  -webkit-animation: todo-grow 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: todo-grow 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.todo-pill-label,
+.todo-pill-armed {
+  -webkit-animation: todo-words 200ms ease-out 70ms both;
+  animation: todo-words 200ms ease-out 70ms both;
+}
+.todo-act.is-focused { z-index: 2; background: transparent; border-color: transparent; color: #1a1006; }
 .todo-act.is-focused .todo-pill { display: flex; }
 .todo-pill-armed { display: none; }
+/* Remove while focused: a light rose with dark words, same edge-to-centre
+   shading. It turns red when it waits for its Confirm. */
+.todo-del.is-focused,
+.todo-del.is-focused .todo-pill { color: #4a1219; }
+.todo-del.is-focused .todo-pill::before {
+  background: #f6d3d7;
+  background: -webkit-linear-gradient(left, #cf98a0 0%, #fbdfe2 50%, #cf98a0 100%);
+  background: linear-gradient(to right, #cf98a0 0%, #fbdfe2 50%, #cf98a0 100%);
+}
 .todo-del.is-armed .todo-pill-label { display: none; }
 .todo-del.is-armed .todo-pill-armed { display: inline; }
 .todo-del.is-armed,
-.todo-del.is-armed .todo-pill { background: var(--todo-warn); border-color: var(--todo-warn); color: #1a1006; }
+.todo-del.is-armed .todo-pill { color: #fff; font-weight: 700; }
+.todo-del.is-armed .todo-pill::before {
+  background: #d93036;
+  background: -webkit-linear-gradient(left, #8e1a20 0%, #e8484d 50%, #8e1a20 100%);
+  background: linear-gradient(to right, #8e1a20 0%, #e8484d 50%, #8e1a20 100%);
+  -webkit-animation: todo-flip 160ms ease-out;
+  animation: todo-flip 160ms ease-out;
+}
+
+@-webkit-keyframes todo-grow {
+  from { -webkit-transform: scaleX(0.2); transform: scaleX(0.2); opacity: 0.6; }
+  to { -webkit-transform: scaleX(1); transform: scaleX(1); opacity: 1; }
+}
+@keyframes todo-grow {
+  from { transform: scaleX(0.2); opacity: 0.6; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+@-webkit-keyframes todo-words { from { opacity: 0; } to { opacity: 1; } }
+@keyframes todo-words { from { opacity: 0; } to { opacity: 1; } }
+@-webkit-keyframes todo-flip {
+  from { opacity: 0.55; -webkit-transform: scaleY(0.92); transform: scaleY(0.92); }
+  to { opacity: 1; -webkit-transform: scaleY(1); transform: scaleY(1); }
+}
+@keyframes todo-flip {
+  from { opacity: 0.55; transform: scaleY(0.92); }
+  to { opacity: 1; transform: scaleY(1); }
+}
+/* Motion off for anyone who asks (older browsers ignore this and animate). */
+@media (prefers-reduced-motion: reduce) {
+  .todo-pill::before,
+  .todo-pill-label,
+  .todo-pill-armed,
+  .todo-row.is-flash .todo-tick { -webkit-animation: none; animation: none; }
+}
 
 /* A tiny pop on a tick that was just ticked or an item just added. */
-@media (prefers-reduced-motion: no-preference) {
-  .todo-row.is-flash .todo-tick { -webkit-animation: todo-pop 140ms ease-out; animation: todo-pop 140ms ease-out; }
-}
+.todo-row.is-flash .todo-tick { -webkit-animation: todo-pop 160ms ease-out; animation: todo-pop 160ms ease-out; }
 @-webkit-keyframes todo-pop {
   from { -webkit-transform: scale(0.6); transform: scale(0.6); opacity: 0.4; }
   to { -webkit-transform: scale(1); transform: scale(1); opacity: 1; }
