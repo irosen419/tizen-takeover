@@ -31,6 +31,11 @@
  * next song). Modes: playing, paused, idle, long (long Spanish text),
  * episode, advert, down, ratelimit, forbidden, revoked, plus signin (set up,
  * not signed in) and off (no Spotify settings). HUB_SPOTIFY=off leaves it out.
+ * ?spotify=next goes through seven songs, each with its own vibe for the
+ * full screen visualizer (upbeat, calm and acoustic, moody, hard and fast,
+ * calm again, one known only by its genres, one with nothing known); the
+ * same stand-in plays ReccoBeats and answers 1.2 s late, as the real one
+ * may. VIBE_MODE=MODE or ?vibe=MODE: ok, empty, garbage, slow, ratelimit, down.
  */
 var http = require('http');
 var fs = require('fs');
@@ -51,6 +56,7 @@ var calendarMode = process.env.CALENDAR_MODE || 'sample';
 var calendarFeeds = null;
 var spotifyMode = process.env.SPOTIFY_MODE || 'playing';
 var mockSpotify = null;
+var vibeMode = process.env.VIBE_MODE || 'ok';
 
 // Same four addresses as service.js, each with the sample file that stands in for it.
 var FETCH_ALLOWED = [
@@ -232,6 +238,13 @@ var service = http.createServer(function (req, res) {
       log('Spotify mode: ' + sp);
       liveServer.spotify.poll();
     }
+    if (q.vibe !== undefined) {
+      if (!mockSpotify || !mockSpotify.vibes(String(q.vibe))) {
+        return send(res, 400, { ok: false, error: mockSpotify ? 'unknown vibe mode' : 'no sample Spotify running', modes: mockSpotify ? mockSpotify.vibeModes : [] });
+      }
+      vibeMode = String(q.vibe);
+      log('Vibe mode: ' + vibeMode + ' (songs already looked up keep their vibe until the preview restarts)');
+    }
     if (q.calendar !== undefined) {
       if (!calendarFeeds || !calendarFeeds.setMode(String(q.calendar))) {
         return send(res, 400, { ok: false, error: calendarFeeds ? 'unknown calendar mode' : 'no sample calendars running' });
@@ -240,7 +253,7 @@ var service = http.createServer(function (req, res) {
       log('calendar mode: ' + calendarMode + ' (asking the hub server to read again)');
       refreshCalendars();
     }
-    return send(res, 200, { ok: true, weather: weatherMode, calendar: calendarMode, spotify: spotifyMode });
+    return send(res, 200, { ok: true, weather: weatherMode, calendar: calendarMode, spotify: spotifyMode, vibe: vibeMode });
   }
   send(res, 404, { ok: false, error: 'not found' });
 });
@@ -268,8 +281,9 @@ var liveServer = null;
       return null;
     });
   try { fs.unlinkSync(path.join(LIVE_DATA_DIR, 'spotify.json')); } catch (e) { /* none */ }
+  try { fs.unlinkSync(path.join(LIVE_DATA_DIR, 'vibes.json')); } catch (e) { /* none */ }
   var spotifyUp = process.env.HUB_SPOTIFY === 'off' || spotifyMode === 'off' ? Promise.resolve(null) :
-    require('./mock-spotify').start({ mode: spotifyMode === 'signin' ? 'playing' : spotifyMode }).catch(function () { return null; });
+    require('./mock-spotify').start({ mode: spotifyMode === 'signin' ? 'playing' : spotifyMode, vibeMode: vibeMode, vibeDelayMs: 1200 }).catch(function () { return null; });
   Promise.all([feeds, spotifyUp]).then(function (both) {
     calendarFeeds = both[0];
     mockSpotify = both[1];
@@ -290,7 +304,7 @@ var liveServer = null;
         SPOTIFY_CLIENT_ID: mockSpotify.clientId, SPOTIFY_CLIENT_SECRET: mockSpotify.clientSecret,
         SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + LIVE_PORT + '/spotify/callback'
       } : {},
-      spotify: { accounts: mockSpotify && mockSpotify.url, api: mockSpotify && mockSpotify.url, allowHttp: true,
+      spotify: { accounts: mockSpotify && mockSpotify.url, api: mockSpotify && mockSpotify.url, vibe: mockSpotify && mockSpotify.url, allowHttp: true,
         playMs: 1500, idleMs: 1500, awayMs: 1500 }
     });
     signInToMock();

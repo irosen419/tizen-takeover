@@ -75,7 +75,7 @@ async function startPi(env) {
       SPOTIFY_CLIENT_ID: mock.clientId, SPOTIFY_CLIENT_SECRET: mock.clientSecret,
       SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + port + '/spotify/callback'
     },
-    spotify: { accounts: mock.url, api: mock.url, allowHttp: true, playMs: 400, idleMs: 400, awayMs: 400 }
+    spotify: { accounts: mock.url, api: mock.url, vibe: mock.url, allowHttp: true, playMs: 400, idleMs: 400, awayMs: 400 }
   });
   await h.ready;
   const pi = { h: h, port: port, url: 'http://127.0.0.1:' + port, dir: dir };
