@@ -52,6 +52,7 @@ const MAX_DATA_BYTES = 48 * 1024;
 const MAX_MESSAGE = 8000;
 const MAX_TEXT = 140;
 const MAX_TITLE = 80;
+const MAX_NOTES = 300;
 const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAX_DEPTH = 8;
 
@@ -333,6 +334,13 @@ const V = {
     if (typeof v !== 'string' || list.indexOf(v.trim()) < 0) throw argError('"' + name + '" must be one of: ' + list.join(', '));
     return v.trim();
   },
+  // Like text, but empty is allowed (it means "no notes").
+  notes: (max) => (name, v) => {
+    if (typeof v !== 'string') throw argError('"' + name + '" must be text');
+    const t = v.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (Array.from(t).length > max) throw argError('"' + name + '" is longer than ' + max + ' characters');
+    return t;
+  },
   date: () => (name, v) => {
     if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) throw argError('"' + name + '" must look like 2026-12-31');
     return v.trim();
@@ -420,11 +428,15 @@ const COMMANDS = {
     run: sendCommand('say', (a) => (a.seconds !== undefined ? { text: a.text, seconds: a.seconds } : { text: a.text }))
   },
   'todo.add': {
-    args: { title: [V.text(MAX_TITLE), true], section: [V.oneOf(Object.keys(hubctl.SECTION_NAMES)), false], due: [V.date(), false] },
+    args: {
+      title: [V.text(MAX_TITLE), true], section: [V.oneOf(Object.keys(hubctl.SECTION_NAMES)), false], due: [V.date(), false],
+      notes: [V.notes(MAX_NOTES), false]
+    },
     run: async (a, ctx) => {
       const body = { title: a.title };
       if (a.section !== undefined) body.section = a.section;
       if (a.due !== undefined) body.due = a.due;
+      if (a.notes) body.notes = a.notes;
       const r = await ctx.call('POST', '/api/todo', body);
       return { message: hubctl.todoAddText(r), data: { item: r.item } };
     }
@@ -436,6 +448,7 @@ const COMMANDS = {
       const items = (r.items || []).map((i) => {
         const o = { id: i.id, title: i.title, section: i.section, done: i.done };
         if (i.due) o.due = i.due;
+        if (i.notes) o.notes = i.notes;
         return o;
       });
       return { message: lines(hubctl.todoListLines(r.items || [])), data: { items: items } };
@@ -443,6 +456,25 @@ const COMMANDS = {
   },
   'todo.done': { args: { id: [V.text(40), false], title: [V.text(MAX_TITLE), false] }, check: oneOfIdOrTitle, run: todoChange('done') },
   'todo.remove': { args: { id: [V.text(40), false], title: [V.text(MAX_TITLE), false] }, check: oneOfIdOrTitle, run: todoChange('remove') },
+  // "notes": "" or null removes the notes.
+  'todo.notes': {
+    args: { id: [V.text(40), false], title: [V.text(MAX_TITLE), false], notes: [V.notes(MAX_NOTES), true, true] },
+    check: oneOfIdOrTitle,
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/todo');
+      let item;
+      try {
+        item = hubctl.matchItem(r.items || [], a.id !== undefined ? a.id : a.title);
+      } catch (e) {
+        if (e instanceof hubctl.Stop) return { ok: false, message: e.message };
+        throw e;
+      }
+      const after = await hubctl.setNotes(ctx.call, item, a.notes);
+      const data = { id: after.id, title: after.title };
+      if (after.notes) data.notes = after.notes;
+      return { message: hubctl.todoNotesText(after), data: data };
+    }
+  },
   'calendar.status': {
     args: {},
     run: async (a, ctx) => {

@@ -110,7 +110,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.19.1';
+  var BUILD = 'v0.20.0';
   var SERVICE = 'http://127.0.0.1:8095';
   // IME_DONE and IME_CANCEL: Done and Cancel on Samsung's on-screen keyboard.
   var KEY = { LEFT: 37, UP: 38, RIGHT: 39, DOWN: 40, ENTER: 13, BACK: 10009, ESC: 27, BACKSPACE: 8,

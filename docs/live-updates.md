@@ -209,7 +209,7 @@ Control API: `GET /api/spotify` (`{ ok, spotify: { configured, signedIn, user, s
 - `rev` is one counter for the whole server. Every change adds 1 and stamps the changed resource.
 - `epoch` is made once with the file. A new epoch means "forget what you knew, take everything".
 - The resources are `todo`, `calendar`, `layout` and `awws`. A state file from before a resource existed loads fine: the missing one starts empty.
-- A to-do item: `{ id, title, section: 'now'|'next'|'waiting', done, doneAt, createdAt, due? }`, the same shape the TV already saves. Order in `items` is display order. At most 200 items; title 1 to 80 characters; id up to 40 of `A-Z a-z 0-9 _ -`. Done items ticked more than 48 hours ago are dropped on the next write.
+- A to-do item: `{ id, title, section: 'now'|'next'|'waiting', done, doneAt, createdAt, due?, notes? }`, the same shape the TV already saves. Order in `items` is display order. At most 200 items; title 1 to 80 characters; `notes` plain text of 1 to 300 characters (control characters and runs of spaces become one space; empty or `null` removes the field, so an item never holds empty notes); id up to 40 of `A-Z a-z 0-9 _ -`; one item at most 2000 bytes as JSON. Done items ticked more than 48 hours ago are dropped on the next write.
 
 ### Screen API (no token; private addresses only, or `HUB_TV_IPS`)
 
@@ -218,7 +218,7 @@ Refusals are `403 { ok: false, error: 'screen not allowed' }`.
 `GET /live/state`
 
 ```json
-{ "ok": true, "v": 1, "server": "0.2.0", "epoch": "k3v9x2", "rev": 57,
+{ "ok": true, "v": 1, "server": "0.3.0", "epoch": "k3v9x2", "rev": 57,
   "resources": { "todo": { "rev": 57, "data": { "items": [] } } } }
 ```
 
@@ -243,7 +243,7 @@ Refusals are `403 { ok: false, error: 'screen not allowed' }`.
 - `{ "op": "set", "id": "...", "fields": { ... }, "to": "end" }`. `to` is optional and moves the item to the end. An unknown id is ignored.
 - `{ "op": "remove", "id": "..." }`.
 
-Ops are applied in order and the last one to arrive wins.
+Ops are applied in order and the last one to arrive wins. `set` merges `fields` into the item, so a change from the TV (`done`, `section`) keeps fields it did not send, `notes` among them; `{ "notes": null }` or `""` removes the notes.
 
 ### Control API (token; both doors)
 
@@ -253,7 +253,7 @@ Ops are applied in order and the last one to arrive wins.
 |---|---|---|
 | `POST /api/command` | `{ type, data }` | `{ ok, delivered }`, the number of screens that got it |
 | `GET /api/todo` | | `{ ok, rev, items }` |
-| `POST /api/todo` | `{ title, section?, due? }` | `{ ok, rev, item }` |
+| `POST /api/todo` | `{ title, section?, due?, notes? }` | `{ ok, rev, item }` |
 | `POST /api/todo/ops` | `{ ops }` | `{ ok, rev, items }` |
 | `GET /api/layout` | | `{ ok, rev, layout }` (`null` = the hub's built-in layout) |
 | `POST /api/layout` | `{ layout: [...] \| null }` | `{ ok, rev, changed, layout }`; see "Tile layout from the Pi" |

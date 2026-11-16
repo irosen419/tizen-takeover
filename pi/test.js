@@ -211,7 +211,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.2.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.3.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -232,7 +232,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.2.0');
+    assert.strictEqual(r.json.server, '0.3.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -358,13 +358,48 @@ async function main() {
     assert.ok(!('due' in it));
   });
 
+  await check('to-do notes: optional, tidied, capped at 300, empty or null removes them', async () => {
+    const plain = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'No notes' } });
+    assert.ok(!('notes' in plain.json.item));
+    const blank = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Blank notes', notes: '   ' } });
+    assert.ok(!('notes' in blank.json.item));
+    const es = 'Llevar la mochila con las acuarelas, ¡no olvidar el cuaderno de dibujo! Ñandú, pingüino y camión. ' + 'á'.repeat(202);
+    assert.strictEqual(Array.from(es).length, 300);
+    const a = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Con notas', notes: '  Llevar la mochila\n\t con   las acuarelas.  ' } });
+    assert.strictEqual(a.status, 200, a.text);
+    assert.strictEqual(a.json.item.notes, 'Llevar la mochila con las acuarelas.');
+    const full = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'x'.repeat(80), notes: es } });
+    assert.strictEqual(full.status, 200, full.text);
+    assert.strictEqual(full.json.item.notes, es);
+    const long = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Too long', notes: es + 'x' } });
+    assert.strictEqual(long.status, 400);
+    assert.ok(/notes are longer than 300/.test(long.json.error), long.json.error);
+    const notText = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Bad', notes: ['a'] } });
+    assert.strictEqual(notText.status, 400);
+    const id = a.json.item.id;
+    // A change from the TV (done, section) keeps the notes.
+    let r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: id, fields: { done: true, doneAt: Date.now() } }, { op: 'set', id: id, fields: { section: 'next' }, to: 'end' }] } });
+    let it = r.json.items.find((i) => i.id === id);
+    assert.strictEqual(it.notes, a.json.item.notes);
+    r = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'set', id: id, fields: { notes: 'Short' } }] } });
+    assert.strictEqual(r.json.items.find((i) => i.id === id).notes, 'Short');
+    r = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'set', id: id, fields: { notes: '' } }] } });
+    assert.ok(!('notes' in r.json.items.find((i) => i.id === id)));
+    await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'set', id: id, fields: { notes: 'Again' } }] } });
+    r = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'set', id: id, fields: { notes: null } }] } });
+    assert.ok(!('notes' in r.json.items.find((i) => i.id === id)));
+    await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [plain, blank, a, full].map((x) => ({ op: 'remove', id: x.json.item.id })) } });
+  });
+
   await check('to-do ops: bad ops are 400 and change nothing', async () => {
     const before = (await request(P, 'GET', '/api/todo', { token: TOKEN })).json;
     const bads = [
       { ops: 'nope' },
       { ops: [{ op: 'add', item: { id: 'ok1', title: 'fine' } }, { op: 'jump' }] },
       { ops: [{ op: 'add', item: { id: 'bad id!', title: 'x' } }] },
-      { ops: [{ op: 'add', item: { id: 'big', title: 'x', note: 'y'.repeat(480) } }] },
+      { ops: [{ op: 'add', item: { id: 'big', title: 'x', note: 'y'.repeat(1980) } }] },
+      { ops: [{ op: 'add', item: { id: 'n1', title: 'x', notes: 'y'.repeat(301) } }] },
+      { ops: [{ op: 'add', item: { id: 'n2', title: 'x', notes: 42 } }] },
       { ops: [{ op: 'add', item: { id: 'ok2', title: 'x' }, at: 'middle' }] },
       { ops: [{ op: 'set', id: 'a1', fields: { done: 'yes' } }] },
       { ops: [{ op: 'set', id: 'a1', fields: {}, to: 'top' }] },
@@ -375,8 +410,8 @@ async function main() {
       assert.strictEqual(r.status, 400, JSON.stringify(body).slice(0, 80));
       assert.ok(r.json.error);
     }
-    const big = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'add', item: { id: 'big', title: 'x', note: 'y'.repeat(480) } }] } });
-    assert.ok(/500 bytes/.test(big.json.error), big.json.error);
+    const big = await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'add', item: { id: 'big', title: 'x', note: 'y'.repeat(1980) } }] } });
+    assert.ok(/2000 bytes/.test(big.json.error), big.json.error);
     const after = (await request(P, 'GET', '/api/todo', { token: TOKEN })).json;
     assert.deepStrictEqual(after, before);
   });
@@ -419,7 +454,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.2.0');
+    assert.strictEqual(r.json.server, '0.3.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);

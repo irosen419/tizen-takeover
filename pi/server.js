@@ -55,7 +55,7 @@ const awws = require('./awws');
 const mailbox = require('./mailbox');
 const spotify = require('./spotify');
 
-const SERVER_VERSION = '0.2.0';
+const SERVER_VERSION = '0.3.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -68,8 +68,9 @@ const MAX_POLLS = 20;
 const MAX_COMMANDS = 20;
 const MAX_ITEMS = 200;
 const MAX_OPS = 100;
-const MAX_ITEM_BYTES = 500;
+const MAX_ITEM_BYTES = 2000; // room for full notes in any script
 const MAX_TITLE = 80;
+const MAX_NOTES = 300;
 const MAX_SAY = 140;
 const DONE_KEEP_MS = 48 * 60 * 60 * 1000;
 const SSE_MAX_BUFFER = 64 * 1024; // a screen this far behind is dropped
@@ -270,6 +271,16 @@ function normalizeItem(raw, now) {
     delete it.due;
   } else if (typeof it.due !== 'string' || !DUE_RE.test(it.due)) {
     throw bad('to-do due date must look like 2026-12-31');
+  }
+  // Optional notes: one paragraph of plain text. Empty or null removes them,
+  // so an item never carries empty notes.
+  if (it.notes === undefined || it.notes === null) {
+    delete it.notes;
+  } else {
+    if (typeof it.notes !== 'string') throw bad('to-do notes must be text');
+    it.notes = it.notes.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!it.notes) delete it.notes;
+    else if (Array.from(it.notes).length > MAX_NOTES) throw bad('to-do notes are longer than ' + MAX_NOTES + ' characters');
   }
   if (Buffer.byteLength(JSON.stringify(it)) > MAX_ITEM_BYTES) {
     throw bad('a to-do item is larger than ' + MAX_ITEM_BYTES + ' bytes');
@@ -1070,6 +1081,7 @@ function start(options) {
           if (!isObj(body)) throw bad('the body must be a JSON object');
           const raw = { id: newTodoId(), title: body.title, section: body.section, done: false, doneAt: null, createdAt: Date.now() };
           if (body.due !== undefined) raw.due = body.due;
+          if (body.notes !== undefined) raw.notes = body.notes;
           const item = normalizeItem(raw, Date.now());
           const items = purgeOld(todoItems(), Date.now());
           if (items.length >= MAX_ITEMS) throw bad('the to-do list is full (' + MAX_ITEMS + ' items)');
