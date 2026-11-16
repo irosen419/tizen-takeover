@@ -84,6 +84,14 @@
     return node.offsetHeight + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
   }
 
+  // Like outer(), but without the top margin: the page's foot has an auto
+  // one that stretches to fill the room, which is not space it needs.
+  function outerFoot(node) {
+    if (!node || node.offsetHeight === 0) return 0;
+    var cs = window.getComputedStyle(node);
+    return node.offsetHeight + (parseFloat(cs.marginBottom) || 0);
+  }
+
   function lineHeight(node) {
     return parseFloat(window.getComputedStyle(node).lineHeight) || 20;
   }
@@ -456,7 +464,7 @@
     if (page.artist) clamp(page.artist, 2);
     if (page.album) clamp(page.album, 1);
     var used = function () {
-      return outer(page.info.firstChild) + outer(page.title) + outer(page.artist) + outer(page.album) + outer(page.note) + outer(page.foot);
+      return outer(page.info.firstChild) + outer(page.title) + outer(page.artist) + outer(page.album) + outer(page.note) + outerFoot(page.foot);
     };
     if (used() > roomH && page.album) page.album.style.display = 'none';
     if (used() > roomH && page.artist) clamp(page.artist, 1);
