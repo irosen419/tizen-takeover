@@ -261,7 +261,7 @@ The sign-in is a long-lived key saved in `data/spotify.json` on the Pi (readable
 
 ### The song's vibe (for the visualizer)
 
-In full screen, Now Playing has a slow light show that moves with the song (see "Now Playing" in the main README). For that, the Pi looks up each new song's **vibe** once: its tempo, energy, mood, danceability and acousticness.
+In full screen, Now Playing has a classic-style visualizer that moves with the song (see "Now Playing" in the main README). For that, the Pi looks up each new song's **vibe** once: its tempo, energy, mood, danceability and acousticness.
 
 1. It asks [ReccoBeats](https://reccobeats.com), a free service with no sign-up: `GET https://api.reccobeats.com/v1/audio-features?ids=<the song's Spotify ID>`.
 2. If ReccoBeats doesn't know the song, it guesses from the first artist's genres, which it reads from Spotify with the sign-in it already has.

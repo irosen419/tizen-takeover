@@ -11,7 +11,7 @@ Out of the box:
 - **To-do:** a list kept on the TV. Add, tick off and move things with the remote.
 - **Weather:** the temperature, today's high and low and the chance of rain, then the next 12 hours and the week. It finds the TV's city by itself.
 - **Calendar:** today's agenda on the tile, then Day, Week and Month in the panel, from your Google calendars through the Pi.
-- **Now Playing:** what is playing on Spotify: the album picture, the song and the artist, and a thin line that fills as the song goes. Open it for a big picture, the album, the time and where it is playing. In full screen, soft colors from the album move with the song behind it. The Pi asks Spotify; set it up once with `./hub spotify login` (see [Now Playing](#now-playing)).
+- **Now Playing:** what is playing on Spotify: the album picture, the song and the artist, and a thin line that fills as the song goes. Open it for a big picture, the album, the time and where it is playing. In full screen, a classic-style visualizer in the album's colors fills the screen and the song moves to a small card in the corner. The Pi asks Spotify; set it up once with `./hub spotify login` (see [Now Playing](#now-playing)).
 - **A World Worth Saving:** the book project at a glance: the next school visit, this week, and the to-do board, from the Pi.
 - **Coming soon:** Ambiance and Mirror. These tiles hold their spot with a "Soon" tag until they're built.
 
@@ -104,9 +104,9 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.20.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand).
+- **This hub:** **Version** (for example `v0.21.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
-- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`rings + glows`, `glows` or `still wash`), the frame rate it measured, and the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`). See [Now Playing](#now-playing).
+- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
 
 Everything in it changes by itself, once a second, while it is open. It doesn't count as busy: the wanderers keep coming while it is open, behind it. `HUB_TEST.about` (`open()`, `close()`, `isOpen()`, `rows()`) reads it in a laptop browser and in the tests.
@@ -195,17 +195,35 @@ When nothing plays, it says so and keeps the last song, dimmed, as "Last played"
 
 ### The visualizer (full screen only)
 
-In full screen, a slow light show plays behind the page while a song plays: a wash in the album picture's colors, soft glows that drift, a bloom behind the picture on the beat and, for songs that move, rings that spread from it. The small page and the tile never have it.
+In full screen, while a song plays or is paused, a visualizer in the spirit of the old Winamp, MilkDrop and iTunes ones fills the whole screen: bright lines that roam everywhere and leave trails, tunnels and swirls behind, in the album picture's colors. The song shrinks to a small card in the upper left (the picture, the song in two lines, the artist, the album, the time and the chips, on dark glass). The small page and the tile never have it.
 
-It follows the song's **vibe**, which the Pi looks up once per song (see "Spotify" in [pi/README.md](pi/README.md)): the tempo sets the beat (never faster than 2.5 pulses a second; fast songs pulse on every other beat), energy how strong the bloom and how many rings, danceability against acousticness whether there are rings at all, and mood (valence) whether the glows rise, sink or drift sideways and whether the colors lean warm or cool. Everything is timed from the song's position, so it stays in step after a seek, comes to rest when paused (the beat fades, the glows hold still), and cross-fades to the next song. A "124 BPM" chip shows when the tempo is the song's real one. A song with no vibe (a podcast, a song ReccoBeats doesn't know, the lookups turned off) gets a gentle 100 BPM drift; a song known only by its artist's genres gets a guess. When the picture can't be read for colors, the mood picks them.
+It plays six scenes, a phrase each (16 or 32 beats), in an order that belongs to the song (the same every time it plays):
 
-The TV only moves `transform` and `opacity`, at most ten layers, with CSS animations. After it starts it times its own frame rate twice; two poor results step it down (rings + glows → glows → a still wash), and the answer is remembered on this TV until the next version. The plainest motion setting (`fade`) starts at the still wash.
+- **Spirograph:** looping hypotrochoid pens that wander and turn.
+- **Tunnel:** polygons or stars rushing out of a wandering point, a new ring on each beat.
+- **Kaleidoscope:** a few pens mirrored 6 to 12 times around the middle.
+- **Ribbons:** two or three waves across the screen that leave silky sheets.
+- **Starburst:** sparks and rays thrown out on each beat, swirled into a whirlpool.
+- **Lattice:** a turning wireframe of a rose curve that morphs.
 
-- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'wash'`, `'glow'` or `'full'` to fix a level).
-- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow` or `?viz=full` to the address.
+It follows the song's **vibe**, which the Pi looks up once per song (see "Spotify" in [pi/README.md](pi/README.md)): the tempo sets the beat (a brief kick in width, brightness and zoom; never faster than 2.5 a second, so fast songs kick on every other beat), energy how many pens and sparks, how thick and bright and how fast the trails move, danceability against acousticness whether it leans to the sharp scenes (tunnel, kaleidoscope, starburst) or the flowing ones (spirograph, ribbons, lattice), and mood (valence) how far the colors swing round the album's hues. The intensity eases in at the start of the song, swells and settles at the end. Everything is timed from the song's position, so a seek lands in the right scene; paused, it settles into a still picture and stops drawing; the next song morphs out of the last one. There is no sound to react to (Spotify sends none): it moves at the song's speed and feel, not to its actual beats. A "124 BPM" chip shows when the tempo is the song's real one. A song with no vibe (a podcast, a song ReccoBeats doesn't know, the lookups turned off) gets a gentle 100 BPM; a song known only by its artist's genres gets a guess. When the picture can't be read for colors, the mood picks them.
+
+It draws on one small canvas (480 × 270), stretched over the screen, at up to 30 frames a second: each frame, the last one is drawn back a little zoomed and turned and faded into a deep tint of the album's main color, then a few new shapes go on top. After it starts it times its own frame rate twice; two poor results step it down one level, and the answer is remembered on this TV until the next version:
+
+| Level | What it shows |
+|---|---|
+| `classic` | 480 × 270 at 30 fps; where lines cross their colors add up toward white |
+| `lite` | 320 × 180 at 24 fps, fewer pens and sparks, plain colors |
+| `glow` | soft glows that drift, moved by the graphics chip alone; the card stays |
+| `wash` | a still wash of the album's colors, and the big picture layout back |
+
+The plainest motion setting (`fade`) starts at the still wash.
+
+- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'classic'`, `'lite'`, `'glow'` or `'wash'` to fix a level; `'full'` still means `'classic'`). Off, the page is the big picture layout as before.
+- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow`, `?viz=lite` or `?viz=classic` (`?viz=full` is the same as `classic`) to the address.
 - **See what it chose:** the About panel's **Visualizer** row.
 
-![Now Playing full screen with the visualizer on an upbeat song](docs/screenshots/nowplaying-viz-upbeat.jpg)
+![Now Playing full screen: the kaleidoscope scene on an upbeat song, with the song card in the upper left](docs/screenshots/nowplaying-viz-upbeat.jpg)
 
 ## A World Worth Saving
 
@@ -317,7 +335,7 @@ The preview's hub server also reads four sample calendars from a small local fee
 
 `node dev/layout-test.js` checks the tile layout sent from the Pi (`./hub layout set`, see `pi/README.md`) the same way: a saved layout at start, tiles that move in place with focus and glass following, waiting while a panel is open, one reload for a new set of widgets, and no reload loop. It also needs port 8095 free.
 
-`node dev/nowplaying-test.js` checks Now Playing in a headless browser (Playwright) against the Spotify stand-in in `dev/mock-spotify.js`: every tile size and state, long Spanish words, the page and full screen, and the visualizer: only in full screen, a vibe that arrives late, calm against fast songs (timed in beats), the phase after a seek, the rest when paused, the off switches, the mood's colors when the picture can't be read, nothing left behind on close, only `transform` and `opacity` animated, the frame-rate check and its step down, a rough frame rate with the processor slowed 6 times, and every file in `app/` being plain ES5. `node dev/visualizer-shots.js --out <folder> [--clip]` takes pictures of the visualizer on calm, moody, upbeat and hard songs (and a short clip). Both need port 8095 free. `node pi/vibe-test.js` checks the Pi's vibe lookups.
+`node dev/nowplaying-test.js` checks Now Playing in a headless browser (Playwright) against the Spotify stand-in in `dev/mock-spotify.js`: every tile size and state, long Spanish words, the page and full screen, and the visualizer: only in full screen, edge to edge, with the song as a small card in the upper left (and long Spanish words fitting it); the canvas changing while playing and its loop stopping when paused, hidden or closed; a vibe that arrives late; calm songs getting flowing scenes and hard ones sharp scenes; the scene following the song's position after a seek and changing on phrase boundaries; the off switches and the still wash with the big picture; the glow level animating only `transform` and `opacity`; the mood's colors when the picture can't be read; a new song morphing on the same canvas; the frame-rate check, kept per version, and every step down to the still wash; a rough frame rate with the processor slowed 6 times; and every file in `app/` being plain ES5. `node dev/visualizer-shots.js --out <folder> [--clip]` takes pictures of every scene, calm and hard songs, paused, the card with long Spanish words, each level and the visualizer off (and a short clip through two scene changes and a new song). Both need port 8095 free. `node pi/vibe-test.js` checks the Pi's vibe lookups.
 
 ## Writing a widget
 
