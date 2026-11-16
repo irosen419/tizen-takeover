@@ -975,7 +975,7 @@ async function checkNoticeWraps() {
   }
 }
 
-// (e) A record written before 0.18.2 (no holdKind, no tryingVersion, no
+// (e) A record written before 0.18.1 (no holdKind, no tryingVersion, no
 // reason kept) still reads: held 6 hours, and the row has no brackets. A
 // reason kept for another commit is not shown.
 async function checkOldRecord() {
@@ -1088,7 +1088,7 @@ async function main() {
   await check('15. A slow commit (a file 5 s late, scaled): no fallback at the watchdog; it starts and becomes good', checkSlowStarts);
   await check('16. A file that never comes: back at the limit, held 20 minutes as slow, then tried again; another commit is not held', checkStuck);
   await check('17. A long error wraps inside the notice at 1920x1080 and 1280x720; the kept reason stays short', checkNoticeWraps);
-  await check('18. A record from before 0.18.2 still reads and holds; a reason kept for another commit is not shown', checkOldRecord);
+  await check('18. A record from before 0.18.1 still reads and holds; a reason kept for another commit is not shown', checkOldRecord);
 }
 
 main().catch((e) => {

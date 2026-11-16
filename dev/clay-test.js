@@ -20,12 +20,13 @@
  * from the sprite list drops in), breathing, leaning, MOVE_WITH_POSE and the
  * blend experiment; at the real speed only transform and opacity change;
  * slow frames go stepped and are remembered, no requestAnimationFrame is
- * stepped; every scene's length is in its range; the coming gait art's
- * shape (6- and 7-picture cycles, lifts, shares, Ian side-on) works and
- * today's art is unchanged by it. The About panel: its keys,
+ * stepped; every scene's length is in its range with 40 pictures or fewer;
+ * gait art of any shape (cycles of any length, lifts, shares, Ian side-on)
+ * works. The About panel: its keys,
  * its rows (Drawing too), a long problem that wraps and every row 25 %
  * longer still fitting, and that a visit loads and plays with it open.
- * Needs Playwright and port 8095 free.
+ * Needs Playwright and port 8095 free. CLAY_ART=old runs it all against
+ * the sprite list's old two-picture shape (see OLD_ART below).
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  * Nothing here reaches the internet.
@@ -119,6 +120,26 @@ function control(method, route, body) {
 
 /* ---------- pages ---------- */
 
+// CLAY_ART=old node dev/clay-test.js runs every check against the sprite
+// list's old shape, from before the walk cycles were drawn: two pictures a
+// gait, no strides, no lifts, no carrying cycles and no ian/stand-side (the
+// old pictures are still in the list). The engine must work with both.
+const OLD_ART = process.env.CLAY_ART === 'old';
+const OLD_ART_JS = `
+(function (S) {
+  S.sequences['ian.walk'] = ['ian/walk-1', 'ian/walk-2'];
+  S.sequences['ian.run'] = ['ian/run-1', 'ian/run-2'];
+  S.sequences['ember.trot'] = ['ember/trot-1', 'ember/trot-2'];
+  S.sequences['ember.run'] = ['ember/run-1', 'ember/run-2'];
+  delete S.sequences['ember.ball-trot'];
+  delete S.sequences['ember.sock-run'];
+  delete S.strides;
+  delete S.lifts;
+  delete S.shares;
+  delete S.sprites['ian/stand-side'];
+})(CLAY_SPRITES);
+`;
+
 // A route that never answers (the request just hangs).
 const HANG = -1;
 
@@ -153,6 +174,10 @@ async function newHub(opts) {
       const a = opts.serve[part];
       if (a.delay) await sleep(a.delay);
       try { return await route.fulfill({ status: 200, contentType: a.type, body: a.body }); } catch (e) { return; }
+    }
+    if (OLD_ART && /\/clay\/sprites\.js(\?|$)/.test(url)) {
+      const res = await route.fetch();
+      return route.fulfill({ response: res, body: (await res.text()) + OLD_ART_JS });
     }
     if (opts.clay !== undefined && /\/config\.js$/.test(url)) {
       const res = await route.fetch();
@@ -429,15 +454,15 @@ async function checkOff() {
 
 async function checkMissing() {
   // One frame missing: that scene is skipped, others play, the hub is fine.
-  let page = await newHub({ missing: ['clay/sprites/ember/trot-1.webp'] });
+  let page = await newHub({ missing: ['clay/sprites/ember/stand-wag.webp'] });
   await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 7 }));
   await until(async () => (await look.state(page)).last, 10000, 'stroll did not finish loading');
   let st = await look.state(page);
-  assert(st.phase === 'waiting' && st.last.result === 'failed: frame ember/trot-1 failed (onerror)', 'state: ' + JSON.stringify(st));
+  assert(st.phase === 'waiting' && st.last.result === 'failed: frame ember/stand-wag failed (onerror)', 'state: ' + JSON.stringify(st));
   let s1 = await look.st(page);
   assert(/^Due back in \d+ s$/.test(s1.now) && s1.visits === '0 played · 0 slow · 1 failed' && /^stroll failed, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
   assert(/^sprite list \d+ ms · stroll \d+\/\d+ frames, then one failed$/.test(s1.loading), 'loading: ' + s1.loading);
-  assert(/^scene stroll skipped: frame ember\/trot-1 failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
+  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
   assert(st.broken.indexOf('stroll') >= 0, 'stroll is not marked broken: ' + JSON.stringify(st.broken));
   assert(!(await look.layer(page)), 'a layer was left');
   const before = await look.focused(page);
@@ -451,7 +476,7 @@ async function checkMissing() {
   s1 = await look.st(page);
   assert(s1.visits === '1 played · 0 slow · 1 failed' && /^perch finished, \d+ s ago$/.test(s1.last), 'status after perch: ' + JSON.stringify(s1));
   assert(/ · perch (\d+)\/\1 frames in (\d+ ms|\d+\.\d s)$/.test(s1.loading), 'loading after perch: ' + s1.loading);
-  assert(/^scene stroll skipped: frame ember\/trot-1 failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem after perch: ' + s1.problem);
+  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem after perch: ' + s1.problem);
   noErrors(page, /Clay: scene stroll skipped/);
   await page.ctx.close();
 
@@ -578,13 +603,13 @@ async function checkNoStylesheet() {
 // A frame that loads but does not decode (onload, naturalWidth 0) is told
 // apart from onerror; a skipped scene is left out for 10 minutes, then back.
 async function checkBrokenScene() {
-  const page = await newHub({ serve: { 'clay/sprites/ember/trot-1.webp': { type: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0"></svg>' } } });
+  const page = await newHub({ serve: { 'clay/sprites/ember/stand-wag.webp': { type: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0"></svg>' } } });
   await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 51 }));
   await until(async () => (await look.state(page)).last, 10000, 'stroll did not finish loading');
   const st = await look.state(page);
   const text = (await look.st(page)).problem;
-  assert(st.last.result === 'failed: frame ember/trot-1 failed (loaded, 0 px wide: did not decode)', 'state: ' + JSON.stringify(st.last));
-  assert(/^scene stroll skipped: frame ember\/trot-1 failed \(loaded, 0 px wide: did not decode\), \d+ s ago$/.test(text), 'problem: ' + text);
+  assert(st.last.result === 'failed: frame ember/stand-wag failed (loaded, 0 px wide: did not decode)', 'state: ' + JSON.stringify(st.last));
+  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(loaded, 0 px wide: did not decode\), \d+ s ago$/.test(text), 'problem: ' + text);
   const picks = await page.evaluate(() => {
     const C = window.HUB_TEST.clay;
     C.setHour(14);
@@ -725,7 +750,10 @@ function drawn(t) {
 // never by a fraction; the shadow never breathes. Returns what it saw.
 async function drawThrough(page, name, opts, each) {
   await playing(page, name, opts);
-  const seen = { fractions: 0, ticks: 0, jumps: 0, flips: 0, draws: 0, walking: 0 };
+  // Pictures in mid-air (CLAY_SPRITES.lifts) are drawn that much higher than
+  // their position; the checks below are on the position under the lift.
+  const lifts = await page.evaluate(() => window.CLAY_SPRITES.lifts || {});
+  const seen = { fractions: 0, ticks: 0, jumps: 0, flips: 0, draws: 0, walking: 0, lifted: 0 };
   let last = null;
   for (let n = 0; n < 4000; n++) {
     const tickBefore = (await look.state(page)).tick;
@@ -739,6 +767,14 @@ async function drawThrough(page, name, opts, each) {
       if (!a.shown) continue;
       const d = drawn(a.transform);
       assert(d, name + ': ' + a.name + ' has no position: ' + a.transform);
+      const lift = lifts[a.shown] || 0;
+      assert(a.lift === lift, name + ': ' + a.name + ' showing ' + a.shown + ' is lifted ' + a.lift + ', not ' + lift);
+      if (lift) {
+        seen.lifted++;
+        const sh = drawn(a.shadow);
+        assert(!sh || Math.abs(sh[0] - d[0]) <= 0.11, name + ': the shadow left a lifted ' + a.name);
+        d[1] += lift;
+      }
       assert(!/scaleX\((?!-1\))/.test(a.transform) && !/scale\(-/.test(a.transform), name + ': a squashed flip: ' + a.transform);
       assert(!/scale|rotate/.test(a.shadow), name + ': the shadow moves with the body: ' + a.shadow);
       if (a.jumped && !a.arc) {
@@ -779,7 +815,12 @@ async function checkSmoothDraw() {
   const seen = await drawThrough(page, 'stroll', { seed: 3, dir: 'right' }, async (a, d, first) => {
     if (a.gait && a.gait.d !== null) {
       const n = a.gait.keys.length;
-      const want = a.gait.keys[Math.floor(a.gait.d / a.gait.stride * n + 1e-6) % n];
+      let k = Math.floor(a.gait.d / a.gait.stride * n + 1e-6) % n;
+      if (a.gait.cuts) {
+        const f = (a.gait.d / a.gait.stride + 1e-6) % 1;
+        for (k = n - 1; k > 0 && f < a.gait.cuts[k]; k--);
+      }
+      const want = a.gait.keys[k];
       assert(a.shown === want, 'stroll: ' + a.name + ' shows ' + a.shown + ' after ' + a.gait.d + ' px, not ' + want);
       gaits.checked++;
       if (!first && lastShown[a.name] && lastShown[a.name] !== a.shown) gaits.midTick++;
@@ -793,6 +834,13 @@ async function checkSmoothDraw() {
   assert(f.jumps > 3 && f.flips > 2, 'fetch: ' + JSON.stringify(f));
   const z = await drawThrough(page, 'zoomies', { seed: 4, dir: 'right' });
   assert(z.flips >= 2 && z.fractions > 50, 'zoomies: ' + JSON.stringify(z));
+  // When her run has pictures in mid-air (lifts in the sprite list), some of
+  // the zoomies' draws are lifted, and were checked above under their lift.
+  const runLifted = await page.evaluate(() => {
+    const S = window.CLAY_SPRITES;
+    return (S.sequences['ember.run'] || []).some((k) => (S.lifts || {})[k] > 0);
+  });
+  assert(!runLifted || z.lifted > 0, 'zoomies: no lifted picture was drawn: ' + JSON.stringify(z));
   noErrors(page);
 }
 
@@ -944,8 +992,8 @@ async function checkStepped() {
 }
 
 // Every scene's length (at the real speed) is inside its range, whichever
-// way it goes and whatever the dice say, with 26 pictures or fewer (40 is
-// the engine's limit, for longer walk cycles to come).
+// way it goes and whatever the dice say, with 40 pictures or fewer (the
+// engine's limit, MAX_FRAMES).
 const LENGTHS = {
   perch: [20, 30], zoomies: [18, 25], stroll: [30, 40], morning: [30, 40], evening: [30, 40], weather: [30, 40],
   fetch: [35, 45], 'sock-heist': [35, 45], cheer: [15, 20], shrug: [15, 20], night: [40, 60]
@@ -965,7 +1013,7 @@ async function checkLengths() {
           if (!d) { bad.push(n + ' did not build'); continue; }
           const r = L[n];
           if (d.seconds < r[0] || d.seconds > r[1]) bad.push(n + ' ' + JSON.stringify(o) + ' seed ' + s * 7 + ' ' + dir + ': ' + d.seconds + ' s');
-          if (d.frames > 26) bad.push(n + ': ' + d.frames + ' pictures');
+          if (d.frames > 40) bad.push(n + ': ' + d.frames + ' pictures');
           seen[n] = (seen[n] || 0) + 1;
         }
       }
@@ -1020,10 +1068,11 @@ async function checkLengths() {
   noErrors(page);
 }
 
-// The shape of the coming gait art: 6- and 7-picture cycles with their
+// Gait art of any shape: made-up 6- and 7-picture cycles with their
 // strides, lifts (pictures drawn above the floor, the shadow staying down,
 // and no hand-made bob on top), shares (pictures covering different parts of
-// the stride) and Ian standing side-on to stop out of a walk.
+// the stride) and Ian standing side-on to stop out of a walk; then the
+// sprite list as it is.
 async function checkGaitArt() {
   const page = await newHub();
   await page.evaluate(() => window.HUB_TEST.clay.setSpeed(0));
@@ -1092,16 +1141,40 @@ async function checkGaitArt() {
   assert(lifted.lift === 6 && plain.lift === 0 && Math.abs((lifted.gap - plain.gap) - 6) < 0.6,
     'the lifted picture should be 6 px higher over the same shadow: ' + JSON.stringify({ lifted, plain }));
   await page.evaluate(() => window.HUB_TEST.clay.stop());
-  // Today's list (no lifts, no shares) keeps the hand-made bob and even spacing.
+  // The sprite list as it is (the real art, or its old shape with
+  // CLAY_ART=old): a gait keeps its hand-made bob only when none of its
+  // pictures has a lift, every draw is lifted by its picture's lift, Ian
+  // stops side-on only when the list has that picture, and the carrying
+  // cycles the list has are used.
   const today = await newHub();
   await today.evaluate(() => window.HUB_TEST.clay.setSpeed(0));
   await playing(today, 'stroll', { seed: 3, dir: 'right' });
-  const t = await until(async () => {
+  const list = await today.evaluate(() => {
+    const S = window.CLAY_SPRITES;
+    const L = S.lifts || {};
+    const C = window.HUB_TEST.clay;
+    const has = (q) => !!(S.sequences[q] && S.sequences[q].length);
+    return {
+      lifts: L,
+      walkLifted: (S.sequences['ian.walk'] || []).some((k) => L[k] > 0),
+      side: !!S.sprites['ian/stand-side'],
+      sideUsed: C.dry('stroll', { seed: 3, dir: 'right' }).keys.indexOf('ian/stand-side') >= 0,
+      ball: has('ember.ball-trot'),
+      ballUsed: (C.dry('fetch', { seed: 5, dir: 'right' }).gaits['ember.ball-trot'] || 0) > 1,
+      sock: has('ember.sock-run'),
+      sockUsed: (C.dry('sock-heist', { seed: 5, dir: 'right' }).gaits['ember.sock-run'] || 0) > 1
+    };
+  });
+  assert(list.side === list.sideUsed && list.ball === list.ballUsed && list.sock === list.sockUsed, 'the list as it is: ' + JSON.stringify(list));
+  let walked = 0;
+  await until(async () => {
     await today.evaluate(() => window.HUB_TEST.clay.advance(35));
     const a = (await today.evaluate(() => window.HUB_TEST.clay.actors()))[0];
-    return a.gait && a.gait.d > 30 ? a : false;
+    if (!a.gait || a.gait.d === null) return false;
+    assert(a.gait.bob === !list.walkLifted && a.gait.cuts === null && a.lift === (list.lifts[a.shown] || 0),
+      'the list as it is: ' + JSON.stringify(a.gait) + ' shows ' + a.shown + ' lifted ' + a.lift);
+    return ++walked > 20;
   }, 8000, 'Ian never walked');
-  assert(t.gait.bob && t.gait.cuts === null && t.lift === 0 && t.frame !== 'ian/stand-side', 'today\'s art: ' + JSON.stringify(t.gait) + ' ' + t.lift);
   await today.evaluate(() => window.HUB_TEST.clay.stop());
   noErrors(page);
   noErrors(today);
@@ -1219,7 +1292,7 @@ async function checkAboutKeys() {
 // The rows: which are there and when, they refresh by themselves, and a
 // long problem wraps inside the strip at 1920x1080 and 1280x720.
 async function checkAboutRows() {
-  const page = await newHub({ missing: ['clay/sprites/ember/trot-1.webp'], clay: { idleAfter: 3600 } });
+  const page = await newHub({ missing: ['clay/sprites/ember/stand-wag.webp'], clay: { idleAfter: 3600 } });
   assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'did not open');
   let rows = await about.rows(page);
   const names = rows.map((r) => r.group + '/' + r.label).join(', ');
@@ -1243,7 +1316,7 @@ async function checkAboutRows() {
   rows = await about.rows(page);
   assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
   const p1 = await about.value(page, 'Last problem');
-  assert(/^scene stroll skipped: frame ember\/trot-1 failed \(onerror\), \d+ s ago$/.test(p1), 'problem: ' + p1);
+  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror\), \d+ s ago$/.test(p1), 'problem: ' + p1);
   await until(async () => (await about.value(page, 'Last problem')) !== p1, 3000, 'the problem\'s age did not change by itself');
   // A long problem, with a long unbroken word: it wraps, nothing is cut.
   await page.evaluate(() => {
@@ -1487,8 +1560,8 @@ async function main() {
   await check('21. A held pose breathes, a walk leans, the shadow does neither; MOVE_WITH_POSE; the blend keeps the old picture whole', checkLife);
   await check('22. At the real speed: smooth by requestAnimationFrame, only transform and opacity change; the About panel says so', checkSmoothLive);
   await check('23. Slow frames go stepped and are remembered; no requestAnimationFrame is stepped from the start', checkStepped);
-  await check('24. Every scene\'s length is in its range, with 26 pictures or fewer', checkLengths);
-  await check('25. The coming gait art: 6- and 7-picture cycles, lifts over a grounded shadow and no bob, shares, Ian side-on; today\'s art unchanged', checkGaitArt);
+  await check('24. Every scene\'s length is in its range, with 40 pictures or fewer', checkLengths);
+  await check('25. Gait art of any shape: 6- and 7-picture cycles, lifts over a grounded shadow and no bob, shares, Ian side-on; the sprite list as it is', checkGaitArt);
 }
 
 main().catch((e) => {
