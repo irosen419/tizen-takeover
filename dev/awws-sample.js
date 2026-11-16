@@ -175,4 +175,34 @@ function snapshot(opts) {
   return snap;
 }
 
-module.exports = { feedServer, snapshot, chicagoToday, MODES, TZ, CALENDARS };
+/*
+ * Starts the Pi's hub server in a child process with its clock set to
+ * opts.at (UTC ms), see dev/awws-pi.js. opts: { at, port, token, origins,
+ * dataDir, calendars, timezone }. Resolves { close() }.
+ */
+function startPi(opts) {
+  const childProcess = require('child_process');
+  const options = Object.assign({ host: '127.0.0.1', allowHttp: true, timezone: TZ }, opts);
+  const child = childProcess.spawn(process.execPath, [path.join(__dirname, 'awws-pi.js'), JSON.stringify(options)],
+    { stdio: ['ignore', 'pipe', 'inherit'] });
+  return new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error('the hub server did not start')), 10000);
+    child.on('exit', (code) => reject(new Error('the hub server stopped (' + code + ')')));
+    child.stdout.on('data', (c) => {
+      out += c;
+      if (/ready/.test(out)) {
+        clearTimeout(timer);
+        resolve({
+          close: () => new Promise((r) => {
+            child.removeAllListeners('exit');
+            child.on('exit', () => r());
+            child.kill('SIGTERM');
+          })
+        });
+      }
+    });
+  });
+}
+
+module.exports = { feedServer, snapshot, startPi, chicagoToday, MODES, TZ, CALENDARS };

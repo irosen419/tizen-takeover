@@ -64,7 +64,6 @@
     noTitle: '(No title)',
     more: '+{n} more',
     asOf: 'as of {t}',
-    updated: 'Updated {t}',
     // The Glance
     nowForYou: 'now for you',
     nowForYouHead: 'Now for you',
@@ -111,6 +110,7 @@
     sections: { now: 'Now', next: 'Next', later: 'Later' },
     overdue: 'Overdue',
     overdueCount: '{n} overdue',
+    overdueCount1: '1 overdue',
     doneWeek: '{n} done this week',
     doneWeek1: '1 done this week',
     byStream: 'Open by workstream',
@@ -574,11 +574,22 @@
     } catch (e) { /* the copy in memory still works */ }
   }
 
+  // What the tiles show from a resource, without the times that only say
+  // when it was read or sent: two pushes with the same key draw the same.
+  function contentKey(d, skip) {
+    try {
+      return JSON.stringify(d, function (k, v) { return skip.hasOwnProperty(k) ? undefined : v; });
+    } catch (e) { return String(now()); }
+  }
+
+  var CAL_SKIP = { updatedAt: true };
+  var SNAP_SKIP = { sentAt: true, receivedAt: true, asOf: true };
+
   function onCal(d) {
     if (!validCal(d)) return;
     S.calLiveAt = now();
     useCal(d, false);
-    refreshAll(true);
+    refreshAll();
   }
 
   function onSnap(d) {
@@ -587,7 +598,9 @@
     S.snap = snapReady(d) ? d : null;
     S.snapFromCache = false;
     saveSnapCache();
-    refreshAll(true);
+    // The Pi pushes every snapshot it accepts, even an unchanged one (a new
+    // sentAt says it is fresh): the signature redraws only what changed.
+    refreshAll();
   }
 
   /* ---------- states ---------- */
@@ -947,7 +960,7 @@
   function signature() {
     var t = now();
     var parts = [calStateRaw(), snapState(), lineState(), today(), staleText(true, false), staleText(false, true),
-      S.cal ? S.cal.updatedAt + ':' + (S.events ? S.events.length : 0) : '', S.ver || 0, liveStatus().text || ''];
+      contentKey(S.cal, CAL_SKIP), contentKey(S.snap, SNAP_SKIP), liveStatus().text || ''];
     var ended = 0;
     var started = 0;
     if (S.events) {
@@ -960,11 +973,11 @@
     return parts.join('|');
   }
 
-  function refreshAll(force) {
-    if (force) S.ver = (S.ver || 0) + 1;
+  function refreshAll() {
     var sig = signature();
-    if (!force && sig === S.sig) return;
+    if (sig === S.sig) return;
     S.sig = sig;
+    S.redraws = (S.redraws || 0) + 1;
     for (var i = 0; i < S.order.length; i++) {
       var ctx = S.ctxs[S.order[i]];
       if (!ctx) continue;
@@ -980,7 +993,7 @@
     var ms = MIN - (now() % MIN) + 250;
     S.timer = setTimeout(function () {
       S.timer = null;
-      try { refreshAll(false); } catch (e) { warn(e && e.message); }
+      try { refreshAll(); } catch (e) { warn(e && e.message); }
       schedule();
     }, ms);
   }
@@ -1015,7 +1028,7 @@
   function onStatus() {
     try {
       if (liveStatus().state === 'live' && S.events && !S.calFromCache) S.calLiveAt = now();
-      refreshAll(false);
+      refreshAll();
     } catch (e) { /* the next change tries again */ }
   }
 
@@ -1100,12 +1113,14 @@
   }
 
   // The 1-column tile: only the number (or word), as big as fits.
-  function solo(root, text, cap, warnIt) {
+  // caps: the caption, or a list of them, longest first.
+  function solo(root, text, caps, warnIt) {
     root.className += ' aw-solo';
     var n = el('div', 'aw-solo-num' + (warnIt ? ' is-warn' : ''), root, text);
-    var c = cap ? el('div', 'aw-solo-cap', root, cap) : null;
     fitWidth(n);
-    if (c && overW(c)) c.parentNode.removeChild(c);
+    if (!caps) return;
+    var c = el('div', 'aw-solo-cap', root);
+    if (!fitForms(c, typeof caps === 'string' ? [caps] : caps)) c.parentNode.removeChild(c);
   }
 
   // A small section label ("NOW FOR YOU").
@@ -1250,25 +1265,39 @@
       if (overW(root) && h.lastChild !== h.numEl) h.removeChild(h.lastChild);
       return;
     }
-    var line = el('div', 'aw-strip-line', root);
-    accent(line, ev.cal);
-    var title = el('span', 'aw-strip-title aw-cut', line, titleOf(ev));
-    var when = el('span', 'aw-strip-when', line);
-    var forms = [];
     var t = timeOf(ev);
-    forms.push(STRINGS.sep + dateText(ev.startDay, 'long') + STRINGS.sep + t);
-    forms.push(STRINGS.sep + dateText(ev.startDay, 'short') + STRINGS.sep + t);
-    forms.push(STRINGS.sep + dateText(ev.startDay, 'short'));
-    // The title keeps at least a few letters; the date takes its short forms first.
-    var min = remPx() * 5;
-    for (var i = 0; i < forms.length; i++) {
-      when.textContent = forms[i];
-      if (title.clientWidth >= min && !overW(line)) return;
+    var forms = [dateText(ev.startDay, 'long') + STRINGS.sep + t, dateText(ev.startDay, 'short') + STRINGS.sep + t, dateText(ev.startDay, 'short')];
+    if (ev.place) forms.unshift(forms[0] + STRINGS.sep + ev.place);
+    stripItem(root, { cal: ev.cal, title: titleOf(ev), forms: forms });
+  }
+
+  // A strip's one useful thing: a title and when. One line when the title
+  // fits whole; otherwise "when" on a small line over the title.
+  // o: { cal, todo, title, forms (longest first), whenFirst, now }
+  function stripItem(root, o) {
+    var line = el('div', 'aw-strip-line', root);
+    accent(line, o.cal, o.todo);
+    var when;
+    var title;
+    if (o.whenFirst) {
+      when = el('span', 'aw-strip-when' + (o.now ? ' is-now' : ''), line);
+      title = el('span', 'aw-strip-title aw-cut', line, o.title);
+    } else {
+      title = el('span', 'aw-strip-title aw-cut', line, o.title);
+      when = el('span', 'aw-strip-when', line);
     }
-    // No room for both: the countdown alone.
+    for (var i = 0; i < o.forms.length; i++) {
+      when.textContent = (o.whenFirst ? '' : STRINGS.sep) + o.forms[i];
+      if (!overW(title) && !overW(line)) return line;
+    }
     root.removeChild(line);
-    var h = hero(root, ev, 'is-strip');
-    fitHero(h);
+    line = el('div', 'aw-strip-line is-stack', root);
+    accent(line, o.cal, o.todo);
+    var stack = el('div', 'aw-strip-stack', line);
+    var small = el('div', 'aw-strip-small' + (o.now ? ' is-now' : ''), stack);
+    el('div', 'aw-strip-title2 aw-cut', stack, o.title);
+    fitForms(small, o.forms);
+    return null;
   }
 
   function visitsPanel(root, ctx, opts) {
@@ -1351,26 +1380,22 @@
   function agendaStrip(root, size, items, td) {
     root.className += ' aw-strip';
     var first = null;
-    var i;
-    for (i = 0; i < items.length; i++) if (items[i].day === td) { first = items[i]; break; }
-    var line = el('div', 'aw-strip-line', root);
+    for (var i = 0; i < items.length; i++) if (items[i].day === td) { first = items[i]; break; }
     if (first) {
-      accent(line, first.cal, first.kind === 'todo');
-      var w = el('span', 'aw-strip-when' + (first.now ? ' is-now' : ''), line, itemWhen(first));
-      el('span', 'aw-strip-title aw-cut', line, first.title);
-      if (size.width === 'narrow' && overW(line)) w.parentNode.removeChild(w);
+      var line = stripItem(root, { cal: first.cal, todo: first.kind === 'todo', title: first.title, forms: [itemWhen(first)],
+        whenFirst: true, now: first.now });
+      // A wide strip with room: the next items after it, while they fit whole.
+      for (var k = i + 1; line && k < items.length && k < i + 4; k++) {
+        var more = el('span', 'aw-strip-extra', line, STRINGS.sep + relDay(items[k].day, td, true) + ' ' + itemWhen(items[k]) + '  ' + items[k].title);
+        if (overW(line)) { line.removeChild(more); break; }
+      }
       return;
     }
     var next = items[0];
-    if (!next) {
-      el('span', 'aw-strip-title is-quiet', line, STRINGS.nothingWeek);
-      return;
-    }
-    var q = el('span', 'aw-strip-quiet', line, STRINGS.nothingToday + STRINGS.sep);
-    accent(line, next.cal, next.kind === 'todo');
-    el('span', 'aw-strip-when', line, relDay(next.day, td, true));
-    el('span', 'aw-strip-title aw-cut', line, next.title);
-    if (overW(line) || size.width === 'narrow') q.parentNode.removeChild(q);
+    if (!next) return el('div', 'aw-strip-text is-quiet', root, STRINGS.nothingWeek);
+    var day = relDay(next.day, td, true);
+    stripItem(root, { cal: next.cal, todo: next.kind === 'todo', title: next.title, whenFirst: true,
+      forms: [STRINGS.nothingToday + STRINGS.sep + day, day] });
   }
 
   // Seven day columns: weekday and day number, a dot per item, the first
@@ -1471,13 +1496,14 @@
       nowItems.push(b.open[i]);
       if (b.open[i].owner === 'ian') ianItems.push(b.open[i]);
     }
-    if (size.cols === 1) return solo(root, fmtNum(ianNow), STRINGS.nowForYou, false);
+    if (size.cols === 1) return solo(root, fmtNum(ianNow), [STRINGS.nowForYou, STRINGS.nowWord], false);
     if (size.tier === 'strip') {
       root.className += ' aw-strip';
       var line = el('div', 'aw-strip-line', root);
       el('span', 'aw-strip-num', line, fmtNum(ianNow));
       var first = ianItems[0] || nowItems[0];
-      if (first) el('span', 'aw-strip-title aw-cut' + (isOverdue(first) ? ' is-late' : ''), line, first.title);
+      // The first item may take two lines; the cut falls between lines.
+      if (first) el('span', 'aw-strip-title2 aw-cut' + (isOverdue(first) ? ' is-late' : ''), line, first.title);
       else el('span', 'aw-strip-title is-quiet', line, STRINGS.nowForYou);
       return;
     }
@@ -1488,7 +1514,7 @@
     var late = overdueCount(b, 'all');
     if (late) {
       el('span', 'aw-sep', meta, STRINGS.sep);
-      el('span', 'aw-late-count', meta, fill(STRINGS.overdueCount, { n: fmtNum(late) }));
+      el('span', 'aw-late-count', meta, plural(late, STRINGS.overdueCount1, STRINGS.overdueCount));
     }
     fitHero(h);
     if (overW(meta)) {
@@ -1500,7 +1526,7 @@
     var more = el('div', 'aw-more', root);
     var source = tall ? nowItems : (ianItems.length ? ianItems : nowItems);
     var rows = [];
-    var chip = tall ? (size.width === 'wide' ? 'long' : 'short') : null;
+    var chip = tall ? (size.width === 'narrow' ? 'short' : 'long') : null;
     for (var j = 0; j < source.length; j++) rows.push(todoRow(source[j], { chip: chip, meta: tall }));
     var shown = fitRows(list, tall ? more : null, rows, tall ? 8 : 1);
     if (!shown) { root.removeChild(list); root.removeChild(more); }
@@ -1595,7 +1621,7 @@
         var c = countdown(next, now());
         return c.kind === 'days' ? solo(root, fmtNum(c.n), STRINGS.unitDays) : solo(root, countdownText(next), c.kind === 'now' ? '' : timeOf(next));
       }
-      return solo(root, fmtNum(ianNow), STRINGS.nowForYou);
+      return solo(root, fmtNum(ianNow), [STRINGS.nowForYou, STRINGS.nowWord]);
     }
     if (size.tier === 'strip') return glanceStrip(root, size, next, ianNow, vinfo);
 
@@ -1647,6 +1673,7 @@
     // Lists fit in turn: each takes what it needs and leaves the rest.
     for (var s = 0; s < sections.length; s++) {
       var sec = sections[s];
+      sec.box.style.display = '';
       var shown = fitRows(sec.list, null, sec.rows, sec.max);
       if (!shown) sec.box.parentNode.removeChild(sec.box);
       else sec.list.style.flexShrink = '0';
@@ -1657,6 +1684,7 @@
 
   function listSection(parent, title, items, max, before, make) {
     var box = el('div', 'aw-sect', parent);
+    box.style.display = 'none';   // shown on its turn, so lists fit one after another
     if (before && before.parentNode === parent) parent.insertBefore(box, before);
     label(box, title);
     var list = el('div', 'aw-list', box);
@@ -1682,9 +1710,20 @@
     accent(line, next.cal);
     var title = el('span', 'aw-strip-title aw-cut', line, titleOf(next));
     el('span', 'aw-strip-when is-strong', line, whenPhrase(next));
-    var extra = ianNow !== null ? el('span', 'aw-strip-extra', line, STRINGS.sep + fill(STRINGS.nowCountShort, { n: fmtNum(ianNow) })) : null;
+    var extra = ianNow !== null ? el('span', 'aw-strip-extra', line) : null;
+    var out = section('outreach');
+    var replies = out && count(out.waitingOnIan) !== null ? plural(count(out.waitingOnIan), STRINGS.replies1, STRINGS.repliesN) : '';
     var min = remPx() * 5;
-    if (extra && (overW(line) || title.clientWidth < min)) line.removeChild(extra);
+    if (extra) {
+      var forms = [STRINGS.sep + fill(STRINGS.nowCount, { n: fmtNum(ianNow) }), STRINGS.sep + fill(STRINGS.nowCountShort, { n: fmtNum(ianNow) })];
+      if (replies) forms.unshift(forms[0] + STRINGS.sep + replies);
+      var fits = false;
+      for (var f = 0; f < forms.length && !fits; f++) {
+        extra.textContent = forms[f];
+        fits = !overW(line) && !overW(title);
+      }
+      if (!fits) line.removeChild(extra);
+    }
     if (overW(line) || title.clientWidth < min) {
       root.removeChild(line);
       fitHero(hero(root, next, 'is-strip'));
@@ -1707,7 +1746,7 @@
       q[0].setAttribute('data-autofocus', '');
     }
     dashVisit(q[0]);
-    dashWeek(q[1]);
+    dashWeek(q[1], !!opts.big);
     dashNow(q[2]);
     dashFigures(q[3]);
   }
@@ -1751,7 +1790,7 @@
     if (overH(q)) lead.className += ' is-small';
   }
 
-  function dashWeek(q) {
+  function dashWeek(q, big) {
     var info = calFor('all');
     var b = board();
     label(q, STRINGS.titles.agenda);
@@ -1780,7 +1819,8 @@
     var rows = [];
     for (var j = 0; j < items.length; j++) {
       var it = items[j];
-      rows.push(eventRow(relDay(it.day, td, true) + STRINGS.sep + itemWhen(it), it.title, it.cal, it.kind === 'todo', it.now ? 'is-now' : ''));
+      rows.push(eventRow(relDay(it.day, td, true) + STRINGS.sep + itemWhen(it), it.title, it.cal, it.kind === 'todo',
+        (it.now ? 'is-now' : '') + (big ? ' is-line' : '')));
     }
     if (!rows.length) el('div', 'aw-empty', q, STRINGS.nothingWeek);
     var note = info.state !== 'data' ? quietLine(q, message(info.state, info).head) : (!b ? quietLine(q, STRINGS.notSynced) : null);
@@ -1879,7 +1919,7 @@
     else {
       ts = fill(STRINGS.nowCount, { n: fmtNum(b.totals.ian.now) });
       var late = overdueCount(b, 'ian');
-      if (late) ts += STRINGS.sep + fill(STRINGS.overdueCount, { n: fmtNum(late) });
+      if (late) ts += STRINGS.sep + plural(late, STRINGS.overdueCount1, STRINGS.overdueCount);
     }
     row('todo', STRINGS.views.todo, ts);
     var soon = ['outreach', 'pipeline'];
@@ -1908,7 +1948,6 @@
     if (ctx.id === 'awws' && view !== 'launcher' && view !== 'dash') parts.push(STRINGS.views[view]);
     var stale = staleText(useCal, useSnap);
     if (stale) parts.push(stale);
-    else if (useSnap && snapReady(S.snap) && !useCal) parts.push(fill(STRINGS.updated, { t: whenAt(parseIso(S.snap.sentAt)) }));
     return parts.join(STRINGS.sep);
   }
 
@@ -2067,7 +2106,8 @@
     board: board,
     calFor: calFor,
     snapState: snapState,
-    refresh: function () { refreshAll(false); },
+    refresh: function () { refreshAll(); },
+    redraws: function () { return S.redraws || 0; },
     store: S
   };
 

@@ -194,6 +194,10 @@
 }
 .aw-erow.is-now .aw-erow-when { color: var(--text); font-weight: 600; }
 .aw-erow-title { font-size: 1rem; line-height: 1.35; color: var(--text); }
+/* One line each: "when" in a column, then the title (the big dashboard). */
+.aw-erow.is-line .aw-erow-text { display: flex; align-items: baseline; }
+.aw-erow.is-line .aw-erow-when { flex: 0 0 auto; min-width: 10rem; padding-right: 0.8rem; }
+.aw-erow.is-line .aw-erow-title { flex: 1 1 auto; min-width: 0; }
 
 /* To-do rows: owner chip, title, then due and "waiting on". */
 .aw-trow {
@@ -294,6 +298,7 @@
 }
 .aw-solo-num {
   flex: 0 0 auto;
+  text-align: left;
   max-width: 100%;
   font-size: 2.6rem;
   font-weight: 300;
@@ -305,6 +310,7 @@
 .aw-solo-num.is-warn { color: var(--aw-warn); }
 .aw-solo-cap {
   flex: 0 0 auto;
+  text-align: left;
   max-width: 100%;
   font-size: 0.85rem;
   line-height: 1.3;
@@ -368,6 +374,31 @@
   color: var(--text);
 }
 .aw-strip-text.is-quiet { color: var(--text-2); }
+.aw-strip-stack { flex: 1 1 auto; min-width: 0; }
+.aw-strip-small {
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.aw-strip-small.is-now { color: var(--text); font-weight: 600; }
+.aw-strip-line.is-stack .aw-bar { height: auto; align-self: stretch; }
+.aw-strip-stack .aw-strip-title2.aw-cut { display: block; display: -webkit-box; }
+.aw-strip-title2.aw-cut {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: normal;
+  max-height: 2.8em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-wrap: break-word;
+}
+.aw-strip-title2.is-late { color: var(--aw-warn); }
 .aw-hero.is-strip { flex: 0 1 auto; flex-wrap: nowrap; }
 .aw-hero.is-strip .aw-hero-num { font-size: 2.6rem; margin-right: 0.45rem; }
 .aw-hero.is-strip .aw-hero-num.is-word { font-size: 1.7rem; }
@@ -448,6 +479,15 @@
   line-height: 1.35;
   color: var(--text-2);
 }
+/* A day's title may take two lines; the cut falls between lines. */
+.aw-wd-item.aw-cut {
+  white-space: normal;
+  max-height: 2.9em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-wrap: break-word;
+}
 .aw-wd-item.is-now { color: var(--text); font-weight: 600; }
 .aw-wd-more { flex: 0 0 auto; font-size: 0.85rem; line-height: 1.35; color: var(--text-3); }
 
@@ -515,7 +555,7 @@
 
 /* A big tile (9 x 5 and up) and full screen: everything a step bigger. */
 .aw-dash.is-big .aw-label { font-size: 1rem; }
-.aw-dash.is-big .aw-hero-num { font-size: 6.4rem; }
+.aw-dash.is-big .aw-hero-num { font-size: 5.6rem; }
 .aw-dash.is-big .aw-hero-num.is-word { font-size: 4.2rem; }
 .aw-dash.is-big .aw-hero-cap { font-size: 1.5rem; }
 .aw-dash.is-big .aw-lead { font-size: 1.5rem; }
