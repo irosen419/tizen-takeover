@@ -82,7 +82,7 @@ Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion
 
 ### The status line
 
-The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.12.1 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)).
+The two small lines at the bottom of the Today tile show the hub version and the TV's browser, then the motion choice, for example `v0.12.2 (newest) · Chrome 63 · Tizen 5.0` and `Motion: push (auto, 57 fps)`. `(newest)` means GitHub confirmed this is the newest commit of the branch. `measuring` means auto is still timing; `(config)` or `(URL)` means the mode was set by hand. One more line shows when live updates have something to say (see [Live updates](#live-updates)), and another when updates do (see [Updating](#updating)).
 
 ### Entertainment
 

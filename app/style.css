@@ -768,15 +768,18 @@ body.has-picture {
 .tile-h3.tile-wn .planned-mark { width: 5rem; height: 5rem; margin-bottom: 1.2rem; }
 .tile-h3.tile-wn .planned-text { font-size: 1rem; }
 
-/* Today in a strip: the time on the left, the date on the right. */
+/* Today in a strip: the time, and the date stacked to its right, the weekday
+   over "Month Date", both centred in the row so they sit as far from the
+   border as a placeholder strip's text (the strip padding above). The time
+   keeps its size; a date part too long for the rest takes its short form
+   (today.js), and only then ends in "...". */
 .tile-body.today-strip {
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 .today-strip .today-time {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
   margin-top: 0;
   font-size: 3.3rem;
   line-height: 1.15;
@@ -785,13 +788,20 @@ body.has-picture {
 .today-strip .today-date {
   flex: 0 1 auto;
   min-width: 0;
-  margin-left: 1rem;
-  text-align: right;
-  font-size: 1.1rem;
-  line-height: 1.35;
+  margin-left: 0.9rem;
+  font-size: 1rem;
+  line-height: 1.4;
 }
-.today-date-line { overflow: hidden; text-overflow: ellipsis; }
+.today-strip .today-dow,
+.today-strip .today-md {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.today-strip .today-sep { display: none; }
 .tile-ww .today-strip .today-date { font-size: 1.3rem; }
+/* Narrow strips: only the time, and it shrinks to fit (see fitTime). */
+.tile-wn .today-strip .today-time { flex: 0 1 auto; min-width: 0; }
 .tile-wn .today-strip .today-date { display: none; }
 
 /* A tall clock tile: a bigger clock (it still shrinks to fit the width). */

@@ -13,23 +13,41 @@
     return el;
   }
 
-  // The date for the tile's size: "Sunday, November 15", "Sun, Nov 15" in a
-  // narrow tile, and in a strip two short lines, "Sunday" over "Nov 15".
+  function span(cls, parent, text) {
+    var el = document.createElement('span');
+    el.className = cls;
+    if (text) el.textContent = text;
+    parent.appendChild(el);
+    return el;
+  }
+
+  // The time ("9:41" and "PM") and the date (weekday, ", ", month and day).
+  function timeEls(parent, form) {
+    var time = div('today-time', parent);
+    var digits = span('today-digits', time);
+    var ampm = span('today-ampm', time);
+    var date = div('today-date', parent);
+    var dow = span('today-dow', date);
+    span('today-sep', date, ', ');
+    els = { time: time, digits: digits, ampm: ampm, dow: dow, md: span('today-md', date), form: form };
+  }
+
+  // The date for the tile's size, in two parts: "Sunday" ", " "November 15",
+  // "Sun, Nov 15" in a narrow tile. In a strip the CSS hides the ", " and
+  // stacks the two parts beside the time, "Sunday" over "November 15"; a
+  // part too long for the room left by the time (a late hour, a longer
+  // language) takes its short form, "Wed" or "Sep 30", before it would end
+  // in "...".
   function drawDate(now) {
-    var d = els.date;
-    if (els.form === 'strip') {
-      var dow = now.toLocaleDateString('en-US', { weekday: 'long' });
-      var md = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      if (d.getAttribute('data-text') === dow + md) return;
-      d.setAttribute('data-text', dow + md);
-      d.innerHTML = '';
-      div('today-date-line', d).textContent = dow;
-      div('today-date-line', d).textContent = md;
-      return;
-    }
-    d.textContent = els.form === 'narrow' ?
-      now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) :
-      now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    var narrow = els.form === 'narrow';
+    var fit = els.form === 'strip';
+    datePart(els.dow, now, { weekday: narrow ? 'short' : 'long' }, fit && { weekday: 'short' });
+    datePart(els.md, now, { month: narrow ? 'short' : 'long', day: 'numeric' }, fit && { month: 'short', day: 'numeric' });
+  }
+
+  function datePart(node, now, opts, shortOpts) {
+    node.textContent = now.toLocaleDateString('en-US', opts);
+    if (shortOpts && node.scrollWidth > node.clientWidth + 1) node.textContent = now.toLocaleDateString('en-US', shortOpts);
   }
 
   // The clock as large as the tile's CSS says, but never wider than the
@@ -85,29 +103,15 @@
       if (form === 'strip') el.classList.add('today-strip');
       else el.classList.remove('today-strip');
       if (form === 'strip') {
-        // One row: the time on the left, the date on the right. The place
+        // One row: the time, and the date stacked to its right. The place
         // and the version and status lines need a bigger tile.
-        var stripTime = div('today-time', el);
-        var stripDigits = document.createElement('span');
-        stripDigits.className = 'today-digits';
-        var stripAmpm = document.createElement('span');
-        stripAmpm.className = 'today-ampm';
-        stripTime.appendChild(stripDigits);
-        stripTime.appendChild(stripAmpm);
-        els = { time: stripTime, digits: stripDigits, ampm: stripAmpm, date: div('today-date', el), form: form };
+        timeEls(el, form);
         tick();
         return;
       }
       var place = div('today-place', el);
       place.textContent = (window.HUB_CONFIG && HUB_CONFIG.title) || 'Today';
-      var time = div('today-time', el);
-      var digits = document.createElement('span');
-      digits.className = 'today-digits';
-      var ampm = document.createElement('span');
-      ampm.className = 'today-ampm';
-      time.appendChild(digits);
-      time.appendChild(ampm);
-      var date = div('today-date', el);
+      timeEls(el, form);
       // One-line rows that end in "..." rather than wrap, so a wider TV font
       // can't push the tile past its edge. The live updates row and the
       // updates row are only there when they have something to say; with
@@ -127,7 +131,6 @@
       // The clock gives up a little height for each extra row.
       var rows = 2 + (live ? 1 : 0) + (updateText ? 1 : 0);
       if (rows > 2) el.classList.add('today-rows-' + rows);
-      els = { time: time, digits: digits, ampm: ampm, date: date, form: form };
       tick();
     },
 

@@ -20,6 +20,7 @@ const os = require('os');
 const path = require('path');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
+const clockLayout = require('./clock-layout');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
@@ -153,6 +154,8 @@ async function newContext(options) {
     }
     return route.continue();
   });
+  // The status lines need a clock two rows tall.
+  await clockLayout.route(context);
   return context;
 }
 
@@ -268,14 +271,14 @@ async function check1() {
     const res = await route.fetch();
     let body = await res.text();
     assert(/live:\s*\{\s*server:[^}]*\}/.test(body), 'config.js has no live setting');
-    body = body.replace(/live:\s*\{\s*server:[^}]*\}/, "live: { server: '' }");
+    body = clockLayout.rewrite(body.replace(/live:\s*\{\s*server:[^}]*\}/, "live: { server: '' }"));
     await route.fulfill({ response: res, body: body });
   });
   const page = await openHub(context, '');
   await sleep(1500);
   const lines = await look.statusLines(page);
   assert(lines.length === 2, 'expected 2 status lines, got ' + JSON.stringify(lines));
-  assert(lines[0].indexOf('v0.12.1') === 0, 'first status line: ' + lines[0]);
+  assert(lines[0].indexOf('v0.12.2') === 0, 'first status line: ' + lines[0]);
   assert((await look.todoSub(page)) === 'On this TV', 'to-do sub line: ' + (await look.todoSub(page)));
   assert((await look.state(page)) === 'off', 'live state: ' + (await look.state(page)));
   await addOnScreen(page, 'Milk');

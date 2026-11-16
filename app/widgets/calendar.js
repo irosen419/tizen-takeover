@@ -4,7 +4,7 @@
  * The events come from the hub server on the Raspberry Pi as the live
  * resource "calendar" (see docs/live-updates.md, "What the Pi reader does"):
  *   { configured, tz, from, to, updatedAt, truncated,
- *     calendars: [{ cal, name, ok, error, count, skipped, updatedAt }],
+ *     calendars: [{ cal, name, color, ok, error, count, skipped, updatedAt }],
  *     events: [{ id, cal, title, start, end, allDay, location }] }
  * Timed events are UTC ("2026-11-16T15:00:00Z"); all-day events are dates
  * ("2026-11-16") with an exclusive end. Everything is shown in data.tz, not
@@ -165,8 +165,21 @@
     try { return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16; } catch (e) { return 16; }
   }
 
+  // Colors set on the Pi (CALENDAR_n_COLOR) win over the palette: cal number to [r, g, b].
+  var chosen = {};
+
+  function readChosen(d) {
+    var out = {};
+    var list = d && isArr(d.calendars) ? d.calendars : [];
+    for (var i = 0; i < list.length; i++) {
+      var m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(str(list[i] && list[i].color));
+      if (m) out[list[i].cal] = [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
+    }
+    return out;
+  }
+
   function color(cal, alpha) {
-    var c = PALETTE[((cal || 1) - 1) % PALETTE.length] || PALETTE[0];
+    var c = chosen[cal] || PALETTE[((cal || 1) - 1) % PALETTE.length] || PALETTE[0];
     return alpha === undefined ? 'rgb(' + c.join(',') + ')' : 'rgba(' + c.join(',') + ',' + alpha + ')';
   }
 
@@ -564,6 +577,7 @@
 
   function useData(d, cached) {
     data = d;
+    chosen = readChosen(d);
     fromCache = !!cached;
     if (d && d.configured === true) {
       if (!zone || zone.tz !== str(d.tz)) zone = makeZone(str(d.tz));
