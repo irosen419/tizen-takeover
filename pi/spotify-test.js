@@ -90,7 +90,7 @@ async function main() {
   async function start(extra) {
     const o = Object.assign({
       token: TOKEN, port: 0, host: '127.0.0.1', dataDir: tmpDir(), log: (s) => logs.push(s),
-      spotifyEnv: ENV, spotify: { accounts: mock.url, api: mock.url, allowHttp: true, manual: true }
+      spotifyEnv: ENV, spotify: { accounts: mock.url, api: mock.url, vibe: mock.url, allowHttp: true, manual: true }
     }, extra || {});
     const h = hubServer.start(o);
     await h.ready;
@@ -99,6 +99,15 @@ async function main() {
   }
   const stop = (h) => new Promise((r) => h.close(r));
   const now = async (h) => (await request(h.port, 'GET', '/live/state')).json.resources.nowplaying;
+  // The song's vibe is looked up in the background after a poll: wait for it.
+  async function vibeSettled(h) {
+    for (let i = 0; i < 200; i++) {
+      const v = h._debug().spotify.vibe;
+      if (!v.busy && !v.queued) return;
+      await sleep(15);
+    }
+    throw new Error('the vibe lookup never finished');
+  }
 
   async function signIn(h) {
     const l = await api(h, 'POST', '/api/spotify/login', {});
@@ -351,7 +360,9 @@ async function main() {
     mock.seek(10000);
     const h = await start();
     await signIn(h);
+    await vibeSettled(h);
     let r = await now(h);
+    assert.strictEqual(r.data.vibe.tempo, 124, 'the vibe came after the song');
     const rev0 = r.rev;
     await sleep(120);
     await h.spotify.poll();
@@ -378,20 +389,22 @@ async function main() {
 
     mock.next();
     await h.spotify.poll();
+    await vibeSettled(h);
     r = await now(h);
-    assert.strictEqual(r.rev, rev0 + 4);
+    assert.strictEqual(r.rev, rev0 + 5, 'the new song, then its vibe');
     assert.strictEqual(r.data.track.title, 'Paper Moons');
+    assert.strictEqual(r.data.vibe.id, 'mock0003');
 
     mock.set('idle');
     await h.spotify.poll();
     r = await now(h);
-    assert.strictEqual(r.rev, rev0 + 5);
+    assert.strictEqual(r.rev, rev0 + 6);
     assert.strictEqual(r.data.state, 'idle');
     assert.strictEqual(r.data.track.title, 'Paper Moons', 'the last song is kept for "Last played"');
     assert.strictEqual(r.data.device, null);
     assert.ok(r.data.playedAt > 0);
     await h.spotify.poll();
-    assert.strictEqual((await now(h)).rev, rev0 + 5);
+    assert.strictEqual((await now(h)).rev, rev0 + 6);
     const lines = hubctl.spotifyStatusLines((await api(h, 'GET', '/api/spotify')).json.spotify);
     assert.strictEqual(lines[1], 'Nothing is playing. Last played: "Paper Moons" by Juniper & the Tide.');
     await stop(h);
@@ -553,7 +566,7 @@ async function main() {
     const h1 = await start({ dataDir: dir });
     await signIn(h1);
     await stop(h1);
-    const h = await start({ dataDir: dir, spotify: { accounts: mock.url, api: mock.url, allowHttp: true, playMs: 60, idleMs: 60, awayMs: 5000 } });
+    const h = await start({ dataDir: dir, spotify: { accounts: mock.url, api: mock.url, vibe: mock.url, allowHttp: true, playMs: 60, idleMs: 60, awayMs: 5000 } });
     await sleep(150);
     const asked = mock.calls.player;
     const req = http.get({ host: '127.0.0.1', port: h.port, path: '/live/events' }, (res) => res.resume());

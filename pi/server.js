@@ -591,6 +591,7 @@ function start(options) {
   const spOpt = isObj(opt.spotify) ? opt.spotify : {};
   const player = spotify.createPlayer(Object.assign({}, spOpt, {
     config: spotify.configFromEnv(opt.spotifyEnv || {}, port || DEFAULT_PORT),
+    vibeOff: spOpt.vibeOff === true || spotify.vibeOffFromEnv(opt.spotifyEnv),
     dataDir: dataDir,
     log: log,
     screens: () => sse.size + pollSeen.size,

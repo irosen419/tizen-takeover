@@ -269,3 +269,253 @@
 .panel.is-full .np-note { font-size: 1.2rem; }
 .panel.is-full .np-eq { width: 1.2rem; height: 1rem; }
 .panel.is-full .np-eq i { width: 0.3rem; }
+
+/* ---------- the visualizer (nowplaying-viz.js), full screen only ----------
+
+   A layer under the page's words, filling the panel. Levels classic and
+   lite: one small canvas, stretched to fill it (smoothly). Level glow: an
+   opaque wash in the song's colors and three soft glows; only transform and
+   opacity animate, every soft edge a pre-drawn radial gradient, durations
+   and delays set inline from the song's tempo and position. The still wash:
+   the same, not moving. */
+
+.npv {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: -1;              /* under the panel's content, over the frame */
+  overflow: hidden;
+  pointer-events: none;
+}
+.npv-scene,
+.npv-wash,
+.npv-group {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+}
+.npv-scene { will-change: opacity; }
+.npv-group {
+  -webkit-transition: opacity 1200ms linear;
+  transition: opacity 1200ms linear;
+}
+.npv-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.npv-orb {
+  position: absolute;
+  opacity: 0;
+  will-change: transform, opacity;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+.npv-orb { opacity: 1; }
+
+/* The glows: rise (a happy song), sink (a sad one) or drift sideways, two
+   slow breaths per cycle, fading in and out at the ends of the path. */
+@-webkit-keyframes npv-rise-a {
+  0% { -webkit-transform: translate3d(0, 18%, 0) scale(0.92); opacity: 0; }
+  18% { opacity: 1; }
+  25% { -webkit-transform: translate3d(5%, 8%, 0) scale(1.1); }
+  50% { -webkit-transform: translate3d(-3%, -1%, 0) scale(0.96); }
+  75% { -webkit-transform: translate3d(4%, -10%, 0) scale(1.12); }
+  82% { opacity: 1; }
+  100% { -webkit-transform: translate3d(-2%, -20%, 0) scale(0.94); opacity: 0; }
+}
+@keyframes npv-rise-a {
+  0% { transform: translate3d(0, 18%, 0) scale(0.92); opacity: 0; }
+  18% { opacity: 1; }
+  25% { transform: translate3d(5%, 8%, 0) scale(1.1); }
+  50% { transform: translate3d(-3%, -1%, 0) scale(0.96); }
+  75% { transform: translate3d(4%, -10%, 0) scale(1.12); }
+  82% { opacity: 1; }
+  100% { transform: translate3d(-2%, -20%, 0) scale(0.94); opacity: 0; }
+}
+@-webkit-keyframes npv-rise-b {
+  0% { -webkit-transform: translate3d(-4%, 20%, 0) scale(0.95); opacity: 0; }
+  20% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-6%, 9%, 0) scale(1.12); }
+  50% { -webkit-transform: translate3d(2%, 0, 0) scale(0.98); }
+  75% { -webkit-transform: translate3d(-2%, -11%, 0) scale(1.1); }
+  80% { opacity: 1; }
+  100% { -webkit-transform: translate3d(5%, -19%, 0) scale(0.95); opacity: 0; }
+}
+@keyframes npv-rise-b {
+  0% { transform: translate3d(-4%, 20%, 0) scale(0.95); opacity: 0; }
+  20% { opacity: 1; }
+  25% { transform: translate3d(-6%, 9%, 0) scale(1.12); }
+  50% { transform: translate3d(2%, 0, 0) scale(0.98); }
+  75% { transform: translate3d(-2%, -11%, 0) scale(1.1); }
+  80% { opacity: 1; }
+  100% { transform: translate3d(5%, -19%, 0) scale(0.95); opacity: 0; }
+}
+@-webkit-keyframes npv-rise-c {
+  0% { -webkit-transform: translate3d(3%, 16%, 0) scale(0.9); opacity: 0; }
+  16% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-2%, 7%, 0) scale(1.08); }
+  50% { -webkit-transform: translate3d(5%, -3%, 0) scale(0.95); }
+  75% { -webkit-transform: translate3d(0, -10%, 0) scale(1.1); }
+  84% { opacity: 1; }
+  100% { -webkit-transform: translate3d(-4%, -18%, 0) scale(0.92); opacity: 0; }
+}
+@keyframes npv-rise-c {
+  0% { transform: translate3d(3%, 16%, 0) scale(0.9); opacity: 0; }
+  16% { opacity: 1; }
+  25% { transform: translate3d(-2%, 7%, 0) scale(1.08); }
+  50% { transform: translate3d(5%, -3%, 0) scale(0.95); }
+  75% { transform: translate3d(0, -10%, 0) scale(1.1); }
+  84% { opacity: 1; }
+  100% { transform: translate3d(-4%, -18%, 0) scale(0.92); opacity: 0; }
+}
+@-webkit-keyframes npv-sink-a {
+  0% { -webkit-transform: translate3d(0, -16%, 0) scale(1.02); opacity: 0; }
+  22% { opacity: 1; }
+  25% { -webkit-transform: translate3d(3%, -7%, 0) scale(1.1); }
+  50% { -webkit-transform: translate3d(-2%, 1%, 0) scale(1); }
+  75% { -webkit-transform: translate3d(2%, 9%, 0) scale(1.08); }
+  78% { opacity: 1; }
+  100% { -webkit-transform: translate3d(-3%, 17%, 0) scale(1); opacity: 0; }
+}
+@keyframes npv-sink-a {
+  0% { transform: translate3d(0, -16%, 0) scale(1.02); opacity: 0; }
+  22% { opacity: 1; }
+  25% { transform: translate3d(3%, -7%, 0) scale(1.1); }
+  50% { transform: translate3d(-2%, 1%, 0) scale(1); }
+  75% { transform: translate3d(2%, 9%, 0) scale(1.08); }
+  78% { opacity: 1; }
+  100% { transform: translate3d(-3%, 17%, 0) scale(1); opacity: 0; }
+}
+@-webkit-keyframes npv-sink-b {
+  0% { -webkit-transform: translate3d(-5%, -18%, 0) scale(0.98); opacity: 0; }
+  20% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-2%, -8%, 0) scale(1.08); }
+  50% { -webkit-transform: translate3d(3%, 0, 0) scale(0.97); }
+  75% { -webkit-transform: translate3d(0, 8%, 0) scale(1.1); }
+  80% { opacity: 1; }
+  100% { -webkit-transform: translate3d(4%, 16%, 0) scale(0.98); opacity: 0; }
+}
+@keyframes npv-sink-b {
+  0% { transform: translate3d(-5%, -18%, 0) scale(0.98); opacity: 0; }
+  20% { opacity: 1; }
+  25% { transform: translate3d(-2%, -8%, 0) scale(1.08); }
+  50% { transform: translate3d(3%, 0, 0) scale(0.97); }
+  75% { transform: translate3d(0, 8%, 0) scale(1.1); }
+  80% { opacity: 1; }
+  100% { transform: translate3d(4%, 16%, 0) scale(0.98); opacity: 0; }
+}
+@-webkit-keyframes npv-sink-c {
+  0% { -webkit-transform: translate3d(4%, -14%, 0) scale(1); opacity: 0; }
+  18% { opacity: 1; }
+  25% { -webkit-transform: translate3d(0, -6%, 0) scale(1.12); }
+  50% { -webkit-transform: translate3d(-4%, 2%, 0) scale(0.98); }
+  75% { -webkit-transform: translate3d(-1%, 10%, 0) scale(1.08); }
+  82% { opacity: 1; }
+  100% { -webkit-transform: translate3d(3%, 16%, 0) scale(1); opacity: 0; }
+}
+@keyframes npv-sink-c {
+  0% { transform: translate3d(4%, -14%, 0) scale(1); opacity: 0; }
+  18% { opacity: 1; }
+  25% { transform: translate3d(0, -6%, 0) scale(1.12); }
+  50% { transform: translate3d(-4%, 2%, 0) scale(0.98); }
+  75% { transform: translate3d(-1%, 10%, 0) scale(1.08); }
+  82% { opacity: 1; }
+  100% { transform: translate3d(3%, 16%, 0) scale(1); opacity: 0; }
+}
+@-webkit-keyframes npv-side-a {
+  0% { -webkit-transform: translate3d(-18%, 2%, 0) scale(0.94); opacity: 0; }
+  18% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-8%, -4%, 0) scale(1.1); }
+  50% { -webkit-transform: translate3d(1%, 2%, 0) scale(0.97); }
+  75% { -webkit-transform: translate3d(9%, -3%, 0) scale(1.1); }
+  82% { opacity: 1; }
+  100% { -webkit-transform: translate3d(18%, 2%, 0) scale(0.95); opacity: 0; }
+}
+@keyframes npv-side-a {
+  0% { transform: translate3d(-18%, 2%, 0) scale(0.94); opacity: 0; }
+  18% { opacity: 1; }
+  25% { transform: translate3d(-8%, -4%, 0) scale(1.1); }
+  50% { transform: translate3d(1%, 2%, 0) scale(0.97); }
+  75% { transform: translate3d(9%, -3%, 0) scale(1.1); }
+  82% { opacity: 1; }
+  100% { transform: translate3d(18%, 2%, 0) scale(0.95); opacity: 0; }
+}
+@-webkit-keyframes npv-side-b {
+  0% { -webkit-transform: translate3d(17%, -3%, 0) scale(0.96); opacity: 0; }
+  20% { opacity: 1; }
+  25% { -webkit-transform: translate3d(8%, 3%, 0) scale(1.08); }
+  50% { -webkit-transform: translate3d(-1%, -2%, 0) scale(0.98); }
+  75% { -webkit-transform: translate3d(-9%, 4%, 0) scale(1.12); }
+  80% { opacity: 1; }
+  100% { -webkit-transform: translate3d(-17%, -2%, 0) scale(0.96); opacity: 0; }
+}
+@keyframes npv-side-b {
+  0% { transform: translate3d(17%, -3%, 0) scale(0.96); opacity: 0; }
+  20% { opacity: 1; }
+  25% { transform: translate3d(8%, 3%, 0) scale(1.08); }
+  50% { transform: translate3d(-1%, -2%, 0) scale(0.98); }
+  75% { transform: translate3d(-9%, 4%, 0) scale(1.12); }
+  80% { opacity: 1; }
+  100% { transform: translate3d(-17%, -2%, 0) scale(0.96); opacity: 0; }
+}
+@-webkit-keyframes npv-side-c {
+  0% { -webkit-transform: translate3d(-16%, -4%, 0) scale(1); opacity: 0; }
+  16% { opacity: 1; }
+  25% { -webkit-transform: translate3d(-7%, 3%, 0) scale(1.1); }
+  50% { -webkit-transform: translate3d(2%, -3%, 0) scale(0.97); }
+  75% { -webkit-transform: translate3d(10%, 2%, 0) scale(1.08); }
+  84% { opacity: 1; }
+  100% { -webkit-transform: translate3d(16%, -3%, 0) scale(1); opacity: 0; }
+}
+@keyframes npv-side-c {
+  0% { transform: translate3d(-16%, -4%, 0) scale(1); opacity: 0; }
+  16% { opacity: 1; }
+  25% { transform: translate3d(-7%, 3%, 0) scale(1.1); }
+  50% { transform: translate3d(2%, -3%, 0) scale(0.97); }
+  75% { transform: translate3d(10%, 2%, 0) scale(1.08); }
+  84% { opacity: 1; }
+  100% { transform: translate3d(16%, -3%, 0) scale(1); opacity: 0; }
+}
+
+/* With the visualizer behind it, the page's words get a touch more weight. */
+.np-page.npv-on .np-title,
+.np-page.npv-on .np-artist { text-shadow: 0 0.05rem 0.6rem rgba(0, 0, 0, 0.35); }
+.np-page.npv-on .np-album,
+.npv-on .np-times,
+.npv-on .np-label-text { color: rgba(255, 255, 255, 0.78); }
+.npv-on .np-chip { color: rgba(255, 255, 255, 0.86); border-color: rgba(255, 255, 255, 0.28); }
+.npv-on .np-bar { background: rgba(255, 255, 255, 0.24); }
+
+/* The small card in the upper left, while the visualizer is the star:
+   picture, label, title (two lines), artist, album, time and chips. Dark
+   glass behind it (a plain translucent color; no backdrop filter) keeps the
+   words readable over bright shapes. */
+.panel.is-full .np-page.np-card {
+  display: inline-flex;
+  align-items: flex-start;
+  max-width: 27rem;
+  padding: 0.9rem 1.1rem 0.8rem 0.9rem;
+  border-radius: 1.2rem;
+  background: rgba(8, 9, 16, 0.58);
+  box-shadow: 0 0 0 0.06rem rgba(255, 255, 255, 0.08);
+}
+.panel.is-full .np-page.np-card .np-art { margin-right: 1.1rem; }
+.panel.is-full .np-page.np-card .np-face { border-radius: 0.7rem; }
+.panel.is-full .np-page.np-card .np-info { height: auto; }
+.panel.is-full .np-page.np-card .np-label { margin-bottom: 0.25rem; }
+.panel.is-full .np-page.np-card .np-label-text { font-size: 0.75rem; }
+.panel.is-full .np-page.np-card .np-eq { width: 0.9rem; height: 0.75rem; }
+.panel.is-full .np-page.np-card .np-eq i { width: 0.22rem; }
+.panel.is-full .np-page.np-card .np-title { font-size: 1.35rem; line-height: 1.3; }
+.panel.is-full .np-page.np-card .np-artist { margin-top: 0.2rem; font-size: 1rem; line-height: 1.4; }
+.panel.is-full .np-page.np-card .np-album { margin-top: 0.05rem; font-size: 0.85rem; line-height: 1.4; }
+.panel.is-full .np-page.np-card .np-foot { margin-top: 0.55rem; }
+.panel.is-full .np-page.np-card .np-times { font-size: 0.75rem; margin-bottom: 0.25rem; }
+.panel.is-full .np-page.np-card .np-bar-page { height: 0.22rem; }
+.panel.is-full .np-page.np-card .np-chips { margin-top: 0.45rem; min-height: 0; flex-wrap: nowrap; overflow: hidden; }
+.panel.is-full .np-page.np-card .np-chip { font-size: 0.7rem; padding: 0.05rem 0.55rem; margin: 0 0.35rem 0 0; }
+.panel.is-full .np-page.np-card .np-title,
+.panel.is-full .np-page.np-card .np-artist { text-shadow: none; }
