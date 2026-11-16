@@ -178,7 +178,7 @@ When something is missing the tile says so in plain words: "Calendar needs the P
 Four tiles for the book project, all with a globe icon. They read two things from the hub server on the Raspberry Pi:
 
 - **Calendars, by name.** Visits come from the calendar named "School Visits"; project dates from "A World Worth Saving". Any other calendar on the Pi (the family one, say) never shows on these tiles. The names are in `app/config.js`, under `widgets.awws.calendars`.
-- **A snapshot of the project**, sent by the Mac to the Pi (`POST /api/awws`; the file is described in [docs/awws-snapshot.md](docs/awws-snapshot.md)): the to-do board, handoffs, librarians, books, the rewrite, money and reach. Each copy that arrives is checked and the tiles redraw only when what they show changes.
+- **A snapshot of the project**, sent to the Pi by a Claude sync through the mailbox, or by hand with `./hub awws set` (the file is described in [docs/awws-snapshot.md](docs/awws-snapshot.md)): the to-do board, handoffs, librarians, books, the rewrite, money and reach. Each copy that arrives is checked and the tiles redraw only when what they show changes.
 
 ![The AWWS desk layout: Next visit, This week, Weather, the To-do board, Calendar, Today and Entertainment](docs/screenshots/awws-layout-desk.jpg)
 
@@ -199,7 +199,7 @@ Open the Glance and it lists Next visit, This week and To-do board with a line e
 
 ![The To-do board panel, showing Ian's items](docs/screenshots/awws-panel-todo-ian.jpg)
 
-When something is missing a tile says so instead of going blank: "Not synced yet" (no snapshot from the Mac), "Needs the Pi" (live updates off or the Pi never reached), "Can’t reach the Pi", "Loading…", "No “School Visits” calendar on the Pi", or "School Visits couldn’t be read". Under the title, "as of 7:10 AM" means the data is older than it should be (the calendar after 30 minutes, the snapshot after 2 hours). The TV keeps its last copy (`homeHub.awws.v1`), so the tiles have something to show straight after the TV turns on.
+When something is missing a tile says so instead of going blank: "Not synced yet" (no snapshot has reached the Pi yet), "Needs the Pi" (live updates off or the Pi never reached), "Can’t reach the Pi", "Loading…", "No “School Visits” calendar on the Pi", or "School Visits couldn’t be read". Under the title, "as of 7:10 AM" means the data is older than it should be (the calendar after 30 minutes, the snapshot after 2 hours). The TV keeps its last copy (`homeHub.awws.v1`), so the tiles have something to show straight after the TV turns on.
 
 ![The tiles when the snapshot is old: “as of 7:10 AM” under the titles](docs/screenshots/awws-state-stale.jpg)
 
