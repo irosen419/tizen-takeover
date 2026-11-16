@@ -2,7 +2,7 @@
    tile's own rules are in style.css). Every class starts with clock-.
 
    The panel is already glass, so inside it there are no boxes in boxes:
-   the face, one hairline over "About this hub", and the two choice pills.
+   the face and the two choice pills.
    Nothing animates; the page only swaps text and turns the hands (an SVG
    transform attribute) once a second. No flex gap, no grid, no filters.
    Every text keeps a line-height of 1.25 or more so accents (Á, Ñ, é) and
@@ -206,38 +206,6 @@
 }
 .clock-opt.is-pressed { opacity: 0.7; }
 
-/* ---------- about this hub ---------- */
-
-.clock-about {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: flex-start;
-  margin-top: 0.7rem;
-  padding-top: 0.6rem;
-  border-top: 0.06rem solid var(--line);
-}
-.clock-about-title {
-  flex: 0 0 auto;
-  width: 9rem;
-  padding-right: 1rem;
-  font-size: 0.7rem;
-  line-height: 1.6;      /* sits on the first line's baseline */
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  word-wrap: break-word;   /* a longer name wraps under itself */
-}
-.clock-about-lines { flex: 1 1 auto; min-width: 0; }
-.clock-about-line {
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: var(--text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .clock-fallback { font-size: 1rem; line-height: 1.4; color: var(--text-2); }
 
 /* ---------- full screen ---------- */
@@ -253,6 +221,3 @@
 .clock-page.is-full .clock-group + .clock-group { margin-top: 1.6rem; }
 .clock-page.is-full .clock-group-label { font-size: 0.85rem; }
 .clock-page.is-full .clock-opt { padding: 0.6rem 0.8rem; font-size: 1.1rem; }
-.clock-page.is-full .clock-about { margin-top: 1.2rem; padding-top: 1rem; }
-.clock-page.is-full .clock-about-title { width: 11rem; font-size: 0.8rem; line-height: 1.75; }
-.clock-page.is-full .clock-about-line { font-size: 0.95rem; }

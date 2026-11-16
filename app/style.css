@@ -315,6 +315,63 @@ body {
 /* Focus is the gray pill. No transition. */
 .switcher-item.is-focused { background: rgba(255, 255, 255, 0.26); border-color: rgba(255, 255, 255, 0.5); }
 
+/* ---------- About panel ---------- */
+
+/* A strip of facts that slides in from the left edge, made like the layout
+   bar: the same glass, border, radius and slide. Hidden means not drawn;
+   only transform and opacity animate. Labels sit above their values, so
+   longer labels (other languages) and values just wrap; nothing is cut. */
+.about {
+  position: fixed; top: 1.1rem; bottom: 1.1rem; left: 1.1rem;
+  z-index: 15;
+  display: none;
+  align-items: flex-start;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-140%, 0);
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms linear;
+}
+.about.is-on { display: flex; }
+.about.is-shown { opacity: 1; transform: translate(0, 0); }
+.about-box {
+  flex: 0 0 auto;
+  width: 21rem;
+  max-width: calc(100vw - 2.2rem);
+  max-height: 100%;
+  overflow: hidden;              /* Up and Down scroll it, a step at a time */
+  padding: 1.1rem 1.5rem 1.2rem;
+  background: rgba(14, 15, 18, 0.92);
+  border: var(--edge) solid var(--line);
+  border-radius: 2.6rem;
+  pointer-events: auto;
+  box-sizing: border-box;
+}
+.about-group {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 0.06rem solid rgba(255, 255, 255, 0.12);
+  font-size: 0.68rem; font-weight: 600; line-height: 1.4;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.about-group:first-child { margin-top: 0; padding-top: 0.15rem; border-top: 0; }
+.about-row { margin-top: 0.55rem; }
+.about-label {
+  font-size: 0.62rem; font-weight: 500; line-height: 1.4;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.about-value {
+  margin-top: 0.1rem;
+  font-size: 1rem; font-weight: 400; line-height: 1.4;
+  color: var(--text);
+  word-wrap: break-word;
+}
+
 /* ---------- toast ---------- */
 
 .toast {
@@ -636,6 +693,7 @@ body.has-picture {
 :root { --glass-img: none; }
 .is-glass .tile,
 .is-glass .switcher-bar,
+.is-glass .about-box,
 .is-glass .ghost {
   --tint: rgba(10, 14, 20, 0.4);
   background-color: transparent;
@@ -651,12 +709,14 @@ body.has-picture {
   border-color: var(--focus);
 }
 .is-glass .ghost { --tint: rgba(10, 14, 20, 0.5); }
-.is-glass .switcher-bar { --tint: rgba(10, 14, 20, 0.55); }
+.is-glass .switcher-bar,
+.is-glass .about-box { --tint: rgba(10, 14, 20, 0.55); }
 .is-glass .ghost.is-full { --tint: rgba(10, 14, 20, 0.62); }
 
 /* The engine couldn't show the blurred layer: keep the see-through tint. */
 .glass-tint-only .tile,
 .glass-tint-only .switcher-bar,
+.glass-tint-only .about-box,
 .glass-tint-only .ghost {
   background-image: none;
   background-color: rgba(10, 14, 20, 0.4);

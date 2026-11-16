@@ -27,9 +27,9 @@
  *     changing ends a scene at once.
  *
  * Every entry point is wrapped, so if anything here breaks, the hub carries
- * on exactly as without it. HUB_CLAY.status() says, in one line, what they
- * are doing or why they are not coming, and the last problem (the Clock
- * page shows it under "About this hub").
+ * on exactly as without it. HUB_CLAY.status() says what they are doing or
+ * why they are not coming, how the visits went, how long loading took and
+ * the last problem (the About panel shows it, under Wanderers).
  *
  * Scenes are small scripts: each actor (a character, a duo sprite or a prop)
  * gets a list of steps that play one after another, tick by tick, and actors
@@ -45,6 +45,10 @@
   var LOAD_MS = 30000;         // the sprite list, or a scene's frames, must load within this, or
                                // the visit is skipped (and tried again at the next one; the
                                // files go on loading into the cache)
+  var SLOW_RETRY_MS = 20000;   // after a visit skipped as slow (its files still coming), the next this soon
+                               // (or every[0], if that is sooner),
+  var SLOW_RETRIES = 3;        // for at most this many slow visits in a row; then every[0] until one plays
+  var MAX_SETTLING = 200;      // Images kept alive while they finish loading, at most (the oldest go)
   var AHEAD_MS = 3000;         // after a visit ends, this long until the next one's frames start loading
   var CHECK_MS = 5000;         // how often to look again while a panel is open or the page is hidden
   var BROKEN_MS = 10 * 60000;  // a scene whose frames failed is left out this long
@@ -101,6 +105,7 @@
   var played = 0;              // scenes that came on screen since the page loaded
   var slow = 0;                // visits skipped because loading took over loadMs
   var failedN = 0;             // visits that failed for any other reason
+  var slowRun = 0;             // slow visits in a row
   var problem = null;          // { text, at }: the last thing that went wrong, kept for status()
   var hourOverride = null;
   var tickMs = TICK_MS;
@@ -348,6 +353,7 @@
       img.onerror = failed(key, img);
       images[key] = img;
       settling.push(img);
+      if (settling.length > MAX_SETTLING) settling.shift();
       img.src = spriteUrl(key);
     }
     if (!keys.length) setTimeout(function () { info.ms = 0; finish(images); }, 0);
@@ -673,7 +679,7 @@
     if (sc.cancel) { try { sc.cancel(); } catch (e) { /* ignore */ } }
     if (sc.layer && sc.layer.parentNode) sc.layer.parentNode.removeChild(sc.layer);
     sc.layer = null;
-    last = { name: sc.name, result: result, ticks: sc.tick };
+    last = { name: sc.name, result: result, ticks: sc.tick, at: now() };
     if (sc.phase === 'playing') lastName = sc.name;
     if (result.indexOf('slow:') === 0) slow++;
     else if (result.indexOf('failed:') === 0 && result !== 'failed: does not fit here') failedN++;
@@ -685,6 +691,9 @@
     } else if (result === 'interrupted' || result === 'stopped') {
       // The next quiet spell gets a fresh visit.
       due = 0;
+    } else if (result.indexOf('slow:') === 0 && ++slowRun <= SLOW_RETRIES) {
+      // Its files are still coming: back soon (the idle rule still applies).
+      due = t + Math.min(SLOW_RETRY_MS, settings.every[0] * 1000);
     } else {
       due = t + settings.every[0] * 1000;
     }
@@ -699,7 +708,7 @@
     opts = opts || {};
     if (scene) end('stopped');
     var my = ++gen;
-    scene = { name: name, seed: opts.seed, phase: 'loading', step: 'sprite list', tick: 0, idleTicks: 0 };
+    scene = { name: name, seed: opts.seed, phase: 'loading', step: 'sprite list', tick: 0, idleTicks: 0, t0: now() };
     stopTimer();
     loadAssets(function (ok) {
       if (my !== gen || !scene) return;
@@ -747,6 +756,7 @@
         }
         sc.phase = 'playing';
         played++;
+        slowRun = 0;
         tick();
       });
     });
@@ -973,6 +983,7 @@
     pending = null;
     arm();
   }
+
 
   /* ---------- the scenes ---------- */
 
@@ -1395,7 +1406,7 @@
     return { actors: S.actors, night: !!S.night || name === 'night', W: S.W, H: S.H, k: S.k };
   }
 
-  /* ---------- status, for the Clock page ---------- */
+  /* ---------- status, for the About panel ---------- */
 
   function ago(t) {
     var s = Math.max(0, Math.round((now() - t) / 1000));
@@ -1416,12 +1427,48 @@
     return l.name + ' ' + word;
   }
 
+  // "N s" up to 99 s, else "M min S s".
+  function howLong(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000));
+    return s <= 99 ? s + ' s' : Math.floor(s / 60) + ' min ' + (s % 60) + ' s';
+  }
+
+  // What keeps the hub busy, in plain words.
+  var BUSY = {
+    panel: 'a page is open',
+    frame: 'a page is open',
+    switcher: 'the layout bar is open',
+    typing: 'you are typing',
+    moving: 'the hub is moving'
+  };
+
   function busyWhy() {
     try {
       var w = host && typeof host.busyWhy === 'function' ? host.busyWhy() : '';
-      return typeof w === 'string' ? w : '';
+      return BUSY.hasOwnProperty(w) ? BUSY[w] : '';
     } catch (e) { return ''; }
   }
+
+  // Now: what they are doing, or what comes next.
+  function nowText() {
+    if (scene) {
+      if (scene.phase === 'playing') return 'on screen now: ' + scene.name;
+      var secs = Math.floor((now() - scene.t0) / 1000) + ' s';
+      if (scene.step === 'frames' && lastLoad && lastLoad.name === scene.name && lastLoad.of !== undefined) {
+        return 'loading ' + scene.name + ', ' + lastLoad.got + ' of ' + lastLoad.of + ' frames, ' + secs;
+      }
+      return 'loading ' + scene.name + ' (' + scene.step + '), ' + secs;
+    }
+    if (isHidden()) return 'waiting: page reports hidden';
+    if (!hostQuiet()) {
+      var why = busyWhy();
+      return 'waiting: hub busy' + (why ? ' (' + why + ')' : '');
+    }
+    return 'due back in ' + howLong(nextAt() - now());
+  }
+
+  // "N ms" under a second, else "N.N s".
+  function ms(v) { return v < 1000 ? v + ' ms' : (v / 1000).toFixed(1) + ' s'; }
 
   function overLimit() { return ' (over ' + Math.round(loadMs / 1000) + ' s)'; }
 
@@ -1429,8 +1476,8 @@
   function spriteText() {
     if (spriteEvent === 'already there' && spriteMs === null) return 'sprite list in';
     if (!spriteScript) return '';
-    if (spriteMs === null) return 'sprite list not in after ' + (now() - spriteStart) + ' ms';
-    var s = 'sprite list ' + (spriteHow === 'onerror' ? 'onerror after ' : '') + spriteMs + ' ms';
+    if (spriteMs === null) return 'sprite list not in after ' + ms(now() - spriteStart);
+    var s = 'sprite list ' + (spriteHow === 'onerror' ? 'onerror after ' : '') + ms(spriteMs);
     return spriteMs > loadMs ? s + overLimit() : s;
   }
 
@@ -1438,39 +1485,43 @@
   function framesText(L) {
     if (!L || L.of === undefined) return '';
     var s = L.name + ' ' + L.got + '/' + L.of + ' frames';
-    if (L.ms !== null) return s + ' in ' + L.ms + ' ms' + (L.timedOut ? overLimit() : '');
+    if (L.ms !== null) return s + ' in ' + ms(L.ms) + (L.timedOut ? overLimit() : '');
     if (L.failed) return s + ', then one failed';
-    return s + (L.timedOut ? ' after ' : ' so far, ') + (now() - L.t0) + ' ms';
+    return s + (L.timedOut ? ' after ' : ' so far, ') + ms(now() - L.t0);
   }
 
-  // { text, detail }: text says what they are doing or why not, the visits
-  // so far and the last outcome; detail ('' before anything loaded) how long
-  // loading took and the last problem, and when. Always safe to call.
+  // The parts the About panel shows, one row each, all strings ('' when a
+  // row has nothing to say): now (what they are doing, or what comes next),
+  // visits, last (the last visit, how it ended and when), loading (how long
+  // the sprite list and the last scene's frames took) and problem (the last
+  // thing that went wrong, and when). text joins them in one line, for tests
+  // and the console. Always safe to call.
   function status() {
     try {
-      var parts = [];
-      if (!started) return { text: 'not started', detail: '' };
-      if (!settings) return { text: 'off (' + (offWhy || 'config') + ')', detail: '' };
-      if (scene) {
-        parts.push(scene.phase === 'playing' ? 'playing ' + scene.name : 'loading ' + scene.name + ' (' + scene.step + ')');
-      } else if (isHidden()) {
-        parts.push('not yet: page reports hidden');
-      } else if (!hostQuiet()) {
-        var why = busyWhy();
-        parts.push('not yet: hub busy' + (why ? ' (' + why + ')' : ''));
-      } else {
-        parts.push('next visit in ' + Math.max(0, Math.ceil((nextAt() - now()) / 1000)) + ' s');
+      var out = { now: '', visits: '', last: '', loading: '', problem: '', text: '' };
+      if (!started) out.now = 'not started';
+      else if (!settings) out.now = 'off (' + (offWhy || 'config') + ')';
+      else {
+        out.now = nowText();
+        out.visits = played + ' played · ' + slow + ' slow · ' + failedN + ' failed';
+        if (last) out.last = outcome(last) + ', ' + ago(last.at);
+        var load = [];
+        var a = spriteText();
+        if (a) load.push(a);
+        var b = framesText(lastLoad);
+        if (b) load.push(b);
+        out.loading = load.join(' · ');
+        if (problem) out.problem = problem.text + ', ' + ago(problem.at);
       }
-      parts.push(played + ' played, ' + slow + ' slow, ' + failedN + ' failed' + (last ? '; last ' + outcome(last) : ''));
-      var detail = [];
-      var a = spriteText();
-      if (a) detail.push(a);
-      var b = framesText(lastLoad);
-      if (b) detail.push(b);
-      if (problem) detail.push('problem ' + ago(problem.at) + ': ' + problem.text);
-      return { text: parts.join(' · '), detail: detail.join(' · ') };
+      var parts = [out.now];
+      if (out.visits) parts.push(out.visits);
+      if (out.last) parts.push('last ' + out.last);
+      if (out.loading) parts.push(out.loading);
+      if (out.problem) parts.push('problem: ' + out.problem);
+      out.text = parts.join(' · ');
+      return out;
     } catch (e) {
-      return { text: 'status failed: ' + errText(e), detail: '' };
+      return { now: 'status failed: ' + errText(e), visits: '', last: '', loading: '', problem: '', text: 'status failed: ' + errText(e) };
     }
   }
 
@@ -1512,6 +1563,8 @@
         spriteMs: spriteMs,
         played: played,
         slow: slow,
+        slowRun: slowRun,
+        settling: settling.length,
         failed: failedN,
         broken: (function () { var b = []; for (var k in broken) if (broken.hasOwnProperty(k)) b.push(k); return b; })(),
         lastLoad: lastLoad,

@@ -10,9 +10,13 @@
  * the layout bar blocks scenes and a layout picked there is measured anew;
  * clay: false and ?clay=off load nothing; a missing sprite skips the scene;
  * night hours pick night scenes; a ticked to-do item queues a cheer; the
- * status line (HUB_CLAY.status(), shown on the Clock page) says what is
- * going on and why not; no stylesheet is fetched; a failed sprite list is
- * tried again at the next visit and a skipped scene after 10 minutes.
+ * status (HUB_CLAY.status(), shown in the About panel) says what is going
+ * on and why not; no stylesheet is fetched; a failed sprite list is tried
+ * again at the next visit and a skipped scene after 10 minutes; slow frames
+ * are not marked broken and the next visit comes 20 s later (three times);
+ * frames load ahead; at most 200 unanswered images are kept. The About
+ * panel: its keys, its rows, a long problem that wraps, and that a visit
+ * loads and plays with it open.
  * Needs Playwright and port 8095 free.
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
@@ -107,6 +111,9 @@ function control(method, route, body) {
 
 /* ---------- pages ---------- */
 
+// A route that never answers (the request just hangs).
+const HANG = -1;
+
 // opts: { clay: value for HUB_CONFIG.clay (undefined = config.js as it is),
 // query, missing: [url parts that answer 404] (may be changed later),
 // serve: { url part: { type, body, delay } }, slowOnce: { url part: delay }
@@ -129,6 +136,7 @@ async function newHub(opts) {
     for (const part in (opts.slowOnce || {})) {
       if (url.indexOf(part) < 0 || context.seen.has(url)) continue;
       context.seen.add(url);
+      if (opts.slowOnce[part] === HANG) return new Promise(() => {});
       await sleep(opts.slowOnce[part]);
       try { return await route.continue(); } catch (e) { return; }
     }
@@ -175,8 +183,8 @@ function noErrors(page, extra) {
 
 const look = {
   state: (page) => page.evaluate(() => window.HUB_TEST.clay.state()),
-  status: (page) => page.evaluate(() => window.HUB_CLAY.status().text),
-  detail: (page) => page.evaluate(() => window.HUB_CLAY.status().detail),
+  // { now, visits, last, loading, problem, text }: the About panel's Wanderers rows.
+  st: (page) => page.evaluate(() => window.HUB_CLAY.status()),
   layer: (page) => page.evaluate(() => !!document.querySelector('.clay-layer')),
   focused: (page) => page.evaluate(() => {
     const t = document.querySelector('#grid .tile.is-focused');
@@ -213,10 +221,10 @@ async function checkNothingAtStart() {
   const st = await look.state(page);
   assert(st.on && st.phase === 'waiting' && st.assets === 'none', 'state: ' + JSON.stringify(st));
   assert(st.nextIn > 15000, 'the first visit is due too soon: ' + st.nextIn);
-  const text = await look.status(page);
-  const m = /^next visit in (\d+) s · 0 played, 0 slow, 0 failed$/.exec(text);
-  assert((await look.detail(page)) === '', 'detail before anything loaded: ' + (await look.detail(page)));
-  assert(m && Math.abs(Number(m[1]) * 1000 - st.nextIn) < 1500, 'status: ' + text + ' (next in ' + st.nextIn + ' ms)');
+  const s0 = await look.st(page);
+  const m = /^due back in (\d+) s$/.exec(s0.now);
+  assert(s0.visits === '0 played · 0 slow · 0 failed' && !s0.last && !s0.loading && !s0.problem, 'status: ' + JSON.stringify(s0));
+  assert(m && Math.abs(Number(m[1]) * 1000 - st.nextIn) < 1500, 'status: ' + s0.now + ' (next in ' + st.nextIn + ' ms)');
   assert(!(await page.evaluate(() => document.getElementById('clay-style'))), 'the clay styles are in before the first visit');
   assert(!clayRequests(page).length, 'loaded: ' + clayRequests(page).join(', '));
   assert(!(await look.layer(page)), 'a clay layer is there');
@@ -332,7 +340,7 @@ async function checkKeyClears() {
   await until(async () => (await look.state(page)).tick > 12, 5000, 'the scene did not run');
   assert(await look.layer(page), 'no layer while playing');
   const before = await look.focused(page);
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
   const atKey = await page.evaluate(() => window.__atKey);
   assert(atKey.length === 1 && atKey[0] === false, 'the layer was still there when the hub saw the key: ' + JSON.stringify(atKey));
   assert((await look.focused(page)) !== before, 'focus did not move: ' + before);
@@ -399,11 +407,11 @@ async function checkOff() {
     const page = await newHub(opts);
     const st = await look.state(page);
     assert(!st.on && st.phase === 'off', JSON.stringify(opts) + ': ' + JSON.stringify(st));
-    const text = await look.status(page);
+    const text = (await look.st(page)).now;
     const want = opts.query ? 'off (?clay=off)' : 'off (config)';
     assert(text === want, JSON.stringify(opts) + ': status ' + JSON.stringify(text));
     assert(!(await page.evaluate(() => window.HUB_TEST.clay.play('stroll'))), JSON.stringify(opts) + ': play() worked');
-    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('ArrowRight');
     await sleep(1500);
     assert(!clayRequests(page).length, JSON.stringify(opts) + ' loaded: ' + clayRequests(page).join(', '));
     assert(!(await look.layer(page)), JSON.stringify(opts) + ': layer');
@@ -420,25 +428,24 @@ async function checkMissing() {
   await until(async () => (await look.state(page)).last, 10000, 'stroll did not finish loading');
   let st = await look.state(page);
   assert(st.phase === 'waiting' && st.last.result === 'failed: frame ember/trot-1 failed (onerror)', 'state: ' + JSON.stringify(st));
-  let text = await look.status(page);
-  assert(/^next visit in \d+ s · 0 played, 0 slow, 1 failed; last stroll failed$/.test(text), 'status: ' + text);
-  let detail = await look.detail(page);
-  assert(/^sprite list \d+ ms · stroll \d+\/\d+ frames, then one failed · problem \d+ s ago: scene stroll skipped: frame ember\/trot-1 failed \(onerror\)$/.test(detail),
-    'detail: ' + detail);
+  let s1 = await look.st(page);
+  assert(/^due back in \d+ s$/.test(s1.now) && s1.visits === '0 played · 0 slow · 1 failed' && /^stroll failed, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
+  assert(/^sprite list \d+ ms · stroll \d+\/\d+ frames, then one failed$/.test(s1.loading), 'loading: ' + s1.loading);
+  assert(/^scene stroll skipped: frame ember\/trot-1 failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
   assert(st.broken.indexOf('stroll') >= 0, 'stroll is not marked broken: ' + JSON.stringify(st.broken));
   assert(!(await look.layer(page)), 'a layer was left');
   const before = await look.focused(page);
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
   assert((await look.focused(page)) !== before, 'focus did not move');
   await page.evaluate(() => window.HUB_TEST.clay.setSpeed(5));
   await playing(page, 'perch', { seed: 8, pose: 'sit-edge' });
   await until(async () => (await look.state(page)).phase === 'waiting', 10000, 'perch did not end');
   assert((await look.state(page)).last.result === 'done', 'perch: ' + JSON.stringify((await look.state(page)).last));
-  // The problem stays in the line after a good visit.
-  text = await look.status(page);
-  detail = await look.detail(page);
-  assert(/· 1 played, 0 slow, 1 failed; last perch finished$/.test(text), 'status after perch: ' + text);
-  assert(/ · perch (\d+)\/\1 frames in \d+ ms · problem \d+ s ago: scene stroll skipped: frame ember\/trot-1 failed \(onerror\)$/.test(detail), 'detail after perch: ' + detail);
+  // The problem stays after a good visit.
+  s1 = await look.st(page);
+  assert(s1.visits === '1 played · 0 slow · 1 failed' && /^perch finished, \d+ s ago$/.test(s1.last), 'status after perch: ' + JSON.stringify(s1));
+  assert(/ · perch (\d+)\/\1 frames in (\d+ ms|\d+\.\d s)$/.test(s1.loading), 'loading after perch: ' + s1.loading);
+  assert(/^scene stroll skipped: frame ember\/trot-1 failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem after perch: ' + s1.problem);
   noErrors(page, /Clay: scene stroll skipped/);
   await page.ctx.close();
 
@@ -448,31 +455,31 @@ async function checkMissing() {
   await until(async () => (await look.state(page)).last, 10000, 'fetch did not give up');
   st = await look.state(page);
   assert(st.assets === 'failed' && st.spriteEvent === 'onerror' && !(await look.layer(page)), 'state: ' + JSON.stringify(st));
-  text = await look.status(page);
-  detail = await look.detail(page);
-  assert(/^next visit in \d+ s · 0 played, 0 slow, 1 failed; last fetch failed$/.test(text), 'status: ' + text);
-  assert(/^sprite list onerror after \d+ ms · problem \d+ s ago: sprite list did not load \(onerror\)$/.test(detail), 'detail: ' + detail);
+  s1 = await look.st(page);
+  assert(s1.visits === '0 played · 0 slow · 1 failed' && /^fetch failed, \d+ s ago$/.test(s1.last) && /^due back in \d+ s$/.test(s1.now), 'status: ' + JSON.stringify(s1));
+  assert(/^sprite list onerror after \d+ ms$/.test(s1.loading), 'loading: ' + s1.loading);
+  assert(/^sprite list did not load \(onerror\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
   const f0 = await look.focused(page);
-  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowRight');
   assert((await look.focused(page)) !== f0, 'focus did not move');
   noErrors(page, /Clay: sprite list/);
 }
 
-// Playing, loading, a busy hub and a page that reports hidden, in the status line.
+// Playing, a busy hub and a page that reports hidden, in the status.
 async function checkStatus() {
   const page = await newHub();
   await page.evaluate(() => window.HUB_TEST.clay.setSpeed(0));
   await playing(page, 'stroll', { seed: 21, dir: 'right' });
-  let text = await look.status(page);
-  assert(text === 'playing stroll · 1 played, 0 slow, 0 failed', 'playing: ' + text);
+  let s1 = await look.st(page);
+  assert(s1.now === 'on screen now: stroll' && s1.visits === '1 played · 0 slow · 0 failed', 'playing: ' + JSON.stringify(s1));
   await page.evaluate(() => window.HUB_TEST.clay.stop());
-  text = await look.status(page);
-  assert(/^next visit in \d+ s · 1 played, 0 slow, 0 failed; last stroll stopped$/.test(text), 'after stop: ' + text);
+  s1 = await look.st(page);
+  assert(/^due back in \d+ s$/.test(s1.now) && /^stroll stopped, \d+ s ago$/.test(s1.last), 'after stop: ' + JSON.stringify(s1));
   // A panel open: busy, and which.
   await page.evaluate(() => window.HUB_TEST.openPanel('weather'));
   await until(() => page.evaluate(() => window.HUB_TEST.open() === 'weather' && !window.HUB_TEST.busy()), 4000, 'the panel did not open');
-  text = await look.status(page);
-  assert(text === 'not yet: hub busy (panel open) · 1 played, 0 slow, 0 failed; last stroll stopped', 'panel: ' + text);
+  s1 = await look.st(page);
+  assert(s1.now === 'waiting: hub busy (a page is open)', 'panel: ' + s1.now);
   await page.evaluate(() => window.HUB_TEST.closePanel());
   await until(() => page.evaluate(() => window.HUB_TEST.open() === null && !window.HUB_TEST.busy()), 4000, 'the panel did not close');
   // The page says it is hidden (as a TV may while the hub is in front).
@@ -481,8 +488,8 @@ async function checkStatus() {
     Object.defineProperty(document, 'webkitHidden', { configurable: true, get: () => true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  text = await look.status(page);
-  assert(text === 'not yet: page reports hidden · 1 played, 0 slow, 0 failed; last stroll stopped', 'hidden: ' + text);
+  s1 = await look.st(page);
+  assert(s1.now === 'waiting: page reports hidden', 'hidden: ' + s1.now);
   assert(!(await page.evaluate(() => window.HUB_TEST.clay.play('zoomies'))) || (await look.state(page)).phase !== 'playing', 'played while hidden');
   noErrors(page);
 }
@@ -495,9 +502,10 @@ async function checkSpriteList() {
   await page.evaluate(() => window.HUB_TEST.clay.play('fetch', { seed: 31 }));
   await until(async () => (await look.state(page)).last, 10000, 'fetch did not give up');
   let st = await look.state(page);
-  let detail = await look.detail(page);
+  let s1 = await look.st(page);
   assert(st.assets === 'failed' && st.spriteEvent === 'onload', 'state: ' + JSON.stringify(st));
-  assert(/^sprite list \d+ ms · problem \d+ s ago: sprite list loaded but is not valid \(onload, no sprites or sequences\)$/.test(detail), 'detail: ' + detail);
+  assert(/^sprite list \d+ ms$/.test(s1.loading), 'loading: ' + s1.loading);
+  assert(/^sprite list loaded but is not valid \(onload, no sprites or sequences\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
   noErrors(page, /Clay: sprite list/);
   await page.ctx.close();
 
@@ -506,17 +514,19 @@ async function checkSpriteList() {
   // no second request.
   page = await newHub({ slowOnce: { 'clay/sprites.js': 3500 } });
   await page.evaluate(() => { window.HUB_TEST.clay.setLoadMs(2000); window.HUB_TEST.clay.play('fetch', { seed: 32 }); });
-  let text = await look.status(page);
-  assert(text === 'loading fetch (sprite list) · ' + '0 played, 0 slow, 0 failed', 'loading: ' + text);
+  s1 = await look.st(page);
+  assert(/^loading fetch \(sprite list\), \d+ s$/.test(s1.now), 'loading: ' + s1.now);
   await until(async () => (await look.state(page)).last, 10000, 'fetch did not give up');
   st = await look.state(page);
-  text = await look.status(page);
-  detail = await look.detail(page);
-  assert(st.spriteEvent === 'timeout' && st.slow === 1 && st.failed === 0 && /; last fetch too slow$/.test(text), 'status: ' + text);
-  assert(/^sprite list not in after \d+ ms · problem \d+ s ago: sprite list did not load \(no onload or onerror in 2 s\)$/.test(detail), 'detail: ' + detail);
+  s1 = await look.st(page);
+  assert(st.spriteEvent === 'timeout' && st.slow === 1 && st.failed === 0 && s1.visits === '0 played · 1 slow · 0 failed' &&
+    /^fetch too slow, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
+  assert(/^sprite list not in after (\d+ ms|\d+\.\d s)$/.test(s1.loading), 'loading: ' + s1.loading);
+  assert(/^sprite list did not load \(no onload or onerror in 2 s\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
   await until(async () => (await look.state(page)).spriteMs !== null, 5000, 'the sprite list never came');
-  detail = await look.detail(page);
-  assert(/^sprite list \d+ ms \(over 2 s\) · problem \d+ s ago: sprite list did not load \(no onload or onerror in 2 s\), then came in \d+ ms$/.test(detail), 'detail late: ' + detail);
+  s1 = await look.st(page);
+  assert(/^sprite list \d+\.\d s \(over 2 s\)$/.test(s1.loading), 'loading late: ' + s1.loading);
+  assert(/^sprite list did not load \(no onload or onerror in 2 s\), then came in \d+ ms, \d+ s ago$/.test(s1.problem), 'problem late: ' + s1.problem);
   await page.evaluate(() => window.HUB_TEST.clay.play('fetch', { seed: 32 }));
   await until(async () => (await look.state(page)).phase === 'playing', 10000, 'fetch did not play after the late sprite list');
   const asked = page.ctx.requests.filter((u) => /\/clay\/sprites\.js/.test(u)).length;
@@ -536,8 +546,8 @@ async function checkSpriteList() {
   const asks = page.ctx.requests.filter((u) => /\/clay\/sprites\.js/.test(u)).length;
   assert(asks === 2, 'sprites.js asked for ' + asks + ' times');
   assert(waited < 10000, 'the retry took ' + waited + ' ms');
-  text = await look.status(page);
-  assert(/^playing \S+ · 1 played, 0 slow, 1 failed; last \S+ failed$/.test(text), 'status: ' + text);
+  s1 = await look.st(page);
+  assert(/^on screen now: \S+$/.test(s1.now) && s1.visits === '1 played · 0 slow · 1 failed' && /^\S+ failed, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
   assert(!page.ctx.requests.some((u) => /clay\.css/.test(u)), 'clay.css was asked for');
   noErrors(page, /Clay: sprite list/);
 }
@@ -566,9 +576,9 @@ async function checkBrokenScene() {
   await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 51 }));
   await until(async () => (await look.state(page)).last, 10000, 'stroll did not finish loading');
   const st = await look.state(page);
-  const text = await look.detail(page);
+  const text = (await look.st(page)).problem;
   assert(st.last.result === 'failed: frame ember/trot-1 failed (loaded, 0 px wide: did not decode)', 'state: ' + JSON.stringify(st.last));
-  assert(/problem \d+ s ago: scene stroll skipped: frame ember\/trot-1 failed \(loaded, 0 px wide: did not decode\)$/.test(text), 'detail: ' + text);
+  assert(/^scene stroll skipped: frame ember\/trot-1 failed \(loaded, 0 px wide: did not decode\), \d+ s ago$/.test(text), 'problem: ' + text);
   const picks = await page.evaluate(() => {
     const C = window.HUB_TEST.clay;
     C.setHour(14);
@@ -600,16 +610,16 @@ async function checkSlowFrames() {
   const name = first.last.name;
   assert(first.broken.length === 0 && first.slow === 1 && first.failed === 0, 'state after the slow visit: ' + JSON.stringify(first));
   assert(/^slow: its frames took over 1 s \(\d+ of \d+ in\)$/.test(first.last.result), 'result: ' + first.last.result);
-  const text = await look.status(page);
-  assert(/· 0 played, 1 slow, 0 failed; last \S+ too slow$/.test(text), 'status: ' + text);
+  const s1 = await look.st(page);
+  assert(s1.visits === '0 played · 1 slow · 0 failed' && /^\S+ too slow, \d+ s ago$/.test(s1.last) && /^due back in \d+ s$/.test(s1.now), 'status: ' + JSON.stringify(s1));
   const second = await until(async () => {
     const st = await look.state(page);
     return st.phase === 'playing' ? st : false;
   }, 15000, 'no visit after the slow one');
   assert(second.scene === name, 'the next visit was ' + second.scene + ', not ' + name + ' again');
   assert(second.played === 1 && second.slow === 1 && second.broken.length === 0, 'state: ' + JSON.stringify(second));
-  const detail = await look.detail(page);
-  assert(new RegExp(' · ' + name + ' (\\d+)/\\1 frames in \\d+ ms').test(detail), 'detail: ' + detail);
+  const detail = (await look.st(page)).loading;
+  assert(new RegExp(' · ' + name + ' (\\d+)/\\1 frames in (\\d+ ms|\\d+\\.\\d s)').test(detail), 'loading: ' + detail);
   noErrors(page, /Clay: scene \S+ skipped: its frames took/);
 }
 
@@ -649,23 +659,243 @@ async function checkDefaultEvery() {
   }
 }
 
-// The Clock page shows the line, "Wanderers: ...", and keeps it current.
-async function checkClockLine() {
-  const page = await newHub({ missing: ['clay/sprites.js'] });
-  await page.evaluate(() => window.HUB_TEST.clay.play('fetch', { seed: 61 }));
-  await until(async () => (await look.state(page)).last, 10000, 'fetch did not give up');
-  await page.evaluate(() => window.HUB_TEST.openPanel('today'));
-  await until(() => page.evaluate(() => window.HUB_TEST.open() === 'today' && !window.HUB_TEST.busy() && !!document.querySelector('.clock-about-clay')), 4000, 'no wanderers line');
-  const read = () => page.evaluate(() => document.querySelector('.clock-about-clay').textContent);
-  const a = await read();
-  const readDetail = () => page.evaluate(() => document.querySelector('.clock-about-clay-detail').textContent);
-  assert(a === 'Wanderers: not yet: hub busy (panel open) · 0 played, 0 slow, 1 failed; last fetch failed', 'line: ' + a);
-  const d1 = await readDetail();
-  assert(/^Wanderers detail: sprite list onerror after \d+ ms · problem \d+ s ago: sprite list did not load \(onerror\)$/.test(d1), 'detail line: ' + d1);
-  await sleep(2200);
-  const d2 = await readDetail();
-  assert(d2 !== d1 && /problem \d+ s ago/.test(d2), 'the detail line did not change by itself: ' + d1 + ' / ' + d2);
-  noErrors(page, /Clay: sprite list/);
+// A visit skipped as slow comes back 20 s later (its files are still
+// coming), for three slow visits in a row; then every[0], until one plays.
+// The idle rule still applies.
+async function checkSlowRetry() {
+  const page = await newHub({ clay: { idleAfter: 1, every: [60, 60] }, slowOnce: { 'clay/sprites/': HANG } });
+  await page.evaluate(() => { window.HUB_TEST.clay.setLoadMs(500); window.HUB_TEST.clay.setHour(14); });
+  const gaps = [];
+  for (let i = 0; i < 4; i++) {
+    const before = (await look.state(page)).slow;
+    await page.evaluate(() => window.HUB_TEST.clay.dueIn(0));
+    const st = await until(async () => { const s = await look.state(page); return s.slow === before + 1 && s.phase === 'waiting' ? s : false; }, 8000, 'visit ' + (i + 1) + ' was not slow');
+    gaps.push(st.nextIn);
+  }
+  assert(gaps.slice(0, 3).every((g) => g > 18500 && g <= 20000) && gaps[3] > 58500 && gaps[3] <= 60000, 'gaps after slow visits: ' + gaps.join(', '));
+  // One plays (with new frames: a seed whose scene is not stuck), and the count starts over.
+  await page.evaluate(() => { window.HUB_TEST.clay.setLoadMs(null); window.HUB_TEST.clay.setSpeed(1); });
+  await page.unroute('**/*');
+  await page.ctx.unroute('**/*');
+  await playing(page, 'perch', { seed: 3, pose: 'sit-edge' });
+  await until(async () => (await look.state(page)).phase === 'waiting', 10000, 'perch did not end');
+  assert((await look.state(page)).slowRun === 0, 'the slow count did not start over');
+  // A key press after a slow visit: the idle wait still holds (idleAfter 1 s is short, so
+  // only that nothing comes before it).
+  noErrors(page, /Clay: (scene \S+ skipped: its frames took|sprite list)/);
+}
+
+// Images that never answer are kept at most 200 at a time.
+async function checkSettlingCap() {
+  const page = await newHub({ clay: { idleAfter: 3600 }, slowOnce: { 'clay/sprites/': HANG } });
+  await page.evaluate(() => { window.HUB_TEST.clay.setLoadMs(200); window.HUB_TEST.clay.setHour(14); });
+  const names = ['stroll', 'fetch', 'sock-heist', 'zoomies', 'morning', 'evening', 'cheer', 'shrug'];
+  let st;
+  for (let round = 0; round < 3; round++) {
+    for (const n of names) {
+      await page.evaluate((x) => window.HUB_TEST.clay.play(x, { seed: 5 }), n);
+      await until(async () => (await look.state(page)).phase === 'waiting', 5000, n + ' did not give up');
+    }
+    st = await look.state(page);
+  }
+  assert(st.settling > 150 && st.settling <= 200, 'images kept: ' + st.settling);
+  noErrors(page, /Clay: scene \S+ skipped: its frames took/);
+}
+
+/* ---------- the About panel (app/hub.js) ---------- */
+
+const about = {
+  isOpen: (page) => page.evaluate(() => window.HUB_TEST.about.isOpen()),
+  shown: (page) => page.evaluate(() => document.getElementById('about').classList.contains('is-shown')),
+  rows: (page) => page.evaluate(() => window.HUB_TEST.about.rows()),
+  value: async (page, label) => {
+    const r = (await about.rows(page)).filter((x) => x.label === label)[0];
+    return r ? r.value : null;
+  },
+  bar: (page) => page.evaluate(() => document.getElementById('switcher').classList.contains('is-shown'))
+};
+
+// Left until the panel opens (at most 6 presses); returns the tile it opened from.
+async function leftToAbout(page) {
+  for (let i = 0; i < 6 && !(await about.isOpen(page)); i++) {
+    await page.keyboard.press('ArrowLeft');
+    await sleep(60);
+  }
+  assert(await about.isOpen(page), 'Left did not open the About panel');
+  return look.focused(page);
+}
+
+// Everything inside the strip, at this screen size: each row's text wraps
+// inside the box, nothing is cut or hidden, the box is on screen.
+function aboutFit(page) {
+  return page.evaluate(() => {
+    const box = document.querySelector('#about .about-box');
+    const b = box.getBoundingClientRect();
+    const cs = getComputedStyle(box);
+    const inner = { left: b.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft) - 0.5,
+      right: b.right - parseFloat(cs.borderRightWidth) - parseFloat(cs.paddingRight) + 0.5 };
+    const bad = [];
+    if (b.left < 0 || b.top < 0 || b.right > innerWidth || b.bottom > innerHeight) bad.push('box off screen ' + JSON.stringify(b));
+    if (box.scrollHeight > box.clientHeight + 1) bad.push('box taller than its room: ' + box.scrollHeight + ' > ' + box.clientHeight);
+    box.querySelectorAll('.about-group, .about-label, .about-value').forEach((e) => {
+      const r = e.getBoundingClientRect();
+      const s = getComputedStyle(e);
+      if (r.left < inner.left || r.right > inner.right) bad.push(e.textContent.slice(0, 30) + ' sticks out');
+      if (e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1) bad.push(e.textContent.slice(0, 30) + ' is cut');
+      if (s.textOverflow === 'ellipsis' || s.whiteSpace === 'nowrap') bad.push(e.textContent.slice(0, 30) + ' does not wrap');
+      if (e.className === 'about-value' && parseFloat(s.lineHeight) / parseFloat(s.fontSize) < 1.35) bad.push('value line-height ' + s.lineHeight);
+    });
+    const values = Array.prototype.slice.call(box.querySelectorAll('.about-value'));
+    const last = values[values.length - 1];
+    const lines = last ? Math.round(last.getBoundingClientRect().height / parseFloat(getComputedStyle(last).lineHeight)) : 0;
+    return { bad: bad, lastLines: lines, width: Math.round(b.width), rem: parseFloat(getComputedStyle(document.documentElement).fontSize) };
+  });
+}
+
+// Left from a left-most tile opens it, Up does not (Up still drops the layout
+// bar); Right, Back and a click outside close it with focus where it was; OK,
+// Up and Down do nothing else; it never opens over a panel or the layout bar.
+async function checkAboutKeys() {
+  const page = await newHub();
+  await until(() => page.evaluate(() => !window.HUB_TEST.busy()), 4000, 'busy');
+  const from = await leftToAbout(page);
+  const left = await page.evaluate((id) => {
+    const rects = window.HUB_TEST.homeRects();
+    return Math.round(rects[id].left) === Math.round(Math.min.apply(null, Object.values(rects).map((r) => r.left)));
+  }, from);
+  assert(left, 'opened from a tile that is not left-most: ' + from);
+  await until(() => about.shown(page), 1000, 'the panel did not slide in');
+  const z = await page.evaluate(() => Number(getComputedStyle(document.getElementById('about')).zIndex));
+  assert(z === 15, 'z-index ' + z);
+  for (const key of ['Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft']) {
+    await page.keyboard.press(key);
+    await sleep(100);
+    assert(await about.isOpen(page), key + ' closed it');
+    assert((await page.evaluate(() => window.HUB_TEST.open())) === null && !(await about.bar(page)), key + ' opened something');
+    assert((await look.focused(page)) === from, key + ' moved focus');
+  }
+  await page.keyboard.press('ArrowRight');
+  assert(!(await about.isOpen(page)) && (await look.focused(page)) === from, 'Right: open ' + (await about.isOpen(page)) + ', focus ' + (await look.focused(page)));
+  await until(async () => !(await page.evaluate(() => document.getElementById('about').classList.contains('is-on'))), 1000, 'still drawn after closing');
+  await page.keyboard.press('ArrowLeft');
+  assert(await about.isOpen(page), 'Left did not open it again');
+  await page.keyboard.press('Escape');
+  assert(!(await about.isOpen(page)) && (await look.focused(page)) === from && (await page.evaluate(() => window.HUB_TEST.open())) === null, 'Back');
+  await page.keyboard.press('ArrowLeft');
+  await page.mouse.click(1500, 540);
+  await sleep(300);
+  assert(!(await about.isOpen(page)) && (await page.evaluate(() => window.HUB_TEST.open())) === null, 'a click outside did not just close it');
+  // Up from a top tile: the layout bar, never the About panel; not over the bar.
+  for (let i = 0; i < 6 && !(await about.bar(page)); i++) {
+    await page.keyboard.press('ArrowUp');
+    await sleep(60);
+    assert(!(await about.isOpen(page)), 'Up opened the About panel');
+  }
+  assert(await about.bar(page), 'Up did not open the layout bar');
+  assert(!(await page.evaluate(() => window.HUB_TEST.about.open())), 'it opened over the layout bar');
+  await page.keyboard.press('Escape');
+  await until(async () => !(await about.bar(page)), 2000, 'the bar did not close');
+  // Not over a panel.
+  await page.evaluate(() => window.HUB_TEST.openPanel('weather'));
+  await until(() => page.evaluate(() => window.HUB_TEST.open() === 'weather' && !window.HUB_TEST.busy()), 4000, 'the panel did not open');
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
+  assert(!(await about.isOpen(page)) && !(await page.evaluate(() => window.HUB_TEST.about.open())), 'it opened over a panel');
+  await page.evaluate(() => window.HUB_TEST.closePanel());
+  await until(() => page.evaluate(() => window.HUB_TEST.open() === null && !window.HUB_TEST.busy()), 4000, 'the panel did not close');
+  // A panel opened while it is open (as the Pi can) closes it first.
+  assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'it did not open from the test hook');
+  await page.evaluate(() => window.HUB_TEST.openPanel('weather'));
+  assert(!(await about.isOpen(page)), 'it stayed open under a panel');
+  noErrors(page);
+}
+
+// The rows: which are there and when, they refresh by themselves, and a
+// long problem wraps inside the strip at 1920x1080 and 1280x720.
+async function checkAboutRows() {
+  const page = await newHub({ missing: ['clay/sprites/ember/trot-1.webp'], clay: { idleAfter: 3600 } });
+  assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'did not open');
+  let rows = await about.rows(page);
+  const names = rows.map((r) => r.group + '/' + r.label).join(', ');
+  // ?live=off and no TizenBrew: nothing to say about updates; no visit yet.
+  assert(names === 'This hub/Version, This hub/Browser, This hub/Motion, Wanderers/Now, Wanderers/Visits', 'rows at start: ' + names);
+  const groups = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#about .about-group'), (e) => e.textContent).join(','));
+  assert(groups === 'This hub,Wanderers', 'groups: ' + groups);
+  assert(/^v0\.\d+\.\d+/.test(rows[0].value) && !/^Motion/.test(rows[2].value), 'values: ' + JSON.stringify(rows));
+  // The countdown ticks with nothing calling it.
+  // (The strip redraws once a second, so a read can be up to a second behind.)
+  const n1 = await about.value(page, 'Now');
+  await sleep(3200);
+  const n2 = await about.value(page, 'Now');
+  const m1 = /^due back in (?:(\d+) min )?(\d+) s$/.exec(n1);
+  const m2 = /^due back in (?:(\d+) min )?(\d+) s$/.exec(n2);
+  const secs = (m) => Number(m[1] || 0) * 60 + Number(m[2]);
+  assert(m1 && m2 && secs(m2) <= secs(m1) - 2, 'the countdown did not tick: ' + n1 + ' / ' + n2);
+  // A visit that fails: Last visit, Loading and Last problem come in by themselves.
+  await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 7 }));
+  await until(async () => (await about.value(page, 'Last problem')) !== null, 5000, 'no Last problem row');
+  rows = await about.rows(page);
+  assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
+  const p1 = await about.value(page, 'Last problem');
+  assert(/^scene stroll skipped: frame ember\/trot-1 failed \(onerror\), \d+ s ago$/.test(p1), 'problem: ' + p1);
+  await until(async () => (await about.value(page, 'Last problem')) !== p1, 3000, 'the problem\'s age did not change by itself');
+  // A long problem, with a long unbroken word: it wraps, nothing is cut.
+  await page.evaluate(() => {
+    const K = window.HUB_CLAY;
+    const real = K.status;
+    K.status = function () {
+      const s = real.call(K);
+      s.problem = 'scene sock-heist skipped: frame ember/sock-proud failed (loaded, 0 px wide: did not decode) at ' +
+        'https://cdn.jsdelivr.net/gh/example/tizen-takeover@0123456789abcdef0123456789abcdef01234567/app/clay/sprites/ember/sock-proud.webp, 12 s ago';
+      return s;
+    };
+  });
+  await sleep(1300);
+  for (const size of [{ width: 1920, height: 1080 }, { width: 1280, height: 720 }]) {
+    await page.setViewportSize(size);
+    await sleep(400);
+    const fit = await aboutFit(page);
+    assert(!fit.bad.length, size.width + 'x' + size.height + ': ' + fit.bad.join('; '));
+    assert(fit.lastLines >= 4, size.width + 'x' + size.height + ': the long problem is on ' + fit.lastLines + ' lines');
+    assert(fit.width <= 26 * fit.rem, size.width + 'x' + size.height + ': ' + fit.width + ' px wide');
+  }
+  noErrors(page, /Clay: scene stroll skipped/);
+}
+
+// The About panel is not "busy": with it open a visit loads and plays, and
+// the panel shows the countdown, then loading, then on screen, as they come.
+async function checkAboutNotBusy() {
+  const page = await newHub({ clay: { idleAfter: 1, every: [60, 60] }, slowOnce: { 'clay/sprites/': 2500 } });
+  await page.evaluate(() => window.HUB_TEST.clay.setHour(14));
+  await until(() => page.evaluate(() => !window.HUB_TEST.busy()), 4000, 'busy');
+  await leftToAbout(page);
+  await page.evaluate(() => window.HUB_TEST.clay.dueIn(4000));
+  const seen = [];
+  let st;
+  const end = Date.now() + 20000;
+  while (Date.now() < end) {
+    const v = await about.value(page, 'Now');
+    if (v && seen[seen.length - 1] !== v) seen.push(v);
+    st = await look.state(page);
+    if (st.phase === 'playing' && /^on screen now: /.test(v || '')) break;
+    await sleep(100);
+  }
+  const kinds = [];
+  for (const v of seen) {
+    const k = /^due back in /.test(v) ? 'countdown' : /^loading \S+(, \d+ of \d+ frames| \([a-z ]+\)), \d+ s$/.test(v) ? 'loading' : /^on screen now: \S+$/.test(v) ? 'on screen' : 'other: ' + v;
+    if (kinds[kinds.length - 1] !== k) kinds.push(k);
+  }
+  assert(kinds.join(' > ') === 'countdown > loading > on screen', 'the panel showed: ' + seen.join(' | '));
+  assert(seen.some((v) => /^loading \S+, \d+ of \d+ frames, [1-9]\d* s$/.test(v)), 'no frame count while loading: ' + seen.join(' | '));
+  assert(await about.isOpen(page), 'the panel closed');
+  assert(await look.layer(page), 'no clay layer while the panel is open');
+  const z = await page.evaluate(() => [Number(getComputedStyle(document.getElementById('about')).zIndex), Number(getComputedStyle(document.querySelector('.clay-layer')).zIndex)]);
+  assert(z[0] > z[1], 'the panel is not above the wanderers: ' + z.join(' / '));
+  // It plays on with the panel open, and Right ends it like any key.
+  await sleep(1500);
+  assert((await look.state(page)).phase === 'playing' && (await about.isOpen(page)), 'the visit or the panel ended by itself');
+  await page.keyboard.press('ArrowRight');
+  assert(!(await about.isOpen(page)) && (await look.state(page)).phase === 'waiting', 'Right did not close the panel and clear the screen');
+  noErrors(page);
 }
 
 async function checkChoosing() {
@@ -779,14 +1009,18 @@ async function main() {
   await check('7. clay: false, on: false and ?clay=off load and show nothing', checkOff);
   await check('8. A missing sprite skips that scene; a missing sprite list skips all; the hub is fine', checkMissing);
   await check('9. Night hours pick night scenes; a ticked to-do item queues a cheer', checkChoosing);
-  await check('10. The status line: playing, stopped, a busy hub, a page that reports hidden', checkStatus);
+  await check('10. The status: playing, stopped, a busy hub, a page that reports hidden', checkStatus);
   await check('11. The sprite list: not valid, too slow (and used when it comes late), and a failure tried again at the next visit', checkSpriteList);
   await check('12. No stylesheet to wait for: a scene plays with clay.css never asked for', checkNoStylesheet);
   await check('13. A frame that does not decode is told apart; a skipped scene is back after 10 minutes', checkBrokenScene);
-  await check('14. The Clock page shows "Wanderers: ..." and its detail, and keeps them current', checkClockLine);
+  await check('14. The About panel: Left from a left-most tile opens it, Up does not; Right, Back and a click close it; never over a panel', checkAboutKeys);
+  await check('14b. The About panel\'s rows: present or absent, refreshed by themselves; a long problem wraps at 1920x1080 and 1280x720', checkAboutRows);
+  await check('14c. The About panel is not busy: a visit loads and plays with it open, and it shows countdown, loading, on screen', checkAboutNotBusy);
   await check('15. Slow frames: the visit is skipped, not marked broken, and the same scene plays at the next visit', checkSlowFrames);
   await check('16. The next visit\'s frames load ahead; that scene comes, no earlier', checkAhead);
   await check('17. The default pause after a daytime visit is 90 to 150 s', checkDefaultEvery);
+  await check('18. After a slow visit the next comes 20 s later, three times in a row, then every[0]', checkSlowRetry);
+  await check('19. Images that never answer are kept at most 200 at a time', checkSettlingCap);
 }
 
 main().catch((e) => {
