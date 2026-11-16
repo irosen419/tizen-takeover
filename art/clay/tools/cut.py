@@ -3,7 +3,7 @@ slice it into one transparent PNG per pose (cut/<sheet>/<pose>.png, full size).
 Prints what it found so a wrong pose count is obvious."""
 import os, sys, json
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from scipy import ndimage
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -54,6 +54,40 @@ def key(rgb, colour):
     spill = np.maximum(fg[..., oc[0]], fg[..., oc[1]])
     fg[..., kc] = np.minimum(fg[..., kc], spill)
     return np.dstack([fg, alpha])
+
+def move(rgba, take, pivot=(0, 0), rotate=0, shear=0, shear_y=(0, 1), erase=None):
+    """Move one limb of a cut-out pose, like re-posing a clay leg between frames.
+    take: polygon (cut-out pixels) around the limb; it is rotated by `rotate`
+    degrees about `pivot` (positive swings a hanging leg forward, to the right)
+    and/or sheared so its bottom moves `shear` px (0 at shear_y[0], all of it at
+    shear_y[1]), then laid back over the rest. erase: polygon of what to clear
+    from where the limb was (default: take). Hard masks, so an unmoved part comes
+    back exactly."""
+    h, w = rgba.shape[:2]
+    def mask(poly):
+        m = Image.new('L', (w, h), 0)
+        ImageDraw.Draw(m).polygon([tuple(p) for p in poly], fill=255)
+        return (np.asarray(m) > 127).astype(np.float32)[..., None]
+    m = mask(take)
+    e = mask(erase) if erase else m
+    pm = np.dstack([rgba[..., :3] * rgba[..., 3:], rgba[..., 3:]])
+    limb, rest = pm * m, pm * (1 - e)
+    chans = []
+    for i in range(4):
+        c = Image.fromarray(np.ascontiguousarray(limb[..., i]), 'F')
+        if rotate:
+            c = c.rotate(rotate, resample=Image.BICUBIC, center=tuple(pivot))
+        if shear:
+            k = shear / (shear_y[1] - shear_y[0])
+            c = c.transform(c.size, Image.AFFINE, (1, k, -k * shear_y[0], 0, 1, 0), resample=Image.BICUBIC)
+        chans.append(np.asarray(c))
+    limb = np.clip(np.dstack(chans), 0, 1)
+    out = limb + rest * (1 - limb[..., 3:])
+    al = out[..., 3:]
+    rgb = np.where(al > 1e-4, out[..., :3] / np.maximum(al, 1e-4), 0)
+    out = np.clip(np.dstack([rgb, al]), 0, 1)
+    out[out[..., 3] < 0.02] = 0
+    return out
 
 def reading_order(blobs, rows):
     if rows <= 1:
@@ -122,12 +156,13 @@ def cut(sid):
         os.remove(os.path.join(outdir, f))
     ok = len(mains) == len(names)
     msg = f"{sid}: found {len(mains)} of {len(names)}" + ('' if ok else '  <-- MISMATCH, nothing named')
-    meta = {'calib_h': mains[0]['box'][3] - mains[0]['box'][1], 'poses': {}}
+    meta = {'calib_h': mains[0]['box'][3] - mains[0]['box'][1], 'poses': {}, 'boxes': {}}
     for i, b in enumerate(mains):
         name = names[i] if ok else f'_{i + 1}'
         if name is None:
             continue
         x0, y0, x1, y1 = b['box']
+        meta['boxes'][name] = [int(v) for v in b['box']]     # where it sat on the sheet (for lifts)
         pad = 8
         x0, y0, x1, y1 = max(x0 - pad, 0), max(y0 - pad, 0), min(x1 + pad, im.width), min(y1 + pad, im.height)
         crop = rgba[y0:y1, x0:x1].copy()
@@ -135,6 +170,8 @@ def cut(sid):
         mine = ndimage.binary_dilation(mine, iterations=4)      # keep this pose's soft edge only
         crop[..., 3] *= mine
         crop[crop[..., 3] == 0, :3] = 0
+        for op in s.get('moves', {}).get(name, []):
+            crop = move(crop, **op)
         Image.fromarray((crop * 255 + 0.5).astype(np.uint8), 'RGBA').save(os.path.join(outdir, name + '.png'))
         meta['poses'][name] = [x1 - x0, y1 - y0]
         msg += f"\n   {name}: {x1 - x0}x{y1 - y0}"

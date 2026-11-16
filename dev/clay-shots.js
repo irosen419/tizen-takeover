@@ -5,9 +5,10 @@
  * calendars) and headless Chromium at 1920x1080, with a few to-do items on
  * the TV, and plays every scene (each time of day, each weather outfit, each
  * perch pose, the reactions) through HUB_TEST.clay. The scene clock is
- * stepped by hand (setSpeed(0), then step() once per frame), so every frame
- * is captured exactly; the frames are put together at the real speed (one
- * tick is 140 ms, about 7 frames a second).
+ * moved by hand (setSpeed(0), then advance(1000 / 30) once per frame), so
+ * every frame is captured exactly as the TV would draw it, smoothly, at 30
+ * frames a second; the films play at the real speed. CLAY_FPS sets another
+ * rate (7 films one frame per tick, as the stepped drawing looks).
  *
  * Writes to OUT_DIR (default docs/screenshots/clay):
  *   <scene>-1.jpg ... <scene>-4.jpg   moments of each scene (entry, key beat, exit)
@@ -34,7 +35,9 @@ const ROOT = path.join(__dirname, '..');
 const OUT = path.resolve(process.argv[2] || path.join(ROOT, 'docs', 'screenshots', 'clay'));
 const ONLY = process.argv.slice(3);
 const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
-const FPS = 1000 / 140;
+const TICK = 140;
+const FPS = Number(process.env.CLAY_FPS) > 0 ? Number(process.env.CLAY_FPS) : 30;
+const PER_TICK = TICK * FPS / 1000;     // film frames per scene tick
 const QUALITY = 85;
 
 // A layout unlike config.js's, to show the ledges follow the tiles.
@@ -54,20 +57,20 @@ function day(h, m) { return new Date(2026, 10, 16, h, m || 0, 0).getTime(); }
 // TV clock, and which frames to keep as stills: a fraction of the scene, or
 // '@signal+n', n ticks after the scene gave that signal (see clay.js).
 const SHOTS = [
-  { name: 'stroll', scene: 'stroll', opts: { seed: 3, dir: 'right' }, at: day(14, 10), stills: [0.12, '@go-8', '@go+10', 0.92] },
-  { name: 'fetch', scene: 'fetch', opts: { seed: 5, dir: 'right' }, at: day(15, 20), stills: ['@throw-1', '@throw+7', '@caught', '@swap+4'] },
-  { name: 'sock-heist', scene: 'sock-heist', opts: { seed: 2, dir: 'right' }, at: day(16, 5), stills: ['@found-6', '@heist-2', '@seen+3', 0.72] },
-  { name: 'zoomies', scene: 'zoomies', opts: { seed: 4, dir: 'left' }, at: day(11, 30), stills: [0.2, 0.42, 0.6, 0.85] },
-  { name: 'perch', scene: 'perch', opts: { seed: 1, pose: 'climb', ledge: 0 }, at: day(13, 0), stills: [0.04, 0.2, 0.33, 0.6] },
+  { name: 'stroll', scene: 'stroll', opts: { seed: 3, dir: 'right' }, at: day(14, 10), stills: [0.12, '@phone+4', '@rub+12', 0.92] },
+  { name: 'fetch', scene: 'fetch', opts: { seed: 5, dir: 'right' }, at: day(15, 20), stills: ['@fake+8', '@throw+7', '@caught', '@swap+10'] },
+  { name: 'sock-heist', scene: 'sock-heist', opts: { seed: 2, dir: 'right' }, at: day(16, 5), stills: ['@found-4', '@seen+3', '@grab+8', 0.9] },
+  { name: 'zoomies', scene: 'zoomies', opts: { seed: 4, dir: 'left' }, at: day(11, 30), stills: [0.2, 0.42, 0.62, 0.8] },
+  { name: 'perch', scene: 'perch', opts: { seed: 1, pose: 'climb', ledge: 0 }, at: day(13, 0), stills: [0.04, 0.2, 0.45, 0.8] },
   { name: 'morning', scene: 'morning', opts: { seed: 6, dir: 'right' }, at: day(7, 45), stills: [0.15, 0.4, 0.55, 0.85] },
   { name: 'evening', scene: 'evening', opts: { seed: 7, dir: 'right' }, at: day(20, 30), stills: [0.12, '@sit+12', '@popcorn+10', 0.92] },
   { name: 'night', scene: 'night', opts: { seed: 8, dir: 'right', nap: true }, at: day(23, 40), stills: [0.06, 0.22, 0.5, 0.95] },
   { name: 'night-alone', scene: 'night', opts: { seed: 9, dir: 'left', nap: false }, at: day(2, 15), stills: [0.06, 0.3, 0.6, 0.95] },
-  { name: 'weather-umbrella', scene: 'weather', opts: { seed: 10, dir: 'right', outfit: 'umbrella' }, at: day(12, 0), stills: [0.15, 0.4, 0.62, 0.88] },
-  { name: 'weather-sunny', scene: 'weather', opts: { seed: 11, dir: 'left', outfit: 'sunny' }, at: day(12, 30), stills: [0.15, 0.4, 0.62, 0.88] },
-  { name: 'weather-cold', scene: 'weather', opts: { seed: 12, dir: 'right', outfit: 'cold' }, at: day(9, 30), stills: [0.15, 0.45, 0.88] },
-  { name: 'weather-hot', scene: 'weather', opts: { seed: 13, dir: 'left', outfit: 'hot' }, at: day(15, 0), stills: [0.15, 0.45, 0.88] },
-  { name: 'weather-windy', scene: 'weather', opts: { seed: 14, dir: 'right', outfit: 'windy' }, at: day(17, 0), stills: [0.15, 0.45, 0.88] },
+  { name: 'weather-umbrella', scene: 'weather', opts: { seed: 10, dir: 'right', outfit: 'umbrella' }, at: day(12, 0), stills: [0.15, '@dress+8', '@settled-10', 0.88] },
+  { name: 'weather-sunny', scene: 'weather', opts: { seed: 11, dir: 'left', outfit: 'sunny' }, at: day(12, 30), stills: [0.15, '@dress+8', '@settled-10', 0.88] },
+  { name: 'weather-cold', scene: 'weather', opts: { seed: 12, dir: 'right', outfit: 'cold' }, at: day(9, 30), stills: [0.15, '@dress+8', 0.88] },
+  { name: 'weather-hot', scene: 'weather', opts: { seed: 13, dir: 'left', outfit: 'hot' }, at: day(15, 0), stills: [0.15, '@dress+8', 0.88] },
+  { name: 'weather-windy', scene: 'weather', opts: { seed: 14, dir: 'right', outfit: 'windy' }, at: day(17, 0), stills: [0.15, '@dress+8', 0.88] },
   { name: 'cheer', scene: 'cheer', opts: { seed: 15, dir: 'right' }, at: day(18, 0), stills: [0.15, '@cheer-4', '@cheer+3', 0.85] },
   { name: 'shrug', scene: 'shrug', opts: { seed: 16, dir: 'left' }, at: day(18, 30), stills: [0.15, 0.5, 0.85] }
 ];
@@ -220,8 +223,8 @@ async function film(page, scene, opts, dir, extra) {
     await frame(page, path.join(dir, 'f' + String(n).padStart(5, '0') + '.jpg'));
     n++;
     if (extra && (await extra(page, n))) break;
-    await page.evaluate(() => window.HUB_TEST.clay.step());
-    if (n > 900) throw new Error(scene + ' never ended');
+    await page.evaluate((ms) => window.HUB_TEST.clay.advance(ms), 1000 / FPS);
+    if (n > 120 * FPS) throw new Error(scene + ' never ended');
   }
   film.beats = beats;
   film.boxes = boxes;
@@ -234,6 +237,7 @@ async function film(page, scene, opts, dir, extra) {
 // Adds n copies of the last frame (a pause), for joining scenes.
 function pad(dir, count, n) {
   const lastFile = path.join(dir, 'f' + String(count - 1).padStart(5, '0') + '.jpg');
+  n = Math.round(n * PER_TICK);
   for (let i = 0; i < n; i++) fs.copyFileSync(lastFile, path.join(dir, 'f' + String(count + i).padStart(5, '0') + '.jpg'));
   return count + n;
 }
@@ -251,13 +255,13 @@ function keep(src, name) {
   written.push(file);
 }
 
-// Frame i shows the scene after tick i + 1.
+// Frame 0 shows the scene at the end of tick 1; tick t ends PER_TICK frames later each.
 function stillIndex(s, count, beats) {
   let i;
   if (typeof s === 'string') {
     const m = /^@([\w-]+?)([+-]\d+)?$/.exec(s);
     if (!m || !beats || !beats[m[1]]) throw new Error('no signal ' + s);
-    i = beats[m[1]] - 1 + (m[2] ? parseInt(m[2], 10) : 0);
+    i = Math.round((beats[m[1]] - 1 + (m[2] ? parseInt(m[2], 10) : 0)) * PER_TICK);
   } else {
     i = Math.round(s * (count - 1));
   }
@@ -285,7 +289,7 @@ async function sceneShots(work) {
     encode(dir, path.join(OUT, s.name + '.mp4'));
     frameDirs[s.name] = { dir, count };
     expect(!page.context_.errors.length, s.name + ': console errors: ' + page.context_.errors.join(' | '));
-    console.log('ok    ' + s.name + ' (' + count + ' frames, ' + (count / FPS).toFixed(1) + ' s)');
+    console.log('ok    ' + s.name + ' (' + count + ' frames, ' + (count / FPS).toFixed(1) + ' s, ' + (await page.evaluate(() => window.HUB_TEST.clay.drawing().text)) + ')');
     await page.context_.close();
   }
 }
@@ -319,12 +323,12 @@ async function vanishShots(work) {
   fs.mkdirSync(dir, { recursive: true });
   let n = 0;
   await frame(page, path.join(dir, 'f00000.jpg'));
-  n = pad(dir, 1, 13);
+  n = pad(dir, 1, 13);   // in ticks' worth of frames
   const sub = path.join(work, 'vanish-scene');
   let pressedAt = -1;
   let after = 0;
   const count = await film(page, 'fetch', { seed: 41, dir: 'right' }, sub, async (p, i) => {
-    if (pressedAt < 0 && i === 80) {
+    if (pressedAt < 0 && i === Math.round(80 * PER_TICK)) {
       keep(path.join(sub, 'f' + String(i - 1).padStart(5, '0') + '.jpg'), 'vanish-before.jpg');
       const before = await p.evaluate(() => document.querySelector('#grid .tile.is-focused').parentNode.getAttribute('data-widget'));
       await p.keyboard.press('ArrowRight');

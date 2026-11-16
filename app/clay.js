@@ -6,10 +6,15 @@
  * tells it about key presses, panels and layout changes (see docs/clay.md).
  *
  * Built for a weak TV (Chrome 63):
- *   - One timer, about 7 ticks a second (setTimeout, not requestAnimationFrame,
- *     no CSS animations). On a tick an actor only changes which of its
- *     stacked, preloaded <img>s has opacity 1 and its transform (translate3d,
- *     plus scaleX(-1) to face left). A prop may also fade in steps. No src
+ *   - The scripts run on a fixed clock of about 7 ticks a second, so a scene
+ *     plays the same way on any screen. On a tick an actor only changes which
+ *     of its stacked, preloaded <img>s has opacity 1 and where it is going.
+ *     Between ticks a requestAnimationFrame loop draws each actor part of the
+ *     way from where it was at the last tick to where it is now ("smooth"),
+ *     with a little breathing, lean and squash on top, all on the actor's
+ *     transform. A screen that can't keep up (under 20 frames a second for a
+ *     second), or a browser without requestAnimationFrame, gets one drawing
+ *     per tick instead ("stepped"), as before. No CSS animations, no src
  *     changes, no filters, no layout reads while a scene runs.
  *   - One fixed, click-through layer above the tiles and below the scrim, the
  *     panel, the dashboard frame and the toast. It never takes focus.
@@ -57,6 +62,16 @@
   var FLOOR_GAP = 6;           // feet this far above the bottom of the screen
   var EDGE = 140;              // off-screen margin for entering and leaving
   var MAX_PROPS = 3;
+  var MAX_FRAMES = 40;         // no scene loads more pictures than this (26 or fewer today; room for longer walk cycles)
+
+  // Drawing between ticks (see "drawing" below).
+  var MIN_FPS = 20;            // smooth drawing needs at least this many frames a second, else stepped
+  var WARM_MS = 500;           // the first half second of a scene is not measured (pictures settling in)
+  var MEASURE_MS = 1000;       // the rate is measured over windows this long
+  var WATCH_MS = 250;          // a timer looks this often whether frames are still coming
+  var SLOW_KEEP_MS = 30 * 60000; // after a scene was too slow to draw smoothly, visits are stepped this long
+  var BLEND_MS = 0;            // an experiment: a change of picture blends over this long (0: a hard cut, as always)
+  var OFF = 'translate3d(-2000px,-2000px,0)';
 
   // The styles, put in once at the first visit (no request, no load event to wait for).
   // One click-through layer above the tiles (cells have no z-index) and below
@@ -112,6 +127,11 @@
   var pending = null;          // a reaction to play next: 'cheer' | 'shrug'
   var seenDone = null;         // to-do items done at the last look
   var seenLost = null;         // the "since" of the Pi connection loss already reacted to
+  var drawForce = null;        // tests: 'smooth' | 'stepped' for every scene, null to decide
+  var blendMs = BLEND_MS;      // tests and films: the blend experiment on (ms) or off (0)
+  var moveWithPose = null;     // tests: MOVE_WITH_POSE for this page (set at the first scene)
+  var slowSeen = null;         // { fps, at }: the last time a scene was too slow to draw smoothly
+  var drawInfo = null;         // how the last (or current) visit is drawn: { mode, why, fps, seenAt }
 
   function now() { return new Date().getTime(); }
 
@@ -424,6 +444,20 @@
     this.dir = 'right';
     this.frame = null;
     this.op = 1;
+    // Drawing state: the state after the last tick (now) and the one before
+    // it (prev), which the drawing goes between; see settle() and place().
+    this.now = null;
+    this.prev = null;
+    this.jump = false;                // an at() this tick: drawn there at once, never glided to
+    this.gait = 0;                    // walking this tick (for the lean)
+    this.arcAt = null;                // on an arc this tick: { c, t }, drawn along the real curve
+    this.still = 0;                   // ticks it has stood still (for the breathing)
+    this.amp = 0;                     // how much it breathes now, 0 to 1 (eases in and out)
+    this.lean = 0;                    // degrees, eased
+    this.sq = 0;                      // squash left from a landing or a skid
+    this.breath = name.indexOf('ember') === 0 ? BREATH.ember : kind === 'duo' ? BREATH.duo : BREATH.ian;
+    this.phase = name.length * 1.7;   // so two actors don't breathe in step
+    this.old = null;                  // the blend experiment: the picture being blended away
   }
 
   Actor.prototype.add = function (c) { this.cmds.push(c); return this; };
@@ -451,11 +485,18 @@
     o = o || {};
     return this.add({ op: 'cycle', keys: this.use(keys), ticks: ticks, every: every || 1, dys: o.dy, dxs: o.dx });
   };
-  // Walk (or run, trot, shuffle) to x, `step` px a tick, the frame changing
-  // every `every` ticks; turns to face the way it goes unless o.keepFace.
+  // Walk (or run, trot, shuffle) to x, `step` px a tick; turns to face the
+  // way it goes unless o.keepFace. With o.stride (px for one whole round of
+  // the pictures) the picture goes by the distance walked, so the feet keep
+  // to the ground at any speed; without, it changes every `every` ticks.
+  // It eases in and out (o.ease 'both', the default): the first ticks are
+  // shorter, and so are the last before it stops. 'in' (into a skid or a
+  // leap), 'out' or 'none' for the others. A walk that starts or ends off
+  // screen doesn't ease at that end. It always ends exactly on x.
   Actor.prototype.walk = function (keys, to, step, every, o) {
     o = o || {};
-    return this.add({ op: 'walk', keys: this.use(keys), to: to, step: step, every: every || 1, dys: o.dy, keepFace: !!o.keepFace });
+    return this.add({ op: 'walk', keys: this.use(keys), to: to, step: step, every: every || 1, dys: o.dy,
+      keepFace: !!o.keepFace, ease: o.ease || 'both', stride: o.stride || 0, cuts: o.cuts || null });
   };
   // Move along a parabola to (x, y) in `ticks`, peaking `height` px above the straight line.
   Actor.prototype.arc = function (keys, x, y, height, ticks) {
@@ -471,8 +512,70 @@
 
   function keyAt(list, i) { return list[i % list.length]; }
 
+  // Which picture of a gait shows after d px, round and round. Evenly spaced
+  // by default: floor(d / stride * pictures). With c.cuts (where each picture
+  // starts, as a share of the stride: 0 first, then rising, all under 1) the
+  // pictures can cover different shares of the stride.
+  function gaitIndex(c, d) {
+    var n = c.keys.length;
+    if (!c.cuts) return Math.floor(d / c.stride * n + 1e-6) % n;
+    var u = d / c.stride + 1e-6;
+    var f = u - Math.floor(u);
+    var i = n - 1;
+    while (i > 0 && f < c.cuts[i]) i--;
+    return i;
+  }
+
+  function gaitFrame(c, d) { return c.keys[gaitIndex(c, d)]; }
+
+  // Where the picture showing after d px began (for pose-locked moving).
+  function gaitFrameStart(c, d) {
+    var i = gaitIndex(c, d);
+    var u = d / c.stride + 1e-6;
+    var whole = Math.floor(u);
+    // Just after a round ends, gaitIndex already shows picture 0 of the next.
+    var start = c.cuts ? c.cuts[i] : i / c.keys.length;
+    return (whole + start) * c.stride;
+  }
+
+  // How far above the floor line a picture is drawn (CLAY_SPRITES.lifts, for
+  // the flight phases of a run); 0 for most.
+  function liftOf(key) {
+    var L = M && M.lifts;
+    var v = L && key ? L[key] : 0;
+    return typeof v === 'number' && v > 0 ? v : 0;
+  }
+
+  // A walk's tick lengths, as fractions of its step: the first three ticks
+  // speed up, and near the end each tick goes half the way that is left
+  // (never under a quarter step), so it slows into its stop.
+  var EASE_IN = [0.3, 0.6, 0.85];
+
+  function onStage(x, W) { return x > -40 && x < W + 40; }
+
+  // How far a walk goes on its tick t (0 for the first), with rem px left.
+  function stride(c, t, rem) {
+    var v = c.step;
+    if (c.easeIn && t < EASE_IN.length) v = c.step * EASE_IN[t];
+    if (c.easeOut) v = Math.min(v, Math.max(c.step * 0.25, rem * 0.5));
+    return v;
+  }
+
+  // How many ticks a walk from `from` to `to` takes (for scenes that time
+  // something else to it, like the ball in fetch).
+  function walkTicks(from, to, step, easeIn, easeOut) {
+    var c = { step: step, easeIn: easeIn, easeOut: easeOut };
+    var sign = to >= from ? 1 : -1;
+    var x = from;
+    for (var t = 1; t < 1000; t++) {
+      x += sign * stride(c, t - 1, Math.abs(to - x));
+      if ((sign > 0 && x >= to) || (sign < 0 && x <= to)) return t;
+    }
+    return t;
+  }
+
   var OPS = {
-    at: function (a, c) { a.x = c.x; a.y = c.y; a.gy = c.y; return NEXT; },
+    at: function (a, c) { a.x = c.x; a.y = c.y; a.gy = c.y; a.jump = true; return NEXT; },
     ground: function (a, c) { a.gy = c.y; return NEXT; },
     face: function (a, c) { a.dir = c.dir; return NEXT; },
     hide: function (a) { a.frame = null; return NEXT; },
@@ -503,23 +606,43 @@
       c.t = t + 1;
       return c.t >= c.ticks ? LAST : HOLD;
     },
-    walk: function (a, c) {
+    walk: function (a, c, sc) {
       if (c.t === undefined) {
+        var W = sc && sc.W ? sc.W : 1920;
         c.t = 0;
+        c.d = 0;
+        c.x0 = a.x;
         c.sign = c.to >= a.x ? 1 : -1;
+        c.easeIn = (c.ease === 'both' || c.ease === 'in') && onStage(a.x, W);
+        c.easeOut = (c.ease === 'both' || c.ease === 'out') && onStage(c.to, W);
         if (!c.keepFace) a.dir = c.sign > 0 ? 'right' : 'left';
       }
-      a.frame = keyAt(c.keys, Math.floor(c.t / c.every));
-      a.dy = c.dys ? keyAt(c.dys, c.t) : 0;
       a.dx = 0;
+      a.gait = 1;
+      var d0 = c.d;
+      var v = stride(c, c.t, Math.abs(c.to - a.x));
+      var last = (c.sign > 0 && a.x + v >= c.to) || (c.sign < 0 && a.x - v <= c.to);
+      if (last) v = Math.abs(c.to - a.x);
+      a.x = last ? c.to : a.x + c.sign * v;
+      c.d += v;
+      if (c.stride) {
+        // A gait: the picture and the bob by the distance walked (at the
+        // end of this tick; the drawing works it out for each frame).
+        a.frame = gaitFrame(c, c.d);
+        a.dy = c.dys ? c.dys[Math.floor(((c.d % c.stride) / c.stride) * c.dys.length) % c.dys.length] : 0;
+        a.gaitAt = { c: c, d0: d0, d1: c.d, last: last };
+      } else {
+        // One picture slid along (or an old-style list changing every `every` ticks).
+        a.frame = keyAt(c.keys, Math.floor(c.t / c.every));
+        a.dy = c.dys ? keyAt(c.dys, c.t) : 0;
+      }
       c.t++;
-      a.x += c.sign * c.step;
-      if ((c.sign > 0 && a.x >= c.to) || (c.sign < 0 && a.x <= c.to)) { a.x = c.to; return LAST; }
-      return HOLD;
+      return last ? LAST : HOLD;
     },
     arc: function (a, c) {
       if (c.t === undefined) { c.t = 0; c.x0 = a.x; c.y0 = a.y; }
       c.t++;
+      a.arcAt = { c: c, t: c.t };
       var p = Math.min(1, c.t / c.ticks);
       a.x = c.x0 + (c.x - c.x0) * p;
       a.y = c.y0 + (c.y - c.y0) * p - 4 * c.height * p * (1 - p);
@@ -554,7 +677,58 @@
 
   /* ---------- drawing ---------- */
 
-  function px(v) { return Math.round(v); }
+  // The scripts move on whole ticks (TICK_MS). The drawing runs on its own
+  // clock, sc.tau (ms since the scene started): tick n covers the time from
+  // (n - 1) * TICK_MS to n * TICK_MS, and while it does each actor is drawn
+  // part of the way (p, 0 to 1) from where it was after tick n - 1 (prev)
+  // to where it is after tick n (now). At p = 1 it is exactly where the
+  // script put it. advance(ms) moves that clock on, runs the ticks that come
+  // due and draws once. The real loop calls it from requestAnimationFrame
+  // with the time since the last frame; tests and films call it by hand.
+  //
+  // What never glides: an at() (a teleport), the first appearance and a
+  // show after a hide are drawn where they are at once; the picture and the
+  // way it faces (scaleX(-1)) change at the start of the tick, never half
+  // way. The bob (dy, dx) eases between its values, so it reads as a soft
+  // bounce, and an arc follows its real curve on every drawn frame.
+  //
+  // On top of that, a character gets a little life, on its transform only
+  // and never on its shadow: it breathes when it has stood still for a few
+  // ticks (a slow scale about its feet), leans into a walk or a run, and
+  // squashes a little on a landing or a skid. "Stepped" drawing (a slow
+  // screen) draws once a tick at the tick's position, without any of that,
+  // as before.
+
+  // How a walk with a stride is drawn between ticks: false moves the
+  // position continuously, every frame; true moves it only when the walk's
+  // picture changes, by the stride's share for one picture (classic
+  // stop-motion: pose and position change together). Either way the picture
+  // is chosen by the distance walked.
+  var MOVE_WITH_POSE = false;
+
+  var BREATH = {
+    ian: { ms: 2900, by: 0.012 },     // a breath every 2.9 s, 1.2 % taller at the top of it
+    ember: { ms: 1700, by: 0.016 },   // a dog breathes faster
+    duo: { ms: 2500, by: 0.01 }
+  };
+  var STILL_TICKS = 3;                // standing still this many ticks before breathing starts
+  var LEAN_PER_PX = 0.07;             // degrees of lean per px a tick (a walk 1.3, a run 3)
+  var LEAN_MAX = 3.5;
+  // Pictures that land with a squash when they first show (a fraction of the height).
+  var SQUASH = { 'ian/skid': 0.05, 'ember/skid': 0.06, 'ember/pounce': 0.05, 'ian/jump-land': 0.07, 'ember/jump-land': 0.07 };
+  var LAND_SQUASH = 0.07;             // a character that comes down onto its ground
+  // Pictures held by their hands, which must not move: no breathing.
+  var NO_BREATH = { 'ian/hang': true, 'ian/climb': true };
+
+  function perf() {
+    try { if (window.performance && typeof performance.now === 'function') return performance.now(); } catch (e) { /* below */ }
+    return now();
+  }
+
+  function rafFn() { return typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame : null; }
+
+  // To 0.1 px when smooth (the layers move by fractions), whole px when stepped.
+  function num(v, fine) { return fine ? Math.round(v * 10) / 10 : Math.round(v); }
 
   function buildLayer(sc, images) {
     var layer = document.createElement('div');
@@ -577,7 +751,7 @@
       a.sh.style.height = Math.round(a.shadowW * 0.18) + 'px';
       a.sh.style.marginLeft = -Math.round(a.shadowW / 2) + 'px';
       a.sh.style.marginTop = -Math.round(a.shadowW * 0.09) + 'px';
-      a.sh.style.transform = 'translate3d(-2000px,-2000px,0)';
+      a.sh.style.transform = OFF;
       a.shT = a.sh.style.transform;
       layer.appendChild(a.sh);
     }
@@ -585,9 +759,11 @@
       a = sc.actors[i];
       a.el = document.createElement('div');
       a.el.className = 'clay-actor';
-      a.el.style.transform = 'translate3d(-2000px,-2000px,0)';
+      a.el.style.transform = OFF;
       a.tf = a.el.style.transform;
       a.imgs = {};
+      a.order = {};
+      var n = 0;
       for (var key in a.frames) {
         if (!a.frames.hasOwnProperty(key)) continue;
         var s = M.sprites[key];
@@ -601,6 +777,7 @@
         img.style.width = s.w + 'px';
         img.style.height = s.h + 'px';
         a.imgs[key] = img;
+        a.order[key] = n++;
         a.el.appendChild(img);
       }
       a.shown = null;
@@ -610,29 +787,147 @@
     return layer;
   }
 
-  function draw(a) {
-    var f = a.frame;
-    if (f !== a.shown) {
-      if (a.shown) a.imgs[a.shown].style.opacity = '0';
-      if (f) a.imgs[f].style.opacity = '1';
-      a.shown = f;
+  function flipOf(a, f) {
+    return a.mirror || (!!f && a.dir === 'left' && M.sprites[f].faces === 'right');
+  }
+
+  // After a tick's scripts ran: the actor's new state, and where the drawing
+  // comes from (the last state, or the new one itself when it must not glide).
+  function settle(a, sc) {
+    var C = { x: a.x, y: a.y, dx: a.dx, dy: a.dy, gy: a.gy, op: a.op, frame: a.frame,
+      arc: a.arcAt, gait: a.gait, gaitAt: a.gaitAt, flip: flipOf(a, a.frame) };
+    var P = a.now;
+    var snapped = !P || !P.frame || !C.frame || a.jump;
+    if (snapped) { P = C; C.gaitAt = null; }
+    a.prev = P;
+    a.now = C;
+    if (!snapped && C.x === P.x && C.y === P.y && C.dx === P.dx && C.dy === P.dy) a.still++;
+    else a.still = 0;
+    if (snapped) a.jumpTick = sc.tick;
+    if (a.kind !== 'prop' && C.frame) {
+      if (C.frame !== P.frame && SQUASH[C.frame]) a.sq = Math.max(a.sq, SQUASH[C.frame]);
+      if (!snapped && P.y < C.gy - 3 && C.y >= C.gy - 0.5) a.sq = Math.max(a.sq, LAND_SQUASH);
     }
-    if (!f) {
-      if (a.sh && a.shT !== 'translate3d(-2000px,-2000px,0)') {
-        a.shT = 'translate3d(-2000px,-2000px,0)';
-        a.sh.style.transform = a.shT;
+  }
+
+  function setOp(img, v) {
+    var s = String(Math.round(v * 100) / 100);
+    if (img.style.opacity !== s) img.style.opacity = s;
+  }
+
+  // Which picture shows. The blend experiment (blendMs > 0, smooth only):
+  // the new picture fades in on top of the old one, which stays fully
+  // opaque until it is dropped, so the body never goes see-through. When the
+  // new one is stacked below the old one, the same thing the other way
+  // round: the new one shows at once and the old one fades off the top.
+  function showFrame(a, f, sc, smooth) {
+    if (f !== a.shown) {
+      if (a.old) { a.imgs[a.old].style.opacity = '0'; a.old = null; }
+      var from = a.shown;
+      a.shown = f;
+      if (blendMs > 0 && smooth && from && f) {
+        a.old = from;
+        a.blendAt = (sc.tick - 1) * TICK_MS;
+        a.above = a.order[f] > a.order[from];
+        a.imgs[f].style.opacity = a.above ? '0' : '1';
+      } else {
+        if (from) a.imgs[from].style.opacity = '0';
+        if (f) a.imgs[f].style.opacity = '1';
       }
+    }
+    if (!a.old) return;
+    var k = (sc.tau - a.blendAt) / blendMs;
+    if (k >= 1 || !smooth) {
+      a.imgs[a.old].style.opacity = '0';
+      if (a.shown) a.imgs[a.shown].style.opacity = '1';
+      a.old = null;
+    } else if (a.above) {
+      setOp(a.imgs[a.shown], Math.max(0, k));
+    } else {
+      setOp(a.imgs[a.old], 1 - Math.max(0, k));
+    }
+  }
+
+  // The breathing, lean and squash, as transform functions (or '').
+  function life(a, sc, C, P, dt) {
+    var B = a.breath;
+    var want = a.still >= STILL_TICKS && !NO_BREATH[C.frame] ? 1 : 0;
+    a.amp += (want - a.amp) * Math.min(1, dt / 500);
+    var s = Math.sin(2 * Math.PI * sc.tau / B.ms + a.phase);
+    var sy = 1 + a.amp * B.by * s;
+    var sx = 1 - a.amp * B.by * 0.5 * s;
+    var lean = C.gait ? Math.max(-LEAN_MAX, Math.min(LEAN_MAX, (C.x - P.x) * LEAN_PER_PX)) : 0;
+    a.lean += (lean - a.lean) * Math.min(1, dt / 160);
+    if (a.sq > 0.002) {
+      sy *= 1 - a.sq;
+      sx *= 1 + a.sq * 0.6;
+      a.sq *= Math.exp(-dt / 110);
+    } else {
+      a.sq = 0;
+    }
+    var out = '';
+    if (Math.abs(a.lean) > 0.05) out += ' rotate(' + a.lean.toFixed(2) + 'deg)';
+    if (Math.abs(sx - 1) > 0.0004 || Math.abs(sy - 1) > 0.0004) out += ' scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')';
+    return out;
+  }
+
+  // Draws an actor p of the way through the current tick (1 when stepped).
+  function place(a, sc, p, dt) {
+    var C = a.now;
+    var P = a.prev || C;
+    var f = C ? C.frame : null;
+    var smooth = sc.draw.mode === 'smooth';
+    showFrame(a, f, sc, smooth);
+    if (!f) {
+      if (a.sh && a.shT !== OFF) { a.shT = OFF; a.sh.style.transform = OFF; }
       return;
     }
-    var flip = a.mirror || (a.dir === 'left' && M.sprites[f].faces === 'right');
-    var tf = 'translate3d(' + px(a.x + a.dx) + 'px,' + px(a.y + a.dy) + 'px,0)' +
-      (a.scale !== 1 ? ' scale(' + a.scale + ')' : '') + (flip ? ' scaleX(-1)' : '');
+    if (!smooth) p = 1;
+    var x, y;
+    var g = smooth ? C.gaitAt : null;
+    var d = g ? g.d0 + (g.d1 - g.d0) * p : 0;
+    a.drawD = g ? d : null;
+    if (g) {
+      // Travelling: the picture by distance, so the feet keep to the ground.
+      f = gaitFrame(g.c, d);
+      showFrame(a, f, sc, smooth);
+    }
+    if (g && (moveWithPose === null ? MOVE_WITH_POSE : moveWithPose) && !(p >= 1 && g.last)) {
+      // Stop-motion: the position moves only when the picture changes.
+      x = g.c.x0 + g.c.sign * gaitFrameStart(g.c, d);
+      y = C.y;
+    } else if (C.arc) {
+      // Along the real parabola: the tick's share of the arc, p of the way through.
+      var c = C.arc.c;
+      var q = (C.arc.t - 1 + p) / c.ticks;
+      x = c.x0 + (c.x - c.x0) * q;
+      y = c.y0 + (c.y - c.y0) * q - 4 * c.height * q * (1 - q);
+    } else {
+      x = P.x + (C.x - P.x) * p;
+      y = P.y + (C.y - P.y) * p;
+    }
+    var e = (1 - Math.cos(Math.PI * p)) / 2;
+    x += P.dx + (C.dx - P.dx) * e;
+    y += P.dy + (C.dy - P.dy) * e;
+    // A picture in mid-air (a lift in the sprite list) is drawn that much
+    // higher; the shadow below stays on the ground.
+    a.lift = liftOf(f);
+    var tf = 'translate3d(' + num(x, smooth) + 'px,' + num(y - a.lift, smooth) + 'px,0)';
+    if (smooth && a.kind !== 'prop') tf += life(a, sc, C, P, dt);
+    if (a.scale !== 1) tf += ' scale(' + a.scale + ')';
+    if (C.flip) tf += ' scaleX(-1)';
     if (tf !== a.tf) { a.el.style.transform = tf; a.tf = tf; }
-    if (a.op !== a.opShown) { a.el.style.opacity = String(a.op); a.opShown = a.op; }
+    var op = smooth ? Math.round((P.op + (C.op - P.op) * p) * 100) / 100 : C.op;
+    if (op !== a.opShown) { a.el.style.opacity = String(op); a.opShown = op; }
     if (a.sh) {
-      var st = 'translate3d(' + px(a.x + a.dx) + 'px,' + px(a.gy) + 'px,0)';
+      var gy = P.gy + (C.gy - P.gy) * p;
+      var st = 'translate3d(' + num(x, smooth) + 'px,' + num(gy, smooth) + 'px,0)';
       if (st !== a.shT) { a.sh.style.transform = st; a.shT = st; }
     }
+  }
+
+  function drawAll(sc, p, dt) {
+    for (var i = 0; i < sc.actors.length; i++) place(sc.actors[i], sc, p, dt);
   }
 
   /* ---------- running a scene ---------- */
@@ -649,23 +944,164 @@
     return out;
   }
 
-  function tick() {
+  // One tick of every script. False when the scene ended.
+  function tickOnce(sc) {
+    if (!quiet()) { end('interrupted'); return false; }
+    sc.tick++;
+    var i, a;
+    var alive = false;
+    for (i = 0; i < sc.actors.length; i++) {
+      a = sc.actors[i];
+      a.jump = false;
+      a.gait = 0;
+      a.gaitAt = null;
+      a.arcAt = null;
+    }
+    for (i = 0; i < sc.actors.length; i++) if (runActor(sc.actors[i], sc)) alive = true;
+    for (i = 0; i < sc.actors.length; i++) settle(sc.actors[i], sc);
+    if (!alive) sc.idleTicks++;
+    if (sc.idleTicks > 1 || sc.tick > MAX_TICKS) { end('done'); return false; }
+    return true;
+  }
+
+  // Moves the scene's clock on by ms: runs the ticks that come due, then
+  // draws once, part of the way through the current tick. False when the
+  // scene ended.
+  function advance(sc, ms) {
+    sc.tau += ms;
+    while (sc.tau > sc.tick * TICK_MS + 0.001) {
+      if (!tickOnce(sc)) return false;
+    }
+    drawAll(sc, (sc.tau - (sc.tick - 1) * TICK_MS) / TICK_MS, ms);
+    return true;
+  }
+
+  // How this scene will be drawn: { mode: 'smooth' | 'stepped', why, fps }.
+  // why: '' (smooth, measured as it plays), 'hand' (a test steps it),
+  // 'test' (a test chose), 'speed' (a test sped the clock up), 'no-raf'
+  // (no requestAnimationFrame) or 'remembered' (a scene in the last 30
+  // minutes was too slow to draw smoothly).
+  function chooseDrawing() {
+    var d = { mode: 'smooth', why: '', fps: null, seenAt: 0 };
+    if (drawForce) { d.mode = drawForce; d.why = 'test'; }
+    else if (tickMs === 0) d.why = 'hand';
+    else if (tickMs !== TICK_MS) { d.mode = 'stepped'; d.why = 'speed'; }
+    else if (!rafFn()) { d.mode = 'stepped'; d.why = 'no-raf'; }
+    else if (slowSeen && now() - slowSeen.at < SLOW_KEEP_MS) {
+      d.mode = 'stepped';
+      d.why = 'remembered';
+      d.fps = slowSeen.fps;
+      d.seenAt = slowSeen.at;
+    }
+    return d;
+  }
+
+  // Starts the scene's clock: the first tick at once, drawn where it ends,
+  // then frames (smooth), a timer (stepped) or nothing (a test steps it).
+  function run(sc) {
+    sc.draw = chooseDrawing();
+    drawInfo = sc.draw;
+    sc.tau = 0;
+    sc.raf = null;
+    if (!advance(sc, TICK_MS)) return;
+    if (tickMs === 0) return;
+    var raf = rafFn();
+    if (sc.draw.mode === 'smooth' && tickMs === TICK_MS && raf) {
+      sc.rafFn = raf;
+      sc.cafFn = typeof window.cancelAnimationFrame === 'function' ? window.cancelAnimationFrame : null;
+      sc.lastT = perf();
+      sc.m = { start: sc.lastT, t0: sc.lastT, n: 0, allN: 0, allMs: 0 };
+      sc.raf = raf.call(window, frame);
+      sc.timer = setTimeout(watch, WATCH_MS);
+    } else {
+      sc.timer = setTimeout(stepTick, tickMs);
+    }
+  }
+
+  // Stepped: one tick and one drawing per timer.
+  function stepTick() {
     var sc = scene;
     if (!sc || sc.phase !== 'playing') return;
     sc.timer = null;
     try {
-      if (!quiet()) return end('interrupted');
-      sc.tick++;
-      var alive = false;
-      for (var i = 0; i < sc.actors.length; i++) if (runActor(sc.actors[i], sc)) alive = true;
-      for (var j = 0; j < sc.actors.length; j++) draw(sc.actors[j]);
-      if (!alive) sc.idleTicks++;
-      if (sc.idleTicks > 1 || sc.tick > MAX_TICKS) return end('done');
-      if (tickMs > 0) sc.timer = setTimeout(tick, tickMs);
+      sc.tau = sc.tick * TICK_MS;
+      if (!advance(sc, TICK_MS)) return;
+      if (tickMs > 0) sc.timer = setTimeout(stepTick, tickMs);
     } catch (e) {
       fail('error in scene ' + sc.name + ': ' + errText(e));
       end('error');
     }
+  }
+
+  // Smooth: once per screen frame. One frame never moves the clock more
+  // than two ticks, so a stall slows the scene down instead of jumping it.
+  function frame() {
+    var sc = scene;
+    if (!sc || sc.phase !== 'playing' || sc.raf === null) return;
+    sc.raf = null;
+    try {
+      var t = perf();
+      var dt = t - sc.lastT;
+      sc.lastT = t;
+      sc.m.n++;
+      if (!advance(sc, Math.max(0, Math.min(dt, 2 * TICK_MS)))) return;
+      if (!judge(sc, t)) return;
+      sc.raf = sc.rafFn.call(window, frame);
+    } catch (e) {
+      fail('error in scene ' + sc.name + ': ' + errText(e));
+      end('error');
+    }
+  }
+
+  // Smooth: a timer that keeps an eye on the frames. If none came for a
+  // while (a browser that stops them), it moves the scene on itself, and the
+  // rate it measures then is low, so the scene goes stepped.
+  function watch() {
+    var sc = scene;
+    if (!sc || sc.phase !== 'playing' || sc.draw.mode !== 'smooth') return;
+    sc.timer = null;
+    try {
+      var t = perf();
+      if (t - sc.lastT > 300) {
+        var dt = t - sc.lastT;
+        sc.lastT = t;
+        if (!advance(sc, Math.min(dt, 2 * TICK_MS))) return;
+      }
+      if (!judge(sc, t)) return;
+      sc.timer = setTimeout(watch, WATCH_MS);
+    } catch (e) {
+      fail('error in scene ' + sc.name + ': ' + errText(e));
+      end('error');
+    }
+  }
+
+  // The frame rate, a second at a time after the first half second. Under
+  // MIN_FPS: stepped for the rest of the scene (and the next 30 minutes).
+  // False when it switched.
+  function judge(sc, t) {
+    var m = sc.m;
+    if (t - m.start < WARM_MS) { m.t0 = t; m.n = 0; return true; }
+    var span = t - m.t0;
+    if (span < MEASURE_MS) return true;
+    var fps = m.n * 1000 / span;
+    m.allN += m.n;
+    m.allMs += span;
+    m.t0 = t;
+    m.n = 0;
+    sc.draw.fps = Math.round(m.allN * 1000 / m.allMs);
+    if (fps >= MIN_FPS) return true;
+    if (sc.raf !== null && sc.cafFn) { try { sc.cafFn.call(window, sc.raf); } catch (e) { /* ignore */ } }
+    sc.raf = null;
+    if (sc.timer) clearTimeout(sc.timer);
+    slowSeen = { fps: Math.round(fps), at: now() };
+    sc.draw = { mode: 'stepped', why: 'slow', fps: slowSeen.fps, seenAt: slowSeen.at };
+    drawInfo = sc.draw;
+    // The tick in progress is drawn where it ends, then a tick a timer.
+    var left = sc.tick * TICK_MS - sc.tau;
+    sc.tau = sc.tick * TICK_MS;
+    drawAll(sc, 1, 0);
+    sc.timer = setTimeout(stepTick, Math.max(0, left));
+    return false;
   }
 
   // Ends the scene now and takes its DOM away. result: 'done' | 'interrupted' |
@@ -676,6 +1112,8 @@
     scene = null;
     gen++;
     if (sc.timer) clearTimeout(sc.timer);
+    if (sc.raf !== null && sc.raf !== undefined && sc.cafFn) { try { sc.cafFn.call(window, sc.raf); } catch (e) { /* ignore */ } }
+    sc.raf = null;
     if (sc.cancel) { try { sc.cancel(); } catch (e) { /* ignore */ } }
     if (sc.layer && sc.layer.parentNode) sc.layer.parentNode.removeChild(sc.layer);
     sc.layer = null;
@@ -757,7 +1195,12 @@
         sc.phase = 'playing';
         played++;
         slowRun = 0;
-        tick();
+        try {
+          run(sc);
+        } catch (e) {
+          fail('error in scene ' + name + ': ' + errText(e));
+          end('error');
+        }
       });
     });
     return true;
@@ -1018,105 +1461,263 @@
     return S;
   }
 
-  // Gaits: frames, px per tick, ticks per frame, bob per tick.
-  var IAN_WALK = { keys: ['ian/walk-1', 'ian/walk-2'], step: 18, every: 2, dy: [0, -1, 0, -1] };
-  var IAN_RUN = { keys: ['ian/run-1', 'ian/run-2'], step: 34, every: 1, dy: [-8, 0] };
-  var EMBER_TROT = { keys: ['ember/trot-1', 'ember/trot-2'], step: 18, every: 2, dy: [0, 0, -2, -2] };
-  var EMBER_RUN = { keys: ['ember/run-1', 'ember/run-2'], step: 44, every: 1, dy: [-10, -2] };
+  // Gaits. seq names a sequence in the sprite list (CLAY_SPRITES.sequences,
+  // any number of pictures in loop order); keys are the pictures to use when
+  // the list has no such sequence. step is px a tick; stride is px for one
+  // whole round of the pictures (CLAY_SPRITES.strides[seq] when the list
+  // has it), which keeps today's cadence with two pictures; dy is the bob
+  // over one round. New, longer cycles drop in through the sprite list with
+  // no change here.
+  var IAN_WALK = { seq: 'ian.walk', keys: ['ian/walk-1', 'ian/walk-2'], step: 18, stride: 72, dy: [0, -1, 0, -1] };
+  var IAN_RUN = { seq: 'ian.run', keys: ['ian/run-1', 'ian/run-2'], step: 34, stride: 68, dy: [-8, 0] };
+  var EMBER_TROT = { seq: 'ember.trot', keys: ['ember/trot-1', 'ember/trot-2'], step: 18, stride: 72, dy: [0, 0, -2, -2] };
+  var EMBER_RUN = { seq: 'ember.run', keys: ['ember/run-1', 'ember/run-2'], step: 44, stride: 88, dy: [-10, -2] };
+  // Zoomies: her wild sprint picture between the two run pictures; once the
+  // list has a longer run cycle (over two pictures), that instead.
+  var EMBER_ZOOM = { seq: 'ember.zoomies', longer: 'ember.run', keys: ['ember/zoomies', 'ember/run-1', 'ember/run-2'], step: 50, stride: 150, dy: [-3, -10, -2] };
+  // Ember carrying the ball or the sock: a cycle when the list has one, else
+  // the one picture slid along (kept short; see docs/clay.md). Optional:
+  // a scene that would go over MAX_FRAMES with them is built without.
+  var BALL_TROT = { seq: 'ember.ball-trot', keys: ['ember/stand-ball'], step: 18, stride: 72, dy: [0, -6, -3, 0], optional: true };
+  var SOCK_RUN = { seq: 'ember.sock-run', keys: ['ember/sock-run'], step: 46, stride: 138, dy: [0, -10, -4], optional: true };
+  var plainExtras = false;     // while building: leave the optional cycles out
+  var trimmed = false;         // while building: leave a scene's small touches out
 
-  function go(a, gait, to, step) {
-    return a.walk(gait.keys, to, step || gait.step, gait.every, { dy: gait.dy });
+  // The sequence a gait takes its pictures from: its own, or (zoomies) a
+  // longer cycle of another; null for its own fallback pictures.
+  function gaitSeq(g) {
+    var Q = M && M.sequences ? M.sequences : {};
+    if (g.optional && plainExtras) return null;
+    if (g.seq && Q[g.seq] && Q[g.seq].length) return g.seq;
+    if (g.longer && Q[g.longer] && Q[g.longer].length > 2) return g.longer;
+    return null;
   }
 
-  // A front-facing pose slid along with a little bob, like a puppet shuffled across the set.
-  function shuffle(a, key, to, step) {
-    return a.walk([key], to, step || 14, 1, { dy: [0, -3, -4, -2], keepFace: true });
+  function gaitKeys(g) {
+    var q = gaitSeq(g);
+    return q ? M.sequences[q].slice() : g.keys.slice();
+  }
+
+  function gaitStride(g) {
+    var q = gaitSeq(g);
+    var s = q && M.strides ? M.strides[q] : null;
+    if (typeof s === 'number' && s > 0) return s;
+    return q === g.longer && q === EMBER_RUN.seq ? EMBER_RUN.stride : g.stride;
+  }
+
+  // Where each picture of a sequence starts, as a share of its stride, from
+  // CLAY_SPRITES.shares[seq] (each picture's share; they need not add up to
+  // exactly 1, they are scaled to). null for even spacing, and when the list
+  // doesn't match the sequence.
+  function gaitCuts(q, n) {
+    var s = q && M.shares ? M.shares[q] : null;
+    if (!s || !s.length || s.length !== n) return null;
+    var sum = 0;
+    for (var i = 0; i < n; i++) {
+      if (typeof s[i] !== 'number' || !(s[i] > 0)) return null;
+      sum += s[i];
+    }
+    var cuts = [];
+    var at = 0;
+    for (var j = 0; j < n; j++) { cuts.push(at / sum); at += s[j]; }
+    return cuts;
+  }
+
+  // Whether any picture of a gait has a lift: then the pictures carry the
+  // bounce themselves, and the hand-made bob (dy) is left out.
+  function gaitLifts(keys) {
+    for (var i = 0; i < keys.length; i++) if (liftOf(keys[i])) return true;
+    return false;
+  }
+
+  // Ian coming to a stop out of a walk and standing for `ticks`: when the
+  // sprite list has him standing side-on (ian/stand-side), the first two of
+  // those ticks show that, so he doesn't turn to the front mid-stride. The
+  // same length either way.
+  function halt(ian, ticks) {
+    if (M.sprites['ian/stand-side'] && ticks > 2) ian.pose('ian/stand-side', 2).pose('ian/stand', ticks - 2);
+    else ian.pose('ian/stand', ticks);
+    return ian;
+  }
+
+  // Walk with a gait to x. o: { step, ease } (see Actor.walk).
+  function go(a, gait, to, o) {
+    o = o || {};
+    var keys = gaitKeys(gait);
+    return a.walk(keys, to, o.step || gait.step, 1, {
+      dy: gaitLifts(keys) ? null : gait.dy,
+      stride: gaitStride(gait),
+      cuts: gaitCuts(gaitSeq(gait), keys.length),
+      ease: o.ease
+    });
   }
 
   var SCENES = {};
 
-  // 1. Ian walks across the floor, Ember trots behind; midway he stops and waves.
+  // 1. Ian walks in with Ember behind; he waves, then looks at his phone.
+  // Ember gets bored and rolls over; he laughs and gives her a belly rub;
+  // they walk on and out the far side.
   SCENES.stroll = function (S) {
     var F = S.floor;
     var ian = S.actor('ian', 'char', { shadow: 62 });
     var ember = S.actor('ember', 'char', { shadow: 76 });
-    var mid = S.across(S.rand(0.38, 0.58));
-    go(ian.at(S.start, F).face(S.dir), IAN_WALK, mid)
-      .pose('ian/stand', 3)
-      .cycle(['ian/stand-wave', 'ian/stand'], 14, 3)
-      .pose('ian/stand-wave', 5)
-      .pose('ian/stand', 3)
+    // In the picture he kneels on the left and she lies on the right; here
+    // she is behind him (towards where they came from).
+    var duo = S.actor('duo', 'duo', { shadow: 130, mirror: S.dir === 'right' });
+    var mid = S.across(S.rand(0.42, 0.54));
+    var ex = mid - S.sgn * 112;
+    halt(go(ian.at(S.start, F).face(S.dir), IAN_WALK, mid), 3)
+      .cycle(['ian/stand-wave', 'ian/stand'], 12, 3)
+      .pose('ian/stand-wave', 4)
+      .pose('ian/stand', 4)
+      .signal('phone')
+      .pose('ian/stand-phone', 24)
+      .after('bored')
+      .pose('ian/stand-phone', 3)
+      .pose('ian/laugh', 12)
+      .signal('rub')
+      .hide()
+      .after('rubbed')
+      .at(mid, F)
+      .face(S.dir)
+      .pose('ian/stand', 4)
       .signal('go');
     go(ian, IAN_WALK, S.end).hide();
-    go(ember.at(S.start - S.sgn * 120, F).face(S.dir), EMBER_TROT, mid - S.sgn * 100)
+    go(ember.at(S.start - S.sgn * 130, F).face(S.dir), EMBER_TROT, ex)
       .pose('ember/stand-2', 3)
-      .cycle(['ember/stand-wag', 'ember/stand-wag', 'ember/stand-2'], 20, 3)
+      .cycle(['ember/stand-wag', 'ember/stand-wag', 'ember/stand-2'], 15, 3)
       .pose('ember/sit-side', 0)
+      .after('phone')
+      .pose('ember/sit-side', 10)
+      .pose('ember/stand-look', 8)
+      .pose('ember/down', 6)
+      .pose('ember/roll', 3)
+      .pose('ember/belly', 8)
+      .signal('bored')
+      .pose('ember/belly', 0)
+      .after('rub')
+      .hide()
+      .after('rubbed')
+      .at(ex, F)
+      .face(S.dir)
+      .pose('ember/stand-2', 0)
       .after('go')
       .wait(3);
     go(ember, EMBER_TROT, S.end + S.sgn * 40).hide();
+    duo.after('rub').at((mid + ex) / 2, F).pose('duo/belly-rub', 28).hide().signal('rubbed');
   };
 
-  // 2. Ian throws the ball, Ember runs, jump-catches it, trots back; a high five.
+  // (A swap to a picture of the two: the actor that comes first gives the
+  // signal, so both hide in the very tick the duo shows; never three at once.)
+
+  // 2. Fetch. Ian fakes a throw and Ember falls for it; he laughs. Then a
+  // real throw: she runs, leaps and catches the ball at the top of her jump
+  // and trots it back, but lies down guarding it until he calls her. A high
+  // five and a hug, and they go back the way they came.
   SCENES.fetch = function (S) {
     var F = S.floor;
     var ian = S.actor('ian', 'char', { shadow: 62 });
     var ember = S.actor('ember', 'char', { shadow: 76 });
+    // In both pictures he is on the left and she on the right; here she is
+    // on his far side (the way they travel).
     var duo = S.actor('duo', 'duo', { shadow: 120, mirror: S.dir === 'left' });
     var ball = S.actor('ball', 'prop', { shadow: 18, scale: 1.6 });
-    var heart = S.actor('heart', 'prop', { scale: 1.5 });
+    // The heart over the hug is a trimming: left out when the pictures would
+    // go over MAX_FRAMES with her ball-carrying trot (see build()).
+    var heart = trimmed ? null : S.actor('heart', 'prop', { scale: 1.5 });
     var ianX = S.across(S.rand(0.14, 0.2));
     var emberWait = ianX + S.sgn * 125;
-    var catchX = S.across(S.rand(0.58, 0.7));
+    var fakeTo = emberWait + S.sgn * 190;
+    var catchX = S.across(S.rand(0.5, 0.58));
     var runTo = catchX - S.sgn * 14;
-    var runTicks = 16;
-    var step = Math.max(24, Math.ceil(Math.abs(runTo - emberWait) / runTicks));
-    runTicks = Math.ceil(Math.abs(runTo - emberWait) / step);
+    var runTicks = walkTicks(emberWait, runTo, EMBER_RUN.step, true, false);
     var flight = runTicks + 4;           // she crouches, runs, crouches again, rises two
     var apex = F - 70;                   // the bottom of her paws at the top of the jump
+    var land = runTo + S.sgn * 28;
+    var meet = ianX + S.sgn * 150;       // he walks up to meet her on the way back
+    var rise = 17.5;                     // half a parabola: level at the top (70 / 4)
 
     go(ian.at(S.start, F).face(S.dir), IAN_WALK, ianX)
+      .pose('ian/stand', 0)
+      .after('here')
       .pose('ian/stand', 3)
-      .face(S.dir)
+      .pose('ian/throw-1', 6)
+      .signal('fake')
+      .pose('ian/throw-1', 5)
+      .pose('ian/stand', 0)
+      .after('fooled')
+      .pose('ian/laugh', 12)
+      .pose('ian/stand', 2)
+      .signal('ready')
+      .after('again')
       .pose('ian/throw-1', 5)
       .signal('throw')
       .pose('ian/throw-2', 6)
       .pose('ian/stand', 0)
+      .after('caught')
+      .wait(8);
+    go(ian, IAN_WALK, meet)
+      .pose('ian/stand', 0)
       .after('back')
+      .pose('ian/stand', 4)
+      .pose('ian/call', 8)
+      .signal('call')
       .pose('ian/call', 4)
+      .after('near')
       .signal('swap')
       .hide()
       .after('fived')
-      .at(ianX, F)
-      .pose('ian/stand', 2);
+      .at(meet, F)
+      .pose('ian/stand', 3);
     go(ian, IAN_WALK, S.start).hide();
 
     go(ember.at(S.start - S.sgn * 130, F).face(S.dir), EMBER_TROT, emberWait)
+      .signal('here')
       .pose('ember/stand-2', 0)
+      .after('fake')
+      .pose('ember/jump-crouch', 1);
+    go(ember, EMBER_RUN, fakeTo, { ease: 'in' })
+      .move(S.sgn * 16, 0, 1, { key: 'ember/skid' })
+      .move(S.sgn * 6, 0, 2, { key: 'ember/skid' })
+      .pose('ember/stand-tilt', 10)
+      .signal('fooled');
+    go(ember, EMBER_TROT, emberWait)
+      .face(S.dir)
+      .pose('ember/stand-2', 0)
+      .after('ready')
+      .wait(4)
+      .signal('again')
       .after('throw')
       .pose('ember/jump-crouch', 1);
-    ember.walk(EMBER_RUN.keys, runTo, step, 1, { dy: EMBER_RUN.dy })
+    go(ember, EMBER_RUN, runTo, { ease: 'in' })
       .pose('ember/jump-crouch', 1)
-      .move(S.sgn * 7, (apex - F) / 2, 2, { key: 'ember/jump-catch' })
+      .arc(['ember/jump-catch'], runTo + S.sgn * 14, apex, rise, 2)
       .signal('caught')
-      .move(S.sgn * 7, (F - apex) / 2, 2, { key: 'ember/jump-catch' })
+      .arc(['ember/jump-catch'], land, F, rise, 2)
       .pose('ember/stand-ball', 5)
       .face(S.back)
-      .pose('ember/stand-ball', 2)
-      .walk(['ember/stand-ball'], ianX + S.sgn * 70, 20, 1, { dy: [0, -6, -3] })
+      .pose('ember/stand-ball', 2);
+    go(ember, BALL_TROT, meet + S.sgn * 120)
       .pose('ember/stand-ball', 3)
       .signal('back')
+      .pose('ember/ball-down', 0)
+      .after('call')
+      .pose('ember/ball-down', 3)
+      .pose('ember/stand-ball', 3);
+    go(ember, BALL_TROT, meet + S.sgn * 70)
+      .signal('near')
+      .pose('ember/stand-ball', 0)
       .after('swap')
       .hide()
       .after('fived')
-      .at(ianX + S.sgn * 70, F)
-      .wait(2);
+      .at(meet + S.sgn * 70, F)
+      .pose('ember/stand-2', 3);
     go(ember, EMBER_TROT, S.start - S.sgn * 60).hide();
 
-    // The high five, between where they stand.
-    var duoX = ianX + S.sgn * 34;
-    duo.after('swap').at(duoX, F).pose('duo/high-five', 16).hide().signal('fived');
-    heart.after('swap').wait(5).at(duoX + 10, F - 140).pose('props/heart', 2).move(0, -4, 4, { key: 'props/heart' }).hide();
+    // The high five, then a hug, between where they stand.
+    var duoX = meet + S.sgn * 34;
+    duo.after('swap').at(duoX, F).pose('duo/high-five', 14).pose('duo/hug', 20).hide().signal('fived');
+    if (heart) heart.after('swap').wait(16).at(duoX + S.sgn * 6, F - 150).pose('props/heart', 2).move(0, -4, 6, { key: 'props/heart' }).hide();
 
     // The ball: from Ian's hand at the end of the throw, along an arc that
     // ends in Ember's open mouth at the top of her jump, then down with her.
@@ -1126,65 +1727,120 @@
       .at(handX, F - 118)
       .ground(F)
       .arc(['props/ball'], mouthX, apex - 104, Math.min(380, 160 + flight * 14), flight)
-      .move(S.sgn * 7, (F - apex) / 2, 2, { key: 'props/ball' })
+      .arc(['props/ball'], land + S.sgn * 18, F - 104, rise, 2)
       .hide();
   };
 
-  // 3. Ember finds a sock and runs off with it; Ian runs after her and skids.
+  // 3. Ember finds a sock and Ian creeps up on her, but she bolts with it.
+  // He runs after her, skids and facepalms; she trots back to tease him, a
+  // tug of war, and she wins and runs off again. He laughs and follows.
   SCENES['sock-heist'] = function (S) {
     var F = S.floor;
     var ember = S.actor('ember', 'char', { shadow: 76 });
     var ian = S.actor('ian', 'char', { shadow: 62 });
+    // In the picture he pulls from the left, she from the right; here he is behind her.
+    var duo = S.actor('duo', 'duo', { shadow: 150, mirror: S.dir === 'left' });
     var sock = S.actor('sock', 'prop');
     var bang = S.actor('bang', 'prop', { scale: 1.4 });
     var sockX = S.across(S.rand(0.3, 0.36));
-    var skidX = S.across(S.rand(0.74, 0.8));
+    var skidX = S.across(S.rand(0.6, 0.66));
+    var sniffX = sockX - S.sgn * 52;
+    var teaseX = skidX + S.sgn * 136;
     sock.at(sockX, F - 2).face(S.dir).pose('props/sock', 0).after('found').hide();
-    go(ember.at(S.start, F).face(S.dir), EMBER_TROT, sockX - S.sgn * 150)
-      .walk(['ember/sniff'], sockX - S.sgn * 52, 7, 1, { dy: [0, 0, -1, -1] })
+    go(ember.at(S.start, F).face(S.dir), EMBER_TROT, sniffX - S.sgn * 30)
+      .pose('ember/sniff', 8)
+      .move(S.sgn * 15, 0, 2, { key: 'ember/sniff' })
       .pose('ember/sniff', 6)
       .signal('found')
       .pose('ember/sock-proud', 10)
       .signal('heist')
-      .pose('ember/sock-proud', 6)
+      .pose('ember/sock-proud', 0)
       .after('seen')
-      .wait(2)
-      .walk(['ember/sock-run'], S.end + S.sgn * 80, 46, 1, { dy: [0, -10, -4] })
-      .hide();
-    bang.after('seen').at(sockX - S.sgn * 30, F - 112).pose('props/bang', 6).hide();
+      .wait(3);
+    go(ember, SOCK_RUN, S.end + S.sgn * 80, { ease: 'in' })
+      .after('sulk')
+      .wait(2);
+    go(ember, SOCK_RUN, teaseX, { step: 36 })
+      .pose('ember/sock-proud', 6)
+      .signal('tease')
+      .pose('ember/sock-proud', 0)
+      .after('lunge')
+      .signal('grab')
+      .hide()
+      .after('tugged')
+      .at(teaseX, F)
+      .face(S.dir)
+      .pose('ember/sock-proud', 2);
+    go(ember, SOCK_RUN, S.end + S.sgn * 80, { ease: 'in' }).hide();
+    bang.after('seen').at(sniffX + S.sgn * 10, F - 116).pose('props/bang', 6).hide();
+    // He creeps in: a slow walk, a "shh" to us, then on, slower still.
     ian.after('heist').at(S.start, F).face(S.dir);
-    go(ian, IAN_RUN, S.across(0.12)).signal('seen');
-    go(ian, IAN_RUN, skidX)
+    go(ian, IAN_WALK, S.across(0.08), { step: 14 })
+      .pose('ian/sneak', 8);
+    go(ian, IAN_WALK, sockX - S.sgn * 200, { step: 11 })
+      .pose('ian/sneak', 3)
+      .signal('seen')
+      .pose('ian/stand', 3);
+    go(ian, IAN_RUN, skidX, { ease: 'in' })
       .move(S.sgn * 18, 0, 2, { key: 'ian/skid' })
       .move(S.sgn * 7, 0, 2, { key: 'ian/skid' })
       .pose('ian/skid', 3)
       .pose('ian/stand', 2)
       .pose('ian/facepalm', 14)
-      .pose('ian/stand', 2);
-    go(ian, IAN_WALK, S.end).hide();
+      .pose('ian/stand', 2)
+      .signal('sulk')
+      .pose('ian/stand', 0)
+      .after('tease')
+      .face(S.dir)
+      .pose('ian/point', 8)
+      .signal('lunge')
+      .pose('ian/point', 0)
+      .after('grab')
+      .hide()
+      .after('tugged')
+      .at(skidX + S.sgn * 50, F)
+      .pose('ian/stand', 2)
+      .pose('ian/laugh', 12)
+      .pose('ian/stand', 2)
+      .face(S.dir);
+    go(ian, IAN_RUN, S.end, { ease: 'in' }).hide();
+    duo.after('grab').at(skidX + S.sgn * 68, F)
+      .cycle(['duo/tug'], 20, 1, { dx: [0, -2, -4, -2, 0, 2, 4, 2] })
+      .hide()
+      .signal('tugged');
   };
 
-  // 4. Ember alone, flat out across the floor, a skid and a play bow, and back.
+  // 4. Ember alone: flat out across the floor, a skid, a play bow and a
+  // bark; back the other way, a spin and a pounce, a roll on her back, a
+  // shake, and off.
   SCENES.zoomies = function (S) {
     var F = S.floor;
     var ember = S.actor('ember', 'char', { shadow: 76 });
-    var keys = ['ember/zoomies', 'ember/run-1', 'ember/run-2'];
-    var turn = S.across(S.rand(0.72, 0.82));
-    ember.at(S.start, F).face(S.dir)
-      .walk(keys, turn, 50, 1, { dy: [-3, -10, -2] })
+    var turn = S.across(S.rand(0.72, 0.8));
+    var back = S.across(S.rand(0.3, 0.38));
+    go(ember.at(S.start, F).face(S.dir), EMBER_ZOOM, turn, { ease: 'in' })
       .move(S.sgn * 20, 0, 1, { key: 'ember/skid' })
       .move(S.sgn * 8, 0, 2, { key: 'ember/skid' })
       .face(S.back)
       .pose('ember/bow', 6)
       .pose('ember/stand-bark', 3)
       .pose('ember/bow', 3)
-      .walk(keys, S.across(S.rand(0.3, 0.4)), 50, 1, { dy: [-3, -10, -2] })
-      .pose('ember/spin', 2)
-      .face(S.back === 'left' ? 'right' : 'left')
-      .pose('ember/spin', 2)
-      .face(S.back)
-      .walk(keys, S.start - S.sgn * 40, 50, 1, { dy: [-3, -10, -2] })
-      .hide();
+      .pose('ember/stand-bark', 3)
+      .pose('ember/bow', 4);
+    go(ember, EMBER_ZOOM, back, { ease: 'in' })
+      .move(-S.sgn * 20, 0, 1, { key: 'ember/skid' })
+      .move(-S.sgn * 8, 0, 2, { key: 'ember/skid' })
+      .cycle(['ember/spin'], 8, 1, { dy: [0, -6, -8, -4] })
+      .pose('ember/pounce', 4)
+      .pose('ember/down', 4)
+      .pose('ember/roll', 3)
+      .pose('ember/belly', 10)
+      .pose('ember/roll', 3)
+      .pose('ember/down', 3)
+      .pose('ember/stand-2', 2)
+      .pose('ember/shake', 6)
+      .pose('ember/stand-2', 3);
+    go(ember, EMBER_ZOOM, S.start - S.sgn * 40, { ease: 'in' }).hide();
   };
 
   // Where a perch pose's bottom goes, against the ledge's y (by eye, from the sprites).
@@ -1192,10 +1848,14 @@
     'sit-edge': 52,     // hands on the edge, legs dangling down the tile
     'lie-chin': 2,      // lying along the top edge
     hang: 163,          // hands curled over the edge, hanging down the tile
-    climb: 130          // forearms on top of the edge
+    climb: 130,         // forearms on top of the edge
+    stand: 3,           // standing on top of the tile
+    laptop: 3           // sitting cross-legged on top of the tile
   };
 
-  // 5. Ian poofs onto a ledge, sits or lies there a few seconds, poofs away.
+  // 5. Ian poofs onto a ledge (sitting on the edge, lying on his elbows, or
+  // hanging and climbing up) and makes himself at home there: he stands
+  // and waves, gets out his laptop, sits or lies about; then poofs away.
   SCENES.perch = function (S) {
     var room = [];
     for (var i = 0; i < S.ledges.length; i++) if (S.ledges[i].width >= 220) room.push(S.ledges[i]);
@@ -1207,27 +1867,45 @@
       S.pick(['sit-edge', 'sit-edge', 'lie-chin', 'climb']);
     var ian = S.actor('ian', 'char');
     var poof = S.actor('poof', 'prop', { scale: 3 });
-    var rest = Math.round(S.rand(42, 60));
+    var k = S.rand(0.9, 1.1);            // a little longer or shorter each time
+    function t(n) { return Math.round(n * k); }
+    var inward = x < S.W / 2 ? 'right' : 'left';
     var cloudY = how === 'lie-chin' ? y + 14 : how === 'climb' ? y + 70 : y + 40;
-    poof.at(x, cloudY).pose('props/poof', 3).hide().after('bye').at(x, how === 'lie-chin' ? y + 14 : y + 40).pose('props/poof', 3).hide();
+    poof.at(x, cloudY).pose('props/poof', 3).hide().after('bye').at(x, y + 20).pose('props/poof', 3).hide();
+    function stand() {
+      ian.at(x, y + PERCH.stand).pose('ian/stand', 3)
+        .cycle(['ian/stand-wave', 'ian/stand'], 12, 3)
+        .pose('ian/stand', 3);
+    }
+    function sit(n) { ian.at(x, y + PERCH['sit-edge']).pose('ian/sit-edge', t(n)); }
+    function laptop(n) { ian.at(x, y + PERCH.laptop).pose('ian/laptop', t(n)); }
+    function lie(n) { ian.at(x, y + PERCH['lie-chin']).face(inward).pose('ian/lie-chin', t(n)); }
     ian.wait(1);
     if (how === 'climb') {
       ian.at(x, y + PERCH.hang)
         .cycle(['ian/hang'], 14, 1, { dx: [0, 0, 0, -2, 0, 2] })
         .at(x, y + PERCH.climb)
-        .pose('ian/climb', 6)
-        .at(x, y + PERCH['sit-edge'])
-        .pose('ian/sit-edge', rest - 16);
+        .pose('ian/climb', 6);
+      sit(40);
+      stand();
+      laptop(50);
+      lie(28);
     } else if (how === 'lie-chin') {
-      ian.at(x, y + PERCH['lie-chin']).face(x < S.W / 2 ? 'right' : 'left').pose('ian/lie-chin', rest);
+      lie(44);
+      stand();
+      sit(40);
+      laptop(46);
     } else {
-      ian.at(x, y + PERCH['sit-edge']).pose('ian/sit-edge', rest);
+      sit(44);
+      stand();
+      laptop(50);
+      lie(36);
     }
-    ian.signal('bye').wait(1).hide();
+    ian.at(x, y + PERCH.stand).pose('ian/stand', 3).signal('bye').wait(1).hide();
   };
 
   // A walk in, a few beats in the middle, and back out the way they came
-  // (the nearer edge). Used by the time-of-day, weather and reaction scenes:
+  // (the nearer edge). Used by the evening and reaction scenes:
   // middle(ian, ember, x, emberX).
   function visit(S, opts, middle) {
     var F = S.floor;
@@ -1235,13 +1913,11 @@
     var ember = opts.ember === false ? null : S.actor('ember', 'char', { shadow: 76 });
     var x = S.across(opts.at || S.rand(0.3, 0.45));
     var ex = x - S.sgn * (opts.gap || 110);
-    if (opts.ianKey) shuffle(ian.at(S.start, F).face(S.dir), opts.ianKey, x, opts.step);
-    else go(ian.at(S.start, F).face(S.dir), IAN_WALK, x);
+    go(ian.at(S.start, F).face(S.dir), IAN_WALK, x);
     if (ember) go(ember.at(S.start - S.sgn * 150, F).face(S.dir), EMBER_TROT, ex).signal('here');
     middle(ian, ember, x, ex);
     ian.signal('leave');
-    if (opts.ianKey) shuffle(ian.face(S.back), opts.ianKey, S.start - S.sgn * 30, opts.step);
-    else go(ian, IAN_WALK, S.start - S.sgn * 30);
+    go(ian, IAN_WALK, S.start - S.sgn * 30);
     ian.hide();
     if (ember) {
       ember.after('leave');
@@ -1250,38 +1926,102 @@
     return { ian: ian, ember: ember };
   }
 
-  // 6a. Morning (6 to 10): Ian with his coffee, and a big yawn.
+  // 6a. Morning (6 to 10): Ian with his coffee and a big stretch; he puts
+  // Ember's breakfast down and she eats; he checks his phone, sees the
+  // time and runs off, late, with Ember after him.
   SCENES.morning = function (S) {
-    visit(S, { at: S.rand(0.24, 0.34) }, function (ian, ember) {
-      ian.pose('ian/stand', 2)
-        .pose('ian/stand-coffee', 16)
-        .pose('ian/yawn', 12)
-        .pose('ian/stand-coffee', 18)
-        .pose('ian/stand', 2);
-      ember.pose('ember/sit-side', 12)
-        .pose('ember/scratch', 10)
-        .pose('ember/sit', 0)
-        .after('leave');
-    });
+    var F = S.floor;
+    var ian = S.actor('ian', 'char', { shadow: 62 });
+    var ember = S.actor('ember', 'char', { shadow: 76 });
+    var bowl = S.actor('bowl', 'prop', { scale: 1.5, shadow: 40 });
+    var x = S.across(S.rand(0.3, 0.4));
+    var ex = x - S.sgn * 130;
+    go(ian.at(S.start, F).face(S.dir), IAN_WALK, x)
+      .pose('ian/stand', 2)
+      .pose('ian/stand-coffee', 20)
+      .pose('ian/yawn', 14)
+      .pose('ian/stand-coffee', 12)
+      .face(S.back)
+      .pose('ian/kneel-pet', 6)
+      .signal('bowl')
+      .pose('ian/kneel-pet', 6)
+      .pose('ian/stand', 2)
+      .pose('ian/stand-coffee', 0)
+      .after('fed')
+      .pose('ian/stand-coffee', 4)
+      .pose('ian/stand-phone', 14)
+      .pose('ian/late', 12)
+      .signal('late')
+      .face(S.dir);
+    go(ian, IAN_RUN, S.end, { ease: 'in' }).hide();
+    go(ember.at(S.start - S.sgn * 150, F).face(S.dir), EMBER_TROT, ex)
+      .pose('ember/sit-side', 12)
+      .pose('ember/scratch', 14)
+      .pose('ember/sit-side', 0)
+      .after('bowl')
+      .wait(3)
+      .pose('ember/stand-2', 3)
+      .pose('ember/sniff', 30)
+      .pose('ember/lick', 8)
+      .pose('ember/sit', 4)
+      .signal('fed')
+      .pose('ember/sit', 0)
+      .after('late')
+      .wait(4)
+      .face(S.dir)
+      .pose('ember/stand-2', 2);
+    // A quick trot after him (a run cycle too would make this scene the
+    // biggest to load once the cycles are longer).
+    go(ember, EMBER_TROT, S.end + S.sgn * 60, { step: 30, ease: 'in' }).hide();
+    // The bowl appears in front of her nose as he puts it down; it fades
+    // once they have gone.
+    bowl.after('bowl').at(ex + S.sgn * 48, F).fade(0)
+      .move(0, 0, 3, { key: 'props/bowl', fade: [0.35, 0.7, 1] })
+      .after('late').wait(20)
+      .move(0, 0, 4, { key: 'props/bowl', fade: [0.75, 0.5, 0.25, 0] })
+      .hide();
   };
 
-  // 6b. Evening (19 to 22): the two on the floor, watching; then popcorn.
+  // 6b. Evening (19 to 22): Ian dances to music, Ember howls along; then the
+  // two sit on the floor watching; then popcorn, Ember begs and waits for a
+  // piece to fall; a yawn, and home.
   SCENES.evening = function (S) {
     var F = S.floor;
     var duo = S.actor('duo', 'duo', { shadow: 110, mirror: S.dir === 'right' });
-    var spot = S.rand(0.18, 0.3);
+    var notes = [S.actor('note0', 'prop', { scale: 1.6 }), S.actor('note1', 'prop', { scale: 1.6 })];
+    var spot = S.rand(0.18, 0.26);
     var x = S.across(spot);
     visit(S, { at: spot, gap: 70 }, function (ian, ember, ix, ex) {
-      ian.pose('ian/stand', 0).after('here').pose('ian/stand', 3).signal('sit').hide().after('popcorn')
+      ian.pose('ian/stand', 0).after('here').pose('ian/stand', 3)
+        .signal('dance')
+        .cycle(['ian/dance-1', 'ian/dance-2'], 30, 3, { dy: [0, -3, 0, 0, -3, 0] })
+        .pose('ian/stand', 3)
+        .signal('sit').hide().after('popcorn')
         .at(ix, F).pose('ian/popcorn', 30)
+        .pose('ian/stand', 3)
+        .pose('ian/yawn', 10)
         .pose('ian/stand', 3);
-      ember.pose('ember/stand-2', 0).after('sit').hide().after('popcorn')
+      ember.pose('ember/stand-2', 0).after('dance').wait(6)
+        .face(S.dir)
+        .pose('ember/howl', 16)
+        .pose('ember/stand-2', 0)
+        .after('sit').hide().after('popcorn')
         .at(ex, F).face(S.dir)
         .pose('ember/beg', 14)
-        .pose('ember/sit-side', 18)
+        .pose('ember/look-up', 10)
+        .pose('ember/sit-side', 0)
         .after('leave');
     });
-    duo.after('sit').at((x + x - S.sgn * 70) / 2, F).pose('duo/movie', 60).hide().signal('popcorn');
+    duo.after('sit').at((x + x - S.sgn * 70) / 2, F).pose('duo/movie', 70).hide().signal('popcorn');
+    // Notes float up from the dancing, in turns.
+    for (var i = 0; i < notes.length; i++) {
+      notes[i].after('dance').wait(2 + i * 7);
+      for (var r = 0; r < 2; r++) {
+        notes[i].at(x + S.sgn * (i ? 30 : -24) + r * 8, F - 172 - i * 14).fade(1)
+          .move(S.sgn * (i ? 2 : -1), -5, 7, { key: 'props/note', fade: [1, 1, 1, 0.8, 0.6, 0.4, 0.2] })
+          .hide().wait(7);
+      }
+    }
   };
 
   // 6c. Night (22 to 6): Ember asleep in a bottom corner, Z's rising; sometimes Ian naps too.
@@ -1297,8 +2037,7 @@
     var ember = S.actor('ember', 'char', { shadow: 76 });
     var ian = nap ? S.actor('ian', 'char', { shadow: 100 }) : null;
     var ix = ex + inward * 120;
-    ember.at(edge, F).face(left ? 'right' : 'left')
-      .walk(EMBER_TROT.keys, ex, 10, 2, { dy: EMBER_TROT.dy })
+    go(ember.at(edge, F).face(left ? 'right' : 'left'), EMBER_TROT, ex, { step: 10 })
       .pose('ember/sniff', 6)
       .face(left ? 'left' : 'right')
       .pose('ember/down', 12)
@@ -1306,19 +2045,17 @@
       .pose('ember/sleep', sleepTicks)
       .signal('wake')
       .pose('ember/down', 6)
-      .pose('ember/bow', 6)
-      .walk(EMBER_TROT.keys, edge, 12, 2, { dy: EMBER_TROT.dy })
-      .hide();
+      .pose('ember/bow', 6);
+    go(ember, EMBER_TROT, edge, { step: 12 }).hide();
     if (ian) {
       ian.after('asleep').at(edge, F).face(left ? 'right' : 'left');
-      ian.walk(IAN_WALK.keys, ix, 12, 2, { dy: IAN_WALK.dy })
+      go(ian, IAN_WALK, ix, { step: 12 })
         .pose('ian/stand', 2)
         .pose('ian/yawn', 10)
         .pose('ian/nap', sleepTicks - 60)
         .after('wake')
-        .pose('ian/stand', 4)
-        .walk(IAN_WALK.keys, edge, 12, 2, { dy: IAN_WALK.dy })
-        .hide();
+        .pose('ian/stand', 4);
+      go(ian, IAN_WALK, edge, { step: 12 }).hide();
     }
     // Three Z's take turns rising from the sleepers and fading in steps.
     var fades = [1, 1, 1, 1, 1, 0.85, 0.7, 0.55, 0.4, 0.25];
@@ -1335,44 +2072,81 @@
     }
   };
 
-  // 7. Weather: Ian dressed for what the Weather tile says now.
+  // 7. Weather: Ian walks in, and in a puff he is dressed for what the
+  // Weather tile says now; Ember has her own take on it. Another puff, back
+  // in his hoodie, a wave, and they walk on and out the far side.
   var OUTFITS = ['umbrella', 'sunny', 'cold', 'hot', 'windy'];
+  // What Ember does meanwhile: [picture, ticks] in turn (about 9 s).
+  var EMBER_WEATHER = {
+    umbrella: [['ember/soggy', 18], ['ember/shake', 6], ['ember/sit', 6], ['ember/look-up', 16], ['ember/soggy', 18]],
+    sunny: [['ember/stand-wag', 8], ['ember/belly', 20], ['ember/roll', 3], ['ember/belly', 12], ['ember/roll', 3], ['ember/stand-2', 8], ['ember/sit-side', 10]],
+    cold: [['ember/stand-tilt', 10], ['ember/shake', 6], ['ember/sit', 10], ['ember/stand-tilt', 8], ['ember/stand-bark', 3], ['ember/stand-2', 4], ['ember/stand-bark', 3], ['ember/sit', 16]],
+    hot: [['ember/stand-2', 8], ['ember/down', 30], ['ember/stand-2', 6], ['ember/sit-side', 20]],
+    windy: [['ember/sit-side', 10], ['ember/stand-bark', 3], ['ember/stand-2', 3], ['ember/stand-bark', 3], ['ember/stand-look', 12], ['ember/stand-2', 6], ['ember/sit-side', 26]]
+  };
+  // How Ian holds the outfit pose: a shiver, a fanning bob, a buffeting.
+  var IAN_WEATHER = {
+    umbrella: {},
+    sunny: {},
+    cold: { dx: [-2, 2, -1, 2, -2, 1] },
+    hot: { dy: [0, 0, 0, -1, -1, -1] },
+    windy: { dx: [0, -2, 0, -1, 1] }
+  };
   SCENES.weather = function (S) {
     var kind = OUTFITS.indexOf(S.o.outfit) >= 0 ? S.o.outfit : outfit();
     if (!kind) return false;
-    if (kind === 'windy') {
-      // Side on, leaning into the wind, slowly.
-      visit(S, { ianKey: 'ian/windy', step: 9, at: S.rand(0.22, 0.3) }, function (ian, ember) {
-        ian.cycle(['ian/windy'], 24, 1, { dx: [0, -2, 0, -1, 1] });
-        ember.pose('ember/sit-side', 0).after('leave');
-      });
-      return true;
-    }
+    var F = S.floor;
     var key = 'ian/' + kind;
-    visit(S, { ianKey: key, step: 14, at: S.rand(0.22, 0.34), gap: 100 }, function (ian, ember) {
-      if (kind === 'cold') ian.cycle([key], 34, 1, { dx: [-2, 2, -1, 2, -2, 1] });
-      else ian.cycle([key], 34, 1, { dy: kind === 'hot' ? [0, 0, 0, 1, 1, 1] : [0] });
-      if (kind === 'umbrella') ember.pose('ember/soggy', 24).pose('ember/shake', 6).pose('ember/sit', 0);
-      else if (kind === 'sunny') ember.pose('ember/stand-wag', 8).pose('ember/belly', 22).pose('ember/stand-2', 0);
-      else if (kind === 'hot') ember.pose('ember/down', 0);
-      else ember.pose('ember/stand-tilt', 0);
-      ember.after('leave');
-    });
+    var ian = S.actor('ian', 'char', { shadow: 62 });
+    var ember = S.actor('ember', 'char', { shadow: 76 });
+    var poof = S.actor('poof', 'prop', { scale: 3 });
+    var x = S.across(S.rand(0.3, 0.4));
+    var ex = x - S.sgn * 120;
+    halt(go(ian.at(S.start, F).face(S.dir), IAN_WALK, x), 5)
+      .signal('dress')
+      .pose('ian/stand', 1)
+      .cycle([key], 40, 1, IAN_WEATHER[kind])
+      .pose(key, 0)
+      .after('settled')
+      .pose(key, 4)
+      .signal('undress')
+      .pose(key, 1)
+      .pose('ian/stand', 3)
+      .cycle(['ian/stand-wave', 'ian/stand'], 9, 3)
+      .pose('ian/stand', 2)
+      .signal('leave');
+    go(ian, IAN_WALK, S.end).hide();
+    go(ember.at(S.start - S.sgn * 150, F).face(S.dir), EMBER_TROT, ex)
+      .pose('ember/stand-2', 0)
+      .after('dress')
+      .wait(3);
+    var beats = EMBER_WEATHER[kind];
+    for (var i = 0; i < beats.length; i++) ember.pose(beats[i][0], beats[i][1]);
+    ember.signal('settled')
+      .pose('ember/stand-2', 0)
+      .after('leave')
+      .wait(4);
+    go(ember, EMBER_TROT, S.end + S.sgn * 40).hide();
+    poof.after('dress').at(x, F - 10).pose('props/poof', 3).hide()
+      .after('undress').at(x, F - 10).pose('props/poof', 3).hide();
     return true;
   };
 
-  // 8a. A to-do item was ticked off since the last scene: Ian cheers, stars pop.
+  // 8a. A to-do item was ticked off since the last scene: Ian ticks his
+  // clipboard, jumps for joy, stars pop.
   SCENES.cheer = function (S) {
     var F = S.floor;
     var stars = [S.actor('star0', 'prop', { scale: 1.6 }), S.actor('star1', 'prop', { scale: 1.6 }), S.actor('star2', 'prop', { scale: 1.6 })];
-    var f = S.rand(0.3, 0.45);
+    var f = S.rand(0.27, 0.33);
     var x = S.across(f);
     visit(S, { at: f, ember: false }, function (ian) {
       ian.pose('ian/stand', 2)
-        .pose('ian/checklist', 14)
+        .pose('ian/checklist', 12)
         .signal('cheer')
-        .cycle(['ian/cheer', 'ian/stand-proud'], 20, 3, { dy: [-14, -14, -14, 0, 0, 0] })
-        .pose('ian/stand-thumbs', 12)
+        .cycle(['ian/cheer', 'ian/stand-proud'], 12, 3, { dy: [-14, -14, -14, 0, 0, 0] })
+        .pose('ian/stand', 1)
+        .arc(['ian/jump-tuck'], x, F, 44, 5)
+        .pose('ian/stand-thumbs', 9)
         .pose('ian/stand', 2);
     });
     var spots = [[-46, F - 170], [42, F - 190], [-4, F - 214]];
@@ -1381,20 +2155,49 @@
         .at(x + spots[i][0], spots[i][1])
         .pose('props/star', 3).hide().wait(3)
         .at(x + spots[i][0] * 1.2, spots[i][1] - 10)
+        .pose('props/star', 3).hide().wait(4)
+        .at(x + spots[i][0] * 0.8, spots[i][1] - 30)
         .pose('props/star', 3).hide();
     }
   };
 
   // 8b. The Pi connection was lost: Ian shrugs, Ember tilts her head.
   SCENES.shrug = function (S) {
-    visit(S, { gap: 90 }, function (ian, ember) {
+    visit(S, { gap: 90, at: S.rand(0.28, 0.36) }, function (ian, ember) {
       ian.pose('ian/stand', 3).pose('ian/stand-shrug', 18).pose('ian/stand', 6);
       ember.pose('ember/stand-tilt', 0).after('leave');
     });
   };
 
   // { actors, night, W, H, k }, or null when the scene doesn't fit here.
+  // A scene too big for MAX_FRAMES is built again with less: first without
+  // its trimmings (small touches like fetch's heart, see `trimmed`) so the
+  // optional cycles (BALL_TROT, SOCK_RUN) can stay, then with the trimmings
+  // but without those cycles, then without both.
+  var LEANER = [[false, true], [true, false], [true, true]];
+
   function build(name, o) {
+    try {
+      return buildOnce(name, o);
+    } catch (e) {
+      if (!e.tooBig) throw e;
+      for (var i = 0; i < LEANER.length; i++) {
+        plainExtras = LEANER[i][0];
+        trimmed = LEANER[i][1];
+        try {
+          return buildOnce(name, o);
+        } catch (e2) {
+          if (!e2.tooBig || i === LEANER.length - 1) throw e2;
+        } finally {
+          plainExtras = false;
+          trimmed = false;
+        }
+      }
+      return null;
+    }
+  }
+
+  function buildOnce(name, o) {
     var fn = SCENES[name];
     if (!fn) throw new Error('no scene ' + name);
     var rnd = makeRandom(o.seed);
@@ -1403,6 +2206,12 @@
     var props = 0;
     for (var i = 0; i < S.actors.length; i++) if (S.actors[i].kind === 'prop') props++;
     if (props > MAX_PROPS) throw new Error(name + ' has more than ' + MAX_PROPS + ' props');
+    var frames = frameKeys(S.actors).length;
+    if (frames > MAX_FRAMES) {
+      var big = new Error(name + ' uses ' + frames + ' pictures, over ' + MAX_FRAMES);
+      big.tooBig = true;
+      throw big;
+    }
     return { actors: S.actors, night: !!S.night || name === 'night', W: S.W, H: S.H, k: S.k };
   }
 
@@ -1490,21 +2299,42 @@
     return s + (L.timedOut ? ' after ' : ' so far, ') + ms(now() - L.t0);
   }
 
+  // How the last (or current) visit is drawn, in plain words, or ''.
+  function drawingText(d) {
+    if (!d) return '';
+    var playing = scene && scene.phase === 'playing' && scene.draw === d;
+    if (d.mode === 'smooth') {
+      if (d.why === 'hand') return 'Smooth, stepped by hand (a test)';
+      if (d.fps) return 'Smooth, ' + d.fps + ' frames a second';
+      return playing ? 'Smooth, measuring the frame rate' : 'Smooth (too short to measure)';
+    }
+    if (d.why === 'slow') return 'Stepped: the screen managed ' + d.fps + ' frames a second';
+    if (d.why === 'remembered') {
+      return 'Stepped: the screen managed ' + d.fps + ' frames a second ' + ago(d.seenAt) +
+        '; smooth is tried again in ' + howLong(Math.max(0, d.seenAt + SLOW_KEEP_MS - now()));
+    }
+    if (d.why === 'no-raf') return 'Stepped: this browser has no requestAnimationFrame';
+    if (d.why === 'speed') return 'Stepped: sped up by a test';
+    return 'Stepped: set by a test';
+  }
+
   // The parts the About panel shows, one row each, all strings ('' when a
   // row has nothing to say): now (what they are doing, or what comes next),
-  // visits, last (the last visit, how it ended and when), loading (how long
-  // the sprite list and the last scene's frames took) and problem (the last
-  // thing that went wrong, and when). text joins them in one line, for tests
-  // and the console. Always safe to call.
+  // visits, last (the last visit, how it ended and when), drawing (how the
+  // last visit was drawn: smooth and its frame rate, or stepped and why),
+  // loading (how long the sprite list and the last scene's frames took) and
+  // problem (the last thing that went wrong, and when). text joins them in
+  // one line, for tests and the console. Always safe to call.
   function status() {
     try {
-      var out = { now: '', visits: '', last: '', loading: '', problem: '', text: '' };
+      var out = { now: '', visits: '', last: '', drawing: '', loading: '', problem: '', text: '' };
       if (!started) out.now = 'Not started';
       else if (!settings) out.now = 'Off (' + (offWhy || 'config') + ')';
       else {
         out.now = nowText();
         out.visits = played + ' played · ' + slow + ' slow · ' + failedN + ' failed';
         if (last) out.last = outcome(last) + ', ' + ago(last.at);
+        out.drawing = drawingText(drawInfo);
         var load = [];
         var a = spriteText();
         if (a) load.push(a);
@@ -1516,12 +2346,13 @@
       var parts = [out.now];
       if (out.visits) parts.push(out.visits);
       if (out.last) parts.push('last ' + out.last);
+      if (out.drawing) parts.push('drawing: ' + out.drawing);
       if (out.loading) parts.push(out.loading);
       if (out.problem) parts.push('problem: ' + out.problem);
       out.text = parts.join(' · ');
       return out;
     } catch (e) {
-      return { now: 'status failed: ' + errText(e), visits: '', last: '', loading: '', problem: '', text: 'status failed: ' + errText(e) };
+      return { now: 'status failed: ' + errText(e), visits: '', last: '', drawing: '', loading: '', problem: '', text: 'status failed: ' + errText(e) };
     }
   }
 
@@ -1576,9 +2407,90 @@
     // What the scheduler would pick now (it may also take a waiting reaction).
     choose: function () { return settings ? choose() : null; },
     setHour: function (h) { hourOverride = typeof h === 'number' && h >= 0 && h < 24 ? Math.floor(h) : null; },
-    // ms per tick; 0 = only when step() is called (frame-exact screenshots); null = the real 140.
+    // ms per tick; 0 = only when step() or advance() is called (frame-exact
+    // screenshots); null = the real 140, drawn smooth. Any other speed is
+    // drawn stepped.
     setSpeed: function (ms) { tickMs = typeof ms === 'number' && ms >= 0 ? ms : TICK_MS; },
-    step: function () { if (scene && scene.phase === 'playing' && !scene.timer) tick(); return test.state(); },
+    // One whole tick, drawn where it ends (with setSpeed(0)).
+    step: function () {
+      var sc = scene;
+      if (sc && sc.phase === 'playing' && !sc.timer && sc.raf === null) {
+        sc.tau = sc.tick * TICK_MS;
+        advance(sc, TICK_MS);
+      }
+      return test.state();
+    },
+    // The scene's clock on by ms (with setSpeed(0)): the ticks that come
+    // due, then one drawing part of the way through the next (a film at 30
+    // frames a second calls advance(1000 / 30) per frame).
+    advance: function (ms) {
+      var sc = scene;
+      if (sc && sc.phase === 'playing' && !sc.timer && sc.raf === null && ms > 0) advance(sc, ms);
+      return test.state();
+    },
+    // How the current or last visit is drawn: { mode, why, fps, text, slowSeen }.
+    drawing: function () {
+      var d = drawInfo || {};
+      return { mode: d.mode || null, why: d.why || '', fps: d.fps || null, text: drawingText(drawInfo), slowSeen: slowSeen };
+    },
+    // 'smooth' or 'stepped' for the next scenes; null to decide as on the TV.
+    setDrawing: function (mode) { drawForce = mode === 'smooth' || mode === 'stepped' ? mode : null; },
+    // Forgets that a scene was too slow (as if 30 minutes had passed).
+    forgetSlow: function () { slowSeen = null; },
+    // The blend experiment: ms (0 off); null = BLEND_MS.
+    setBlend: function (ms) { blendMs = typeof ms === 'number' && ms >= 0 ? ms : BLEND_MS; },
+    // true: a walk's position moves only with its picture; null = MOVE_WITH_POSE.
+    setMoveWithPose: function (on) { moveWithPose = on === true || on === false ? on : null; },
+    // Each actor as the script has it after the last tick (x, y with the
+    // bob, and before it), how it is drawn now, and whether it jumped there.
+    actors: function () {
+      var out = [];
+      if (!scene || !scene.actors) return out;
+      for (var i = 0; i < scene.actors.length; i++) {
+        var a = scene.actors[i];
+        var C = a.now || {};
+        var P = a.prev || C;
+        out.push({ name: a.name, frame: C.frame || null, shown: a.shown || null, x: C.x + C.dx, y: C.y + C.dy,
+          px: P.x + P.dx, py: P.y + P.dy, jumped: a.jumpTick === scene.tick, walking: !!C.gaitAt, arc: !!C.arc,
+          gait: C.gaitAt ? { keys: C.gaitAt.c.keys, stride: C.gaitAt.c.stride, cuts: C.gaitAt.c.cuts, bob: !!C.gaitAt.c.dys,
+            d: a.drawD, d0: C.gaitAt.d0, d1: C.gaitAt.d1 } : null,
+          lift: a.lift || 0,
+          opacities: (function () {
+            var o = {};
+            for (var key in a.imgs || {}) if (a.imgs.hasOwnProperty(key) && a.imgs[key].style.opacity && a.imgs[key].style.opacity !== '0') o[key] = a.imgs[key].style.opacity;
+            return o;
+          })(),
+          flip: !!C.flip, transform: a.el ? a.el.style.transform : '', shadow: a.sh ? a.sh.style.transform : '' });
+      }
+      return out;
+    },
+    // A scene's length without playing it: { ticks, seconds, frames, gaits }
+    // (gaits: the gait pictures it uses, by sequence). Needs the sprite list
+    // in (after one visit). null when it doesn't fit.
+    dry: function (name, opts) {
+      if (!M || !SCENES.hasOwnProperty(name)) return null;
+      var o = {};
+      for (var k in (opts || {})) if (opts.hasOwnProperty(k)) o[k] = opts[k];
+      var b = build(name, o);
+      if (!b) return null;
+      var sc = { tick: 0, idleTicks: 0, signals: {}, W: b.W };
+      while (sc.tick <= MAX_TICKS) {
+        sc.tick++;
+        var alive = false;
+        for (var i = 0; i < b.actors.length; i++) if (runActor(b.actors[i], sc)) alive = true;
+        if (!alive) sc.idleTicks++;
+        if (sc.idleTicks > 1) break;
+      }
+      var keys = frameKeys(b.actors);
+      var gaits = {};
+      var all = [IAN_WALK, IAN_RUN, EMBER_TROT, EMBER_RUN, EMBER_ZOOM, BALL_TROT, SOCK_RUN];
+      for (var g = 0; g < all.length; g++) {
+        var gk = gaitKeys(all[g]);
+        if (gk.length > 1 && keys.indexOf(gk[0]) >= 0 && keys.indexOf(gk[1]) >= 0) gaits[all[g].seq] = gk.length;
+        else if (gk.length === 1 && keys.indexOf(gk[0]) >= 0) gaits[all[g].seq] = 1;
+      }
+      return { ticks: sc.tick, seconds: Math.round(sc.tick * TICK_MS / 100) / 10, frames: keys.length, keys: keys, gaits: gaits };
+    },
     // How long the sprite list or a scene's frames may take; null = the real 30 s.
     setLoadMs: function (ms) { loadMs = typeof ms === 'number' && ms > 0 ? ms : LOAD_MS; },
     // Makes the next visit due in ms (the idle rules still apply).

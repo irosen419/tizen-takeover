@@ -53,24 +53,45 @@ WHAT = {'ian': 'the same puppet', 'ember': 'the same puppet dog', 'duo': 'the sa
 
 SHEETS = {}
 
-def sheet(sid, who, key, poses, aspect='21:9', note='', sizes=None, rows=1, found=None, scales=None, join=None):
+def sheet(sid, who, key, poses, aspect='21:9', note='', sizes=None, rows=None, found=None, scales=None, join=None,
+          refs=None, ask_rows=1, edit=None, moves=None):
     """rows/found describe what Gemini actually drew when it strayed from the brief:
     rows = how many rows the poses ended up in; found = a name for each pose cut.py
     detects, in reading order, with None for one to throw away. The first detected
     pose still sets the sheet's scale even when it is thrown away.
     scales = {pose: factor} for a pose drawn bigger or smaller than its neighbours.
-    join = 'stack' or 'near' when one pose is made of separate pieces (see cut.py)."""
-    SHEETS[sid] = dict(id=sid, who=who, key=key, rows=rows, poses=poses, aspect=aspect, note=note,
-                       sizes=sizes, found=found, scales=scales or {}, join=join)
+    join = 'stack' or 'near' when one pose is made of separate pieces (see cut.py).
+    refs = [(path, what it is)]: extra pictures sent after the model sheets, such as
+    an earlier sheet of the same puppet, so a new sheet keeps its look and size.
+    ask_rows = how many rows to ask for (a walk cycle needs more poses than fit in
+    one row); rows defaults to it.
+    edit = a sheet in raw/ to send alone with `note` as the whole prompt, asking
+    for a small change to it (the poses list then only names what comes back).
+    moves = {pose: [dict(...)]}: limbs cut.py re-poses after cutting (see cut.move),
+    for a leg Gemini will not draw where the cycle needs it."""
+    SHEETS[sid] = dict(id=sid, who=who, key=key, rows=rows or ask_rows, poses=poses, aspect=aspect, note=note,
+                       sizes=sizes, found=found, scales=scales or {}, join=join, refs=refs or [],
+                       ask_rows=ask_rows, edit=edit, moves=moves or {})
 
 def prompt(sid):
     s = SHEETS[sid]
+    if s['edit']:
+        return s['note']
     n = len(s['poses'])
     keyname, keyword = KEYS[s['key']]
-    lines = [INTRO[s['who']], '']
-    lines.append(f"Make a pose sheet: ONE wide image with exactly {n} separate drawings of {WHAT[s['who']]}, lined up "
-                 f"side by side in ONE single horizontal row (never two rows), evenly spaced like a line-up, in this "
-                 f"order from left to right:")
+    lines = [INTRO[s['who']]]
+    for i, (_, what) in enumerate(s['refs'], len(REFS[s['who']]) + 1):
+        lines.append(f"Image {i} is {what}")
+    lines.append('')
+    if s['ask_rows'] == 1:
+        lines.append(f"Make a pose sheet: ONE wide image with exactly {n} separate drawings of {WHAT[s['who']]}, lined up "
+                     f"side by side in ONE single horizontal row (never two rows), evenly spaced like a line-up, in this "
+                     f"order from left to right:")
+    else:
+        per = -(-n // s['ask_rows'])
+        lines.append(f"Make a pose sheet: ONE image with exactly {n} separate drawings of {WHAT[s['who']]}, in exactly "
+                     f"{s['ask_rows']} rows of {per}, evenly spaced like a line-up, in this order: left to right along "
+                     f"the top row, then left to right along the next row:")
     for i, (name, desc) in enumerate(s['poses'], 1):
         lines.append(f"{i}. {desc}")
     lines.append('')
@@ -276,27 +297,269 @@ sheet('ember-fix2', 'ember', 'blue', [
 ], note="There is exactly ONE dog in each pose, never two. Draw each pose once only: no second copy, no ghost image, no reflection, no motion blur. Four poses only, with a very wide gap of empty background between each.",
    found=[None, None, 'look-up', 'guilty'], scales={'look-up': 1.15, 'guilty': 1.15})
 
+# ------------------------------------------------------------ gait cycles
+# Real walk, trot and gallop cycles, several poses each, drawn on one sheet so
+# they match. "Near" is the leg or arm closest to the camera, "far" the other.
+# Each pose sits on one shared ground line per row, so cut.py's boxes show how
+# high a flying pose is (LIFTS below).
+GROUND_DOG = ("All drawings in a row share ONE level invisible ground line: every paw that touches the ground rests "
+              "exactly on that line, and when she is in the air (no paw touching) she is drawn higher above it, by the "
+              "height of her bound. Do not draw the line. These are the frames of ONE continuous movement, like an "
+              "animator's key poses: the body, head, ears and tail stay the same size and the same look in every frame; "
+              "only the legs, the bend of the back and the ears change. Every frame is clearly different from its "
+              "neighbours.")
+GROUND_MAN = ("All drawings in a row share ONE level invisible ground line: every foot that touches the ground rests "
+              "exactly on that line, and when both feet are off the ground he is drawn higher above it. Do not draw the "
+              "line. These are the frames of ONE continuous movement, like an animator's key poses: his head, glasses, "
+              "beard and hoodie stay exactly the same size and look in every frame; only the legs, arms and the lean of "
+              "the body change. Every frame is clearly different from its neighbours. He looks straight ahead in every "
+              "frame, the same cheerful face.")
+# An earlier sheet as a reference keeps the look, but Gemini copies its poses
+# unless told not to (the first ember-trot and ian-walk came back as copies).
+LOOK_ONLY = (" It is ONLY a reference for her look: do NOT copy its poses or its layout; every drawing in the new sheet is "
+             "a new pose described below.")
+EMBER_MOVE_REF = ('raw/ember-move.jpg', "an earlier approved pose sheet of the same puppet dog: draw her at exactly this "
+                  "size and with exactly this look and curl texture." + LOOK_ONLY)
+
+sheet('ember-gallop', 'ember', 'blue', [
+    ('stand-4', f"Standing square on all four legs, {R}, head up, calm."),
+    ('gallop-1', f"Gallop frame 1, {R}, GATHERED in the air: back strongly arched upward like a hump, all four paws bunched close together under her belly, front paws tucked back and back paws swung forward so they nearly touch, no paw on the ground, ears flying up."),
+    ('gallop-2', f"Gallop frame 2, {R}, BACK PAWS LAND: both back paws planted on the ground under her belly, far forward, knees bent; front legs lifting and starting to reach forward, chest rising, back still rounded."),
+    ('gallop-3', f"Gallop frame 3, {R}, PUSH-OFF: back legs straightening and pushing off behind her, only the back toes still touching the ground; body stretching long and rising toward the front; both front legs reaching forward and up."),
+    ('gallop-4', f"Gallop frame 4, {R}, FULL STRETCH in the air: no paw on the ground, body flat and long, both front legs stretched far forward, both back legs stretched far back, ears streaming back, tongue out."),
+    ('gallop-5', f"Gallop frame 5, {R}, REACHING DOWN: still stretched long, chest dipping, the front paws reaching down and the leading front paw just touching the ground in front of her; back legs still trailing high behind."),
+    ('gallop-6', f"Gallop frame 6, {R}, FRONT LANDING: both front legs planted on the ground under her chest, straight; rump high, back legs trailing behind and off the ground, head low."),
+    ('gallop-7', f"Gallop frame 7, {R}, SWING THROUGH: front legs pushing back behind her chest, front paws leaving the ground; back legs swinging forward under her belly, back beginning to arch; ears lifting."),
+], aspect='16:9', ask_rows=2, refs=[EMBER_MOVE_REF], note=GROUND_DOG,
+   found=[None] + [f'gallop-{i}' for i in range(1, 8)])
+# The first accepted trot left her near hind leg trailing in all six frames. A
+# redo with every leg named in one seven-drawing sheet still trailed it (and
+# turned her toward the camera in the second row), so the trot is now two
+# single-row sheets, one per diagonal, each leg named in every frame.
+# "Nearest the viewer" reads better to Gemini than "near".
+LEGS_DOG = (" Her legs: NEAR-FORE and NEAR-HIND are the front and back legs on the side nearest the viewer, drawn in front "
+            "of the body; FAR-FORE and FAR-HIND are on the other side, partly hidden but clearly visible. In a trot the legs "
+            "move in diagonal pairs: near-hind together with far-fore, far-hind together with near-fore. Follow the leg "
+            "positions EXACTLY as written for each frame, even where they differ from a usual dog drawing. Every drawing is "
+            "an exact side view, never turned toward the camera.")
+def trot_frame(what, legs):
+    return f"Trotting, {R}, {what}. " + "; ".join(f"{k.upper()}: {v}" for k, v in legs) + "."
+STAND_DOG = ('stand-5', f"Standing square on all four legs, {R}, head up, calm.")
+# Both sheets below drew the near hind leg trailing in five of six frames
+# again, whatever the words said, so they are kept only as the base for the
+# accepted ember-trot, which redraws them with that leg moved frame by frame
+# (the same copy-with-one-change trick as the ball and sock cycles).
+sheet('ember-trot-a', 'ember', 'blue', [STAND_DOG,
+    ('trot-a1', trot_frame("CONTACT, tail up, cheerful", [
+        ('near-fore', "reaching forward, paw planted on the ground in front of her chest"),
+        ('far-hind', "reaching forward, paw planted on the ground under her belly, in front of her hip"),
+        ('far-fore', "stretched back behind her chest, paw just lifting off the ground"),
+        ('near-hind', "stretched back behind her hip, only its toes still touching, about to lift")])),
+    ('trot-a2', trot_frame("WEIGHT DOWN, body a little lower", [
+        ('near-fore', "straight, planted under her shoulder"),
+        ('far-hind', "straight, planted under her hip"),
+        ('far-fore', "bent at the wrist, paw lifted, swinging forward"),
+        ('near-hind', "knee and hock bent, paw lifted clearly off the ground right under her hip, swinging forward")])),
+    ('trot-a3', trot_frame("small hop, all four paws just off the ground", [
+        ('near-hind', "swung FORWARD, paw in the air under the middle of her belly, clearly in front of her hip and in front of the far-hind paw"),
+        ('far-fore', "reaching forward in front of her chest, in the air"),
+        ('near-fore', "trailing back behind her chest"),
+        ('far-hind', "trailing back behind her hip")])),
+], note=GROUND_DOG + LEGS_DOG + " Four drawings only.", refs=[EMBER_MOVE_REF], found=[None, None, None, None])
+sheet('ember-trot-b', 'ember', 'blue', [STAND_DOG,
+    ('trot-b1', trot_frame("CONTACT on the other diagonal, tail up, cheerful", [
+        ('near-hind', "stepped FAR FORWARD, paw planted on the ground under the middle of her belly, halfway between her hip and her front legs, clearly in front of the far-hind paw: it is NOT trailing behind"),
+        ('far-fore', "reaching forward, paw planted on the ground in front of her chest"),
+        ('near-fore', "stretched back behind her chest, paw just lifting off the ground"),
+        ('far-hind', "stretched back behind her hip, partly hidden, only its toes touching")])),
+    ('trot-b2', trot_frame("WEIGHT DOWN, body a little lower", [
+        ('near-hind', "straight, planted right under her hip"),
+        ('far-fore', "straight, planted under her shoulder"),
+        ('near-fore', "bent at the wrist, paw lifted, swinging forward"),
+        ('far-hind', "bent, paw lifted off the ground, swinging forward")])),
+    ('trot-b3', trot_frame("small hop, all four paws just off the ground", [
+        ('near-fore', "reaching forward in front of her chest, in the air"),
+        ('far-hind', "swung forward under her belly, in the air"),
+        ('near-hind', "trailing back behind her hip, paw in the air"),
+        ('far-fore', "trailing back behind her chest")])),
+], note=GROUND_DOG + LEGS_DOG + " Four drawings only.", refs=[EMBER_MOVE_REF], found=[None, None, None, None])
+
+# A copy of those two sheets with the leg moved by text (ember-trot-fix) came
+# back as an exact copy, legs unchanged. What worked: four frames only, no
+# references beyond the model sheets (the earlier sheets carry the trailing
+# leg), each frame naming all four legs, and a closing line that says where the
+# near hind leg is in every drawing.
+NHV = "the back leg nearest the viewer (fully visible, drawn over her belly)"
+sheet('ember-trot', 'ember', 'blue', [STAND_DOG,
+    ('trot-1', trot_frame("diagonal A planted", [
+        ('near-fore', "reaching forward, paw planted on the ground in front of her chest"),
+        ('far-hind', "forward, paw planted under her belly"),
+        ('far-fore', "back behind her chest, paw lifting"),
+        ('near-hind', f"{NHV}: stretched BACK behind her hip, only its toes touching")])),
+    ('trot-2', trot_frame("passing", [
+        ('near-fore', "straight, planted under her shoulder, a little behind it now"),
+        ('far-hind', "straight, planted under her hip, a little behind it now"),
+        ('far-fore', "lifted and bent, swinging forward"),
+        ('near-hind', f"{NHV}: LIFTED off the ground, knee bent, swinging FORWARD, its paw already a little in front of her hip")])),
+    ('trot-3', trot_frame("diagonal B planted", [
+        ('near-hind', f"{NHV}: stepped FAR FORWARD, paw planted on the ground under the middle of her belly, close behind her front paws, clearly in front of the other back paw"),
+        ('far-fore', "reaching forward, paw planted on the ground in front of her chest"),
+        ('near-fore', "back behind her chest, paw lifting"),
+        ('far-hind', "stretched back behind her hip, partly hidden, only its toes touching")])),
+    ('trot-4', trot_frame("passing", [
+        ('near-hind', f"{NHV}: straight, paw planted on the ground a little BEHIND her hip, pushing back"),
+        ('far-fore', "straight, planted under her shoulder, a little behind it now"),
+        ('near-fore', "lifted and bent, swinging forward, paw a little in front of her chest"),
+        ('far-hind', "lifted, swinging forward under her belly")])),
+], note=(GROUND_DOG + LEGS_DOG + " Five drawings only. Where the back leg nearest the viewer is: drawing 2, BACK behind "
+         "the hip; drawing 3, lifted and swinging forward; drawing 4, planted FORWARD under the belly; drawing 5, planted "
+         "just behind the hip. It must NOT be trailing behind in drawings 3 and 4."),
+   found=[None, None, None, None, None])
+# That sheet still trailed the near hind leg in drawings 3 and 4, so it was
+# sent back alone with a plain edit request for just that leg. The edit only
+# lifted it on the third dog (still behind the hip); the fourth dog (trot-b1)
+# already has it planted a little ahead of the hip. Two frames have the leg
+# re-posed by cut.py (moves): in trot-a2 the leg that
+# trailed behind is swung forward under her rump, mid-swing; in trot-b2 the leg
+# planted under her hip is slanted back, pushing off. The near hind leg now
+# goes back (a1), forward in the air (a2), forward on the ground (b1), back (b2).
+TROT_MOVES = {
+    'trot-a2': [dict(take=[(5, 440), (60, 418), (100, 425), (135, 460), (140, 525), (130, 605), (0, 605)],
+                     erase=[(0, 425), (70, 420), (95, 440), (110, 500), (135, 520), (130, 605), (0, 605)],
+                     pivot=(122, 450), rotate=60)],
+    'trot-b2': [dict(take=[(25, 470), (175, 465), (150, 520), (132, 545), (130, 606), (178, 612), (180, 678), (25, 678)],
+                     shear=-45, shear_y=(468, 678))],
+}
+sheet('ember-trot-edit', 'ember', 'blue', [STAND_DOG,
+    ('trot-a1', f"Trotting, {R}: near front leg forward and planted, near hind leg stretched back on its toes."),
+    ('trot-a2', f"Trotting, {R}: near front leg planted under her shoulder, near hind leg lifted and swinging forward under her rump."),
+    ('trot-b1', f"Trotting, {R}: near hind leg planted a little ahead of her hip, the other hind leg lifted behind."),
+    ('trot-b2', f"Trotting, {R}: near hind leg planted behind her hip, pushing off; the other hind leg swinging forward."),
+], edit='raw/ember-trot.jpg', found=[None, 'trot-a1', 'trot-a2', 'trot-b1', 'trot-b2'], note=(
+    "Edit this image. It shows five clay dogs in a row on a blue background. Keep everything exactly the same (the same "
+    "dogs, positions, sizes, background and lighting) except ONE leg on the third and the fourth dog from the left: "
+    "the back leg nearest the viewer, the hind leg drawn in front at the left end of the dog, which now trails back "
+    "behind the hip. On the third dog, move that leg FORWARD: lifted off the ground, knee bent, its paw in the air just "
+    "in front of the hip, under the belly. On the fourth dog, move that leg FAR FORWARD: straight down to a paw planted "
+    "on the ground under the middle of the belly, close behind the front paws; the other back leg, behind it, now "
+    "stretches back behind the hip. Leave the first, second and fifth dogs exactly as they are. Same flat blue "
+    "background, no shadows, no text."),
+   moves=TROT_MOVES)
+
+# The man's walk comes in two sheets, one per leg, five drawings in one row like
+# ian-move. A ten-drawing sheet with ian-move as a reference came back as half
+# copies of ian-move (even when told not to copy), so his sheets use only the
+# model sheets.
+def walk_half(lead, trail, n0):
+    return [
+        (f'walk-{n0}', f"Walk, {R}, CONTACT: his {lead} leg straight out in front with its heel just touching down, his {trail} leg stretched behind on its toes; his {trail} arm swung forward, his {lead} arm swung back."),
+        (f'walk-{n0 + 1}', f"Walk, {R}, DOWN: his {lead} foot flat on the ground in front, {lead} knee bent taking his weight, body at its lowest; his {trail} foot behind with its heel lifting; {trail} arm still forward, {lead} arm back."),
+        (f'walk-{n0 + 2}', f"Walk, {R}, PASSING: standing tall on his straight {lead} leg right under his body; his {trail} leg bent at the knee and swinging forward beside it, that foot lifted just off the ground; both arms hanging near his sides."),
+        (f'walk-{n0}-up', f"Walk, {R}, UP: rising onto the toes of his {lead} foot, now behind him; his {trail} leg swinging out straight in front, its foot not yet touching; body at its highest; {lead} arm swinging forward, {trail} arm back."),
+    ]
+STAND_SIDE = ('stand-side', f"Standing upright, {R}, arms relaxed at his sides, feet together, looking ahead, calm half-smile.")
+NEAR_MAN = (" His NEAR leg and arm are the ones on the side closest to the camera, drawn in front of his body; his FAR leg and "
+            "arm are the other ones, partly hidden behind his body. Arms always swing opposite to the legs.")
+# The UP frames came back as a second contact pose, which made the cycle step
+# twice, so each half keeps three frames: contact, down, passing.
+sheet('ian-walk-a', 'ian', 'green', [STAND_SIDE] + walk_half('near', 'far', 3), note=GROUND_MAN + NEAR_MAN,
+      found=['stand-side', 'walk-3', 'walk-4', 'walk-5', None])
+sheet('ian-walk-b', 'ian', 'green', [STAND_SIDE] + walk_half('far', 'near', 6), note=GROUND_MAN + NEAR_MAN,
+      found=[None, 'walk-6', 'walk-7', 'walk-8', None])
+
+# A first try at the run (one sheet per leg: push-off, flight, landing, passing)
+# came back as eight near-identical scissor strides. This one asks for three
+# poses that look different: contact, passing (knee high) and flight.
+def run3(plant, swing, n0):
+    return [
+        (f'run-{n0}', f"Running, {R}, CONTACT: his {plant} foot has just landed flat on the ground a little in front of his hips, that knee slightly bent; his {swing} leg is behind him, bent at the knee with the foot up off the ground behind; body leaning forward; {swing} arm bent and forward, {plant} arm bent and back."),
+        (f'run-{n0 + 1}', f"Running, {R}, PASSING: standing on his {plant} leg, which is bent a little right under his body with the foot flat; his {swing} knee is driven HIGH up in front of him, thigh level with the ground, foot tucked under it; arms pumping, {swing} arm back, {plant} arm forward. A compact pose."),
+        (f'run-{n0 + 2}', f"Running, {R}, FLIGHT: both feet clearly off the ground, legs split wide: his {plant} leg stretched straight out behind him after pushing off, his {swing} leg reaching far forward; arms pumping wide. A long stretched pose."),
+    ]
+sheet('ian-run', 'ian', 'green', [STAND_SIDE] + run3('near', 'far', 3) + run3('far', 'near', 6),
+      aspect='16:9', ask_rows=2, note=GROUND_MAN + NEAR_MAN, found=[None] + [f'run-{n}' for n in range(3, 9)])
+
+# Carrying a toy: the same cycles redrawn from the accepted sheets, so the
+# poses match the plain trot and gallop frame for frame.
+TOY = ("Image 3 shows the frames of her {gait}. Redraw EXACTLY those same {n} drawings in the same layout, order and "
+       "poses, with one change: in every drawing she carries {toy}.")
+BALL = "a yellow tennis ball with a white seam, held in her front teeth"
+SOCK = "a limp white sports sock with two black stripes around the cuff, one end clamped in her teeth and the rest dangling and flapping from the side of her mouth"
+# Remade with the new trot: the same copy-with-a-toy request on the edited trot
+# sheet, then the same leg moves as the trot (positions measured on this sheet).
+sheet('ember-ball-trot', 'ember', 'blue', [
+    ('stand-ball-2', f"Standing square on all four legs, {R}, head up, holding {BALL}."),
+    ('ball-trot-a1', "Trot frame 1 (copy of the second drawing in image 3), with the ball."),
+    ('ball-trot-a2', "Trot frame 2 (copy of the third drawing in image 3), with the ball."),
+    ('ball-trot-b1', "Trot frame 3 (copy of the fourth drawing in image 3), with the ball."),
+    ('ball-trot-b2', "Trot frame 4 (copy of the fifth drawing in image 3), with the ball."),
+], refs=[('raw/ember-trot-edit.jpg', "the approved trot sheet of the same puppet dog.")],
+   note=TOY.format(gait='trot', n=5, toy=BALL) + " " + GROUND_DOG,
+   found=[None, 'ball-trot-a1', 'ball-trot-a2', 'ball-trot-b1', 'ball-trot-b2'],
+   moves={'ball-' + k: v for k, v in TROT_MOVES.items()})   # the copy sits within 1-3 px of the trot
+sheet('ember-sock-run', 'ember', 'blue', [
+    ('stand-sock', f"Standing square on all four legs, {R}, head up, holding {SOCK}."),
+] + [(f'sock-run-{i}', f"Gallop frame {i} (copy of drawing {i + 1} in image 3), with the sock.") for i in range(1, 8)],
+   aspect='16:9', ask_rows=2, refs=[('raw/ember-gallop.jpg', "the approved gallop sheet of the same puppet dog.")],
+   note=TOY.format(gait='gallop', n=8, toy=SOCK) + " " + GROUND_DOG, found=[None] + [f'sock-run-{i}' for i in range(1, 8)])
+
 # Poses Gemini added, or changed, that the briefs above don't describe.
 EXTRA = {
     'ember/ball-down': "Lying down, side view facing right, guarding a yellow tennis ball between her front paws.",
     'ember/sock-proud': "Standing on all four legs, side view facing right, holding a white striped sock in her mouth.",
 }
+# The ball and sock cycles were asked for as copies of another sheet; say what they show.
+for _p in ('a1', 'a2', 'a3', 'b1', 'b2', 'b3'):
+    EXTRA[f'ember/ball-trot-{_p}'] = f"Trotting, {R}, with a yellow tennis ball in her mouth: the pose of ember/trot-{_p}."
+for _i in range(1, 8):
+    EXTRA[f'ember/sock-run-{_i}'] = f"Galloping, {R}, with a white striped sock in her mouth: the pose of ember/gallop-{_i}."
+
 
 # -------------------------------------------------------------- sequences
-# Frames that play in order. Stop-motion is choppy on purpose: two or three
-# frames, held for a beat each, read as movement.
+# Frames that play in order. Most are two or three frames held for a beat each;
+# the walks, trots and gallops are full cycles that loop (see STRIDES and LIFTS).
 SEQUENCES = {
-    'ian.walk': ['ian/walk-1', 'ian/walk-2'],
-    'ian.run': ['ian/run-1', 'ian/run-2'],
+    'ian.walk': ['ian/walk-3', 'ian/walk-4', 'ian/walk-5', 'ian/walk-6', 'ian/walk-7', 'ian/walk-8'],
+    'ian.run': ['ian/run-3', 'ian/run-4', 'ian/run-5', 'ian/run-6', 'ian/run-7', 'ian/run-8'],
     'ian.jump': ['ian/jump-crouch', 'ian/jump-leap', 'ian/jump-land'],
     'ian.throw': ['ian/throw-1', 'ian/throw-2'],
     'ian.dance': ['ian/dance-1', 'ian/dance-2'],
     'ian.wave': ['ian/stand', 'ian/stand-wave'],
-    'ember.trot': ['ember/trot-1', 'ember/trot-2'],
-    'ember.run': ['ember/run-1', 'ember/run-2'],
+    'ember.trot': ['ember/trot-a1', 'ember/trot-a2', 'ember/trot-b1', 'ember/trot-b2'],
+    'ember.run': ['ember/gallop-1', 'ember/gallop-2', 'ember/gallop-3', 'ember/gallop-4', 'ember/gallop-5',
+                  'ember/gallop-6', 'ember/gallop-7'],
     'ember.jump': ['ember/jump-crouch', 'ember/jump-leap', 'ember/jump-land'],
     'ember.catch': ['ember/jump-crouch', 'ember/jump-catch', 'ember/jump-land'],
     'ember.roll': ['ember/down', 'ember/roll', 'ember/belly'],
     'ember.fetch': ['ember/run-1', 'ember/run-2', 'ember/stand-ball'],
     'ember.sock-heist': ['ember/sniff', 'ember/sock-proud', 'ember/sock-run'],
+    'ember.ball-trot': ['ember/ball-trot-a1', 'ember/ball-trot-a2', 'ember/ball-trot-b1', 'ember/ball-trot-b2'],
+    'ember.sock-run': ['ember/sock-run-1', 'ember/sock-run-2', 'ember/sock-run-3', 'ember/sock-run-4',
+                       'ember/sock-run-5', 'ember/sock-run-6', 'ember/sock-run-7'],
+}
+
+# Px travelled per full cycle of a gait sequence, at the exported size (Ian
+# standing = 160 px), so a planted foot stays put while the body moves on.
+STRIDES = {
+    'ian.walk': 86,
+    'ian.run': 230,
+    'ember.trot': 56,
+    'ember.run': 120,
+    'ember.ball-trot': 56,
+    'ember.sock-run': 120,
+}
+
+# Px above the floor line for frames where nothing touches the ground. A sprite's
+# bottom is its lowest pixel, so without this a leap would sit on the floor.
+# Measured from where each pose sat on its sheet against the poses with a foot
+# down in the same row (cut.py's boxes), rounded down a little.
+LIFTS = {
+    'ian/run-5': 12,
+    'ian/run-8': 14,
+    'ember/gallop-1': 14,
+    'ember/gallop-4': 11,
+    'ember/gallop-7': 4,
+    'ember/sock-run-1': 14,
+    'ember/sock-run-4': 11,
+    'ember/sock-run-7': 4,
 }

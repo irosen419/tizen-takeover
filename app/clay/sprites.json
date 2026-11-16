@@ -110,6 +110,42 @@
    "faces": "right",
    "about": "Lying down, side view facing right, guarding a yellow tennis ball between her front paws."
   },
+  "ember/ball-trot-a1": {
+   "file": "sprites/ember/ball-trot-a1.webp",
+   "w": 89,
+   "h": 93,
+   "cx": 46.7,
+   "sheet": "ember-ball-trot",
+   "faces": "right",
+   "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-a1."
+  },
+  "ember/ball-trot-a2": {
+   "file": "sprites/ember/ball-trot-a2.webp",
+   "w": 82,
+   "h": 93,
+   "cx": 42.9,
+   "sheet": "ember-ball-trot",
+   "faces": "right",
+   "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-a2."
+  },
+  "ember/ball-trot-b1": {
+   "file": "sprites/ember/ball-trot-b1.webp",
+   "w": 83,
+   "h": 94,
+   "cx": 41.5,
+   "sheet": "ember-ball-trot",
+   "faces": "right",
+   "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-b1."
+  },
+  "ember/ball-trot-b2": {
+   "file": "sprites/ember/ball-trot-b2.webp",
+   "w": 81,
+   "h": 95,
+   "cx": 41.0,
+   "sheet": "ember-ball-trot",
+   "faces": "right",
+   "about": "Trotting, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/trot-b2."
+  },
   "ember/beg": {
    "file": "sprites/ember/beg.webp",
    "w": 47,
@@ -163,6 +199,69 @@
    "sheet": "ember-floor",
    "faces": "right",
    "about": "Lying down sphinx-style, side view facing right: belly on the ground, front paws stretched out ahead, head up and alert."
+  },
+  "ember/gallop-1": {
+   "file": "sprites/ember/gallop-1.webp",
+   "w": 83,
+   "h": 93,
+   "cx": 43.0,
+   "sheet": "ember-gallop",
+   "faces": "right",
+   "about": "Gallop frame 1, side view facing right, GATHERED in the air: back strongly arched upward like a hump, all four paws bunched close together under her belly, front paws tucked back and back paws swung forward so they nearly touch, no paw on the ground, ears flying up."
+  },
+  "ember/gallop-2": {
+   "file": "sprites/ember/gallop-2.webp",
+   "w": 95,
+   "h": 92,
+   "cx": 50.4,
+   "sheet": "ember-gallop",
+   "faces": "right",
+   "about": "Gallop frame 2, side view facing right, BACK PAWS LAND: both back paws planted on the ground under her belly, far forward, knees bent; front legs lifting and starting to reach forward, chest rising, back still rounded."
+  },
+  "ember/gallop-3": {
+   "file": "sprites/ember/gallop-3.webp",
+   "w": 104,
+   "h": 97,
+   "cx": 53.0,
+   "sheet": "ember-gallop",
+   "faces": "right",
+   "about": "Gallop frame 3, side view facing right, PUSH-OFF: back legs straightening and pushing off behind her, only the back toes still touching the ground; body stretching long and rising toward the front; both front legs reaching forward and up."
+  },
+  "ember/gallop-4": {
+   "file": "sprites/ember/gallop-4.webp",
+   "w": 103,
+   "h": 73,
+   "cx": 53.7,
+   "sheet": "ember-gallop",
+   "faces": "right",
+   "about": "Gallop frame 4, side view facing right, FULL STRETCH in the air: no paw on the ground, body flat and long, both front legs stretched far forward, both back legs stretched far back, ears streaming back, tongue out."
+  },
+  "ember/gallop-5": {
+   "file": "sprites/ember/gallop-5.webp",
+   "w": 100,
+   "h": 83,
+   "cx": 54.4,
+   "sheet": "ember-gallop",
+   "faces": "right",
+   "about": "Gallop frame 5, side view facing right, REACHING DOWN: still stretched long, chest dipping, the front paws reaching down and the leading front paw just touching the ground in front of her; back legs still trailing high behind."
+  },
+  "ember/gallop-6": {
+   "file": "sprites/ember/gallop-6.webp",
+   "w": 107,
+   "h": 70,
+   "cx": 56.1,
+   "sheet": "ember-gallop",
+   "faces": "right",
+   "about": "Gallop frame 6, side view facing right, FRONT LANDING: both front legs planted on the ground under her chest, straight; rump high, back legs trailing behind and off the ground, head low."
+  },
+  "ember/gallop-7": {
+   "file": "sprites/ember/gallop-7.webp",
+   "w": 96,
+   "h": 82,
+   "cx": 55.2,
+   "sheet": "ember-gallop",
+   "faces": "right",
+   "about": "Gallop frame 7, side view facing right, SWING THROUGH: front legs pushing back behind her chest, front paws leaving the ground; back legs swinging forward under her belly, back beginning to arch; ears lifting."
   },
   "ember/guilty": {
    "file": "sprites/ember/guilty.webp",
@@ -362,6 +461,69 @@
    "faces": "right",
    "about": "Galloping away, side view facing right, with a white sock with two black stripes dangling from her mouth, ears flying, gleeful and guilty."
   },
+  "ember/sock-run-1": {
+   "file": "sprites/ember/sock-run-1.webp",
+   "w": 87,
+   "h": 93,
+   "cx": 44.6,
+   "sheet": "ember-sock-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a white striped sock in her mouth: the pose of ember/gallop-1."
+  },
+  "ember/sock-run-2": {
+   "file": "sprites/ember/sock-run-2.webp",
+   "w": 99,
+   "h": 92,
+   "cx": 52.6,
+   "sheet": "ember-sock-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a white striped sock in her mouth: the pose of ember/gallop-2."
+  },
+  "ember/sock-run-3": {
+   "file": "sprites/ember/sock-run-3.webp",
+   "w": 104,
+   "h": 97,
+   "cx": 55.0,
+   "sheet": "ember-sock-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a white striped sock in her mouth: the pose of ember/gallop-3."
+  },
+  "ember/sock-run-4": {
+   "file": "sprites/ember/sock-run-4.webp",
+   "w": 103,
+   "h": 73,
+   "cx": 55.2,
+   "sheet": "ember-sock-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a white striped sock in her mouth: the pose of ember/gallop-4."
+  },
+  "ember/sock-run-5": {
+   "file": "sprites/ember/sock-run-5.webp",
+   "w": 102,
+   "h": 83,
+   "cx": 56.2,
+   "sheet": "ember-sock-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a white striped sock in her mouth: the pose of ember/gallop-5."
+  },
+  "ember/sock-run-6": {
+   "file": "sprites/ember/sock-run-6.webp",
+   "w": 107,
+   "h": 70,
+   "cx": 58.2,
+   "sheet": "ember-sock-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a white striped sock in her mouth: the pose of ember/gallop-6."
+  },
+  "ember/sock-run-7": {
+   "file": "sprites/ember/sock-run-7.webp",
+   "w": 97,
+   "h": 82,
+   "cx": 56.1,
+   "sheet": "ember-sock-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a white striped sock in her mouth: the pose of ember/gallop-7."
+  },
   "ember/soggy": {
    "file": "sprites/ember/soggy.webp",
    "w": 44,
@@ -469,6 +631,42 @@
    "sheet": "ember-move",
    "faces": "right",
    "about": "Trotting, side view facing right, the opposite step: the other front leg and the other back leg forward."
+  },
+  "ember/trot-a1": {
+   "file": "sprites/ember/trot-a1.webp",
+   "w": 89,
+   "h": 93,
+   "cx": 46.0,
+   "sheet": "ember-trot-edit",
+   "faces": "right",
+   "about": "Trotting, side view facing right: near front leg forward and planted, near hind leg stretched back on its toes."
+  },
+  "ember/trot-a2": {
+   "file": "sprites/ember/trot-a2.webp",
+   "w": 83,
+   "h": 93,
+   "cx": 42.7,
+   "sheet": "ember-trot-edit",
+   "faces": "right",
+   "about": "Trotting, side view facing right: near front leg planted under her shoulder, near hind leg lifted and swinging forward under her rump."
+  },
+  "ember/trot-b1": {
+   "file": "sprites/ember/trot-b1.webp",
+   "w": 83,
+   "h": 94,
+   "cx": 40.8,
+   "sheet": "ember-trot-edit",
+   "faces": "right",
+   "about": "Trotting, side view facing right: near hind leg planted a little ahead of her hip, the other hind leg lifted behind."
+  },
+  "ember/trot-b2": {
+   "file": "sprites/ember/trot-b2.webp",
+   "w": 82,
+   "h": 95,
+   "cx": 40.9,
+   "sheet": "ember-trot-edit",
+   "faces": "right",
+   "about": "Trotting, side view facing right: near hind leg planted behind her hip, pushing off; the other hind leg swinging forward."
   },
   "ember/zoomies": {
    "file": "sprites/ember/zoomies.webp",
@@ -704,6 +902,60 @@
    "faces": "right",
    "about": "Running flat out, side view facing right, the passing pose: one foot planted on the ground under his body, the other knee lifted high in front, arms swapped."
   },
+  "ian/run-3": {
+   "file": "sprites/ian/run-3.webp",
+   "w": 116,
+   "h": 161,
+   "cx": 59.9,
+   "sheet": "ian-run",
+   "faces": "right",
+   "about": "Running, side view facing right, CONTACT: his near foot has just landed flat on the ground a little in front of his hips, that knee slightly bent; his far leg is behind him, bent at the knee with the foot up off the ground behind; body leaning forward; far arm bent and forward, near arm bent and back."
+  },
+  "ian/run-4": {
+   "file": "sprites/ian/run-4.webp",
+   "w": 100,
+   "h": 163,
+   "cx": 49.5,
+   "sheet": "ian-run",
+   "faces": "right",
+   "about": "Running, side view facing right, PASSING: standing on his near leg, which is bent a little right under his body with the foot flat; his far knee is driven HIGH up in front of him, thigh level with the ground, foot tucked under it; arms pumping, far arm back, near arm forward. A compact pose."
+  },
+  "ian/run-5": {
+   "file": "sprites/ian/run-5.webp",
+   "w": 131,
+   "h": 149,
+   "cx": 69.6,
+   "sheet": "ian-run",
+   "faces": "right",
+   "about": "Running, side view facing right, FLIGHT: both feet clearly off the ground, legs split wide: his near leg stretched straight out behind him after pushing off, his far leg reaching far forward; arms pumping wide. A long stretched pose."
+  },
+  "ian/run-6": {
+   "file": "sprites/ian/run-6.webp",
+   "w": 108,
+   "h": 163,
+   "cx": 60.4,
+   "sheet": "ian-run",
+   "faces": "right",
+   "about": "Running, side view facing right, CONTACT: his far foot has just landed flat on the ground a little in front of his hips, that knee slightly bent; his near leg is behind him, bent at the knee with the foot up off the ground behind; body leaning forward; near arm bent and forward, far arm bent and back."
+  },
+  "ian/run-7": {
+   "file": "sprites/ian/run-7.webp",
+   "w": 90,
+   "h": 164,
+   "cx": 45.0,
+   "sheet": "ian-run",
+   "faces": "right",
+   "about": "Running, side view facing right, PASSING: standing on his far leg, which is bent a little right under his body with the foot flat; his near knee is driven HIGH up in front of him, thigh level with the ground, foot tucked under it; arms pumping, near arm back, far arm forward. A compact pose."
+  },
+  "ian/run-8": {
+   "file": "sprites/ian/run-8.webp",
+   "w": 133,
+   "h": 147,
+   "cx": 71.8,
+   "sheet": "ian-run",
+   "faces": "right",
+   "about": "Running, side view facing right, FLIGHT: both feet clearly off the ground, legs split wide: his far leg stretched straight out behind him after pushing off, his near leg reaching far forward; arms pumping wide. A long stretched pose."
+  },
   "ian/sit-edge": {
    "file": "sprites/ian/sit-edge.webp",
    "w": 87,
@@ -776,6 +1028,15 @@
    "faces": "front",
    "about": "Standing upright facing the camera, shrugging: shoulders up, palms turned up at shoulder height, eyebrows raised."
   },
+  "ian/stand-side": {
+   "file": "sprites/ian/stand-side.webp",
+   "w": 48,
+   "h": 163,
+   "cx": 22.0,
+   "sheet": "ian-walk-a",
+   "faces": "right",
+   "about": "Standing upright, side view facing right, arms relaxed at his sides, feet together, looking ahead, calm half-smile."
+  },
   "ian/stand-thumbs": {
    "file": "sprites/ian/stand-thumbs.webp",
    "w": 68,
@@ -847,6 +1108,60 @@
    "sheet": "ian-move",
    "faces": "right",
    "about": "Walking, side view facing right, the passing pose: standing tall on one straight leg, the other knee bent with its foot lifted just off the ground beside it, both arms hanging close to his sides."
+  },
+  "ian/walk-3": {
+   "file": "sprites/ian/walk-3.webp",
+   "w": 84,
+   "h": 161,
+   "cx": 40.0,
+   "sheet": "ian-walk-a",
+   "faces": "right",
+   "about": "Walk, side view facing right, CONTACT: his near leg straight out in front with its heel just touching down, his far leg stretched behind on its toes; his far arm swung forward, his near arm swung back."
+  },
+  "ian/walk-4": {
+   "file": "sprites/ian/walk-4.webp",
+   "w": 66,
+   "h": 159,
+   "cx": 34.7,
+   "sheet": "ian-walk-a",
+   "faces": "right",
+   "about": "Walk, side view facing right, DOWN: his near foot flat on the ground in front, near knee bent taking his weight, body at its lowest; his far foot behind with its heel lifting; far arm still forward, near arm back."
+  },
+  "ian/walk-5": {
+   "file": "sprites/ian/walk-5.webp",
+   "w": 57,
+   "h": 161,
+   "cx": 29.9,
+   "sheet": "ian-walk-a",
+   "faces": "right",
+   "about": "Walk, side view facing right, PASSING: standing tall on his straight near leg right under his body; his far leg bent at the knee and swinging forward beside it, that foot lifted just off the ground; both arms hanging near his sides."
+  },
+  "ian/walk-6": {
+   "file": "sprites/ian/walk-6.webp",
+   "w": 84,
+   "h": 162,
+   "cx": 37.1,
+   "sheet": "ian-walk-b",
+   "faces": "right",
+   "about": "Walk, side view facing right, CONTACT: his far leg straight out in front with its heel just touching down, his near leg stretched behind on its toes; his near arm swung forward, his far arm swung back."
+  },
+  "ian/walk-7": {
+   "file": "sprites/ian/walk-7.webp",
+   "w": 63,
+   "h": 160,
+   "cx": 30.1,
+   "sheet": "ian-walk-b",
+   "faces": "right",
+   "about": "Walk, side view facing right, DOWN: his far foot flat on the ground in front, far knee bent taking his weight, body at its lowest; his near foot behind with its heel lifting; near arm still forward, far arm back."
+  },
+  "ian/walk-8": {
+   "file": "sprites/ian/walk-8.webp",
+   "w": 56,
+   "h": 164,
+   "cx": 31.0,
+   "sheet": "ian-walk-b",
+   "faces": "right",
+   "about": "Walk, side view facing right, PASSING: standing tall on his straight far leg right under his body; his near leg bent at the knee and swinging forward beside it, that foot lifted just off the ground; both arms hanging near his sides."
   },
   "ian/windy": {
    "file": "sprites/ian/windy.webp",
@@ -965,12 +1280,20 @@
  },
  "sequences": {
   "ian.walk": [
-   "ian/walk-1",
-   "ian/walk-2"
+   "ian/walk-3",
+   "ian/walk-4",
+   "ian/walk-5",
+   "ian/walk-6",
+   "ian/walk-7",
+   "ian/walk-8"
   ],
   "ian.run": [
-   "ian/run-1",
-   "ian/run-2"
+   "ian/run-3",
+   "ian/run-4",
+   "ian/run-5",
+   "ian/run-6",
+   "ian/run-7",
+   "ian/run-8"
   ],
   "ian.jump": [
    "ian/jump-crouch",
@@ -990,12 +1313,19 @@
    "ian/stand-wave"
   ],
   "ember.trot": [
-   "ember/trot-1",
-   "ember/trot-2"
+   "ember/trot-a1",
+   "ember/trot-a2",
+   "ember/trot-b1",
+   "ember/trot-b2"
   ],
   "ember.run": [
-   "ember/run-1",
-   "ember/run-2"
+   "ember/gallop-1",
+   "ember/gallop-2",
+   "ember/gallop-3",
+   "ember/gallop-4",
+   "ember/gallop-5",
+   "ember/gallop-6",
+   "ember/gallop-7"
   ],
   "ember.jump": [
    "ember/jump-crouch",
@@ -1021,6 +1351,39 @@
    "ember/sniff",
    "ember/sock-proud",
    "ember/sock-run"
+  ],
+  "ember.ball-trot": [
+   "ember/ball-trot-a1",
+   "ember/ball-trot-a2",
+   "ember/ball-trot-b1",
+   "ember/ball-trot-b2"
+  ],
+  "ember.sock-run": [
+   "ember/sock-run-1",
+   "ember/sock-run-2",
+   "ember/sock-run-3",
+   "ember/sock-run-4",
+   "ember/sock-run-5",
+   "ember/sock-run-6",
+   "ember/sock-run-7"
   ]
+ },
+ "strides": {
+  "ian.walk": 86,
+  "ian.run": 230,
+  "ember.trot": 56,
+  "ember.run": 120,
+  "ember.ball-trot": 56,
+  "ember.sock-run": 120
+ },
+ "lifts": {
+  "ian/run-5": 12,
+  "ian/run-8": 14,
+  "ember/gallop-1": 14,
+  "ember/gallop-4": 11,
+  "ember/gallop-7": 4,
+  "ember/sock-run-1": 14,
+  "ember/sock-run-4": 11,
+  "ember/sock-run-7": 4
  }
 }

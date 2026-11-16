@@ -110,7 +110,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.22.0';
+  var BUILD = 'v0.23.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1123,6 +1123,7 @@
     { group: 'Wanderers', label: 'Now', value: function () { return clayPart('now'); } },
     { group: 'Wanderers', label: 'Visits', value: function () { return clayPart('visits'); } },
     { group: 'Wanderers', label: 'Last visit', value: function () { return clayPart('last'); } },
+    { group: 'Wanderers', label: 'Drawing', value: function () { return clayPart('drawing'); } },
     { group: 'Wanderers', label: 'Loading', value: function () { return clayPart('loading'); } },
     { group: 'Wanderers', label: 'Last problem', value: function () { return clayPart('problem'); } },
     // The Now Playing visualizer, once it has shown: its level, frame rate and tempo.
@@ -2261,7 +2262,7 @@
     try { K[name](); } catch (e) { /* the characters just don't show */ }
   }
 
-  // HUB_CLAY.status() ({ now, visits, last, loading, problem, text }), or null.
+  // HUB_CLAY.status() ({ now, visits, last, drawing, loading, problem, text }), or null.
   function clayStatus() {
     var K = clayApi('status');
     if (!K) return null;
