@@ -453,7 +453,7 @@ async function checkSizesSpanish() {
     const t = document.querySelector('#panel .clock-window-text');
     return { text: t.textContent, len: t.getAttribute('textLength') ? +t.getAttribute('textLength') : t.getComputedTextLength() };
   });
-  assert(w.text === 'SÁB 21' && w.len <= 48, 'page window: ' + JSON.stringify(w));
+  assert(w.text === 'SÁB 21' && w.len <= 56, 'page window: ' + JSON.stringify(w));
   noErrors(page);
 }
 

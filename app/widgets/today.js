@@ -186,19 +186,24 @@
       var t = svgEl('text', { x: nums[n][1], y: nums[n][2], 'class': 'clock-num', 'text-anchor': 'middle', dy: '0.35em' }, svg);
       t.textContent = String(nums[n][0]);
     }
-    // The day-date window: "SUN 15" (room for 44 units of text), or "15".
-    // The text sits a little low in its 21 units, so an accent on a
-    // capital (SÁB, MIÉ) has room above it.
+    // The day-date window: "SUN 15" (room for 56 units of text), or "15".
+    // Each window is centred in the free space between the centre cap
+    // (bottom at 104.6) and the top of the 6 (about 154.7 at 19px, 153.1 at
+    // the small face's 23px): equal gaps above and below. The text's
+    // visible middle (capitals and figures) sits on the window's middle; an
+    // accent on a capital (SÁB, MIÉ) still has room above it.
     var wtext = null;
     var wmax = 0;
     if (win === 'day') {
-      svgEl('rect', { x: 84, y: 117, width: 32, height: 23, rx: 4, ry: 4, 'class': 'clock-window' }, svg);
-      wtext = svgEl('text', { x: 100, y: 128.5, 'class': 'clock-window-text clock-window-day', 'text-anchor': 'middle', dy: '0.36em' }, svg);
-      wmax = 26;
+      svgEl('rect', { x: 82, y: 115.85, width: 36, height: 26, rx: 4.5, ry: 4.5, 'class': 'clock-window' }, svg);
+      wtext = svgEl('text', { x: 100, y: 128.85, 'class': 'clock-window-text clock-window-day', 'text-anchor': 'middle', dy: '0.36em' }, svg);
+      wmax = 30;
     } else if (win !== 'none') {
-      svgEl('rect', { x: 74, y: 118, width: 52, height: 21, rx: 4, ry: 4, 'class': 'clock-window' }, svg);
-      wtext = svgEl('text', { x: 100, y: 128.5, 'class': 'clock-window-text', 'text-anchor': 'middle', dy: '0.38em' }, svg);
-      wmax = 44;
+      svgEl('rect', { x: 68, y: 116.65, width: 64, height: 26, rx: 4.5, ry: 4.5, 'class': 'clock-window' }, svg);
+      // x 100.4, not 100: the text's letter-spacing adds a trailing gap
+      // after the last figure, which pulls the visible ink left of centre.
+      wtext = svgEl('text', { x: 100.4, y: 129.65, 'class': 'clock-window-text', 'text-anchor': 'middle', dy: '0.368em' }, svg);
+      wmax = 56;
     }
 
     var hh = svgEl('g', { 'class': 'clock-hand clock-hand-h' }, svg);
@@ -249,7 +254,7 @@
   /* ---------- the analog tile ---------- */
 
   // Which window a face this many pixels across can read: "MON 16" from
-  // about 7.5rem (the window text is then ~10px), "16" from 3rem.
+  // about 7.5rem (the window text is then ~12px), "16" from 3rem.
   function windowFor(px) {
     var r = rem();
     return px >= 7.5 * r ? 'full' : px >= 3 * r ? 'day' : 'none';
