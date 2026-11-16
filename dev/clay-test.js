@@ -890,11 +890,41 @@ async function checkAboutNotBusy() {
   assert(await look.layer(page), 'no clay layer while the panel is open');
   const z = await page.evaluate(() => [Number(getComputedStyle(document.getElementById('about')).zIndex), Number(getComputedStyle(document.querySelector('.clay-layer')).zIndex)]);
   assert(z[0] > z[1], 'the panel is not above the wanderers: ' + z.join(' / '));
-  // It plays on with the panel open, and Right ends it like any key.
+  // It plays on with the panel open. Right closes the panel and leaves the
+  // visit playing (keys that belong to the panel are not "using the remote");
+  // the next key on the tiles sends them away like any key.
   await sleep(1500);
   assert((await look.state(page)).phase === 'playing' && (await about.isOpen(page)), 'the visit or the panel ended by itself');
   await page.keyboard.press('ArrowRight');
-  assert(!(await about.isOpen(page)) && (await look.state(page)).phase === 'waiting', 'Right did not close the panel and clear the screen');
+  assert(!(await about.isOpen(page)), 'Right did not close the panel');
+  assert((await look.state(page)).phase === 'playing', 'closing the panel sent them away');
+  await page.keyboard.press('ArrowDown');
+  assert((await look.state(page)).phase === 'waiting', 'a key on the tiles did not clear the screen');
+  noErrors(page);
+}
+
+// Keys pressed while the About panel is open (scrolling, closing) do not
+// restart the wanderers' wait; the next key on the tiles does.
+async function checkAboutKeysKeepSchedule() {
+  const page = await newHub({ clay: { idleAfter: 20, every: [90, 90] } });
+  await page.evaluate(() => window.HUB_TEST.clay.setHour(14));
+  await until(() => page.evaluate(() => !window.HUB_TEST.busy()), 4000, 'busy');
+  await leftToAbout(page);
+  await page.evaluate(() => window.HUB_TEST.clay.dueIn(8000));
+  const before = (await look.state(page)).nextIn;
+  assert(before > 6000 && before <= 8000, 'nextIn after dueIn(8000): ' + before);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowUp');
+  const during = (await look.state(page)).nextIn;
+  assert(during <= before && during > 4000, 'keys inside the panel moved the visit: ' + before + ' -> ' + during);
+  await page.keyboard.press('ArrowRight');
+  assert(!(await about.isOpen(page)), 'Right did not close the panel');
+  const closed = (await look.state(page)).nextIn;
+  assert(closed <= before && closed > 3000, 'closing the panel moved the visit: ' + before + ' -> ' + closed);
+  // A key on the tiles is use of the remote: the wait starts over (idleAfter 20 s).
+  await page.keyboard.press('ArrowDown');
+  const after = (await look.state(page)).nextIn;
+  assert(after > 15000, 'a key on the tiles did not restart the wait: ' + after);
   noErrors(page);
 }
 
@@ -1016,6 +1046,7 @@ async function main() {
   await check('14. The About panel: Left from a left-most tile opens it, Up does not; Right, Back and a click close it; never over a panel', checkAboutKeys);
   await check('14b. The About panel\'s rows: present or absent, refreshed by themselves; a long problem wraps at 1920x1080 and 1280x720', checkAboutRows);
   await check('14c. The About panel is not busy: a visit loads and plays with it open, and it shows countdown, loading, on screen', checkAboutNotBusy);
+  await check('14d. Keys inside the About panel (scrolling, closing) keep their schedule; the next key on the tiles restarts the wait', checkAboutKeysKeepSchedule);
   await check('15. Slow frames: the visit is skipped, not marked broken, and the same scene plays at the next visit', checkSlowFrames);
   await check('16. The next visit\'s frames load ahead; that scene comes, no earlier', checkAhead);
   await check('17. The default pause after a daytime visit is 90 to 150 s', checkDefaultEvery);
