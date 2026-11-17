@@ -1010,6 +1010,55 @@ function stranger(status, type, body) {
 }
 
 // The shell while it waits (GitHub never answers), and how long a normal start takes.
+// A script that fails to load on the way (TizenBrew's proxy now and then) is
+// fetched again and the page loads again (hub.html); meanwhile it is not a crash.
+async function checkScriptRetry() {
+  const cases = [
+    ['app/hub.js', (route) => route.abort()],
+    ['app/config.js', (route) => route.fulfill({ status: 200, contentType: 'application/javascript',
+      body: "Couldn't find the requested file /app/config.js in " + OWNER + '/' + REPO + '.' })]
+  ];
+  for (const [file, breakIt] of cases) {
+    const { context, page } = await contextWithGood(A);
+    github.sha = B;
+    let broken = 0;
+    await page.route((u) => u.href.split('?')[0] === moduleUrl(B, file), (route) => {
+      if (route.request().resourceType() === 'script' && broken === 0) { broken += 1; return breakIt(route); }
+      // The fetch that follows takes its time, as on the TV: longer than the
+      // second the loader gives a page whose scripts have all run.
+      if (route.request().resourceType() !== 'script') return void setTimeout(() => route.fallback().catch(() => {}), 2200);
+      return route.fallback();
+    });
+    let sawNotice = false;
+    const watch = setInterval(() => { notice(page).then((n) => { if (n) sawNotice = true; }); }, 200);
+    try {
+      await go(page, shellUrl());
+      await waitAt(page, B, 'app/hub.html', 15000);
+      await sleep(2500);
+    } finally { clearInterval(watch); }
+    assert(broken === 1, file + ' was not broken once');
+    assert(!sawNotice, file + ': a notice came up for a script that was only fetched again');
+    const rec = await record(page);
+    assert(rec.good === B && rec.note !== 'held' && !rec.trying, file + ': record ' + JSON.stringify(rec));
+    assert((await why(page)) === null, file + ': a reason was kept');
+    const said = await page.evaluate(() => window.HUB_SCRIPTS.status());
+    assert(said === file.replace('app/', '') + ' loaded on a later try', file + ': ' + said);
+    await context.close();
+  }
+
+  // One that never comes is still a version that didn't start, named in the notice.
+  const { context, page } = await contextWithGood(A);
+  github.sha = B;
+  await page.route((u) => u.href.split('?')[0] === moduleUrl(B, 'app/hub.js'), (route) => route.abort());
+  await go(page, shellUrl());
+  await until(() => { const w = where(page); return w && w.ref === B; }, 10000, 'did not go to B');
+  const lines = await until(() => notice(page), 12000, 'no notice for a script that never came');
+  assert(lines.indexOf('Error: could not load app/hub.js') >= 0, 'notice: ' + JSON.stringify(lines));
+  const rec = await record(page);
+  assert(rec.trying === B && rec.note === 'held' && rec.holdKind === 'crash' && rec.good === A, 'record: ' + JSON.stringify(rec));
+  await context.close();
+}
+
 async function checkShell() {
   const context = await newContext();
   const page = await context.newPage();
@@ -1089,6 +1138,7 @@ async function main() {
   await check('16. A file that never comes: back at the limit, held 20 minutes as slow, then tried again; another commit is not held', checkStuck);
   await check('17. A long error wraps inside the notice at 1920x1080 and 1280x720; the kept reason stays short', checkNoticeWraps);
   await check('18. A record from before 0.18.1 still reads and holds; a reason kept for another commit is not shown', checkOldRecord);
+  await check('19. A script that fails to load once is fetched again, not called a crash; one that never comes still is', checkScriptRetry);
 }
 
 main().catch((e) => {
