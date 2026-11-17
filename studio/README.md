@@ -7,3 +7,14 @@ TV. It is kept here so the page and the TV code can be changed together.
 The "What shows at each size" section is driven by one object in the page,
 `SIZE_MATRIX`. `docs/tile-sizes.md` is the same table in English. When a
 widget's tile changes what it draws at a size, update both.
+
+## Staying in sync with the hub
+
+The Studio must hold every widget and every layout the hub has. `node dev/studio-sync-test.js` (no browser) fails when:
+
+- a widget is registered in `app/widgets/*.js` that the Studio's `WIDGETS`, `SIZE_MATRIX` or `SZ_ORDER` lacks;
+- `TV_DEFAULT` differs from `HUB_CONFIG.layout` in `app/config.js`;
+- `TV_LAYOUTS` differs from `HUB_CONFIG.layouts` (a layout added, moved or renamed);
+- a widget is marked built in the Studio but is still `soon`, or is in the Studio, absent from the hub and not marked `soon` (a proposal).
+
+Any PR that adds or changes a widget or a layout updates the Studio in the same PR, runs this test, and then republishes the page (same URL). Proposed widgets that are not built yet go in with `soon: true` and a `budgetPlanned`/`plannedEntry` size entry, so they can be placed and commented on.
