@@ -257,6 +257,9 @@
   // it never does).
   function artBox(parent, v, cls, glow) {
     var box = el('div', 'np-art ' + cls + (v.dim ? ' is-dim' : ''), parent);
+    // The cover with a song is one picture wherever it shows: the hub's
+    // motion extras fly it between the page and the full-screen card.
+    if (v.track) box.setAttribute('data-share', 'np-cover');
     var face = el('div', 'np-face', box);
     var mark = el('span', 'icon np-mark', face);
     mark.innerHTML = icon('music');
@@ -314,6 +317,22 @@
     var root = el('div', 'np-tile np-' + layout + (strip ? ' np-strip' : '') + ' np-k-' + v.kind, body);
     var card = { root: root, v: v, layout: layout, strip: strip };
     tiles.push(card);
+
+    // Only waiting for the Pi, with no song to show: the hub may draw the
+    // tile quietly (motion extras, quietTiles): a small mark and one line.
+    var waiting = !v.track && (v.kind === 'waiting' || v.kind === 'offline' || v.kind === 'update');
+    if (waiting) root.className += ' hub-dormant';
+    if (waiting && layout !== 'icon' && document.body.classList.contains('fx-quiet')) {
+      root.className += ' np-quiet';
+      var qhead = el('div', 'np-quiet-head', root);
+      var qmark = el('span', 'icon np-quiet-mark', qhead);
+      qmark.innerHTML = icon('music');
+      el('span', 'np-label-text np-quiet-label', qhead, v.label);
+      el('div', 'np-title hub-quiet-line', root, v.title);
+      root.title = v.hint;
+      card.hasBar = false;
+      return;
+    }
 
     var hasSong = !!v.track && v.kind !== 'signin' && v.kind !== 'off';
     card.art = hasSong || layout === 'icon' ? artBox(root, v, 'np-art-tile', layout === 'col' && size.tier === 'tall') : null;

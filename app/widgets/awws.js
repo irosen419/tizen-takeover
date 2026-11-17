@@ -544,6 +544,7 @@
     chosen: {},        // cal number -> [r, g, b] sent by the Pi
     snap: null,        // the snapshot in use
     snapFromCache: false,
+    snapKey: '',       // the last live snapshot's content this run ('' before any)
     zone: null,
     timer: null,
     sig: '',
@@ -678,6 +679,9 @@
     refreshAll();
   }
 
+  // The tiles that draw from the snapshot (Next visit only reads the calendar).
+  var SNAP_TILES = { awws: true, 'awws-agenda': true, 'awws-todo': true, 'awws-reach': true };
+
   function onSnap(d) {
     if (!d || typeof d !== 'object' || isArr(d)) return;
     // { sentAt: null } is the Pi saying "nothing stored": forget the copy too.
@@ -686,7 +690,17 @@
     saveSnapCache();
     // The Pi pushes every snapshot it accepts, even an unchanged one (a new
     // sentAt says it is fresh): the signature redraws only what changed.
+    var key = contentKey(S.snap, SNAP_SKIP);
+    var changed = S.snapKey !== '' && key !== S.snapKey && !!S.snap;
+    S.snapKey = key;
     refreshAll();
+    // New content after the first live snapshot this run: those tiles say so.
+    if (!changed) return;
+    for (var i = 0; i < S.order.length; i++) {
+      var ctx = S.ctxs[S.order[i]];
+      if (!ctx || !SNAP_TILES[S.order[i]] || typeof ctx.activity !== 'function') continue;
+      try { ctx.activity('awws'); } catch (e) { /* the figures just show */ }
+    }
   }
 
   /* ---------- states ---------- */
@@ -780,8 +794,12 @@
       why = info.bad[0].why ? fill(STRINGS.whyText, { why: info.bad[0].why }) : '';
     }
     var map = { live: text, name: name, why: why };
-    return { head: fill(m.head, map), line: fill(m.line, map), short: fill(m.short, map) };
+    return { head: fill(m.head, map), line: fill(m.line, map), short: fill(m.short, map), state: state };
   }
+
+  // States that only wait for the Pi: the hub may show these tiles quietly
+  // (motion extras, quietTiles), as one small line.
+  var WAITING = { off: true, quiet: true, lost: true, refused: true, loading: true };
 
   function calStale() {
     if (!S.cal || S.cal.configured !== true) return 0;
@@ -1102,7 +1120,7 @@
       } catch (e) { /* wait for it */ }
       try {
         var d = L.get('awws');
-        if (d && typeof d === 'object') { S.snap = snapReady(d) ? d : null; S.snapFromCache = false; saveSnapCache(); }
+        if (d && typeof d === 'object') { S.snap = snapReady(d) ? d : null; S.snapFromCache = false; saveSnapCache(); S.snapKey = contentKey(S.snap, SNAP_SKIP); }
       } catch (e) { /* wait for it */ }
       try {
         L.on('calendar', function (d) { try { onCal(d); } catch (e) { warn(e && e.message); } });
@@ -1147,19 +1165,20 @@
 
   // A message in a tile: head, short line, faint globe.
   function tileMessage(root, size, msg, quiet) {
+    var wait = WAITING[msg.state] === true;
     if (size.cols === 1) {
-      mark(root, 'is-solo');
+      mark(root, 'is-solo' + (wait ? ' hub-dormant' : ''));
       return;
     }
     if (size.tier === 'strip') {
-      el('div', 'aw-strip-text aw-cut' + (quiet ? ' is-quiet' : ''), root, msg.head);
+      el('div', 'aw-strip-text aw-cut' + (quiet ? ' is-quiet' : '') + (wait ? ' hub-dormant hub-quiet-line' : ''), root, msg.head);
       return;
     }
-    var box = el('div', 'aw-msg', root);
-    el('div', 'aw-msg-head', box, msg.head);
-    if (msg.short) el('div', 'aw-msg-line', box, msg.short);
+    var box = el('div', 'aw-msg' + (wait ? ' hub-dormant' : ''), root);
+    el('div', 'aw-msg-head' + (wait ? ' hub-quiet-line' : ''), box, msg.head);
+    if (msg.short) el('div', 'aw-msg-line' + (wait ? ' hub-quiet-hide' : ''), box, msg.short);
     trim(root, [box.lastChild !== box.firstChild ? box.lastChild : null]);
-    mark(root);   // after the fit: the globe hangs over the edge on purpose
+    mark(root, wait ? 'hub-quiet-hide' : '');   // after the fit: the globe hangs over the edge on purpose
   }
 
   // A message in a panel: big head, the full line, faint globe.

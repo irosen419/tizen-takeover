@@ -948,5 +948,208 @@ body.has-picture {
    and the logos (a margin, so the chip fit still measures the body). */
 .cell[data-widget="entertainment"] .tile:not(.tile-h1) .tile-body { margin-top: 0.8rem; }
 
+/* ---------- motion extras (app/motion.js) ---------- */
+
+/* Quiet waiting tiles: a widget with nothing to show yet (it needs the Pi,
+   it is loading, or it is a "Soon" placeholder) shows one small, muted line
+   and no big mark, a little faded, so the tiles with real data lead. Only
+   with motionFx.quietTiles (body.fx-quiet). Focus brings it back to full. */
+.fx-quiet .tile.is-dormant:not(.is-focused) > .tile-head,
+.fx-quiet .tile.is-dormant:not(.is-focused) > .tile-body { opacity: 0.62; }
+.fx-quiet .tile.is-dormant .tile-icon,
+.fx-quiet .tile.is-dormant .tile-title { color: var(--text-2); }
+.fx-quiet .tile.is-dormant.is-focused .tile-icon,
+.fx-quiet .tile.is-dormant.is-focused .tile-title { color: var(--text); }
+/* The one line: never title-sized, never more than a line, and room above
+   and below so accents (Á, É) and descenders are never cut. */
+.fx-quiet .tile.is-dormant .hub-quiet-line,
+.fx-quiet .tile.is-dormant .planned-text {
+  display: block;
+  position: static;
+  margin-top: 0.55rem;
+  max-width: 100%;
+  padding: 0.1rem 0;
+  font-size: 0.9rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-line-clamp: none;
+  text-align: left;
+}
+.fx-quiet .tile.is-dormant .planned-mark,
+.fx-quiet .tile.is-dormant .hub-quiet-hide { display: none; }
+/* A tall placeholder no longer centres a big mark and text in its room. */
+.fx-quiet .tile-h3.is-dormant .tile-body {
+  justify-content: flex-start;
+  align-items: stretch;
+  text-align: left;
+}
+.fx-quiet .tile-h1.is-dormant .planned-text,
+.fx-quiet .tile-h1.is-dormant .hub-quiet-line { margin-top: 0.2rem; }
+
+/* The focus ring: one element that glides between tiles (transform only),
+   drawn exactly over the focused tile's border. While it is on, a focused
+   tile keeps its plain border underneath. */
+.fx-ring {
+  position: fixed;
+  top: 0; left: 0;
+  border: var(--edge) solid var(--focus);
+  border-radius: 1.6rem;
+  pointer-events: none;
+  z-index: 2;                /* over the tiles, under the wanderers (9) and panels */
+  transform-origin: 0 0;
+  will-change: transform, opacity;
+}
+.fx-ring-on .tile.is-focused { border-color: var(--line); }
+.is-glass.fx-ring-on .tile.is-focused { border-color: rgba(255, 255, 255, 0.16); }
+
+/* The Now Playing cover in flight, over the panel. */
+.fx-fly {
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 14;
+  pointer-events: none;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* The launch bloom: the app's tile color, grown over everything but the toast. */
+.fx-bloom {
+  position: fixed;
+  top: 0; left: 0;
+  z-index: 25;
+  pointer-events: none;
+  transform-origin: 0 0;
+  will-change: transform, opacity;
+}
+
+/* Activity chips: a tile that just got new data from a sync says so, in a
+   small chip in its lower left corner, over its content (it never moves or
+   resizes anything), with a light that sweeps its top edge twice. Only
+   transform and opacity ever change. Sizes are the 1080p ones in rem
+   (1rem = 24px there). */
+.fx-chip {
+  position: absolute;
+  left: 1.1667rem;           /* 28px */
+  bottom: 1rem;              /* 24px */
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  max-width: calc(100% - 2.3333rem);   /* the tile minus 56px */
+  padding: 0.4167rem 0.75rem 0.4167rem 0.5833rem;
+  border: 0.0625rem solid rgba(127, 209, 255, 0.5);
+  border-radius: 2rem;
+  background-color: rgba(22, 46, 70, 0.94);  /* dark enough for 4.5:1 over any picture */
+  color: #dcf2ff;
+  font-size: 0.9167rem;      /* 22px */
+  font-weight: 600;
+  line-height: 1.4;          /* room for accents and descenders */
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(0.25rem) scale(0.95);
+  will-change: transform, opacity;
+}
+.fx-chip.is-in {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1), opacity 220ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.fx-chip.is-out {
+  opacity: 0;
+  transform: scale(0.97);
+  transition: transform 150ms ease-out, opacity 150ms ease-out;
+}
+.fx-chip-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;   /* a last resort: the labels are written to fit */
+}
+.fx-act-ico {
+  position: relative;
+  flex: 0 0 auto;
+  width: 1.4167rem;          /* 34px */
+  height: 1.4167rem;
+  margin-right: 0.5rem;
+}
+.fx-act-ico svg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; }
+.fx-act-ico i { position: absolute; display: block; }
+
+/* to-do: a pencil writing a line */
+.fx-act-line {
+  left: 11.76%; top: 78.7%; width: 76.47%; height: 7.35%;
+  border-radius: 0.1rem;
+  background: #7fd1ff;
+  transform-origin: 0 50%;
+  animation: fx-act-line 700ms linear infinite;
+}
+.fx-act-pen { left: 0; top: 0; width: 100%; height: 100%; animation: fx-act-pen 700ms linear infinite; }
+@keyframes fx-act-line { from { transform: scaleX(0.1); } to { transform: scaleX(1); } }
+@keyframes fx-act-pen {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(29.4%); }
+  100% { transform: translateX(0); }
+}
+
+/* calendar: the dots tick in turn */
+.fx-act-dot {
+  width: 14.12%; height: 14.12%;
+  border-radius: 50%;
+  background: #cfeeff;
+  opacity: 0.2;
+  animation: fx-act-dot 900ms ease-in-out infinite both;
+}
+.fx-act-dot:nth-of-type(1) { left: 28.2%; top: 45.9%; }
+.fx-act-dot:nth-of-type(2) { left: 42.9%; top: 45.9%; animation-delay: 120ms; }
+.fx-act-dot:nth-of-type(3) { left: 57.6%; top: 45.9%; animation-delay: 240ms; }
+.fx-act-dot:nth-of-type(4) { left: 28.2%; top: 63.5%; animation-delay: 360ms; }
+.fx-act-dot:nth-of-type(5) { left: 42.9%; top: 63.5%; animation-delay: 480ms; }
+@keyframes fx-act-dot { 0% { opacity: 0.2; } 50% { opacity: 1; } 100% { opacity: 0.2; } }
+
+/* data: three bars rising and falling */
+.fx-act-bar {
+  top: 41.18%; width: 17.65%; height: 47.06%;
+  border-radius: 0.13rem;
+  background: #7fd1ff;
+  transform-origin: 50% 100%;
+  animation: fx-act-bar 800ms ease-in-out infinite both;
+}
+.fx-act-bar:nth-of-type(1) { left: 14.71%; }
+.fx-act-bar:nth-of-type(2) { left: 41.18%; animation-delay: 160ms; }
+.fx-act-bar:nth-of-type(3) { left: 67.65%; animation-delay: 320ms; }
+@keyframes fx-act-bar { 0% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } 100% { transform: scaleY(0.3); } }
+
+/* The light along the tile's top edge: a gradient moved with transform,
+   twice, inside a strip on the straight part of the edge. */
+.fx-edge {
+  position: absolute;
+  top: 0; left: 1.6rem; right: 1.6rem;
+  height: 0.1667rem;         /* 4px */
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+.fx-edge i {
+  position: absolute;
+  top: 0; left: 0;
+  width: 40%; height: 100%;
+  background: linear-gradient(90deg, rgba(127, 209, 255, 0), #7fd1ff, rgba(127, 209, 255, 0));
+  transform: translateX(-100%);
+  animation: fx-act-sweep 1200ms linear 2;
+}
+@keyframes fx-act-sweep { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+
+/* Less motion asked for: the chip only fades in and out, still, with no loops and no sweep. */
+@media (prefers-reduced-motion: reduce) {
+  .fx-chip, .fx-chip.is-in, .fx-chip.is-out { transform: none; }
+  .fx-act-ico i { animation: none; }
+  .fx-act-dot { opacity: 1; }
+  .fx-edge { display: none; }
+}
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }

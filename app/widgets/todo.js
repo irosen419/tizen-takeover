@@ -315,7 +315,8 @@
     sending: false,         // one request at a time
     server: null,           // { epoch, rev, items }: the newest list from the server
     retryTimer: null,
-    redrawLater: false      // a list arrived while typing in the add box
+    redrawLater: false,     // a list arrived while typing in the add box
+    adopted: false          // a server list has been taken this run (the first is never "new")
   };
 
   function copy(x) { return JSON.parse(JSON.stringify(x)); }
@@ -484,15 +485,27 @@
     });
   }
 
-  // Takes the server's list as the working copy.
+  // Takes the server's list as the working copy. Open items it has that
+  // were nowhere here before are new from a sync: after the first list this
+  // run (never on it) the tile says so (ctx.activity). The rows just appear.
   function adopt(items) {
     if (!isArray(items)) return;
     var list = clean(copy(items));
+    var first = !sync.adopted;
+    sync.adopted = true;
     if (JSON.stringify(list) === JSON.stringify(store.items)) return;
+    var had = {};
+    var k;
+    for (k = 0; k < store.items.length; k++) had[store.items[k].id] = true;
+    var fresh = 0;
+    for (k = 0; k < list.length; k++) if (!had[list[k].id] && !list[k].done) fresh += 1;
     store.items = list;
     purge();
     store.save();
     refreshQuiet();
+    if (!first && fresh && C && typeof C.activity === 'function') {
+      try { C.activity('todo'); } catch (e) { /* the rows just show */ }
+    }
   }
 
   function addTyping() {
@@ -647,6 +660,7 @@
 
   function tileRow(item, now) {
     var row = el('div', 'todo-tile-row');
+    row.setAttribute('data-id', String(item.id));
     el('span', 'todo-tick', '', row);
     var text = el('div', 'todo-tile-text', '', row);
     el('div', 'todo-tile-title', item.title, text);
@@ -984,6 +998,7 @@
     icon: 'check-list',
     sub: STRINGS.sub,
     expandable: true,
+    stagger: '.todo-col-main > .todo-add, .todo-sec',   // the parts arrive one by one as the panel opens
 
     init: function (ctx) {
       C = ctx;
