@@ -503,11 +503,27 @@ sheet('ember-sock-run', 'ember', 'blue', [
    aspect='16:9', ask_rows=2, refs=[('raw/ember-gallop.jpg', "the approved gallop sheet of the same puppet dog.")],
    note=TOY.format(gait='gallop', n=8, toy=SOCK) + " " + GROUND_DOG, found=[None] + [f'sock-run-{i}' for i in range(1, 8)])
 
+sheet('ember-ball-run', 'ember', 'blue', [
+    ('stand-ball-3', f"Standing square on all four legs, {R}, head up, holding {BALL}."),
+] + [(f'ball-run-{i}', f"Gallop frame {i} (copy of drawing {i + 1} in image 3), with the ball.") for i in range(1, 8)],
+   aspect='16:9', ask_rows=2, refs=[('raw/ember-gallop.jpg', "the approved gallop sheet of the same puppet dog.")],
+   note=TOY.format(gait='gallop', n=8, toy=BALL) + " " + GROUND_DOG, found=[None] + [f'ball-run-{i}' for i in range(1, 8)])
+sheet('ian-fetch2', 'ian', 'green', [
+    ('stand-3', "Standing upright and relaxed, facing the camera, arms at his sides, warm half-smile."),
+    ('hands-up', "Facing the camera, flinging both arms up and out with palms open in baffled outrage, eyebrows high, mouth open as if shouting 'WHAT?', feet planted."),
+    ('pick-up', f"Bending forward at the waist, {R}, one arm reaching straight down with open fingers to grab something small off the floor, the other hand resting on his knee, knees slightly bent."),
+    ('sit-ball', "Sitting cross-legged on the floor facing the camera, shoulders slumped, a grumpy sulky pout, both hands cupped together in his lap as if holding something small (the hands are empty)."),
+    ('search', f"Standing, {R}, leaning forward and peering into the distance, one flat hand shading his eyes at his brow, the other hand on his hip, puzzled."),
+    ('startled', "Facing the camera at a slight angle, leaping into the air in fright: both feet off the ground, arms flung out wide, eyes huge, mouth open in a yelp."),
+], found=['stand-3', 'hands-up', 'pick-up', 'sit-ball', 'search', 'startled'])
+
 # Poses Gemini added, or changed, that the briefs above don't describe.
 EXTRA = {
     'ember/ball-down': "Lying down, side view facing right, guarding a yellow tennis ball between her front paws.",
     'ember/sock-proud': "Standing on all four legs, side view facing right, holding a white striped sock in her mouth.",
 }
+for _i in range(1, 8):
+    EXTRA[f'ember/ball-run-{_i}'] = f"Galloping, {R}, with a yellow tennis ball in her mouth: the pose of ember/gallop-{_i}."
 # The ball and sock cycles were asked for as copies of another sheet; say what they show.
 for _p in ('a1', 'a2', 'a3', 'b1', 'b2', 'b3'):
     EXTRA[f'ember/ball-trot-{_p}'] = f"Trotting, {R}, with a yellow tennis ball in her mouth: the pose of ember/trot-{_p}."
@@ -534,6 +550,8 @@ SEQUENCES = {
     'ember.fetch': ['ember/run-1', 'ember/run-2', 'ember/stand-ball'],
     'ember.sock-heist': ['ember/sniff', 'ember/sock-proud', 'ember/sock-run'],
     'ember.ball-trot': ['ember/ball-trot-a1', 'ember/ball-trot-a2', 'ember/ball-trot-b1', 'ember/ball-trot-b2'],
+    'ember.ball-run': ['ember/ball-run-1', 'ember/ball-run-2', 'ember/ball-run-3', 'ember/ball-run-4', 'ember/ball-run-5',
+                       'ember/ball-run-6', 'ember/ball-run-7'],
     'ember.sock-run': ['ember/sock-run-1', 'ember/sock-run-2', 'ember/sock-run-3', 'ember/sock-run-4',
                        'ember/sock-run-5', 'ember/sock-run-6', 'ember/sock-run-7'],
 }
@@ -547,6 +565,7 @@ STRIDES = {
     'ember.run': 120,
     'ember.ball-trot': 56,
     'ember.sock-run': 120,
+    'ember.ball-run': 120,
 }
 
 # Px above the floor line for frames where nothing touches the ground. A sprite's
@@ -562,4 +581,7 @@ LIFTS = {
     'ember/sock-run-1': 14,
     'ember/sock-run-4': 11,
     'ember/sock-run-7': 4,
+    'ember/ball-run-1': 14,
+    'ember/ball-run-4': 11,
+    'ember/ball-run-7': 4,
 }

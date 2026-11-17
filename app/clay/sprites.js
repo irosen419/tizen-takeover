@@ -15,6 +15,13 @@ var CLAY_SPRITES = {
     "duo/tug": {"file": "sprites/duo/tug.webp", "w": 172, "h": 156, "cx": 68.2, "faces": "front"},
     "duo/walk": {"file": "sprites/duo/walk.webp", "w": 88, "h": 163, "cx": 37.6, "faces": "right"},
     "ember/ball-down": {"file": "sprites/ember/ball-down.webp", "w": 96, "h": 64, "cx": 46.1, "faces": "right"},
+    "ember/ball-run-1": {"file": "sprites/ember/ball-run-1.webp", "w": 82, "h": 93, "cx": 42.8, "faces": "right"},
+    "ember/ball-run-2": {"file": "sprites/ember/ball-run-2.webp", "w": 95, "h": 92, "cx": 50.8, "faces": "right"},
+    "ember/ball-run-3": {"file": "sprites/ember/ball-run-3.webp", "w": 104, "h": 97, "cx": 53.7, "faces": "right"},
+    "ember/ball-run-4": {"file": "sprites/ember/ball-run-4.webp", "w": 103, "h": 73, "cx": 54.2, "faces": "right"},
+    "ember/ball-run-5": {"file": "sprites/ember/ball-run-5.webp", "w": 99, "h": 83, "cx": 54.6, "faces": "right"},
+    "ember/ball-run-6": {"file": "sprites/ember/ball-run-6.webp", "w": 107, "h": 70, "cx": 57.0, "faces": "right"},
+    "ember/ball-run-7": {"file": "sprites/ember/ball-run-7.webp", "w": 96, "h": 82, "cx": 55.8, "faces": "right"},
     "ember/ball-trot-a1": {"file": "sprites/ember/ball-trot-a1.webp", "w": 89, "h": 93, "cx": 46.7, "faces": "right"},
     "ember/ball-trot-a2": {"file": "sprites/ember/ball-trot-a2.webp", "w": 82, "h": 93, "cx": 42.9, "faces": "right"},
     "ember/ball-trot-b1": {"file": "sprites/ember/ball-trot-b1.webp", "w": 83, "h": 94, "cx": 41.5, "faces": "right"},
@@ -87,6 +94,7 @@ var CLAY_SPRITES = {
     "ian/dance-1": {"file": "sprites/ian/dance-1.webp", "w": 83, "h": 163, "cx": 37.2, "faces": "front"},
     "ian/dance-2": {"file": "sprites/ian/dance-2.webp", "w": 74, "h": 163, "cx": 38.3, "faces": "front"},
     "ian/facepalm": {"file": "sprites/ian/facepalm.webp", "w": 63, "h": 160, "cx": 30.6, "faces": "front"},
+    "ian/hands-up": {"file": "sprites/ian/hands-up.webp", "w": 104, "h": 161, "cx": 50.3, "faces": "front"},
     "ian/hang": {"file": "sprites/ian/hang.webp", "w": 63, "h": 171, "cx": 31.6, "faces": "front"},
     "ian/hot": {"file": "sprites/ian/hot.webp", "w": 68, "h": 161, "cx": 36.7, "faces": "front"},
     "ian/jump-crouch": {"file": "sprites/ian/jump-crouch.webp", "w": 84, "h": 157, "cx": 45.6, "faces": "right"},
@@ -99,6 +107,7 @@ var CLAY_SPRITES = {
     "ian/laugh": {"file": "sprites/ian/laugh.webp", "w": 61, "h": 158, "cx": 31.0, "faces": "front"},
     "ian/lie-chin": {"file": "sprites/ian/lie-chin.webp", "w": 101, "h": 76, "cx": 57.3, "faces": "right"},
     "ian/nap": {"file": "sprites/ian/nap.webp", "w": 130, "h": 48, "cx": 71.0, "faces": "front"},
+    "ian/pick-up": {"file": "sprites/ian/pick-up.webp", "w": 74, "h": 143, "cx": 34.7, "faces": "right"},
     "ian/point": {"file": "sprites/ian/point.webp", "w": 73, "h": 161, "cx": 23.1, "faces": "right"},
     "ian/popcorn": {"file": "sprites/ian/popcorn.webp", "w": 66, "h": 132, "cx": 32.7, "faces": "front"},
     "ian/run-1": {"file": "sprites/ian/run-1.webp", "w": 97, "h": 152, "cx": 48.8, "faces": "right"},
@@ -109,10 +118,13 @@ var CLAY_SPRITES = {
     "ian/run-6": {"file": "sprites/ian/run-6.webp", "w": 108, "h": 163, "cx": 60.4, "faces": "right"},
     "ian/run-7": {"file": "sprites/ian/run-7.webp", "w": 90, "h": 164, "cx": 45.0, "faces": "right"},
     "ian/run-8": {"file": "sprites/ian/run-8.webp", "w": 133, "h": 147, "cx": 71.8, "faces": "right"},
+    "ian/search": {"file": "sprites/ian/search.webp", "w": 67, "h": 162, "cx": 32.0, "faces": "right"},
+    "ian/sit-ball": {"file": "sprites/ian/sit-ball.webp", "w": 64, "h": 112, "cx": 30.8, "faces": "front"},
     "ian/sit-edge": {"file": "sprites/ian/sit-edge.webp", "w": 87, "h": 158, "cx": 42.7, "faces": "front"},
     "ian/skid": {"file": "sprites/ian/skid.webp", "w": 72, "h": 161, "cx": 31.6, "faces": "right"},
     "ian/sneak": {"file": "sprites/ian/sneak.webp", "w": 59, "h": 160, "cx": 25.4, "faces": "right"},
     "ian/stand": {"file": "sprites/ian/stand.webp", "w": 68, "h": 163, "cx": 33.5, "faces": "front"},
+    "ian/stand-3": {"file": "sprites/ian/stand-3.webp", "w": 68, "h": 163, "cx": 33.4, "faces": "front"},
     "ian/stand-coffee": {"file": "sprites/ian/stand-coffee.webp", "w": 65, "h": 163, "cx": 32.9, "faces": "front"},
     "ian/stand-phone": {"file": "sprites/ian/stand-phone.webp", "w": 66, "h": 163, "cx": 32.4, "faces": "front"},
     "ian/stand-proud": {"file": "sprites/ian/stand-proud.webp", "w": 79, "h": 163, "cx": 39.2, "faces": "front"},
@@ -120,6 +132,7 @@ var CLAY_SPRITES = {
     "ian/stand-side": {"file": "sprites/ian/stand-side.webp", "w": 48, "h": 163, "cx": 22.0, "faces": "right"},
     "ian/stand-thumbs": {"file": "sprites/ian/stand-thumbs.webp", "w": 68, "h": 163, "cx": 35.3, "faces": "front"},
     "ian/stand-wave": {"file": "sprites/ian/stand-wave.webp", "w": 77, "h": 163, "cx": 42.3, "faces": "front"},
+    "ian/startled": {"file": "sprites/ian/startled.webp", "w": 94, "h": 153, "cx": 44.5, "faces": "front"},
     "ian/sunny": {"file": "sprites/ian/sunny.webp", "w": 59, "h": 163, "cx": 30.5, "faces": "front"},
     "ian/throw-1": {"file": "sprites/ian/throw-1.webp", "w": 106, "h": 158, "cx": 51.7, "faces": "right"},
     "ian/throw-2": {"file": "sprites/ian/throw-2.webp", "w": 79, "h": 160, "cx": 36.2, "faces": "right"},
@@ -162,6 +175,7 @@ var CLAY_SPRITES = {
     "ember.fetch": ["ember/run-1", "ember/run-2", "ember/stand-ball"],
     "ember.sock-heist": ["ember/sniff", "ember/sock-proud", "ember/sock-run"],
     "ember.ball-trot": ["ember/ball-trot-a1", "ember/ball-trot-a2", "ember/ball-trot-b1", "ember/ball-trot-b2"],
+    "ember.ball-run": ["ember/ball-run-1", "ember/ball-run-2", "ember/ball-run-3", "ember/ball-run-4", "ember/ball-run-5", "ember/ball-run-6", "ember/ball-run-7"],
     "ember.sock-run": ["ember/sock-run-1", "ember/sock-run-2", "ember/sock-run-3", "ember/sock-run-4", "ember/sock-run-5", "ember/sock-run-6", "ember/sock-run-7"]
   },
   strides: {
@@ -170,7 +184,8 @@ var CLAY_SPRITES = {
     "ember.trot": 56,
     "ember.run": 120,
     "ember.ball-trot": 56,
-    "ember.sock-run": 120
+    "ember.sock-run": 120,
+    "ember.ball-run": 120
   },
   lifts: {
     "ian/run-5": 12,
@@ -180,6 +195,9 @@ var CLAY_SPRITES = {
     "ember/gallop-7": 4,
     "ember/sock-run-1": 14,
     "ember/sock-run-4": 11,
-    "ember/sock-run-7": 4
+    "ember/sock-run-7": 4,
+    "ember/ball-run-1": 14,
+    "ember/ball-run-4": 11,
+    "ember/ball-run-7": 4
   }
 };

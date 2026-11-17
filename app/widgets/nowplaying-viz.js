@@ -32,7 +32,7 @@
  * frames a second, or 30 when a frame costs over 11 ms, and steps down at
  * once when a frame costs over 24 ms.
  *
- * Sharp and sharp-lite (v0.27.0), between radiant and classic: the 960 x 540
+ * Sharp and sharp-lite (v0.29.0), between radiant and classic: the 960 x 540
  * (or 720 x 405, with 3/4 of the shapes) canvas at 30 fps, shown as it is:
  * no bloom, second canvas, halos, motes or vignette (sharp keeps the light
  * sprites on the sparks; they cost little). So lines stay crisp over their
