@@ -2,7 +2,8 @@
  * Budget lab: the pace streak on the tile, and a daily cap to try out in the
  * panel (the plan's rows 1 to 8: the head line, the cap slider, the mode
  * pills, the outcome, Save this cap and Back to calculated, the merchants'
- * cut sliders, Put it somewhere, and the pace). The runway chart comes later.
+ * cut sliders, Put it somewhere, and the pace), and at full screen the runway
+ * chart on the right.
  *
  * Tile: the streak big ("8 days under", green; "Over yesterday", coral), then
  * "Yesterday $71 of $95", then the one suggested move. A tall tile adds the
@@ -33,6 +34,21 @@
  * from the math module's holdStep). Presses on the same slider less than
  * 250 ms apart are one hold. A press changes text nodes and one transform,
  * never the whole panel.
+ *
+ * Runway chart (full screen only, at the top of the right column; the panel
+ * size draws none): inline SVG from createElementNS, as awws.js draws Reach.
+ * The headroom step line from the snapshot's runway (start, a pay step up, a
+ * bill down, the reserve down on card day, ending at R), the owed line from
+ * 0 this morning up to P = ce * D at the session cap, a card day rule, a dot
+ * and its date for each payday, weekday ticks under the x axis, and at the
+ * right edge the one figure, the gap: "Covered, $214 spare" (green) or
+ * "Short by $10" (coral). No y axis and no other figure: the runway is
+ * headroom, not a balance. The days and the y range come from the math
+ * module's runwayChart, fixed when the panel is drawn and wide enough for
+ * the top of the cap slider, so a key press moves the owed line and never
+ * the axes. A press writes only the owed line's points (its last point
+ * moves) and the gap label's text, at most every 120 ms during a hold and
+ * once more after the last press.
  *
  * Words: EN below; the Spanish is in app/i18n.js under 'budgetLab.<path>'.
  * Amounts keep their US form. Plain ES5 for the TV's browser.
@@ -135,7 +151,20 @@
     destShortBy: '{funded} of {planned} · short {short}',
     destExtra: '+{n} more to savings',
     noLab: 'Card day needs a payday in the budget app',
-    cardToday: 'Card day is today: {state}'
+    cardToday: 'Card day is today: {state}',
+    // The runway chart (full screen). The gap label is its only figure.
+    daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+    chartHead: 'Runway to {d}',
+    chartHeadShort: 'Runway',
+    chartRoom: 'Headroom',
+    chartOwed: 'Spending at this cap',
+    chartOwedShort: 'Spending',
+    gapSpare: 'Covered, {n} spare',
+    gapSpareShort: '{n} spare',
+    gapZero: 'Covered, nothing to spare',
+    gapZeroShort: 'Covered',
+    gapShort: 'Short by {n}',
+    gapShortShort: 'Short {n}'
   };
 
   // The words in the hub's language; set again when the language changes.
@@ -237,7 +266,7 @@
 
   /* ---------- the state: session, saved cap, hold ---------- */
 
-  var LAB = { ctx: null, session: null, hold: null, refs: null, bound: false };
+  var LAB = { ctx: null, session: null, hold: null, refs: null, bound: false, chartTimer: null, chartDirty: false };
 
   function newSession() { return MATH() ? MATH().newSession() : { mode: 'cap', cap: null, keep: null, cuts: {} }; }
   LAB.session = newSession();
@@ -761,6 +790,199 @@
     return sec;
   }
 
+  /* ---------- the runway chart (full screen only) ---------- */
+
+  var SVG_NS = 'http://www.w3.org/2000/svg';
+  var CHART_EVERY = 120;   // ms: the owed line and the gap at most this often during a hold
+
+  function svgEl(tag, cls, parent) {
+    var node = document.createElementNS(SVG_NS, tag);
+    if (cls) node.setAttribute('class', cls);
+    if (parent) parent.appendChild(node);
+    return node;
+  }
+
+  function remPx() { return parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16; }
+
+  function px(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+
+  // The gap on card day as [long, short]: the chart's one figure.
+  function gapForms(r) {
+    if (!r.covered) return [fill(STRINGS.gapShort, { n: cash(r.short) }), fill(STRINGS.gapShortShort, { n: cash(r.short) })];
+    var spare = MATH().wholeDown(r.keep);
+    if (spare > 0) return [fill(STRINGS.gapSpare, { n: cash(spare) }), fill(STRINGS.gapSpareShort, { n: cash(spare) })];
+    return [STRINGS.gapZero, STRINGS.gapZeroShort];
+  }
+
+  // A label in the chart box at (x, y): its middle on x, its top at y.
+  function chartLabel(box, cls, text, x, y) {
+    var node = el('span', 'bl-ch-lab' + (cls ? ' ' + cls : ''), box, text);
+    node.style.left = px(x) + 'px';
+    node.style.top = px(y) + 'px';
+    return node;
+  }
+
+  function drawChart(col, r, refs) {
+    var m = MATH();
+    var d = snapshot();
+    var c = m.runwayChart(d && d.runway, r);
+    var sec = el('div', 'bl-chart-sec', col);
+    var head = el('div', 'bu-label bl-chart-head', sec);
+    if (!c) {
+      // No runway sent (yet): the lab's own words for a missing section.
+      var msg = stateText('waiting');
+      head.textContent = STRINGS.chartHeadShort;
+      el('div', 'bu-pline is-quiet bl-chart-empty', sec, msg.head);
+      return;
+    }
+    fitForms(head, [fill(STRINGS.chartHead, { d: dateText(r.cardDate) }), STRINGS.chartHeadShort]);
+    head.style.display = '';
+    var legend = el('div', 'bl-legend', sec);
+    var li = el('span', 'bl-leg', legend);
+    el('span', 'bl-leg-swatch is-room', li);
+    el('span', 'bl-leg-text', li, STRINGS.chartRoom);
+    li = el('span', 'bl-leg', legend);
+    el('span', 'bl-leg-swatch is-owed', li);
+    var owedText = el('span', 'bl-leg-text', li, STRINGS.chartOwed);
+    if (overH(legend) || legend.offsetHeight > owedText.offsetHeight * 1.6) owedText.textContent = STRINGS.chartOwedShort;
+
+    var box = el('div', 'bl-chart', sec);
+    var w = box.clientWidth;
+    var h = box.clientHeight;
+    if (!w || !h) return;
+    var rem = remPx();
+
+    // The gap label, top right: its form is picked once, for the widest gap
+    // this chart can show (R and P both lie inside the y range).
+    var gap = el('div', 'bl-ch-gap', box);
+    var wide = cash(m.wholeUp(c.hi - c.lo));
+    var form = 0;
+    var tries = [fill(STRINGS.gapSpare, { n: wide }), fill(STRINGS.gapShort, { n: wide })];
+    for (var t = 0; t < tries.length; t++) {
+      gap.textContent = tries[t];
+      if (overW(gap)) form = 1;
+    }
+    var gapH = gap.offsetHeight;
+
+    var X0 = rem * 1.8;
+    var X1 = w - rem * 0.3;
+    var Y0 = gapH + rem * 0.6;
+    var axisH = rem * 1.9;
+    var Y1 = h - axisH;
+    if (Y1 - Y0 < rem * 3) return;
+    var D = c.days;
+    function x(day) { return X0 + day / D * (X1 - X0); }
+    function y(v) {
+      var f = (c.hi - v) / (c.hi - c.lo);
+      return Y0 + (f < 0 ? 0 : f > 1 ? 1 : f) * (Y1 - Y0);
+    }
+
+    var svg = svgEl('svg', 'bl-ch-svg', null);
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    svg.setAttribute('aria-hidden', 'true');
+    box.insertBefore(svg, gap);
+
+    // Zero (where the owed line starts), the x axis with a tick a day, and
+    // the card day rule.
+    var zero = svgEl('line', 'bl-ch-zero', svg);
+    zero.setAttribute('x1', px(X0));
+    zero.setAttribute('x2', px(X1));
+    zero.setAttribute('y1', px(y(0)));
+    zero.setAttribute('y2', px(y(0)));
+    var axis = 'M' + px(X0) + ',' + px(Y1) + 'H' + px(X1);
+    for (var i = 0; i < c.ticks.length; i++) axis += 'M' + px(x(c.ticks[i].day)) + ',' + px(Y1) + 'v' + px(rem * 0.35);
+    svgEl('path', 'bl-ch-axis', svg).setAttribute('d', axis);
+    var rule = svgEl('line', 'bl-ch-rule', svg);
+    rule.setAttribute('x1', px(X1));
+    rule.setAttribute('x2', px(X1));
+    rule.setAttribute('y1', px(Y0 - rem * 0.3));
+    rule.setAttribute('y2', px(Y1));
+
+    // The headroom step line, then the owed line over it.
+    var pts = [];
+    for (i = 0; i < c.points.length; i++) pts.push(px(x(c.points[i].day)) + ',' + px(y(c.points[i].value)));
+    svgEl('polyline', 'bl-ch-room', svg).setAttribute('points', pts.join(' '));
+    var owed = svgEl('polyline', 'bl-ch-owed', svg);
+    var end = svgEl('circle', 'bl-ch-end', svg);
+    end.setAttribute('cx', px(X1));
+    end.setAttribute('cy', px(y(c.end)));
+    end.setAttribute('r', px(rem * 0.28));
+
+    // Paydays: a dot on the step's top, its date above it (below when there
+    // is no room above).
+    var labH = 0;
+    for (i = 0; i < c.paydays.length; i++) {
+      var pd = c.paydays[i];
+      var dot = svgEl('circle', 'bl-ch-pay', svg);
+      dot.setAttribute('cx', px(x(pd.day)));
+      dot.setAttribute('cy', px(y(pd.value)));
+      dot.setAttribute('r', px(rem * 0.32));
+      var pl = chartLabel(box, 'is-pay', dateText(pd.date), x(pd.day), 0);
+      labH = pl.offsetHeight;
+      var top = y(pd.value) - rem * 0.45 - labH;
+      if (top < Y0) top = y(pd.value) + rem * 0.45;
+      var half = pl.offsetWidth / 2;
+      var cx = Math.max(half, Math.min(w - half, x(pd.day)));
+      pl.style.left = px(cx) + 'px';
+      pl.style.top = px(top) + 'px';
+    }
+
+    // Weekdays under the axis, as many as fit; card day's date at its rule.
+    var cardLab = chartLabel(box, 'is-card', dateText(c.cardDate), X1, Y1 + rem * 0.4);
+    var cardW = cardLab.offsetWidth;
+    var probe = chartLabel(box, '', STRINGS.daysShort[3], 0, 0);
+    var dowW = probe.offsetWidth;
+    box.removeChild(probe);
+    var every = Math.max(1, Math.ceil((dowW + rem * 0.6) / ((X1 - X0) / D)));
+    for (i = 0; i < c.ticks.length; i += every) {
+      var tx = x(c.ticks[i].day);
+      if (tx + dowW / 2 > X1 - cardW - rem * 0.4) break;
+      chartLabel(box, '', STRINGS.daysShort[c.ticks[i].dow], tx, Y1 + rem * 0.4);
+    }
+
+    refs.chart = { owed: owed, owedFrom: px(X0) + ',' + px(y(0)), x1: px(X1), y: y, gap: gap, gapForm: form, pts: null };
+    paintChart(refs.chart, r);
+  }
+
+  // The owed line's last point and the gap label: one points write and one
+  // text node, nothing else in the chart changes.
+  function paintChart(ch, r) {
+    if (!ch || !r || !r.ok) return;
+    var pts = ch.owedFrom + ' ' + ch.x1 + ',' + px(ch.y(r.planned));
+    if (ch.pts !== pts) {
+      ch.pts = pts;
+      ch.owed.setAttribute('points', pts);
+    }
+    setText(ch.gap, gapForms(r)[ch.gapForm]);
+    setTone(ch.gap, 'bl-ch-gap', r.covered ? 'is-ok' : 'is-neg');
+  }
+
+  // During a hold: now, then at most every CHART_EVERY ms, and once more
+  // after the last press (the trailing update on release).
+  function chartSoon() {
+    if (!LAB.refs || !LAB.refs.chart) return;
+    if (LAB.chartTimer) { LAB.chartDirty = true; return; }
+    paintChart(LAB.refs.chart, result());
+    LAB.chartTimer = setTimeout(chartTick, CHART_EVERY);
+  }
+
+  function chartTick() {
+    LAB.chartTimer = null;
+    if (!LAB.chartDirty) return;
+    LAB.chartDirty = false;
+    if (!LAB.refs || !LAB.refs.chart) return;
+    try { paintChart(LAB.refs.chart, result()); } catch (e) { warn('chart: ' + (e && e.message)); }
+    LAB.chartTimer = setTimeout(chartTick, CHART_EVERY);
+  }
+
+  function chartStop() {
+    if (LAB.chartTimer) clearTimeout(LAB.chartTimer);
+    LAB.chartTimer = null;
+    LAB.chartDirty = false;
+  }
+
   function drawPanel(body, ctx) {
     var full = ctx.mode && ctx.mode() === 'full';
     ctx.setSub(asOf());
@@ -819,6 +1041,13 @@
       reset.setAttribute('data-key', 'reset');
     }
 
+    // The runway chart, at the top of the right column at full screen only.
+    chartStop();
+    if (colB && r.ok) {
+      colB.className += ' has-chart';
+      drawChart(colB, r, refs);
+    }
+
     // 6. The merchants' cuts; 7. Put it somewhere (on the right at full screen).
     drawMerchants(colA, r, refs);
     drawDest(colB || colA, r, refs);
@@ -852,6 +1081,7 @@
     if (slider !== 'cap') LAB.session = m.nudgeCut(LAB.session, r, slider, d, size);
     else LAB.session = LAB.session.mode === 'keep' ? m.nudgeKeep(LAB.session, r, d, size) : m.nudgeCap(LAB.session, r, d, size);
     paint(LAB.refs, result());
+    chartSoon();
   }
 
   function cutOf(refs, node) {
@@ -909,7 +1139,10 @@
     } else {
       return;
     }
-    paint(LAB.refs, result());
+    var now2 = result();
+    paint(LAB.refs, now2);
+    chartStop();
+    if (LAB.refs) paintChart(LAB.refs.chart, now2);
   }
 
   /* ---------- wiring ---------- */
@@ -933,6 +1166,7 @@
       LAB.session = newSession();
       LAB.hold = null;
       LAB.refs = null;
+      chartStop();
     }
     redraw();
   }
@@ -994,7 +1228,7 @@
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
     // The tile's suggested move follows the session cap: drawn again once
     // the panel closes, not on every key press.
-    onClose: function (ctx) { LAB.refs = null; LAB.hold = null; ctx.redrawTile(); }
+    onClose: function (ctx) { chartStop(); LAB.refs = null; LAB.hold = null; ctx.redrawTile(); }
   };
   Object.defineProperty(widget, 'title', { get: function () { return STRINGS.titles.lab; }, enumerable: true, configurable: true });
   Object.defineProperty(widget, 'shortTitle', { get: function () { return STRINGS.titlesShort.lab; }, enumerable: true, configurable: true });
@@ -1006,7 +1240,8 @@
     session: function () { return JSON.parse(JSON.stringify(LAB.session)); },
     result: result,
     PREF_KEY: PREF_KEY,
-    HOLD_GAP: HOLD_GAP
+    HOLD_GAP: HOLD_GAP,
+    CHART_EVERY: CHART_EVERY
   };
 
   (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push(widget);

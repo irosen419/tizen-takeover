@@ -7,8 +7,8 @@
  * lab, a negative room, one day left, the 1st and 2nd of the month, a saved
  * cap from the last cycle, new data while the tab is open and a pinned Daily
  * room cap. Then the cuts' limits, the destinations, the streak and
- * yesterday, each suggested move, the key steps, the runway line and broken
- * data. The figures are made up (this repository is public). Only what ships
+ * yesterday, each suggested move, the key steps, the runway line, the
+ * runway chart's days and fixed y range, and broken data. The figures are made up (this repository is public). Only what ships
  * with Node is used. Prints one line per check, then "N passed, M failed".
  */
 'use strict';
@@ -478,6 +478,66 @@ check('runway: two points per step, ending at lab.room', () => {
   assert.strictEqual(w.end, 1334);
   assert.strictEqual(w.end, run().R);
   assert.strictEqual(L.runwayLine(null), null);
+});
+
+// Example B's runway (made up): headroom -1,051 this morning, paid on the 19th.
+const RUNWAY_B = { start: -1051, end: '2026-12-01', steps: [
+  { date: '2026-11-20', delta: -200, kind: 'bill' }, { date: '2026-11-19', delta: 3000, kind: 'pay' },
+  { date: '2026-12-01', delta: -415, kind: 'reserve' }
+] };
+
+check('runway chart: days from this morning (D before card day) to card day, in date order, ending at R', () => {
+  const r = run();
+  const c = L.runwayChart(RUNWAY_B, r);
+  assert.strictEqual(c.days, 14);
+  assert.strictEqual(c.start, '2026-11-17');
+  same(c.points.map((p) => [p.day, p.value]), [[0, -1051], [2, -1051], [2, 1949], [3, 1949], [3, 1749], [14, 1749], [14, 1334]]);
+  assert.strictEqual(c.end, r.R);
+  assert.strictEqual(c.points[c.points.length - 1].value, r.R);
+  same(c.paydays, [{ day: 2, date: '2026-11-19', value: 1949 }]);
+  // Nov 17 2026 is a Tuesday: one tick a day, card day included.
+  assert.strictEqual(c.ticks.length, 15);
+  same(c.ticks.slice(0, 3).map((t) => t.dow), [2, 3, 4]);
+  assert.strictEqual(c.ticks[14].dow, 2);
+});
+
+check('runway chart: the y range holds 0, the line and the owed line at the top of the cap slider', () => {
+  const r = run();
+  const c = L.runwayChart(RUNWAY_B, r);
+  assert.strictEqual(r.capMax, 196);
+  assert.strictEqual(c.owedMax, 196 * 14);
+  assert.strictEqual(c.lo, -1051);
+  assert.strictEqual(c.hi, 2744);
+  // The range does not follow the session: a cap or a cut moves only the owed line.
+  const moved = L.runwayChart(RUNWAY_B, run({ session: { mode: 'cap', cap: 150, keep: null, cuts: { Amazon: 40 } } }));
+  same([moved.lo, moved.hi], [c.lo, c.hi]);
+  // The owed line ends at P, which stays inside the range at either end of the slider.
+  [0, 196].forEach((cap) => {
+    const x = run({ session: { mode: 'cap', cap: cap, keep: null, cuts: {} } });
+    assert.ok(x.planned >= c.lo && x.planned <= c.hi, 'P ' + x.planned);
+    assert.strictEqual(L.toCents(x.R - x.planned), x.keep);
+  });
+});
+
+check('runway chart: a flat line still reaches card day; a step out of the window clamps to its edge', () => {
+  const r = run();
+  const flat = L.runwayChart({ start: 1334, end: '2026-12-01', steps: [] }, r);
+  same(flat.points.map((p) => [p.day, p.value]), [[0, 1334], [14, 1334]]);
+  const edges = L.runwayChart({ start: 1000, end: '2026-12-01', steps: [
+    { date: '2026-11-10', delta: 500, kind: 'pay' }, { date: '2026-12-09', delta: -166, kind: 'bill' }] }, r);
+  same(edges.points.map((p) => p.day), [0, 0, 0, 14, 14]);
+  assert.strictEqual(edges.end, 1334);
+});
+
+check('runway chart: none without an equation, a runway, or for another card day', () => {
+  const r = run();
+  assert.strictEqual(L.runwayChart(null, r), null);
+  assert.strictEqual(L.runwayChart({ start: 'x', steps: [] }, r), null);
+  assert.strictEqual(L.runwayChart({ start: 5 }, r), null);
+  assert.strictEqual(L.runwayChart(Object.assign({}, RUNWAY_B, { end: '2026-12-02' }), r), null);
+  assert.strictEqual(L.runwayChart(RUNWAY_B, run({ lab: lab(1334, { daysLeft: 0 }) })), null);
+  assert.strictEqual(L.runwayChart(RUNWAY_B, run({ lab: null })), null);
+  assert.strictEqual(L.runwayChart(RUNWAY_B, null), null);
 });
 
 check('broken data never throws', () => {

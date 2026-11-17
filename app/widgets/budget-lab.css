@@ -1,5 +1,5 @@
 /* Budget lab: the pace streak tile and the panel (the cap, the merchants'
-   cuts, Put it somewhere, the pace). Every class starts with bl-; the shared
+   cuts, Put it somewhere, the pace, and at full screen the runway chart). Every class starts with bl-; the shared
    budget look (bu-tile, bu-hero, bu-psec, the colors) comes from budget.css.
 
    Same rules as style.css and budget.css: no grid, no flex gap, only opacity
@@ -222,5 +222,66 @@
 .bl-panel.is-full .bl-mnote { font-size: 1.2rem; }
 .bl-panel.is-full .bl-ctrack,
 .bl-panel.is-full .bl-dtrack { height: 0.6rem; }
+
+/* ---------- the runway chart (full screen only) ----------
+   Inline SVG for the lines, HTML for the words: the weekdays, the card day
+   and payday dates, and the gap, the chart's one figure. Nothing here has a
+   transition; a key press rewrites the owed line's points and the gap's
+   text, nothing else. The labels are placed once, when the panel is drawn. */
+.bl-chart-sec { padding: 0 0.9rem 0.3rem; }
+.bl-chart-sec > .bu-label:first-child { margin-top: 0; }
+.bl-chart-empty { margin-top: 0.3rem; }
+.bl-legend { margin-top: 0.25rem; font-size: 1.1rem; line-height: 1.35; color: var(--text-2); }
+.bl-leg { display: inline-block; margin-right: 1.4rem; white-space: nowrap; }
+.bl-leg-swatch {
+  display: inline-block;
+  width: 1.6rem;
+  height: 0;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  border-top: 0.22rem solid var(--bu-pace);
+}
+.bl-leg-swatch.is-owed { border-top-style: dashed; border-top-color: var(--bu-under); }
+.bl-chart { position: relative; height: 10rem; margin-top: 0.3rem; }
+.bl-ch-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.bl-ch-zero { stroke: rgba(255, 255, 255, 0.2); stroke-width: 1.5; }
+.bl-ch-axis { fill: none; stroke: rgba(255, 255, 255, 0.4); stroke-width: 2; }
+.bl-ch-rule { stroke: rgba(255, 255, 255, 0.55); stroke-width: 2; stroke-dasharray: 6 6; }
+.bl-ch-room { fill: none; stroke: var(--bu-pace); stroke-width: 4; stroke-linejoin: round; }
+.bl-ch-owed { fill: none; stroke: var(--bu-under); stroke-width: 4; stroke-dasharray: 12 8; stroke-linecap: round; }
+.bl-ch-end { fill: var(--bu-pace); }
+.bl-ch-pay { fill: var(--bu-ok); }
+.bl-ch-lab {
+  position: absolute;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  white-space: nowrap;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+}
+.bl-ch-lab.is-card { color: var(--text); font-weight: 600; -webkit-transform: translateX(-100%); transform: translateX(-100%); }
+.bl-ch-lab.is-pay { color: var(--bu-ok); }
+.bl-ch-gap {
+  position: absolute;
+  right: 0;
+  top: 0;
+  max-width: 80%;
+  font-size: 1.5rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: var(--text);
+}
+.bl-ch-gap.is-ok { color: var(--bu-ok); }
+.bl-ch-gap.is-neg { color: var(--bu-neg); }
+
+/* With the chart above them, Put it somewhere and Pace pack tighter so the
+   right column fits the screen without scrolling. */
+.bl-panel.is-full .has-chart .bl-dest { padding-top: 0.3rem; padding-bottom: 0.1rem; }
+.bl-panel.is-full .has-chart .bl-drow { padding: 0.15rem 0 0.05rem; }
+.bl-panel.is-full .has-chart .bl-dname { font-size: 1.2rem; }
+.bl-panel.is-full .has-chart .bl-dval { font-size: 1.15rem; }
+.bl-panel.is-full .has-chart .bl-dtrack { height: 0.45rem; margin-top: 0.2rem; }
+.bl-panel.is-full .has-chart .bl-pace .bu-hero.is-panel .bu-hero-num { font-size: 2.5rem; }
 
 .css-end { top: 0; }

@@ -39,7 +39,13 @@
  *   a cut stops at its p_i and the five together at combined, locked at a
  *   $0 cap); Put it somewhere filling card day first, then savings, AWWS and
  *   buffer (example B); Guest mode hides it all and clears the session and
- *   its cuts; app/ files touched here are plain ES5.
+ *   its cuts; the runway chart at full screen only (none at panel size): the
+ *   owed line ends at P and moves with the cap and with a cut, no figure in
+ *   it but the gap label ("Covered, $15 spare", "Short by $13"), and during
+ *   a held key the owed line's points are written at most every 120 ms (one
+ *   write a press at most, a trailing write after the last), nothing else in
+ *   the chart changes and the scale stays; no runway sent says "Waiting for
+ *   the budget app"; app/ files touched here are plain ES5.
  * Needs Playwright and port 8095 free. Prints one line per check and
  * "N passed, M failed"; exits 1 on a failure. Nothing reaches the internet.
  */
@@ -861,6 +867,181 @@ async function main() {
         assert(/\+\$334 more to savings/.test(await labPanel(page)), 'extra: ' + await labPanel(page));
         const f = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-dfill'), (n) => n.style.transform));
         assert(f.join() === 'scaleX(1),scaleX(1),scaleX(1),scaleX(1)', 'fills: ' + f.join());
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    /* ---------- Budget lab: the runway chart (full screen) ---------- */
+    // The sample's 14 day window with a payday (dev/budget-sample.js, payday):
+    // room 2,045.75 over 14 days, calculated cap 146.125, capMax 293.
+    const chartOf = (page) => page.evaluate(() => {
+      const box = document.querySelector('#panel .bl-chart');
+      if (!box) return null;
+      const owed = box.querySelector('.bl-ch-owed');
+      const pts = (owed.getAttribute('points') || '').trim().split(/\s+/).map((p) => p.split(',').map(Number));
+      const gap = box.querySelector('.bl-ch-gap');
+      let other = '';
+      Array.prototype.forEach.call(box.querySelectorAll('*'), (n) => {
+        if (n === gap || gap.contains(n)) return;
+        for (const c of n.childNodes) if (c.nodeType === 3) other += c.nodeValue + ' ';
+      });
+      const col = box.closest('.bu-pcol');
+      return { end: pts[pts.length - 1], start: pts[0], n: pts.length, gap: gap.textContent, gapCls: gap.className, other: other,
+        labels: Array.prototype.map.call(box.querySelectorAll('.bl-ch-lab'), (n) => n.textContent),
+        right: !!col && !!col.previousElementSibling, pay: box.querySelectorAll('.bl-ch-pay').length,
+        room: box.querySelector('.bl-ch-room').getAttribute('points'), view: box.querySelector('svg').getAttribute('viewBox') };
+    });
+    // From the full screen button: Down into the left column's rows, then Up to the cap (the first row).
+    const toCap = async (page) => {
+      for (let i = 0; i < 4 && !/^(cap|mode|save|reset|cut-\d+)$/.test(await focusedKey(page) || ''); i++) await H.key(page, 'ArrowDown');
+      for (let i = 0; i < 16 && (await focusedKey(page)) !== 'cap'; i++) await H.key(page, 'ArrowUp');
+      assert((await focusedKey(page)) === 'cap', 'could not reach the cap: ' + await focusedKey(page));
+    };
+
+    await check('Budget lab runway chart: full screen only; the owed line ends at P and moves with the cap and a cut; no $ but the gap', async () => {
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert(!(await has(page, '#panel .bl-chart, #panel .panel-body svg, #panel .bl-chart-sec')), 'a chart at panel size');
+        await H.fullScreen(page);
+        let c = await chartOf(page);
+        assert(c && c.right && c.n === 2 && c.pay === 1, 'full screen chart: ' + JSON.stringify(c));
+        assert(c.gap === 'Covered, nothing to spare' && /is-ok/.test(c.gapCls), 'gap at the calculated cap: ' + c.gap + ' ' + c.gapCls);
+        assert(!/\$/.test(c.other), 'a figure in the chart besides the gap: ' + c.other);
+        assert(c.labels.indexOf('Nov 20') >= 0 && c.labels.indexOf('Nov 30') >= 0 && c.labels.indexOf('Mon') >= 0, 'labels: ' + c.labels.join(' | '));
+        assert(/Runway to Nov 30/i.test(await text(page, '#panel .bl-chart-head')), 'head: ' + await text(page, '#panel .bl-chart-head'));
+        // At the calculated cap the owed line ends where the headroom line does (K = 0).
+        const roomEnd = c.room.trim().split(/\s+/).pop().split(',').map(Number);
+        assert(Math.abs(roomEnd[0] - c.end[0]) < 0.11 && Math.abs(roomEnd[1] - c.end[1]) < 1.5, 'ends: ' + roomEnd + ' vs ' + c.end);
+        const start = c.end;
+        await toCap(page);
+        await H.key(page, 'ArrowRight');
+        await H.sleep(200);
+        c = await chartOf(page);
+        assert(c.end[1] < start[1] && c.end[0] === start[0], 'the end did not rise with the cap: ' + start + ' to ' + c.end);
+        assert(c.gap === 'Short by $13' && /is-neg/.test(c.gapCls), '$147 a day: ' + c.gap + ' ' + c.gapCls);
+        await H.key(page, 'ArrowLeft', 2);
+        await H.sleep(200);
+        c = await chartOf(page);
+        assert(c.end[1] > start[1] && c.gap === 'Covered, $15 spare' && /is-ok/.test(c.gapCls), '$145 a day: ' + JSON.stringify(c.end) + ' ' + c.gap);
+        const at145 = c.end;
+        await goTo(page, 'cut-0');
+        await H.key(page, 'ArrowRight', 10);
+        await H.sleep(200);
+        c = await chartOf(page);
+        assert(c.end[1] > at145[1] && c.gap === 'Covered, $25 spare', 'a $10 cut: ' + JSON.stringify(c.end) + ' ' + c.gap);
+        assert(!/\$/.test(c.other), 'a figure in the chart besides the gap: ' + c.other);
+        // Back to the panel size: no chart.
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        assert(!(await has(page, '#panel .bl-chart')), 'a chart after leaving full screen');
+        const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+        assert(!p.length, 'panel: ' + p.slice(0, 5).join('; '));
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Budget lab runway chart: a held key writes the owed line at most every 120 ms, one points write a tick, the scale fixed', async () => {
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await H.fullScreen(page);
+        await toCap(page);
+        const before = await chartOf(page);
+        const every = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.CHART_EVERY);
+        assert(every === 120, 'CHART_EVERY ' + every);
+        await page.evaluate(() => {
+          const box = document.querySelector('#panel .bl-chart');
+          window.__chartBox = box;
+          window.__muts = [];
+          window.__writes = [];
+          window.__presses = 0;
+          window.addEventListener('keydown', () => { window.__presses++; }, true);
+          const owed = box.querySelector('.bl-ch-owed');
+          const set = owed.setAttribute;
+          owed.setAttribute = function (k, v) { window.__writes.push({ k: k, t: performance.now(), press: window.__presses }); return set.call(this, k, v); };
+          window.__obs = new MutationObserver((list) => list.forEach((m) => {
+            const n = m.target.nodeType === 3 ? m.target.parentNode : m.target;
+            window.__muts.push({ type: m.type, attr: m.attributeName, cls: String(n.getAttribute && n.getAttribute('class') || '') });
+          }));
+          window.__obs.observe(box, { attributes: true, characterData: true, childList: true, subtree: true });
+          window.__trans = Array.prototype.map.call(box.querySelectorAll('*'), (n) => getComputedStyle(n).transitionDuration).filter((d) => !/^0s(, 0s)*$/.test(d));
+        });
+        // A hold of 1.5 s: one press, the repeat after 500 ms, every 50 ms (real time too).
+        const t0 = Date.now();
+        for (const t of REPEAT.filter((x) => x <= 1500)) {
+          const wait = t0 + t - Date.now();
+          if (wait > 0) await H.sleep(wait);
+          await page.clock.setFixedTime(new Date(H.MONDAY + t));
+          await page.keyboard.press('ArrowRight');
+        }
+        await H.sleep(400);
+        const got = await page.evaluate(() => ({ writes: window.__writes, muts: window.__muts, presses: window.__presses, trans: window.__trans,
+          same: window.__chartBox === document.querySelector('#panel .bl-chart') }));
+        const s = await session(page);
+        assert(got.same, 'the chart was drawn again during the hold');
+        assert(!got.trans.length, 'a transition in the chart: ' + got.trans.join());
+        assert(got.presses === REPEAT.filter((x) => x <= 1500).length && s.cap > 160, 'presses ' + got.presses + ', cap ' + s.cap);
+        const pw = got.writes.filter((w) => w.k === 'points');
+        assert(pw.length === got.writes.length, 'another attribute written on the owed line: ' + JSON.stringify(got.writes.slice(0, 3)));
+        assert(pw.length >= 3 && pw.length < got.presses, got.presses + ' presses, ' + pw.length + ' points writes');
+        const per = {};
+        pw.forEach((w) => { per[w.press] = (per[w.press] || 0) + 1; });
+        const last = got.presses;
+        assert(Object.keys(per).every((k) => per[k] <= (Number(k) === last ? 2 : 1)), 'more than one write for a press: ' + JSON.stringify(per));
+        for (let i = 1; i < pw.length; i++) assert(pw[i].t - pw[i - 1].t >= every - 8, 'writes ' + Math.round(pw[i].t - pw[i - 1].t) + ' ms apart');
+        // Only the owed line's points and the gap label's words changed.
+        const bad = got.muts.filter((m) => !(m.type === 'attributes' && m.attr === 'points' && /bl-ch-owed/.test(m.cls)) &&
+          !(/bl-ch-gap/.test(m.cls) && (m.type !== 'attributes' || m.attr === 'class')));
+        assert(!bad.length, 'other changes in the chart: ' + JSON.stringify(bad.slice(0, 4)));
+        // The scale and every other mark stayed; the last press landed (the trailing write).
+        const after = await chartOf(page);
+        assert(after.room === before.room && after.view === before.view && after.labels.join() === before.labels.join() && after.start.join() === before.start.join(),
+          'the axes moved: ' + JSON.stringify([before.room, after.room]).slice(0, 200));
+        assert(after.end[1] < before.end[1] && after.end[1] >= 0, 'end: ' + before.end + ' to ' + after.end);
+        const r = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result());
+        assert(after.gap === 'Short by $' + Math.ceil(-r.keep - 1e-9), 'the gap after release: ' + after.gap + ', K ' + r.keep);
+        // Drawn again from nothing at the same session, the owed line ends in the same place.
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await H.fullScreen(page);
+        const again = await chartOf(page);
+        assert(again.end.join() === after.end.join() && again.gap === after.gap && again.room === before.room, 'redrawn: ' + again.end + ' vs ' + after.end);
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Budget lab runway chart: no runway sent shows the lab\'s waiting words; Guest mode draws none', async () => {
+      const b = H.budgetSample.snapshot({ sentAt: FRESH });
+      b.runway = null;     // the budget app's way to say the section is gone
+      await env.setBudget(b);
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await H.fullScreen(page);
+        assert(!(await has(page, '#panel .bl-chart')) && /Waiting for the budget app/.test(await text(page, '#panel .bl-chart-sec')), 'no runway: ' + await text(page, '#panel .bl-chart-sec'));
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
+        await page.evaluate(() => window.HUB_GUEST.set(true));
+        await H.sleep(300);
+        await H.openPanel(page, 'budget-lab');
+        await H.fullScreen(page);
+        const p = await labPanel(page);
+        assert(/Hidden for guests/.test(p) && !/\$/.test(p) && !(await has(page, '#panel .bl-chart, #panel .bl-chart-sec, #panel svg polyline')), 'guest full screen: ' + p);
         noErrors(page);
       } finally {
         await page.ctx.close();

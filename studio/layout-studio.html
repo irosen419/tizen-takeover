@@ -585,7 +585,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     ambiance:      { title: 'Ambiance',              sub: 'Pick the light vibe from the TV', soon: true },
     mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true },
     // app/widgets/wotd.js (v0.28.5): one Latin American Spanish word a day, easy in January, B1 by December.
-    // The budget tiles (app/widgets/budget.js, v0.28.4; budget-lab.js, v0.28.16, merchants and Put it somewhere v0.28.17): the "Budget" layout. Runway is a proposal (it comes in Budget lab's full screen).
+    // The budget tiles (app/widgets/budget.js, v0.28.4; budget-lab.js, v0.28.16, merchants and Put it somewhere v0.28.17, runway chart at full screen v0.28.18): the "Budget" layout. The Runway tile stays a proposal (the chart lives in Budget lab's full screen).
     'budget-room':  { title: 'Daily room',           sub: 'What is left to spend each day until card day' },
     'budget-card':  { title: 'Card day',             sub: 'When the card is due and whether it is covered' },
     'budget-goals': { title: 'Goals',                sub: 'Each spending goal: clean, on pace, over or under' },
@@ -1051,8 +1051,8 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
               es: 'Estándar más el resultado del pago de tarjeta: «19 nov: cubierto, sin sobrante» (o «Faltan $10» en coral).' },
       panel: { en: 'The head line, the cap slider ($1 a press, faster when held, the calculated and saved marks), Set the cap / Set what to keep, the outcome with monthly remaining and its gap, Save this cap and Back to calculated, Merchants (a cut slider for each of the top five, the label above its track), Put it somewhere (card day, savings, AWWS, buffer, funded of planned), then Pace.',
                es: 'La línea de cabecera, el control del tope ($1 por pulsación, más rápido al mantener, con las marcas del calculado y del guardado), Fijar el tope / Fijar cuánto guardar, el resultado con lo que queda para gastar y su diferencia, Guardar este tope y Volver al calculado, Comercios (un control de recorte para cada uno de los cinco primeros, con la etiqueta sobre su barra), A dónde va (pago de tarjeta, ahorro, AWWS, colchón, cubierto de lo previsto) y Ritmo.' },
-      full: { en: 'Two columns, bigger: the rows down to Merchants on the left, Put it somewhere and Pace on the right. The runway comes later.',
-              es: 'Dos columnas, más grandes: las filas hasta Comercios a la izquierda, y A dónde va y Ritmo a la derecha. La pista llega más adelante.' }
+      full: { en: 'Two columns, bigger: the rows down to Merchants on the left; on the right the runway to card day (headroom stepping up on payday and down for bills against the spending line at the cap being tried, no dollar axis, the gap on card day the one figure), then Put it somewhere and Pace.',
+              es: 'Dos columnas, más grandes: las filas hasta Comercios a la izquierda; a la derecha el recorrido hasta el pago de tarjeta (el margen libre, que sube con el sueldo y baja con las facturas, frente a la línea de gasto con el tope que pruebas, sin eje de dólares, y la diferencia del día de pago como única cifra), y luego A dónde va y Ritmo.' }
     },
     ambiance: plannedEntry({ en: 'Ambiance', es: 'Ambiente' },
       { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),

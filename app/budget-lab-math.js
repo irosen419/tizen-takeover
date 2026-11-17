@@ -18,6 +18,10 @@
  *   HUB_BUDGET_LAB_MATH.makePref / readPref  the saved cap, as a keep amount
  *   HUB_BUDGET_LAB_MATH.holdStep(ms, mode)   the step for a held key
  *   HUB_BUDGET_LAB_MATH.runwayLine(runway)   the headroom step line
+ *   HUB_BUDGET_LAB_MATH.runwayChart(runway, result)
+ *                                            that line by day from this
+ *                                            morning to card day, with the
+ *                                            fixed y range for the chart
  *
  * The symbols (R, T, D, E, c0, c, F, ce, P, K, M, cs) are the plan's, section
  * (a). Dollars come in and go out rounded to cents; the work in between is
@@ -567,6 +571,64 @@
     return { points: pts, end: toCents(v), endDate: runway.end || null };
   }
 
+  // The runway chart's data, in days and dollars (the widget turns them into
+  // pixels): the headroom line by day, 0 this morning to D on card day, with
+  // a last point on card day when no step falls there; the paydays (the top
+  // of each pay step); one tick a day with its weekday (0 Sunday); and the
+  // y range, fixed for as long as the panel is open: 0, every headroom
+  // point, and the most the owed line can reach, capMax * D, since the owed
+  // line runs from 0 this morning to P = ce * D on card day and P never
+  // passes c * D <= capMax * D. Steps are taken in date order (ties keep
+  // their order); a step before this morning counts this morning and one
+  // after card day on card day. null when there is no equation (result not
+  // ok, D = 0), no usable runway, or a runway for another card day.
+  function runwayChart(runway, result) {
+    if (!result || !result.ok || !(result.D > 0) || !runway || !runway.steps || typeof runway.steps.length !== 'number') return null;
+    if (typeof runway.end === 'string' && result.cardDate && runway.end !== result.cardDate) return null;
+    var D = result.D;
+    var start = addDays(result.cardDate, -D);
+    if (!start) return null;
+    var t0 = parseDate(start);
+    var steps = [];
+    for (var i = 0; i < runway.steps.length; i++) {
+      var st = runway.steps[i];
+      if (st && isNum(st.delta)) steps.push({ i: i, t: parseDate(st.date), st: st });
+    }
+    steps.sort(function (a, b) {
+      var ta = isNaN(a.t) ? -Infinity : a.t;
+      var tb = isNaN(b.t) ? -Infinity : b.t;
+      return ta < tb ? -1 : ta > tb ? 1 : a.i - b.i;
+    });
+    var line = runwayLine({ start: runway.start, end: runway.end, steps: steps.map(function (s) { return s.st; }) });
+    if (!line) return null;
+    function dayOf(date) {
+      var t = parseDate(date);
+      return isNaN(t) ? 0 : clamp(Math.round((t - t0) / 86400000), 0, D);
+    }
+    var points = [];
+    var paydays = [];
+    var lo = 0;
+    var hi = 0;
+    for (i = 0; i < line.points.length; i++) {
+      var p = line.points[i];
+      var pt = { day: p.date === null ? 0 : dayOf(p.date), value: p.value };
+      points.push(pt);
+      if (p.value < lo) lo = p.value;
+      if (p.value > hi) hi = p.value;
+      // The second point of a pay step is the level after the pay.
+      if (p.kind === 'pay' && i % 2 === 0) paydays.push({ day: pt.day, date: p.date, value: p.value });
+    }
+    if (points[points.length - 1].day < D) points.push({ day: D, value: line.end });
+    var owedMax = toCents(result.capMax * D);
+    if (owedMax > hi) hi = owedMax;
+    if (hi <= lo) hi = lo + 1;
+    var dow0 = new Date(t0).getUTCDay();
+    var ticks = [];
+    for (i = 0; i <= D; i++) ticks.push({ day: i, dow: (dow0 + i) % 7 });
+    return { days: D, start: start, cardDate: result.cardDate, points: points, end: line.end, paydays: paydays,
+      lo: toCents(lo), hi: toCents(hi), owedMax: owedMax, ticks: ticks };
+  }
+
   var api = {
     DEFAULT_SPLIT: DEFAULT_SPLIT,
     compute: compute,
@@ -583,6 +645,7 @@
     streak: streakOf,
     yesterday: yesterdayOf,
     runwayLine: runwayLine,
+    runwayChart: runwayChart,
     toCents: toCents,
     wholeDown: wholeDown,
     wholeUp: wholeUp,

@@ -22,7 +22,10 @@
  *     Spanish, and the panel (the cap, the pills, the buttons, the pace) at
  *     25% longer with nothing clipped and accents whole; the merchants' cut
  *     rows (label on its own line over the track) and "A dónde va" at panel
- *     and full screen, plain and 25% longer, line height 1.25 or more;
+ *     and full screen, plain and 25% longer, line height 1.25 or more; the
+ *     runway chart at full screen ("Recorrido hasta el 30 nov", the legend,
+ *     Spanish weekdays, the gap "Cubierto, sin sobrante", "Faltan $13"),
+ *     every label inside the chart, apart from the others, accents whole;
  *   - a language change (HUB_I18N.setLang) redraws the tiles, their titles
  *     and an open panel, and back to English;
  *   - app/i18n.js is plain ES5 and every money key has a Spanish text.
@@ -378,6 +381,63 @@ async function main() {
           }
           noErrors(page);
         } finally { await page.ctx.close(); }
+      });
+
+      // The runway chart at full screen: the head, the legend, the weekdays
+      // and the gap in Spanish, every label inside the chart and on its own.
+      await check(name + ': Budget lab runway chart at full screen, words in Spanish, labels whole and apart', async () => {
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
+        const page = await open(env, { layout: ROW, lang: 'es', long: long });
+        try {
+          await H.openPanel(page, 'budget-lab');
+          await H.fullScreen(page);
+          const c = await page.evaluate(() => {
+            const sec = document.querySelector('#panel .bl-chart-sec');
+            const box = document.querySelector('#panel .bl-chart');
+            if (!sec || !box) return null;
+            const b = box.getBoundingClientRect();
+            const sr = sec.getBoundingClientRect();
+            const out = [];
+            const lh = (n) => { const cs = getComputedStyle(n); return parseFloat(cs.lineHeight) / parseFloat(cs.fontSize); };
+            const labs = Array.prototype.slice.call(box.querySelectorAll('.bl-ch-lab, .bl-ch-gap'));
+            const rects = labs.map((n) => n.getBoundingClientRect());
+            labs.forEach((n, i) => {
+              const r = rects[i];
+              if (lh(n) < 1.245) out.push('line height ' + lh(n).toFixed(2) + ': ' + n.textContent);
+              if (r.left < b.left - 1 || r.right > b.right + 1 || r.top < b.top - 1 || r.bottom > b.bottom + 1) out.push('outside the chart: ' + n.textContent);
+              for (let j = 0; j < i; j++) {
+                const o = rects[j];
+                if (r.left < o.right - 1 && o.left < r.right - 1 && r.top < o.bottom - 1 && o.top < r.bottom - 1) out.push('overlap: ' + n.textContent + ' / ' + labs[j].textContent);
+              }
+            });
+            Array.prototype.forEach.call(sec.querySelectorAll('.bl-leg, .bl-chart-head'), (n) => {
+              const r = n.getBoundingClientRect();
+              if (r.right > sr.right + 1) out.push('out of its section: ' + n.textContent);
+              if (lh(n) < 1.245) out.push('line height ' + lh(n).toFixed(2) + ': ' + n.textContent);
+            });
+            return { bad: out, head: sec.querySelector('.bl-chart-head').textContent, legend: sec.querySelector('.bl-legend').textContent,
+              labels: labs.map((n) => n.textContent), gap: box.querySelector('.bl-ch-gap').textContent };
+          });
+          assert(c, 'no chart at full screen');
+          assert(!c.bad.length, c.bad.slice(0, 4).join('; '));
+          assert(/Recorrido/.test(c.head) && /30 nov/.test(c.head), 'head: ' + c.head);
+          assert(/Margen/.test(c.legend) && /Gasto/.test(c.legend), 'legend: ' + c.legend);
+          assert(c.labels.indexOf('lun') >= 0 && c.labels.indexOf('20 nov') >= 0 && c.labels.indexOf('30 nov') >= 0, 'labels: ' + c.labels.join(' | '));
+          assert(/Cubierto/.test(c.gap) && /sobrante/.test(c.gap), 'gap: ' + c.gap);
+          const fk = () => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
+          for (let i = 0; i < 4 && !/^(cap|mode|save|reset|cut-\d+)$/.test(await fk() || ''); i++) await H.key(page, 'ArrowDown');
+          for (let i = 0; i < 16 && (await fk()) !== 'cap'; i++) await H.key(page, 'ArrowUp');
+          await H.key(page, 'ArrowRight');
+          await H.sleep(200);
+          const g = await text(page, '#panel .bl-ch-gap');
+          assert(/Faltan\S* \$13/.test(g), 'gap at $147: ' + g);
+          const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+          assert(!p.length, p.slice(0, 5).join('; '));
+          noErrors(page);
+        } finally {
+          await page.ctx.close();
+          await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+        }
       });
     }
 

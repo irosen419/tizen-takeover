@@ -260,6 +260,19 @@
     'budgetLab.destCovered': 'Cubierto',
     'budgetLab.destShortBy': '{funded} de {planned} · faltan {short}',
     'budgetLab.destExtra': '+{n} más al ahorro',
+    // The runway chart at full screen. The weekdays come from this file's
+    // day lists; the gap label is the chart's one figure.
+    'budgetLab.chartHead': 'Recorrido hasta el {d}',
+    'budgetLab.chartHeadShort': 'Recorrido',
+    'budgetLab.chartRoom': 'Margen libre',
+    'budgetLab.chartOwed': 'Gasto con este tope',
+    'budgetLab.chartOwedShort': 'Gasto',
+    'budgetLab.gapSpare': 'Cubierto, sobran {n}',
+    'budgetLab.gapSpareShort': 'Sobran {n}',
+    'budgetLab.gapZero': 'Cubierto, sin sobrante',
+    'budgetLab.gapZeroShort': 'Cubierto',
+    'budgetLab.gapShort': 'Faltan {n}',
+    'budgetLab.gapShortShort': 'Faltan {n}',
 
     /* ---- Earned vs spent tile (awws-money in app/widgets/awws.js) ----
      * Key 'awws.<path in STRINGS>'; the English is STRINGS at that path in
