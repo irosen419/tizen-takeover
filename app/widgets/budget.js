@@ -180,10 +180,6 @@
     try { if (window.console && console.warn) console.warn('Budget: ' + text); } catch (e) { /* ignore */ }
   }
 
-  function remPx() {
-    try { return parseFloat(getComputedStyle(document.documentElement).fontSize) || 16; } catch (e) { return 16; }
-  }
-
   function fmtNum(n) {
     return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, STRINGS.thousands);
   }
@@ -244,20 +240,6 @@
       if (parts[i] && parts[i].parentNode) parts[i].parentNode.removeChild(parts[i]);
     }
   }
-
-  // A line made of parts { t, c }: the first form that fits on one line.
-  function fitParts(node, forms) {
-    for (var f = 0; f < forms.length; f++) {
-      if (!forms[f]) continue;
-      while (node.firstChild) node.removeChild(node.firstChild);
-      for (var i = 0; i < forms[f].length; i++) el('span', forms[f][i].c || '', node, forms[f][i].t);
-      if (!overW(node)) return true;
-    }
-    node.style.display = 'none';
-    return false;
-  }
-
-  function sepPart() { return { t: STRINGS.sep, c: 'bu-sep' }; }
 
   function parseIso(s) {
     if (typeof s !== 'string') return NaN;
