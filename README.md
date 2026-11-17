@@ -97,8 +97,9 @@ Press OK on it to open the Clock page. At the top right of the page are the choi
 
 - **Face:** **Digital** (a big time with the full date under it, the default) or **Analog** (a round face with ticks and 12, 3, 6 and 9, the day and date in a small window in its lower half, and the date beside it, with no digital time). The second hand steps once a second; nothing sweeps.
 - **Clock:** **12-hour** (`9:41 PM`, the default) or **24-hour** (`21:41`), on the page and the tile. Only shown with the Digital face; on Analog it doesn't apply, and is kept for when you go back to Digital.
+- **Language:** **English** (the default) or **Español** (Latin American Spanish), the hub's language, on both faces. The label turns into **Idioma**; the two names always stay in their own language, so you can find your way back. Today it changes Word of the day (its title, labels and definitions); the Clock itself stays in English for now. The Pi can set it too: `./hub lang es` (or `en`), and `?lang=es` on the page's address tries it for one load without saving.
 
-The tile changes as soon as you pick, behind the page. Both choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
+The tile changes as soon as you pick, behind the page. All three choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
 
 ### About panel (the version and status)
 
@@ -149,6 +150,12 @@ The tile shows the city, the temperature and the sky now, and today's high, low 
 If the TV can't draw it smoothly, the picture stays but stands still ("calm"). The hub decides by itself: it counts the frames a second the page really draws with the picture moving, 6 seconds after it starts, and goes still under 30 (the result is kept on the TV for 6 hours and for this build), or straight away when the hub has already fallen back to plain fades. The About panel's **Weather picture** row appears only when the picture is not moving, and says why: `Still, this TV drew 14 frames a second`, `Still, the hub is on plain fades`, `Still, set to calm (config)` or `Off (URL)`. A moving picture is plain to see, so it gets no row. To decide by hand, set `widgets.weather.scene` in `config.js` to `'calm'` (always still), `'full'` (always moving) or `'off'` (no picture), or add `?weatherscene=calm` (`full`, `off`) to the page's address. To preview a kind on a laptop, add `?wxscene=rain-3`, `snow-2-night`, `storm`, `clear-dusk`, `partly-day`, `cloudy-wind`... (kinds: clear, mostlyclear, partly, cloudy, fog, drizzle, rain, snow, storm; levels 1 to 3; then `day`, `night`, `dawn`, `dusk`, `wind`). `node dev/weather-scene-test.js` checks all of it.
 
 Forecasts come from [Open-Meteo](https://open-meteo.com/), which is free and needs no account. The panel credits it, as its licence asks. The TV asks Open-Meteo directly; if the TV's browser can't reach it, the hub's local helper (`service.js`) asks for it. The forecast updates every 20 minutes while the hub is on screen, and right away when you come back to the hub after a while. When it can't update, the tile keeps the last forecast and says "as of" and the time it was fetched. After 24 hours without an update the old forecast is dropped and the tile says "No forecast right now" with the time of the next try. **Update now** in the panel tries at once. If the TV's clock jumps back, the hub updates straight away instead of waiting.
+
+### Word of the day
+
+One Spanish word or phrase a day (Latin American Spanish), with its English, from `app/wotd-data.js`: 366 entries, picked by the TV's local day of the year (1 January is the first), so the word stays the same all day and changes just after midnight. They start easy (A1, January to March), then A2 (April to August) and reach B1 by December, with seasonal words near their days (Día de Muertos, Acción de Gracias, Nochebuena). Nouns carry their article (el, la, los, las).
+
+The Spanish word is always the big one and the English the smaller companion. A 1-column tile shows only the Spanish word; a strip shows "darse cuenta · to realize" on one line; two rows add the part of speech and the Spanish example; three rows add how to say it ([DAR-seh KWEN-tah]), the definition and the example's English. OK opens everything: the date and level, both definitions and both examples; Full screen makes it bigger. With the hub in Spanish (Language on the Clock page) the title, labels, date and first definition are Spanish (Palabra del día). `node dev/wotd-test.js` checks it (see [Preview and test](#preview-and-test)).
 
 ## To-do
 
@@ -319,7 +326,7 @@ live: { server: HUB_PI + ':8097' },
 | `unexpected reply from the Pi` | Something else answers at that address. Retries every 5 minutes |
 | `the hub needs an update` | The Pi's server is newer than this hub understands |
 
-Commands the Pi can send: `show` a widget (`weather`, `todo`, `calendar`, `entertainment`, optionally full screen), `home` (close whatever is open), `say` a short message for a few seconds, and `reload` (which goes through the loader, so it also picks up the newest version). A command sent while the TV is off is dropped, so nothing old fires when the TV turns on.
+Commands the Pi can send: `show` a widget (`weather`, `todo`, `calendar`, `entertainment`, optionally full screen), `home` (close whatever is open), `say` a short message for a few seconds, `reload` (which goes through the loader, so it also picks up the newest version), and `lang` (`./hub lang es` or `en`: the hub's language, as if picked on the Clock page). A command sent while the TV is off is dropped, so nothing old fires when the TV turns on.
 
 ### For widget authors
 
@@ -343,6 +350,8 @@ The preview's hub server also reads four sample calendars from a small local fee
 `node dev/todo-notes-shots.js` checks to-do notes the same way, in English and in Spanish: they show under the title only when an item has them, are cut between lines, never sideways, and survive a tick on the TV. `--out <folder> --scale 2` also writes screenshots.
 
 `node dev/clock-test.js` checks the Clock tile in a headless browser (Playwright): Digital 12-hour and 24-hour, Analog with no digital time, the tile changing at once when the face or clock is picked on the page, the page on Analog without a digital time or the 12/24 choice (and the arrows still fine), the second hand turning once a second from one timer that stops on Digital, and the date window fitting at 13 tile sizes, in English and in Spanish ("SÁB", "MIÉ"). `CLOCK_TEST_SHOTS=<folder>` also saves screenshots and a short clip (needs ffmpeg). It needs port 8095 free.
+
+`node dev/wotd-test.js` checks Word of the day and the hub's languages in a headless browser (Playwright): `app/i18n.js` (Spanish strings, the English fallback for a missing key, `{vars}`, the saved choice, `?lang=es`, a TV whose storage throws, its own Spanish day and month names), the 366 words (every field, an article on every noun), the pick by local day of the year (all day, both 2026 clock changes, a new word at midnight), and the tile at 12 sizes in English and Spanish with every word at the tight sizes: nothing outside the tile, nothing cut sideways, no type under 0.85rem, line heights with room for accents, ¿ and ¡. Then the panel and full screen for every word in both languages, and a language change redrawing the tile and the open panel. `--shots <folder>` also saves the `docs/screenshots/wotd-*` and `clock-language-*` pictures. It needs port 8095 free.
 
 `node dev/layout-test.js` checks the tile layout sent from the Pi (`./hub layout set`, see `pi/README.md`) the same way: a saved layout at start, tiles that move in place with focus and glass following, waiting while a panel is open, one reload for a new set of widgets, and no reload loop. It also needs port 8095 free.
 
@@ -444,8 +453,9 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
+- `app/i18n.js` holds the hub's languages (`HUB_I18N`: English and Latin American Spanish, with its own Spanish day and month names); a missing Spanish string falls back to the English the widget gives.
 - `app/icons.js` holds the white line icons; `app/logos.js` the app logos.
-- `app/widgets/` holds one file per widget: `today.js` (the Clock, with its page's styles in `today.css`), `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) and `planned.js` (the "Soon" placeholders).
+- `app/widgets/` holds one file per widget: `today.js` (the Clock, with its page's styles in `today.css`), `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) `wotd.js` (Word of the day, with `wotd.css`; its words are in `app/wotd-data.js`) and `planned.js` (the "Soon" placeholders).
 - `app/hub.js` builds the home screen, moves focus, opens panels and runs the animations.
 - `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
 - `app/backgrounds/` holds the background picture.

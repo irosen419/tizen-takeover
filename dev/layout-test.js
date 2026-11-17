@@ -32,7 +32,8 @@ const SWAPPED = [
   { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
   { widget: 'nowplaying',    x: 9, y: 0, w: 3, h: 2 },
   { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
-  { widget: 'mirror',        x: 9, y: 2, w: 3, h: 4 },
+  { widget: 'mirror',        x: 9, y: 2, w: 3, h: 2 },
+  { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 },
   { widget: 'ambiance',      x: 3, y: 4, w: 6, h: 1 },
   { widget: 'weather',       x: 0, y: 5, w: 3, h: 1 },
   { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
@@ -258,7 +259,7 @@ async function checkSavedAtStart() {
     context = await newContext(`try { localStorage.setItem('homeHub.layout', ${JSON.stringify(saved)}); } catch (e) {}`);
     page = await openHub(context, 'live=off');
     ids = await look.ids(page);
-    assert(ids.length === 9, 'fallback for ' + saved + ': ' + JSON.stringify(ids));
+    assert(ids.length === 10, 'fallback for ' + saved + ': ' + JSON.stringify(ids));
     assert(await cellAt(page, 'weather', 9, 0, 3, 2), 'weather where config.js puts it, for ' + saved + ': ' + JSON.stringify(await look.cell(page, 'weather')));
     noErrors(context);
     await context.close();
@@ -272,7 +273,7 @@ async function checkSavedAtStart() {
     Storage.prototype.removeItem = no;
   });
   page = await openHub(context, 'live=off');
-  assert((await look.ids(page)).length === 9, 'blocked storage: tiles');
+  assert((await look.ids(page)).length === 10, 'blocked storage: tiles');
   noErrors(context);
 }
 
@@ -299,7 +300,7 @@ async function checkMove() {
   const today = await look.home(page, 'nowplaying');
   assert(after.left < before.left && after.left < today.left, 'measured rects: ' + JSON.stringify({ before, after, today }));
   assert(await page.evaluate(() => window.__sameLoad === true) && page.loads === 1, 'the page reloaded (loads ' + page.loads + ')');
-  assert((await look.ids(page)).length === 9, 'tile count changed');
+  assert((await look.ids(page)).length === 10, 'tile count changed');
   // Focus follows the new places: Left from Entertainment now reaches Weather.
   assert((await look.focused(page)) === 'entertainment', 'focus moved by itself');
   await page.keyboard.press('ArrowLeft');
@@ -367,7 +368,7 @@ async function checkReload() {
   await setLayout(null);
   await until(() => page.loads >= 3, 6000, 'no reload for the reset');
   await ready(page);
-  await until(async () => (await look.ids(page)).length === 9, 4000, 'tiles after the reset');
+  await until(async () => (await look.ids(page)).length === 10, 4000, 'tiles after the reset');
   await sleep(1500);
   assert(page.loads === 3, 'loads after the reset: ' + page.loads);
   assert((await look.saved(page)) === null, 'saved copy after reset');
@@ -394,7 +395,7 @@ async function checkNoLoop() {
   await until(async () => (await look.live(page)) === 'live', 8000, 'not live after the reload');
   await sleep(2500);
   assert(page.loads === 2, 'reload loop: ' + page.loads + ' loads');
-  assert((await look.ids(page)).length === 9, 'tiles: ' + JSON.stringify(await look.ids(page)));
+  assert((await look.ids(page)).length === 10, 'tiles: ' + JSON.stringify(await look.ids(page)));
   noErrors(context);
 }
 
