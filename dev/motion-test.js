@@ -315,7 +315,10 @@ async function checkDisabled(pi) {
     await page.keyboard.press('ArrowLeft');
     await sleep(60);
     let x = await extras(page);
-    assert(!x.nodes, c.name + ': a ring: ' + JSON.stringify(x));
+    // The still accent edge (a tile updating, or an event within the hour) stays on
+    // purpose and is checked as a still line below; it is not a ring.
+    const loud = await page.evaluate(() => document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge').length);
+    assert(!loud, c.name + ': a ring: ' + JSON.stringify(x));
     const border = await page.evaluate(() => getComputedStyle(document.querySelector('#grid .tile.is-focused')).borderTopColor);
     assert(/255, 255, 255(, 1)?\)/.test(border), c.name + ': the focused tile lost its border: ' + border);
     await page.keyboard.press('ArrowRight');
@@ -326,7 +329,8 @@ async function checkDisabled(pi) {
     await launchFirstApp(page);
     await sleep(150);
     x = await extras(page);
-    assert(!x.nodes, c.name + ': a bloom: ' + JSON.stringify(x));
+    const bloomLoud = await page.evaluate(() => document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge').length);
+    assert(!bloomLoud, c.name + ': a bloom: ' + JSON.stringify(x));
     await page.keyboard.press('Escape');
     await idle(page);
     await sleep(300);
