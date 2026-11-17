@@ -268,18 +268,28 @@
 
   /* ---------- the light around a tile's border (laps) ---------- */
 
-  // A lap: a short light that travels clockwise around a tile's whole
-  // border, corners included, starting and ending at the top-left corner
-  // (style.css, .fx-lap). It is eight pieces, each moved by one CSS
-  // animation (transform, and a corner's opacity, 1 only while it turns):
-  // the four straight parts slide a gradient along a clipped strip, the
-  // four corners turn a part-lit ring through a clipped square. Here each piece gets its length, duration and delay from
-  // the tile's size, so the light keeps one speed and every piece starts as
-  // the light reaches it. n laps: n sets of pieces, the next set starting as
-  // the light finishes the one before.
+  // A lap: a light that travels clockwise around a tile's whole border,
+  // corners included, starting and ending at the top-left corner
+  // (style.css, .fx-lap). Its length is a share of the top edge's straight
+  // part (about 3/4 of the old top-edge sweep's), so it can span a corner
+  // at once. Only transform and opacity animate:
+  //   the four straight parts: a gradient slides along a clipped strip;
+  //   the four corners: two part-lit rings in a clipped square, each
+  //     turning a quarter. The first brings the light's head through the
+  //     corner and then holds the corner lit; the second takes over (a
+  //     little before the first goes out, so they overlap) as the tail
+  //     enters, and carries the tail through.
+  // Each piece gets its length, duration and delay from the tile's size, so
+  // the light keeps one speed and every piece starts as the light reaches
+  // it. n laps: n sets of pieces, the next set starting as the light
+  // finishes the one before.
   var LAP_CHIP_MS = 1200;        // the activity chip's light: two laps of this
   var LAP_CHIP_N = 2;
+  var LAP_CHIP_LEN = 0.30;       // its length: 30% of the top edge (the old sweep was 40%)
   var LAP_ACCENT_MS = 1400;      // the accent edge's arrival light: one lap
+  var LAP_ACCENT_LEN = 0.2625;   // its length: 26% of the top edge (the old sweep was 35%)
+  var LAP_WIDER_PX = 1;          // the light is this much wider than the border (inward)
+  var LAP_OVERLAP_MS = 30;       // a corner's head ring stays this long into its tail ring
   // In lap order, from the top-left corner: [piece, corner?, along x?]
   var LAP_PIECES = [['tl', true], ['t', false, true], ['tr', true], ['r', false, false],
     ['br', true], ['b', false, true], ['bl', true], ['l', false, false]];
@@ -290,9 +300,10 @@
 
   // Starts a lap over tile's border. parent: where the overlay goes (the
   // tile, or an element that sits on the tile's padding box like
-  // .fx-accent); cls: its extra class; n: how many laps; lapMs: one lap.
+  // .fx-accent); cls: its extra class; n: how many laps; lapMs: one lap;
+  // share: the light's length, a share of the top edge's straight part.
   // Returns the lap (lapEnd ends it early), or null.
-  function lapRun(tile, parent, cls, n, lapMs) {
+  function lapRun(tile, parent, cls, n, lapMs, share) {
     var W = tile.offsetWidth;
     var H = tile.offsetHeight;
     if (!(W > 0 && H > 0)) return null;
@@ -301,9 +312,11 @@
     var bw = parseFloat(cs.borderTopWidth) || 0;
     var rm = Math.max(1, r - bw / 2);        // the border's middle, round a corner
     var arc = Math.PI * rm / 2;              // one corner, along the border
-    var len = 3 * arc;                       // the light: the ring's lit three quarters
     var Lx = Math.max(0, W - 2 * r);
     var Ly = Math.max(0, H - 2 * r);
+    // The light; never shorter than a corner (the two rings must meet).
+    var len = Math.max(share * Lx, arc);
+    var lw = px(bw + LAP_WIDER_PX);
     var v = (4 * arc + 2 * Lx + 2 * Ly) / lapMs;   // px per ms
     var node = document.createElement('div');
     node.className = 'fx-lap ' + cls;
@@ -313,8 +326,9 @@
     var i;
     for (i = 0; i < LAP_PIECES.length; i++) {
       var hd = el('b', 'fx-lap-' + LAP_PIECES[i][0], node);
-      // The strips as thick as the border as drawn (a browser draws it in whole pixels).
-      if (!LAP_PIECES[i][1]) hd.style[LAP_PIECES[i][2] ? 'height' : 'width'] = px(bw);
+      // The strips as thick as the border as drawn (a browser draws it in
+      // whole pixels), and a pixel more, inward.
+      if (!LAP_PIECES[i][1]) hd.style[LAP_PIECES[i][2] ? 'height' : 'width'] = lw;
       holders.push(hd);
     }
     var last = null;
@@ -323,17 +337,27 @@
       for (i = 0; i < LAP_PIECES.length; i++) {
         var p = LAP_PIECES[i];
         var L = p[1] ? arc : (p[2] ? Lx : Ly);
-        if (L > 0) {
+        if (L > 0 && p[1]) {
+          // The head ring: a quarter turn as the head crosses, then it
+          // holds the corner lit (fill forwards) until it goes out just
+          // after the tail ring starts.
+          var a = el('i', 'fx-lap-in', holders[i]);
+          a.style.borderWidth = lw;
+          a.style.animation = 'fx-lap-' + p[0] + '-in ' + ms1(arc / v) + ' linear ' + ms1(at / v) + ' 1 forwards, ' +
+            'fx-lap-off 1ms linear ' + ms1((at + len) / v + LAP_OVERLAP_MS) + ' 1 forwards';
+          // The tail ring: the corner fully lit as it starts, then a quarter
+          // turn as the tail crosses (no fill: it rests outside its clip).
+          var b = el('i', 'fx-lap-out', holders[i]);
+          b.style.borderWidth = lw;
+          b.style.animation = 'fx-lap-' + p[0] + '-out ' + ms1(arc / v) + ' linear ' + ms1((at + len) / v) + ' 1';
+          last = b;
+        } else if (L > 0) {
+          // A strip L long: the mover is L plus the light long, the light at
+          // its far end. No fill: before and after its run it rests outside its clip.
           var m = el('i', '', holders[i]);
-          var name = 'fx-lap-' + p[0];
-          if (!p[1]) {
-            // A strip L long: the mover is L plus the light long, the light at its far end.
-            name = p[2] ? 'fx-lap-x' : 'fx-lap-y';
-            if (p[2]) { m.style.width = px(L + len); m.style.backgroundSize = px(len) + ' 100%'; }
-            else { m.style.height = px(L + len); m.style.backgroundSize = '100% ' + px(len); }
-          }
-          // No fill: before and after its run each piece rests outside its clip.
-          m.style.animation = name + ' ' + ms1((L + len) / v) + ' linear ' + ms1(at / v) + ' 1';
+          if (p[2]) { m.style.width = px(L + len); m.style.backgroundSize = px(len) + ' 100%'; }
+          else { m.style.height = px(L + len); m.style.backgroundSize = '100% ' + px(len); }
+          m.style.animation = (p[2] ? 'fx-lap-x ' : 'fx-lap-y ') + ms1((L + len) / v) + ' linear ' + ms1(at / v) + ' 1';
           last = m;
         }
         at += L;
@@ -736,7 +760,7 @@
 
   // The chip's light: two laps around the tile's border (a lap, above).
   function makeEdge(tile) {
-    return lapRun(tile, tile, 'fx-edge', LAP_CHIP_N, LAP_CHIP_MS);
+    return lapRun(tile, tile, 'fx-edge', LAP_CHIP_N, LAP_CHIP_MS, LAP_CHIP_LEN);
   }
 
   // Fades a chip out (150 ms), then takes it away.
@@ -1003,7 +1027,7 @@
     }
     // A light laps the border once, unless the chip's own already does.
     lapEnd(e.lap);
-    e.lap = moving && !quiet ? lapRun(tile, e.node, 'fx-accent-sweep', 1, LAP_ACCENT_MS) : null;
+    e.lap = moving && !quiet ? lapRun(tile, e.node, 'fx-accent-sweep', 1, LAP_ACCENT_MS, LAP_ACCENT_LEN) : null;
     edgeArm(e, EDGE_HOLD_MS);
     return true;
   }

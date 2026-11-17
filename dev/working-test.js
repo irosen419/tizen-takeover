@@ -282,14 +282,14 @@ async function check2(pi) {
     const c = tile.querySelector('.fx-chip');
     const e = tile.querySelector('.fx-edge');
     return { same: c === window.__w, cls: c.className, n: document.querySelectorAll('.fx-chip').length, edge: !!e,
-      sweep: e ? Array.prototype.map.call(e.querySelectorAll('i'), (n) => getComputedStyle(n).animationName).filter((v, i, a) => a.indexOf(v) === i).sort().join() : '', log: window.__log, ico: getComputedStyle(c.querySelector('.fx-act-ico')).animationName,
+      sweep: e ? Array.prototype.map.call(e.querySelectorAll('i'), (n) => getComputedStyle(n).animationName).join(', ').split(', ').filter((v, i, a) => a.indexOf(v) === i).sort().join() : '', log: window.__log, ico: getComputedStyle(c.querySelector('.fx-act-ico')).animationName,
       pen: c.querySelector('.fx-act-pen') ? getComputedStyle(c.querySelector('.fx-act-pen')).animationName : '' };
   });
   assert(mid.same, 'not the same element');
   assert(!/fx-chip-working/.test(mid.cls) && /is-in/.test(mid.cls) && !/is-out/.test(mid.cls), 'class: ' + mid.cls);
   assert(mid.log.every((c) => !/is-out/.test(c)), 'it faded on the way: ' + JSON.stringify(mid.log));
   // The light laps the whole border: the four sides and the four corners.
-  assert(mid.n === 1 && mid.edge && mid.sweep === 'fx-lap-bl,fx-lap-br,fx-lap-tl,fx-lap-tr,fx-lap-x,fx-lap-y', 'edge: ' + JSON.stringify(mid));
+  assert(mid.n === 1 && mid.edge && mid.sweep === 'fx-lap-bl-in,fx-lap-bl-out,fx-lap-br-in,fx-lap-br-out,fx-lap-off,fx-lap-tl-in,fx-lap-tl-out,fx-lap-tr-in,fx-lap-tr-out,fx-lap-x,fx-lap-y', 'edge: ' + JSON.stringify(mid));
   assert(mid.ico === 'none' && mid.pen === 'fx-act-pen', 'the icon loops do not run: ' + JSON.stringify(mid));
   assert(!(await workingOf(page, 'todo')), 'the working state stayed');
   await sleep(1500);

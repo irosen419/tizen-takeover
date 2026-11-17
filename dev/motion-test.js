@@ -775,11 +775,11 @@ async function checkActivityTodo(pi) {
     const ts = getComputedStyle(c.querySelector('.fx-chip-text'));
     const edge = tile.querySelector('.fx-edge');
     return { n: list.length, widget: cell.getAttribute('data-widget'), text: c.textContent, left: R.left - T.left, bottom: T.bottom - R.bottom,
-      opacity: cs.opacity, fontPx: parseFloat(ts.fontSize), edge: !!edge, edgeAnim: edge ? Array.prototype.map.call(edge.querySelectorAll('i'), (n) => getComputedStyle(n).animationName).filter((v, i, a) => a.indexOf(v) === i).sort().join() : '' };
+      opacity: cs.opacity, fontPx: parseFloat(ts.fontSize), edge: !!edge, edgeAnim: edge ? Array.prototype.map.call(edge.querySelectorAll('i'), (n) => getComputedStyle(n).animationName).join(', ').split(', ').filter((v, i, a) => a.indexOf(v) === i).sort().join() : '' };
   });
   assert(mid.n === 1 && mid.widget === 'todo' && mid.text === 'Incoming to-do', 'the chip: ' + JSON.stringify(mid));
   assert(Math.abs(mid.left - 28) <= 4 && Math.abs(mid.bottom - 24) <= 4, 'not in the lower left (28px, 24px): ' + JSON.stringify(mid));
-  assert(mid.fontPx >= 22 && mid.edge && mid.edgeAnim === 'fx-lap-bl,fx-lap-br,fx-lap-tl,fx-lap-tr,fx-lap-x,fx-lap-y', 'text size or edge: ' + JSON.stringify(mid));
+  assert(mid.fontPx >= 22 && mid.edge && mid.edgeAnim === 'fx-lap-bl-in,fx-lap-bl-out,fx-lap-br-in,fx-lap-br-out,fx-lap-off,fx-lap-tl-in,fx-lap-tl-out,fx-lap-tr-in,fx-lap-tr-out,fx-lap-x,fx-lap-y', 'text size or edge: ' + JSON.stringify(mid));
   // The new row just appears, and nothing in the tile moved for the chip.
   const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return r && { o: r.style.opacity, t: r.style.transform, tr: r.style.transition }; }, id);
   assert(row && !row.o && !row.t && !row.tr, 'the new row moved: ' + JSON.stringify(row));
