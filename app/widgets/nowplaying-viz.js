@@ -29,22 +29,33 @@
  * shrunk to 1/4 and 1/16 and stretched back over itself, added on) and a
  * vignette. The trails live on a hidden state canvas; the shown canvas is a
  * copy plus motes plus bloom, so the bloom never feeds back. It draws at 60
- * frames a second, or 30 when a frame costs over 11 ms, and steps down to
- * classic at once when a frame costs over 24 ms.
+ * frames a second, or 30 when a frame costs over 11 ms, and steps down at
+ * once when a frame costs over 24 ms.
+ *
+ * Sharp and sharp-lite (v0.28.3), between radiant and classic: the 960 x 540
+ * (or 720 x 405, with 3/4 of the shapes) canvas at 30 fps, shown as it is:
+ * no bloom, second canvas, halos, motes or vignette (sharp keeps the light
+ * sprites on the sparks; they cost little). So lines stay crisp over their
+ * trails, the feedback there zooms and turns less per frame and keeps a
+ * little less of the last frame, and the new shapes go on a little stronger.
  *
  * Built for a slow TV: no getImageData, shadows, filters or gradients per
  * frame, no new arrays or objects per frame. A frame-rate check after it
- * starts steps down: classic (480 x 270 at 30 fps, colors that add up to
- * white where they cross) to lite (320 x 180 at 24 fps, fewer shapes, plain
- * alpha) to glow (soft CSS glows only, moved by the compositor) to a still
- * wash (and the big picture layout again). The answer is kept for this
- * build. On the plainest motion setting ('fade') it starts at the still wash.
+ * starts steps down one rung at a time: radiant, sharp, sharp-lite, classic
+ * (480 x 270 at 30 fps, colors that add up to white where they cross), lite
+ * (320 x 180 at 24 fps, fewer shapes, plain alpha), glow (soft CSS glows
+ * only, moved by the compositor), a still wash (and the big picture layout
+ * again). Every canvas level keeps the average cost of a frame; a step down
+ * from one skips the rungs above classic whose cost, estimated from it,
+ * could not hold 30 fps (see SKIP_MS). The answer is kept for this build.
+ * On the plainest motion setting ('fade') it starts at the still wash.
  * Paused, it settles and the drawing loop stops; nothing runs while it is
  * hidden or closed.
  *
  * Plain ES5. window.HUB_NP_VIZ:
  *   plan(info)         the level it would show for info: 'off', 'wash',
- *                      'glow', 'lite' or 'classic' (decides the page layout)
+ *                      'glow', 'lite', 'classic', 'sharplite', 'sharp' or
+ *                      'radiant' (decides the page layout)
  *   compact(level)     true when that level goes with the small card
  *   sync(host, info)   show, update in place, or (info null) stop; true
  *                      while it shows.
@@ -62,12 +73,18 @@
   'use strict';
 
   var STORE_KEY = 'homeHub.npViz';
-  var LEVELS = ['off', 'wash', 'glow', 'lite', 'classic', 'radiant'];
-  var ALIAS = { full: 'radiant' };
-  var NAMES = { radiant: 'radiant', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash', off: 'off' };
-  var LADDER = { radiant: 'classic', classic: 'lite', lite: 'glow', glow: 'wash' };
+  var LEVELS = ['off', 'wash', 'glow', 'lite', 'classic', 'sharplite', 'sharp', 'radiant'];
+  var ALIAS = { full: 'radiant', 'sharp-lite': 'sharplite' };
+  var NAMES = { radiant: 'radiant', sharp: 'sharp', sharplite: 'sharp-lite', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash', off: 'off' };
+  var LADDER = { radiant: 'sharp', sharp: 'sharplite', sharplite: 'classic', classic: 'lite', lite: 'glow', glow: 'wash' };
+  // crisp: the sharp levels' feedback. fade multiplies how much of the last
+  // frame stays (per 30 fps frame), so old, resampled (soft) copies die out
+  // sooner; step scales the zoom and turn of the feedback, so each copy is
+  // resampled less far from where it was and trails stay lines, not fog.
   var CANVAS = {
     radiant: { w: 960, h: 540, fps: 60, lighter: true, amount: 1, bloom: true },
+    sharp: { w: 960, h: 540, fps: 30, lighter: true, amount: 1, crisp: true, fade: 0.93, step: 0.6, sparks: true },
+    sharplite: { w: 720, h: 405, fps: 30, lighter: true, amount: 0.75, crisp: true, fade: 0.93, step: 0.6 },
     classic: { w: 480, h: 270, fps: 30, lighter: true, amount: 1 },
     lite: { w: 320, h: 180, fps: 24, lighter: false, amount: 0.55 }
   };
@@ -80,6 +97,18 @@
   var TIMING = { after: 3500, ms: 2000, again: 800 };   // the frame-rate check: start, length, retry
   var QUICK_MS = 24;           // radiant: drawing a frame takes longer than this on average: step down at once
   var HALF_MS = 11;            // radiant: over this a frame, 30 a second instead of 60
+  // Stepping down from a canvas level whose frame cost is known: a rung whose
+  // estimated cost is over SKIP_MS (of the 33 ms a 30 fps frame has) is
+  // skipped, never past classic. The estimate scales the cost by the pixel
+  // count and, leaving radiant, by PLAIN_COST for dropping the bloom, the
+  // second canvas, the halos and the motes. Both are estimates, not
+  // measurements of the TV. Headless desktop Chromium with a 6x slower CPU
+  // drew radiant at 31 to 50 ms a frame and sharp at 3 to 5 (about 0.1);
+  // 0.25 leaves a wide margin, so a rung is only skipped when it plainly
+  // cannot hold (sharp is skipped only when radiant takes over 112 ms). The
+  // frame-rate check still judges every rung it lands on.
+  var SKIP_MS = 28;
+  var PLAIN_COST = 0.25;
   var MIN_FPS = 24;            // glow level
   var MAX_GAP_MS = 250;
   var SAMPLE_WAIT_MS = 700;    // wait this long for the album colors before using a fallback
@@ -91,7 +120,8 @@
     palettes: {}, sampling: {}, problem: '',
     timers: [], measureRaf: 0, restTimer: null,
     shown: false, lastStrength: -1, listening: false,
-    cv: null, lastScene: '', phraseBeats: 0, forcePoor: false, forceScene: -1
+    cv: null, lastScene: '', phraseBeats: 0, forcePoor: false, forceScene: -1,
+    forceCost: 0, lastMs: 0, lastMsLevel: '', skipped: []
   };
 
   /* ---------- small helpers ---------- */
@@ -101,7 +131,7 @@
   function lerp(a, b, t) { return a + (b - a) * t; }
   function smooth(a, b, x) { var t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
   function num(v, d) { return typeof v === 'number' && isFinite(v) ? v : d; }
-  function isCanvas(level) { return level === 'radiant' || level === 'classic' || level === 'lite'; }
+  function isCanvas(level) { return Object.prototype.hasOwnProperty.call(CANVAS, level); }
   function compact(level) { return isCanvas(level) || level === 'glow'; }
   function levelName(q) { q = ALIAS[q] || q; return LEVELS.indexOf(q) >= 0 ? q : null; }
 
@@ -459,7 +489,7 @@
     });
   }
 
-  /* ---------- the canvas: classic and lite ---------- */
+  /* ---------- the canvas: radiant, sharp, sharp-lite, classic and lite ---------- */
 
   // One frame's facts, shared with the scenes. Reused: nothing is made per frame.
   var F = {
@@ -604,7 +634,7 @@
       low = document.createElement('canvas'); low.width = Math.round(cfg.w / 16); low.height = Math.round(cfg.h / 16);
     }
     C = st.cv = {
-      el: cv, g: g, view: disp || cv, dg: disp ? disp.getContext('2d') : null,
+      level: st.level, el: cv, g: g, view: disp || cv, dg: disp ? disp.getContext('2d') : null,
       mid: mid, low: low, mg: mid ? mid.getContext('2d') : null, lg: low ? low.getContext('2d') : null,
       motes: floats(MOTES * 4), sprites: null, cost: 0, costN: 0, avg: 0, buf: buf, bg: buf.getContext('2d'), cfg: cfg, W: cfg.w, H: cfg.h,
       raf: 0, last: 0, interval: 1000 / cfg.fps, frames: 0, restAt: 0, still: false,
@@ -628,6 +658,8 @@
     if (!C) return;
     if (C.raf && window.cancelAnimationFrame) cancelAnimationFrame(C.raf);
     C.raf = 0;
+    // Kept for the About row, which is read after the page has closed.
+    if (C.avg) { st.lastMs = C.avg; st.lastMsLevel = C.level; }
     if (C.view.parentNode) C.view.parentNode.removeChild(C.view);
     var vg = st.root && st.root.querySelector('.npv-vignette');
     if (vg) vg.parentNode.removeChild(vg);
@@ -654,7 +686,7 @@
     C.palFrom = pal.from;
     // The base the trails fade into: a deep tint of the main color, never black.
     C.base = rgba(deep(pal.dom, 0.075), 1);
-    if (C.cfg.bloom) C.sprites = [makeSprite(pal.dom), makeSprite(pal.acc), makeSprite(pal.light)];
+    if (C.cfg.bloom || C.cfg.sparks) C.sprites = [makeSprite(pal.dom), makeSprite(pal.acc), makeSprite(pal.light)];
   }
 
   function run() {
@@ -678,13 +710,17 @@
       try {
         keep = draw(C, dt, position(), st.playing);
         if (t0) {
-          var cost = performance.now() - t0;
+          // The average cost of a frame, at every canvas level: the About
+          // row shows it, and a step down uses it to skip rungs.
+          var cost = st.forceCost || performance.now() - t0;
           C.avg = C.avg ? C.avg * 0.96 + cost * 0.04 : cost;
-          if (st.playing && C.cfg.bloom && C.costN < 30) {
+          if (st.playing && C.costN < 30) {
             C.costN += 1;
             C.cost += cost;
-            if (C.costN === 30 && C.cost / 30 > HALF_MS && C.interval < 40) C.interval = 1000 / 30;
-            if (C.costN === 30 && C.cost / 30 > QUICK_MS && st.source === 'auto' && !st.measured) later(function () { quickStep(C); }, 0);
+            // Radiant only: the first 30 frames playing pick 60 or 30 a
+            // second, or step down at once.
+            if (C.costN === 30 && C.cfg.bloom && C.cost / 30 > HALF_MS && C.interval < 40) C.interval = 1000 / 30;
+            if (C.costN === 30 && C.cfg.bloom && C.cost / 30 > QUICK_MS && st.source === 'auto' && !st.measured) later(function () { quickStep(C); }, 0);
           }
         }
       } catch (e) {
@@ -739,6 +775,7 @@
     F.lum = cfg.lighter ? 56 : 62;
     F.alpha = clamp((0.55 + 0.45 * P.energy) * (0.55 + 0.45 * F.k) + 0.3 * F.kick, 0.3, 1);
     if (cfg.bloom) F.alpha = clamp(F.alpha * Math.min(1, f * 0.72), 0.1, 1);   // more frames a second: each one fainter
+    if (cfg.crisp) F.alpha = clamp(F.alpha * 1.15, 0.45, 1);   // sharp levels: the new shapes stand clear of their trails
 
     var si = st.forceScene >= 0 ? st.forceScene : sceneIndex(C.order, P, pos);
     if (si !== C.scene) {
@@ -749,11 +786,14 @@
 
     // 1. The last frame, a little zoomed, turned and moved, fading into the base.
     var drive = 0.6 + 0.7 * P.energy;          // calm songs move their trails slower
-    var zf = 1 + ((C.fz - 1) * drive + (C.fz >= 1 ? 0.012 : -0.008) * F.kick + 0.03 * F.flash) * f;
-    var rot = C.fr * drive * f;
+    var step = cfg.crisp ? cfg.step : 1;       // sharp levels: smaller zoom and turn per frame
+    var zf = 1 + ((C.fz - 1) * drive + (C.fz >= 1 ? 0.012 : -0.008) * F.kick + 0.03 * F.flash) * f * step;
+    var rot = C.fr * drive * f * step;
     var dx = C.fdx * f;
     var dy = C.fdy * f;
-    var decay = Math.pow(C.fdecay, f);
+    // Sharp levels: a little less of the last frame stays, so the soft,
+    // many times resampled copies fade out before they pile into a fog.
+    var decay = Math.pow(C.fdecay * (cfg.crisp ? cfg.fade : 1), f);
     if (rest) {
       zf = lerp(zf, 1, rest); rot *= 1 - rest; dx *= 1 - rest; dy *= 1 - rest;
       decay = lerp(decay, 1, rest);
@@ -1336,7 +1376,7 @@
   // waiting for the frame-rate check.
   function quickStep(C) {
     if (st.cv !== C || st.level !== 'radiant' || st.measured || st.source !== 'auto') return;
-    var next = LADDER.radiant;
+    var next = stepFrom('radiant', C.cost / 30);
     st.fps = 0;
     lsSet({ build: window.HUB_BUILD, level: next, fps: 0, settled: false });
     st.level = next;
@@ -1344,6 +1384,29 @@
     st.measureStarted = false;
     if (st.playing) { st.measureStarted = true; measure(); }
     mark();
+  }
+
+  // The level a step down from `from` goes to. With the frame cost known
+  // (ms, 0 when not), rungs above classic that plainly cannot hold 30 a
+  // second are skipped: each one's cost is estimated from the last (more or
+  // fewer pixels; cheaper again leaving radiant's bloom, halos and motes),
+  // and one estimated over SKIP_MS is passed by. Classic and below are always
+  // tried and judged by their frame rate, as before.
+  function stepFrom(from, cost) {
+    var next = LADDER[from] || 'wash';
+    var at = from;
+    var est = cost;
+    st.skipped = [];
+    while (est > 0 && LEVELS.indexOf(next) > LEVELS.indexOf('classic') && isCanvas(at)) {
+      var a = CANVAS[at];
+      var b = CANVAS[next];
+      est = est * (b.w * b.h) / (a.w * a.h) * (a.bloom && !b.bloom ? PLAIN_COST : 1);
+      if (est <= SKIP_MS) break;
+      st.skipped.push(next);
+      at = next;
+      next = LADDER[next];
+    }
+    return next;
   }
 
   function judge(times, n, again, minFps) {
@@ -1356,7 +1419,7 @@
     if (poor && !again) { mark(); measure(true); return; }
     if (poor) {
       var from = st.level;
-      var next = LADDER[from] || 'wash';
+      var next = stepFrom(from, st.cv && isCanvas(from) ? st.cv.avg : 0);
       lsSet({ build: window.HUB_BUILD, level: next, fps: fps, settled: next === 'wash' });
       st.measured = next === 'wash';
       st.level = next;
@@ -1511,13 +1574,16 @@
     if (st.level !== 'off') {
       if (st.fps) parts.push(st.fps + ' fps');
       else if (st.source === 'auto' && !st.measured && st.level !== 'wash') parts.push('measuring');
+      // How long a frame takes to draw, at every canvas level: against the
+      // 33 ms a 30 fps frame has, it shows the headroom.
+      var ms = st.cv && st.cv.level === st.level && st.cv.avg ? st.cv.avg : st.lastMsLevel === st.level ? st.lastMs : 0;
+      if (isCanvas(st.level) && ms) parts.push((ms < 10 ? Math.round(ms * 10) / 10 : Math.round(ms)) + ' ms a frame');
       var info = st.info || st.lastInfo;
       var v = info && info.vibe;
       if (info) {
         var bpm = v && v.tempo ? Math.round(v.tempo) + ' BPM' : '100 BPM';
         parts.push(bpm + (v ? (v.source === 'features' ? ' from features' : ' guessed from genres') : ' (no vibe)'));
       }
-      if (st.cv && st.cv.avg) parts.push(Math.round(st.cv.avg * 10) / 10 + ' ms a frame');
       if (isCanvas(st.level) && st.lastScene) parts.push(st.lastScene);
     }
     var text = parts.join(', ');
@@ -1533,7 +1599,8 @@
       level: st.level, source: st.source, fps: st.fps, shown: !!st.root, playing: st.playing,
       timers: st.timers.length + (st.restTimer ? 1 : 0) + (st.measureRaf ? 1 : 0) + (C && C.raf ? 1 : 0),
       canvas: !!C, loop: !!(C && C.raf), frames: C ? C.frames : 0, still: !!(C && C.still),
-      size: C ? C.W + 'x' + C.H : '', bloom: !!(C && C.dg), ms: C ? Math.round(C.avg * 10) / 10 : 0, lighter: !!(C && C.cfg.lighter),
+      size: C ? C.W + 'x' + C.H : '', bloom: !!(C && C.dg), sprites: !!(C && C.sprites), crisp: !!(C && C.cfg.crisp),
+      fpsCap: C ? Math.round(1000 / C.interval) : 0, skipped: st.skipped.slice(), ms: C ? Math.round(C.avg * 10) / 10 : 0, lighter: !!(C && C.cfg.lighter),
       scene: C && C.scene >= 0 ? SCENES[C.scene] : '',
       scenes: st.root ? st.root.querySelectorAll('.npv-scene').length : 0,
       layers: st.root ? st.root.querySelectorAll('.npv-scene > *, .npv-orb, .npv-canvas').length : 0,
@@ -1568,6 +1635,8 @@
     test: {
       phraseBeats: function (n) { st.phraseBeats = n > 0 ? n : 0; },
       forcePoor: function (on) { st.forcePoor = !!on; },
+      // Pretends every frame costs this many ms (0: measure for real).
+      cost: function (ms) { st.forceCost = ms > 0 ? ms : 0; },
       scene: function (name) { st.forceScene = SCENES.indexOf(name); },
       timing: function (o) { for (var k in o) if (Object.prototype.hasOwnProperty.call(TIMING, k)) TIMING[k] = o[k]; }
     }
