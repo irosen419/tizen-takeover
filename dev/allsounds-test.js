@@ -271,7 +271,7 @@ async function main() {
     const s = await open(pi, TEST_LAYOUT);
     await waitKind(s.page, 'playing', 'Morning Edition');
     const cfg = await s.page.evaluate(() => window.HUB_CONFIG.layouts.map((l) => l.name));
-    assert(cfg.join('|') === 'Stock|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|All sounds test', 'layouts: ' + cfg.join(', '));
+    assert(cfg.join('|') === 'Stock|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|All sounds test|Plant wall', 'layouts: ' + cfg.join(', '));
     await s.page.keyboard.press('ArrowUp');
     await until(() => s.page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
     await sleep(400);
