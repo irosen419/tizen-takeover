@@ -22,11 +22,12 @@
  *   - The opened panel is as tall as its content (within 24 px), at most
  *     26rem; the Back hint is a chip that can't take focus; pushed-aside
  *     tiles show only their icon and title, and get their body back on close.
- *   - The accent edge: on a new to-do, a changed snapshot, a changed budget
- *     and a calendar change, and for an event starting within the hour; it
- *     goes after its hold (a short one here, through HUB_FX.edgeHold) and
- *     when the tile is opened; 60 s by default; never on focus; static (no
- *     sweep, no fades) in fade mode; none with motionFx.edge off.
+ *   - The accent edge (a faint blue border over the tile's whole border):
+ *     on a new to-do, a changed snapshot, a changed budget and a calendar
+ *     change, and for an event starting within the hour; it goes after its
+ *     hold (a short one here, through HUB_FX.edgeHold) and when the tile is
+ *     opened; 60 s by default; never on focus; static (no lap, no fades) in
+ *     fade mode; none with motionFx.edge off.
  *   - Guest mode (app/guest.js): the money tiles keep the same header (the
  *     same title and short title, in English, Spanish and Spanish +25%)
  *     while their bodies say "Hidden for guests"; turning it on takes the
@@ -404,9 +405,14 @@ function edgeOn(p, id) {
         const n = document.querySelector('.cell[data-widget="todo"] .fx-accent');
         const r = n.getBoundingClientRect();
         const t = n.parentNode.getBoundingClientRect();
-        return { h: Math.round(r.height), top: Math.round(r.top - t.top), chip: !!document.querySelector('.fx-chip'), bg: getComputedStyle(n).backgroundImage };
+        const cs = getComputedStyle(n);
+        // A faint blue border over the tile's whole border box, the same rounding.
+        return { box: [r.left - t.left, r.top - t.top, r.width - t.width, r.height - t.height].map(Math.round).join(), chip: !!document.querySelector('.fx-chip'),
+          colors: [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor], width: cs.borderTopWidth,
+          radius: cs.borderTopLeftRadius, tileRadius: getComputedStyle(n.parentNode).borderTopLeftRadius, tileWidth: getComputedStyle(n.parentNode).borderTopWidth };
       });
-      assert(e.h === 4 && e.top <= 4 && e.chip && /127, 209, 255/.test(e.bg), JSON.stringify(e));
+      assert(e.box === '0,0,0,0' && e.chip && e.colors.every((c) => /^rgba\(127, 209, 255, 0\.\d+\)$/.test(c)) &&
+        e.width === e.tileWidth && e.radius === e.tileRadius, JSON.stringify(e));
       // Still there after the chip went.
       await H.until(() => p.evaluate(() => !document.querySelector('.fx-chip')), 4000, 'the chip stayed');
       assert(await edgeOn(p, 'todo'), 'the edge went with the chip');
@@ -461,7 +467,7 @@ function edgeOn(p, id) {
       assert(!again.length, 'the same event raised it again: ' + JSON.stringify(again));
     });
 
-    await check('Accent edge: static in fade mode (no sweep, no fades); none with motionFx.edge off', async () => {
+    await check('Accent edge: static in fade mode (no lap, no fades); none with motionFx.edge off', async () => {
       const p = await pushPage(env, { layout: LAYOUTS.stock, motion: 'fade' });
       await env.control('POST', '/api/todo', { title: 'Edge fade ' + Date.now(), section: 'now' });
       await H.until(() => edgeOn(p, 'todo'), 4000, 'no edge in fade mode');

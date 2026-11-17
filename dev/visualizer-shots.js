@@ -162,7 +162,7 @@ async function main() {
     return file;
   }
   if (COMPARE) {
-    const LEVELS = ['classic', 'sharplite', 'sharp', 'radiant'];
+    const LEVELS = ['classic', 'sharplite', 'sharp', 'native', 'radiant'];
     const files = {};
     for (const [scene, n] of [['tunnel', 3], ['kaleidoscope', 0], ['spirograph', 4], ['ribbons', 2]]) {
       if (ONLY && scene.indexOf(ONLY) < 0) continue;
