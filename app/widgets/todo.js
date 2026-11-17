@@ -998,6 +998,7 @@
     icon: 'check-list',
     sub: STRINGS.sub,
     expandable: true,
+    activity: 'todo',          // its working chip (app/motion.js)
     stagger: '.todo-col-main > .todo-add, .todo-sec',   // the parts arrive one by one as the panel opens
 
     init: function (ctx) {
