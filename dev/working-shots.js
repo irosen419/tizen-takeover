@@ -14,7 +14,7 @@
  *     "Incoming to-do".
  *   --clip: working-handoff.mp4 (webm without ffmpeg): the signal arrives,
  *     the chip breathes a few seconds, the to-do lands, the chip becomes
- *     "Incoming to-do" with the edge sweep, then fades.
+ *     "Incoming to-do" with the light lapping the border, then fades.
  */
 'use strict';
 

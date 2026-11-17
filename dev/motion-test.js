@@ -340,10 +340,10 @@ async function checkDisabled(pi) {
     await sleep(100);
     const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return { o: r.style.opacity, t: r.style.transform }; }, id);
     x = await extras(page);
-    // The accent edge stays, but as a still line: no sweep, nothing animating.
+    // The accent edge stays, but as a still border: no lap, nothing animating.
     const edge = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.fx-accent'), (n) => {
       const cs = getComputedStyle(n);
-      return { sweep: !!n.querySelector('.fx-accent-sweep'), anim: cs.animationName, tr: n.style.transition, opacity: cs.opacity };
+      return { sweep: !!n.querySelector('.fx-accent-sweep, .fx-lap'), anim: cs.animationName, tr: n.style.transition, opacity: cs.opacity };
     }));
     assert(edge.every((e) => !e.sweep && (e.anim === 'none' || !e.anim) && (!e.tr || e.tr === 'none')), c.name + ': the accent edge moved: ' + JSON.stringify(edge));
     assert(x.nodes === edge.length && !row.o && !row.t, c.name + ': the new row moved: ' + JSON.stringify({ x, row }));
@@ -527,7 +527,7 @@ async function checkNewTodo(pi) {
   await sleep(300);
   const look = () => page.evaluate(() => ({
     // The accent edge (motionFx.edge) stays about a minute by design: checked on its own.
-    fx: Array.prototype.map.call(document.querySelectorAll('[class*="fx-"]:not(.fx-accent):not(.fx-accent-sweep)'), (n) => n.className).sort().join(' | '),
+    fx: Array.prototype.filter.call(document.querySelectorAll('[class*="fx-"]'), (n) => !n.closest('.fx-accent')).map((n) => n.className).sort().join(' | '),
     tile: document.querySelector('.cell[data-widget="todo"] .tile').className,
     styles: document.querySelectorAll('style').length
   }));
@@ -748,7 +748,7 @@ async function checkActivityTodo(pi) {
   await idle(page);
   await sleep(400);
   const look = () => page.evaluate(() => {
-    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: document.querySelectorAll('*:not(.fx-accent):not(.fx-accent-sweep)').length };
+    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: Array.prototype.filter.call(document.querySelectorAll('*'), (n) => !n.closest('.fx-accent')).length };
     document.querySelectorAll('#grid .cell').forEach((c) => {
       const t = c.querySelector('.tile');
       const r = t.getBoundingClientRect();
@@ -775,11 +775,11 @@ async function checkActivityTodo(pi) {
     const ts = getComputedStyle(c.querySelector('.fx-chip-text'));
     const edge = tile.querySelector('.fx-edge');
     return { n: list.length, widget: cell.getAttribute('data-widget'), text: c.textContent, left: R.left - T.left, bottom: T.bottom - R.bottom,
-      opacity: cs.opacity, fontPx: parseFloat(ts.fontSize), edge: !!edge, edgeAnim: edge ? getComputedStyle(edge.firstChild).animationName : '' };
+      opacity: cs.opacity, fontPx: parseFloat(ts.fontSize), edge: !!edge, edgeAnim: edge ? Array.prototype.map.call(edge.querySelectorAll('i'), (n) => getComputedStyle(n).animationName).filter((v, i, a) => a.indexOf(v) === i).sort().join() : '' };
   });
   assert(mid.n === 1 && mid.widget === 'todo' && mid.text === 'Incoming to-do', 'the chip: ' + JSON.stringify(mid));
   assert(Math.abs(mid.left - 28) <= 4 && Math.abs(mid.bottom - 24) <= 4, 'not in the lower left (28px, 24px): ' + JSON.stringify(mid));
-  assert(mid.fontPx >= 22 && mid.edge && mid.edgeAnim === 'fx-act-sweep', 'text size or edge: ' + JSON.stringify(mid));
+  assert(mid.fontPx >= 22 && mid.edge && mid.edgeAnim === 'fx-lap-bl,fx-lap-br,fx-lap-tl,fx-lap-tr,fx-lap-x,fx-lap-y', 'text size or edge: ' + JSON.stringify(mid));
   // The new row just appears, and nothing in the tile moved for the chip.
   const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return r && { o: r.style.opacity, t: r.style.transform, tr: r.style.transition }; }, id);
   assert(row && !row.o && !row.t && !row.tr, 'the new row moved: ' + JSON.stringify(row));

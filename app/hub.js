@@ -129,7 +129,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.15';
+  var BUILD = 'v0.28.16';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1460,7 +1460,7 @@
         fitHead(parts.head, parts.title, parts.badge, String(o.title || w.title || ''), o.short || '');
         return parts.head;
       },
-      // The accent edge along the tile's top ("something to see here"),
+      // The accent edge, a faint border around the tile ("something to see here"),
       // for a reason other than ctx.activity (which raises it by itself).
       accent: function (reason) { if (rec && rec.tile) fxCall('accent', [rec.tile, reason || 'update']); },
       live: liveFacade(),
