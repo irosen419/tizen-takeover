@@ -104,7 +104,7 @@ Times read `42 s` up to 99 seconds, then `1 min 42 s`.
 - `sprite list did not load (no onload or onerror in 30 s)`: no answer in time (`, then came in 41234 ms` when it came later; the next visit uses it).
 - `sprite list loaded but is not valid (onload, ...)`: the file loaded but `CLAY_SPRITES` is missing or has no sprites or sequences.
 - `the styles could not be added: ...`: putting the `<style>` in threw.
-- `scene stroll skipped: frame ember/trot-a1 failed (onerror)`: that picture did not load; the scene is left out for 10 minutes.
+- `scene stroll skipped: frame ember/trot-a1 failed (onerror, 3 tries)`: that picture did not load, though it was asked for three times (again 1 s and 2.5 s after a failure); the scene is left out for 10 minutes. A picture that came on a later try shows in Loading instead, as `stroll 23/23 frames in 1.4 s (1 asked for again)`, and the scene plays.
 - `scene stroll skipped: frame ember/trot-a1 failed (loaded, 0 px wide: did not decode)`: the file came but the browser could not decode it (WebP on an old browser, a damaged file); left out for 10 minutes.
 - `scene stroll skipped: frame X is not in the sprite list`: a scene asks for a picture `sprites.js` doesn't have.
 - `scene stroll skipped: its frames took over 30 s (12 of 18 in)`: slow; the same scene comes at the next visit.

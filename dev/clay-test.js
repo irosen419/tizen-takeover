@@ -146,7 +146,8 @@ const HANG = -1;
 // opts: { clay: value for HUB_CONFIG.clay (undefined = config.js as it is),
 // query, missing: [url parts that answer 404] (may be changed later),
 // serve: { url part: { type, body, delay } }, slowOnce: { url part: delay }
-// (only the first request for each address waits), storage }
+// (only the first request for each address waits), failFirst: { url part: n }
+// (the first n requests for it answer 404, later ones are served), storage }
 async function newHub(opts) {
   opts = opts || {};
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
@@ -162,6 +163,12 @@ async function newHub(opts) {
     }
     context.requests.push(url);
     if ((opts.missing || []).some((m) => url.indexOf(m) >= 0)) return route.fulfill({ status: 404, body: 'not found' });
+    for (const part in (opts.failFirst || {})) {
+      if (url.indexOf(part) < 0) continue;
+      context.failed = context.failed || {};
+      context.failed[part] = (context.failed[part] || 0) + 1;
+      if (context.failed[part] <= opts.failFirst[part]) return route.fulfill({ status: 404, body: 'not found' });
+    }
     for (const part in (opts.slowOnce || {})) {
       if (url.indexOf(part) < 0 || context.seen.has(url)) continue;
       context.seen.add(url);
@@ -452,17 +459,40 @@ async function checkOff() {
   }
 }
 
+async function checkAskedAgain() {
+  // A picture whose first request fails is asked for again and the scene
+  // plays; the status says how many were asked for again.
+  let page = await newHub({ failFirst: { 'clay/sprites/ember/stand-wag.webp': 1 } });
+  await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 7 }));
+  await until(async () => (await look.state(page)).phase === 'playing', 10000, 'stroll did not start after one failed request');
+  let st = await look.state(page);
+  assert(st.failed === 0 && st.broken.length === 0, 'state: ' + JSON.stringify(st));
+  let s1 = await look.st(page);
+  assert(/^sprite list \d+ ms · stroll (\d+)\/\1 frames in [\d.]+ (ms|s) \(1 asked for again\)$/.test(s1.loading), 'loading: ' + s1.loading);
+  assert(!s1.problem, 'a problem was reported: ' + s1.problem);
+  const wag = page.context().requests.filter((u) => u.indexOf('clay/sprites/ember/stand-wag.webp') >= 0).length;
+  assert(wag === 2, 'stand-wag was requested ' + wag + ' times');
+  await page.context().close();
+  // Two failures: the third try still saves the scene.
+  page = await newHub({ failFirst: { 'clay/sprites/ember/stand-wag.webp': 2 } });
+  await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 7 }));
+  await until(async () => (await look.state(page)).phase === 'playing', 12000, 'stroll did not start after two failed requests');
+  s1 = await look.st(page);
+  assert(/\(2 asked for again\)$/.test(s1.loading), 'loading: ' + s1.loading);
+  await page.context().close();
+}
+
 async function checkMissing() {
   // One frame missing: that scene is skipped, others play, the hub is fine.
   let page = await newHub({ missing: ['clay/sprites/ember/stand-wag.webp'] });
   await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 7 }));
   await until(async () => (await look.state(page)).last, 10000, 'stroll did not finish loading');
   let st = await look.state(page);
-  assert(st.phase === 'waiting' && st.last.result === 'failed: frame ember/stand-wag failed (onerror)', 'state: ' + JSON.stringify(st));
+  assert(st.phase === 'waiting' && st.last.result === 'failed: frame ember/stand-wag failed (onerror, 3 tries)', 'state: ' + JSON.stringify(st));
   let s1 = await look.st(page);
   assert(/^Due back in \d+ s$/.test(s1.now) && s1.visits === '0 played · 0 slow · 1 failed' && /^stroll failed, \d+ s ago$/.test(s1.last), 'status: ' + JSON.stringify(s1));
   assert(/^sprite list \d+ ms · stroll \d+\/\d+ frames, then one failed$/.test(s1.loading), 'loading: ' + s1.loading);
-  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
+  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror, 3 tries\), \d+ s ago$/.test(s1.problem), 'problem: ' + s1.problem);
   assert(st.broken.indexOf('stroll') >= 0, 'stroll is not marked broken: ' + JSON.stringify(st.broken));
   assert(!(await look.layer(page)), 'a layer was left');
   const before = await look.focused(page);
@@ -476,7 +506,7 @@ async function checkMissing() {
   s1 = await look.st(page);
   assert(s1.visits === '1 played · 0 slow · 1 failed' && /^perch finished, \d+ s ago$/.test(s1.last), 'status after perch: ' + JSON.stringify(s1));
   assert(/ · perch (\d+)\/\1 frames in (\d+ ms|\d+\.\d s)$/.test(s1.loading), 'loading after perch: ' + s1.loading);
-  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror\), \d+ s ago$/.test(s1.problem), 'problem after perch: ' + s1.problem);
+  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror, 3 tries\), \d+ s ago$/.test(s1.problem), 'problem after perch: ' + s1.problem);
   noErrors(page, /Clay: scene stroll skipped/);
   await page.ctx.close();
 
@@ -1316,7 +1346,7 @@ async function checkAboutRows() {
   rows = await about.rows(page);
   assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
   const p1 = await about.value(page, 'Last problem');
-  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror\), \d+ s ago$/.test(p1), 'problem: ' + p1);
+  assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror, 3 tries\), \d+ s ago$/.test(p1), 'problem: ' + p1);
   await until(async () => (await about.value(page, 'Last problem')) !== p1, 3000, 'the problem\'s age did not change by itself');
   // A long problem, with a long unbroken word: it wraps, nothing is cut.
   await page.evaluate(() => {
@@ -1562,6 +1592,7 @@ async function main() {
   await check('23. Slow frames go stepped and are remembered; no requestAnimationFrame is stepped from the start', checkStepped);
   await check('24. Every scene\'s length is in its range, with 40 pictures or fewer', checkLengths);
   await check('25. Gait art of any shape: 6- and 7-picture cycles, lifts over a grounded shadow and no bob, shares, Ian side-on; the sprite list as it is', checkGaitArt);
+  await check('26. A picture that fails once or twice is asked for again and the scene still plays', checkAskedAgain);
 }
 
 main().catch((e) => {
