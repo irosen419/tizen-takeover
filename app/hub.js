@@ -1231,7 +1231,7 @@
   // group name starts a new group); nothing else needs to change. A row with
   // action() is the strip's one button: OK runs it (the first shown wins).
   var aboutEl = document.getElementById('about');
-  var ab = { on: false, box: null, sig: '', rows: [], drawn: [], timer: null, hideTimer: null };
+  var ab = { on: false, box: null, sig: '', rows: [], drawn: [], dropped: {}, timer: null, hideTimer: null };
 
   function noPrefix(text, prefix) {
     text = text ? String(text) : '';
@@ -1269,6 +1269,14 @@
       var S = window.HUB_SCRIPTS;
       try { return S && typeof S.status === 'function' ? S.status() || '' : ''; } catch (e) { return ''; }
     } },
+    // The watch link test (app/widgets/linktest.js): OK opens it in the
+    // Entertainment panel. spare: it gives way when the strip would be taller
+    // than the screen (a long Wanderers problem), and comes back with the
+    // next change of rows.
+    { group: 'This hub', label: 'Watch link test', spare: true, value: function () {
+      var T = window.HUB_LINKTEST;
+      try { return T && typeof T.aboutText === 'function' ? T.aboutText() || '' : ''; } catch (e) { return ''; }
+    }, action: function () { openWidgetView('entertainment', 'linktests'); } },
     { group: 'Updates', label: 'Live updates', value: function () {
       var L = liveFacade();
       var t = L ? (L.status() || {}).text || '' : '';
@@ -1287,12 +1295,6 @@
     { group: 'Wanderers', label: 'Drawing', value: function () { return clayPart('drawing'); } },
     { group: 'Wanderers', label: 'Loading', value: function () { return clayPart('loading'); } },
     { group: 'Wanderers', label: 'Last problem', value: function () { return clayPart('problem'); } },
-    // The watch link test (app/widgets/linktest.js): OK opens it in the
-    // Entertainment panel.
-    { group: 'Watch links', label: 'Watch link test', value: function () {
-      var T = window.HUB_LINKTEST;
-      try { return T && typeof T.aboutText === 'function' ? T.aboutText() || '' : ''; } catch (e) { return ''; }
-    }, action: function () { openWidgetView('entertainment', 'linktests'); } },
     // The Now Playing visualizer, once it has shown: its level, frame rate and tempo.
     { group: 'Now Playing', label: 'Visualizer', value: function () {
       var V = window.HUB_NP_VIZ;
@@ -1338,6 +1340,27 @@
       sig.push(r.label);
     }
     ab.sig = sig.join('|');
+    ab.dropped = {};
+  }
+
+  // Spare rows (the watch link test) leave when the strip is taller than its
+  // room, so the rows that report problems never need scrolling for them.
+  // Only while it is shown (a hidden strip has no height).
+  function trimAbout() {
+    var box = ab.box;
+    if (!box || box.scrollHeight <= box.clientHeight + 1) return;
+    for (var i = ab.drawn.length - 1; i >= 0; i--) {
+      if (!ab.drawn[i].spare) continue;
+      var row = ab.rows[i].parentNode;
+      var prev = row.previousSibling;
+      var next = row.nextSibling;
+      row.parentNode.removeChild(row);
+      // A group header left with no rows goes too.
+      if (prev && prev.className === 'about-group' && (!next || next.className === 'about-group')) prev.parentNode.removeChild(prev);
+      ab.dropped[ab.drawn[i].label] = true;
+      ab.drawn.splice(i, 1);
+      ab.rows.splice(i, 1);
+    }
   }
 
   // Once a second while open: only text that changed is touched; a row
@@ -1352,12 +1375,16 @@
       if (sig.join('|') !== ab.sig) {
         var top = ab.box ? ab.box.scrollTop : 0;
         drawAbout(list);
+        trimAbout();
         ab.box.scrollTop = top;
         placeAboutGlass();
       } else {
-        for (var j = 0; j < list.length; j++) {
-          if (ab.rows[j].textContent !== list[j].text) ab.rows[j].textContent = list[j].text;
+        var shown = [];
+        for (var k = 0; k < list.length; k++) if (!ab.dropped[list[k].row.label]) shown.push(list[k]);
+        for (var j = 0; j < shown.length && j < ab.rows.length; j++) {
+          if (ab.rows[j].textContent !== shown[j].text) ab.rows[j].textContent = shown[j].text;
         }
+        trimAbout();
       }
     } catch (e) { /* the strip just stays as it is */ }
     ab.timer = setTimeout(refreshAbout, 1010 - (new Date().getTime() % 1000));
@@ -1376,6 +1403,7 @@
     drawAbout(aboutValues());
     ab.on = true;
     aboutEl.classList.add('is-on');
+    trimAbout();
     placeAboutGlass();
     void aboutEl.offsetWidth;              // so the slide starts from off screen
     aboutEl.classList.add('is-shown');

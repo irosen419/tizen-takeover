@@ -341,7 +341,8 @@
         if (lastFor(list[i].id)) tried++;
         if (!list[i].needsId) ready++;
       }
-      return 'OK to open · ' + tried + ' of ' + ready + ' tried' + (ready < list.length ? ' (' + (list.length - ready) + ' need an id)' : '');
+      // Short: one line in the About strip (the list says which need an id).
+      return 'OK to open · ' + tried + ' of ' + ready + ' tried';
     },
     _test: { recipes: recipes, fire: fire, record: record, setId: setId, editable: editable, state: function () { return S; }, stateText: stateText }
   };

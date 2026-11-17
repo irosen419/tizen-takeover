@@ -974,7 +974,7 @@ async function checkSmoothLive() {
   assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'the About panel did not open');
   await until(async () => /^Smooth, \d+ frames a second$/.test(await about.value(page, 'Drawing')), 3000, 'no Drawing row');
   const rows = (await about.rows(page)).map((r) => r.label).join(',');
-  assert(rows === 'Version,Browser,Motion,Now,Visits,Drawing,Loading,Watch link test', 'rows: ' + rows);
+  assert(rows === 'Version,Browser,Motion,Watch link test,Now,Visits,Drawing,Loading', 'rows: ' + rows);
   noErrors(page);
 }
 
@@ -1320,8 +1320,8 @@ async function checkAboutKeys() {
   assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'it did not open from the test hook');
   await page.evaluate(() => window.HUB_TEST.openPanel('weather'));
   assert(!(await about.isOpen(page)), 'it stayed open under a panel');
-  await page.evaluate(() => window.HUB_TEST.closePanel());
-  await until(() => page.evaluate(() => window.HUB_TEST.open() === null && !window.HUB_TEST.busy()), 4000, 'the panel did not close');
+  // (closePanel is refused while the panel is still opening, so ask until it goes.)
+  await until(() => page.evaluate(() => { window.HUB_TEST.closePanel(); return window.HUB_TEST.open() === null && !window.HUB_TEST.busy(); }), 4000, 'the weather panel did not close');
   // Enter: the About panel's one action, the Watch link test (v0.28.16): it
   // closes About and opens Entertainment on the test.
   assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'it did not open again');
@@ -1339,9 +1339,9 @@ async function checkAboutRows() {
   let rows = await about.rows(page);
   const names = rows.map((r) => r.group + '/' + r.label).join(', ');
   // ?live=off and no TizenBrew: nothing to say about updates; no visit yet.
-  assert(names === 'This hub/Version, This hub/Browser, This hub/Motion, Wanderers/Now, Wanderers/Visits, Watch links/Watch link test', 'rows at start: ' + names);
+  assert(names === 'This hub/Version, This hub/Browser, This hub/Motion, This hub/Watch link test, Wanderers/Now, Wanderers/Visits', 'rows at start: ' + names);
   const groups = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#about .about-group'), (e) => e.textContent).join(','));
-  assert(groups === 'This hub,Wanderers,Watch links', 'groups: ' + groups);
+  assert(groups === 'This hub,Wanderers', 'groups: ' + groups);
   assert(/^v0\.\d+\.\d+/.test(rows[0].value) && !/^Motion/.test(rows[2].value), 'values: ' + JSON.stringify(rows));
   // The countdown ticks with nothing calling it.
   // (The strip redraws once a second, so a read can be up to a second behind.)
@@ -1356,7 +1356,7 @@ async function checkAboutRows() {
   await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 7 }));
   await until(async () => (await about.value(page, 'Last problem')) !== null, 5000, 'no Last problem row');
   rows = await about.rows(page);
-  assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
+  assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Watch link test,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
   const p1 = await about.value(page, 'Last problem');
   assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror, 3 tries\), \d+ s ago$/.test(p1), 'problem: ' + p1);
   await until(async () => (await about.value(page, 'Last problem')) !== p1, 3000, 'the problem\'s age did not change by itself');
