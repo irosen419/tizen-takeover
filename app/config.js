@@ -272,11 +272,12 @@ var HUB_CONFIG = {
      * page only, with the song as a small card in the corner. true lets the
      * TV pick how much it can show (it checks its own frame rate); false
      * turns it off; 'radiant' (or 'full'; glow, bloom and motes), 'sharp'
-     * (the same size canvas, crisp lines, no bloom), 'sharplite' (or
+     * (a 960 x 540 canvas, crisp lines, no bloom), 'native' (the same, drawn at
+     * the screen's own 1920 x 1080 pixels, so nothing is stretched), 'sharplite' (or
      * 'sharp-lite'; a little smaller), 'classic' (the older flat look),
      * 'lite' (smaller and lighter), 'glow' (soft glows only) or 'wash' (a
      * still wash of color, with the big picture) fixes a level.
-     * ?viz=off|wash|glow|lite|classic|sharplite|sharp|radiant on the address
+     * ?viz=off|wash|glow|lite|classic|sharplite|sharp|native|radiant on the address
      * tries one for a visit.
      */
     nowplaying: { visualizer: true }

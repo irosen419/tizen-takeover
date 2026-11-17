@@ -73,16 +73,17 @@
   'use strict';
 
   var STORE_KEY = 'homeHub.npViz';
-  var LEVELS = ['off', 'wash', 'glow', 'lite', 'classic', 'sharplite', 'sharp', 'radiant'];
+  var LEVELS = ['off', 'wash', 'glow', 'lite', 'classic', 'sharplite', 'sharp', 'native', 'radiant'];
   var ALIAS = { full: 'radiant', 'sharp-lite': 'sharplite' };
-  var NAMES = { radiant: 'radiant', sharp: 'sharp', sharplite: 'sharp-lite', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash', off: 'off' };
-  var LADDER = { radiant: 'sharp', sharp: 'sharplite', sharplite: 'classic', classic: 'lite', lite: 'glow', glow: 'wash' };
+  var NAMES = { radiant: 'radiant', native: 'native 1080p', sharp: 'sharp', sharplite: 'sharp-lite', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash', off: 'off' };
+  var LADDER = { radiant: 'native', native: 'sharp', sharp: 'sharplite', sharplite: 'classic', classic: 'lite', lite: 'glow', glow: 'wash' };
   // crisp: the sharp levels' feedback. fade multiplies how much of the last
   // frame stays (per 30 fps frame), so old, resampled (soft) copies die out
   // sooner; step scales the zoom and turn of the feedback, so each copy is
   // resampled less far from where it was and trails stay lines, not fog.
   var CANVAS = {
     radiant: { w: 960, h: 540, fps: 60, lighter: true, amount: 1, bloom: true },
+    native: { w: 1920, h: 1080, fps: 30, lighter: true, amount: 1, crisp: true, fade: 0.93, step: 0.6, sparks: true },
     sharp: { w: 960, h: 540, fps: 30, lighter: true, amount: 1, crisp: true, fade: 0.93, step: 0.6, sparks: true },
     sharplite: { w: 720, h: 405, fps: 30, lighter: true, amount: 0.75, crisp: true, fade: 0.93, step: 0.6 },
     classic: { w: 480, h: 270, fps: 30, lighter: true, amount: 1 },
@@ -1400,6 +1401,7 @@
     while (est > 0 && LEVELS.indexOf(next) > LEVELS.indexOf('classic') && isCanvas(at)) {
       var a = CANVAS[at];
       var b = CANVAS[next];
+      if (next === 'native') break;   // always tried once: the frame-rate check judges it, not the estimate
       est = est * (b.w * b.h) / (a.w * a.h) * (a.bloom && !b.bloom ? PLAIN_COST : 1);
       if (est <= SKIP_MS) break;
       st.skipped.push(next);
