@@ -480,6 +480,9 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
 .pp.nb { background: transparent; border: 2px dashed var(--line); color: var(--mute); justify-content: center; align-items: center; text-align: center; }
 .pp.nb b { color: var(--fg); font-size: 1.15em; }
 /* Budget and the other new previews */
+.am-dots { display: inline-flex; gap: 0.3em; vertical-align: middle; } .am-d { width: 0.55em; height: 0.55em; border-radius: 50%; background: rgba(255,255,255,0.2); }
+.am-d.on { background: #ffc48a; box-shadow: 0 0 0.5em #ff9f45; } .am-d.switch { background: #ffe3c4; border-radius: 0.15em; } .am-d.gone { background: none; border: 1px solid rgba(255,255,255,0.35); }
+.am-glow { position: absolute; right: -20%; bottom: -30%; width: 80%; height: 80%; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,150,60,0.28), rgba(255,150,60,0)); pointer-events: none; }
 .bu-ok { color: #5bd18d; } .bu-warn { color: #f0a93a; } .bu-neg { color: #ff7b70; } .bu-blue { color: #6fb1ff; }
 .bu-meter { height: 0.42em; flex: none; } .bu-meter i.bu-ok { background: #5bd18d; } .bu-meter i.bu-warn { background: #f0a93a; } .bu-meter i.bu-neg { background: #ff7b70; }
 .bu-meter.pl { margin-block: 0.15em; }
@@ -584,6 +587,8 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     'awws-money':  { title: 'Earned vs spent',       sub: 'AWWS: the net so far, by month, and the next transfer' },
     ambiance:      { title: 'Ambiance',              sub: 'Pick the light vibe from the TV', soon: true },
     mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true },
+    // app/widgets/ambience.js (v0.29.7): the room's lights through the Pi and Home Assistant. Not the Ambiance placeholder above.
+    ambience:      { title: 'Ambience',              sub: 'Scenes, each light\u2019s level and the plant wall, from the TV' },
     // app/widgets/wotd.js (v0.28.5): one Latin American Spanish word a day, easy in January, B1 by December.
     // The budget tiles (app/widgets/budget.js, v0.28.4): the "Budget" layout. The last two are proposals for the budget tab v2 (not built).
     'budget-room':  { title: 'Daily room',           sub: 'What is left to spend each day until card day' },
@@ -634,6 +639,10 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     { id: 'budget', name: 'Budget', layout: [
       { id: 'budget-room', x: 0, y: 0, w: 4, h: 3 }, { id: 'budget-card', x: 4, y: 0, w: 4, h: 3 }, { id: 'budget-goals', x: 8, y: 0, w: 4, h: 6 },
       { id: 'calendar', x: 0, y: 3, w: 5, h: 3 }, { id: 'today', x: 5, y: 3, w: 3, h: 1 }, { id: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
+    ] },
+    // v0.29.7: one Ambience tile on the whole screen, for trying the lights.
+    { id: 'ambience-test', name: 'Ambience test', layout: [
+      { id: 'ambience', x: 0, y: 0, w: 12, h: 6 }
     ] }
   ];
   // A preset hides the Stock tiles it leaves out, as the TV does.
@@ -1036,6 +1045,27 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),
     mirror: plannedEntry({ en: 'Mirror', es: 'Espejo' },
       { en: 'A camera mirror for mornings and nights out.', es: 'Un espejo con cámara para las mañanas y las noches de salida.' }),
+    // app/widgets/ambience.js (v0.29.7). The room is made up (pi/ambience.example.json); names come from the Pi and are never translated.
+    ambience: {
+      title: { en: 'Ambience', es: 'Ambiente' },
+      sample: {
+        en: { big: 'Chill night', meta: '2 of 3 on', note: 'Sengled lamp didn\u2019t answer', scenes: ['Chill night', 'Lights on', 'Reading', 'Movie', 'All off'],
+              lights: [['Geeni lamp', 20, 'on'], ['Sengled lamp', 0, 'gone'], ['Camera plug', 100, 'switch']], gone: 'Not answering', on: 'On', onNow: 'On now',
+              heads: ['Scenes', 'Room lights', 'Plant wall'], moods: ['Off', 'Dim', 'Bright'] },
+        es: { big: 'Chill night', meta: '2 de 3 encendidas', note: 'Sengled lamp no respondió', scenes: ['Chill night', 'Lights on', 'Reading', 'Movie', 'All off'],
+              lights: [['Geeni lamp', 20, 'on'], ['Sengled lamp', 0, 'gone'], ['Camera plug', 100, 'switch']], gone: 'No responde', on: 'Encendido', onNow: 'Activa ahora',
+              heads: ['Escenas', 'Iluminación del cuarto', 'Muro de plantas'], moods: ['Off', 'Dim', 'Bright'] }
+      },
+      strip: { en: '\u201cChill night \u00b7 2 of 3 on\u201d with a dot per bulb (lit in its colour, crossed when it doesn\u2019t answer), as far as it fits; the note, then the count, then the dots leave first. 1 column: the bulb and \u201c2/3\u201d.',
+               es: '\u00abChill night \u00b7 2 de 3 encendidas\u00bb con un punto por bombilla (encendido en su color, tachado si no responde), mientras quepa; primero se va la nota, luego la cuenta y luego los puntos. 1 columna: la bombilla y \u00ab2/3\u00bb.' },
+      standard: { en: 'The active scene big (else \u201cLights on\u201d, \u201cLights off\u201d or \u201c2 of 3 on\u201d), the dots and the count, and a quiet note when a scene was only partly applied (\u201cSengled lamp didn\u2019t answer\u201d). A soft glow in the scene\u2019s colour.',
+                  es: 'La escena activa en grande (si no, \u00abLuces encendidas\u00bb, \u00abLuces apagadas\u00bb o \u00ab2 de 3 encendidas\u00bb), los puntos y la cuenta, y una nota discreta si una escena se aplic\u00f3 solo en parte. Un brillo suave del color de la escena.' },
+      tall: { en: 'Standard plus a row per light with its level (\u201cNot answering\u201d for one that doesn\u2019t), as many as fit; a wide tile adds the scene list.',
+              es: 'Est\u00e1ndar m\u00e1s una fila por luz con su nivel (\u00abNo responde\u00bb si no responde), las que quepan; un mosaico ancho a\u00f1ade la lista de escenas.' },
+      panel: { en: 'Scenes (cards on a rail; OK applies, \u201cSending\u2026\u201d at once, rolled back with a plain message if the Pi says no), Room lights (Left/Right dim or brighten by 10, faster when held; OK turns it on or off) and Plant wall (mood chips) when there is one. What happened shows under the title.',
+               es: 'Escenas (tarjetas en fila; OK la aplica, \u00abEnviando\u2026\u00bb al momento, y se deshace con un mensaje claro si la Pi dice que no), Iluminaci\u00f3n del cuarto (Izquierda/Derecha bajan o suben de 10 en 10, m\u00e1s r\u00e1pido si se mantiene; OK enciende o apaga) y Muro de plantas (chips de ambiente) si lo hay. Lo que pas\u00f3 se ve bajo el t\u00edtulo.' },
+      full: { en: 'The same three rows, bigger.', es: 'Las mismas tres filas, m\u00e1s grandes.' }
+    },
     wotd: {
       title: { en: 'Word of the day', es: 'Palabra del día' },
       sample: {
@@ -1059,7 +1089,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   };
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-runway', 'budget-pace', 'ambiance', 'mirror'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-runway', 'budget-pace', 'ambience', 'ambiance', 'mirror'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -1555,6 +1585,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7.5 14h.01M12 14h.01M16.5 14h.01M7.5 17.5h.01M12 17.5h.01"/>',
     music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
     globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/>',
+    bulb: '<path d="M9 17.5h6M10 20.5h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2v1.5h5V16c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3z"/>',
     sparkle: '<path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/>',
     camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     drop: '<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/>',
@@ -1571,7 +1602,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>'
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
-    'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
+    'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech', ambience: 'bulb',
     'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', 'budget-pace': 'bolt' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
@@ -1722,7 +1753,21 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     }).join('') + '</div>';
   }
   function npBars() { return '<span class="np-bars" aria-hidden="true"><i></i><i></i><i></i></span>'; }
+  function amDots(S) {
+    return '<span class="am-dots">' + S.lights.map(function (l) { return '<i class="am-d ' + l[2] + '"></i>'; }).join('') + '</span>';
+  }
+  function amRow(l, S) {
+    var state = l[2] === 'gone' ? '<b class="l1 bu-warn">' + esc(S.gone) + '</b>' : '<b class="l1">' + (l[2] === 'switch' ? esc(S.on) : l[1] + '%') + '</b>';
+    return '<div class="bu-grow am-r"><span class="l1">' + esc(l[0]) + '</span>' + (l[2] === 'switch' ? '<span></span>' : buMeter(l[1] / 100, 'bu-warn')) + state + '</div>';
+  }
   var X_TILE = {
+    ambience: function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b>' + esc(S.big) + '</b><span class="mu"> \u00b7 ' + esc(S.meta) + '</span> ' + amDots(S) + '</div></div>';
+      var h = head(id, T) + '<div class="am-glow"></div><div class="big c2" style="font-size:calc(var(--r) * 2.2)">' + esc(S.big) + '</div><div class="l1">' + amDots(S) + '<span class="mu"> ' + esc(S.meta) + '</span></div>';
+      if (tier === 'tall') h += S.lights.map(function (l) { return amRow(l, S); }).join('');
+      h += '<div class="l1 bu-warn push xs">' + esc(S.note) + '</div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    },
     nowplaying: function (S, T, tier, cls) {
       var prog = '<div class="np-prog"><i></i></div>';
       if (tier === 'strip') return '<div class="' + cls + '"><div class="np-art" style="height:100%"></div><div class="np-col"><div class="l1">' + esc(S.song) + '</div><div class="l1 mu">' + esc(S.artist) + '</div></div></div>';
@@ -1758,6 +1803,12 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     }
   };
   var X_PANEL = {
+    ambience: function (S, full) {
+      var cards = '<div class="pp-tabs">' + S.scenes.map(function (n, i) { return '<span class="chipb l1' + (i ? '' : ' on') + '">' + esc(n) + '</span>'; }).join('') + '</div>';
+      return '<div class="xs bu-warn l1">' + esc(S.note) + '</div><div class="secl"><span class="l1">' + esc(S.heads[0]) + '</span></div>' + cards +
+        '<div class="secl"><span class="l1">' + esc(S.heads[1]) + '</span></div>' + S.lights.map(function (l) { return amRow(l, S); }).join('') +
+        '<div class="secl"><span class="l1">' + esc(S.heads[2]) + '</span></div><div class="pp-tabs">' + S.moods.map(function (n, i) { return '<span class="chipb l1' + (i === 1 ? ' on' : '') + '">' + esc(n) + '</span>'; }).join('') + '</div>';
+    },
     nowplaying: function (S, full) {
       return '<div class="np-row" style="gap:2em"><div class="np-art" style="width:' + (full ? '44%' : '38%') + ';align-self:center"></div><div class="np-col" style="gap:0.3em"><div class="xs mu cap l1">' + esc(S.label) + npBars() + '</div>' +
         '<div class="c2" style="font-size:1.4em;font-weight:600">' + esc(S.song) + '</div><div class="l1">' + esc(S.artist) + '</div><div class="l1 mu">' + esc(S.album) + '</div>' +
