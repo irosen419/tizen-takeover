@@ -294,25 +294,26 @@ async function checkLiveSwitch() {
   await clockPage.open(page);
   let s = await clockPage.state(page);
   assert(s.face === 'digital' && s.readout, 'page on Digital has no digital time');
-  assert(s.keys.join(',') === 'face-digital,face-analog,hours-12,hours-24,guest-off,guest-on', 'Digital page options: ' + s.keys.join(','));
+  assert(s.keys.join(',') === 'face-digital,face-analog,hours-12,hours-24,lang-en,lang-es,guest-off,guest-on', 'Digital page options: ' + s.keys.join(','));
   assert(s.focused === 'face-digital', 'opened on ' + s.focused);
 
   await clockPage.pick(page, 'face-analog');
   s = await clockPage.state(page);
   assert(s.face === 'analog', 'the page did not switch to Analog');
   assert(!s.readout, 'the page on Analog still shows a digital time');
-  assert(s.keys.join(',') === 'face-digital,face-analog,guest-off,guest-on', 'Analog page options: ' + s.keys.join(','));
+  assert(s.keys.join(',') === 'face-digital,face-analog,lang-en,lang-es,guest-off,guest-on', 'Analog page options: ' + s.keys.join(','));
   assert(s.focused === 'face-analog', 'focus after the switch: ' + s.focused);
   assert(!/\d{1,2}:\d{2}|\b[AP]M\b/.test(s.text), 'the Analog page text has a time: ' + s.text);
   let t = await clockPage.tile(page);
   assert(t.face === 'analog', 'the tile did not follow to Analog');
   assertNoDigitalTime(t, 'tile after the switch');
-  // With no 12/24 group, Down goes straight to Guest mode and Up comes back;
-  // Up again reaches the page's button and Down comes back to the face choice.
+  // With no 12/24 group, Down goes straight to the language; Up comes back
+  // to the face choice, Up again reaches the page's button and Down comes
+  // back to the face choice.
   await page.keyboard.press('ArrowDown');
   await sleep(100);
   s = await clockPage.state(page);
-  assert(/^guest-/.test(s.focused || ''), 'focus after Down: ' + s.focused);
+  assert(/^lang-/.test(s.focused || ''), 'focus after Down: ' + s.focused);
   await page.keyboard.press('ArrowUp');
   await sleep(100);
   s = await clockPage.state(page);
@@ -337,7 +338,7 @@ async function checkLiveSwitch() {
   // Analog again from the 12/24 group: the group goes, focus lands on the face choice.
   await clockPage.pick(page, 'face-analog');
   s = await clockPage.state(page);
-  assert(s.focused === 'face-analog' && s.keys.length === 4, 'Analog from 24-hour: ' + JSON.stringify(s));
+  assert(s.focused === 'face-analog' && s.keys.length === 6, 'Analog from 24-hour: ' + JSON.stringify(s));
   await clockPage.close(page);
 
   // Closed, on Analog: one more once-a-second loop (the tile's), not more.
@@ -365,7 +366,7 @@ async function checkPageOpensOnAnalog() {
   const page = await openHub({ face: 'analog', hours: '12', at: SUNDAY });
   await clockPage.open(page);
   const s = await clockPage.state(page);
-  assert(s.face === 'analog' && !s.readout && s.keys.join(',') === 'face-digital,face-analog,guest-off,guest-on', JSON.stringify(s));
+  assert(s.face === 'analog' && !s.readout && s.keys.join(',') === 'face-digital,face-analog,lang-en,lang-es,guest-off,guest-on', JSON.stringify(s));
   assert(s.focused === 'face-analog', 'opened on ' + s.focused);
   const win = await page.evaluate(() => document.querySelector('#panel .clock-window-text').textContent);
   assert(win === 'SUN 15', 'page window: ' + win);
@@ -461,6 +462,72 @@ async function checkSizesSpanish() {
   noErrors(page);
 }
 
+// The controls column on the open page: every label whole, with room for
+// 25% longer text, and tall enough for accents (Á, Ñ) above the capitals.
+function controlsFit(page) {
+  return page.evaluate(() => {
+    const out = [];
+    const box = document.querySelector('.clock-controls').getBoundingClientRect();
+    const labels = document.querySelectorAll('.clock-controls .clock-group-label, .clock-controls .clock-opt-label');
+    for (const el of labels) {
+      const text = el.textContent;
+      const fs = parseFloat(getComputedStyle(el).fontSize);
+      const r = el.getBoundingClientRect();
+      if (el.scrollWidth > el.clientWidth + 1) out.push('"' + text + '" is cut');
+      if (el.scrollHeight > el.clientHeight + 1 || r.height < fs * 1.25 - 0.5) out.push('"' + text + '" is too short for accents (' + r.height.toFixed(1) + ' for ' + fs + 'px)');
+      if (r.right > box.right + 0.5 || r.left < box.left - 0.5) out.push('"' + text + '" spills out of the controls');
+      el.textContent = text + text.slice(0, Math.ceil(text.length * 0.25));
+      if (el.scrollWidth > el.clientWidth + 1) out.push('"' + el.textContent + '" (+25%) would be cut');
+      el.textContent = text;
+    }
+    const panel = document.querySelector('#panel .panel-body').getBoundingClientRect();
+    if (box.bottom > panel.bottom + 0.5 || box.top < panel.top - 0.5) out.push('the controls do not fit the panel body');
+    return out;
+  });
+}
+
+async function checkLanguage() {
+  const page = await openHub({ face: 'digital', hours: '12', layout: [3, 2], at: AFTERNOON });
+  assert(await page.evaluate(() => window.HUB_I18N.lang()) === 'en', 'starts in English');
+  await clockPage.open(page);
+  let label = await page.evaluate(() => document.querySelectorAll('.clock-group-label')[2].textContent);
+  assert(label === 'Language', 'group label: ' + label);
+  let s = await clockPage.state(page);
+  assert(s.keys.slice(-4, -2).join(',') === 'lang-en,lang-es', 'keys: ' + s.keys.join(','));
+  let bad = await controlsFit(page);
+  assert(!bad.length, 'English panel: ' + bad.join('; '));
+  await clockPage.pick(page, 'lang-es');
+  s = await clockPage.state(page);
+  assert(s.focused === 'lang-es', 'focus after Español: ' + s.focused);
+  label = await page.evaluate(() => document.querySelectorAll('.clock-group-label')[2].textContent);
+  assert(label === 'Idioma', 'group label in Spanish: ' + label);
+  assert(await page.evaluate(() => window.HUB_I18N.lang() === 'es' && localStorage.getItem('homeHub.lang') === 'es' &&
+    document.documentElement.lang === 'es'), 'not saved as Spanish');
+  assert(await page.evaluate(() => document.querySelector('.clock-opt[data-key="lang-es"]').classList.contains('is-selected')), 'Español not marked');
+  bad = await controlsFit(page);
+  assert(!bad.length, 'Spanish panel: ' + bad.join('; '));
+  // Full screen, Digital and Analog.
+  await page.evaluate(() => document.querySelector('#panel .panel-btn').click());
+  await until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() &&
+    !!document.querySelector('.clock-page.is-full')), 4000, 'no full screen');
+  bad = await controlsFit(page);
+  assert(!bad.length, 'Spanish full screen: ' + bad.join('; '));
+  await clockPage.pick(page, 'face-analog');
+  bad = await controlsFit(page);
+  assert(!bad.length, 'Spanish full screen, Analog: ' + bad.join('; '));
+  await clockPage.close(page);
+  // Remembered after a reload; back to English from the page.
+  await page.reload();
+  await page.waitForFunction(() => window.HUB_TEST && document.querySelector('.cell[data-widget="today"] .tile-body *'));
+  assert(await page.evaluate(() => window.HUB_I18N.lang()) === 'es', 'not Spanish after a reload');
+  await clockPage.open(page);
+  bad = await controlsFit(page);
+  assert(!bad.length, 'Spanish panel, Analog: ' + bad.join('; '));
+  await clockPage.pick(page, 'lang-en');
+  assert(await page.evaluate(() => window.HUB_I18N.lang() === 'en' && localStorage.getItem('homeHub.lang') === 'en'), 'not back to English');
+  noErrors(page);
+}
+
 // A short clip: open the Clock page, Digital to Analog (the tile behind
 // changes), back to Digital, then 12/24 and back. Motion "fade" leaves the
 // tiles where they are, so the Clock tile shows beside the page.
@@ -513,7 +580,8 @@ async function main() {
   await check('6. The page on Analog: no digital time, no 12/24 group, focus and arrows fine', checkPageOpensOnAnalog);
   await check('7. Analog at ' + SIZES.length + ' tile sizes: face inside and centred, the window text fits', checkSizesEnglish);
   await check('8. The same in Spanish (sábado, miércoles), on the tile and the page', checkSizesSpanish);
-  if (SHOTS) await check('9. Clip of the face switch', clip);
+  await check('9. Language on the page: English and Español, remembered, fits +25% in the panel and full screen', checkLanguage);
+  if (SHOTS) await check('10. Clip of the face switch', clip);
 }
 
 main().catch((e) => {

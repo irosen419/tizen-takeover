@@ -6,6 +6,10 @@
 (function () {
   'use strict';
 
+  /* The words: window.HUB_PLANNED_STRINGS, when set before this file loads,
+     replaces them ({ texts: { mirror: '...' }, note: '...' }). */
+  var NOTE = 'Not built yet. This spot is reserved for it.';
+
   var PLANNED = [
     { id: 'weather', title: 'Weather', icon: 'sun-cloud', text: 'Today at a glance, then the day or the week.' },
     { id: 'todo', title: 'To-do', icon: 'check-list', text: 'Everything on your list, like the morning brief.' },
@@ -15,6 +19,16 @@
     { id: 'ambiance', title: 'Ambiance', icon: 'sparkle', text: 'Pick the light vibe from the TV.' },
     { id: 'mirror', title: 'Mirror', icon: 'camera', text: 'A camera mirror for mornings and nights out.' }
   ];
+
+  (function () {
+    var S = window.HUB_PLANNED_STRINGS;
+    if (!S || typeof S !== 'object') return;
+    if (typeof S.note === 'string') NOTE = S.note;
+    var t = S.texts && typeof S.texts === 'object' ? S.texts : {};
+    for (var i = 0; i < PLANNED.length; i++) {
+      if (typeof t[PLANNED[i].id] === 'string') PLANNED[i].text = t[PLANNED[i].id];
+    }
+  })();
 
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -75,7 +89,7 @@
       renderPanel: function (body) {
         var wrap = el('div', 'planned-panel');
         wrap.appendChild(el('p', 'planned-lead', p.text));
-        wrap.appendChild(el('p', 'planned-note', 'Not built yet. This spot is reserved for it.'));
+        wrap.appendChild(el('p', 'planned-note', NOTE));
         body.appendChild(wrap);
         var mark = el('span', 'planned-mark planned-mark-panel');
         mark.innerHTML = (window.HUB_ICONS && HUB_ICONS[p.icon]) || '';

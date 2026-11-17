@@ -30,7 +30,11 @@
  *
  * Every word is in STRINGS. window.HUB_AWWS_STRINGS, when set before this
  * file loads, replaces any of them key by key (the screenshots use it to try
- * Spanish; the TV stays English).
+ * Spanish). Earned vs spent follows the hub's language (the Clock page's
+ * Language choice): while it draws, STRINGS is HUB_I18N.localize's copy,
+ * with the Spanish under 'awws.<path>' keys in app/i18n.js. The other tiles
+ * stay English for now; adding their 'awws.' keys there is enough to
+ * translate them once they draw through inLang too.
  */
 (function () {
   'use strict';
@@ -230,6 +234,33 @@
     }
   }
   try { mergeStrings(STRINGS, window.HUB_AWWS_STRINGS); } catch (e) { /* keep English */ }
+
+  /* ---------- the hub's language (Earned vs spent only, for now) ---------- */
+
+  var EN = STRINGS;
+  var LOCAL = { lang: '', strings: null };
+
+  function I18N() {
+    var x = window.HUB_I18N;
+    return x && typeof x.localize === 'function' && typeof x.lang === 'function' ? x : null;
+  }
+
+  function localStrings() {
+    var x = I18N();
+    var lang = x ? x.lang() : 'en';
+    if (!x || lang === 'en') return EN;
+    if (LOCAL.lang !== lang || !LOCAL.strings) {
+      try { LOCAL = { lang: lang, strings: x.localize(EN, 'awws') }; } catch (e) { return EN; }
+    }
+    return LOCAL.strings;
+  }
+
+  // Runs fn with STRINGS in the hub's language, then puts English back.
+  function inLang(fn) {
+    var keep = STRINGS;
+    STRINGS = localStrings();
+    try { return fn(); } finally { STRINGS = keep; }
+  }
 
   /* One color per calendar number, the same as calendar.js. */
   var PALETTE = [
@@ -522,6 +553,7 @@
     chosen: {},        // cal number -> [r, g, b] sent by the Pi
     snap: null,        // the snapshot in use
     snapFromCache: false,
+    snapKey: '',       // the last live snapshot's content this run ('' before any)
     zone: null,
     timer: null,
     sig: '',
@@ -656,6 +688,9 @@
     refreshAll();
   }
 
+  // The tiles that draw from the snapshot (Next visit only reads the calendar).
+  var SNAP_TILES = { awws: true, 'awws-agenda': true, 'awws-todo': true, 'awws-reach': true };
+
   function onSnap(d) {
     if (!d || typeof d !== 'object' || isArr(d)) return;
     // { sentAt: null } is the Pi saying "nothing stored": forget the copy too.
@@ -664,7 +699,17 @@
     saveSnapCache();
     // The Pi pushes every snapshot it accepts, even an unchanged one (a new
     // sentAt says it is fresh): the signature redraws only what changed.
+    var key = contentKey(S.snap, SNAP_SKIP);
+    var changed = S.snapKey !== '' && key !== S.snapKey && !!S.snap;
+    S.snapKey = key;
     refreshAll();
+    // New content after the first live snapshot this run: those tiles say so.
+    if (!changed) return;
+    for (var i = 0; i < S.order.length; i++) {
+      var ctx = S.ctxs[S.order[i]];
+      if (!ctx || !SNAP_TILES[S.order[i]] || typeof ctx.activity !== 'function') continue;
+      try { ctx.activity('awws'); } catch (e) { /* the figures just show */ }
+    }
   }
 
   /* ---------- states ---------- */
@@ -758,8 +803,12 @@
       why = info.bad[0].why ? fill(STRINGS.whyText, { why: info.bad[0].why }) : '';
     }
     var map = { live: text, name: name, why: why };
-    return { head: fill(m.head, map), line: fill(m.line, map), short: fill(m.short, map) };
+    return { head: fill(m.head, map), line: fill(m.line, map), short: fill(m.short, map), state: state };
   }
+
+  // States that only wait for the Pi: the hub may show these tiles quietly
+  // (motion extras, quietTiles), as one small line.
+  var WAITING = { off: true, quiet: true, lost: true, refused: true, loading: true };
 
   function calStale() {
     if (!S.cal || S.cal.configured !== true) return 0;
@@ -1080,7 +1129,7 @@
       } catch (e) { /* wait for it */ }
       try {
         var d = L.get('awws');
-        if (d && typeof d === 'object') { S.snap = snapReady(d) ? d : null; S.snapFromCache = false; saveSnapCache(); }
+        if (d && typeof d === 'object') { S.snap = snapReady(d) ? d : null; S.snapFromCache = false; saveSnapCache(); S.snapKey = contentKey(S.snap, SNAP_SKIP); }
       } catch (e) { /* wait for it */ }
       try {
         L.on('calendar', function (d) { try { onCal(d); } catch (e) { warn(e && e.message); } });
@@ -1125,19 +1174,20 @@
 
   // A message in a tile: head, short line, faint globe.
   function tileMessage(root, size, msg, quiet) {
+    var wait = WAITING[msg.state] === true;
     if (size.cols === 1) {
-      mark(root, 'is-solo');
+      mark(root, 'is-solo' + (wait ? ' hub-dormant' : ''));
       return;
     }
     if (size.tier === 'strip') {
-      el('div', 'aw-strip-text aw-cut' + (quiet ? ' is-quiet' : ''), root, msg.head);
+      el('div', 'aw-strip-text aw-cut' + (quiet ? ' is-quiet' : '') + (wait ? ' hub-dormant hub-quiet-line' : ''), root, msg.head);
       return;
     }
-    var box = el('div', 'aw-msg', root);
-    el('div', 'aw-msg-head', box, msg.head);
-    if (msg.short) el('div', 'aw-msg-line', box, msg.short);
+    var box = el('div', 'aw-msg' + (wait ? ' hub-dormant' : ''), root);
+    el('div', 'aw-msg-head' + (wait ? ' hub-quiet-line' : ''), box, msg.head);
+    if (msg.short) el('div', 'aw-msg-line' + (wait ? ' hub-quiet-hide' : ''), box, msg.short);
     trim(root, [box.lastChild !== box.firstChild ? box.lastChild : null]);
-    mark(root);   // after the fit: the globe hangs over the edge on purpose
+    mark(root, wait ? 'hub-quiet-hide' : '');   // after the fit: the globe hangs over the edge on purpose
   }
 
   // A message in a panel: big head, the full line, faint globe.
@@ -2201,7 +2251,7 @@
     if (cap.offsetLeft <= hb.numEl.offsetLeft + 1) cap.textContent = STRINGS.netWord;
     if (!fitParts(line, earnedSpentForms(d))) { line.parentNode.removeChild(line); line = null; }
     if (nf && overW(nf)) fitForms(nf, [nextText(d), fill(STRINGS.nextTransfer, { d: dateText(d.next.day, 'short') })]);
-    trim(root, [nf]);
+    trim(root, [line, nf]);
     if (chart && !monthBars(chart, d, true)) {
       chart.parentNode.removeChild(chart);
       chart = null;
@@ -2626,6 +2676,11 @@
   }
 
   function drawPanel(body, ctx) {
+    if (ctx.id === 'awws-money') return inLang(function () { drawPanelNow(body, ctx); });
+    drawPanelNow(body, ctx);
+  }
+
+  function drawPanelNow(body, ctx) {
     var ps = pstate(ctx.id);
     var isFull = full(ctx);
     var view = ps.view;
@@ -2649,7 +2704,9 @@
       renderPanel: function (body, ctx) {
         try { drawPanel(body, ctx); } catch (e) {
           warn('panel: ' + (e && e.message));
-          broken(body, STRINGS.titles[id === 'awws' ? 'awws' : id.replace('awws-', '')] || '');
+          var key = id === 'awws' ? 'awws' : id.replace('awws-', '');
+          if (id === 'awws-money') inLang(function () { broken(body, STRINGS.titles[key] || ''); });
+          else broken(body, STRINGS.titles[key] || '');
         }
       },
       onSelect: function (target, ctx) {
@@ -2695,26 +2752,56 @@
 
   /* ---------- registering ---------- */
 
-  function real(id, titleKey, drawTile) {
+  // local: the tile follows the hub's language (Earned vs spent).
+  function real(id, titleKey, drawTile, local) {
+    function run(fn) { return local ? inLang(fn) : fn(); }
     var w = {
       id: id,
-      title: STRINGS.titles[titleKey],
       icon: 'globe',
       expandable: true,
-      init: function (ctx) { try { bind(ctx); } catch (e) { warn('init: ' + (e && e.message)); } },
+      init: function (ctx) {
+        try { bind(ctx); } catch (e) { warn('init: ' + (e && e.message)); }
+        if (local) watchLang(ctx, titleKey);
+      },
       renderTile: function (body, ctx) {
-        try {
-          if (!S.ctxs[ctx.id]) bind(ctx);
-          drawTile(body, ctx);
-        } catch (e) {
-          warn('tile ' + id + ': ' + (e && e.message));
-          broken(body, STRINGS.titles[titleKey]);
-        }
+        run(function () {
+          try {
+            if (!S.ctxs[ctx.id]) bind(ctx);
+            drawTile(body, ctx);
+          } catch (e) {
+            warn('tile ' + id + ': ' + (e && e.message));
+            broken(body, STRINGS.titles[titleKey]);
+          }
+        });
       }
     };
+    // Read when the hub draws the tile head, so a local tile follows the language.
+    Object.defineProperty(w, 'title', { get: function () { return run(function () { return STRINGS.titles[titleKey]; }); },
+      enumerable: true, configurable: true });
+    if (SNAP_TILES[id] || id === 'awws-money') w.activity = 'awws';   // the working chip goes on the first of these
     var hooks = panelHooks(id);
     for (var k in hooks) if (hooks.hasOwnProperty(k)) w[k] = hooks[k];
     return w;
+  }
+
+  // A language change redraws the tile and its open panel, with the title
+  // (the hub draws titles once).
+  function watchLang(ctx, titleKey) {
+    var x = I18N();
+    if (!x || typeof x.onChange !== 'function') return;
+    x.onChange(function () {
+      try {
+        var t = inLang(function () { return STRINGS.titles[titleKey]; });
+        var heads = document.querySelectorAll('.cell[data-widget="' + ctx.id + '"] .tile-title');
+        for (var i = 0; i < heads.length; i++) heads[i].textContent = t;
+        ctx.redrawTile();
+        if (ctx.isOpen()) {
+          ctx.redrawPanel();
+          var pt = document.querySelector('#panel .panel-title');
+          if (pt) pt.textContent = t;
+        }
+      } catch (e) { warn('language: ' + (e && e.message)); }
+    });
   }
 
   /* Placeholders, in the style of planned.js (its fitLines, copied small). */
@@ -2804,7 +2891,7 @@
   list.push(real('awws-agenda', 'agenda', agendaTile));
   list.push(real('awws-todo', 'todo', todoTile));
   list.push(real('awws-reach', 'reach', reachTile));
-  list.push(real('awws-money', 'money', moneyTile));
+  list.push(real('awws-money', 'money', moneyTile, true));
   list.push(placeholder('outreach'));
   list.push(placeholder('pipeline'));
 })();

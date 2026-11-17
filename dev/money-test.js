@@ -350,6 +350,13 @@ async function main() {
         const labels = await text(page, '#panel .clock-group-label');
         assert(/Guest mode/.test(labels), 'no Guest mode row: ' + labels);
         assert(await has(page, '#panel [data-key="guest-off"].is-selected'), 'Off is not selected at first');
+        const inside = await page.evaluate(() => {
+          const groups = document.querySelectorAll('#panel .clock-group');
+          const last = groups[groups.length - 1].getBoundingClientRect();
+          const box = document.querySelector('#panel .panel-body').getBoundingClientRect();
+          return last.bottom <= box.bottom + 1 && last.top >= box.top - 1;
+        });
+        assert(inside, 'the Guest mode row runs out of the panel');
         await page.click('#panel [data-key="guest-on"]');
         await H.sleep(300);
         assert(await has(page, '#panel [data-key="guest-on"].is-selected'), 'On is not selected after the click');
@@ -518,7 +525,7 @@ async function main() {
 
     await check('the default layout and start tile are unchanged', async () => {
       assert(C.start === 'entertainment', 'start: ' + C.start);
-      assert(C.layout.map((t) => t.widget).join() === 'today,calendar,awws,weather,todo,mirror,ambiance,nowplaying,entertainment', 'stock layout changed');
+      assert(C.layout.map((t) => t.widget).join() === 'today,calendar,awws,weather,todo,mirror,wotd,ambiance,nowplaying,entertainment', 'stock layout changed');
       assert(C.layouts[0].id === 'stock' && C.layouts[0].layout === null, 'Stock is not first');
       assert(C.widgets.budget && C.widgets.budget.show === true, 'budget.show is not true by default');
     });

@@ -32,6 +32,18 @@ var HUB_CONFIG = {
        'fade'    a plain fade (lightest on slow TVs) */
   motion: 'auto',
 
+  /* Motion extras on top of that (app/motion.js), each on or off. They only
+     move when 'motion' runs at its best (push, at 40 frames a second or
+     more); in 'fade', or on a TV that measured slow, things change at once.
+       quietTiles  waiting tiles ("needs the Pi", "Soon") are one quiet line
+       ring        the focus ring glides from tile to tile
+       stagger     a panel's items arrive one by one when it opens
+       cover       the Now Playing cover flies to the full-screen card
+       bloom       an app's icon fills the screen while the app opens
+       activity    a tile says what is updating when a sync brings new data
+     motionFx: false turns them all off; so does ?fx=off on the address. */
+  motionFx: { quietTiles: true, ring: true, stagger: true, cover: true, bloom: true, activity: true },
+
   // The tile that has focus when the hub opens.
   start: 'entertainment',
 
@@ -56,7 +68,8 @@ var HUB_CONFIG = {
     { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
     { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
     { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
-    { widget: 'mirror',        x: 9, y: 2, w: 3, h: 4 },
+    { widget: 'mirror',        x: 9, y: 2, w: 3, h: 2 },
+    { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 },
     { widget: 'ambiance',      x: 3, y: 4, w: 6, h: 1 },
     { widget: 'nowplaying',    x: 0, y: 5, w: 3, h: 1 },
     { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }

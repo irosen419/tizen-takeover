@@ -2,7 +2,10 @@
  * Clock. OK on the tile opens the Clock page: a digital or an analog face
  * and a 12-hour or 24-hour clock. (The version and the other facts about
  * the hub are in the About panel, Left from a left-most tile: app/hub.js.)
- * Both choices are remembered on this TV, and the tile follows them:
+ * Both choices are remembered on this TV, and the tile follows them.
+ * A third choice, Language (English or Español), sets the hub's language
+ * (app/i18n.js); the Clock itself stays in English for now.
+ *
  *
  *   Digital  the time and the date, nothing else, 12- or 24-hour.
  *   Analog   only the analog face (the page's own, drawFace), as large as
@@ -39,6 +42,12 @@
     var v = null;
     try { v = window.localStorage ? localStorage.getItem(key) : null; } catch (e) { v = null; }
     return allowed.indexOf(v) >= 0 ? v : fallback;
+  }
+
+  // app/i18n.js, or null when it isn't loaded.
+  function I18N() {
+    var L = window.HUB_I18N;
+    return L && typeof L.t === 'function' && typeof L.setLang === 'function' ? L : null;
   }
 
   function save(key, value) {
@@ -402,11 +411,21 @@
     if (face === 'digital') {
       group(controls, 'Clock', [['hours-12', '12-hour', hours === '12'], ['hours-24', '24-hour', hours === '24']]);
     }
+    // The hub's language (app/i18n.js), on both faces. Each name is in its
+    // own language, so it can always be found again; only the label follows.
+    if (I18N()) {
+      var lang = I18N().lang();
+      group(controls, I18N().t('lang.label', 'Language'), [['lang-en', 'English', lang === 'en'], ['lang-es', 'Español', lang === 'es']]);
+    }
     // Guest mode (guest.js): On hides every money figure until it is off again.
     if (window.HUB_GUEST) {
       var guest = window.HUB_GUEST.on();
-      group(controls, 'Guest mode', [['guest-off', 'Off', !guest], ['guest-on', 'On', guest]]);
+      var gt = function (k, en) { return I18N() ? I18N().t(k, en) : en; };
+      group(controls, gt('guest.label', 'Guest mode'), [['guest-off', gt('guest.off', 'Off'), !guest], ['guest-on', gt('guest.on', 'On'), guest]]);
     }
+    // Four groups (Digital, with Language and Guest mode): closer together, so
+    // the last one stays inside the panel.
+    if (controls.children.length >= 4) controls.className += ' is-tight';
     // Opened on the face choice: the first thing people change.
     var marked = controls.querySelectorAll('[data-autofocus]');
     for (var i = 1; i < marked.length; i++) marked[i].removeAttribute('data-autofocus');
@@ -417,6 +436,12 @@
   }
 
   function choose(key, ctx) {
+    // The language: app/i18n.js remembers it and tells everyone, this page
+    // included (the listener in init redraws it).
+    if (key === 'lang-en' || key === 'lang-es') {
+      if (I18N()) I18N().setLang(key.slice(5));
+      return;
+    }
     if (key === 'guest-on' || key === 'guest-off') {
       if (!window.HUB_GUEST || window.HUB_GUEST.on() === (key === 'guest-on')) return;
       window.HUB_GUEST.set(key === 'guest-on');
@@ -439,8 +464,13 @@
     icon: 'clock',
     head: false,
 
-    init: function () {
+    init: function (ctx) {
       setInterval(tick, 15000);
+      // A new language (picked here, or sent from the Pi): an open page
+      // redraws with its label; focus stays on the same choice.
+      if (I18N() && typeof I18N().onChange === 'function') {
+        I18N().onChange(function () { if (page && ctx && ctx.isOpen && ctx.isOpen()) ctx.redrawPanel(); });
+      }
     },
 
     renderTile: function (el, ctx) {
