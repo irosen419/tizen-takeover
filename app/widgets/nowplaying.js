@@ -299,6 +299,16 @@
 
   /* ---------- the tile ---------- */
 
+  // The header badge: the state in a word or two (Spanish in app/i18n.js).
+  var BADGES = { off: 'Not set up', signin: 'Not connected', idle: 'Nothing playing', error: 'No Spotify',
+    waiting: 'Waiting', offline: 'No Pi', update: 'Needs the Pi' };
+  function badgeWord(kind) {
+    var en = BADGES[kind] || '';
+    var L = window.HUB_I18N;
+    if (en && L && typeof L.t === 'function') { try { return String(L.t('nowplaying.badge.' + kind, en)); } catch (e) { /* English */ } }
+    return en;
+  }
+
   // Which layout this size gets.
   function layoutFor(size) {
     if (!size) return 'row';
@@ -322,12 +332,18 @@
     // tile quietly (motion extras, quietTiles): a small mark and one line.
     var waiting = !v.track && (v.kind === 'waiting' || v.kind === 'offline' || v.kind === 'update');
     if (waiting) root.className += ' hub-dormant';
+    // Without a song, a tile of two rows or more has the hub's header (the
+    // music icon, "Spotify", the state as a badge) instead of a lone label.
+    var headed = !strip && layout !== 'icon' && typeof ctx.drawHead === 'function';
     if (waiting && layout !== 'icon' && document.body.classList.contains('fx-quiet')) {
-      root.className += ' np-quiet';
-      var qhead = el('div', 'np-quiet-head', root);
-      var qmark = el('span', 'icon np-quiet-mark', qhead);
-      qmark.innerHTML = icon('music');
-      el('span', 'np-label-text np-quiet-label', qhead, v.label);
+      root.className += ' np-quiet' + (headed ? ' np-headed' : '');
+      if (headed) ctx.drawHead(root, { icon: 'music', title: 'Spotify' });
+      else {
+        var qhead = el('div', 'np-quiet-head', root);
+        var qmark = el('span', 'icon np-quiet-mark', qhead);
+        qmark.innerHTML = icon('music');
+        el('span', 'np-label-text np-quiet-label', qhead, v.label);
+      }
       el('div', 'np-title hub-quiet-line', root, v.title);
       root.title = v.hint;
       card.hasBar = false;
@@ -335,6 +351,16 @@
     }
 
     var hasSong = !!v.track && v.kind !== 'signin' && v.kind !== 'off';
+    if (!hasSong && headed) {
+      root.className += ' np-headed';
+      var hd = ctx.drawHead(root, { icon: 'music', title: 'Spotify', badge: badgeWord(v.kind) });
+      // The whole state in words, for a mouse on a laptop.
+      var badge = hd && hd.querySelector('.tile-badge');
+      if (badge) badge.setAttribute('title', v.title);
+      card.artist = el('div', 'np-artist np-hint np-headed-hint', root, v.hint);
+      card.hasBar = false;
+      return;
+    }
     card.art = hasSong || layout === 'icon' ? artBox(root, v, 'np-art-tile', layout === 'col' && size.tier === 'tall') : null;
     if (!card.art && layout !== 'icon') {
       // No song: a quiet mark instead of a picture.

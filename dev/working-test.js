@@ -294,8 +294,13 @@ async function check2(pi) {
   await sleep(1500);
   assert(await page.evaluate(() => !!document.querySelector('.fx-chip.is-in')), 'the arrival chip went too soon');
   await noneLeft(page, 2500, 'the chip stayed');
-  const after = await page.evaluate(() => document.querySelector('.cell[data-widget="todo"] .tile').children.length);
-  assert(after === kidsBefore, 'something left in the tile: ' + kidsBefore + ' -> ' + after);
+  // The accent edge (motionFx.edge) stays about a minute after the arrival chip, by design: not counted, but there.
+  const after = await page.evaluate(() => {
+    const tile = document.querySelector('.cell[data-widget="todo"] .tile');
+    return { kids: Array.prototype.filter.call(tile.children, (n) => !n.classList.contains('fx-accent')).length, accent: !!tile.querySelector(':scope > .fx-accent') };
+  });
+  assert(after.kids === kidsBefore, 'something left in the tile: ' + kidsBefore + ' -> ' + after.kids);
+  assert(after.accent, 'no accent edge after the arrival chip');
   await sleep(1300);   // past a reconcile tick: no working chip comes back
   assert(!(await chipsNow(page)).length && !(await fx(page)).working.length, 'something came back: ' + JSON.stringify(await fx(page)));
   const log = await chipLog(page);

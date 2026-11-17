@@ -175,7 +175,11 @@ async function open(pi, layout, opts) {
 
 const tileText = (page) => page.evaluate(() => {
   const t = (s) => { const e = document.querySelector('.np-tile ' + s); return e && e.offsetParent !== null ? e.textContent : null; };
-  return { label: t('.np-label-text'), title: t('.np-title'), artist: t('.np-artist'), note: t('.np-note') };
+  // Without a song (design pass 2) the tile wears the hub's header: "Spotify"
+  // is the label and the state is the badge, whose tooltip holds the words.
+  const badge = document.querySelector('.np-tile .tile-badge');
+  const state = badge && badge.offsetParent !== null ? badge.getAttribute('title') : null;
+  return { label: t('.np-label-text') || t('.tile-title'), title: t('.np-title') || state, artist: t('.np-artist'), note: t('.np-note') };
 });
 
 const waitTitle = (page, title) => until(async () => (await tileText(page)).title === title, 6000, 'the tile never showed "' + title + '"');

@@ -43,7 +43,8 @@ async function open(browser, kind, times, file) {
 function look(page) {
   return page.evaluate(function () {
     var tile = document.querySelector('[data-widget="weather"]');
-    var svg = tile ? tile.querySelector('svg') : null;
+    // The weather drawing itself (the tile head's icon is sized by style.css).
+    var svg = tile ? tile.querySelector('.tile-body svg') : null;
     var a = tile.getBoundingClientRect();
     var b = svg ? svg.getBoundingClientRect() : null;
     return {

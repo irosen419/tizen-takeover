@@ -127,7 +127,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.8';
+  var BUILD = 'v0.28.11';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -507,13 +507,18 @@
     }
   }
 
-  // The panel's resting rect in panel mode (46 x 26rem, centered).
-  function panelRect() {
+  // The panel's resting rect in panel mode: 46rem wide, centered, and as
+  // tall as the widget's content (measured the first time it opens, see
+  // fitPanel), at most 26rem and at least 10rem. Without a rec: 26rem.
+  var panelFit = {};             // widget id: content height in px at the rem it was measured at
+  function panelRect(rec) {
     var rem = remPx();
     var W = window.innerWidth;
     var H = window.innerHeight;
     var w = 46 * rem;
     var h = 26 * rem;
+    var fit = rec && rec.w && panelFit.hasOwnProperty(rec.w.id) ? panelFit[rec.w.id] : null;
+    if (fit) h = Math.max(10 * rem, Math.min(h, fit.px * rem / fit.rem));
     var left = (W - w) / 2;
     var top = (H - h) / 2;
     return { left: left, top: top, width: w, height: h, right: left + w, bottom: top + h };
@@ -611,13 +616,13 @@
     var rem = remPx();
     var rects = [];
     for (var i = 0; i < widgets.length; i++) rects.push(widgets[i] === opener ? null : widgets[i].home);
-    return ringLayout(rects, panelRect(), window.innerWidth, window.innerHeight, 1.2 * rem, 0.9 * rem);
+    return ringLayout(rects, panelRect(opener), window.innerWidth, window.innerHeight, 1.2 * rem, 0.9 * rem);
   }
 
   // For tests in a laptop browser. Not used by the hub itself.
   window.HUB_TEST = {
     ringLayout: ringLayout,
-    panelRect: panelRect,
+    panelRect: function () { return panelRect(open); },
     homeRects: function () {
       var out = {};
       for (var i = 0; i < widgets.length; i++) out[widgets[i].w.id] = widgets[i].home;
@@ -755,6 +760,72 @@
     ghostEl.style.transform = IDENTITY;
     ghostEl.className = 'ghost';
     if (wasFull) placeFloatingGlass(ghostEl);
+  }
+
+  // The panel and its frame at P's height (panel mode), or back to the
+  // style sheet's sizes (P null: full screen, or parked).
+  function sizeBoxes(P) {
+    var nodes = [panelEl, ghostEl];
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].style.height = P ? P.height + 'px' : '';
+      nodes[i].style.marginTop = P ? (-P.height / 2) + 'px' : '';
+    }
+    placeFloatingGlass(ghostEl);
+  }
+
+  // How tall the open panel's content wants to be, in px: the head, then
+  // the lowest child of the body (a child that stretches to fill reports
+  // the body's own height, so filling panels keep their full size).
+  // Offsets only, so it is right while the panel is scaled mid-grow.
+  function contentHeight() {
+    var body = panel.body;
+    var max = 0;
+    for (var c = body.firstElementChild; c; c = c.nextElementSibling) {
+      var cs = getComputedStyle(c);
+      if (cs.position === 'absolute' || cs.position === 'fixed') { max = Math.max(max, body.clientHeight); continue; }
+      if (cs.display === 'none') continue;
+      max = Math.max(max, c.offsetTop + c.offsetHeight + (parseFloat(cs.marginBottom) || 0));
+    }
+    var ps = getComputedStyle(panelEl);
+    return body.offsetTop + max + (parseFloat(ps.paddingBottom) || 0) + (parseFloat(ps.borderBottomWidth) || 0);
+  }
+
+  // The open panel's content changed (a redraw, another view): the box
+  // follows at once, measured with the box at its tallest so content that
+  // stretches shows its real need. Panel mode only, never mid-move.
+  function refitOpen() {
+    if (!open || mode !== 'panel' || busy) return;
+    var before = panelEl.offsetHeight;
+    sizeBoxes(panelRect(null));
+    var px = contentHeight();
+    if (px > 0) panelFit[open.w.id] = { px: Math.ceil(px), rem: remPx() };
+    var h = panelRect(open).height;
+    // Small shrinks are left alone, so the box doesn't twitch on each redraw.
+    if (h < before && before - h <= 24) h = before;
+    sizeBoxes({ height: h });
+    // Content that lays out by the box's height (a picture sized to it) may
+    // need a little more at the new height: grow by what overflows, once.
+    var max = panelRect(null).height;
+    // (offsets, not scrollHeight: items mid-stagger are moved by transforms)
+    var over = 0;
+    for (var c = panel.body.firstElementChild; c; c = c.nextElementSibling) {
+      if (c.offsetParent === panel.body) over = Math.max(over, Math.ceil(c.offsetTop + c.offsetHeight - panel.body.clientHeight));
+    }
+    if (over > 0 && h < max) {
+      h = Math.min(max, h + over);
+      sizeBoxes({ height: h });
+      panelFit[open.w.id] = { px: Math.ceil(h), rem: remPx() };
+    }
+    if (panelFocus) keepInView(panelFocus);
+  }
+
+  // Remembers the open widget's content height; true when it changed by
+  // more than 24px from what P (the rect it opened at) allowed.
+  function fitPanel(rec, P) {
+    var px = contentHeight();
+    if (!(px > 0)) return false;
+    panelFit[rec.w.id] = { px: Math.ceil(px), rem: remPx() };
+    return Math.abs(panelRect(rec).height - P.height) > 24;
   }
 
   function clearTile(rec) {
@@ -950,6 +1021,7 @@
     clayHook('layout');
     // A tile of another size may want another layout: draw it again.
     for (var r = 0; r < resized.length; r++) drawTile(resized[r]);
+    retitleAll();
     fxCall('relayout', [focusRect()]);
   }
 
@@ -1014,12 +1086,58 @@
       if (!p || typeof p.name !== 'string' || !p.name) continue;
       var list = p.layout ? usableLayout(p.layout) : null;
       if (p.layout && !list) continue;
+      // Guest mode: the money layouts ("AWWS money", "Budget") leave the bar.
+      if (guestOn() && window.HUB_GUEST.hasMoney(list || cfg.layout)) continue;
       out.push({ name: p.name, layout: list });
     }
     return out;
   }
 
   function presetSig(p) { return layoutSig(p.layout || cfg.layout); }
+
+  function guestOn() {
+    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
+  }
+
+  // Guest mode turned on while a money layout from the bar is on screen: the
+  // first layout in the bar without money takes its place (applied once the
+  // Clock page closes). Any other layout stays; its money tiles say "Hidden
+  // for guests".
+  function guestLayout(on) {
+    if (!on) return;
+    var src = cfg.layouts;
+    if (!src || Object.prototype.toString.call(src) !== '[object Array]') return;
+    var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
+    var onMoney = false;
+    for (var i = 0; i < src.length; i++) {
+      var list = src[i] && src[i].layout ? usableLayout(src[i].layout) : null;
+      if (list && window.HUB_GUEST.hasMoney(list) && layoutSig(list) === current) { onMoney = true; break; }
+    }
+    if (!onMoney) return;
+    var safe = switcherPresets();
+    if (!safe.length) return;
+    var live = window.HUB_LIVE && typeof window.HUB_LIVE.get === 'function' ? window.HUB_LIVE.get('layout') : null;
+    saveChoice({ id: safe[0].name, piSig: layoutSig(live && live.layout) });
+    saveLayout(safe[0].layout);
+    pendingLayout = safe[0].layout;
+    layoutChance();
+  }
+
+  // Guest mode turned on: a money tile has nothing to see any more, so its
+  // accent edge (motion.js) goes at once. Its header stays as it is.
+  function guestEdges(on) {
+    if (!on) return;
+    for (var i = 0; i < widgets.length; i++) {
+      if (widgets[i].tile && window.HUB_GUEST.MONEY.indexOf(widgets[i].w.id) >= 0) fxCall('accentClear', [widgets[i].tile]);
+    }
+  }
+
+  try {
+    if (window.HUB_GUEST) {
+      window.HUB_GUEST.onChange(guestLayout);
+      window.HUB_GUEST.onChange(guestEdges);
+    }
+  } catch (e) { /* no Guest mode on this page */ }
 
   function drawSwitcher() {
     switcherEl.innerHTML = '';
@@ -1316,9 +1434,34 @@
         var z = (rec && rec.size) || sizeOf(null);
         return { cols: z.cols, rows: z.rows, tier: z.tier, width: z.width };
       },
-      redrawPanel: function () { if (open === rec) drawPanelBody(true); },
+      redrawPanel: function () { if (open === rec) { drawPanelBody(true); refitOpen(); } },
       setSub: function (text) { if (open === rec) setPanelSub(text); },
       setTileSub: function (text) { setTileSub(rec, text); },
+      // The header: a title other than the widget's own ('' goes back to
+      // it), a badge on the right ('' hides it), the title fitted again
+      // (after the widget's title or short form changed), and a header of
+      // the same kind drawn by a widget without the hub's (head: false).
+      setTitle: function (text) {
+        if (!rec) return;
+        rec.titleText = text ? String(text) : '';
+        retitle(rec);
+      },
+      setBadge: function (text) {
+        if (!rec || !rec.badgeEl) return;
+        rec.badgeText = text ? String(text) : '';
+        setBadgeText(rec.badgeEl, rec.badgeText || (rec.w.planned ? hubWord('soon', 'Soon') : ''));
+        retitle(rec);
+      },
+      retitle: function () { retitle(rec); },
+      drawHead: function (parent, o) {
+        o = o || {};
+        var parts = buildHead(parent, o.icon || w.icon, '', o.badge || '');
+        fitHead(parts.head, parts.title, parts.badge, String(o.title || w.title || ''), o.short || '');
+        return parts.head;
+      },
+      // The accent edge along the tile's top ("something to see here"),
+      // for a reason other than ctx.activity (which raises it by itself).
+      accent: function (reason) { if (rec && rec.tile) fxCall('accent', [rec.tile, reason || 'update']); },
       live: liveFacade(),
       focus: function (node) { if (open === rec) focusPanel(node); },
       bloom: function (node) { return fxCall('bloom', [node]) || null; },
@@ -1347,16 +1490,14 @@
       cell.setAttribute('data-widget', w.id);
       placeCell(cell, entry);
 
-      var tile = el('div', 'tile' + (w.planned ? ' is-planned' : '') + (rec.expandable ? '' : ' is-static'), cell);
+      var tile = el('div', 'tile' + (w.planned ? ' is-planned' : '') + (rec.expandable ? '' : ' is-static') +
+        (w.head === false ? ' is-headless' : ''), cell);
       if (w.head !== false) {
-        var head = el('div', 'tile-head', tile);
-        var icon = el('span', 'icon tile-icon', head);
-        icon.innerHTML = iconHTML(w.icon);
-        var titles = el('div', 'tile-titles', head);
-        el('div', 'tile-title', titles).textContent = w.title;
+        var parts = buildHead(tile, w.icon, '', w.planned ? hubWord('soon', 'Soon') : '');
+        rec.titleEl = parts.title;
+        rec.badgeEl = parts.badge;
         var sub = ctx.config.sub || w.sub || '';
-        if (sub) el('div', 'tile-sub', titles).textContent = sub;
-        if (w.planned) el('span', 'tile-soon', head).textContent = 'Soon';
+        if (sub) el('div', 'tile-sub', parts.titles).textContent = sub;
       }
       rec.cell = cell;
       rec.tile = tile;
@@ -1370,6 +1511,17 @@
     for (var j = 0; j < widgets.length; j++) call(widgets[j], 'init', [widgets[j].ctx]);
     for (var k = 0; k < widgets.length; k++) drawTile(widgets[k]);
     measureHome();
+    retitleAll();
+    // A language change: every title (and its short form) again, after the
+    // widgets' own listeners (registered in init, above) have run.
+    try {
+      if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+        window.HUB_I18N.onChange(function () {
+          retitleAll();
+          if (open) { drawPanelHead(); }
+        });
+      }
+    } catch (e) { /* titles stay in the language they started in */ }
 
     var start = -1;
     for (var s = 0; s < widgets.length; s++) {
@@ -1465,18 +1617,25 @@
   function drawPanelHead() {
     var w = open.w;
     panel.icon.innerHTML = iconHTML(w.icon);
-    panel.title.textContent = w.title;
     var full = mode === 'full';
     panel.btnIcon.innerHTML = iconHTML(full ? 'shrink' : 'expand');
-    panel.btnLabel.textContent = full ? 'Exit full screen' : 'Full screen';
+    panel.btnLabel.textContent = full ? hubWord('exitFull', 'Exit full screen') : hubWord('full', 'Full screen');
     drawPanelHint();
+    fitPanelTitle();
+  }
+
+  // The open widget's title on one line, else its short form (AWWS).
+  function fitPanelTitle() {
+    if (!open) return;
+    fitTitle(panel.title, String(open.w.title || ''), widgetShort(open));
   }
 
   // typing: true or false when the caller knows, otherwise worked out here.
   function drawPanelHint(typing) {
     if (!open) return;
     if (typing === undefined) typing = !!typingBox();
-    panel.hint.textContent = typing ? 'Back to stop typing' : mode === 'full' ? 'Back to shrink' : 'Back to close';
+    // A small chip like the Full screen button, but never focusable.
+    panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : mode === 'full' ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
   }
 
   function panelFocusables() {
@@ -1681,12 +1840,15 @@
       w.tile.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + ms + 'ms ' + EASE;
       w.tile.style.transform = 'translate(' + (t.left - w.home.left) + 'px,' + (t.top - w.home.top) + 'px) scale(' + t.scale + ')';
       w.tile.style.opacity = '0.6';
+      // Pushed aside, the body's words are too small to read: icon and title only.
+      w.tile.classList.add('is-pushed');
     }
   }
 
   function returnOthers(rec, ms) {
     for (var i = 0; i < widgets.length; i++) {
       var w = widgets[i];
+      w.tile.classList.remove('is-pushed');
       if (w === rec || !w.tile.style.transform) continue;
       w.tile.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + ms + 'ms ' + EASE;
       w.tile.style.transform = 'translate(0px,0px) scale(1)';
@@ -1700,6 +1862,7 @@
       s.transition = '';
       s.transform = '';
       s.opacity = '';
+      widgets[i].tile.classList.remove('is-pushed');
     }
   }
 
@@ -1722,15 +1885,34 @@
     var fade = motion.mode === 'fade';
     var push = motion.mode === 'push';
     var ms = fade ? 140 : push ? 320 : 260;
-    var P = panelRect();
     var T = rec.home || rectOf(rec.tile);
     var moved = false;
     var built = false;
     var skip = null;
-    var stop = fade ? function () {} : startSampling();
     var openedAt = now();
     fxCall('ringHide');
     fxCall('activityStop');
+    // Seen: the tile's accent edge goes (motion.js).
+    fxCall('accentClear', [rec.tile]);
+
+    // The panel is as tall as its content. The first time a widget opens,
+    // its content is built here, before anything moves, and measured; after
+    // that the height is known and the build waits for the first frame.
+    panelEl.className = 'panel is-shown';
+    panelEl.style.transition = 'none';
+    panelEl.style.opacity = '0';
+    panelEl.style.transform = IDENTITY;
+    var prebuilt = !panelFit.hasOwnProperty(rec.w.id);
+    if (prebuilt) {
+      sizeBoxes(panelRect(null));
+      fillPanel(rec);
+      fitPanel(rec, panelRect(null));
+    }
+    var P = panelRect(rec);
+    sizeBoxes(P);
+    // Content built already: its items hide now, before the first frame shows them.
+    if (prebuilt && !fade && rec.w.stagger) fxCall('stagger', [panel.body, rec.w.stagger, T, P, 140 - (now() - openedAt)]);
+    var stop = fade ? function () {} : startSampling();
 
     function finish() {
       if (!moved || !built) return;
@@ -1741,12 +1923,11 @@
         rec.tile.style.visibility = 'hidden';
       }
       busy = false;
+      // The content may have changed height since last time: the box follows, at once.
+      refitOpen();
     }
 
     // Start state, then one style flush, then the transitions (FLIP).
-    panelEl.className = 'panel is-shown';
-    panelEl.style.transition = 'none';
-    panelEl.style.opacity = '0';
     panelEl.style.transform = fade ? IDENTITY : panelStart(T, P);
     ghostEl.style.transition = 'none';
     ghostEl.className = 'ghost';
@@ -1784,20 +1965,27 @@
 
     afterFrame(function () {
       var t0 = now();
-      try {
-        drawPanelHead();
-        setPanelSub(rec.ctx.config.sub || rec.w.sub || '');
-        drawPanelBody(false);
-      } catch (e) {
-        if (window.console && console.warn) console.warn('Panel build: ' + (e && e.message));
+      if (!prebuilt) {
+        fillPanel(rec);
       }
       skip = [t0, now()];
       panelEl.style.opacity = '1';
       // Motion extras: the items arrive from the tile's side (not in fade mode).
-      if (!fade && rec.w.stagger) fxCall('stagger', [panel.body, rec.w.stagger, T, P, 140 - (now() - openedAt)]);
+      if (!prebuilt && !fade && rec.w.stagger) fxCall('stagger', [panel.body, rec.w.stagger, T, P, 140 - (now() - openedAt)]);
       built = true;
       finish();
     });
+  }
+
+  // The panel's head and content for rec (open is rec already).
+  function fillPanel(rec) {
+    try {
+      drawPanelHead();
+      setPanelSub(rec.ctx.config.sub || rec.w.sub || '');
+      drawPanelBody(false);
+    } catch (e) {
+      if (window.console && console.warn) console.warn('Panel build: ' + (e && e.message));
+    }
   }
 
   // The mirror of opening: the content fades out quickly while shrinking
@@ -1844,7 +2032,7 @@
     }
 
     var ms = 280;
-    var P = panelRect();
+    var P = panelRect(rec);
     var T = rec.home || rectOf(rec.tile);
     var stop = startSampling();
     rec.cell.classList.add('is-raised');
@@ -1884,7 +2072,7 @@
 
     function sizeGhost() {
       ghostEl.className = 'ghost' + (next === 'full' ? ' is-full' : '');
-      placeFloatingGlass(ghostEl);
+      sizeBoxes(next === 'full' ? null : panelRect(rec));
     }
 
     setOpacity(panelEl, 0, 80);
@@ -1985,9 +2173,10 @@
     // The TV keyboard can send a stray Enter after Done or Back after Cancel.
     if ((code === KEY.ENTER || isBack(code)) && Date.now() - typingEndedAt < 300) return;
 
-    // A banner over the home screen (budget.js's "New charge: ..."): OK or
-    // Back dismisses it first; the arrows still move between tiles.
-    if (!open && !sw.on && !ab.on && (code === KEY.ENTER || isBack(code)) && alertShown()) {
+    // A banner over the screen (budget.js's "New charge: ..."): OK or Back
+    // dismisses it first, wherever you are (home, a panel, the layout switcher,
+    // About); the arrows still move as usual.
+    if ((code === KEY.ENTER || isBack(code)) && alertShown()) {
       dismissAlert();
       return;
     }
@@ -2017,6 +2206,91 @@
     // Back on the home stage does nothing: the hub is home.
     keyRepeat = false;
   });
+
+  /* ---------- tile header ---------- */
+
+  /*
+   * Every tile with a title has one header: the icon (1.5rem), the title on
+   * one line (never wrapped) and, on the right, an optional badge (Soon,
+   * Sample, a state). A title that doesn't fit on one line at its size takes
+   * the widget's short form (w.shortTitle: a string, a getter or a function
+   * of the tile's size), and only if that doesn't fit either does it end in
+   * "...". The hub's own words follow the language: 'hub.<key>' in i18n.js.
+   */
+  function hubWord(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') {
+      try { return String(L.t('hub.' + key, english, vars)); } catch (e) { /* English below */ }
+    }
+    return english;
+  }
+
+  // The header's elements, in parent (a tile, or a widget's own body that
+  // draws a header of the same kind: ctx.drawHead).
+  function buildHead(parent, iconName, title, badge) {
+    var head = el('div', 'tile-head', parent);
+    var icon = el('span', 'icon tile-icon', head);
+    icon.innerHTML = iconHTML(iconName);
+    var titles = el('div', 'tile-titles', head);
+    var t = el('div', 'tile-title', titles);
+    t.textContent = title || '';
+    var b = el('span', 'tile-badge', head);
+    setBadgeText(b, badge);
+    return { head: head, title: t, titles: titles, badge: b };
+  }
+
+  function setBadgeText(node, text) {
+    text = text ? String(text) : '';
+    if (node.textContent !== text) node.textContent = text;
+    node.style.display = text ? '' : 'none';
+    // The planned tiles' tag kept its old name, for the tests and the CSS.
+    if (text && node.parentNode && hasClass(node.parentNode.parentNode || node, 'is-planned')) node.classList.add('tile-soon');
+  }
+
+  function widgetShort(rec) {
+    var s = rec.w.shortTitle;
+    try { if (typeof s === 'function') s = s(rec.size || sizeOf(null)); } catch (e) { s = ''; }
+    return s ? String(s) : '';
+  }
+
+  // Puts text in a title element, or its short form when the full one would
+  // need a second line. Only reads layout when the full one may not fit.
+  function fitTitle(node, full, short) {
+    if (node.textContent !== full) node.textContent = full;
+    if (node.getAttribute('data-full')) node.removeAttribute('data-full');
+    if (!short || short === full || !node.clientWidth) return;
+    if (node.scrollWidth > node.clientWidth + 1) {
+      node.textContent = short;
+      node.setAttribute('data-full', full);    // the name it stands for (tests, and anyone curious)
+    }
+  }
+
+  // The title (or its short form) beside the badge; if even that can't fit,
+  // the badge goes to the next line (class is-crowded) and the title is
+  // fitted again with the whole row.
+  function fitHead(head, title, badge, full, short) {
+    head.classList.remove('is-crowded');
+    fitTitle(title, full, short);
+    if (!badge || !badge.textContent || badge.style.display === 'none' || !title.clientWidth) return;
+    if (title.scrollWidth <= title.clientWidth + 1) return;
+    if (getComputedStyle(badge).display === 'none') return;
+    head.classList.add('is-crowded');
+    fitTitle(title, full, short);
+  }
+
+  function retitle(rec) {
+    if (rec && rec === open) fitPanelTitle();
+    if (!rec || !rec.titleEl) return;
+    if (rec.badgeText === undefined || rec.badgeText === null) {
+      setBadgeText(rec.badgeEl, rec.w.planned ? hubWord('soon', 'Soon') : '');
+    }
+    var full = rec.titleText || String(rec.w.title || '');
+    fitHead(rec.titleEl.parentNode.parentNode, rec.titleEl, rec.badgeEl, full, rec.titleText ? '' : widgetShort(rec));
+  }
+
+  function retitleAll() {
+    for (var i = 0; i < widgets.length; i++) retitle(widgets[i]);
+  }
 
   /* ---------- tile sub line ---------- */
 
@@ -2501,7 +2775,7 @@
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
     clayHook('layout');
-    resizeTimer = setTimeout(function () { measureHome(); placeGlass(); fxCall('relayout', [focusRect()]); }, 150);
+    resizeTimer = setTimeout(function () { measureHome(); placeGlass(); retitleAll(); fxCall('relayout', [focusRect()]); }, 150);
   });
 
   reportStarted();

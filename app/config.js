@@ -41,8 +41,10 @@ var HUB_CONFIG = {
        cover       the Now Playing cover flies to the full-screen card
        bloom       an app's icon fills the screen while the app opens
        activity    a tile says what is updating when a sync brings new data
+       edge        a thin light along the top of a tile with something new
+                   (an update, an event within the hour) for about a minute
      motionFx: false turns them all off; so does ?fx=off on the address. */
-  motionFx: { quietTiles: true, ring: true, stagger: true, cover: true, bloom: true, activity: true },
+  motionFx: { quietTiles: true, ring: true, stagger: true, cover: true, bloom: true, activity: true, edge: true },
 
   // The tile that has focus when the hub opens.
   start: 'entertainment',

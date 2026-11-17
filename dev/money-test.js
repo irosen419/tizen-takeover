@@ -20,6 +20,10 @@
  *   data over 2 hours old: "as of" under the title, and the tile dims;
  *   showMoney false hides every money figure; budget.show false hides the
  *   budget tiles and the banner;
+ *   Guest mode (app/guest.js): every money tile says "Hidden for guests", no
+ *   banner, no budget kept on the TV; the Clock page's Off / On turns it on
+ *   and off live and is remembered; the money layouts leave the switcher; a
+ *   money layout on screen gives way to one without money;
  *   the banner: "New charge: <label>" with no amount, OK dismisses it (no
  *   panel opens), it stays dismissed after a reload, a new charge shows again;
  *   the two layouts in the switcher ("AWWS money" and "Budget"), every pill
@@ -310,6 +314,102 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
+    /* ---------- Guest mode ---------- */
+    const GUEST_ROW = ROW.slice(0, 5).concat([{ widget: 'today', x: 6, y: 3, w: 6, h: 3 }]);
+    const GUEST_CACHE = JSON.stringify({ v: 1, at: H.MONDAY, data: Object.assign(H.budgetSample.snapshot({ sentAt: FRESH }), { receivedAt: FRESH }) });
+
+    await check('Guest mode on: every money tile says "Hidden for guests", no figure, no banner, no budget kept', async () => {
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.guest.v1': 'on', 'homeHub.budget.v1': GUEST_CACHE } });
+      try {
+        for (const id of IDS) {
+          const t = await text(page, tileOf(id));
+          assert(/Hidden for guests/.test(t) && !/\$/.test(t), id + ': ' + t);
+        }
+        assert(!/\$1,841/.test(await text(page, tileOf('awws'))), 'the Glance shows money');
+        await H.sleep(500);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'the banner shows');
+        const kept = await page.evaluate(() => ({ store: window.HUB_BUDGET_TEST.store.data, cache: localStorage.getItem('homeHub.budget.v1') }));
+        assert(kept.store === null && kept.cache === null, 'budget kept: ' + JSON.stringify(kept).slice(0, 120));
+        await H.openPanel(page, 'budget-card');
+        const p = await text(page, '#panel .panel-body');
+        assert(/Hidden for guests/.test(p) && /Clock page/.test(p) && !/\$/.test(p), 'card panel: ' + p);
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await H.openPanel(page, 'awws-money');
+        const m = await text(page, '#panel .panel-body');
+        assert(/Hidden for guests/.test(m) && !/\$/.test(m), 'money panel: ' + m);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Guest mode from the Clock page: On hides money at once, Off brings it back, and it is remembered', async () => {
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        assert(/Covered/.test(await text(page, tileOf('budget-card'))), 'no budget to start with');
+        await H.openPanel(page, 'today');
+        const labels = await text(page, '#panel .clock-group-label');
+        assert(/Guest mode/.test(labels), 'no Guest mode row: ' + labels);
+        assert(await has(page, '#panel [data-key="guest-off"].is-selected'), 'Off is not selected at first');
+        const inside = await page.evaluate(() => {
+          const groups = document.querySelectorAll('#panel .clock-group');
+          const last = groups[groups.length - 1].getBoundingClientRect();
+          const box = document.querySelector('#panel .panel-body').getBoundingClientRect();
+          return last.bottom <= box.bottom + 1 && last.top >= box.top - 1;
+        });
+        assert(inside, 'the Guest mode row runs out of the panel');
+        await page.click('#panel [data-key="guest-on"]');
+        await H.sleep(300);
+        assert(await has(page, '#panel [data-key="guest-on"].is-selected'), 'On is not selected after the click');
+        assert((await page.evaluate(() => localStorage.getItem('homeHub.guest.v1'))) === 'on', 'not remembered');
+        for (const id of IDS) {
+          const t = await text(page, tileOf(id));
+          assert(/Hidden for guests/.test(t) && !/\$/.test(t), 'after On, ' + id + ': ' + t);
+        }
+        await page.click('#panel [data-key="guest-off"]');
+        await H.sleep(300);
+        assert((await page.evaluate(() => localStorage.getItem('homeHub.guest.v1'))) === null, 'Off not remembered');
+        await H.until(async () => /Covered/.test(await text(page, tileOf('budget-card'))), 3000, 'the budget did not come back: ' + await text(page, tileOf('budget-card')));
+        assert(/\$/.test(await text(page, tileOf('awws-money'))), 'Earned vs spent did not come back');
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Guest mode: the money layouts leave the switcher', async () => {
+      const page = await env.newPage({ storage: { 'homeHub.guest.v1': 'on' } });
+      try {
+        await page.evaluate(() => {});
+        await H.focusTile(page, await page.evaluate(() => {
+          let best = null;
+          document.querySelectorAll('#grid .cell').forEach((c) => {
+            const r = c.getBoundingClientRect();
+            if (!best || r.top < best.t - 2 || (Math.abs(r.top - best.t) <= 2 && r.left < best.l)) best = { t: r.top, l: r.left, id: c.getAttribute('data-widget') };
+          });
+          return best.id;
+        }));
+        await H.key(page, 'ArrowUp');
+        await H.until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
+        const names = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.switcher-item'), (n) => n.textContent));
+        assert(names.length === 5 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Guest mode turned on while the Budget layout shows: the first layout without money takes its place', async () => {
+      const budget = C.layouts.filter((l) => l.id === 'budget')[0].layout;
+      const page = await env.newPage({ layout: budget, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        assert(await has(page, '.cell[data-widget="budget-goals"]'), 'not on Budget');
+        await page.evaluate(() => window.HUB_GUEST.set(true));
+        await H.until(() => page.evaluate(() => !document.querySelector('.cell[data-widget="budget-goals"]') && !!window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0), 15000, 'still on Budget');
+        await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 15000 });
+        const ids = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#grid .cell'), (c) => c.getAttribute('data-widget')));
+        assert(!ids.some((id) => ['awws-money', 'budget-room', 'budget-card', 'budget-goals'].indexOf(id) >= 0), 'money tiles: ' + ids.join(', '));
+        assert(await page.evaluate(() => window.HUB_GUEST.on()), 'Guest mode is off after the reload');
+      } finally { await page.ctx.close(); }
+    });
+
     /* ---------- the banner ---------- */
     for (const es of [false, true]) {
       await check((es ? 'Spanish' : 'English') + ': the banner names the charge, no amount; OK dismisses it and opens nothing; it stays dismissed', async () => {
@@ -356,6 +456,34 @@ async function main() {
         }
       });
     }
+
+    await check('banner: OK dismisses it from inside a panel; an undismissed one clears itself', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-goals');
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, alerts: [{ id: 'a-2999', label: 'Corner Bakery Stand' }] }));
+        await H.until(() => page.evaluate(() => window.HUB_ALERT.shown()), 5000, 'no banner over the panel');
+        await H.key(page, 'Escape');
+        await H.sleep(400);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'Back in a panel did not dismiss it');
+        assert(await page.evaluate(() => !!window.HUB_TEST.open()), 'Back closed the panel too');
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, alerts: [{ id: 'a-3001', label: 'Late Night Tacos' }] }));
+        await H.until(() => page.evaluate(() => window.HUB_ALERT.shown()), 5000, 'a new charge did not show');
+        await H.key(page, 'Enter');
+        await H.sleep(400);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'OK in a panel did not dismiss it');
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, alerts: [{ id: 'a-3002', label: 'Game Store Online' }] }));
+        await H.until(() => page.evaluate(() => window.HUB_ALERT.shown()), 5000, 'the next charge did not show');
+        await page.evaluate(() => window.HUB_ALERT.setExpiry(600));
+        await H.until(() => page.evaluate(() => !window.HUB_ALERT.shown()), 3000, 'the banner did not expire');
+        await H.sleep(500);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'an expired banner came back');
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
 
     /* ---------- the layouts ---------- */
     for (const id of ['awws-money', 'budget']) {
@@ -491,7 +619,7 @@ async function main() {
       try { acorn = require(p); break; } catch (e) { /* next */ }
     }
     const bad = [];
-    for (const f of ['app/widgets/budget.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js']) {
+    for (const f of ['app/widgets/budget.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
       const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
       if (acorn) {
         try { acorn.parse(src, { ecmaVersion: 5 }); } catch (e) { bad.push(f + ': ' + e.message); }

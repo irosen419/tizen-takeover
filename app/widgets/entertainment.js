@@ -404,6 +404,8 @@
   return {
     id: 'entertainment',
     title: 'Entertainment',
+    // Only when "Entertainment" doesn't fit its tile on one line (hub.js).
+    shortTitle: 'Apps',
     icon: 'tv',
     expandable: true,
     stagger: '.ent-item',     // the icons arrive one by one as the panel opens

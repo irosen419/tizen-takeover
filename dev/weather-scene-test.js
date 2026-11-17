@@ -213,7 +213,8 @@ async function checkEveryKind() {
 async function checkTextStays() {
   const boxes = (page) => page.evaluate(() => {
     const out = {};
-    ['.wx-label', '.wx-tile-temp', '.wx-tile-cond', '.wx-hl-val', '.wx-rain-val'].forEach((s) => {
+    // The place is the hub header's title since design pass 2 (.tile-title).
+    ['.tile-title', '.wx-tile-temp', '.wx-tile-cond', '.wx-hl-val', '.wx-rain-val'].forEach((s) => {
       const e = document.querySelector('.cell[data-widget="weather"] ' + s);
       const r = e.getBoundingClientRect();
       out[s] = [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)].join(',');
