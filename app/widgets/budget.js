@@ -396,6 +396,12 @@
     } catch (e) { /* the copy in memory still works */ }
   }
 
+  // The figures of a snapshot, without when it was sent or received: a
+  // resend of the same figures is not news.
+  function figuresKey(d) {
+    try { return JSON.stringify(d, function (k, v) { return k === 'receivedAt' || k === 'sentAt' ? undefined : v; }); } catch (e) { return ''; }
+  }
+
   function onData(d) {
     if (!d || typeof d !== 'object' || isArr(d)) return;
     // { sentAt: null } is the Pi saying "nothing stored": forget the copy too.
@@ -404,6 +410,16 @@
     saveCache();
     refreshAll();
     updateBanner();
+    // New figures (a new charge among them) after the first live data this
+    // run: each budget tile says so (activity chip and accent edge).
+    var key = S.data ? figuresKey(S.data) : '';
+    var changed = S.liveKey !== undefined && key && key !== S.liveKey;
+    S.liveKey = key;
+    if (!changed) return;
+    for (var i = 0; i < S.order.length; i++) {
+      var ctx = S.ctxs[S.order[i]];
+      if (ctx && typeof ctx.activity === 'function') { try { ctx.activity('budget'); } catch (e) { /* the figures just show */ } }
+    }
   }
 
   function signature() {
@@ -451,7 +467,7 @@
     loadCache();
     try {
       var d = x.get('budget');
-      if (d && typeof d === 'object') { S.data = ready(d) ? d : null; S.fromCache = false; saveCache(); }
+      if (d && typeof d === 'object') { S.data = ready(d) ? d : null; S.fromCache = false; saveCache(); S.liveKey = S.data ? figuresKey(S.data) : ''; }
     } catch (e) { /* wait for it */ }
     try { x.on('budget', function (d) { try { onData(d); } catch (e) { warn(e && e.message); } }); } catch (e) { warn('live: ' + (e && e.message)); }
     try { if (typeof x.onStatus === 'function') x.onStatus(function () { try { refreshAll(); } catch (e) { /* next time */ } }); } catch (e) { /* ignore */ }
@@ -461,6 +477,7 @@
   }
 
   function bind(ctx) {
+    addKind();
     if (!S.ctxs[ctx.id]) S.order.push(ctx.id);
     S.ctxs[ctx.id] = ctx;
     bindLive();
@@ -969,6 +986,17 @@
     },
     text: function () { return S.current && S.banner ? S.banner.textContent : ''; }
   };
+
+  // The activity chip for new figures (app/motion.js): three bars, its words
+  // in the hub's language at the moment it shows ('budget.activity').
+  // (motion.js loads after this file: added on the first bind.)
+  function addKind() {
+    try {
+      if (S.kindAdded || !window.HUB_FX || typeof window.HUB_FX.addActivity !== 'function') return;
+      S.kindAdded = window.HUB_FX.addActivity('budget', { key: 'budget.activity', label: 'Updating budget',
+        icon: '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' });
+    } catch (e) { /* no chip; the figures just show */ }
+  }
 
   /* ---------- registering ---------- */
 

@@ -697,8 +697,26 @@
     }
   }
 
+  // An event starting within the hour gets the tile's accent edge, once per
+  // event and start (the edge goes by itself after about a minute).
+  var soonSeen = {};
+  function checkSoon() {
+    if (!index || !C || typeof C.accent !== 'function') return;
+    var t = now();
+    var a = agenda(index, t);
+    for (var i = 0; i < a.upcoming.length; i++) {
+      var ev = a.upcoming[i].ev;
+      if (!(ev.s > t && ev.s - t <= 60 * MIN)) continue;
+      var k = ev.id + '@' + ev.s;
+      if (soonSeen[k]) continue;
+      soonSeen[k] = true;
+      try { C.accent('soon'); } catch (e) { /* the event just shows */ }
+    }
+  }
+
   function refresh(force) {
     if (!C) return;
+    try { checkSoon(); } catch (e) { warn('soon: ' + (e && e.message)); }
     var sig = signature();
     if (!force && sig === tileSig) {
       if (panelOpen) updateNow();

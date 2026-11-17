@@ -156,6 +156,8 @@
     'budget.states.hidden.line': 'widgets.budget.show está apagado en config.js, así que esta TV no muestra cifras del presupuesto.',
     'budget.states.hidden.short': 'Apagado en config.js.',
     'budget.broken': '{title}: no se pudo mostrar',
+    // The activity chip when new figures arrive (one line at 22 px in a 3-column tile).
+    'budget.activity': 'Presupuesto nuevo',
 
     /* ---- Earned vs spent tile (awws-money in app/widgets/awws.js) ----
      * Key 'awws.<path in STRINGS>'; the English is STRINGS at that path in

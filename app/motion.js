@@ -23,6 +23,12 @@
  *               Widgets call ctx.activity(kind); HUB_FX.addActivity(kind,
  *               { icon, key, label }) adds a kind (key: an app/i18n.js key,
  *               label: its English, or a function giving the words).
+ *   edge        The accent edge: a thin 4px light along the top of a tile
+ *               that has something new to see (every activity above, and
+ *               ctx.accent(), e.g. an event starting within the hour). It
+ *               fades in, stays about 60 s and fades out; opening the tile
+ *               clears it. Static (no sweep, no fades) in 'fade' mode or
+ *               on a slow screen. Never on focus.
  *
  * Every moving part animates only transform and opacity, and runs only when
  * the hub's own timing (motion 'auto', see hub.js) says the screen keeps up:
@@ -64,7 +70,7 @@
     return text;
   }
 
-  var FLAGS = ['quietTiles', 'ring', 'stagger', 'cover', 'bloom', 'activity'];
+  var FLAGS = ['quietTiles', 'ring', 'stagger', 'cover', 'bloom', 'activity', 'edge'];
   var EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';   // ease-out: every entrance
   var RING_MS = 190;
   var STAGGER_MS = 260;
@@ -76,6 +82,9 @@
   var BLOOM_HOLD_MS = 2600;      // the app normally covers the hub long before this
   var ACT_HOLD_MS = 2400;        // the chip shows this long (the edge sweeps twice in it)
   var ACT_OUT_MS = 150;          // then fades out (the entrance, 220 ms, is in style.css)
+  var EDGE_HOLD_MS = 60000;      // the accent edge stays this long (edgeHold() changes it, for tests)
+  var EDGE_IN_MS = 400;
+  var EDGE_OUT_MS = 600;
 
   var host = null;               // from hub.js (see start)
   var flags = {};
@@ -485,7 +494,16 @@
   // tile: the tile's element (the chip goes inside it, over its content, so
   // nothing else moves). True when a chip shows.
   function activity(tile, kind) {
-    if (!tile || !can('activity') || !KINDS.hasOwnProperty(kind)) return false;
+    if (!tile || !KINDS.hasOwnProperty(kind)) return false;
+    var shown = activityChip(tile, kind);
+    // The accent edge comes with every activity, chip or no chip (a panel
+    // open, the wanderers out): it stays after the chip, about a minute.
+    accent(tile, kind, shown);
+    return shown;
+  }
+
+  function activityChip(tile, kind) {
+    if (!can('activity')) return false;
     if (actOf(tile) || !homeQuiet()) return false;
     var def = KINDS[kind];
     var chip = document.createElement('div');
@@ -511,6 +529,83 @@
     return true;
   }
 
+  /* ---------- accent edge ---------- */
+
+  // One per tile: { tile, node, timer }. The node is a static gradient line
+  // (only its opacity changes) with an optional light that sweeps it once
+  // (transform only).
+  var edges = [];
+
+  function edgeOf(tile) {
+    for (var i = 0; i < edges.length; i++) if (edges[i].tile === tile) return edges[i];
+    return null;
+  }
+
+  function edgeEnd(e) {
+    clearTimeout(e.timer);
+    drop(e.node);
+    var i = edges.indexOf(e);
+    if (i >= 0) edges.splice(i, 1);
+  }
+
+  function edgeFade(e) {
+    clearTimeout(e.timer);
+    if (!can('edge')) { edgeEnd(e); return; }
+    e.node.style.transition = 'opacity ' + EDGE_OUT_MS + 'ms linear';
+    e.node.style.opacity = '0';
+    e.fading = true;
+    e.timer = later(EDGE_OUT_MS + 40, function () { edgeEnd(e); });
+  }
+
+  function edgeArm(e, ms) {
+    clearTimeout(e.timer);
+    e.timer = later(ms, function () { edgeFade(e); });
+  }
+
+  // tile: the tile element; reason: what is new (for the tests); quiet:
+  // true when the activity chip's own light already sweeps the edge.
+  function accent(tile, reason, quiet) {
+    if (!tile || !on('edge')) return false;
+    var moving = can('edge');
+    var e = edgeOf(tile);
+    if (!e) {
+      var node = document.createElement('div');
+      node.className = 'fx-accent';
+      node.setAttribute('aria-hidden', 'true');
+      e = { tile: tile, node: node, timer: null, reason: reason };
+      edges.push(e);
+      tile.appendChild(node);
+      if (moving) {
+        node.style.opacity = '0';
+        void node.offsetWidth;
+        node.style.transition = 'opacity ' + EDGE_IN_MS + 'ms linear';
+      }
+      node.style.opacity = '1';
+    } else {
+      // News again: the minute starts again (and a fading edge comes back).
+      e.reason = reason;
+      e.fading = false;
+      e.node.style.transition = moving ? 'opacity ' + EDGE_IN_MS + 'ms linear' : 'none';
+      e.node.style.opacity = '1';
+    }
+    // A light sweeps the line once, unless the chip's own already does.
+    var old = e.node.firstChild;
+    if (old) e.node.removeChild(old);
+    if (moving && !quiet) el('i', 'fx-accent-sweep', e.node);
+    edgeArm(e, EDGE_HOLD_MS);
+    return true;
+  }
+
+  // The tile was opened: seen, so its edge goes at once.
+  function accentClear(tile) {
+    var e = edgeOf(tile);
+    if (e) edgeEnd(e);
+  }
+
+  function edgeClear() {
+    while (edges.length) edgeEnd(edges[0]);
+  }
+
   /* ---------- status ---------- */
 
   // For the About panel's Motion row: '' when every motion switch is off.
@@ -529,6 +624,13 @@
       staggerClear();
       shareEnd();
       activityStop();
+      // Edges stay, but as still lines (no sweep, no fade).
+      for (var i = 0; i < edges.length; i++) {
+        var n = edges[i].node;
+        if (n.firstChild) n.removeChild(n.firstChild);
+        n.style.transition = 'none';
+        if (!edges[i].fading) n.style.opacity = '1';
+      }
     }
   }
 
@@ -557,6 +659,17 @@
     activity: safe(function () { return activity.apply(null, arguments) === true; }),
     activityStop: safe(activityStop),
     addActivity: safe(function (kind, def) { return addActivity(kind, def) === true; }),
+    accent: safe(function (tile, reason) { return accent(tile, reason, false) === true; }),
+    accentClear: safe(accentClear),
+    edgeClear: safe(edgeClear),
+    // For tests: how long an edge stays (ms); the ones showing now end that
+    // long from now. Without ms: the current hold.
+    edgeHold: safe(function (ms) {
+      if (typeof ms !== 'number' || !(ms >= 0)) return EDGE_HOLD_MS;
+      EDGE_HOLD_MS = ms;
+      for (var i = 0; i < edges.length; i++) if (!edges[i].fading) edgeArm(edges[i], ms);
+      return EDGE_HOLD_MS;
+    }),
     statusText: safe(statusText),
     motionChanged: safe(motionChanged),
     // For tests: what is going on now.
@@ -569,6 +682,7 @@
         flying: !!share.fly,
         blooming: !!bloomState.node,
         chips: acts.map(function (a) { return a.kind; }),
+        edges: edges.map(function (e) { return { widget: (e.tile.parentNode && e.tile.parentNode.getAttribute('data-widget')) || '', reason: e.reason, fading: !!e.fading }; }),
         // The words each kind's chip would show now.
         labels: (function () { var o = {}; for (var k in KINDS) if (KINDS.hasOwnProperty(k)) o[k] = labelOf(k); return o; })()
       };

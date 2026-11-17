@@ -225,7 +225,7 @@ const focused = (page) => page.evaluate(() => {
 
 // Everything the extras could have added.
 const extras = (page) => page.evaluate(() => ({
-  nodes: document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge').length,
+  nodes: document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge, .fx-accent').length,
   body: document.body.className.split(' ').filter((c) => /^fx-/.test(c)),
   dormant: document.querySelectorAll('.tile.is-dormant').length
 }));
@@ -514,7 +514,8 @@ async function checkNewTodo(pi) {
   await idle(page);
   await sleep(300);
   const look = () => page.evaluate(() => ({
-    fx: Array.prototype.map.call(document.querySelectorAll('[class*="fx-"]'), (n) => n.className).sort().join(' | '),
+    // The accent edge (motionFx.edge) stays about a minute by design: checked on its own.
+    fx: Array.prototype.map.call(document.querySelectorAll('[class*="fx-"]:not(.fx-accent):not(.fx-accent-sweep)'), (n) => n.className).sort().join(' | '),
     tile: document.querySelector('.cell[data-widget="todo"] .tile').className,
     styles: document.querySelectorAll('style').length
   }));
@@ -735,11 +736,12 @@ async function checkActivityTodo(pi) {
   await idle(page);
   await sleep(400);
   const look = () => page.evaluate(() => {
-    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: document.getElementsByTagName('*').length };
+    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: document.querySelectorAll('*:not(.fx-accent):not(.fx-accent-sweep)').length };
     document.querySelectorAll('#grid .cell').forEach((c) => {
       const t = c.querySelector('.tile');
       const r = t.getBoundingClientRect();
-      out.tiles[c.getAttribute('data-widget')] = { cls: t.className, style: t.getAttribute('style') || '', kids: t.children.length,
+      // The accent edge stays after the chip by design (about a minute): not counted here.
+      out.tiles[c.getAttribute('data-widget')] = { cls: t.className, style: t.getAttribute('style') || '', kids: t.querySelectorAll(':scope > :not(.fx-accent)').length,
         rect: [r.left, r.top, r.width, r.height].map(Math.round).join(',') };
     });
     return out;
