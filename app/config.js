@@ -214,7 +214,10 @@ var HUB_CONFIG = {
            { name: 'Home', latitude: 38.72, longitude: -9.14 }   an exact spot */
       location: { name: 'Deep Ellum', latitude: 32.78, longitude: -96.78 },
       // 'fahrenheit' (wind in mph) or 'celsius' (wind in km/h)
-      units: 'fahrenheit'
+      units: 'fahrenheit',
+      // The picture behind the weather: 'auto' (moving, but still on a TV too
+      // slow for it), 'calm' (always still), 'full' (always moving) or 'off'.
+      scene: 'auto'
     },
 
     /*
