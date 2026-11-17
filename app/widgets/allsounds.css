@@ -81,6 +81,16 @@
   overflow-wrap: break-word;
 }
 .as-quiet-title { color: var(--text-2); }
+/* "May be out of date": an Echo still says it plays a song that has ended. */
+.as-stale {
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .as-hint-line { color: var(--text-2); }
 
 /* The source chip and the speaker's name: one line, each cut with "...". */
@@ -187,6 +197,7 @@
 .tile-h3.tile-ww .as-row .as-meta { margin-top: 1rem; }
 .tile-h3.tile-ww .as-row .as-chip { font-size: 1.05rem; padding: 0.15rem 0.85rem; }
 .tile-h3.tile-ww .as-row .as-device { font-size: 1.1rem; }
+.tile-h3.tile-ww .as-row .as-stale { margin-top: 0.25rem; font-size: 1.1rem; }
 .tile-h3.tile-ww .as-row .as-art { margin-right: 2rem; }
 .tile-h3.tile-ww .as-row .as-face { border-radius: 1rem; }
 
@@ -234,6 +245,7 @@
 .as-page .as-title { font-size: 2.1rem; line-height: 1.25; letter-spacing: -0.01em; }
 .as-page .as-sub { margin-top: 0.4rem; font-size: 1.3rem; line-height: 1.35; color: var(--text); }
 .as-page .as-hint-line { font-size: 1.1rem; color: var(--text-2); }
+.as-page .as-stale { margin-top: 0.3rem; font-size: 1.05rem; }
 .as-page .as-album { margin-top: 0.2rem; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); word-wrap: break-word; }
 .as-foot { margin-top: auto; flex: 0 0 auto; }
 .as-chips { display: flex; flex-wrap: wrap; margin-top: 0.7rem; }
@@ -246,6 +258,7 @@
 .panel.is-full .as-page .as-sub { margin-top: 0.7rem; font-size: 1.9rem; }
 .panel.is-full .as-page .as-album { font-size: 1.4rem; }
 .panel.is-full .as-page .as-hint-line { font-size: 1.5rem; }
+.panel.is-full .as-page .as-stale { margin-top: 0.5rem; font-size: 1.4rem; }
 .panel.is-full .as-label-text { font-size: 1rem; }
 .panel.is-full .as-chips .as-chip { font-size: 1rem; padding: 0.15rem 0.9rem; }
 .panel.is-full .as-eq { width: 1.2rem; height: 1rem; }

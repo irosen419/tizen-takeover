@@ -15,6 +15,15 @@
  *   ha.url                 'http://127.0.0.1:PORT'
  *   ha.token               the token it wants
  *   ha.set('radio')        radio | music | paused | idle | off | long |
+ *                          amazonmusic, tunein, tuneinstart, npr (shapes seen
+ *                          on a real Echo Show, 2026-11-17: Amazon Music with
+ *                          title and picture but no source or app name; TuneIn
+ *                          with the station name as the title and a picture,
+ *                          no artist, album or source; tuneinstart is TuneIn's
+ *                          first seconds, playing with nothing at all; NPR
+ *                          reported as idle) | stale (an Echo still
+ *                          "playing" a song that ended minutes ago, as when
+ *                          Audible takes over) |
  *                          unauthorized (401 to everything) | down (drops the
  *                          connection) | slow (never answers) | broken (not JSON)
  *   ha.calls               { states, one, art } counters
@@ -25,7 +34,7 @@
 
 const http = require('http');
 
-const MODES = ['radio', 'music', 'paused', 'idle', 'off', 'long', 'unauthorized', 'down', 'slow', 'broken'];
+const MODES = ['radio', 'music', 'paused', 'idle', 'off', 'long', 'amazonmusic', 'tunein', 'tuneinstart', 'npr', 'stale', 'unauthorized', 'down', 'slow', 'broken'];
 const TOKEN = 'mock-ha-token-not-a-secret-0123456789abcdef';
 
 // Two made-up covers: a radio show's square logo and an album.
@@ -47,20 +56,59 @@ function stamp(minutesAgo) {
   return new Date(Date.now() - minutesAgo * 60000).toISOString();
 }
 
+// An Echo as Alexa Media Player shows it (last_called, bluetooth_list...).
 function speaker(id, name, state, attrs, minutesAgo) {
   return {
     entity_id: 'media_player.' + id, state: state,
-    attributes: Object.assign({ friendly_name: name, supported_features: 56253 }, attrs || {}),
+    attributes: Object.assign({
+      friendly_name: name, supported_features: 56253, available: true, last_called: false,
+      bluetooth_list: [], history_records: [], volume_level: 0.4,
+      media_content_type: state === 'idle' ? 'idle' : 'music'
+    }, attrs || {}),
     last_changed: stamp(minutesAgo), last_updated: stamp(minutesAgo)
   };
 }
 
 // The house in each mode. base is the stand-in's own address, for pictures.
 function entities(mode, base) {
+  // Not Echo speakers: a TV and a browser_mod panel that are playing, and
+  // Alexa's "everywhere" group. None of these may ever be picked.
   const others = [
     { entity_id: 'sun.sun', state: 'above_horizon', attributes: { friendly_name: 'Sun' }, last_changed: stamp(90) },
-    { entity_id: 'light.living_room', state: 'on', attributes: { friendly_name: 'Living room lights' }, last_changed: stamp(30) }
+    { entity_id: 'light.living_room', state: 'on', attributes: { friendly_name: 'Living room lights' }, last_changed: stamp(30) },
+    { entity_id: 'media_player.living_room_tv', state: 'playing', attributes: { friendly_name: 'Living room TV', media_title: 'A TV show', app_name: 'Netflix' }, last_changed: stamp(1) },
+    { entity_id: 'media_player.browser_mod_kitchen', state: 'playing', attributes: { friendly_name: 'Kitchen panel', media_title: 'Panel sound' }, last_changed: stamp(1) },
+    { entity_id: 'media_player.everywhere', state: 'playing', attributes: { friendly_name: 'Everywhere', media_title: 'Group copy', last_called: false }, last_changed: stamp(0) }
   ];
+  if (mode === 'amazonmusic' || mode === 'tunein' || mode === 'tuneinstart' || mode === 'npr' || mode === 'stale') {
+    const dot = speaker('ian_s_echo_dot', 'Ian\'s Echo Dot', 'idle', {}, 200);
+    let show;
+    if (mode === 'amazonmusic') {
+      show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'playing', {
+        media_title: 'Golden Hour Drive', media_artist: 'The Lanterns', media_album_name: 'Slow Coast',
+        media_duration: 214, media_position: 62, media_position_updated_at: stamp(0),
+        entity_picture: base + '/art/album.svg', entity_picture_local: '/api/media_player_proxy/media_player.ian_s_echo_show?token=abc123'
+      }, 2);
+    } else if (mode === 'tunein') {
+      show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'playing', {
+        media_title: 'KERA', media_artist: null, media_album_name: null,
+        entity_picture: base + '/art/radio.svg', entity_picture_local: '/api/media_player_proxy/media_player.ian_s_echo_show?token=abc123'
+      }, 2);
+    } else if (mode === 'stale') {
+      // Audible took over and Alexa Media Player kept the last song: still
+      // "playing" a 3:34 song whose position was 1:02 ten minutes ago.
+      show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'playing', {
+        media_title: 'Golden Hour Drive', media_artist: 'The Lanterns', media_album_name: 'Slow Coast',
+        media_duration: 214, media_position: 62, media_position_updated_at: stamp(10),
+        entity_picture: base + '/art/album.svg'
+      }, 12);
+    } else if (mode === 'tuneinstart') {
+      show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'playing', {}, 0);
+    } else {
+      show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'idle', {}, 2);
+    }
+    return others.concat([show, dot]);
+  }
   const kitchen = speaker('kitchen_echo', 'Kitchen Echo Dot', 'idle', { source: 'Local Speaker' }, 120);
   const bedroom = speaker('bedroom_echo', 'Bedroom Echo', 'unavailable', {}, 600);
   let living;

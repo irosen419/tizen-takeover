@@ -152,7 +152,7 @@ const tileText = (page) => page.evaluate(() => {
   return {
     kind: ((document.querySelector('.as-tile') || {}).className || '').replace(/.*as-k-(\w+).*/, '$1'),
     head: t('.tile-title'), badge: t('.tile-badge'), label: t('.as-label-text'),
-    title: t('.as-title') || t('.as-msg'), sub: t('.as-sub'), hint: t('.as-hint'), chip: t('.as-chip'), device: t('.as-device')
+    title: t('.as-title') || t('.as-msg'), sub: t('.as-sub'), hint: t('.as-hint'), chip: t('.as-chip'), device: t('.as-device'), stale: t('.as-stale')
   };
 });
 
@@ -301,9 +301,22 @@ async function main() {
   // Every state, full screen tile, both languages: the words and the fit.
   const STATES = [
     { name: 'radio', mode: 'radio', kind: 'playing', en: { title: 'Morning Edition', sub: 'KERA 90.1 Dallas', chip: 'TuneIn', device: 'Living room Echo', label: 'Now playing' }, es: { label: 'Sonando ahora' }, art: true },
-    { name: 'music', mode: 'music', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', chip: 'Amazon Music', device: 'Living room Echo' }, art: true },
+    { name: 'music', mode: 'music', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', chip: 'Amazon Music', device: 'Living room Echo', stale: null }, art: true },
     { name: 'paused', mode: 'paused', kind: 'paused', en: { title: 'Golden Hour Drive', label: 'Paused' }, es: { label: 'En pausa' }, art: true },
-    { name: 'nothing', mode: 'idle', kind: 'idle', en: { title: 'Nothing playing', badge: 'Quiet', head: 'All sounds' }, es: { title: 'Nada sonando', badge: 'En silencio', head: 'Todo lo que suena' } },
+    // Real shapes from an Echo Show: Amazon Music names no app (no chip);
+    // TuneIn sends the station name and a picture, no artist (the title, then
+    // the speaker); in its first seconds it sends nothing at all (plain
+    // words, the speaker, the music mark).
+    { name: 'amazonmusic', mode: 'amazonmusic', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', chip: null, device: "Ian's Echo Show", stale: null }, es: { chip: null, stale: null }, art: true },
+    // Audible took over and the Echo still says it plays a song that ended
+    // minutes ago: the song, with a small quiet line under the title.
+    { name: 'stale', mode: 'stale', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', device: "Ian's Echo Show", stale: 'May be out of date' },
+      es: { stale: 'Puede que no esté al día' }, art: true },
+    { name: 'tunein', mode: 'tunein', kind: 'playing', en: { title: 'KERA', sub: null, chip: null, device: "Ian's Echo Show", label: 'Now playing' },
+      es: { sub: null, chip: null, label: 'Sonando ahora' }, art: true },
+    { name: 'tunein-start', mode: 'tuneinstart', kind: 'playing', en: { title: 'Something is playing', sub: null, chip: null, device: "Ian's Echo Show", label: 'Now playing' },
+      es: { title: 'Algo está sonando', sub: null, chip: null, device: "Ian's Echo Show", label: 'Sonando ahora' }, noArt: true },
+    { name: 'nothing', mode: 'npr', kind: 'idle', en: { title: 'Nothing playing', badge: 'Quiet', head: 'All sounds' }, es: { title: 'Nada sonando', badge: 'En silencio', head: 'Todo lo que suena' } },
     { name: 'notset', pi: 'noHa', kind: 'notset', en: { title: 'Not set up yet' }, es: { title: 'Aún sin configurar' } },
     { name: 'cant-reach', mode: 'down', kind: 'error', en: { title: 'Can’t reach Home Assistant', hint: 'It keeps trying by itself.' }, es: { title: 'No se puede conectar con Home Assistant' } },
     { name: 'refused', mode: 'unauthorized', kind: 'error', en: { hint: 'Home Assistant refused the token. Make a new one and put it in pi/.env.' } }
@@ -316,11 +329,15 @@ async function main() {
         const s = await open(p, TEST_LAYOUT, { lang: lang });
         const want = Object.assign({}, lang === 'en' ? st.en : {}, lang === 'es' ? (st.es || {}) : {});
         if (lang === 'es') ['chip', 'device', 'sub'].forEach((k) => { if (st.en[k]) want[k] = st.en[k]; });
-        if (lang === 'es' && st.en.title && st.kind !== 'idle' && st.kind !== 'notset' && st.kind !== 'error') want.title = st.en.title;
+        if (lang === 'es' && st.en.title && !(st.es && st.es.title) && st.kind !== 'idle' && st.kind !== 'notset' && st.kind !== 'error') want.title = st.en.title;
         const t = await waitKind(s.page, st.kind, want.title);
         Object.keys(want).forEach((k) => assert(t[k] === want[k], k + ': ' + JSON.stringify(t[k]) + ', wanted ' + JSON.stringify(want[k])));
         if (st.art) {
           await until(() => s.page.evaluate(() => { const i = document.querySelector('.as-tile .as-img'); return !!i && i.complete && i.naturalWidth > 0 && /is-loaded/.test(i.className); }), 4000, 'the picture did not load');
+        }
+        if (st.noArt) {
+          await sleep(300);
+          assert(await s.page.evaluate(() => !document.querySelector('.as-tile .as-img') && !!document.querySelector('.as-tile .as-mark')), 'no picture, the music mark instead');
         }
         const bad = await problems(s.page);
         assert(!bad.length, bad.join('; '));
@@ -364,7 +381,7 @@ async function main() {
     await sp.close();
   });
 
-  await check('a long Spanish song and speaker name at every size; English, Spanish and Spanish 25% longer', async () => {
+  await check('a long Spanish song and speaker name at every size; English, Spanish and Spanish 25% longer; the "may be out of date" line too', async () => {
     const p2 = await startPi(true);
     await house(p2, 'long');
     const bad = [];
@@ -374,6 +391,15 @@ async function main() {
       if (lang === 'es+25') await longerSpanish(s.page);
       bad.push.apply(bad, await sizeSweep(p2, s, lang));
       assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+      await s.context.close();
+    }
+    // The "may be out of date" line at every size (it goes before the title does).
+    await house(p2, 'stale');
+    for (const lang of ['en', 'es+25']) {
+      const s = await open(p2, ONLY(SIZES[0][0], SIZES[0][1]), { lang: lang === 'en' ? 'en' : 'es' });
+      await waitKind(s.page, 'playing');
+      if (lang === 'es+25') await longerSpanish(s.page);
+      bad.push.apply(bad, await sizeSweep(p2, s, 'stale ' + lang));
       await s.context.close();
     }
     for (const mode of ['idle', 'down']) {

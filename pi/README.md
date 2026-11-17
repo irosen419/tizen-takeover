@@ -348,10 +348,18 @@ Setup (once):
 
 1. In Home Assistant, the Alexa Media Player integration (HACS) must be installed and signed in, so each Echo is a `media_player` entity.
 2. In Home Assistant, open your profile, the **Security** tab, and create a **long-lived access token**. Copy it.
-3. Add it to `.env` as `HA_TOKEN=...` (see `.env.example`). `HA_URL` defaults to `http://127.0.0.1:8123`, Home Assistant on this Pi; `ALLSOUNDS_ENTITIES` can list only some speakers (`media_player.living_room_echo,media_player.kitchen_echo`).
-4. `docker compose restart hub`, then `./hub allsounds status`.
+3. Add it to `.env` as `HA_TOKEN=...` (see `.env.example`). `HA_URL` defaults to `http://127.0.0.1:8123`, Home Assistant on this Pi.
+4. Set `ALLSOUNDS_ENTITIES` to your own speakers, for example `ALLSOUNDS_ENTITIES=media_player.ian_s_echo_show,media_player.ian_s_echo_dot`. Left out, the Pi watches every Alexa speaker Home Assistant knows (entities with `last_called` or `bluetooth_list`), and Alexa Media Player lists every Echo and Fire TV on the Amazon account, so someone else's (Stan's, say) could show on your TV. It never watches `media_player.everywhere` (a group that repeats the others), TVs, the Xbox or `browser_mod` panels.
+5. `docker compose restart hub`, then `./hub allsounds status`.
 
-What reaches the TV: the state, the app's name ("TuneIn"), the speaker's name, the title, artist and album, and a picture only when it is an absolute `https` address. Never the token or a Home Assistant address. The token is only ever sent to `HA_URL`.
+What reaches the TV: the state, the app's name when Home Assistant gives one ("TuneIn"), the speaker's name, the title, artist and album, and a picture only when it is an absolute `https` address. Never the token or a Home Assistant address. The token is only ever sent to `HA_URL`.
+
+What a real Echo Show sends (seen 2026-11-17), and what the TV shows:
+
+- Amazon Music: the title, artist, album and picture, but no app name. The TV shows the song and the speaker, with no source chip.
+- TuneIn: the station's name as the title (`KERA`) and a picture, no artist or album. The TV shows the station, then the speaker. In the first few seconds after it starts there is nothing at all; the TV then shows "Something is playing" and the speaker, with the music mark.
+- NPR: reported as `idle`, so the TV says "Nothing playing".
+- Audible (and other apps Alexa Media Player does not understand): it keeps showing the last song as playing. When that song has a length and should have ended over a minute ago, the TV adds a small "May be out of date" line under the title. Radio streams have no length and never get it; Spotify never does.
 
 What reaches the log (fixed words only, never the token, an address, a title, a speaker's name or the app's name):
 
@@ -380,7 +388,8 @@ Commands: `./hub allsounds status` (state, source, speaker, title and artist), `
 
 | What you see | What it means | What to do |
 |---|---|---|
-| `All sounds: not set up` | No `HA_TOKEN` in `.env` | Steps 2 to 4 above |
+| `All sounds: not set up` | No `HA_TOKEN` in `.env` | Steps 2 to 5 above |
+| Someone else's Echo shows | `ALLSOUNDS_ENTITIES` is not set, so every Echo on the Amazon account is watched | Step 4 above |
 | `Home Assistant refused the token` | The token is wrong or was deleted | Make a new one, put it in `.env`, restart |
 | `Home Assistant cannot be reached` | `HA_URL` is wrong, or Home Assistant is down | Check Home Assistant opens at that address from the Pi |
 | `nothing playing` while an Echo plays | Alexa Media Player has not caught up (it can lag 10 to 30 seconds), or the speaker is not listed in `ALLSOUNDS_ENTITIES` | Wait a moment; check the entity in Home Assistant |

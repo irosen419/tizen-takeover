@@ -131,13 +131,72 @@ async function main() {
     assert.strictEqual(L({ app_name: 'TuneIn Radio' }), 'TuneIn');
     assert.strictEqual(L({ source: 'iHeart' }), 'iHeartRadio');
     assert.strictEqual(L({ source: 'CLOUDPLAYER' }), 'Amazon Music');
-    assert.strictEqual(L({ source: 'Local Speaker' }), 'Alexa');
-    assert.strictEqual(L({}), 'Alexa');
+    assert.strictEqual(L({ source: 'Local Speaker' }), '', 'no app named: no chip');
+    assert.strictEqual(L({}), '');
     assert.strictEqual(L({ source: 'A very long and unusual music service name indeed' }).length <= 30, true);
     const radio = allsounds.readEntity(entity('l', 'playing', { media_title: 'Morning Edition', media_album_name: 'KERA 90.1', source: 'TuneIn' }));
     assert.strictEqual(radio.artist, '');
     assert.strictEqual(radio.album, 'KERA 90.1');
     assert.strictEqual(radio.device, 'l', 'the id stands in for a missing name');
+  });
+
+  await check('selection without ALLSOUNDS_ENTITIES: Echo-style speakers only (not TVs, browser_mod, the "everywhere" group)', () => {
+    const E = allsounds.isAlexaSpeaker;
+    assert.strictEqual(E({ entity_id: 'media_player.ian_s_echo_show', attributes: { last_called: false } }), true);
+    assert.strictEqual(E({ entity_id: 'media_player.ian_s_echo_dot', attributes: { bluetooth_list: [] } }), true);
+    assert.strictEqual(E({ entity_id: 'media_player.everywhere', attributes: { last_called: false } }), false);
+    assert.strictEqual(E({ entity_id: 'media_player.living_room_tv', attributes: { app_name: 'Netflix' } }), false);
+    assert.strictEqual(E({ entity_id: 'media_player.browser_mod_abc', attributes: { last_called: false } }), false);
+    assert.strictEqual(E({ entity_id: 'light.x', attributes: { last_called: false } }), false);
+    assert.strictEqual(E(null), false);
+  });
+
+  await check('real Echo shapes: Amazon Music with no app name, TuneIn station only (and nothing in its first seconds), NPR as idle', () => {
+    const r = (list) => allsounds.cleanData(allsounds.pickActive(list.map((e) => allsounds.readEntity(e))));
+    const am = r([entity('ian_s_echo_show', 'playing', { friendly_name: 'Ian\'s Echo Show', last_called: false, media_title: 'Song', media_artist: 'Band',
+      media_album_name: 'LP', media_content_type: 'music', entity_picture: 'https://m.media-amazon.com/images/I/x.jpg', entity_picture_local: '/api/media_player_proxy/x?token=1' })]);
+    assert.deepStrictEqual([am.state, am.source, am.title, am.art], ['playing', '', 'Song', 'https://m.media-amazon.com/images/I/x.jpg']);
+    const ti = r([entity('ian_s_echo_show', 'playing', { friendly_name: 'Ian\'s Echo Show', last_called: false, media_content_type: 'music' })]);
+    assert.deepStrictEqual([ti.state, ti.from, ti.source, ti.device, ti.title, ti.art], ['playing', 'echo', '', 'Ian\'s Echo Show', '', ''], 'still playing, with the speaker');
+    const st = r([entity('ian_s_echo_show', 'playing', { friendly_name: 'Ian\'s Echo Show', last_called: false, media_content_type: 'music', media_title: 'KERA',
+      media_artist: null, media_album_name: null, entity_picture: 'https://cdn-profiles.tunein.com/s1/images/logo.png', entity_picture_local: '/api/media_player_proxy/x?token=1' })]);
+    assert.deepStrictEqual([st.state, st.source, st.device, st.title, st.artist, st.album, st.art], ['playing', '', 'Ian\'s Echo Show', 'KERA', '', '', 'https://cdn-profiles.tunein.com/s1/images/logo.png'], 'the station name, no artist');
+    const npr = r([entity('ian_s_echo_show', 'idle', { friendly_name: 'Ian\'s Echo Show', last_called: false, media_content_type: 'idle' })]);
+    assert.strictEqual(npr.state, 'idle');
+  });
+
+  await check('"may be out of date": an Echo past the end of its song by over a minute; never radio, paused or Spotify', () => {
+    const T0 = Date.parse('2026-11-17T20:00:00Z');
+    const at = (s) => new Date(T0 - s * 1000).toISOString();
+    const song = (state, attrs) => entity('ian_s_echo_show', state, Object.assign({ friendly_name: 'Ian\'s Echo Show', last_called: false, media_title: 'Song', media_artist: 'Band' }, attrs));
+    const read = (e) => allsounds.readEntity(e, false, T0);
+    const r = (e) => allsounds.cleanData(allsounds.pickActive([read(e)]));
+    // 214 s song at 62 s, 10 minutes ago: 662 s > 274 s.
+    assert.strictEqual(r(song('playing', { media_duration: 214, media_position: 62, media_position_updated_at: at(600) })).stale, true);
+    // Just inside and just past the minute.
+    assert.strictEqual(read(song('playing', { media_duration: 200, media_position: 0, media_position_updated_at: at(259) })).stale, false);
+    assert.strictEqual(read(song('playing', { media_duration: 200, media_position: 0, media_position_updated_at: at(261) })).stale, true);
+    // Fresh, no duration (radio), no position, no time, odd values, paused.
+    assert.strictEqual(read(song('playing', { media_duration: 214, media_position: 62, media_position_updated_at: at(5) })).stale, false);
+    assert.strictEqual(read(song('playing', { media_position: 62, media_position_updated_at: at(36000) })).stale, false, 'radio for ten hours');
+    assert.strictEqual(read(song('playing', { media_duration: 214, media_position_updated_at: at(36000) })).stale, false);
+    assert.strictEqual(read(song('playing', { media_duration: 214, media_position: 62 })).stale, false);
+    assert.strictEqual(read(song('playing', { media_duration: 0, media_position: 62, media_position_updated_at: at(600) })).stale, false);
+    assert.strictEqual(read(song('playing', { media_duration: 'x', media_position: 62, media_position_updated_at: at(600) })).stale, false);
+    assert.strictEqual(r(song('paused', { media_duration: 214, media_position: 62, media_position_updated_at: at(600) })).stale, false);
+    // Only an Echo that plays: cleanData drops it for Spotify and every other state.
+    assert.strictEqual(allsounds.cleanData({ state: 'playing', from: 'spotify', source: 'Spotify', title: 'x', stale: true }).stale, false);
+    assert.strictEqual(allsounds.cleanData({ state: 'paused', from: 'echo', title: 'x', stale: true }).stale, false);
+    assert.strictEqual(allsounds.cleanData({ state: 'playing', from: 'echo', title: 'x', stale: 'yes' }).stale, false);
+    assert.strictEqual(allsounds.notsetData().stale, false);
+    // Spotify playing still wins over a stale Echo, and is never stale.
+    const sp = allsounds.fromSpotify({ state: 'playing', track: { title: 'S', artist: 'A' }, device: { name: 'Phone' } });
+    const both = allsounds.cleanData(allsounds.merge(r(song('playing', { media_duration: 214, media_position: 62, media_position_updated_at: at(600) })), sp));
+    assert.deepStrictEqual([both.from, both.title, both.stale], ['spotify', 'S', false]);
+    // Spotify paused: the stale Echo that plays shows, as before.
+    const sp2 = allsounds.fromSpotify({ state: 'paused', track: { title: 'S', artist: 'A' } });
+    const h = allsounds.cleanData(allsounds.merge(r(song('playing', { media_duration: 214, media_position: 62, media_position_updated_at: at(600) })), sp2));
+    assert.deepStrictEqual([h.from, h.state, h.stale], ['echo', 'playing', true]);
   });
 
   await check('cleaning: control characters, direction marks, length caps, art only absolute https', () => {
@@ -242,6 +301,34 @@ async function main() {
     ha.set('radio');
     await x.w.poll();
     assert.strictEqual(x.cur().state, 'playing', 'back by itself');
+    // The shapes a real Echo Show sent. A playing TV, a browser_mod panel and
+    // the "everywhere" group are in every mode and never picked.
+    ha.set('amazonmusic');
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual([d.state, d.source, d.device, d.title, d.artist, d.art], ['playing', '', 'Ian\'s Echo Show', 'Golden Hour Drive', 'The Lanterns', ha.url + '/art/album.svg']);
+    ha.set('tunein');
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual([d.state, d.source, d.device, d.title, d.artist, d.art], ['playing', '', 'Ian\'s Echo Show', 'KERA', '', ha.url + '/art/radio.svg']);
+    ha.set('tuneinstart');
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual([d.state, d.source, d.device, d.title, d.art], ['playing', '', 'Ian\'s Echo Show', '', '']);
+    assert.strictEqual(d.stale, false);
+    ha.set('stale');
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual([d.state, d.title, d.stale], ['playing', 'Golden Hour Drive', true], 'past the end of the song');
+    ha.set('amazonmusic');
+    await x.w.poll();
+    assert.strictEqual(x.cur().stale, false, 'a fresh position is not stale');
+    ha.set('npr');
+    await x.w.poll();
+    assert.strictEqual(x.cur().state, 'idle');
+    ha.set('idle');
+    await x.w.poll();
+    assert.strictEqual(x.cur().state, 'idle', 'the playing TV and group are not speakers');
     x.w.close();
   });
 
@@ -390,7 +477,7 @@ async function main() {
 
   await check('the token, Home Assistant addresses and titles never reach a log; no token or HA address reaches a screen', async () => {
     const h = await start();
-    for (const m of ['radio', 'music', 'paused', 'long', 'idle', 'unauthorized', 'down', 'broken', 'radio']) {
+    for (const m of ['radio', 'music', 'paused', 'long', 'amazonmusic', 'tunein', 'tuneinstart', 'stale', 'npr', 'idle', 'unauthorized', 'down', 'broken', 'radio']) {
       ha.set(m);
       await h.allsounds.poll();
       await h.allsounds.poll();
@@ -400,7 +487,7 @@ async function main() {
     await stop(h);
     const text = logs.concat(allLogs).join('\n');
     [ha.token, ha.url, '127.0.0.1:' + ha.url.split(':').pop(), 'Morning Edition', 'Golden Hour Drive', 'Canción', 'Lanterns', 'KERA',
-      'Living room', 'Kitchen', 'Amazon', 'TuneIn', 'iHeart', 'Bearer'].forEach((bad) => {
+      'Living room', 'Kitchen', 'Echo Show', 'Ian', 'Amazon', 'TuneIn', 'iHeart', 'Bearer'].forEach((bad) => {
       assert.ok(text.indexOf(bad) < 0, 'the log has "' + bad + '"');
     });
     // Every All sounds line is one of the fixed ones.
