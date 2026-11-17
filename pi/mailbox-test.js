@@ -371,6 +371,32 @@ async function main() {
     for (const id of [shot, tickets, dentist]) await run(fake, h, 'todo.remove', { id: id });
   });
 
+  await check('todo.add with a lead, todo.lead changes and clears it, todo.list carries it (a notes tag counts too)', async () => {
+    let r = await run(fake, h, 'todo.add', { title: 'School meeting', level: 'passive', due: '2026-11-20', lead: 3 });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.strictEqual(r.message, 'Added "School meeting" to Coming up, due 2026-11-20, shown from 3 days before it is due.');
+    assert.strictEqual(r.data.item.lead, 3);
+    const meeting = r.data.item.id;
+    r = await run(fake, h, 'todo.add', { title: 'Book club', due: '2026-11-25', notes: '[level:passive] [lead:7] [cal:abc@2026-11-25]' });
+    assert.strictEqual(r.message, 'Added "Book club" to Coming up, due 2026-11-25, shown from 7 days before it is due, with notes.');
+    assert.ok(!('lead' in r.data.item));
+    const club = r.data.item.id;
+    r = await run(fake, h, 'todo.list');
+    assert.deepStrictEqual(r.data.items.map((i) => i.lead), [7, 3]);
+    assert.ok(/School meeting \(due 2026-11-20, lead 3 days\)/.test(r.message), r.message);
+    r = await run(fake, h, 'todo.lead', { title: 'school meeting', lead: 0 });
+    assert.strictEqual(r.message, '"School meeting" shows under Coming up only on the day it is due.');
+    assert.deepStrictEqual(r.data, { id: meeting, title: 'School meeting', lead: 0 });
+    r = await run(fake, h, 'todo.lead', { id: club, lead: 10 });
+    assert.strictEqual(r.data.lead, 10, 'a field wins over the tag');
+    r = await run(fake, h, 'todo.lead', { id: meeting, lead: null });
+    assert.strictEqual(r.message, '"School meeting" shows under Coming up from 2 days before it is due (the default).');
+    assert.ok(!('lead' in (await todoItems(h)).find((i) => i.id === meeting)));
+    r = await run(fake, h, 'todo.lead', { title: 'Nope', lead: 1 });
+    assert.strictEqual(r.ok, false);
+    for (const id of [meeting, club]) await run(fake, h, 'todo.remove', { id: id });
+  });
+
   await check('calendar.status and calendar.refresh', async () => {
     let r = await run(fake, h, 'calendar.status');
     assert.strictEqual(r.ok, true);
@@ -616,6 +642,10 @@ async function main() {
     ['todo.add bad section', () => ({ raw: envelope('todo.add', { title: 'A', section: 'later' }) }), /"section" must be one of/],
     ['todo.add bad level', () => ({ raw: envelope('todo.add', { title: 'A', level: 'urgent' }) }), /"level" must be one of: must, optional, passive/],
     ['todo.level missing level', () => ({ raw: envelope('todo.level', { title: 'A' }) }), /"todo.level" needs "level"/],
+    ['todo.add bad lead', () => ({ raw: envelope('todo.add', { title: 'A', lead: 31 }) }), /"lead" must be a whole number from 0 to 30/],
+    ['todo.add lead as text', () => ({ raw: envelope('todo.add', { title: 'A', lead: '3' }) }), /"lead" must be a whole number from 0 to 30/],
+    ['todo.lead fractional', () => ({ raw: envelope('todo.lead', { title: 'A', lead: 2.5 }) }), /"lead" must be a whole number from 0 to 30/],
+    ['todo.lead missing lead', () => ({ raw: envelope('todo.lead', { title: 'A' }) }), /"todo.lead" needs "lead"/],
     ['todo.done with id and title', () => ({ raw: envelope('todo.done', { id: 'abc', title: 'A' }) }), /exactly one/],
     ['todo.add notes too long', () => ({ raw: envelope('todo.add', { title: 'A', notes: 'n'.repeat(301) }) }), /"notes" is longer than 300 characters/],
     ['todo.add notes not text', () => ({ raw: envelope('todo.add', { title: 'A', notes: 5 }) }), /"notes" must be text/],

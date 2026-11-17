@@ -256,6 +256,7 @@
     'todo.today': 'Hoy',
     'todo.tomorrow': 'Mañana',
     'todo.dateShort': '{d} {mon}',
+    'todo.inDays': 'en {n} días',
     'todo.sections.must': 'Para hoy',
     'todo.sections.optional': 'Si puedes',
     'todo.sections.done': 'Hechas hoy',

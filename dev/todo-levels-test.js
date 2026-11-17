@@ -21,9 +21,14 @@
  *     at 3 PM, faint at 6 PM, stronger at 11 PM, strongest at 1 AM the next
  *     day (the must-do is late); the tile's red edge; opacity is all that
  *     animates (3.5 s); no pulse in fade mode or with reduced motion
+ *   - a passive item's own lead ("lead" field, or "[lead:N]" in its notes for
+ *     an older Pi; the field wins; 0 means only on the day; a bad one is 2):
+ *     Coming up from that many days before; the line says Today, Tomorrow or
+ *     the day and "in N days", with no brackets or tags anywhere on screen
  *   - Move cycles must, optional, passive; an item added on the TV is
  *     optional; a "[level:must]" tag in the notes counts and is not shown
- *   - a level set on the TV reaches the Pi, and one set on the Pi reaches the TV
+ *   - a level set on the TV reaches the Pi, and one set on the Pi reaches the TV;
+ *     so does a lead set on the Pi
  *   - Spanish (the hub's language), and Spanish 25% longer: nothing cut
  *     sideways, room for accents (line height 1.3 or more)
  *
@@ -155,7 +160,7 @@ function look(page) {
     }
     // Fit: text cut sideways, line height under 1.3, the pill or strip outside its box.
     const bad = [];
-    const nodes = document.querySelectorAll('.todo-alert-text, .todo-must-pill, .todo-title, .todo-tile-title, .todo-sec-name, .todo-foot-label, .todo-foot-line, .todo-due');
+    const nodes = document.querySelectorAll('.todo-alert-text, .todo-must-pill, .todo-title, .todo-tile-title, .todo-sec-name, .todo-foot-label, .todo-foot-line, .todo-foot-when, .todo-due');
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i];
       if (!n.offsetParent) continue;
@@ -163,6 +168,13 @@ function look(page) {
       const ratio = parseFloat(cs.lineHeight) / parseFloat(cs.fontSize);
       if (ratio < 1.295) bad.push(n.className + ' line-height ' + ratio.toFixed(2));
       if (!n.classList.contains('todo-foot-line') && sideways(n)) bad.push(n.className + ' cut sideways: ' + n.textContent);
+    }
+    // The when of a Coming up line on the tile is never pushed out of its line.
+    const whens = document.querySelectorAll('.todo-foot-when');
+    for (let w = 0; w < whens.length; w++) {
+      const r = whens[w].getBoundingClientRect();
+      const line = whens[w].parentNode.getBoundingClientRect();
+      if (r.right > line.right + 1 || r.width < 1) bad.push('when cut: ' + whens[w].textContent);
     }
     const pills = document.querySelectorAll('.todo-must-pill');
     for (let j = 0; j < pills.length; j++) {
@@ -285,7 +297,7 @@ async function rules(env) {
     });
     await check('Coming up: passives due today, tomorrow and in 2 days, and one with no date; not in 3 days', async () => {
       assert(s.panel.foot.map((f) => f.title).join() === 'Passive today,Passive tomorrow,Passive in 2 days,Passive, no date', JSON.stringify(s.panel.foot));
-      assert(s.panel.foot.map((f) => f.due).join() === 'Today,Tomorrow,Nov 19,', JSON.stringify(s.panel.foot));
+      assert(s.panel.foot.map((f) => f.due).join() === 'Today,Tomorrow,Thu · in 2 days,', JSON.stringify(s.panel.foot));
       assert(s.panel.foot.every((f) => !f.tick && f.dot), 'a passive line has a tick box');
     });
     await check('Move cycles must, optional, passive, must, and the label says where', async () => {
@@ -327,6 +339,51 @@ async function rules(env) {
     await page.ctx.close();
   }
 
+  // Each passive item's own lead, from a field or a "[lead:N]" tag.
+  const leads = [
+    { id: 'l3', title: 'School meeting', level: 'passive', section: 'now', due: '2026-11-20', lead: 3, done: false, doneAt: null, createdAt: CREATED },
+    { id: 'l0a', title: 'Only today', level: 'passive', section: 'now', due: '2026-11-17', lead: 0, done: false, doneAt: null, createdAt: CREATED },
+    { id: 'l0b', title: 'Only tomorrow', level: 'passive', section: 'now', due: '2026-11-18', lead: 0, done: false, doneAt: null, createdAt: CREATED },
+    { id: 'lt', title: 'Book club', section: 'now', due: '2026-11-27', notes: 'Bring the book. [level:passive] [lead:10] [cal:abc123@2026-11-27]', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'lw', title: 'Field wins', level: 'passive', section: 'now', due: '2026-11-20', lead: 1, notes: '[lead:10]', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'lb', title: 'Bad lead', level: 'passive', section: 'now', due: '2026-11-20', lead: 45, done: false, doneAt: null, createdAt: CREATED },
+    { id: 'lx', title: 'Flu shot [cal:zz9@2026-11-18]', level: 'passive', section: 'now', due: '2026-11-18', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'l30', title: 'Far off', level: 'passive', section: 'now', due: '2026-12-17', lead: 30, done: false, doneAt: null, createdAt: CREATED }
+  ];
+  for (const lang of ['en', 'es']) {
+    const es = lang === 'es';
+    const lp = await env.newPage({ layout: LAYOUT, live: 'off', at: TIMES['6pm'], motion: 'push', lang: es ? 'es' : undefined, storage: storage(leads) });
+    try {
+      const want = es
+        ? [['School meeting', 'vie · en 3 días'], ['Only today', 'Hoy'], ['Book club', '27 nov · en 10 días'], ['Flu shot', 'Mañana'], ['Far off', '17 dic · en 30 días']]
+        : [['School meeting', 'Fri · in 3 days'], ['Only today', 'Today'], ['Book club', 'Nov 27 · in 10 days'], ['Flu shot', 'Tomorrow'], ['Far off', 'Dec 17 · in 30 days']];
+      let s = await look(lp);
+      await check(lang + ' lead: each passive shows from its own lead (field, tag, 0, a bad one is 2), the tile shows clean lines', async () => {
+        assert(s.tile.foot.length === 2, 'tile foot: ' + JSON.stringify(s.tile.foot));
+        assert(s.tile.foot[0] === 'School meeting· ' + want[0][1] && s.tile.foot[1] === 'Only today· ' + want[1][1], 'tile foot: ' + JSON.stringify(s.tile.foot));
+        assert(!s.bad.length, s.bad.join(' | '));
+      });
+      await H.openPanel(lp, 'todo');
+      s = await look(lp);
+      await check(lang + ' lead: the panel says Today, Tomorrow or the day and "in N days", with no brackets', async () => {
+        const got = s.panel.foot.map((f) => [f.title, f.due]);
+        assert(JSON.stringify(got) === JSON.stringify(want), JSON.stringify(got));
+        const shown = await lp.evaluate(() => document.querySelector('#panel .todo-panel').textContent + document.querySelector('.cell[data-widget="todo"] .tile').textContent);
+        assert(shown.indexOf('[') < 0 && shown.indexOf(']') < 0, 'brackets on screen');
+        assert(!s.bad.length, s.bad.join(' | '));
+      });
+      if (OUT) await shot(lp, 'lead-panel-' + lang);
+      await H.fullScreen(lp);
+      s = await look(lp);
+      await check(lang + ' lead: full screen fits', async () => { assert(!s.bad.length, s.bad.join(' | ')); });
+      if (OUT) await shot(lp, 'lead-full-' + lang);
+      const errors = H.errorsOf(lp, true);
+      await check(lang + ' lead: no page errors', async () => { assert(!errors.length, errors.join(' | ')); });
+    } finally {
+      await lp.ctx.close();
+    }
+  }
+
   // Fade mode and reduced motion: no pulse.
   for (const mode of ['fade', 'reduce']) {
     const p = await env.newPage({ layout: LAYOUT, live: 'off', at: TIMES['11pm'], motion: mode === 'fade' ? 'fade' : 'push', storage: storage(items()) });
@@ -358,7 +415,8 @@ async function rules(env) {
 
   // Spanish 25% longer, with accents: still fits.
   const long = await env.newPage({ layout: LAYOUT, live: 'off', at: TIMES['11pm'], motion: 'push', lang: 'es',
-    storage: storage(items([{ id: 'long', title: 'Ángela: ¿Ñandú? Él llevará la documentación médica completa', level: 'must', section: 'now', done: false, doneAt: null, createdAt: CREATED }])) });
+    storage: storage(items([{ id: 'long', title: 'Ángela: ¿Ñandú? Él llevará la documentación médica completa', level: 'must', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+      { id: 'longp', title: 'Reunión de la escuela: ¿Qué llevarán Íñigo y Ángela?', level: 'passive', section: 'now', due: '2026-11-21', lead: 5, done: false, doneAt: null, createdAt: CREATED }])) });
   try {
     await long.evaluate(() => {
       const es = window.HUB_I18N.strings.es;
@@ -374,6 +432,7 @@ async function rules(env) {
     let s = await look(long);
     await check('Spanish 25% longer on the tile: nothing cut sideways, room for accents', async () => {
       assert(s.tile.alert && s.tile.alert.indexOf('ÁÉñ') > 0, 'the longer words did not apply: ' + s.tile.alert);
+      assert(s.tile.foot.some((f) => /sáb · en 4 días ÁÉ/.test(f)), 'the longer "in N days" is not on the tile: ' + JSON.stringify(s.tile.foot));
       assert(!s.bad.length, s.bad.join(' | '));
     });
     await H.openPanel(long, 'todo');
@@ -424,6 +483,16 @@ async function withPi(env) {
         const row = document.querySelector('#panel .todo-sec-must [data-key="item:olive"]');
         return !!row && /2 must-dos today/.test(document.querySelector('#panel .todo-alert-text').textContent);
       }), 6000, 'the TV did not take the new level');
+    });
+    await check('a lead set on the Pi reaches the TV: 0 hides a passive due in 2 days, 2 brings it back', async () => {
+      const foot = () => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .todo-panel-foot .todo-title'), (n) => n.textContent));
+      await H.until(async () => (await foot()).indexOf('Concert tickets on sale Fri') >= 0, 6000, 'Concert is not under Coming up to start with');
+      await env.control('POST', '/api/todo/ops', { ops: [{ op: 'set', id: 'concert', fields: { lead: 0 } }] });
+      await H.until(async () => (await foot()).indexOf('Concert tickets on sale Fri') < 0, 6000, 'lead 0 did not hide it: ' + JSON.stringify(await foot()));
+      const it = await page.evaluate(() => JSON.parse(localStorage.getItem('homeHub.todo.v1')).items.find((x) => x.id === 'concert'));
+      assert(it.lead === 0, 'the TV did not keep the lead: ' + JSON.stringify(it));
+      await env.control('POST', '/api/todo/ops', { ops: [{ op: 'set', id: 'concert', fields: { lead: 2 } }] });
+      await H.until(async () => (await foot()).indexOf('Concert tickets on sale Fri') >= 0, 6000, 'lead 2 did not bring it back');
     });
     const errors = H.errorsOf(page, true);
     await check('with the Pi: no page errors', async () => { assert(!errors.length, errors.join(' | ')); });
