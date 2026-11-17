@@ -127,7 +127,7 @@ const COMMITS = {
   [A]: (rest) => readWorking(rest),
   [B]: (rest) => {
     const body = readWorking(rest);
-    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.28.11-B'));
+    if (rest === 'app/hub.js' && body) return Buffer.from(withBuild(body.toString('utf8'), 'v0.28.13-B'));
     return body;
   },
   [BROKEN]: (rest) => {
@@ -399,10 +399,10 @@ async function check1() {
   await waitAt(page, A, 'app/hub.html');
   const rec = await until(async () => { const r = await record(page); return r && r.good === A ? r : false; }, 3000, 'good is not A');
   assert(!rec.trying, 'trying was not cleared: ' + JSON.stringify(rec));
-  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.28.11', 'record: ' + JSON.stringify(rec));
+  assert(rec.goodPage === 'app/hub.html' && rec.goodVersion === '0.28.13', 'record: ' + JSON.stringify(rec));
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
-  assert(/^v0\.28\.11 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.28\.13 \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   // Version, browser, motion: no version check row when this is the newest.
   assert(lines.length === 3, 'About rows: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
@@ -430,7 +430,7 @@ async function check2() {
   await go(page, shellUrl());
   await waitAt(page, B, 'app/hub.html');
   const lines = await look.lines(page);
-  assert(/^v0\.28\.11-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
+  assert(/^v0\.28\.13-B \(newest\)/.test(lines[0]), 'first status line: ' + lines[0]);
   const rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared');
   noMissingFiles(logSince(at));
@@ -506,7 +506,7 @@ async function check4() {
   await waitAt(page, B, 'app/hub.html');
   rec = await until(async () => { const r = await record(page); return r && r.good === B ? r : false; }, 3000, 'good is not B');
   assert(!rec.trying, 'trying was not cleared on B: ' + JSON.stringify(rec));
-  assert(/^v0\.28\.11-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
+  assert(/^v0\.28\.13-B \(newest\)/.test((await look.lines(page))[0]), 'first line on B');
   noErrors(context);
 }
 
@@ -740,7 +740,7 @@ async function checkTile() {
       await page.evaluate(() => window.HUB_TEST.clay.stop());
     }
     const a = await clockPage.waitFor(page, (x) => x.lines.length === c.rows ? x : null, 10000, c.rows + ' rows');
-    assert(/^v0\.28\.11/.test(a.lines[0]), 'version row: ' + a.lines[0]);
+    assert(/^v0\.28\.13/.test(a.lines[0]), 'version row: ' + a.lines[0]);
     const wand = a.rows.filter((r) => r.group === 'Wanderers').map((r) => r.label + ': ' + r.value);
     if (c.visit) {
       assert(wand.length === 5 && /^Now: Due back in \d+ s$/.test(wand[0]) && wand[1] === 'Visits: 1 played · 0 slow · 0 failed' &&
@@ -845,11 +845,11 @@ async function checkCrash() {
   const lines = await until(() => notice(page), 6000, 'no notice');
   const shownAfter = Date.now() - t0;
   assert(shownAfter < 4000, 'the notice came after ' + shownAfter + ' ms, not when parsing finished');
-  assert(lines[0] === 'Version 0.28.11 didn\'t start', 'title: ' + lines[0]);
+  assert(lines[0] === 'Version 0.28.13 didn\'t start', 'title: ' + lines[0]);
   assert(/^It broke while starting \(after \d+ s\)\.$/.test(lines[1]), 'line 2: ' + lines[1]);
   assert(/^(\d+) of \1 files had loaded\.$/.test(lines[2]), 'files: ' + lines[2]);
   assert(lines[3] === 'Error: Uncaught Error: pretend broken build (app/hub.js line 1)', 'error: ' + lines[3]);
-  assert(lines[4] === 'Going back to version 0.28.11 in 12 s.' && lines[5] === 'It will be tried again in 6 hours, or when a newer version comes.', 'last lines: ' + JSON.stringify(lines.slice(4)));
+  assert(lines[4] === 'Going back to version 0.28.13 in 12 s.' && lines[5] === 'It will be tried again in 6 hours, or when a newer version comes.', 'last lines: ' + JSON.stringify(lines.slice(4)));
   const fit = await noticeFit(page);
   assert(!fit.bad.length && fit.fontPx >= 26, 'notice: ' + JSON.stringify(fit));
   if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'update-failed-crash.jpg'), type: 'jpeg', quality: 90 });
@@ -862,12 +862,12 @@ async function checkCrash() {
   const total = Date.now() - t0 - shownAfter;
   assert(total > 11500 && total < 15000, 'the notice was up about ' + total + ' ms');
   const w = await why(page);
-  assert(w && w.sha === BROKEN && w.kind === 'crash' && w.why === '0.28.11: error: Uncaught Error: pretend broken build (app/hub.js line 1)' &&
+  assert(w && w.sha === BROKEN && w.kind === 'crash' && w.why === '0.28.13: error: Uncaught Error: pretend broken build (app/hub.js line 1)' &&
     JSON.stringify(w).length <= 400, 'why: ' + JSON.stringify(w));
   const st = await look.status(page);
   assert(st.state === 'held' && st.why === w.why, 'status: ' + JSON.stringify(st));
   await clockPage.waitFor(page, (a) => a.rows.some((r) => r.label === 'Version check' &&
-    r.value === 'a newer version didn\'t start (0.28.11: error: Uncaught Error: pretend broken build (app/hub.js line 1))'), 3000, 'version check row');
+    r.value === 'a newer version didn\'t start (0.28.13: error: Uncaught Error: pretend broken build (app/hub.js line 1))'), 3000, 'version check row');
   if (SHOTS) {
     await clockPage.openAbout(page);
     await sleep(600);
@@ -918,9 +918,9 @@ async function checkStuck() {
   const lines = await until(() => notice(page), 12000, 'no notice');
   const after = Date.now() - t0;
   assert(after > 10000 && after < 14500, 'gave up after ' + after + ' ms (limit 12 s here)');
-  assert(lines[0] === 'Version 0.28.11 didn\'t start' && /^It was still loading after 1[1-3] s\.$/.test(lines[1]), 'lines: ' + JSON.stringify(lines));
+  assert(lines[0] === 'Version 0.28.13 didn\'t start' && /^It was still loading after 1[1-3] s\.$/.test(lines[1]), 'lines: ' + JSON.stringify(lines));
   assert(/^\d+ of \d+ files had loaded so far; still waiting for app\/clay\.js\.$/.test(lines[2]), 'files: ' + lines[2]);
-  assert(/^Going back to version 0\.28\.11 in 12 s\.$/.test(lines[3]) && lines[4] === 'It will be tried again in 20 minutes, or when a newer version comes.', 'lines: ' + JSON.stringify(lines));
+  assert(/^Going back to version 0\.28\.13 in 12 s\.$/.test(lines[3]) && lines[4] === 'It will be tried again in 20 minutes, or when a newer version comes.', 'lines: ' + JSON.stringify(lines));
   assert(lines.length === 5, 'an error line showed: ' + JSON.stringify(lines));
   const fit = await noticeFit(page);
   assert(!fit.bad.length, 'notice: ' + JSON.stringify(fit));
@@ -929,7 +929,7 @@ async function checkStuck() {
   const rec = await record(page);
   assert(rec.trying === STUCK && rec.holdKind === 'slow' && rec.note === 'held', 'record: ' + JSON.stringify(rec));
   const w = await why(page);
-  assert(w && w.kind === 'slow' && /^0\.28\.11: still loading after 1[1-3] s, waiting for app\/clay\.js$/.test(w.why), 'why: ' + JSON.stringify(w));
+  assert(w && w.kind === 'slow' && /^0\.28\.13: still loading after 1[1-3] s, waiting for app\/clay\.js$/.test(w.why), 'why: ' + JSON.stringify(w));
   await clockPage.waitFor(page, (a) => a.rows.some((r) => r.label === 'Version check' && r.value === 'a newer version didn\'t start (' + w.why + ')'), 3000, 'version check row');
   // Held now: reopening stays on A.
   let at = mark();
