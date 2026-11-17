@@ -169,7 +169,20 @@
     'awws.states.loading.head': 'Cargando…',
     'awws.states.notsetup.head': 'Sin sincronizar todavía',
     'awws.states.notsetup.line': 'Los datos llegan cuando la sincronización esté lista. docs/awws-snapshot.md explica cómo.',
-    'awws.broken': '{title}: no se pudo mostrar'
+    'awws.broken': '{title}: no se pudo mostrar',
+
+    /* ---- Motion extras: the activity chips and the About panel's Motion row (app/motion.js) ----
+     * Key 'motion.<path in STRINGS>'; the English is STRINGS at that path in
+     * motion.js. Each chip is one line at 22 px in a 3-column tile, so keep
+     * these short. A tile kind added later with HUB_FX.addActivity names its
+     * own key in its widget's section (for example 'budget.activity'). */
+    'motion.activity.todo': 'Nueva tarea',
+    'motion.activity.calendar': 'Actualizando el calendario',
+    'motion.activity.awws': 'Sincronizando datos',
+    'motion.extrasOn': 'extras activados',
+    'motion.extrasOff': 'extras desactivados ({why})',
+    'motion.why.fade': 'modo fundido',
+    'motion.why.slow': 'pantalla lenta'
   };
 
   var DAYS = {

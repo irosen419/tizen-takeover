@@ -210,10 +210,18 @@
 
   /* ---------- actions ---------- */
 
+  // The bloom of the app being opened, if any: it goes when the app can't open.
+  var launchBloom = null;
+
+  function unbloom() {
+    if (launchBloom) { try { launchBloom.cancel(); } catch (e) { /* gone */ } }
+    launchBloom = null;
+  }
+
   function launchById(id, label) {
     function viaService() {
       C.service('/launch?id=' + encodeURIComponent(id), 8000, function (err) {
-        if (err) C.toast('Couldn’t open ' + label + ' (' + err + ').', 5000);
+        if (err) { unbloom(); C.toast('Couldn’t open ' + label + ' (' + err + ').', 5000); }
       });
     }
     if (C.hasTizen) {
@@ -232,6 +240,7 @@
       if (handled) return;
       handled = true;
       try { ws.close(); } catch (e) { /* ignore */ }
+      unbloom();
       C.toast('TizenBrew didn’t answer, so ' + label + ' couldn’t open.', 5000);
     }, 7000);
 
@@ -239,6 +248,7 @@
       ws = new WebSocket(TIZENBREW_WS);
     } catch (e) {
       clearTimeout(timer);
+      unbloom();
       return C.toast('Couldn’t reach TizenBrew.', 4000);
     }
 
@@ -258,7 +268,7 @@
       }
       handled = true;
       clearTimeout(timer);
-      if (!mod) return C.toast(label + ' isn’t added in TizenBrew.', 4000);
+      if (!mod) { unbloom(); return C.toast(label + ' isn’t added in TizenBrew.', 4000); }
 
       // Same two steps TizenBrew's own menu takes when you pick a module.
       C.registerKeys(mod.keys);
@@ -269,6 +279,7 @@
       if (handled) return;
       handled = true;
       clearTimeout(timer);
+      unbloom();
       C.toast('Couldn’t reach TizenBrew.', 4000);
     };
   }
@@ -395,6 +406,7 @@
     title: 'Entertainment',
     icon: 'tv',
     expandable: true,
+    stagger: '.ent-item',     // the icons arrive one by one as the panel opens
 
     init: function (ctx) {
       C = ctx;
@@ -459,7 +471,13 @@
       var key = target.getAttribute('data-key') || '';
       if (key.indexOf('app:') === 0) return launchById(target.getAttribute('data-id'), target.getAttribute('data-name'));
       var item = itemByKey(key);
-      if (item) activate(item);
+      if (!item) return;
+      // An app about to open: its icon blooms over the screen (motion extras).
+      var tc = item.cfg;
+      if (C.bloom && ((tc.kind === 'app' && apps && item.appId) || tc.kind === 'tizentube')) {
+        launchBloom = C.bloom(target);
+      }
+      activate(item);
     },
 
     onBack: function () {
