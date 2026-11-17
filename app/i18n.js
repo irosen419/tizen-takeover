@@ -31,12 +31,41 @@
     'lang.en': 'English',
     'lang.es': 'Español',
 
+    /* ---- The hub's own words: tile badges and the panel's head (app/hub.js) ----
+     * Key 'hub.<name>'; the English is in hub.js (hubWord). The Back chip and
+     * the button are small, so keep these short. */
+    'hub.soon': 'Pronto',
+    'hub.full': 'Pantalla completa',
+    'hub.exitFull': 'Salir de pantalla completa',
+    'hub.backClose': 'Atrás para cerrar',
+    'hub.backShrink': 'Atrás para reducir',
+    'hub.backTyping': 'Atrás para dejar de escribir',
+
+    /* ---- Weather tile header (app/widgets/weather.js) ----
+     * The title is the place's name, as the lookup sends it (not translated);
+     * these are the badge words. */
+    'weather.sample': 'Muestra',
+    'weather.asOf': 'datos de las {t}',
+
+    /* ---- Now Playing's header (app/widgets/nowplaying.js) ----
+     * The title is "Spotify" in both languages; the badge says the state,
+     * in capitals, so keep each to a word or two. */
+    'nowplaying.badge.off': 'Sin configurar',
+    'nowplaying.badge.signin': 'Sin conectar',
+    'nowplaying.badge.idle': 'Sin música',
+    'nowplaying.badge.error': 'Sin Spotify',
+    'nowplaying.badge.waiting': 'Esperando',
+    'nowplaying.badge.offline': 'Sin la Pi',
+    'nowplaying.badge.update': 'Necesita la Pi',
+
     /* ---- Guest mode on the Clock page (app/guest.js, app/widgets/today.js) ---- */
     'guest.label': 'Modo invitados',
     'guest.off': 'No',
     'guest.on': 'Sí',
 
     'wotd.title': 'Palabra del día',
+    // Short form: only when "Palabra del día" doesn't fit the tile on one line.
+    'wotd.titleShort': 'Palabra',
     'wotd.meaning': 'Qué significa',
     'wotd.example': 'Ejemplo',
     'wotd.say': 'Cómo se dice',
@@ -64,6 +93,10 @@
     'budget.titles.room': 'Margen diario',
     'budget.titles.card': 'Pago de tarjeta',
     'budget.titles.goals': 'Metas',
+    // Short forms: only when the title doesn't fit the tile on one line.
+    'budget.titlesShort.room': 'Margen',
+    'budget.titlesShort.card': 'Tarjeta',
+    'budget.titlesShort.goals': 'Metas',
     'budget.dateLong': '{dow} {d} {mon}',
     'budget.dateShort': '{d} {mon}',
     'budget.am': 'a. m.',
@@ -131,6 +164,8 @@
     'budget.states.guest.line': 'El modo invitados está activado, así que no se muestran cifras del presupuesto. Apágalo en la página del reloj.',
     'budget.states.guest.short': 'Modo invitados activado.',
     'budget.broken': '{title}: no se pudo mostrar',
+    // The activity chip when new figures arrive (one line at 22 px in a 3-column tile).
+    'budget.activity': 'Presupuesto nuevo',
 
     /* ---- Earned vs spent tile (awws-money in app/widgets/awws.js) ----
      * Key 'awws.<path in STRINGS>'; the English is STRINGS at that path in
@@ -139,6 +174,23 @@
      * keys are added here (the same 'awws.' keys). Amounts keep their US
      * form (thousands is left out). */
     'awws.titles.money': 'Ganado y gastado',
+    // Every A World Worth Saving tile's title follows the language (the
+    // headers only; the rest of those tiles stays English for now).
+    'awws.titles.awws': 'Un mundo que vale la pena salvar',
+    'awws.titles.visits': 'Próxima visita',
+    'awws.titles.agenda': 'Esta semana',
+    'awws.titles.todo': 'Tablero de tareas',
+    'awws.titles.outreach': 'Bibliotecarias',
+    'awws.titles.pipeline': 'Libros',
+    'awws.titles.reach': 'Alcance',
+    // Short forms, used only when the full title doesn't fit on one line
+    // (Ian, 2026-11-17: the full name whenever it fits, otherwise AWWS;
+    // never a half name).
+    'awws.titlesShort.awws': 'AWWS',
+    'awws.titlesShort.visits': 'Visita',
+    'awws.titlesShort.agenda': 'Semana',
+    'awws.titlesShort.todo': 'Tareas',
+    'awws.titlesShort.money': 'Dinero',
     'awws.dateLong': '{dow} {d} {mon}',
     'awws.dateShort': '{d} {mon}',
     'awws.dateFull': '{dowLong}, {d} de {month}',

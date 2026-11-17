@@ -225,7 +225,7 @@ const focused = (page) => page.evaluate(() => {
 
 // Everything the extras could have added.
 const extras = (page) => page.evaluate(() => ({
-  nodes: document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge').length,
+  nodes: document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge, .fx-accent').length,
   body: document.body.className.split(' ').filter((c) => /^fx-/.test(c)),
   dormant: document.querySelectorAll('.tile.is-dormant').length
 }));
@@ -336,7 +336,13 @@ async function checkDisabled(pi) {
     await sleep(100);
     const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return { o: r.style.opacity, t: r.style.transform }; }, id);
     x = await extras(page);
-    assert(!x.nodes && !row.o && !row.t, c.name + ': the new row moved: ' + JSON.stringify({ x, row }));
+    // The accent edge stays, but as a still line: no sweep, nothing animating.
+    const edge = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.fx-accent'), (n) => {
+      const cs = getComputedStyle(n);
+      return { sweep: !!n.querySelector('.fx-accent-sweep'), anim: cs.animationName, tr: n.style.transition, opacity: cs.opacity };
+    }));
+    assert(edge.every((e) => !e.sweep && (e.anim === 'none' || !e.anim) && (!e.tr || e.tr === 'none')), c.name + ': the accent edge moved: ' + JSON.stringify(edge));
+    assert(x.nodes === edge.length && !row.o && !row.t, c.name + ': the new row moved: ' + JSON.stringify({ x, row }));
     // Cover: no flight to the card.
     await page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
     await idle(page);
@@ -344,7 +350,9 @@ async function checkDisabled(pi) {
     await page.evaluate(() => { document.querySelector('.panel-btn').click(); });
     await sleep(120);
     x = await extras(page);
-    assert(!x.nodes, c.name + ': the cover flew: ' + JSON.stringify(x));
+    // (the still accent edge from the to-do above may still show)
+    const still = await page.evaluate(() => document.querySelectorAll('.fx-accent').length);
+    assert(x.nodes === still, c.name + ': the cover flew: ' + JSON.stringify(x));
     await idle(page);
     const about = await page.evaluate(() => { window.HUB_TEST.about.close(); return true; });
     assert(about, 'about');
@@ -514,7 +522,8 @@ async function checkNewTodo(pi) {
   await idle(page);
   await sleep(300);
   const look = () => page.evaluate(() => ({
-    fx: Array.prototype.map.call(document.querySelectorAll('[class*="fx-"]'), (n) => n.className).sort().join(' | '),
+    // The accent edge (motionFx.edge) stays about a minute by design: checked on its own.
+    fx: Array.prototype.map.call(document.querySelectorAll('[class*="fx-"]:not(.fx-accent):not(.fx-accent-sweep)'), (n) => n.className).sort().join(' | '),
     tile: document.querySelector('.cell[data-widget="todo"] .tile').className,
     styles: document.querySelectorAll('style').length
   }));
@@ -735,11 +744,12 @@ async function checkActivityTodo(pi) {
   await idle(page);
   await sleep(400);
   const look = () => page.evaluate(() => {
-    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: document.getElementsByTagName('*').length };
+    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: document.querySelectorAll('*:not(.fx-accent):not(.fx-accent-sweep)').length };
     document.querySelectorAll('#grid .cell').forEach((c) => {
       const t = c.querySelector('.tile');
       const r = t.getBoundingClientRect();
-      out.tiles[c.getAttribute('data-widget')] = { cls: t.className, style: t.getAttribute('style') || '', kids: t.children.length,
+      // The accent edge stays after the chip by design (about a minute): not counted here.
+      out.tiles[c.getAttribute('data-widget')] = { cls: t.className, style: t.getAttribute('style') || '', kids: t.querySelectorAll(':scope > :not(.fx-accent)').length,
         rect: [r.left, r.top, r.width, r.height].map(Math.round).join(',') };
     });
     return out;

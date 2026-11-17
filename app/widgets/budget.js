@@ -38,6 +38,10 @@
 
   var EN = {
     titles: { room: 'Daily room', card: 'Card day', goals: 'Goals' },
+    // Short forms, only when a title doesn't fit its tile on one line (the hub measures).
+    titlesShort: { room: 'Room', card: 'Card', goals: 'Goals' },
+    // The activity chip when new figures arrive (app/motion.js shows it).
+    activity: 'Updating budget',
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     // {dow} short weekday, {mon} short month, {d} day
@@ -405,6 +409,12 @@
     } catch (e) { /* the copy in memory still works */ }
   }
 
+  // The figures of a snapshot, without when it was sent or received: a
+  // resend of the same figures is not news.
+  function figuresKey(d) {
+    try { return JSON.stringify(d, function (k, v) { return k === 'receivedAt' || k === 'sentAt' ? undefined : v; }); } catch (e) { return ''; }
+  }
+
   function onData(d) {
     if (!d || typeof d !== 'object' || isArr(d)) return;
     if (guestOn()) return;     // Guest mode: not kept, not drawn
@@ -414,6 +424,16 @@
     saveCache();
     refreshAll();
     updateBanner();
+    // New figures (a new charge among them) after the first live data this
+    // run: each budget tile says so (activity chip and accent edge).
+    var key = S.data ? figuresKey(S.data) : '';
+    var changed = S.liveKey !== undefined && key && key !== S.liveKey;
+    S.liveKey = key;
+    if (!changed) return;
+    for (var i = 0; i < S.order.length; i++) {
+      var ctx = S.ctxs[S.order[i]];
+      if (ctx && typeof ctx.activity === 'function') { try { ctx.activity('budget'); } catch (e) { /* the figures just show */ } }
+    }
   }
 
   function signature() {
@@ -472,7 +492,7 @@
     loadCache();
     try {
       var d = x && x.get('budget');
-      if (d && typeof d === 'object') { S.data = ready(d) ? d : null; S.fromCache = false; saveCache(); }
+      if (d && typeof d === 'object') { S.data = ready(d) ? d : null; S.fromCache = false; saveCache(); S.liveKey = S.data ? figuresKey(S.data) : ''; }
     } catch (e) { /* wait for it */ }
   }
 
@@ -495,6 +515,7 @@
   try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(onGuest); } catch (e) { /* no Guest mode on this page */ }
 
   function bind(ctx) {
+    addKind();
     if (!S.ctxs[ctx.id]) S.order.push(ctx.id);
     S.ctxs[ctx.id] = ctx;
     bindLive();
@@ -1004,6 +1025,17 @@
     text: function () { return S.current && S.banner ? S.banner.textContent : ''; }
   };
 
+  // The activity chip for new figures (app/motion.js): three bars, its words
+  // in the hub's language at the moment it shows ('budget.activity').
+  // (motion.js loads after this file: added on the first bind.)
+  function addKind() {
+    try {
+      if (S.kindAdded || !window.HUB_FX || typeof window.HUB_FX.addActivity !== 'function') return;
+      S.kindAdded = window.HUB_FX.addActivity('budget', { key: 'budget.activity', label: EN.activity,
+        icon: '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' });
+    } catch (e) { /* no chip; the figures just show */ }
+  }
+
   /* ---------- registering ---------- */
 
   function real(id, titleKey, drawTile, drawPanel) {
@@ -1036,6 +1068,7 @@
     };
     // Read when the hub draws the tile head, so it follows the language.
     Object.defineProperty(w, 'title', { get: function () { return STRINGS.titles[titleKey]; }, enumerable: true, configurable: true });
+    Object.defineProperty(w, 'shortTitle', { get: function () { return (STRINGS.titlesShort || {})[titleKey] || ''; }, enumerable: true, configurable: true });
     return w;
   }
 
@@ -1047,8 +1080,12 @@
       var id = S.order[i];
       var ctx = S.ctxs[id];
       var key = id.replace('budget-', '');
-      var heads = document.querySelectorAll('.cell[data-widget="' + id + '"] .tile-title');
-      for (var j = 0; j < heads.length; j++) heads[j].textContent = STRINGS.titles[key] || '';
+      // The hub fits the title, or its short form, to the tile.
+      if (ctx && typeof ctx.retitle === 'function') ctx.retitle();
+      else {
+        var heads = document.querySelectorAll('.cell[data-widget="' + id + '"] .tile-title');
+        for (var j = 0; j < heads.length; j++) heads[j].textContent = STRINGS.titles[key] || '';
+      }
       if (ctx && ctx.isOpen()) {
         var pt = document.querySelector('#panel .panel-title');
         if (pt) pt.textContent = STRINGS.titles[key] || '';

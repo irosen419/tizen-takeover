@@ -199,7 +199,9 @@ function measureTile(page) {
       text: body.textContent,
       es: q('.wotd-es'), en: q('.wotd-en'), pos: q('.wotd-pos'), say: q('.wotd-say'), def: q('.wotd-def'), ex: q('.wotd-ex'), exEn: q('.wotd-ex-en'),
       headShown: !!head && getComputedStyle(head).display !== 'none',
-      title: title ? title.textContent : null
+      // The full name (a narrow tile shows its short form, keeping the name in data-full).
+      title: title ? (title.getAttribute('data-full') || title.textContent) : null,
+      shown: title ? title.textContent : null
     };
   });
 }
@@ -406,6 +408,7 @@ function expectFor(t, w, size, lang, name) {
     return;
   }
   assert(t.title === (lang === 'es' ? 'Palabra del día' : 'Word of the day'), name + ': title ' + t.title);
+  if (t.shown !== t.title) assert(cols <= 2 && t.shown === (lang === 'es' ? 'Palabra' : 'Word'), name + ': title shown as ' + t.shown);
   if (rows === 1) {
     assert(t.tier === 'strip', name + ': tier ' + t.tier);
     if (cols >= 3) assert(t.en === w.en && /\s·\s/.test(t.text), name + ': strip without the English: ' + t.text);
