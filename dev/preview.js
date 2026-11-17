@@ -16,6 +16,8 @@
  * data in dev/.live-data. Open the hub with ?live=http://127.0.0.1:8097 to
  * use it, and steer it with pi/hubctl.js (the address it prints).
  * HUB_LIVE_PORT=off leaves it out (dev/live-test.js runs its own).
+ * Its Schedule (shows) is the made-up pi/fixtures/shows-sample.json, moved to
+ * today; it never asks TVmaze. HUB_SHOWS=off leaves the shows out.
  *
  * Calendar: that hub server reads four sample calendars (dev/calendar-sample.js)
  * from a small local feed server, the way it reads Google on the Pi. Try the
@@ -310,7 +312,10 @@ var liveServer = null;
         SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + LIVE_PORT + '/spotify/callback'
       } : {},
       spotify: { accounts: mockSpotify && mockSpotify.url, api: mockSpotify && mockSpotify.url, vibe: mockSpotify && mockSpotify.url, allowHttp: true,
-        playMs: 1500, idleMs: 1500, awayMs: 1500 }
+        playMs: 1500, idleMs: 1500, awayMs: 1500 },
+      // The Schedule: the made-up sample, never TVmaze (HUB_SHOWS=off: none).
+      shows: process.env.HUB_SHOWS === 'off' ? undefined :
+        { sampleFile: path.join(__dirname, '..', 'pi', 'fixtures', 'shows-sample.json') }
     });
     signInToMock();
     log('Calendar: ' + (f ? 'sample calendars, mode "' + calendarMode + '"; switch with /preview?calendar=' + sample.MODES.join('|') :
