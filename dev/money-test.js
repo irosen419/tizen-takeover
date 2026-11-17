@@ -391,7 +391,7 @@ async function main() {
         await H.key(page, 'ArrowUp');
         await H.until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
         const names = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.switcher-item'), (n) => n.textContent));
-        assert(names.length === 5 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
+        assert(names.length === 6 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -535,7 +535,7 @@ async function main() {
           }) };
         });
         const names = bar.items.map((i) => i.name);
-        assert(names.length === 7 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
+        assert(names.length === 8 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
         assert(!bar.over, 'the bar overflows');
         for (const it of bar.items) assert(it.l >= 0 && it.r <= bar.w && !it.cut, 'pill cut: ' + it.name);
         for (let i = 0; i < 8; i++) {

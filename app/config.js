@@ -133,6 +133,12 @@ var HUB_CONFIG = {
       { widget: 'calendar',      x: 0, y: 3, w: 5, h: 3 },
       { widget: 'today',         x: 5, y: 3, w: 3, h: 1 },
       { widget: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
+    ] },
+    /* A test layout: the All sounds widget (app/widgets/allsounds.js) on its
+       own, filling the screen, to try it before it joins any real layout.
+       New widgets can be tried the same way: one layout, one widget. */
+    { id: 'allsounds-test', name: 'All sounds test', layout: [
+      { widget: 'allsounds',     x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
 

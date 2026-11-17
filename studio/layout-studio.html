@@ -591,7 +591,9 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     'budget-goals': { title: 'Goals',                sub: 'Each spending goal: clean, on pace, over or under' },
     'budget-runway': { title: 'Runway',              sub: 'Proposed (budget tab v2): cash ready for card day against what the cards owe, today to Dec 1', soon: true },
     'budget-pace':  { title: 'Pace streak',          sub: 'Proposed (budget tab v2): yesterday against the cap, days under, one move for today', soon: true },
-    wotd:          { title: 'Word of the day',       sub: 'One Spanish word a day with its English, from A1 in January to B1 in December' }
+    wotd:          { title: 'Word of the day',       sub: 'One Spanish word a day with its English, from A1 in January to B1 in December' },
+    // app/widgets/allsounds.js (v0.28.16): a test widget, only on the "All sounds test" layout. Drawn here as a placeholder.
+    allsounds:     { title: 'All sounds',            sub: 'Test: what plays on any speaker (Echo through Home Assistant, or Spotify)' }
   };
   var BASE = [
     { id: 'today', x: 0, y: 0, w: 3, h: 2 }, { id: 'entertainment', x: 3, y: 0, w: 6, h: 2 }, { id: 'weather', x: 9, y: 0, w: 3, h: 2 },
@@ -634,6 +636,10 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     { id: 'budget', name: 'Budget', layout: [
       { id: 'budget-room', x: 0, y: 0, w: 4, h: 3 }, { id: 'budget-card', x: 4, y: 0, w: 4, h: 3 }, { id: 'budget-goals', x: 8, y: 0, w: 4, h: 6 },
       { id: 'calendar', x: 0, y: 3, w: 5, h: 3 }, { id: 'today', x: 5, y: 3, w: 3, h: 1 }, { id: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
+    ] },
+    // v0.28.16: one test widget filling the screen.
+    { id: 'allsounds-test', name: 'All sounds test', layout: [
+      { id: 'allsounds', x: 0, y: 0, w: 12, h: 6 }
     ] }
   ];
   // A preset hides the Stock tiles it leaves out, as the TV does.
@@ -1036,6 +1042,10 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),
     mirror: plannedEntry({ en: 'Mirror', es: 'Espejo' },
       { en: 'A camera mirror for mornings and nights out.', es: 'Un espejo con cámara para las mañanas y las noches de salida.' }),
+    // Built on the TV as a test widget (v0.28.16); drawn here with the placeholder look only.
+    allsounds: plannedEntry({ en: 'All sounds', es: 'Todo lo que suena' },
+      { en: 'Test widget: what plays on any speaker, an Echo through Home Assistant or Spotify, with the app’s name and the speaker. Only on the “All sounds test” layout.',
+        es: 'Widget de prueba: lo que suena en cualquier altavoz, un Echo a través de Home Assistant o Spotify, con el nombre de la app y del altavoz. Solo en el diseño «All sounds test».' }),
     wotd: {
       title: { en: 'Word of the day', es: 'Palabra del día' },
       sample: {
@@ -1059,7 +1069,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   };
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-runway', 'budget-pace', 'ambiance', 'mirror'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-runway', 'budget-pace', 'ambiance', 'mirror', 'allsounds'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -1572,7 +1582,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
     'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
-    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', 'budget-pace': 'bolt' };
+    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', 'budget-pace': 'bolt', allsounds: 'music' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';

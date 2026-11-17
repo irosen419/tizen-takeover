@@ -34,6 +34,7 @@
  *   ./hub spotify login              connect Spotify (once): a link to open, then paste the address back
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
  *   ./hub spotify logout             forget the Spotify sign-in
+ *   ./hub allsounds status           what plays anywhere (Echo speakers through Home Assistant, Spotify)
  *   ./hub status                     is the server up, which screens are on
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub log [--errors] [--lines 120]   the server's recent log lines (50 unless --lines says)
@@ -60,7 +61,7 @@ const linktests = require('./linktests');
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
 const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach',
-  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
+  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'allsounds'];
 
 /* ---------- settings ---------- */
 
@@ -758,6 +759,33 @@ function spotifyLogoutText(r) {
   return r.changed ? 'Signed out of Spotify. Run ./hub spotify login to connect again.' : 'Spotify was not signed in. Nothing changed.';
 }
 
+/* ---------- All sounds ---------- */
+
+// ./hub allsounds status: the state, the source, the speaker, and the title
+// and artist only (allsounds.js). Example:
+//   All sounds: playing from TuneIn on Living room Echo.
+//   Now: "Morning Edition".
+function allsoundsStatusLines(a) {
+  if (!a || typeof a !== 'object') return ['This server does not know All sounds yet (it needs an update): run git pull, then docker compose restart hub.'];
+  if (!a.configured && a.problem) return ['All sounds: not set up (' + a.problem + '). Fix it in pi/.env, then docker compose restart hub.'];
+  const from = (a.source ? ' from ' + a.source : '') + (a.device ? ' on ' + a.device : '');
+  const song = a.title ? 'Now: "' + a.title + '"' + (a.artist ? ' by ' + a.artist : '') + '.' : '';
+  if (a.state === 'playing') return ['All sounds: playing' + from + '.'].concat(song ? [song] : []);
+  if (a.state === 'paused') return ['All sounds: paused,' + from + '.'].concat(song ? [song] : []);
+  if (a.state === 'error') {
+    return [a.haProblem === 'auth' ? 'All sounds: Home Assistant refused the token (make a new one, put it in pi/.env as HA_TOKEN).'
+      : 'All sounds: Home Assistant cannot be reached right now (it keeps trying).'];
+  }
+  if (!a.configured && a.state === 'notset') return ['All sounds: not set up (add HA_TOKEN to pi/.env, then docker compose restart hub).'];
+  return ['All sounds: nothing playing' + (a.device ? ' (' + a.device + ' is on)' : '') + '.'];
+}
+
+async function allsoundsCmd(args) {
+  if (args[0] !== 'status') stop('Use: ./hub allsounds status. Run ./hub help for examples.');
+  const r = await call('GET', '/api/allsounds');
+  allsoundsStatusLines(r.allsounds).forEach(say);
+}
+
 // One line of typed input, or '' when there is none (not a terminal, or closed).
 function readLine(prompt) {
   return new Promise((resolve) => {
@@ -968,7 +996,7 @@ const HELP = [
   '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying,',
   '                              today (the clock), awws, awws-visits, awws-agenda, awws-todo,',
   '                              awws-reach, awws-money, budget-room, budget-card, budget-goals',
-  '                              or budget-lab',
+  '                              budget-lab or allsounds (the test widget)',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
@@ -1003,6 +1031,7 @@ const HELP = [
   '  ./hub spotify status        is Spotify connected, and what is playing',
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
+  '  ./hub allsounds status      what plays anywhere: Echo speakers (Home Assistant) and Spotify',
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
@@ -1046,6 +1075,7 @@ async function main(argv) {
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'log') return logCommand(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
+  if (cmd === 'allsounds') return allsoundsCmd(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
 }
@@ -1086,7 +1116,8 @@ module.exports = {
   vibeLine: vibeLine,
   spotifyLoginLines: spotifyLoginLines,
   spotifyCodeText: spotifyCodeText,
-  spotifyLogoutText: spotifyLogoutText
+  spotifyLogoutText: spotifyLogoutText,
+  allsoundsStatusLines: allsoundsStatusLines
 };
 
 if (require.main === module) {

@@ -38,6 +38,8 @@
  *   POST /api/spotify/code     finish signing in, { input: the pasted address }
  *   POST /api/spotify/logout   forget the sign-in
  *   POST /api/spotify/refresh  ask Spotify what is playing right now
+ *   GET  /api/allsounds  what plays anywhere in the house (allsounds.js): state,
+ *                        source, speaker, title and artist
  *   GET  /health         no token, just "is it running"
  *
  * The Claude mailbox (mailbox.js, off unless HUB_MAILBOX_ settings are in
@@ -50,8 +52,9 @@
  * server holds nothing open. Data (the to-do list, the calendar events, the
  * tile layout, the A World Worth Saving and budget snapshots) lives in
  * data/state.json. The calendar reader is in calendar.js, the snapshot checks
- * in awws.js and budget.js, and
- * what plays on Spotify comes from spotify.js.
+ * in awws.js and budget.js,
+ * what plays on Spotify comes from spotify.js, and what plays on any speaker
+ * (Home Assistant's Echo speakers plus Spotify) from allsounds.js.
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -69,6 +72,7 @@ const spotify = require('./spotify');
 const shows = require('./shows');
 const linktests = require('./linktests');
 const logscrub = require('./logscrub');
+const allsounds = require('./allsounds');
 
 const SERVER_VERSION = '0.7.0';
 const PROTOCOL = 1;
@@ -184,7 +188,7 @@ function loadSettings(file) {
   const fromFile = readEnvFile(file);
   const out = Object.assign({}, fromFile);
   Object.keys(process.env).forEach((k) => {
-    if (/^(HUB_|CALENDAR_|SPOTIFY_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
+    if (/^(HUB_|CALENDAR_|SPOTIFY_|HA_|ALLSOUNDS_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
   });
   return out;
 }
@@ -476,7 +480,8 @@ function freshState() {
       budget: { rev: 0, data: budget.emptyData() },
       nowplaying: { rev: 0, data: spotify.offData() },
       shows: { rev: 0, data: shows.emptyData() },
-      linktests: { rev: 0, data: linktests.emptyData() }
+      linktests: { rev: 0, data: linktests.emptyData() },
+      allsounds: { rev: 0, data: allsounds.notsetData() }
     }
   };
 }
@@ -528,6 +533,8 @@ function loadState(dir, log) {
     // in older files.
     st.resources.shows = shows.cleanResource(st.resources.shows);
     st.resources.linktests = linktests.cleanResource(st.resources.linktests);
+    // Nor "all sounds" (allsounds.js), cleaned the same way.
+    st.resources.allsounds = allsounds.cleanResource(st.resources.allsounds, true);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -642,6 +649,7 @@ function start(options) {
   // opt.spotifyEnv is the .env settings (SPOTIFY_CLIENT_ID ...). opt.spotify
   // may point at a stand-in for Spotify: { accounts, api, allowHttp, ... }.
   const spOpt = isObj(opt.spotify) ? opt.spotify : {};
+  let sounds = null;          // All sounds (below); Spotify's changes are passed on to it
   const player = spotify.createPlayer(Object.assign({}, spOpt, {
     config: spotify.configFromEnv(opt.spotifyEnv || {}, port || DEFAULT_PORT),
     vibeOff: spOpt.vibeOff === true || spotify.vibeOffFromEnv(opt.spotifyEnv),
@@ -655,10 +663,30 @@ function start(options) {
         state.resources.nowplaying = { rev: state.resources.nowplaying.rev, data: data };
         return;
       }
-      try { changeResource('nowplaying', data); } catch (e) { /* changeResource already logged it */ }
+      // All sounds folds Spotify in: its change (if any) goes in the same
+      // save and the same rev, so Now Playing's revs are as before.
+      const also = sounds ? sounds.withSpotify(data) : null;
+      try { changeResource('nowplaying', data, also ? { allsounds: also } : null); } catch (e) { /* changeResource already logged it */ }
+    }
+  }));
+
+  /* --- All sounds (allsounds.js): Home Assistant's speakers plus Spotify --- */
+
+  // opt.allsoundsEnv is the .env settings (HA_URL, HA_TOKEN,
+  // ALLSOUNDS_ENTITIES). opt.allsounds may hold { allowHttp, manual, ... }
+  // for tests and the preview.
+  const asOpt = isObj(opt.allsounds) ? opt.allsounds : {};
+  sounds = allsounds.createWatcher(Object.assign({}, asOpt, {
+    config: allsounds.configFromEnv(opt.allsoundsEnv || {}),
+    log: log,
+    current: () => state.resources.allsounds.data,
+    spotify: () => state.resources.nowplaying.data,
+    publish: (data) => {
+      try { changeResource('allsounds', data); } catch (e) { /* changeResource already logged it */ }
     }
   }));
   player.start();
+  sounds.start();
 
   /* --- the TV show schedule (shows.js) --- */
 
@@ -774,11 +802,14 @@ function start(options) {
     return true;
   }
 
-  // Replaces one resource: saves, bumps rev, tells every screen.
-  function changeResource(name, data) {
+  // Replaces one resource: saves, bumps rev, tells every screen. also:
+  // { otherName: data } changed in the same step, with the same rev.
+  function changeResource(name, data, also) {
     const next = JSON.parse(JSON.stringify(state));
     next.rev += 1;
     next.resources[name] = { rev: next.rev, data: data };
+    const extra = also ? Object.keys(also) : [];
+    extra.forEach((k) => { next.resources[k] = { rev: next.rev, data: also[k] }; });
     try {
       saveState(dataDir, next);
     } catch (e) {
@@ -789,6 +820,7 @@ function start(options) {
     }
     state = next;
     broadcast('change', { resource: name, rev: state.rev, data: state.resources[name].data });
+    extra.forEach((k) => broadcast('change', { resource: k, rev: state.rev, data: state.resources[k].data }));
     wakePolls();
   }
 
@@ -1069,7 +1101,8 @@ function start(options) {
     '/api/spotify/refresh': ['POST'],
     '/api/shows': ['GET', 'POST'],
     '/api/shows/refresh': ['POST'],
-    '/api/linktests': ['GET']
+    '/api/linktests': ['GET'],
+    '/api/allsounds': ['GET']
   };
 
   function statusBody() {
@@ -1165,6 +1198,7 @@ function start(options) {
           return undefined;
         }
         if (route === '/api/spotify') return reply(200, { ok: true, spotify: player.status() });
+        if (route === '/api/allsounds') return reply(200, { ok: true, allsounds: sounds.status() });
         if (route === '/api/spotify/login') {
           const l = player.loginUrl();
           return reply(200, { ok: true, url: l.url, redirectUri: l.redirectUri, minutes: l.minutes }, 'sign-in link made');
@@ -1483,6 +1517,7 @@ function start(options) {
     // Keeps a line that was already printed some other way (process events).
     note: (s) => { try { remember(String(s)); } catch (e) { /* never throws */ } },
     shows: tracker,
+    allsounds: sounds,
     _debug: () => {
       forgetOld();
       return {
@@ -1514,6 +1549,7 @@ function start(options) {
     calReader.close();
     player.close();
     tracker.close();
+    sounds.close();
     if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));
@@ -1572,6 +1608,7 @@ if (require.main === module) {
       enabled: env.HUB_SHOWS !== 'off',
       sampleFile: env.HUB_SHOWS === 'sample' ? path.join(__dirname, 'fixtures', 'shows-sample.json') : undefined
     },
+    allsoundsEnv: env,
     // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
     // or systemd (Restart=always) starts the server again, with any new code.
     onRestart: () => {

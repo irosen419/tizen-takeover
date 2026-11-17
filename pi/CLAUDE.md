@@ -25,12 +25,13 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - What is playing on Spotify, and sign-in: `./hub spotify status`; one-time sign-in `./hub spotify login` (prints a link, then asks for the pasted address) or `./hub spotify code "<address>"`; `./hub spotify logout`
 - TV shows on the Schedule (Entertainment panel): `./hub shows list`; add one `./hub shows add "Stick" --service "Apple TV"` (`--id 12345` for its TVmaze number when the name finds the wrong show, `--watch Hulu` to open another app than the badge, `--also "Hulu,Peacock"` for other apps that carry it, `--via "Prime Video"` when the service is billed through Prime Video Channels); `./hub shows remove "Stick"`; ask TVmaze now: `./hub shows refresh` (it also does so every 6 hours)
 - What the TV's watch link test found (which deep links open a title): `./hub linktests`
+- What plays anywhere (Echo speakers through Home Assistant, and Spotify), for the test widget All sounds: `./hub allsounds status` (state, source, speaker, title and artist only)
 - Is the server up, which screens are on: `./hub status`
 - Is the Claude mailbox (Cloudflare R2) connected: `./hub mailbox status`
 - The server's recent log lines: `./hub log` (last 50); only problems: `./hub log --errors`; more: `./hub log --lines 120` (1 to 200)
 - All commands: `./hub help`
 
-Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals) and `budget-lab` (Budget lab: the pace streak, the cap slider and the runway to card day; it reaches the TV with a later hub update; until then the TV ignores the id). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
+Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals), `budget-lab` (Budget lab: the pace streak, the cap slider and the runway to card day; it reaches the TV with a later hub update; until then the TV ignores the id) and `allsounds` (All sounds, a test widget: what plays on any speaker; only on the "All sounds test" layout, from v0.28.16). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
 
 ## From the cloud: the Claude mailbox
 
@@ -56,7 +57,7 @@ Write `cmd.json` in your scratchpad folder. The reply is `{"id", "cmd", "ok", "s
 
 Commands and args (`args` may be left out when empty; unknown args are refused):
 
-- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals, budget-lab), `home`, `reload`
+- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals, budget-lab, allsounds), `home`, `reload`
 - `say {"text": "Dinner in 10", "seconds": 8}` (text up to 140 characters, seconds 1-60)
 - `todo.add {"title": "Buy milk", "level": "must", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `level` is `must`, `optional` or `passive`, optional when left out, and needs server 0.6.0: an older server refuses it, so there put `[level:must]` or `[level:passive]` at the end of `notes` instead, which the TV reads and hides; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
 - `todo.level {"title": "Buy milk", "level": "passive"}` or `{"id": "...", "level": "must"}` (server 0.6.0) changes an item's level
@@ -71,6 +72,7 @@ Commands and args (`args` may be left out when empty; unknown args are refused):
 - `log.tail {"lines": 50, "errors": false}` (both optional; lines 1-200, default 50; `errors: true` for problems only): the server's recent log lines. The text is scrubbed on the Pi before it reaches the bucket (IP addresses become `[address]`; calendar names, the Spotify name, the bucket name and the R2 host become `[name]`). `message` is one line such as `50 lines, 3 problems in the last 24 hours.`; `data` is `{"lines": [{"t", "text", "level"}], "errors24h"}`. `status.json` also carries `log.errors24h` and `log.lastErrorAt` (a count and a time, no text), so check that first
 - `shows.list` (its `data.shows` carry name, service, running, next, problem), `shows.add {"name": "Stick", "service": "Apple TV", "tvmazeId": 12345, "serviceOverride": "Hulu", "alsoOn": ["Hulu"], "via": "Prime Video"}` (only `name` is needed; `via` only when the owner says the service comes through another app; adding a show already there updates it), `shows.remove {"name": "Stick"}`, `shows.set {"shows": [{"name": "Stick", "service": "Apple TV"}, ...]}` (replaces the whole list, at most 40), `shows.refresh` (asks TVmaze now and waits up to 25 seconds, like `calendar.refresh`)
 - `linktests.show`: the watch link test answers, newest first (`data.results`: `{ id, app, name, outcome, op, uri?, data?, at }`, outcome `title`, `app`, `nothing` or `error`)
+- `allsounds.status`: what plays anywhere (the All sounds test widget): state, source, speaker, title and artist only. Never the Home Assistant token or address.
 - `status`, `ping` (answers with the server version)
 - `restart`: the server stops after replying and Docker starts it again with the code already on the Pi. It does not `git pull`; the owner does that on the Pi.
 
@@ -85,6 +87,7 @@ Other calls: list replies `curl -sS "$B?prefix=outbox/"` (an array of `{key, ...
 - "No screen is listening" is not an error: the TV is off or Home Hub is closed. Say so plainly.
 - If the server is not running, try `docker compose up -d` from this folder, then `./hub status`. If it still fails, show the last lines of `docker compose logs hub` (they never contain the token).
 - Never print, copy, echo or paste `SPOTIFY_CLIENT_SECRET` or anything in `data/spotify.json`.
+- Never print, copy, echo or paste `HA_TOKEN` (the Home Assistant token), and never log what plays (titles, speaker names).
 - Never show, print, copy or log a calendar link (the `CALENDAR_*_URL` lines in `.env`). They are secret keys to the owner's calendars. If one may have leaked, tell the owner to reset it in Google Calendar (README.md, "If a secret address leaks").
 - To put an event on the TV, add it through the Google Calendar connector, then run `./hub calendar refresh`. Google may take a while to include it; if it is not there yet, say so and try again in a few minutes.
 - Do not edit `data/state.json` by hand while the server runs; use `./hub todo ...`.

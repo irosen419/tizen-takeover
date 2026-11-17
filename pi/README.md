@@ -391,6 +391,51 @@ With it off, the Pi still guesses from Spotify's genres (no one new sees anythin
 
 Spotify's rules can limit how often the Pi may ask; if it asks for a pause the Pi waits as long as told and the log says so (`asked us to slow down`).
 
+## All sounds (test widget)
+
+The "All sounds" test widget on the TV (the "All sounds test" layout) shows what plays anywhere: the Echo speakers through Home Assistant, and Spotify (Spotify wins when both play). `allsounds.js` reads Home Assistant's REST API (`GET /api/states`, every 5 seconds while something plays, 20 seconds otherwise, backing off up to 2 minutes when it cannot get through) and keeps the `allsounds` resource; it changes nothing for Now Playing.
+
+Setup (once):
+
+1. In Home Assistant, the Alexa Media Player integration (HACS) must be installed and signed in, so each Echo is a `media_player` entity.
+2. In Home Assistant, open your profile, the **Security** tab, and create a **long-lived access token**. Copy it.
+3. Add it to `.env` as `HA_TOKEN=...` (see `.env.example`). `HA_URL` defaults to `http://127.0.0.1:8123`, Home Assistant on this Pi; `ALLSOUNDS_ENTITIES` can list only some speakers (`media_player.living_room_echo,media_player.kitchen_echo`).
+4. `docker compose restart hub`, then `./hub allsounds status`.
+
+What reaches the TV: the state, the app's name ("TuneIn"), the speaker's name, the title, artist and album, and a picture only when it is an absolute `https` address. Never the token or a Home Assistant address. The token is only ever sent to `HA_URL`.
+
+What reaches the log (fixed words only, never the token, an address, a title, a speaker's name or the app's name):
+
+```
+allsounds: off (no HA_TOKEN in .env)
+allsounds: off (HA_TOKEN does not look like a Home Assistant token)
+allsounds: off (HA_URL does not look right (it is like http://127.0.0.1:8123))
+allsounds: off (ALLSOUNDS_ENTITIES must be media_player ids, separated by commas)
+allsounds: off (ALLSOUNDS_ENTITIES lists more than 12)
+allsounds: watching Home Assistant
+allsounds: watching Home Assistant (2 listed speakers)
+allsounds: playing from an Echo
+allsounds: playing from Spotify
+allsounds: paused
+allsounds: nothing playing
+allsounds: Home Assistant refused the token (401)
+allsounds: Home Assistant could not be reached
+allsounds: Home Assistant sent a reply that could not be read
+allsounds: Home Assistant answered HTTP 500
+allsounds: Home Assistant timed out
+allsounds: Home Assistant working again
+allsounds: unexpected problem
+```
+
+Commands: `./hub allsounds status` (state, source, speaker, title and artist), `./hub show allsounds` (the page on the TV). Tests: `node pi/allsounds-test.js` (against the pretend Home Assistant in `dev/mock-ha.js`).
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `All sounds: not set up` | No `HA_TOKEN` in `.env` | Steps 2 to 4 above |
+| `Home Assistant refused the token` | The token is wrong or was deleted | Make a new one, put it in `.env`, restart |
+| `Home Assistant cannot be reached` | `HA_URL` is wrong, or Home Assistant is down | Check Home Assistant opens at that address from the Pi |
+| `nothing playing` while an Echo plays | Alexa Media Player has not caught up (it can lag 10 to 30 seconds), or the speaker is not listed in `ALLSOUNDS_ENTITIES` | Wait a moment; check the entity in Home Assistant |
+
 ## Run without Docker
 
 If you prefer, install Node 14 or newer (`node --version` shows yours) and run it directly:
