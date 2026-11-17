@@ -830,3 +830,6 @@
 .tile-w1 .cal-strip-line .cal-bar,
 .tile-w1 .cal-strip-title { display: none; }
 .tile-w1 .cal-strip-when { margin: 0 auto; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }

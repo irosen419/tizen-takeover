@@ -97,8 +97,8 @@
  *                             live sync (never call it for the first data after
  *                             the hub starts, or for a refetch that changed
  *                             nothing): the motion extras show a small chip
- *                             saying so, e.g. 'todo', 'calendar', 'awws' (more
- *                             with HUB_FX.addActivity in app/motion.js)
+ *                             saying so, e.g. 'todo', 'calendar', 'awws' (more,
+ *                             with their words' app/i18n.js key, via HUB_FX.addActivity in app/motion.js)
  *   (A waiting tile marks itself quiet with an element of class hub-dormant.)
  *   ctx.live                  live updates from the hub server on the Pi (see
  *                             docs/live-updates.md), or undefined when live.js
@@ -127,7 +127,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.29.0';
+  var BUILD = 'v0.28.7';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1136,6 +1136,11 @@
       var fn = w && w.w ? w.w.sceneStatus : null;
       try { return typeof fn === 'function' ? fn() || '' : ''; } catch (e) { return ''; }
     } },
+    // A stylesheet that had to be fetched again, or never arrived (see hub.html).
+    { group: 'This hub', label: 'Styles', value: function () {
+      var S = window.HUB_STYLES;
+      try { return S && typeof S.status === 'function' ? S.status() || '' : ''; } catch (e) { return ''; }
+    } },
     { group: 'Updates', label: 'Live updates', value: function () {
       var L = liveFacade();
       var t = L ? (L.status() || {}).text || '' : '';
@@ -1937,6 +1942,16 @@
 
   var keyRepeat = false;     // the key being handled is a held one (no glide for it)
 
+  // window.HUB_ALERT, from a widget that shows a banner: { shown(), dismiss() }.
+  function alertShown() {
+    var A = window.HUB_ALERT;
+    try { return !!(A && typeof A.shown === 'function' && A.shown()); } catch (e) { return false; }
+  }
+
+  function dismissAlert() {
+    try { window.HUB_ALERT.dismiss(); } catch (e) { /* nothing more to do */ }
+  }
+
   document.addEventListener('keydown', function (e) {
     var code = e.keyCode;
     var dir = dirOf(code);
@@ -1964,6 +1979,13 @@
     if (busy) return;
     // The TV keyboard can send a stray Enter after Done or Back after Cancel.
     if ((code === KEY.ENTER || isBack(code)) && Date.now() - typingEndedAt < 300) return;
+
+    // A banner over the home screen (budget.js's "New charge: ..."): OK or
+    // Back dismisses it first; the arrows still move between tiles.
+    if (!open && !sw.on && !ab.on && (code === KEY.ENTER || isBack(code)) && alertShown()) {
+      dismissAlert();
+      return;
+    }
 
     if (ab.on) {
       if (dir === 'right' || isBack(code)) closeAbout();

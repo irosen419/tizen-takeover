@@ -46,13 +46,9 @@ const PLANNED_ES = { texts: {
   ambiance: 'Elegir el ambiente de luz desde el televisor, sin levantarse del sofá.'
 } };
 const TODO_ES = { sub: 'En este televisor', emptyTitle: 'Todavía no hay nada en la lista.', emptyHint: 'Pulsa OK para añadir algo.' };
-const MOTION_ES = {
-  activity: { todo: 'Nueva tarea', calendar: 'Actualizando el calendario', awws: 'Sincronizando datos' },
-  working: { todo: 'Preparando tareas', calendar: 'Revisando el calendario', awws: 'Reuniendo datos' }
-};
 const SPANISH_INIT = 'window.HUB_AWWS_STRINGS = ' + JSON.stringify(AWWS_ES) + ';window.HUB_CALENDAR_STRINGS = ' + JSON.stringify(CAL_ES) +
   ';window.HUB_PLANNED_STRINGS = ' + JSON.stringify(PLANNED_ES) + ';window.HUB_TODO_STRINGS = ' + JSON.stringify(TODO_ES) +
-  ';window.HUB_MOTION_STRINGS = ' + JSON.stringify(MOTION_ES) + ';';
+  ';try { localStorage.setItem("homeHub.lang", "es"); } catch (e) {}';
 const LIVE_Q = 'live=' + encodeURIComponent(LIVE) + '&motion=push';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

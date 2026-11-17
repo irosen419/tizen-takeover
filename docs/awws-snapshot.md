@@ -124,7 +124,7 @@ Open items, plus items ticked in the last 7 days. Order in `items` is the order 
 
 ### `money`
 
-Stored like any other section. Ian said yes to money figures on the living room TV on 2026-11-16, so the sender may include this section, and `HUB_CONFIG.widgets.awws.showMoney` in `app/config.js` ships `true`. With it, the Glance shows a money line ("Spent $1,841 · earned $1,265") in its Progress list and in its launcher. To keep money off the TV (for guests, say), set `showMoney` to `false`; the Pi still stores the section. The Money tile itself is still a placeholder.
+Stored like any other section. Ian said yes to money figures on the living room TV on 2026-11-16, so the sender may include this section, and `HUB_CONFIG.widgets.awws.showMoney` in `app/config.js` ships `true`. With it, the Glance shows a money line ("Spent $1,841 · earned $1,265") in its Progress list and in its launcher. The **Earned vs spent** tile (`awws-money`, on the "AWWS money" layout) shows the net so far (`earned` minus `spent`; green when it is up, coral when it is down), "earned $1,265 · spent $1,841", one pair of bars per entry in `months` (earned green, spent coral) and, on a tall tile, the next transfer. Its panel adds `claude` as "Claude this month". It never shows a balance; the snapshot carries none. To keep money off the TV (for guests, say), set `showMoney` to `false`: the Glance drops its money line and Earned vs spent says "Money is hidden". The Pi still stores the section. With a snapshot but no money section the tile says "No money data yet"; when the snapshot is over 2 hours old it says "as of" under its title and dims.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -186,7 +186,7 @@ From the cloud, through the Claude mailbox (`pi/CLAUDE.md`): `awws.set {"snapsho
 - `awws-todo`: the board, by section and owner, with overdue items in amber (`dueISO` before today) and open items per workstream.
 - `awws-agenda`: items with a `dueISO` join the calendar events on their day.
 - `awws-reach`: site visits this week as the big figure, with the change from last week and a line of the last 14 days, then buy clicks, flier scans by school and subscribers with the day they were last counted. With only `subscribers` (as today) it leads with them: "2 subscribers, at last check Nov 16". Every size works with subscribers alone, traffic alone, or both. The Glance's launcher opens it too. It is on no layout yet; place it with the Layout Studio or `./hub layout set`.
-- `money`: the Glance's money line, while `showMoney` is `true` (above).
-- `awws-outreach`, `awws-pipeline` and `awws-money` are placeholders for now. Their sections are already checked and stored, so the tiles can be built without touching the Pi again.
+- `money`: the Glance's money line and the Earned vs spent tile (`awws-money`), while `showMoney` is `true` (above).
+- `awws-outreach` and `awws-pipeline` are placeholders for now. Their sections are already checked and stored, so the tiles can be built without touching the Pi again.
 
 The TV keeps its last copy (`homeHub.awws.v1`), so the tiles have something to show straight after the TV turns on.

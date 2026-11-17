@@ -19,7 +19,7 @@
  * show nothing at all while an ordinary say still does; an unknown kind
  * shows nothing; A World Worth Saving: one chip, on the first declaring tile
  * in layout order, and the calendar's on the calendar tile; Spanish (from
- * HUB_MOTION_STRINGS and from a stand-in HUB_I18N) on one line in 3-column
+ * app/i18n.js) on one line in 3-column
  * tiles at 22px+; a repeated start keeps the element and extends the time;
  * a layout switch (in place, and one that reloads the page) puts the chip on
  * the new layout's tile.
@@ -497,9 +497,7 @@ async function check11(pi) {
   await setLayout(pi, NARROW);
   try {
     const variants = [
-      { name: 'HUB_MOTION_STRINGS', init: 'window.HUB_MOTION_STRINGS = ' + JSON.stringify({ working: WORK_ES }) + ';', want: WORK_ES },
-      { name: 'HUB_I18N', init: 'window.HUB_I18N = { t: function (key, en) { var es = ' + JSON.stringify(WORK_ES) +
-        '; var k = key.replace("activity.working.", ""); return key.indexOf("activity.working.") === 0 && es[k] ? es[k] : en; } };', want: WORK_ES },
+      { name: 'Spanish (app/i18n.js)', init: 'try { localStorage.setItem("homeHub.lang", "es"); } catch (e) {}', want: WORK_ES },
       { name: 'English', init: undefined, want: WORK_EN }
     ];
     for (const v of variants) {
@@ -655,7 +653,7 @@ async function main() {
   await check('8. Malformed hub: texts show nothing at all; an ordinary say still shows', () => check8(pi));
   await check('9. An unknown kind shows nothing and throws nothing', () => check9(pi));
   await check('10. Calendar on the calendar tile; A World Worth Saving: one chip, first declaring tile in layout order, then arrival', () => check10(pi));
-  await check('11. Spanish (HUB_MOTION_STRINGS, HUB_I18N) and English on one line in 3-column tiles, 22px+, 4.5:1', () => check11(pi));
+  await check('11. Spanish (app/i18n.js) and English on one line in 3-column tiles, 22px+, 4.5:1', () => check11(pi));
   await check('12. A repeated start extends the time and keeps the same element', () => check12(pi));
   await check('13. A layout switch (in place, and one that reloads) puts the chip on the new layout\'s tile', () => check13(pi));
 }

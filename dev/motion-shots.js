@@ -50,10 +50,8 @@ const PLANNED_ES = { texts: {
   ambiance: 'Elegir el ambiente de luz desde el televisor, sin levantarse del sofá.'
 } };
 const TODO_ES = { sub: 'En este televisor', emptyTitle: 'Todavía no hay nada en la lista.', emptyHint: 'Pulsa OK para añadir algo.' };
-const MOTION_ES = { activity: { todo: 'Nueva tarea', calendar: 'Actualizando el calendario', awws: 'Sincronizando datos' } };
 const SPANISH_INIT = 'window.HUB_AWWS_STRINGS = ' + JSON.stringify(AWWS_ES) + ';window.HUB_CALENDAR_STRINGS = ' + JSON.stringify(CAL_ES) +
-  ';window.HUB_PLANNED_STRINGS = ' + JSON.stringify(PLANNED_ES) + ';window.HUB_TODO_STRINGS = ' + JSON.stringify(TODO_ES) +
-  ';window.HUB_MOTION_STRINGS = ' + JSON.stringify(MOTION_ES) + ';';
+  ';window.HUB_PLANNED_STRINGS = ' + JSON.stringify(PLANNED_ES) + ';window.HUB_TODO_STRINGS = ' + JSON.stringify(TODO_ES) + ';';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let browser = null;
@@ -206,7 +204,8 @@ async function activityShots() {
     for (const kind of ['todo', 'calendar', 'awws', 'all']) {
       const name = 'activity-' + kind + '-' + lang + '.png';
       if (ONLY && name.indexOf(ONLY) < 0) continue;
-      const page = await newPage({ query: LIVE_Q, init: lang === 'es' ? SPANISH_INIT : undefined, settle: 1800 });
+      // The chips' Spanish comes from app/i18n.js (?lang=es).
+      const page = await newPage({ query: LIVE_Q + (lang === 'es' ? '&lang=es' : ''), init: lang === 'es' ? SPANISH_INIT : undefined, settle: 1800 });
       const kinds = kind === 'all' ? ['todo', 'calendar', 'awws'] : [kind];
       for (const k of kinds) { await news[k](); await sleep(120); }
       await until(() => page.evaluate((n) => document.querySelectorAll('.fx-chip.is-in').length >= n, kinds.length), 5000, 'no chip for ' + name);

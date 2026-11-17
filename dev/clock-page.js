@@ -6,7 +6,7 @@
  * read it, and close it again.
  *
  *   const clockPage = require('./clock-page');
- *   const lines = await clockPage.lines(page);          // ['v0.29.0', 'Chrome 120', 'push (auto, 58 fps)']
+ *   const lines = await clockPage.lines(page);          // ['v0.28.7', 'Chrome 120', 'push (auto, 58 fps)']
  *   const text = await clockPage.line(page, 'updates'); // the updates text, or null
  *   await clockPage.waitFor(page, (about) => about.live === 'Live', 3000, 'no Live line');
  *
@@ -24,7 +24,9 @@
  *   const t = await clockPage.tile(page);        // { face, digits, ampm, window, windowMode, text }
  *
  * On Analog the page has no digital time (readout false) and no 12/24
- * group (keys has no hours-*); on Digital it has both.
+ * group (keys has no hours-*); on Digital it has both. Both faces end with
+ * the Language group (lang-en, lang-es); pick(page, 'lang-es') switches the
+ * hub to Spanish.
  */
 'use strict';
 
@@ -160,7 +162,7 @@ function tile(page) {
 
 // Moves to an option with the arrows and presses OK, as the remote would.
 async function pick(page, key) {
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 10; i++) {
     const at = (await state(page)).focused || '';
     if (at === key) {
       await page.keyboard.press('Enter');
@@ -168,12 +170,14 @@ async function pick(page, key) {
       await sleep(80);
       return;
     }
+    // The groups top to bottom: face, hours (Digital only), lang.
+    const order = ['face', 'hours', 'lang'];
     const wantGroup = key.split('-')[0];
     const atGroup = at.split('-')[0];
     let k;
-    if (atGroup !== 'face' && atGroup !== 'hours') k = 'ArrowDown';
-    else if (wantGroup !== atGroup) k = wantGroup === 'hours' ? 'ArrowDown' : 'ArrowUp';
-    else k = /analog|24/.test(key) ? 'ArrowRight' : 'ArrowLeft';
+    if (order.indexOf(atGroup) < 0) k = 'ArrowDown';
+    else if (wantGroup !== atGroup) k = order.indexOf(wantGroup) > order.indexOf(atGroup) ? 'ArrowDown' : 'ArrowUp';
+    else k = /analog|24|-es$/.test(key) ? 'ArrowRight' : 'ArrowLeft';
     await page.keyboard.press(k);
     await sleep(80);
   }

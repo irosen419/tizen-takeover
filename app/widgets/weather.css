@@ -820,3 +820,6 @@
 
 /* In the panel the picture covers a lot of text, so the falling things are lighter. */
 .wx-scene-panel .wx-wrap { opacity: 0.72; }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }
