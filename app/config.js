@@ -151,6 +151,9 @@ var HUB_CONFIG = {
      *   webhook    asks Home Assistant to do something (POSTs to a webhook url)
      *   dashboard  opens a web page full screen inside the hub (Back returns)
      *   allApps    lists every app on the TV
+     *   schedule   the TV shows on the Pi's list: today, this week, this month
+     *              and coming soon (app/widgets/shows.js; the list is kept on
+     *              the Pi with ./hub shows add|remove, see pi/README.md)
      *
      * "logo" picks the brand logo from logos.js. Without one, the item shows
      * its first letter.
@@ -197,10 +200,66 @@ var HUB_CONFIG = {
         {
           label: 'More',
           items: [
+            { kind: 'schedule', label: 'Schedule', sub: 'Your shows', logo: 'schedule' },
             { kind: 'allApps', label: 'All apps', sub: 'On this TV', logo: 'allapps' }
           ]
         }
-      ]
+      ],
+
+      /*
+       * Schedule: a show opens in its watch app (the service on the Pi's
+       * list). watchAliases sends every show of one service to another app
+       * instead: Hulu titles open in Disney+ here. The app it came from shows
+       * as "Also on Hulu" beside the episode (Right, then OK, opens it).
+       */
+      watchAliases: { 'Hulu': 'Disney+' },
+
+      /*
+       * Watch link test (About panel: Left on a left-most tile, then OK on
+       * "Watch link test"). Each recipe opens one app with an app control:
+       * op (the operation), and optionally uri, or key + val (one data
+       * item). app is the Entertainment item's label (its match names find
+       * the app). {name} is filled from ids below. A value still in
+       * <angle brackets> is a placeholder: its recipes say "needs id" and
+       * never fire. Answers go to the Pi: ./hub linktests.
+       */
+      linkTests: {
+        ids: {
+          // EDIT: the Prime Video title id (GTI) the Prime recipe opens.
+          primeGti: 'amzn1.dv.gti.50f41028-8256-4293-9d0d-14556b501136',
+          // A Netflix title id, as seen in netflix.com/title/<id>.
+          netflixTitle: '81505776',
+          // Apple TV show ids: unverified, edit here if they don't open.
+          appleFoundation: 'umc.cmc.5983fiap1xtpb4p1dp4w7w3zd',
+          appleForAllMankind: 'umc.cmc.6wsi780sz5tsh3jmcixqwr5o2',
+          // Placeholders until someone finds the real ids.
+          disneyHellsKitchen: '<Disney+ series id>',
+          hulu: '<Hulu series id>',
+          peacock: '<Peacock series id>'
+        },
+        recipes: [
+          { id: 'prime-resume', app: 'Prime Video', name: 'Title by GTI (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: '{"values":"{primeGti}"}' },
+          { id: 'netflix-resume', app: 'Netflix', name: 'Title by id (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: 'm=https://www.netflix.com/title/{netflixTitle}&source_type=4' },
+          { id: 'netflix-view', app: 'Netflix', name: 'Title page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.netflix.com/title/{netflixTitle}' },
+          { id: 'appletv-view', app: 'Apple TV', name: 'Foundation page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://tv.apple.com/us/show/foundation/{appleFoundation}' },
+          { id: 'appletv-resume', app: 'Apple TV', name: 'Foundation by id (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: '{"values":"{appleFoundation}"}' },
+          { id: 'appletv-fam', app: 'Apple TV', name: 'For All Mankind page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://tv.apple.com/us/show/for-all-mankind/{appleForAllMankind}' },
+          { id: 'disney-view', app: 'Disney+', name: 'Hell’s Kitchen page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.disneyplus.com/series/hells-kitchen/{disneyHellsKitchen}' },
+          { id: 'disney-resume', app: 'Disney+', name: 'Hell’s Kitchen by id (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: '{"values":"{disneyHellsKitchen}"}' },
+          { id: 'hulu-view', app: 'Hulu', name: 'Series page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.hulu.com/series/{hulu}' },
+          { id: 'peacock-view', app: 'Peacock', name: 'Series page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.peacocktv.com/watch/asset/tv/{peacock}' }
+        ]
+      }
     },
 
     /*

@@ -1,0 +1,371 @@
+/* Entertainment's Schedule (app/widgets/shows.js), the counts on its tile and
+   the watch link test (app/widgets/linktest.js). The hub's own tokens
+   (style.css :root); the accent is the activity chips' blue, #7fd1ff.
+   No grid, no flex gap; only transform and opacity would ever animate (none
+   here: focus changes at once). Text may wrap and grow a quarter in Spanish:
+   no fixed text widths, line heights 1.25 or more. */
+
+/* ---------- the Entertainment tile: what's on ---------- */
+
+.ent-chip .logo { position: relative; }
+.ent-count {
+  position: absolute;
+  top: -0.35rem; right: -0.35rem;
+  min-width: 1.35rem;
+  padding: 0 0.3rem;
+  border-radius: 0.7rem;
+  background: #7fd1ff;
+  color: #050506;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.35rem;
+  text-align: center;
+  box-shadow: 0 0 0 0.12rem var(--card);
+  z-index: 2;
+}
+.tile-h1 .ent-count { top: -0.25rem; right: -0.25rem; }
+
+/* ---------- Schedule ---------- */
+
+.sh { padding: 0.35rem 0 0.2rem; }
+.sh-top {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+.sh-tabs {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0.2rem;
+  border-radius: 1.6rem;
+  border: 0.08rem solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+.sh-tab {
+  flex: 0 1 auto;
+  padding: 0.35rem 0.75rem;
+  margin-right: 0.1rem;
+  border-radius: 1.3rem;
+  border: var(--edge) solid transparent;
+  font-size: 0.95rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sh-tab:last-child { margin-right: 0; }
+.sh-tab.is-on { background: rgba(255, 255, 255, 0.12); color: var(--text); font-weight: 600; }
+.sh-tab.is-focused { border-color: var(--focus); color: var(--text); }
+.sh-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin-left: 1rem;
+  text-align: right;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sh-sample {
+  display: inline-block;
+  margin-right: 0.7rem;
+  padding: 0.08rem 0.55rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.24);
+  border-radius: 1rem;
+  background: rgba(8, 12, 18, 0.42);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  vertical-align: 0.1rem;
+}
+.sh-stale { margin: -0.3rem 0 0.6rem; font-size: 0.85rem; line-height: 1.35; color: var(--text-3); }
+
+/* Days: the date on the left, its episodes on the right. Today has a lit
+   edge on the left, like the tiles' accent edge. */
+.sh-day {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  padding: 0.45rem 0 0.45rem 0.9rem;
+  border-top: 0.06rem solid var(--line);
+  border-radius: 0.9rem;
+}
+.sh-day:first-child { border-top-color: transparent; }
+.sh-day.is-today { background: rgba(127, 209, 255, 0.06); border-top-color: transparent; }
+.sh-day.is-today + .sh-day { border-top-color: transparent; }
+.sh-day.is-today:before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0.6rem; bottom: 0.6rem;
+  width: 0.16rem;
+  border-radius: 0.1rem;
+  background: #7fd1ff;
+}
+.sh-date { flex: 0 0 6.6rem; width: 6.6rem; padding: 0.4rem 0.6rem 0 0; }
+.sh-date-mark {
+  font-size: 0.7rem; font-weight: 700; line-height: 1.35;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: #7fd1ff;
+}
+.sh-date-dow { font-size: 1.05rem; font-weight: 600; line-height: 1.3; word-wrap: break-word; }
+.sh-date-day { font-size: 0.85rem; line-height: 1.35; color: var(--text-2); }
+.sh-day.is-past .sh-date-dow,
+.sh-day.is-past .sh-date-day { color: var(--text-3); }
+.sh-rows { flex: 1 1 auto; min-width: 0; }
+
+.sh-line { display: flex; align-items: center; }
+.sh-row,
+.sh-show {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.9rem;
+  border: var(--edge) solid transparent;
+  cursor: pointer;
+}
+.sh-row.is-focused,
+.sh-show.is-focused { background: var(--card-2); border-color: var(--focus); }
+.sh-row.is-past { opacity: 0.55; }
+.sh-row.is-past.is-focused { opacity: 1; }
+/* On within the hour: the accent edge on its left. */
+.sh-row.is-soon { box-shadow: inset 0.2rem 0 0 #7fd1ff; }
+
+/* The tiny typographic poster: two letters and the name. */
+.sh-poster {
+  position: relative;
+  flex: 0 0 2.5rem;
+  width: 2.5rem;
+  height: 3.1rem;
+  margin-right: 0.85rem;
+  overflow: hidden;
+  border-radius: 0.45rem;
+  border: 0.06rem solid rgba(255, 255, 255, 0.14);
+  background: var(--mono);
+}
+.sh-poster-ab {
+  position: absolute;
+  top: 0.12rem; left: 0.28rem;
+  font-size: 1.25rem; font-weight: 700; line-height: 1.25;
+  color: #fff;
+}
+.sh-poster-name {
+  position: absolute;
+  left: 0.28rem; right: 0.15rem; bottom: 0.2rem;
+  padding-top: 0.12rem;
+  border-top: 0.05rem solid rgba(255, 255, 255, 0.45);
+  font-size: 0.42rem; font-weight: 600; line-height: 1.25;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sh-info { flex: 1 1 auto; min-width: 0; }
+.sh-title {
+  padding: 0.04rem 0;
+  font-size: 1.1rem; font-weight: 600; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sh-meta { font-size: 0.9rem; line-height: 1.35; color: var(--text-2); }
+/* "S2 E6 · 8:00 PM" and "in 35 min" each stay whole; a narrow row puts the
+   note on a line of its own. */
+.sh-meta-text { white-space: nowrap; margin-right: 0.6rem; }
+.sh-note { display: inline-block; color: var(--text-3); white-space: nowrap; }
+.sh-note.is-live { color: #7fd1ff; font-weight: 600; }
+.sh-chip {
+  display: inline-block;
+  margin-left: 0.55rem;
+  padding: 0 0.45rem;
+  border-radius: 0.35rem;
+  background: #7fd1ff;
+  color: #050506;
+  font-size: 0.7rem; font-weight: 700; line-height: 1.35;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  vertical-align: 0.08rem;
+}
+.sh-side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-left: 0.8rem;
+}
+.sh-badge {
+  display: flex;
+  align-items: center;
+  padding: 0.18rem 0.65rem;
+  border-radius: 1rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.18);
+  background: rgba(8, 12, 18, 0.42);
+  font-size: 0.85rem; font-weight: 600; line-height: 1.35;
+  white-space: nowrap;
+}
+.sh-badge-dot {
+  flex: 0 0 auto;
+  width: 0.5rem; height: 0.5rem;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+/* "Watch on Hulu": only on the focused row. */
+.sh-watch {
+  display: none;
+  align-items: center;
+  margin-left: 0.6rem;
+  padding: 0.38rem 0.9rem;
+  border-radius: 1.4rem;
+  background: #fff;
+  color: #050506;
+  font-size: 0.9rem; font-weight: 600; line-height: 1.3;
+  white-space: nowrap;
+}
+.sh-row.is-focused .sh-watch { display: flex; }
+.sh-row.is-focused .sh-badge { display: none; }
+.sh-watch-play {
+  width: 0; height: 0;
+  margin-right: 0.5rem;
+  border-left: 0.5rem solid #050506;
+  border-top: 0.32rem solid transparent;
+  border-bottom: 0.32rem solid transparent;
+}
+/* "Also on Hulu": a chip of its own beside the row; Right reaches it. */
+.sh-alt {
+  flex: 0 0 auto;
+  margin-left: 0.4rem;
+  padding: 0.22rem 0.6rem;
+  border-radius: 1rem;
+  border: var(--edge) solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.85rem; line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sh-alt.is-past { opacity: 0.55; }
+.sh-alt.is-focused { opacity: 1; border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
+
+/* Coming soon: a strip under the other views, a list on its own tab. */
+.sh-soon { margin-top: 0.7rem; padding-top: 0.7rem; border-top: 0.06rem solid var(--line); }
+.sh-soon-head {
+  margin: 0 0 0.55rem;
+  font-size: 0.75rem; font-weight: 600; line-height: 1.35;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-2);
+}
+.sh-soonview .sh-soon-head { margin-top: 0.8rem; }
+.sh-cards { display: flex; margin: 0 -0.3rem; }
+.sh-cards.is-list { flex-wrap: wrap; }
+.sh-card {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  margin: 0 0.3rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.9rem;
+  border: var(--edge) solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+.sh-cards.is-list .sh-card { flex: 0 0 calc(50% - 0.6rem); width: calc(50% - 0.6rem); margin-bottom: 0.6rem; }
+.sh-card.is-focused { border-color: var(--focus); background: var(--card-2); }
+.sh-card .sh-poster { flex-basis: 2.2rem; width: 2.2rem; height: 2.7rem; margin-right: 0.7rem; }
+.sh-card-info { flex: 1 1 auto; min-width: 0; }
+.sh-card-title {
+  padding: 0.04rem 0;
+  font-size: 0.95rem; font-weight: 600; line-height: 1.3;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sh-card-line { font-size: 0.85rem; line-height: 1.35; color: var(--text-2); }
+.sh-count {
+  flex: 0 0 auto;
+  margin-left: 0.6rem;
+  padding-left: 0.6rem;
+  border-left: 0.06rem solid var(--line);
+  text-align: center;
+}
+.sh-count-n { font-size: 1.4rem; font-weight: 700; line-height: 1.25; }
+.sh-count-word {
+  font-size: 0.7rem; line-height: 1.35;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-2);
+}
+.sh-count-word.is-today { color: #7fd1ff; font-weight: 700; }
+
+.sh-flag {
+  margin-right: 0.6rem;
+  padding: 0.12rem 0.55rem;
+  border-radius: 1rem;
+  font-size: 0.85rem; line-height: 1.35;
+  white-space: nowrap;
+}
+.sh-flag.is-running { color: #8fe3b0; background: rgba(28, 231, 131, 0.1); }
+.sh-flag.is-ended { color: var(--text-2); background: rgba(255, 255, 255, 0.07); }
+.sh-show.is-ended .sh-title { color: var(--text-2); }
+
+.sh-empty { padding: 0.8rem 0.6rem; font-size: 1.05rem; line-height: 1.4; color: var(--text-2); }
+.sh-empty-next { margin-top: 0.3rem; font-size: 0.95rem; color: var(--text-3); }
+.sh-msg { padding: 1rem 0.4rem 0.6rem; max-width: 36rem; }
+.sh-msg-head { font-size: 1.35rem; font-weight: 600; line-height: 1.3; }
+.sh-msg-line { margin-top: 0.5rem; font-size: 1rem; line-height: 1.4; color: var(--text-2); }
+
+/* Full screen: a little larger. */
+.panel.is-full .sh-title { font-size: 1.3rem; }
+.panel.is-full .sh-meta { font-size: 1rem; }
+.panel.is-full .sh-date { flex-basis: 11rem; width: 11rem; }
+.panel.is-full .sh-tab { padding: 0.35rem 0.95rem; }
+.panel.is-full .sh-date-dow { font-size: 1.2rem; }
+.panel.is-full .sh-poster { flex-basis: 3rem; width: 3rem; height: 3.7rem; }
+.panel.is-full .sh-poster-ab { font-size: 1.5rem; }
+
+/* ---------- watch link test ---------- */
+
+.lt { padding: 0.2rem 0 0.3rem; }
+.lt-intro { margin-bottom: 0.7rem; font-size: 0.95rem; line-height: 1.4; color: var(--text-2); }
+.lt-row {
+  display: flex;
+  align-items: center;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.8rem;
+  border: var(--edge) solid transparent;
+  cursor: pointer;
+}
+.lt-row.is-focused { background: var(--card-2); border-color: var(--focus); }
+.lt-row.is-off .lt-name { color: var(--text-3); }
+.lt-main { flex: 1 1 auto; min-width: 0; }
+.lt-name { font-size: 1.05rem; line-height: 1.35; }
+.lt-detail { font-size: 0.85rem; line-height: 1.35; color: var(--text-3); word-break: break-all; }
+.lt-state { flex: 0 0 auto; margin-left: 1rem; font-size: 0.85rem; line-height: 1.35; color: var(--text-2); white-space: nowrap; }
+.lt-state.is-needs { color: #f5b25a; }
+.lt-ask {
+  margin: 0.25rem 0 0.6rem 0.9rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.9rem;
+  background: rgba(127, 209, 255, 0.08);
+  box-shadow: inset 0.16rem 0 0 #7fd1ff;
+}
+.lt-q { margin-bottom: 0.5rem; font-size: 1rem; line-height: 1.4; }
+.lt-opts { display: flex; flex-wrap: wrap; }
+.lt-opt {
+  margin: 0 0.6rem 0.2rem 0;
+  padding: 0.4rem 1rem;
+  border-radius: 1.4rem;
+  border: var(--edge) solid var(--line);
+  background: var(--card-2);
+  font-size: 0.95rem; line-height: 1.3;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.lt-opt.is-focused { border-color: var(--focus); background: #fff; color: #050506; }
+.lt-empty { font-size: 1rem; line-height: 1.4; color: var(--text-2); }
+
+/* The About panel's one button. */
+.about-row.is-action .about-value { color: #7fd1ff; }
+
+.css-end { top: 0; }

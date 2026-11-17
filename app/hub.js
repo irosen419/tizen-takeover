@@ -33,6 +33,9 @@
  *                                          // Full screen button). Return the element to focus,
  *                                          // true to stay put, or nothing to move by position.
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
+ *     openView: function (name, ctx) {},   // asked to show one of its own views before its
+ *                                          // panel opens (the About panel's watch link test
+ *                                          // asks entertainment for 'linktests'); false = no
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
  *     onStatus: function (ctx) {},         // the motion, live updates or updates status
@@ -1225,7 +1228,8 @@
   //
   // Each row is { group, label, value }: value() returns the text, or '' to
   // leave the row out. To show something new, add a row to ABOUT_ROWS (a new
-  // group name starts a new group); nothing else needs to change.
+  // group name starts a new group); nothing else needs to change. A row with
+  // action() is the strip's one button: OK runs it (the first shown wins).
   var aboutEl = document.getElementById('about');
   var ab = { on: false, box: null, sig: '', rows: [], drawn: [], timer: null, hideTimer: null };
 
@@ -1283,6 +1287,12 @@
     { group: 'Wanderers', label: 'Drawing', value: function () { return clayPart('drawing'); } },
     { group: 'Wanderers', label: 'Loading', value: function () { return clayPart('loading'); } },
     { group: 'Wanderers', label: 'Last problem', value: function () { return clayPart('problem'); } },
+    // The watch link test (app/widgets/linktest.js): OK opens it in the
+    // Entertainment panel.
+    { group: 'Watch links', label: 'Watch link test', value: function () {
+      var T = window.HUB_LINKTEST;
+      try { return T && typeof T.aboutText === 'function' ? T.aboutText() || '' : ''; } catch (e) { return ''; }
+    }, action: function () { openWidgetView('entertainment', 'linktests'); } },
     // The Now Playing visualizer, once it has shown: its level, frame rate and tempo.
     { group: 'Now Playing', label: 'Visualizer', value: function () {
       var V = window.HUB_NP_VIZ;
@@ -1319,7 +1329,7 @@
         group = r.group;
         el('div', 'about-group', ab.box).textContent = group;
       }
-      var row = el('div', 'about-row', ab.box);
+      var row = el('div', 'about-row' + (r.action ? ' is-action' : ''), ab.box);
       el('div', 'about-label', row).textContent = r.label;
       var value = el('div', 'about-value', row);
       value.textContent = list[i].text;
@@ -1381,6 +1391,33 @@
     aboutEl.classList.remove('is-shown');
     clearTimeout(ab.hideTimer);
     ab.hideTimer = setTimeout(function () { if (!ab.on) { aboutEl.classList.remove('is-on'); aboutEl.innerHTML = ''; } }, 260);
+  }
+
+  // OK in the strip: the first row shown that has an action.
+  function aboutAction() {
+    for (var i = 0; i < ab.drawn.length; i++) {
+      if (typeof ab.drawn[i].action === 'function') {
+        try { ab.drawn[i].action(); } catch (e) { toast('That didn’t work (' + (e && e.message) + ').', 4000); }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Opens a widget's panel on one of its own views (widget hook openView).
+  function openWidgetView(id, name) {
+    for (var i = 0; i < widgets.length; i++) {
+      var rec = widgets[i];
+      if (rec.w.id !== id || !rec.expandable) continue;
+      closeAbout();
+      if (typeof rec.w.openView !== 'function') return toast('This hub can’t open that yet.', 4000);
+      if (call(rec, 'openView', [name, rec.ctx]) === false) return undefined;
+      focusHome(i);
+      openPanel(rec);
+      return undefined;
+    }
+    toast('Entertainment isn’t on this layout. Pick one with it (Up on a top tile), then try again.', 6000);
+    return undefined;
   }
 
   // Up and Down: a step at a time, only when it is taller than its room.
@@ -2185,6 +2222,7 @@
     if (ab.on) {
       if (dir === 'right' || isBack(code)) closeAbout();
       else if (dir === 'up' || dir === 'down') scrollAbout(dir);
+      else if (code === KEY.ENTER) aboutAction();
       return;
     }
 
