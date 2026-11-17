@@ -105,7 +105,7 @@ var CHECKS = [
     assert(o.fetches() === 2 && s.inside && s.links === 7, o.fetches() + ' ' + JSON.stringify(s));
     await o.page.close();
   }],
-  ['Any stylesheet is covered: Now Playing's fails twice and is fetched again', async function (browser) {
+  ['Any stylesheet is covered: the Now Playing one fails twice and is fetched again', async function (browser) {
     var o = await open(browser, 'fail', 2, 'nowplaying');
     await o.page.waitForTimeout(6500);
     var s = await look(o.page);
