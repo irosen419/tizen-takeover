@@ -129,7 +129,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.15';
+  var BUILD = 'v0.29.1';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1460,7 +1460,7 @@
         fitHead(parts.head, parts.title, parts.badge, String(o.title || w.title || ''), o.short || '');
         return parts.head;
       },
-      // The accent edge along the tile's top ("something to see here"),
+      // The accent edge, a faint border around the tile ("something to see here"),
       // for a reason other than ctx.activity (which raises it by itself).
       accent: function (reason) { if (rec && rec.tile) fxCall('accent', [rec.tile, reason || 'update']); },
       live: liveFacade(),
@@ -2720,6 +2720,21 @@
     return 'ok';
   }
 
+  // The same for the light extras only (activity chips, working chips, the
+  // accent edge and its border light: opacity and transform on small
+  // elements): when auto stepped down from push but the screen still
+  // measures 60 fps or more with no stuttering run, they keep running
+  // ('ok') while the heavy ones (ring glide, stagger, cover, bloom) stay
+  // off. Otherwise as fxSpeed.
+  var LIGHT_FPS = 60;
+  function fxLightSpeed() {
+    var sp = fxSpeed();
+    if (sp !== 'slow') return sp;
+    if (motion.source === 'auto' && motion.mode !== LADDER[0] && motion.fps >= LIGHT_FPS &&
+        !(motion.measuring && motion.janky.length)) return 'ok';
+    return 'slow';
+  }
+
   // The focused tile's resting rect, or null.
   function focusRect() {
     var rec = homeIndex >= 0 ? widgets[homeIndex] : null;
@@ -2730,6 +2745,7 @@
     fxCall('start', [{
       config: cfg.motionFx,
       speed: fxSpeed,
+      lightSpeed: fxLightSpeed,
       // The home screen is in view and uncovered (the activity chips wait for it).
       quiet: function () { return !busy && !open && !frameOpen && !sw.on && !typingBox() && !document.hidden; },
       clayDrawing: function () {

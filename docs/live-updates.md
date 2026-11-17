@@ -222,7 +222,7 @@ Refusals are `403 { ok: false, error: 'screen not allowed' }`.
 `GET /live/state`
 
 ```json
-{ "ok": true, "v": 1, "server": "0.5.0", "epoch": "k3v9x2", "rev": 57,
+{ "ok": true, "v": 1, "server": "0.6.0", "epoch": "k3v9x2", "rev": 57,
   "resources": { "todo": { "rev": 57, "data": { "items": [] } } } }
 ```
 
@@ -266,6 +266,7 @@ Ops are applied in order and the last one to arrive wins. `set` merges `fields` 
 | `GET /api/budget` | | `{ ok, rev, data, tz }`: the stored budget snapshot |
 | `POST /api/budget` | `{ snapshot: {...} \| null }` | the same answer as `POST /api/awws`; see below |
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
+| `GET /api/log?lines=50&errors=1&scrub=1` | | `{ ok, lines: [{ t, text, level: 'error'\|'info' }], errors24h, kept }`: the last log lines kept in memory (at most 400). `lines` 1 to 200 (default 50), `errors=1` problems only, `scrub=1` replaces IP addresses with `[address]` and calendar names, the Spotify name and the mailbox bucket and host with `[name]` (each line cut to 300 characters). A good read is not kept itself. Bad values are `400` |
 | `GET /health` (no token) | | `{ ok, server }` |
 
 Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload` (the hub restarts through the loader with `HUB_UPDATE.restart()`, so it lands on the newest commit; ignored in the first 30 seconds after loading). Anything else is `400`.
