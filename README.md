@@ -86,6 +86,19 @@ Everything lives in `app/config.js`.
 
 Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion=push`, `?motion=expand`, `?motion=fade` or `?motion=auto` at the end of the address does the same for one visit.
 
+#### Motion extras
+
+`motionFx` (in `app/motion.js`) adds a few small touches, each with its own switch, all on by default:
+
+- `quietTiles`: a tile that is only waiting (Calendar, A World Worth Saving or Now Playing waiting for the Pi, and the Mirror and Ambiance "Soon" tiles) shows one small, muted line, a little faded, with no big icon, so the tiles with real data lead. This one doesn't move, so it stays on in every motion mode.
+- `ring`: one focus ring glides from tile to tile (190 ms) instead of the border jumping. A held arrow key jumps, so it keeps up.
+- `stagger`: when a panel opens, its items (the Entertainment icons, the To-do parts) arrive one after another from the side of the tile it grew from, all in within half a second.
+- `handoff`: when a sync brings a new to-do (never the first list after the hub starts), a small glowing dot arcs from the A World Worth Saving tile into the To-do tile, the new row slides in and the tile's border pulses once. One at a time; while the wanderers are on screen the row just appears.
+- `cover`: in Now Playing, the album picture flies from the page to the visualizer's card when full screen opens, and back when it closes.
+- `bloom`: when an app opens from Entertainment, its icon grows to fill the screen, so the pause before the app looks meant.
+
+They only move when the hub's own timing says the TV keeps up: in `'fade'` mode, after `auto` has stepped down from push, or below 40 frames a second, focus is the plain border again and everything else just shows, at once. Only `transform` and `opacity` ever animate. The About panel's **Motion** row ends in `extras on`, or `extras off (fade mode)` / `extras off (slow screen)`. `motionFx: false` turns them all off, `motionFx: { ring: false }` one of them; on a laptop, `?fx=off` does it for one visit (`?fx=ring,stagger` keeps only those). `node dev/motion-test.js` checks them (see [Preview and test](#preview-and-test)).
+
 ### Clock
 
 The Clock tile follows the face chosen on the Clock page:
@@ -104,7 +117,7 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.26.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand), then **Weather picture** when the weather picture is still or off (see Weather).
+- **This hub:** **Version** (for example `v0.27.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
 - **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, how long a frame takes to draw (`3.1 ms a frame`), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
@@ -346,6 +359,8 @@ The preview's hub server also reads four sample calendars from a small local fee
 
 `node dev/layout-test.js` checks the tile layout sent from the Pi (`./hub layout set`, see `pi/README.md`) the same way: a saved layout at start, tiles that move in place with focus and glass following, waiting while a panel is open, one reload for a new set of widgets, and no reload loop. It also needs port 8095 free.
 
+`node dev/motion-test.js` checks the [motion extras](#motion-extras) the same way: with the switches off nothing extra is added (no element, no class); in fade mode, with a slow frame rate and after auto stepped down, each one is off; the quiet waiting tiles in English and in Spanish (one line of at least 0.85rem, room for accents, nothing cut or sticking out) while tiles with real data stay as they are; the ring on the focused tile, its glide, a held key, a layout switch and a resize; the stagger; the handoff (not on the first sync, one at a time, and not while the wanderers are on screen); the cover's flight both ways; and the bloom. It needs port 8095 free, and it can't prove the TV's frame rate.
+
 `node dev/nowplaying-test.js` checks Now Playing in a headless browser (Playwright) against the Spotify stand-in in `dev/mock-spotify.js`: every tile size and state, long Spanish words, the page and full screen, and the visualizer: only in full screen, edge to edge, with the song as a small card in the upper left (and long Spanish words fitting it); the canvas changing while playing and its loop stopping when paused, hidden or closed; a vibe that arrives late; calm songs getting flowing scenes and hard ones sharp scenes; the scene following the song's position after a seek and changing on phrase boundaries; the off switches and the still wash with the big picture; the glow level animating only `transform` and `opacity`; the mood's colors when the picture can't be read; a new song morphing on the same canvas; the frame-rate check, kept per version, and every step down to the still wash; a rough frame rate with the processor slowed 6 times; and every file in `app/` being plain ES5. `node dev/visualizer-shots.js --out <folder> [--clip]` takes pictures of every scene, calm and hard songs, paused, the card with long Spanish words, each level and the visualizer off (and a short clip through two scene changes and a new song). Both need port 8095 free. `node pi/vibe-test.js` checks the Pi's vibe lookups.
 
 ## Writing a widget
@@ -406,7 +421,7 @@ It can't leave you worse off:
 - If GitHub can't be reached, the hub opens the last commit that started on this TV. A TV that has never got that far opens the branch, as it always did.
 - If a new commit breaks while starting (its page finished loading but `hub.js` never said it had started), the hub goes back to the last one that did at once, and doesn't try the broken one again for 6 hours.
 - If a new commit is slow (after 15 seconds its page is still waiting for files), the hub gives it more time, looking again every 5 seconds, up to 60 seconds in all. If it still hasn't started, the hub goes back and tries the new one again after 20 minutes.
-- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.24.0 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.19.1 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
+- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.27.0 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.19.1 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
 - Push a fix and the fix is tried straight away: a hold is only ever for the one commit.
 - If jsDelivr doesn't have the new commit yet, the hub stays where it is and tries again at the next check.
 
@@ -419,8 +434,8 @@ The [About panel](#about-panel-the-version-and-status) says how it's going:
 | `(newest)` after the version | GitHub confirmed this is the newest commit of the branch |
 | nothing extra, no Version check row | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
 | Version check: `can't reach GitHub` | GitHub didn't answer, or refused (too many lookups). This is the newest version the TV knows of. It asks again later |
-| Version check: `a newer version didn't start (0.24.0: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
-| Version check: `a newer version didn't start (0.24.0: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.1 shows no brackets |
+| Version check: `a newer version didn't start (0.27.0: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
+| Version check: `a newer version didn't start (0.27.0: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.1 shows no brackets |
 | Version check: `a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
 | Version check: `a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
 
@@ -440,7 +455,7 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 ## How it works
 
 - `app/index.html` is the loader TizenBrew opens. It runs `update.js`, which moves on to the newest commit's `hub.html` (see [Updating](#updating)).
-- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, `clay.js`, then `hub.js`.
+- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, `clay.js`, `motion.js`, then `hub.js`.
 - `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
@@ -453,5 +468,6 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/clock-test.js` tests the Clock tile and its faces; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating; `dev/clay-test.js` tests the clay characters.
 - `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
 - `app/clay.js` brings Ian and Ember on screen now and then (with its own few styles, added only when they first come); `app/clay/` holds their sprites and `sprites.js`, the list of them. `art/clay/` holds how they are made (see `art/clay/README.md`), and `docs/clay.md` how the scenes work. `dev/clay-test.js` tests them; `dev/clay-shots.js` films every scene.
+- `app/motion.js` holds the [motion extras](#motion-extras) (the gliding focus ring, the panel stagger, the to-do handoff, the Now Playing cover's flight, the launch bloom and the quiet waiting tiles); their styles are at the end of `app/style.css`. `dev/motion-test.js` tests them.
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.

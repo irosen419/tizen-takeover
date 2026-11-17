@@ -732,8 +732,12 @@
       why = info.bad[0].why ? fill(STRINGS.whyText, { why: info.bad[0].why }) : '';
     }
     var map = { live: text, name: name, why: why };
-    return { head: fill(m.head, map), line: fill(m.line, map), short: fill(m.short, map) };
+    return { head: fill(m.head, map), line: fill(m.line, map), short: fill(m.short, map), state: state };
   }
+
+  // States that only wait for the Pi: the hub may show these tiles quietly
+  // (motion extras, quietTiles), as one small line.
+  var WAITING = { off: true, quiet: true, lost: true, refused: true, loading: true };
 
   function calStale() {
     if (!S.cal || S.cal.configured !== true) return 0;
@@ -1099,19 +1103,20 @@
 
   // A message in a tile: head, short line, faint globe.
   function tileMessage(root, size, msg, quiet) {
+    var wait = WAITING[msg.state] === true;
     if (size.cols === 1) {
-      mark(root, 'is-solo');
+      mark(root, 'is-solo' + (wait ? ' hub-dormant' : ''));
       return;
     }
     if (size.tier === 'strip') {
-      el('div', 'aw-strip-text aw-cut' + (quiet ? ' is-quiet' : ''), root, msg.head);
+      el('div', 'aw-strip-text aw-cut' + (quiet ? ' is-quiet' : '') + (wait ? ' hub-dormant hub-quiet-line' : ''), root, msg.head);
       return;
     }
-    var box = el('div', 'aw-msg', root);
-    el('div', 'aw-msg-head', box, msg.head);
-    if (msg.short) el('div', 'aw-msg-line', box, msg.short);
+    var box = el('div', 'aw-msg' + (wait ? ' hub-dormant' : ''), root);
+    el('div', 'aw-msg-head' + (wait ? ' hub-quiet-line' : ''), box, msg.head);
+    if (msg.short) el('div', 'aw-msg-line' + (wait ? ' hub-quiet-hide' : ''), box, msg.short);
     trim(root, [box.lastChild !== box.firstChild ? box.lastChild : null]);
-    mark(root);   // after the fit: the globe hangs over the edge on purpose
+    mark(root, wait ? 'hub-quiet-hide' : '');   // after the fit: the globe hangs over the edge on purpose
   }
 
   // A message in a panel: big head, the full line, faint globe.
