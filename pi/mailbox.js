@@ -615,6 +615,21 @@ const COMMANDS = {
       return { message: hubctl.spotifyLogoutText(r), data: { changed: !!r.changed } };
     }
   },
+  // Recent log lines. Always scrubbed on the Pi (addresses and names
+  // replaced), so no raw log text reaches the bucket.
+  'log.tail': {
+    args: { lines: [V.number(1, 200), false], errors: [V.bool(), false] },
+    check: (a) => {
+      if (a.lines !== undefined && !Number.isInteger(a.lines)) throw argError('"lines" must be a whole number from 1 to 200');
+    },
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', hubctl.logQuery(a.lines, a.errors === true, true));
+      return {
+        message: hubctl.logSummaryText(r, a.errors === true),
+        data: { lines: r.lines || [], errors24h: r.errors24h || 0 }
+      };
+    }
+  },
   ping: {
     args: {},
     run: async (a, ctx) => ({ message: 'Pong. Home Hub live server ' + ctx.version + ' is running.', data: { version: ctx.version } })
@@ -739,8 +754,12 @@ function createMailbox(o) {
   async function heartbeat() {
     let st = {};
     let cal = {};
+    let lg = {};
     try { st = (await o.api('GET', '/api/status')).body || {}; } catch (e) { /* keep going */ }
     try { cal = ((await o.api('GET', '/api/calendar')).body || {}).data || {}; } catch (e) { /* keep going */ }
+    // Counts and a time only, never log text.
+    try { lg = (await o.api('GET', '/api/log?errors=1&lines=1')).body || {}; } catch (e) { /* keep going */ }
+    const lastError = Array.isArray(lg.lines) && lg.lines.length ? lg.lines[lg.lines.length - 1] : null;
     const body = {
       updated: now().toISOString(),
       version: o.version,
@@ -757,6 +776,10 @@ function createMailbox(o) {
         calendars: (cal.calendars || []).length,
         problems: (cal.calendars || []).filter((c) => !c.ok).length,
         lastRefresh: st.calendar ? st.calendar.lastRefresh || null : null
+      },
+      log: {
+        errors24h: typeof lg.errors24h === 'number' ? lg.errors24h : 0,
+        lastErrorAt: lastError && typeof lastError.t === 'string' ? lastError.t : null
       }
     };
     await s3.put('status.json', JSON.stringify(body, null, 1) + '\n');

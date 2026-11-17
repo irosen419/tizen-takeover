@@ -23,6 +23,9 @@
  *   GET  /api/budget     the personal budget snapshot (budget.js)
  *   POST /api/budget     store one (sent by the budget app on the Pi), or null to clear
  *   GET  /api/status     version, rev, connected screens, calendar summary
+ *   GET  /api/log        the last log lines kept in memory (?lines=1-200,
+ *                        ?errors=1 for problems only, ?scrub=1 hides addresses
+ *                        and names; see logscrub.js)
  *   GET  /api/calendar   the calendar events (never the secret links)
  *   POST /api/calendar/refresh   read every calendar now and wait for it
  *   GET  /api/spotify    is Spotify set up and signed in, and what is playing
@@ -58,8 +61,9 @@ const awws = require('./awws');
 const budget = require('./budget');
 const mailbox = require('./mailbox');
 const spotify = require('./spotify');
+const logscrub = require('./logscrub');
 
-const SERVER_VERSION = '0.5.0';
+const SERVER_VERSION = '0.6.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -87,6 +91,10 @@ const GRID_COLS = 12;
 const GRID_ROWS = 6;
 const MAX_TILES = 24;
 const TILE_ID_RE = /^[a-z0-9-]{1,32}$/;
+const LOG_KEEP = 400;      // log lines kept in memory for GET /api/log
+const LOG_LINES = 50;      // the default answer
+const LOG_MAX_LINES = 200;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 /* ---------- small helpers ---------- */
 
@@ -536,7 +544,23 @@ function start(options) {
   const clientAddress = typeof opt.clientAddress === 'function'
     ? opt.clientAddress : (req) => (req.socket && req.socket.remoteAddress) || '';
   const logFn = opt.log === false ? () => {} : (typeof opt.log === 'function' ? opt.log : (s) => console.log(s));
-  const log = (s) => { try { logFn(stamp() + ' ' + s); } catch (e) { /* logging must never break a request */ } };
+  // The last LOG_KEEP lines also stay in memory, without the time stamp, for
+  // GET /api/log. quiet: print only, keep nothing (reading the log must not
+  // fill it).
+  const ring = []; // { t, text, level }
+  const remember = (text) => {
+    try {
+      ring.push({ t: new Date().toISOString(), text: text, level: logscrub.level(text) });
+      if (ring.length > LOG_KEEP) ring.shift();
+    } catch (e) { /* logging must never break a request */ }
+  };
+  const log = (s, quiet) => {
+    try {
+      const text = String(s);
+      if (!quiet) remember(text);
+      logFn(stamp() + ' ' + text);
+    } catch (e) { /* logging must never break a request */ }
+  };
   const startedAt = Date.now();
 
   let state = loadState(dataDir, log);
@@ -985,6 +1009,7 @@ function start(options) {
     '/api/awws': ['GET', 'POST'],
     '/api/budget': ['GET', 'POST'],
     '/api/status': ['GET'],
+    '/api/log': ['GET'],
     '/api/calendar': ['GET'],
     '/api/calendar/refresh': ['POST'],
     '/api/spotify': ['GET'],
@@ -1004,11 +1029,56 @@ function start(options) {
     };
   }
 
+  // Names to hide in a scrubbed log line: each calendar's name, the Spotify
+  // account's name, and the mailbox's bucket and host.
+  function logSecrets() {
+    const out = calList.map((c) => c.name);
+    try { const u = player.status().user; if (u) out.push(u); } catch (e) { /* no name then */ }
+    if (mailboxCfg && mailboxCfg.configured) out.push(mailboxCfg.bucket, mailboxCfg.url.host, mailboxCfg.url.hostname);
+    return out.filter((x) => typeof x === 'string' && x);
+  }
+
+  // GET /api/log: { ok, lines: [{ t, text, level }], errors24h, kept }.
+  function logBody(query) {
+    const q = query || new URLSearchParams();
+    let n = LOG_LINES;
+    const linesText = q.get('lines');
+    if (linesText !== null) {
+      n = /^\d{1,3}$/.test(linesText) ? Number(linesText) : 0;
+      if (n < 1 || n > LOG_MAX_LINES) throw bad('"lines" must be a whole number from 1 to ' + LOG_MAX_LINES);
+    }
+    const flag = (name) => {
+      const v = q.get(name);
+      if (v === null || v === '0') return false;
+      if (v === '1') return true;
+      throw bad('"' + name + '" must be 1 or 0');
+    };
+    const errorsOnly = flag('errors');
+    const scrubbed = flag('scrub');
+    const secrets = scrubbed ? logSecrets() : null;
+    const from = errorsOnly ? ring.filter((e) => e.level === 'error') : ring;
+    const cut = Date.now() - DAY_MS;
+    return {
+      ok: true,
+      lines: from.slice(-n).map((e) => ({ t: e.t, text: scrubbed ? logscrub.scrub(e.text, secrets) : e.text, level: e.level })),
+      errors24h: ring.filter((e) => e.level === 'error' && Date.parse(e.t) >= cut).length,
+      kept: ring.length
+    };
+  }
+
   // The control API itself, once the caller is known to be allowed. The HTTP
   // side door and main door use it, and so does the Claude mailbox
   // (mailbox.js), so every change goes through the same checks. Resolves to
-  // { status, body, note }; it never rejects.
-  function api(method, route, body) {
+  // { status, body, note }; it never rejects. The query may come as a
+  // URLSearchParams or as "?..." on the end of route (the mailbox does that).
+  function api(method, routeIn, body, queryIn) {
+    let route = String(routeIn || '');
+    let query = queryIn || null;
+    const qi = route.indexOf('?');
+    if (qi >= 0) {
+      if (!query) query = new URLSearchParams(route.slice(qi + 1));
+      route = route.slice(0, qi);
+    }
     return new Promise((resolve) => {
       const reply = (status, b, note) => resolve({ status: status, body: b, note: note });
       const failed = (e) => {
@@ -1022,6 +1092,7 @@ function start(options) {
           return reply(405, { ok: false, error: 'use ' + ROUTES[route].join(' or ') + ' for ' + route });
         }
         if (route === '/api/status') return reply(200, statusBody());
+        if (route === '/api/log') return reply(200, logBody(query));
         if (route === '/api/calendar') {
           const c = state.resources.calendar;
           return reply(200, { ok: true, rev: c.rev, data: c.data });
@@ -1120,16 +1191,18 @@ function start(options) {
     });
   }
 
-  function control(req, res, route, door) {
+  function control(req, res, route, door, query) {
     const what = req.method + ' ' + route;
     const done = (status, body, note) => {
       sendJson(res, status, body);
-      log('control ' + what + ' -> ' + status + (note ? ' ' + note : '') + (door === 'tunnel' ? ' (side door)' : ''));
+      // A good read of the log is printed but not kept, or reading would fill it.
+      log('control ' + what + ' -> ' + status + (note ? ' ' + note : '') + (door === 'tunnel' ? ' (side door)' : ''),
+        route === '/api/log' && status === 200);
     };
     if (!tokenOk) return done(503, { ok: false, error: 'no token set on the server' });
     if (!checkToken(req)) return done(401, { ok: false, error: 'wrong token' });
     if (ROUTES[route] && ROUTES[route].indexOf(req.method) < 0) res.setHeader('Allow', ROUTES[route].join(', '));
-    const run = (body) => api(req.method, route, body).then((r) => done(r.status, r.body, r.note));
+    const run = (body) => api(req.method, route, body, query).then((r) => done(r.status, r.body, r.note));
     if (req.method !== 'POST' || route === '/api/calendar/refresh' || !ROUTES[route]) {
       req.resume(); // no body is needed
       return run(undefined);
@@ -1226,7 +1299,7 @@ function start(options) {
           }
           return sendJson(res, 200, { ok: true, server: SERVER_VERSION });
         }
-        if (route === '/api' || route.indexOf('/api/') === 0) return control(req, res, route, door);
+        if (route === '/api' || route.indexOf('/api/') === 0) return control(req, res, route, door, url.searchParams);
         if (door === 'main' && SCREEN_ROUTES[route]) return screen(req, res, route, url.searchParams);
         return sendJson(res, 404, { ok: false, error: 'not found' });
       } catch (e) {
@@ -1300,6 +1373,8 @@ function start(options) {
     api: api,
     mailbox: mbox,
     spotify: player,
+    // Keeps a line that was already printed some other way (process events).
+    note: (s) => { try { remember(String(s)); } catch (e) { /* never throws */ } },
     _debug: () => {
       forgetOld();
       return {
@@ -1390,16 +1465,21 @@ if (require.main === module) {
     }
   });
   hub.ready.catch(() => process.exit(1));
+  // Prints exactly as before, and keeps the line for GET /api/log too.
+  function note(text) {
+    try { console.log(stamp() + ' ' + text); } catch (e) { /* nothing more to do */ }
+    try { hub.note(text); } catch (e) { /* never throws */ }
+  }
   let stopping = false;
   const stop = (sig) => {
     if (stopping) return;
     stopping = true;
-    console.log(stamp() + ' ' + sig + ' received, stopping');
+    note(sig + ' received, stopping');
     hub.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 3000).unref();
   };
   process.on('SIGINT', () => stop('SIGINT'));
   process.on('SIGTERM', () => stop('SIGTERM'));
-  process.on('uncaughtException', (e) => console.log(stamp() + ' unexpected error (still running): ' + (e && e.stack)));
-  process.on('unhandledRejection', (e) => console.log(stamp() + ' unexpected error (still running): ' + (e && e.message)));
+  process.on('uncaughtException', (e) => note('unexpected error (still running): ' + (e && e.stack)));
+  process.on('unhandledRejection', (e) => note('unexpected error (still running): ' + (e && e.message)));
 }
