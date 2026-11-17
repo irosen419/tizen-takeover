@@ -17,8 +17,9 @@
  * a sync shows its row at once (no slide), nothing left after; the cover's
  * flight; the bloom. Then the activity chips: off with their switch, in fade
  * mode and on a slow TV; never for the first data after the hub starts or a
- * refetch with the same data; one chip in the To-do tile for a new to-do
- * that goes by itself and leaves nothing behind; none while the wanderers
+ * refetch with the same data, or a to-do only ticked done on the Pi; one
+ * chip in the To-do tile for a new to-do that goes by itself and leaves
+ * nothing behind, and one for a to-do whose notes changed on the Pi; none while the wanderers
  * are on screen; the Spanish words fit one line in 3-column tiles (3x1, 3x2,
  * 3x4) without "…", at 22px or more, with 4.5:1 contrast.
  *
@@ -349,7 +350,7 @@ async function checkDisabled(pi) {
     const page = await open(Object.assign({ pi: pi }, c.o));
     await idle(page);
     const st = await fx(page);
-    assert(st.speed === c.why, c.name + ': speed ' + st.speed);
+    assert(st.speed === c.why && st.lightSpeed === c.why, c.name + ': speed ' + st.speed + ', light ' + st.lightSpeed);
     // Ring: the plain border swap.
     await page.keyboard.press('ArrowLeft');
     await sleep(60);
@@ -379,10 +380,10 @@ async function checkDisabled(pi) {
     await sleep(100);
     const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return { o: r.style.opacity, t: r.style.transform }; }, id);
     x = await extras(page);
-    // The accent edge stays, but as a still line: no sweep, nothing animating.
+    // The accent edge stays, but as a still border: no lap, nothing animating.
     const edge = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.fx-accent'), (n) => {
       const cs = getComputedStyle(n);
-      return { sweep: !!n.querySelector('.fx-accent-sweep'), anim: cs.animationName, tr: n.style.transition, opacity: cs.opacity };
+      return { sweep: !!n.querySelector('.fx-accent-sweep, .fx-lap'), anim: cs.animationName, tr: n.style.transition, opacity: cs.opacity };
     }));
     assert(edge.every((e) => !e.sweep && (e.anim === 'none' || !e.anim) && (!e.tr || e.tr === 'none')), c.name + ': the accent edge moved: ' + JSON.stringify(edge));
     assert(x.nodes === edge.length && !row.o && !row.t, c.name + ': the new row moved: ' + JSON.stringify({ x, row }));
@@ -566,7 +567,7 @@ async function checkNewTodo(pi) {
   await sleep(300);
   const look = () => page.evaluate(() => ({
     // The accent edge (motionFx.edge) stays about a minute by design: checked on its own.
-    fx: Array.prototype.map.call(document.querySelectorAll('[class*="fx-"]:not(.fx-accent):not(.fx-accent-sweep)'), (n) => n.className).sort().join(' | '),
+    fx: Array.prototype.filter.call(document.querySelectorAll('[class*="fx-"]'), (n) => !n.closest('.fx-accent')).map((n) => n.className).sort().join(' | '),
     tile: document.querySelector('.cell[data-widget="todo"] .tile').className,
     styles: document.querySelectorAll('style').length
   }));
@@ -749,8 +750,8 @@ async function checkActivitySame(pi) {
   await page.evaluate(() => { window.__chips = []; });
   const revs = await page.evaluate(() => ({ cal: window.HUB_LIVE.rev('calendar'), awws: window.HUB_LIVE.rev('awws'), todo: window.HUB_LIVE.rev('todo') }));
   // The same snapshot sent again (a new sentAt), the calendars read again
-  // unchanged, an empty change list for the to-dos, and a to-do that changes
-  // without being new (renamed): no chip.
+  // unchanged, an empty change list for the to-dos, and a to-do that is only
+  // ticked done (from the Pi, not this TV): no chip.
   const again = JSON.parse(JSON.stringify(snap));
   again.sentAt = new Date(Date.now() - 1000).toISOString().replace(/\.\d+Z$/, 'Z');
   await postSnapshot(pi, again);
@@ -759,12 +760,12 @@ async function checkActivitySame(pi) {
   const list = await control(pi, 'GET', '/api/todo');
   const items = (list && (list.items || (list.data && list.data.items))) || [];
   const open1 = items.filter((i) => !i.done)[0];
-  if (open1) await control(pi, 'POST', '/api/todo/ops', { ops: [{ op: 'set', id: open1.id, fields: { title: open1.title + ' (renamed)' } }] });
+  if (open1) await control(pi, 'POST', '/api/todo/ops', { ops: [{ op: 'set', id: open1.id, fields: { done: true } }] });
   // (The hub server pushes the unchanged snapshot again; unchanged calendars
   // and to-dos it doesn't push at all, so only those two can be watched.)
   await until(() => page.evaluate((r) => window.HUB_LIVE.rev('awws') > r.awws, revs), 5000, 'the snapshot did not arrive again');
-  assert(open1, 'no open to-do to rename');
-  await until(() => page.evaluate((r) => window.HUB_LIVE.rev('todo') > r.todo, revs), 4000, 'the renamed to-do did not arrive');
+  assert(open1, 'no open to-do to tick');
+  await until(() => page.evaluate((r) => window.HUB_LIVE.rev('todo') > r.todo, revs), 4000, 'the ticked to-do did not arrive');
   await sleep(1200);
   const seen = await chips(page);
   assert(!seen.length, 'chips for unchanged data: ' + JSON.stringify(seen));
@@ -782,12 +783,78 @@ async function checkActivitySame(pi) {
   noErrors(page);
 }
 
+async function checkActivityTodoEdit(pi) {
+  // A to-do with notes already on the Pi: the first list is no news.
+  const r = await control(pi, 'POST', '/api/todo', { title: 'Edited later ' + Date.now(), section: 'now' });
+  const id = r && (r.item ? r.item.id : r.id);
+  assert(id, 'no id for the to-do: ' + JSON.stringify(r));
+  await control(pi, 'POST', '/api/todo/ops', { ops: [{ op: 'set', id: id, fields: { notes: 'First note' } }] });
+  const page = await open({ pi: pi, query: 'motion=push' });
+  await idle(page);
+  await until(() => page.evaluate((i) => !!document.querySelector('.todo-tile-row[data-id="' + i + '"]'), id), 5000, 'the to-do did not arrive');
+  await sleep(1500);
+  assert(!(await chips(page)).length, 'a chip for the first list: ' + JSON.stringify(await chips(page)));
+  const rev = () => page.evaluate(() => window.HUB_LIVE.rev('todo'));
+  // Its notes change on the Pi: one chip, in the To-do tile.
+  let before = await rev();
+  await control(pi, 'POST', '/api/todo/ops', { ops: [{ op: 'set', id: id, fields: { notes: 'Second note' } }] });
+  await until(async () => (await rev()) > before, 4000, 'the changed notes did not arrive');
+  await until(async () => (await chips(page)).length > 0, 3000, 'no chip for changed notes');
+  await sleep(1500);
+  let seen = await chips(page);
+  assert(seen.length === 1 && seen[0].w === 'todo', 'chips for changed notes: ' + JSON.stringify(seen));
+  await until(() => page.evaluate(() => !document.querySelector('.fx-chip')), 4000, 'the chip stayed');
+  await page.evaluate(() => { window.__chips = []; });
+  // The same list again (an empty change list): none.
+  await control(pi, 'POST', '/api/todo/ops', { ops: [] });
+  await sleep(1500);
+  assert(!(await chips(page)).length, 'a chip for an unchanged list: ' + JSON.stringify(await chips(page)));
+  // Only ticked done on the Pi: none.
+  before = await rev();
+  await control(pi, 'POST', '/api/todo/ops', { ops: [{ op: 'set', id: id, fields: { done: true } }] });
+  await until(async () => (await rev()) > before, 4000, 'the tick did not arrive');
+  await sleep(1500);
+  assert(!(await chips(page)).length, 'a chip for a tick: ' + JSON.stringify(await chips(page)));
+  await control(pi, 'POST', '/api/todo/ops', { ops: [{ op: 'remove', id: id }] });
+  noErrors(page);
+  await page.context().close();
+}
+
+async function checkLightStepped(pi) {
+  // Auto stepped down from push to expand, but the screen measured 71 fps:
+  // the heavy extras stay off, the chips and the edge's light still run.
+  const page = await open({ pi: pi, slow: { mode: 'expand', fps: 71 } });
+  await idle(page);
+  const st = await fx(page);
+  assert(st.speed === 'slow' && st.lightSpeed === 'ok', 'speeds: ' + JSON.stringify([st.speed, st.lightSpeed]));
+  await page.keyboard.press('ArrowLeft');
+  await sleep(60);
+  assert(!(await page.evaluate(() => document.querySelectorAll('.fx-ring').length)), 'a ring after stepping down');
+  const row = await page.evaluate(() => window.HUB_FX.statusText());
+  assert(row === 'extras: chips and light only (slow screen)', 'the Motion row: ' + row);
+  await page.evaluate(() => { window.__chips = []; });
+  await postTodo(pi, 'Stepped down ' + Date.now());
+  await until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="todo"] .fx-chip')), 4000, 'no chip after stepping down');
+  const lit = await page.evaluate(() => ({ lap: !!document.querySelector('.cell[data-widget="todo"] .fx-edge'),
+    accent: !!document.querySelector('.cell[data-widget="todo"] .fx-accent') }));
+  assert(lit.lap && lit.accent, 'no light or edge: ' + JSON.stringify(lit));
+  await until(() => page.evaluate(() => !document.querySelector('.fx-chip, .fx-edge')), 4000, 'the chip stayed');
+  noErrors(page);
+  await page.context().close();
+  // Under 60 fps at expand it stays all off (check 2 covers 52 fps); in
+  // Spanish the row says so too.
+  const es = await open({ pi: pi, slow: { mode: 'expand', fps: 71 }, init: 'try { localStorage.setItem("homeHub.lang", "es"); } catch (e) {}' });
+  const rowEs = await es.evaluate(() => window.HUB_FX.statusText());
+  assert(rowEs === 'extras: solo avisos y luz (pantalla lenta)', 'the Motion row in Spanish: ' + rowEs);
+  await es.context().close();
+}
+
 async function checkActivityTodo(pi) {
   const page = await open({ pi: pi, query: 'motion=push' });
   await idle(page);
   await sleep(400);
   const look = () => page.evaluate(() => {
-    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: document.querySelectorAll('*:not(.fx-accent):not(.fx-accent-sweep)').length };
+    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: Array.prototype.filter.call(document.querySelectorAll('*'), (n) => !n.closest('.fx-accent')).length };
     document.querySelectorAll('#grid .cell').forEach((c) => {
       const t = c.querySelector('.tile');
       const r = t.getBoundingClientRect();
@@ -814,11 +881,11 @@ async function checkActivityTodo(pi) {
     const ts = getComputedStyle(c.querySelector('.fx-chip-text'));
     const edge = tile.querySelector('.fx-edge');
     return { n: list.length, widget: cell.getAttribute('data-widget'), text: c.textContent, left: R.left - T.left, bottom: T.bottom - R.bottom,
-      opacity: cs.opacity, fontPx: parseFloat(ts.fontSize), edge: !!edge, edgeAnim: edge ? getComputedStyle(edge.firstChild).animationName : '' };
+      opacity: cs.opacity, fontPx: parseFloat(ts.fontSize), edge: !!edge, edgeAnim: edge ? Array.prototype.map.call(edge.querySelectorAll('i'), (n) => getComputedStyle(n).animationName).join(', ').split(', ').filter((v, i, a) => a.indexOf(v) === i).sort().join() : '' };
   });
   assert(mid.n === 1 && mid.widget === 'todo' && mid.text === 'Incoming to-do', 'the chip: ' + JSON.stringify(mid));
   assert(Math.abs(mid.left - 28) <= 4 && Math.abs(mid.bottom - 24) <= 4, 'not in the lower left (28px, 24px): ' + JSON.stringify(mid));
-  assert(mid.fontPx >= 22 && mid.edge && mid.edgeAnim === 'fx-act-sweep', 'text size or edge: ' + JSON.stringify(mid));
+  assert(mid.fontPx >= 22 && mid.edge && mid.edgeAnim === 'fx-lap-bl-in,fx-lap-bl-out,fx-lap-br-in,fx-lap-br-out,fx-lap-off,fx-lap-tl-in,fx-lap-tl-out,fx-lap-tr-in,fx-lap-tr-out,fx-lap-x,fx-lap-y', 'text size or edge: ' + JSON.stringify(mid));
   // The new row just appears, and nothing in the tile moved for the chip.
   const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return r && { o: r.style.opacity, t: r.style.transform, tr: r.style.transition }; }, id);
   assert(row && !row.o && !row.t && !row.tr, 'the new row moved: ' + JSON.stringify(row));
@@ -1016,11 +1083,13 @@ async function main() {
   await check('9. Activity chips: with their switch off, no chip (the other extras still run)', () => checkActivityOff(pi));
   await check('10. Activity chips: in fade mode, on a slow TV and after auto stepped down, no chip', () => checkActivitySlow(pi));
   await check('11. Activity chips: the first data after the hub starts (and after a reload) adds none', () => checkActivityFirst(pi));
-  await check('12. Activity chips: a refetch with the same data, or a to-do that only changed, adds none (changed events and snapshot do)', () => checkActivitySame(pi));
+  await check('12. Activity chips: a refetch with the same data, or a to-do only ticked done on the Pi, adds none (changed events and snapshot do)', () => checkActivitySame(pi));
   await check('13. Activity chips: a new to-do adds exactly one chip in the To-do tile, which goes by itself and leaves nothing', () => checkActivityTodo(pi));
   await check('14. Activity chips: none while the wanderers are on screen, or behind a panel', () => checkActivityClay(pi));
   await check('15. Activity chips: the Spanish from app/i18n.js fits one line in 3-column tiles (3x1, 3x2, 3x4), 22px+, 4.5:1; a language change applies live', () => checkActivityText(pi));
   await check('16. Motion timing: one stall does not step down, three janky runs do, a step-down lasts a day', () => checkDetection(pi));
+  await check('16. Activity chips: a to-do whose notes change on the Pi adds one chip; the first list, an unchanged list and a tick add none', () => checkActivityTodoEdit(pi));
+  await check('17. Auto stepped down to expand at 60 fps or more: chips, the accent edge and its light still run, the ring does not; the Motion row says so', () => checkLightStepped(pi));
 }
 
 main().catch((e) => {

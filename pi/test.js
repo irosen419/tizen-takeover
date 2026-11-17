@@ -16,6 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const hubServer = require('./server');
 const awws = require('./awws');
+const logscrub = require('./logscrub');
+const hubctl = require('./hubctl');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
 const NO_CALENDAR = { configured: false, calendars: 0, timer: false, refreshing: false };
@@ -211,7 +213,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.5.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.6.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -232,7 +234,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.5.0');
+    assert.strictEqual(r.json.server, '0.6.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -319,6 +321,23 @@ async function main() {
       assert.strictEqual(r.status, 400, JSON.stringify(body));
       assert.ok(r.json.error && r.json.error.length > 5);
     }
+  });
+
+  await check('to-do level: POST /api/todo takes it, none stays none, a bad one is refused, the TV can set it', async () => {
+    const a = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Must one', level: 'must' } });
+    assert.strictEqual(a.status, 200);
+    assert.strictEqual(a.json.item.level, 'must');
+    const b = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'No level' } });
+    assert.ok(!('level' in b.json.item));
+    const bad = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'ok', level: 'urgent' } });
+    assert.strictEqual(bad.status, 400);
+    assert.ok(/level must be must, optional or passive/.test(bad.json.error));
+    let r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: b.json.item.id, fields: { level: 'passive' }, to: 'end' }] } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.items.find((i) => i.id === b.json.item.id).level, 'passive');
+    r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: a.json.item.id, fields: { level: null } }] } });
+    assert.ok(!('level' in r.json.items.find((i) => i.id === a.json.item.id)));
+    await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'remove', id: a.json.item.id }, { op: 'remove', id: b.json.item.id }] } });
   });
 
   await check('to-do ops: add top/end, set, move to end, remove, last one wins', async () => {
@@ -454,7 +473,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.5.0');
+    assert.strictEqual(r.json.server, '0.6.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
@@ -1105,6 +1124,162 @@ async function main() {
     assert.ok(lines.every((l) => l.indexOf(TOKEN) < 0));
     assert.ok(lines.some((l) => /control GET \/api\/status -> 200/.test(l)));
   });
+
+  /* ---------- recent log lines (GET /api/log, logscrub.js) ---------- */
+
+  await check('scrub: IPv4 and IPv6 addresses (also ::ffff: forms) become [address]', () => {
+    assert.strictEqual(logscrub.scrub('screen connected (live line) 192.168.1.20'), 'screen connected (live line) [address]');
+    assert.strictEqual(logscrub.scrub('screen connected (poll) ::ffff:192.168.1.5'), 'screen connected (poll) [address]');
+    assert.strictEqual(logscrub.scrub('from ::1, fe80::1%eth0 and fd12:3456::1.'), 'from [address], [address] and [address].');
+    assert.strictEqual(logscrub.scrub('2001:db8:0:0:0:0:2:1 and [::1]:8097'), '[address] and [[address]]:8097');
+  });
+
+  await check('scrub: secret names in any case, longest first; short ones ignored', () => {
+    const secrets = ['Rosen Family', 'Rosen', 'ab', '', null];
+    assert.strictEqual(logscrub.scrub('calendar rOSEN fAMILY: timed out', secrets), 'calendar [name]: timed out');
+    assert.strictEqual(logscrub.scrub('Rosen and ROSEN', secrets), '[name] and [name]');
+    assert.strictEqual(logscrub.scrub('ab cab abc', ['ab']), 'ab cab abc');
+    assert.strictEqual(logscrub.scrub('a.b(c) here', ['a.b(c)']), '[name] here', 'regex characters are plain text');
+  });
+
+  await check('scrub: cut to 300 characters; a line with nothing to hide is unchanged', () => {
+    assert.strictEqual(logscrub.scrub('x'.repeat(500)).length, 300);
+    const plain = 'control GET /api/status -> 200 at 15:10:00, server 0.6.0, rev 12, 2026-11-17T15:10:00.000Z';
+    assert.strictEqual(logscrub.scrub(plain, ['Rosen Family']), plain);
+    assert.strictEqual(logscrub.scrub(''), '');
+  });
+
+  await check('log level: real problems are error, everyday lines are info', () => {
+    const error = [
+      'control GET /api/log -> 400', 'control POST /api/todo -> 500', 'control GET /api/status -> 401',
+      'Claude mailbox: todo.add (c123456) -> failed', 'Claude mailbox: rejected cmd1 (the file is not valid JSON)',
+      'Claude mailbox: cannot reach R2 (R2 did not answer in time); trying again quietly, up to once a minute',
+      'Claude mailbox: c1234567 was interrupted by a restart; marked as not finished',
+      'Claude mailbox: off (HUB_MAILBOX_ACCESS_KEY_ID missing in pi/.env)',
+      'the data file was damaged (missing epoch, rev or resources); moved it to x and started fresh',
+      'could not save the data file: EACCES', 'error: boom', 'final save failed: EROFS',
+      'unexpected error (still running): TypeError: x', 'main door could not listen on port 8097: that port is already in use',
+      'HUB_TIMEZONE "Mars/Base" is not a known time zone; using America/Chicago',
+      'CALENDAR_REFRESH_MINUTES is not a number; using 15', 'calendar Work: timed out',
+      'calendar Work: could not be reached (connection refused)', 'calendar Work: did not look like a calendar',
+      'calendar Work: the link must start with https://, skipped', 'calendar: the refresh failed (TypeError)',
+      'Spotify: the sign-in is no longer good; run ./hub spotify login', 'Spotify: unexpected problem (x)',
+      'Spotify: could not save the renewed sign-in (EACCES)', 'Spotify: refused the request (403)',
+      'Spotify: did not accept the client ID or secret in pi/.env', 'Spotify: off (SPOTIFY_CLIENT_ID is missing in pi/.env)',
+      'Vibe: could not save vibes.json (EACCES)', 'no token set (or shorter than 24 characters): the control API is off, screens still work'
+    ];
+    const info = [
+      'screen connected (live line) 192.168.1.20', 'screen disconnected (live line) 192.168.1.20 (write error)',
+      'screen connected (poll) ::ffff:192.168.1.5', 'control GET /api/status -> 200',
+      'control POST /api/awws -> 200 3 sections stored, 1 rejected, 12.4 KB, rev 58', 'calendar changed: 12 events (rev 40)',
+      'calendars: Family, Work (busy only); time zone America/Chicago', 'calendar Work: can be read again',
+      'Claude mailbox: todo.add (c123456) -> ok', 'Claude mailbox: connected to bucket home-hub-mailbox',
+      'Claude mailbox: connected again after 3 failed tries', 'Claude mailbox: off (no HUB_MAILBOX_ settings in .env)',
+      'Home Hub live server 0.6.0 listening on port 8097', 'started a new data file /app/data/state.json',
+      'Spotify: signed in, watching what plays', 'Spotify: set up, not signed in yet (run ./hub spotify login)',
+      'Spotify: working again', 'SIGTERM received, stopping', 'side door (control API only) on 127.0.0.1:8098'
+    ];
+    error.forEach((t) => assert.strictEqual(logscrub.level(t), 'error', t));
+    info.forEach((t) => assert.strictEqual(logscrub.level(t), 'info', t));
+  });
+
+  const logHub = await start({
+    allowHttp: true, calendarTimeout: 400,
+    calendars: [{ name: 'Rosen Family', url: 'http://127.0.0.1:1/family.ics' }]
+  });
+  const LP = logHub.port;
+  const getLog = (q, token) => request(LP, 'GET', '/api/log' + (q || ''), { token: token === undefined ? TOKEN : token });
+
+  await check('GET /api/log needs the token, and only GET', async () => {
+    assert.strictEqual((await getLog('', null)).status, 401);
+    assert.strictEqual((await getLog('', 'wrong')).status, 401);
+    const r = await request(LP, 'POST', '/api/log', { token: TOKEN, body: {} });
+    assert.strictEqual(r.status, 405);
+    assert.strictEqual(r.headers.allow, 'GET');
+  });
+
+  await check('GET /api/log: { ok, lines: [{ t, text, level }], errors24h, kept }, 50 lines by default', async () => {
+    await waitUntil(() => logHub._debug().calendar.refreshing === false, 3000);
+    for (let i = 0; i < 60; i++) await request(LP, 'GET', '/api/status', { token: TOKEN });
+    const r = await getLog();
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(Object.keys(r.json).sort(), ['errors24h', 'kept', 'lines', 'ok']);
+    assert.strictEqual(r.json.lines.length, 50);
+    r.json.lines.forEach((l) => {
+      assert.deepStrictEqual(Object.keys(l), ['t', 'text', 'level']);
+      assert.ok(isFinite(Date.parse(l.t)) && /Z$/.test(l.t));
+      assert.ok(!/^\d{4}-\d{2}-\d{2} /.test(l.text), 'no time stamp in the text');
+    });
+    assert.strictEqual(r.json.lines[49].text, 'control GET /api/status -> 200');
+    assert.strictEqual(r.json.lines[49].level, 'info');
+    assert.ok(r.json.kept >= 62 && r.json.kept <= 400);
+    assert.ok(r.json.errors24h >= 1, 'the calendar that cannot be reached counts');
+  });
+
+  await check('GET /api/log: lines and errors are checked; bad values are 400', async () => {
+    assert.strictEqual((await getLog('?lines=1')).json.lines.length, 1);
+    assert.strictEqual((await getLog('?lines=200')).json.lines.length, Math.min(200, (await getLog()).json.kept));
+    for (const q of ['?lines=0', '?lines=201', '?lines=-1', '?lines=abc', '?lines=1.5', '?lines=', '?errors=yes', '?errors=2', '?scrub=true']) {
+      const r = await getLog(q);
+      assert.strictEqual(r.status, 400, q);
+      assert.strictEqual(r.json.ok, false, q);
+    }
+    assert.ok(/"lines" must be a whole number from 1 to 200/.test((await getLog('?lines=500')).json.error));
+    const e = await getLog('?errors=1&lines=200');
+    assert.ok(e.json.lines.length >= 1);
+    assert.ok(e.json.lines.every((l) => l.level === 'error'));
+    assert.ok(e.json.lines.some((l) => /control GET \/api\/log -> 400/.test(l.text)), 'a bad call to /api/log is kept');
+    assert.strictEqual((await getLog('?errors=0&lines=3')).json.lines.length, 3);
+  });
+
+  await check('reading the log does not fill it', async () => {
+    const a = (await getLog()).json.kept;
+    const b = (await getLog('?lines=5')).json.kept;
+    const c = (await getLog('?errors=1&scrub=1')).json.kept;
+    assert.strictEqual(b, a);
+    assert.strictEqual(c, a);
+    assert.ok((await getLog('?lines=200')).json.lines.every((l) => !/control GET \/api\/log -> 200/.test(l.text)));
+  });
+
+  await check('the ring keeps the last 400 lines', async () => {
+    for (let i = 0; i < 420; i++) logHub.note('filler ' + i);
+    const r = await getLog('?lines=1');
+    assert.strictEqual(r.json.kept, 400);
+    assert.strictEqual(r.json.lines[0].text, 'filler 419');
+  });
+
+  await check('GET /api/log?scrub=1 hides the calendar name and the screen address; plain keeps them', async () => {
+    const ev = await openEvents(LP);
+    await ev.waitFor((e) => e.event === 'hello');
+    logHub.note('calendar Rosen Family: could not be reached (connection refused)');
+    const raw = (await getLog('?lines=10')).json.lines.map((l) => l.text).join('\n');
+    assert.ok(raw.indexOf('Rosen Family') >= 0);
+    assert.ok(/screen connected \(live line\) (::ffff:)?127\.0\.0\.1/.test(raw), raw);
+    const lines = (await getLog('?lines=10&scrub=1')).json.lines;
+    const text = lines.map((l) => l.text).join('\n');
+    assert.ok(text.indexOf('Rosen') < 0, text);
+    assert.ok(text.indexOf('127.0.0.1') < 0 && text.indexOf('::ffff') < 0, text);
+    assert.ok(text.indexOf('screen connected (live line) [address]') >= 0, text);
+    assert.ok(text.indexOf('calendar [name]: could not be reached (connection refused)') >= 0, text);
+    assert.strictEqual(lines[lines.length - 2].level, 'info');
+    assert.strictEqual(lines[lines.length - 1].level, 'error', 'the level comes from the unscrubbed line');
+    ev.close();
+  });
+
+  await check('./hub log text: local time, the line, then the count', () => {
+    const r = { ok: true, errors24h: 3, kept: 2, lines: [
+      { t: '2026-11-17T15:10:00.000Z', text: 'calendar changed: 3 events (rev 4)', level: 'info' },
+      { t: '2026-11-17T15:11:00.000Z', text: 'calendar Work: timed out', level: 'error' }] };
+    const out = hubctl.logLines(r, false);
+    assert.strictEqual(out.length, 3);
+    assert.ok(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} calendar changed: 3 events \(rev 4\)$/.test(out[0]), out[0]);
+    assert.strictEqual(out[2], '3 problems in the last 24 hours.');
+    assert.deepStrictEqual(hubctl.logLines({ lines: [], errors24h: 1 }, true), ['No problems in the log the server keeps.', '1 problem in the last 24 hours.']);
+    assert.strictEqual(hubctl.logSummaryText(r, false), '2 lines, 3 problems in the last 24 hours.');
+    assert.strictEqual(hubctl.logQuery(120, true, true), '/api/log?lines=120&errors=1&scrub=1');
+    assert.strictEqual(hubctl.logQuery(undefined, false, false), '/api/log');
+  });
+  await stop(logHub);
 
   tmpDirs.forEach((d) => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* fine */ } });
   console.log(passed + ' passed, ' + failed + ' failed');
