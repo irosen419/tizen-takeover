@@ -796,6 +796,15 @@
     // Small shrinks are left alone, so the box doesn't twitch on each redraw.
     if (h < before && before - h <= 24) h = before;
     sizeBoxes({ height: h });
+    // Content that lays out by the box's height (a picture sized to it) may
+    // need a little more at the new height: grow by what overflows, once.
+    var max = panelRect(null).height;
+    var over = panel.body.scrollHeight - panel.body.clientHeight;
+    if (over > 0 && h < max) {
+      h = Math.min(max, h + over);
+      sizeBoxes({ height: h });
+      panelFit[open.w.id] = { px: Math.ceil(h), rem: remPx() };
+    }
     if (panelFocus) keepInView(panelFocus);
   }
 
