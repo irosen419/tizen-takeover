@@ -674,12 +674,27 @@
     return null;
   }
 
+  // The events of the last live data this run ('' before any): a refetch
+  // that brings the same events is not news.
+  var liveEvents = '';
+
+  function eventsKey(d) {
+    try { return d && d.configured === true ? JSON.stringify(d.events) : 'none'; } catch (e) { return 'none'; }
+  }
+
   function onLive(d) {
     if (!validData(d)) return;
+    var key = eventsKey(d);
+    // Changed events after the first live data this run: the tile says so (ctx.activity).
+    var changed = liveEvents !== '' && key !== liveEvents && key !== 'none';
+    liveEvents = key;
     lastLiveAt = now();
     useData(d, false);
     saveCache();
     refresh(true);
+    if (changed && C && typeof C.activity === 'function') {
+      try { C.activity('calendar'); } catch (e) { /* the events just show */ }
+    }
   }
 
   function refresh(force) {
@@ -1454,7 +1469,7 @@
         loadCache();
         try {
           var current = L.get('calendar');
-          if (validData(current)) { lastLiveAt = now(); useData(current, false); }
+          if (validData(current)) { lastLiveAt = now(); useData(current, false); liveEvents = eventsKey(current); }
         } catch (e) { /* wait for it */ }
         L.on('calendar', safe(function (d) { onLive(d); }));
       }

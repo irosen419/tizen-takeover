@@ -496,6 +496,7 @@
     chosen: {},        // cal number -> [r, g, b] sent by the Pi
     snap: null,        // the snapshot in use
     snapFromCache: false,
+    snapKey: '',       // the last live snapshot's content this run ('' before any)
     zone: null,
     timer: null,
     sig: '',
@@ -630,6 +631,9 @@
     refreshAll();
   }
 
+  // The tiles that draw from the snapshot (Next visit only reads the calendar).
+  var SNAP_TILES = { awws: true, 'awws-agenda': true, 'awws-todo': true, 'awws-reach': true };
+
   function onSnap(d) {
     if (!d || typeof d !== 'object' || isArr(d)) return;
     // { sentAt: null } is the Pi saying "nothing stored": forget the copy too.
@@ -638,7 +642,17 @@
     saveSnapCache();
     // The Pi pushes every snapshot it accepts, even an unchanged one (a new
     // sentAt says it is fresh): the signature redraws only what changed.
+    var key = contentKey(S.snap, SNAP_SKIP);
+    var changed = S.snapKey !== '' && key !== S.snapKey && !!S.snap;
+    S.snapKey = key;
     refreshAll();
+    // New content after the first live snapshot this run: those tiles say so.
+    if (!changed) return;
+    for (var i = 0; i < S.order.length; i++) {
+      var ctx = S.ctxs[S.order[i]];
+      if (!ctx || !SNAP_TILES[S.order[i]] || typeof ctx.activity !== 'function') continue;
+      try { ctx.activity('awws'); } catch (e) { /* the figures just show */ }
+    }
   }
 
   /* ---------- states ---------- */
@@ -1058,7 +1072,7 @@
       } catch (e) { /* wait for it */ }
       try {
         var d = L.get('awws');
-        if (d && typeof d === 'object') { S.snap = snapReady(d) ? d : null; S.snapFromCache = false; saveSnapCache(); }
+        if (d && typeof d === 'object') { S.snap = snapReady(d) ? d : null; S.snapFromCache = false; saveSnapCache(); S.snapKey = contentKey(S.snap, SNAP_SKIP); }
       } catch (e) { /* wait for it */ }
       try {
         L.on('calendar', function (d) { try { onCal(d); } catch (e) { warn(e && e.message); } });

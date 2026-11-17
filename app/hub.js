@@ -86,6 +86,12 @@
  *   ctx.setTileSub(text)      the small line under the tile's title ('' hides it)
  *   ctx.focus(el)             move panel focus to el
  *   ctx.bloom(node)           an app is opening from node: { cancel() } or null
+ *   ctx.activity(kind)        real new data for this tile just arrived from a
+ *                             live sync (never call it for the first data after
+ *                             the hub starts, or for a refetch that changed
+ *                             nothing): the motion extras show a small chip
+ *                             saying so, e.g. 'todo', 'calendar', 'awws' (more
+ *                             with HUB_FX.addActivity in app/motion.js)
  *   (A waiting tile marks itself quiet with an element of class hub-dormant.)
  *   ctx.live                  live updates from the hub server on the Pi (see
  *                             docs/live-updates.md), or undefined when live.js
@@ -1299,6 +1305,7 @@
       live: liveFacade(),
       focus: function (node) { if (open === rec) focusPanel(node); },
       bloom: function (node) { return fxCall('bloom', [node]) || null; },
+      activity: function (kind) { if (rec && rec.home && rec.tile) fxCall('activity', [rec.tile, kind]); },
       _bind: function (r) { rec = r; }
     };
     return ctx;
@@ -1706,6 +1713,7 @@
     var stop = fade ? function () {} : startSampling();
     var openedAt = now();
     fxCall('ringHide');
+    fxCall('activityStop');
 
     function finish() {
       if (!moved || !built) return;
@@ -1903,6 +1911,7 @@
     if (!url) return toast('This dashboard has no address yet.');
     closeAbout();
     clayHook('stop');
+    fxCall('activityStop');
     frameOpen = true;
     frameEl.src = url;
     frameWrap.hidden = false;
@@ -2338,7 +2347,7 @@
 
   // app/motion.js: the focus ring that glides, items that arrive in an
   // opened panel, the Now Playing cover's flight, the
-  // launch bloom and quiet waiting tiles. They run only when the timing
+  // launch bloom, the activity chips and quiet waiting tiles. They run only when the timing
   // above says the screen keeps up (speed 'ok'), and every call is wrapped,
   // so without motion.js, or with a broken one, nothing changes.
 
@@ -2369,7 +2378,13 @@
   function startFx() {
     fxCall('start', [{
       config: cfg.motionFx,
-      speed: fxSpeed
+      speed: fxSpeed,
+      // The home screen is in view and uncovered (the activity chips wait for it).
+      quiet: function () { return !busy && !open && !frameOpen && !sw.on && !typingBox() && !document.hidden; },
+      clayDrawing: function () {
+        var K = clayApi('drawing');
+        try { return K ? K.drawing() === true : false; } catch (e) { return false; }
+      }
     }]);
   }
 

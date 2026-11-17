@@ -8,8 +8,12 @@
  *
  *   quiet-before-en.png, quiet-after-en.png (and -es): the waiting tiles
  *     (the Pi out of reach) with the extras off (?fx=off, as before) and on.
+ *   activity-todo-en.png, activity-calendar-en.png, activity-awws-en.png,
+ *     activity-all-en.png (and -es): each activity chip in the real hub, a
+ *     moment after real news arrived from the preview's hub server (a new
+ *     to-do, changed events, a changed snapshot; all three at once).
  *   --clip: one mp4 per moment (needs ffmpeg; webm without it): quiet tiles,
- *     ring, stagger, cover, bloom, in the real hub.
+ *     ring, stagger, activity chips, cover, bloom, in the real hub.
  *   --fps: the frame rate headless Chromium reached during each motion
  *     (three runs each), printed and saved as fps.json. A desktop is not the
  *     TV: these numbers say the motion is cheap, not that the TV is smooth.
@@ -22,9 +26,12 @@ const path = require('path');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
 const { SPANISH: AWWS_ES } = require('./awws-harness');
+const awwsSample = require('./awws-sample');
 
 const PAGE = 'http://127.0.0.1:8090';
 const LIVE = 'http://127.0.0.1:8097';
+const SERVICE = 'http://127.0.0.1:8095';
+const TOKEN = 'preview-token-not-a-secret-000000';
 const BLOCKED = ['192.168.1.219', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io'];
 
 const args = process.argv.slice(2);
@@ -43,8 +50,10 @@ const PLANNED_ES = { texts: {
   ambiance: 'Elegir el ambiente de luz desde el televisor, sin levantarse del sofá.'
 } };
 const TODO_ES = { sub: 'En este televisor', emptyTitle: 'Todavía no hay nada en la lista.', emptyHint: 'Pulsa OK para añadir algo.' };
+const MOTION_ES = { activity: { todo: 'Nueva tarea', calendar: 'Actualizando el calendario', awws: 'Sincronizando datos' } };
 const SPANISH_INIT = 'window.HUB_AWWS_STRINGS = ' + JSON.stringify(AWWS_ES) + ';window.HUB_CALENDAR_STRINGS = ' + JSON.stringify(CAL_ES) +
-  ';window.HUB_PLANNED_STRINGS = ' + JSON.stringify(PLANNED_ES) + ';window.HUB_TODO_STRINGS = ' + JSON.stringify(TODO_ES) + ';';
+  ';window.HUB_PLANNED_STRINGS = ' + JSON.stringify(PLANNED_ES) + ';window.HUB_TODO_STRINGS = ' + JSON.stringify(TODO_ES) +
+  ';window.HUB_MOTION_STRINGS = ' + JSON.stringify(MOTION_ES) + ';';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let browser = null;
@@ -61,6 +70,42 @@ async function until(fn, ms, text) {
   while (Date.now() < end) { try { if (await fn()) return; } catch (e) { /* again */ } await sleep(50); }
   throw new Error(text);
 }
+
+function post(route, body) {
+  return new Promise((resolve, reject) => {
+    const text = JSON.stringify(body);
+    const req = http.request(LIVE + route, { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(text) } }, (res) => {
+      let out = '';
+      res.on('data', (c) => { out += c; });
+      res.on('end', () => { try { resolve(JSON.parse(out)); } catch (e) { reject(e); } });
+    });
+    req.on('error', reject);
+    req.end(text);
+  });
+}
+
+function get(url) {
+  return new Promise((resolve, reject) => {
+    http.get(url, (res) => { let out = ''; res.on('data', (c) => { out += c; }); res.on('end', () => resolve(out)); }).on('error', reject);
+  });
+}
+
+/* Real news from the preview's hub server, for the activity chips. */
+const TODO_TITLES = ['Write to the library about the visit', 'Send the Maple Grove photos', 'Order more activity sheets', 'Call Cedar Hollow back'];
+let todoN = 0;
+let reachN = 0;
+let calMany = false;
+const news = {
+  async todo() { await post('/api/todo', { title: TODO_TITLES[todoN++ % TODO_TITLES.length], section: 'now' }); },
+  // The sample calendars with and without a long list of extra events.
+  async calendar() { calMany = !calMany; await get(SERVICE + '/preview?calendar=' + (calMany ? 'many' : 'sample')); },
+  async awws() {
+    const snap = awwsSample.snapshot({ today: awwsSample.chicagoToday(), reach: ['both', 'subscribers', 'traffic'][reachN++ % 3] });
+    snap.sentAt = new Date(Date.now() - 3000).toISOString().replace(/\.\d+Z$/, 'Z');
+    delete snap.receivedAt;
+    await post('/api/awws', { snapshot: snap });
+  }
+};
 
 async function newPage(o) {
   const opts = { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 };
@@ -108,6 +153,22 @@ const MOMENTS = [
       await sleep(520);
     }
   } },
+  { name: '4-activity', query: LIVE_Q, async run(page) {
+    // A to-do arrives, then a calendar change, then a new snapshot; then all three at once.
+    await sleep(500);
+    await news.todo();
+    await sleep(3300);
+    await news.calendar();
+    await sleep(3300);
+    await news.awws();
+    await sleep(3300);
+    await news.todo();
+    await sleep(140);
+    await news.calendar();
+    await sleep(140);
+    await news.awws();
+    await sleep(3400);
+  } },
   { name: '5-cover-flight', query: LIVE_Q, async run(page) {
     await page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
     await sleep(1300);
@@ -134,6 +195,25 @@ async function shots() {
       const page = await newPage({ query: 'motion=push' + (when === 'before' ? '&fx=off' : ''), init: lang === 'es' ? SPANISH_INIT : undefined, settle: 1500 });
       await page.screenshot({ path: path.join(OUT, name) });
       console.log('  ' + name);
+      await page.context().close();
+    }
+  }
+}
+
+// One picture per chip, in English and Spanish, a moment after it came in.
+async function activityShots() {
+  for (const lang of ['en', 'es']) {
+    for (const kind of ['todo', 'calendar', 'awws', 'all']) {
+      const name = 'activity-' + kind + '-' + lang + '.png';
+      if (ONLY && name.indexOf(ONLY) < 0) continue;
+      const page = await newPage({ query: LIVE_Q, init: lang === 'es' ? SPANISH_INIT : undefined, settle: 1800 });
+      const kinds = kind === 'all' ? ['todo', 'calendar', 'awws'] : [kind];
+      for (const k of kinds) { await news[k](); await sleep(120); }
+      await until(() => page.evaluate((n) => document.querySelectorAll('.fx-chip.is-in').length >= n, kinds.length), 5000, 'no chip for ' + name);
+      await sleep(450);
+      await page.screenshot({ path: path.join(OUT, name) });
+      const words = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.fx-chip'), (c) => c.textContent).join(', '));
+      console.log('  ' + name + ' (' + words + ')');
       await page.context().close();
     }
   }
@@ -192,6 +272,9 @@ const MEASURE = [
     async go(page) { await page.evaluate(() => document.querySelector('.panel-btn').click()); }, async reset(page) { await sleep(400); await page.keyboard.press('Escape'); await sleep(900); } },
   { name: 'launch bloom (480 ms)', query: LIVE_Q, ms: 560, async pre(page) { await page.keyboard.press('Enter'); await sleep(1200); },
     async go(page) { await page.keyboard.press('Enter'); }, async reset(page) { await sleep(3400); } },
+  { name: 'activity chip: a new to-do (220 ms in, loops, sweep, 150 ms out; 2.8 s)', query: LIVE_Q, ms: 2800, async go() { await news.todo(); }, async reset() { await sleep(600); } },
+  { name: 'activity chips: three tiles at once (2.8 s)', query: LIVE_Q, ms: 2800,
+    async go() { await news.todo(); await news.calendar(); await news.awws(); }, async reset() { await sleep(600); } },
   { name: 'idle home screen (for comparison)', query: LIVE_Q, ms: 1000, async go() {} }
 ];
 
@@ -227,11 +310,13 @@ async function main() {
   browser = await chromium.launch();
   console.log('Pictures:');
   await shots();
+  await activityShots();
   if (CLIP) { console.log('Clips:'); await clips(); }
   if (FPS) { console.log('Frame rates (headless, not the TV):'); await rates(); }
 }
 
 main().catch((e) => { console.error(e && e.stack); process.exitCode = 1; }).then(async () => {
   try { if (browser) await browser.close(); } catch (e) { /* ignore */ }
+  if (calMany) { try { await get(SERVICE + '/preview?calendar=sample'); } catch (e) { /* the preview is gone */ } }
   if (preview) preview.kill();
 });

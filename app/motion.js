@@ -14,6 +14,14 @@
  *   cover       The Now Playing cover flies between the page and the
  *               visualizer's card when full screen opens and closes.
  *   bloom       An app's icon grows to fill the screen while the app opens.
+ *   activity    When a live sync brings real new data for a tile (a new
+ *               to-do, changed events, a changed snapshot), that tile shows a
+ *               small chip in its lower left corner ("Incoming to-do") for
+ *               about 2.4 s, with a light that sweeps its top edge twice.
+ *               Never on the first data after the hub starts, while the
+ *               wanderers are on screen, or while the home screen is covered.
+ *               Widgets call ctx.activity(kind); HUB_FX.addActivity(kind,
+ *               { icon, label }) adds a kind.
  *
  * Every moving part animates only transform and opacity, and runs only when
  * the hub's own timing (motion 'auto', see hub.js) says the screen keeps up:
@@ -32,7 +40,13 @@
   var STRINGS = {
     extrasOn: 'extras on',
     extrasOff: 'extras off ({why})',
-    why: { fade: 'fade mode', slow: 'slow screen' }
+    why: { fade: 'fade mode', slow: 'slow screen' },
+    // The activity chips, one line each (Spanish runs about a quarter longer).
+    activity: {
+      todo: 'Incoming to-do',
+      calendar: 'Updating calendar',
+      awws: 'Syncing data'
+    }
   };
 
   function mergeStrings(dst, src) {
@@ -45,7 +59,7 @@
   }
   try { mergeStrings(STRINGS, window.HUB_MOTION_STRINGS); } catch (e) { /* keep English */ }
 
-  var FLAGS = ['quietTiles', 'ring', 'stagger', 'cover', 'bloom'];
+  var FLAGS = ['quietTiles', 'ring', 'stagger', 'cover', 'bloom', 'activity'];
   var EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';   // ease-out: every entrance
   var RING_MS = 190;
   var STAGGER_MS = 260;
@@ -55,6 +69,8 @@
   var COVER_OUT_MS = 420;
   var BLOOM_MS = 480;
   var BLOOM_HOLD_MS = 2600;      // the app normally covers the hub long before this
+  var ACT_HOLD_MS = 2400;        // the chip shows this long (the edge sweeps twice in it)
+  var ACT_OUT_MS = 150;          // then fades out (the entrance, 220 ms, is in style.css)
 
   var host = null;               // from hub.js (see start)
   var flags = {};
@@ -381,6 +397,91 @@
     if (!document.hidden) bloomEnd(false);
   }));
 
+  /* ---------- activity chips ---------- */
+
+  // The kinds a widget can say: { icon (HTML), label }. The icons are plain
+  // elements so every loop moves only transform or opacity (style.css).
+  var KINDS = {};
+
+  function addActivity(kind, def) {
+    if (!kind || !def || typeof def !== 'object') return false;
+    var label = typeof def.label === 'string' ? def.label : '';
+    try {
+      var tr = window.HUB_MOTION_STRINGS && window.HUB_MOTION_STRINGS.activity;
+      if (tr && typeof tr[kind] === 'string') label = tr[kind];
+    } catch (e) { /* keep it */ }
+    KINDS[kind] = { icon: typeof def.icon === 'string' ? def.icon : '', label: label };
+    return true;
+  }
+
+  // A pencil writing a line.
+  addActivity('todo', { label: STRINGS.activity.todo, icon:
+    '<i class="fx-act-line"></i>' +
+    '<i class="fx-act-pen"><svg viewBox="0 0 34 34"><path d="M6 22 L22 6 L27 11 L11 27 L5 28 Z" fill="#cfeeff"/></svg></i>' });
+  // A calendar whose dots tick in turn.
+  addActivity('calendar', { label: STRINGS.activity.calendar, icon:
+    '<svg viewBox="0 0 34 34"><rect x="4" y="7" width="26" height="23" rx="5" fill="none" stroke="#7fd1ff" stroke-width="2.5"/></svg>' +
+    '<i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i>' });
+  // Three bars rising and falling.
+  addActivity('awws', { label: STRINGS.activity.awws, icon:
+    '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' });
+
+  var acts = [];                 // [{ tile, kind, chip, edge, timer }]
+
+  function actOf(tile) {
+    for (var i = 0; i < acts.length; i++) if (acts[i].tile === tile) return acts[i];
+    return null;
+  }
+
+  function actEnd(a) {
+    clearTimeout(a.timer);
+    drop(a.chip);
+    drop(a.edge);
+    var i = acts.indexOf(a);
+    if (i >= 0) acts.splice(i, 1);
+  }
+
+  function activityStop() {
+    while (acts.length) actEnd(acts[0]);
+  }
+
+  // The home screen is in view and nothing else draws over it.
+  function homeQuiet() {
+    try {
+      if (!host || !host.quiet || !host.quiet()) return false;
+      return !(host.clayDrawing && host.clayDrawing());
+    } catch (e) { return false; }
+  }
+
+  // tile: the tile's element (the chip goes inside it, over its content, so
+  // nothing else moves). True when a chip shows.
+  function activity(tile, kind) {
+    if (!tile || !can('activity') || !KINDS.hasOwnProperty(kind)) return false;
+    if (actOf(tile) || !homeQuiet()) return false;
+    var def = KINDS[kind];
+    var chip = document.createElement('div');
+    chip.className = 'fx-chip fx-chip-' + String(kind).replace(/[^a-z0-9-]/gi, '');
+    chip.setAttribute('aria-hidden', 'true');
+    var ico = el('span', 'fx-act-ico', chip);
+    ico.innerHTML = def.icon;
+    el('span', 'fx-chip-text', chip).textContent = def.label;
+    var edge = document.createElement('div');
+    edge.className = 'fx-edge';
+    edge.setAttribute('aria-hidden', 'true');
+    el('i', '', edge);
+    tile.appendChild(edge);
+    tile.appendChild(chip);
+    var a = { tile: tile, kind: kind, chip: chip, edge: edge, timer: null };
+    acts.push(a);
+    void chip.offsetWidth;
+    chip.className += ' is-in';
+    a.timer = later(ACT_HOLD_MS, function () {
+      chip.className = chip.className.replace(' is-in', '') + ' is-out';
+      a.timer = later(ACT_OUT_MS + 60, function () { actEnd(a); });
+    });
+    return true;
+  }
+
   /* ---------- status ---------- */
 
   // For the About panel's Motion row: '' when every motion switch is off.
@@ -397,12 +498,14 @@
       ringDrop();
       staggerClear();
       shareEnd();
+      activityStop();
     }
   }
 
   /* ---------- start ---------- */
 
-  // host: { config, speed() 'ok'|'fade'|'slow' }
+  // host: { config, speed() 'ok'|'fade'|'slow', quiet() (the home screen is
+  // in view, uncovered), clayDrawing() (the wanderers are on screen) }
   function start(h) {
     host = h;
     flags = readFlags(h && h.config);
@@ -421,6 +524,9 @@
     shareFrom: safe(shareFrom),
     shareTo: safe(shareTo),
     bloom: safe(bloom),
+    activity: safe(function () { return activity.apply(null, arguments) === true; }),
+    activityStop: safe(activityStop),
+    addActivity: safe(function (kind, def) { return addActivity(kind, def) === true; }),
     statusText: safe(statusText),
     motionChanged: safe(motionChanged),
     // For tests: what is going on now.
@@ -431,7 +537,8 @@
         ring: ring.node ? { at: ring.at, shown: ring.shown, gliding: ring.gliding && Date.now() < ring.glideEnd } : null,
         staggering: stag.items.length,
         flying: !!share.fly,
-        blooming: !!bloomState.node
+        blooming: !!bloomState.node,
+        chips: acts.map(function (a) { return a.kind; })
       };
     }
   };

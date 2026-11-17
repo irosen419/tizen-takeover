@@ -14,7 +14,13 @@
  * cut or clipped, while tiles with real data are left alone; the ring sits
  * on the focused tile, glides on a press, jumps on a held key, and is right
  * after a layout switch and a window resize; the stagger; a new to-do from
- * a sync just shows its row, nothing added; the cover's flight; the bloom.
+ * a sync shows its row at once (no slide), nothing left after; the cover's
+ * flight; the bloom. Then the activity chips: off with their switch, in fade
+ * mode and on a slow TV; never for the first data after the hub starts or a
+ * refetch with the same data; one chip in the To-do tile for a new to-do
+ * that goes by itself and leaves nothing behind; none while the wanderers
+ * are on screen; the Spanish words fit one line in 3-column tiles (3x1, 3x2,
+ * 3x4) without "…", at 22px or more, with 4.5:1 contrast.
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  * It cannot prove the TV: a desktop browser runs far faster.
@@ -30,6 +36,8 @@ const childProcess = require('child_process');
 const { chromium } = require('playwright');
 const mockSpotify = require('./mock-spotify');
 const { SPANISH: AWWS_ES } = require('./awws-harness');
+const calendarSample = require('./calendar-sample');
+const awwsSample = require('./awws-sample');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
@@ -68,7 +76,18 @@ const SPANISH_INIT = 'window.HUB_AWWS_STRINGS = ' + JSON.stringify(AWWS_ES) + ';
   'window.HUB_PLANNED_STRINGS = ' + JSON.stringify(PLANNED_ES) + ';' +
   'window.HUB_TODO_STRINGS = ' + JSON.stringify(TODO_ES) + ';';
 
-let PAGE_PORT, PAGE, preview = null, browser = null, mock = null;
+// Spanish for the activity chips.
+const MOTION_ES = { activity: { todo: 'Nueva tarea', calendar: 'Actualizando el calendario', awws: 'Sincronizando datos' } };
+
+// Notes every chip the page ever adds (window.__chips), from the first moment.
+const CHIP_WATCH = '(function () { window.__chips = []; function watch() {' +
+  ' new MutationObserver(function (ms) { ms.forEach(function (m) { Array.prototype.forEach.call(m.addedNodes, function (n) {' +
+  ' if (n.nodeType === 1 && /(^| )fx-chip( |$)/.test(n.className)) { var c = n.closest(".cell");' +
+  ' window.__chips.push({ w: c && c.getAttribute("data-widget"), text: n.textContent, t: Date.now() }); } }); }); })' +
+  '.observe(document.documentElement, { childList: true, subtree: true }); }' +
+  ' if (document.documentElement) watch(); else document.addEventListener("DOMContentLoaded", watch); })();';
+
+let PAGE_PORT, PAGE, preview = null, browser = null, mock = null, feeds = null;
 const pis = [];
 const tmp = [];
 const results = [];
@@ -120,6 +139,7 @@ async function startPi() {
   const server = require(path.join(ROOT, 'pi', 'server.js'));
   const h = server.start({
     token: TOKEN, port: port, host: '127.0.0.1', origins: [PAGE], dataDir: dir, log: false, timezone: 'America/Chicago',
+    calendars: feeds ? feeds.calendars : [], allowHttp: true,
     spotifyEnv: { SPOTIFY_CLIENT_ID: mock.clientId, SPOTIFY_CLIENT_SECRET: mock.clientSecret, SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + port + '/spotify/callback' },
     spotify: { accounts: mock.url, api: mock.url, vibe: mock.url, allowHttp: true, playMs: 400, idleMs: 400, awayMs: 400 }
   });
@@ -173,6 +193,7 @@ async function open(o) {
     await context.addInitScript((rec) => { try { localStorage.setItem('homeHub.motion', JSON.stringify(rec)); } catch (e) { /* ignore */ } },
       { mode: o.slow.mode, build: BUILD, fps: o.slow.fps });
   }
+  await context.addInitScript(CHIP_WATCH);
   if (o.init) await context.addInitScript(o.init);
   const page = await context.newPage();
   page.errors = [];
@@ -195,7 +216,7 @@ const focused = (page) => page.evaluate(() => {
 
 // Everything the extras could have added.
 const extras = (page) => page.evaluate(() => ({
-  nodes: document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom').length,
+  nodes: document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge').length,
   body: document.body.className.split(' ').filter((c) => /^fx-/.test(c)),
   dormant: document.querySelectorAll('.tile.is-dormant').length
 }));
@@ -496,8 +517,10 @@ async function checkNewTodo(pi) {
     assert(!row.o && !row.t && !row.tr, 'the new row moved: ' + JSON.stringify(row));
     await sleep(120);
   }
+  // The activity chip (checks 9 to 15) goes by itself; nothing is left.
+  await until(() => page.evaluate(() => !document.querySelector('.fx-chip, .fx-edge')), 4000, 'the chip stayed');
   const after = await look();
-  assert(after.fx === before.fx && after.tile === before.tile && after.styles === before.styles, 'something was added: ' + JSON.stringify({ before, after }));
+  assert(after.fx === before.fx && after.tile === before.tile && after.styles === before.styles, 'something was left: ' + JSON.stringify({ before, after }));
   noErrors(page);
 }
 
@@ -564,6 +587,316 @@ async function checkBloom(pi) {
   noErrors(page);
 }
 
+/* ---------- activity chips ---------- */
+
+const chips = (page) => page.evaluate(() => window.__chips.slice());
+
+function snapshotNow(opts) {
+  const snap = awwsSample.snapshot(Object.assign({ today: awwsSample.chicagoToday() }, opts || {}));
+  snap.sentAt = new Date(Date.now() - 5000).toISOString().replace(/\.\d+Z$/, 'Z');
+  delete snap.receivedAt;
+  return snap;
+}
+
+async function postSnapshot(pi, snap) {
+  const r = await control(pi, 'POST', '/api/awws', { snapshot: snap });
+  assert(r && r.ok, 'the server refused the snapshot: ' + JSON.stringify(r));
+}
+
+async function calendarMode(pi, mode) {
+  feeds.setMode(mode);
+  await control(pi, 'POST', '/api/calendar/refresh', {});
+}
+
+// A new to-do, a calendar change and a changed snapshot, one after another.
+async function everyKind(pi, tag) {
+  await postTodo(pi, 'Activity ' + tag + ' ' + Date.now());
+  await calendarMode(pi, feeds.mode() === 'empty' ? 'sample' : 'empty');
+  await postSnapshot(pi, snapshotNow({ reach: Math.random() < 0.5 ? 'subscribers' : 'traffic', sentAt: undefined }));
+}
+
+async function checkActivityOff(pi) {
+  // Only this switch off: the other extras still run (the ring is there).
+  const page = await open({ pi: pi, query: 'motion=push', config: 'HUB_CONFIG.motionFx = { activity: false };' });
+  await idle(page);
+  await sleep(300);
+  const st = await fx(page);
+  assert(st.flags.activity === false && st.flags.ring === true, 'flags: ' + JSON.stringify(st.flags));
+  assert(await page.evaluate(() => !!document.querySelector('.fx-ring')), 'the other extras went off too');
+  await everyKind(pi, 'off');
+  await sleep(1500);
+  const c = await chips(page);
+  const x = await page.evaluate(() => document.querySelectorAll('.fx-chip, .fx-edge').length);
+  assert(!c.length && !x, 'a chip with activity off: ' + JSON.stringify(c));
+  noErrors(page);
+}
+
+async function checkActivitySlow(pi) {
+  for (const c of [{ name: 'fade', o: { query: 'motion=fade' } }, { name: 'measured slow (24 fps)', o: { slow: { mode: 'push', fps: 24 } } },
+    { name: 'auto stepped down', o: { slow: { mode: 'expand', fps: 52 } } }]) {
+    const page = await open(Object.assign({ pi: pi }, c.o));
+    await idle(page);
+    await sleep(300);
+    const id = await postTodo(pi, 'Slow chip ' + Date.now());
+    await until(() => page.evaluate((i) => !!document.querySelector('.todo-tile-row[data-id="' + i + '"]'), id), 4000, 'the to-do did not arrive');
+    await calendarMode(pi, feeds.mode() === 'empty' ? 'sample' : 'empty');
+    await postSnapshot(pi, snapshotNow({ reach: 'subscribers' }));
+    await sleep(1500);
+    const seen = await chips(page);
+    assert(!seen.length, c.name + ': chips: ' + JSON.stringify(seen));
+    noErrors(page);
+    await page.context().close();
+  }
+}
+
+async function checkActivityFirst(pi) {
+  // The Pi already has a to-do, events and a snapshot this TV has never seen:
+  // the first data after the start is no news.
+  await postTodo(pi, 'Already on the Pi ' + Date.now());
+  await calendarMode(pi, 'sample');
+  await postSnapshot(pi, snapshotNow({ reach: 'both' }));
+  const page = await open({ pi: pi, query: 'motion=push' });
+  await until(() => page.evaluate(() => document.querySelectorAll('.todo-tile-row').length > 0), 5000, 'the first sync did not arrive');
+  await sleep(2000);
+  const seen = await chips(page);
+  assert(!seen.length, 'chips for the first data: ' + JSON.stringify(seen));
+  // The TV restarts while everything changes on the Pi: its own saved copies
+  // are old, but the first data after the start is still no news.
+  const url = page.url();
+  await page.goto('about:blank');
+  await everyKind(pi, 'while away');
+  await sleep(600);
+  await page.goto(url);
+  await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0);
+  await until(() => page.evaluate(() => window.HUB_LIVE && window.HUB_LIVE.status().state === 'live'), 8000, 'not live after the restart');
+  await sleep(2000);
+  const again = await chips(page);
+  assert(!again.length, 'chips after a restart: ' + JSON.stringify(again));
+  noErrors(page);
+}
+
+async function checkActivitySame(pi) {
+  await postTodo(pi, 'To rename later ' + Date.now());
+  const page = await open({ pi: pi, query: 'motion=push' });
+  await idle(page);
+  await sleep(600);
+  const snap = snapshotNow({ reach: 'both' });
+  await postSnapshot(pi, snap);
+  await sleep(600);
+  // (If that one was news, its chip goes first: one chip per tile.)
+  await until(() => page.evaluate(() => !document.querySelector('.fx-chip')), 4000, 'a chip stayed');
+  await page.evaluate(() => { window.__chips = []; });
+  const revs = await page.evaluate(() => ({ cal: window.HUB_LIVE.rev('calendar'), awws: window.HUB_LIVE.rev('awws'), todo: window.HUB_LIVE.rev('todo') }));
+  // The same snapshot sent again (a new sentAt), the calendars read again
+  // unchanged, an empty change list for the to-dos, and a to-do that changes
+  // without being new (renamed): no chip.
+  const again = JSON.parse(JSON.stringify(snap));
+  again.sentAt = new Date(Date.now() - 1000).toISOString().replace(/\.\d+Z$/, 'Z');
+  await postSnapshot(pi, again);
+  await control(pi, 'POST', '/api/calendar/refresh', {});
+  await control(pi, 'POST', '/api/todo/ops', { ops: [] });
+  const list = await control(pi, 'GET', '/api/todo');
+  const items = (list && (list.items || (list.data && list.data.items))) || [];
+  const open1 = items.filter((i) => !i.done)[0];
+  if (open1) await control(pi, 'POST', '/api/todo/ops', { ops: [{ op: 'set', id: open1.id, fields: { title: open1.title + ' (renamed)' } }] });
+  // (The hub server pushes the unchanged snapshot again; unchanged calendars
+  // and to-dos it doesn't push at all, so only those two can be watched.)
+  await until(() => page.evaluate((r) => window.HUB_LIVE.rev('awws') > r.awws, revs), 5000, 'the snapshot did not arrive again');
+  assert(open1, 'no open to-do to rename');
+  await until(() => page.evaluate((r) => window.HUB_LIVE.rev('todo') > r.todo, revs), 4000, 'the renamed to-do did not arrive');
+  await sleep(1200);
+  const seen = await chips(page);
+  assert(!seen.length, 'chips for unchanged data: ' + JSON.stringify(seen));
+  // And the other way round: changed events and a changed snapshot each say so, in their own tile.
+  await calendarMode(pi, feeds.mode() === 'empty' ? 'sample' : 'empty');
+  await until(async () => (await chips(page)).some((c) => c.w === 'calendar'), 4000, 'no chip for changed events');
+  const changed = JSON.parse(JSON.stringify(snap));
+  changed.reach = awwsSample.reach('subscribers');
+  changed.sentAt = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  await postSnapshot(pi, changed);
+  await until(async () => (await chips(page)).some((c) => c.w === 'awws'), 4000, 'no chip for a changed snapshot');
+  const both = await chips(page);
+  assert(both.length === 2 && both.filter((c) => c.w === 'calendar' && c.text === 'Updating calendar').length === 1 &&
+    both.filter((c) => c.w === 'awws' && c.text === 'Syncing data').length === 1, 'chips: ' + JSON.stringify(both));
+  noErrors(page);
+}
+
+async function checkActivityTodo(pi) {
+  const page = await open({ pi: pi, query: 'motion=push' });
+  await idle(page);
+  await sleep(400);
+  const look = () => page.evaluate(() => {
+    const out = { tiles: {}, body: document.body.className, styles: document.querySelectorAll('style').length, nodes: document.getElementsByTagName('*').length };
+    document.querySelectorAll('#grid .cell').forEach((c) => {
+      const t = c.querySelector('.tile');
+      const r = t.getBoundingClientRect();
+      out.tiles[c.getAttribute('data-widget')] = { cls: t.className, style: t.getAttribute('style') || '', kids: t.children.length,
+        rect: [r.left, r.top, r.width, r.height].map(Math.round).join(',') };
+    });
+    return out;
+  });
+  const before = await look();
+  const rowsBefore = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.cell[data-widget="todo"] .tile-head, .cell[data-widget="todo"] .tile-body'),
+    (n) => { const r = n.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(','); }));
+  const id = await postTodo(pi, 'Write to the library ' + Date.now());
+  await until(() => page.evaluate(() => !!document.querySelector('.fx-chip.is-in')), 3000, 'no chip');
+  await sleep(320);
+  const mid = await page.evaluate(() => {
+    const list = document.querySelectorAll('.fx-chip');
+    const c = list[0];
+    const cell = c.closest('.cell');
+    const tile = cell.querySelector('.tile');
+    const T = tile.getBoundingClientRect();
+    const R = c.getBoundingClientRect();
+    const cs = getComputedStyle(c);
+    const ts = getComputedStyle(c.querySelector('.fx-chip-text'));
+    const edge = tile.querySelector('.fx-edge');
+    return { n: list.length, widget: cell.getAttribute('data-widget'), text: c.textContent, left: R.left - T.left, bottom: T.bottom - R.bottom,
+      opacity: cs.opacity, fontPx: parseFloat(ts.fontSize), edge: !!edge, edgeAnim: edge ? getComputedStyle(edge.firstChild).animationName : '' };
+  });
+  assert(mid.n === 1 && mid.widget === 'todo' && mid.text === 'Incoming to-do', 'the chip: ' + JSON.stringify(mid));
+  assert(Math.abs(mid.left - 28) <= 4 && Math.abs(mid.bottom - 24) <= 4, 'not in the lower left (28px, 24px): ' + JSON.stringify(mid));
+  assert(mid.fontPx >= 22 && mid.edge && mid.edgeAnim === 'fx-act-sweep', 'text size or edge: ' + JSON.stringify(mid));
+  // The new row just appears, and nothing in the tile moved for the chip.
+  const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return r && { o: r.style.opacity, t: r.style.transform, tr: r.style.transition }; }, id);
+  assert(row && !row.o && !row.t && !row.tr, 'the new row moved: ' + JSON.stringify(row));
+  const during = await look();
+  for (const k of Object.keys(before.tiles)) {
+    assert(during.tiles[k].rect === before.tiles[k].rect && during.tiles[k].cls === before.tiles[k].cls && during.tiles[k].style === before.tiles[k].style,
+      'tile ' + k + ' changed: ' + JSON.stringify([before.tiles[k], during.tiles[k]]));
+  }
+  const rowsDuring = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.cell[data-widget="todo"] .tile-head, .cell[data-widget="todo"] .tile-body'),
+    (n) => { const r = n.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(','); }));
+  assert(rowsDuring[0] === rowsBefore[0], 'the tile head moved: ' + JSON.stringify([rowsBefore, rowsDuring]));
+  assert(rowsDuring[1] === rowsBefore[1], 'the tile body moved: ' + JSON.stringify([rowsBefore, rowsDuring]));
+  // Only the To-do tile: no other chip came.
+  const st = await fx(page);
+  assert(JSON.stringify(st.chips) === '["todo"]', 'chips now: ' + JSON.stringify(st.chips));
+  // About 2.4 s, then a 150 ms fade, then gone, leaving nothing.
+  await sleep(1500);
+  assert(await page.evaluate(() => !!document.querySelector('.fx-chip.is-in')), 'the chip went too soon');
+  await until(() => page.evaluate(() => !!document.querySelector('.fx-chip.is-out')), 1500, 'no fade out');
+  const out = await page.evaluate(() => getComputedStyle(document.querySelector('.fx-chip.is-out')).transition);
+  assert(/150ms ease-out/.test(out) || /0\.15s ease-out/.test(out), 'the fade out: ' + out);
+  await until(() => page.evaluate(() => !document.querySelector('.fx-chip, .fx-edge')), 800, 'the chip stayed');
+  const after = await look();
+  const extraNodes = after.nodes - during.nodes;
+  for (const k of Object.keys(before.tiles)) {
+    const a = after.tiles[k];
+    const b = before.tiles[k];
+    assert(a.cls === b.cls && a.style === b.style && a.rect === b.rect && (k === 'todo' || a.kids === b.kids), 'tile ' + k + ' left changed: ' + JSON.stringify([b, a]));
+  }
+  assert(after.tiles.todo.kids === before.tiles.todo.kids, 'something left in the To-do tile');
+  assert(after.body === before.body && after.styles === before.styles, 'body or styles changed: ' + JSON.stringify({ before: [before.body, before.styles], after: [after.body, after.styles] }));
+  assert(extraNodes < 0, 'no fewer nodes after the chip went: ' + extraNodes);
+  const seen = await chips(page);
+  assert(seen.length === 1, 'chips seen: ' + JSON.stringify(seen));
+  noErrors(page);
+}
+
+async function checkActivityClay(pi) {
+  const page = await open({ pi: pi, query: 'motion=push', clay: true });
+  await idle(page);
+  await sleep(300);
+  const started = await page.evaluate(() => {
+    const K = window.HUB_TEST.clay;
+    if (!K) return 'no clay';
+    const names = K.scenes();
+    for (let i = 0; i < names.length; i++) if (K.play(names[i], { seed: 3 })) return K.state().scene;
+    return 'nothing played';
+  });
+  assert(started && !/^no|nothing/.test(started), 'no scene: ' + started);
+  const id = await postTodo(pi, 'While they wander ' + Date.now());
+  await until(() => page.evaluate((i) => !!document.querySelector('.todo-tile-row[data-id="' + i + '"]'), id), 4000, 'the to-do did not arrive');
+  await postSnapshot(pi, snapshotNow({ reach: 'traffic' }));
+  await sleep(500);
+  const playing = await page.evaluate(() => window.HUB_TEST.clay.state().scene);
+  assert(playing, 'the scene ended by itself before the check');
+  const seen = await chips(page);
+  assert(!seen.length, 'a chip during a scene: ' + JSON.stringify(seen));
+  await page.evaluate(() => window.HUB_TEST.clay.stop());
+  // With a panel open, also none (the home screen is covered).
+  await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
+  await idle(page);
+  await postTodo(pi, 'Behind a panel ' + Date.now());
+  await sleep(800);
+  assert(!(await chips(page)).length, 'a chip behind a panel: ' + JSON.stringify(await chips(page)));
+  noErrors(page);
+}
+
+// Three-column tiles in three heights: To-do 3x1, Calendar 3x2, A World Worth Saving 3x4.
+const NARROW = [
+  { widget: 'today', x: 0, y: 0, w: 3, h: 1 },
+  { widget: 'calendar', x: 3, y: 0, w: 3, h: 2 },
+  { widget: 'awws', x: 6, y: 0, w: 3, h: 4 },
+  { widget: 'nowplaying', x: 9, y: 0, w: 3, h: 2 },
+  { widget: 'todo', x: 0, y: 1, w: 3, h: 1 },
+  { widget: 'weather', x: 0, y: 2, w: 3, h: 2 },
+  { widget: 'mirror', x: 9, y: 2, w: 3, h: 4 },
+  { widget: 'ambiance', x: 3, y: 4, w: 6, h: 1 },
+  { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
+];
+
+async function checkActivityText(pi) {
+  await control(pi, 'POST', '/api/layout', { layout: NARROW });
+  try {
+    for (const lang of ['es', 'en']) {
+      const init = lang === 'es' ? 'window.HUB_MOTION_STRINGS = ' + JSON.stringify(MOTION_ES) + ';' : undefined;
+      const page = await open({ pi: pi, query: 'motion=push', init: init });
+      await idle(page);
+      await until(() => page.evaluate(() => { const r = window.HUB_TEST.homeRects(); return r.todo && r.todo.height < 200; }), 4000, 'the layout did not arrive');
+      await sleep(300);
+      const shown = await page.evaluate(() => ['todo', 'calendar', 'awws'].map((k) =>
+        window.HUB_FX.activity(document.querySelector('.cell[data-widget="' + k + '"] .tile'), k)));
+      assert(shown.every(Boolean), lang + ': not every chip showed: ' + JSON.stringify(shown));
+      await sleep(400);
+      const info = await page.evaluate(() => {
+        function lum(c) {
+          const v = c.map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+          return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
+        }
+        function rgba(s) { const m = s.match(/[\d.]+/g).map(Number); return { c: m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; }
+        return ['todo', 'calendar', 'awws'].map((k) => {
+          const tile = document.querySelector('.cell[data-widget="' + k + '"] .tile');
+          const c = tile.querySelector('.fx-chip');
+          const t = c.querySelector('.fx-chip-text');
+          const cs = getComputedStyle(t);
+          const T = tile.getBoundingClientRect();
+          const R = c.getBoundingClientRect();
+          const lh = parseFloat(cs.lineHeight);
+          // Contrast over the worst backdrop: the chip's color over white and over black.
+          const bg = rgba(getComputedStyle(c).backgroundColor);
+          const fg = rgba(cs.color).c;
+          const ratios = [255, 0].map((under) => {
+            const mix = bg.c.map((x) => x * bg.a + under * (1 - bg.a));
+            const a = lum(fg);
+            const b = lum(mix);
+            return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+          });
+          return { k: k, text: t.textContent, cols: tile.parentNode.style.gridColumn || '', tileW: Math.round(T.width), chipW: Math.round(R.width),
+            fits: t.scrollWidth <= t.clientWidth, lines: t.getBoundingClientRect().height / lh, boxOk: t.clientHeight + 0.5 >= lh, lh: lh / parseFloat(cs.fontSize),
+            font: parseFloat(cs.fontSize), maxOk: R.width <= T.width - 56 + 1, inside: R.left >= T.left && R.right <= T.right && R.top >= T.top && R.bottom <= T.bottom,
+            contrast: Math.min.apply(null, ratios), tileH: Math.round(T.height) };
+        });
+      });
+      for (const i of info) {
+        const where = lang + ' ' + i.k + ' (' + i.tileW + 'x' + i.tileH + ', "' + i.text + '")';
+        assert(i.fits, where + ': cut with "…" (' + i.chipW + ' px)');
+        assert(i.lines < 1.5 && i.boxOk && i.lh >= 1.3, where + ': not one roomy line: ' + JSON.stringify(i));
+        assert(i.font >= 22, where + ': text ' + i.font + ' px');
+        assert(i.maxOk && i.inside, where + ': wider than the tile minus 56 px, or outside it: ' + JSON.stringify(i));
+        assert(i.contrast >= 4.5, where + ': contrast ' + i.contrast.toFixed(2));
+      }
+      if (lang === 'es') assert(info[1].text === 'Actualizando el calendario', 'the Spanish words did not arrive: ' + info[1].text);
+      console.log('      ' + lang + ': ' + info.map((i) => i.k + ' ' + i.chipW + '/' + i.tileW + ' px, ' + i.contrast.toFixed(1) + ':1').join('; '));
+      noErrors(page);
+      await page.context().close();
+    }
+  } finally {
+    await control(pi, 'POST', '/api/layout', { layout: null });
+  }
+}
+
 /* ---------- run ---------- */
 
 async function main() {
@@ -578,6 +911,7 @@ async function main() {
     http.get({ host: '127.0.0.1', port: PAGE_PORT, path: '/', timeout: 500 }, (r) => { r.resume(); resolve(true); }).on('error', () => resolve(false));
   }), 10000, 'the preview did not start');
   browser = await chromium.launch();
+  feeds = await calendarSample.feedServer({ mode: 'sample' });
   const pi = await startPi();
 
   await check('1. Switches off (?fx=off, motionFx: false): no extra element or class, ever', () => checkOff(pi));
@@ -585,9 +919,16 @@ async function main() {
   await check('3. Waiting tiles are one quiet line, in English and Spanish; real data stays', () => checkQuiet(pi));
   await check('4. The ring: on the focused tile, glides, jumps on a held key, right after a layout switch and a resize', () => checkRing(pi));
   await check('5. Stagger: the items arrive from the tile side, all in within about 500 ms', () => checkStagger(pi));
-  await check('6. A new to-do from a sync just shows its row, nothing added', () => checkNewTodo(pi));
+  await check('6. A new to-do from a sync shows its row at once (no slide), nothing left afterwards', () => checkNewTodo(pi));
   await check('7. Cover: flies to the full-screen card and back', () => checkCover(pi));
   await check('8. Bloom: an app\'s icon fills the screen, and goes again', () => checkBloom(pi));
+  await check('9. Activity chips: with their switch off, no chip (the other extras still run)', () => checkActivityOff(pi));
+  await check('10. Activity chips: in fade mode, on a slow TV and after auto stepped down, no chip', () => checkActivitySlow(pi));
+  await check('11. Activity chips: the first data after the hub starts (and after a reload) adds none', () => checkActivityFirst(pi));
+  await check('12. Activity chips: a refetch with the same data, or a to-do that only changed, adds none (changed events and snapshot do)', () => checkActivitySame(pi));
+  await check('13. Activity chips: a new to-do adds exactly one chip in the To-do tile, which goes by itself and leaves nothing', () => checkActivityTodo(pi));
+  await check('14. Activity chips: none while the wanderers are on screen, or behind a panel', () => checkActivityClay(pi));
+  await check('15. Activity chips: the Spanish words fit one line in 3-column tiles (3x1, 3x2, 3x4), 22px+, 4.5:1', () => checkActivityText(pi));
 }
 
 main().catch((e) => {
@@ -597,6 +938,7 @@ main().catch((e) => {
   try { if (browser) await browser.close(); } catch (e) { /* ignore */ }
   for (const pi of pis) await new Promise((r) => pi.h.close(() => r()));
   try { if (mock) await mock.close(); } catch (e) { /* ignore */ }
+  try { if (feeds) await feeds.close(); } catch (e) { /* ignore */ }
   if (preview) preview.kill();
   for (const d of tmp) { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* ignore */ } }
   const passed = results.filter(Boolean).length;
