@@ -78,7 +78,6 @@ Commands:
 - `show <widget>`: open a widget (`weather`, `todo`, `calendar`, `entertainment`), optionally full screen.
 - `home`: close whatever is open.
 - `say "<text>"`: a short message at the bottom of the screen for a few seconds.
-- `lang`: `{ lang: 'en' | 'es' }`, the hub's language (as if picked on the Clock page; remembered on the TV). Since hub v0.28.0 and server 0.4.0; an older hub ignores it.
 - `reload`: load the hub afresh. It restarts through the loader (`app/index.html`), so it also picks up the newest version of the hub.
 
 Data:
@@ -175,6 +174,7 @@ Everything below is the contract between the hub (`app/`) and the Pi server (`pi
 - `pi/server.js`: Node 14 or newer, no dependencies. `require('./server').start(options)` returns `{ close(cb), port, tunnelPort }`; run directly it reads `pi/.env`.
 - `pi/hubctl.js`: command line for the control API. Reads the token from `pi/.env`.
 - `pi/awws.js`: checks, merges and describes the A World Worth Saving snapshot (the resource `awws`, see below). No network, no files; `server.js` stores what it returns.
+- `pi/budget.js`: the same for the personal budget snapshot (the resource `budget`, see below), with the same text rules.
 - `app/live.js`: the hub's client. Plain ES5. Loads before `hub.js`, touches no DOM, does nothing until `HUB_LIVE.start()`.
 - `HUB_CONFIG.live.server`: the server address. `''` = off. `?live=<address>` or `?live=off` in the page address overrides it (for the preview).
 
@@ -212,7 +212,7 @@ Control API: `GET /api/spotify` (`{ ok, spotify: { configured, signedIn, user, s
 
 - `rev` is one counter for the whole server. Every change adds 1 and stamps the changed resource.
 - `epoch` is made once with the file. A new epoch means "forget what you knew, take everything".
-- The resources are `todo`, `calendar`, `layout` and `awws`. A state file from before a resource existed loads fine: the missing one starts empty.
+- The resources are `todo`, `calendar`, `layout`, `awws`, `budget` and `nowplaying`. A state file from before a resource existed loads fine: the missing one starts empty.
 - A to-do item: `{ id, title, section: 'now'|'next'|'waiting', done, doneAt, createdAt, due?, notes? }`, the same shape the TV already saves. Order in `items` is display order. At most 200 items; title 1 to 80 characters; `notes` plain text of 1 to 300 characters (control characters and runs of spaces become one space; empty or `null` removes the field, so an item never holds empty notes); id up to 40 of `A-Z a-z 0-9 _ -`; one item at most 2000 bytes as JSON. Done items ticked more than 48 hours ago are dropped on the next write.
 
 ### Screen API (no token; private addresses only, or `HUB_TV_IPS`)
@@ -251,7 +251,7 @@ Ops are applied in order and the last one to arrive wins. `set` merges `fields` 
 
 ### Control API (token; both doors)
 
-`Authorization: Bearer <token>`. Wrong or missing: `401 { ok: false, error: 'wrong token' }`. Bodies are JSON, at most 8 KB, except `POST /api/awws`, which takes up to 64 KB (the snapshot inside it may be at most 48 KB). A body over the limit is refused with `413 { ok: false, error: 'request body too large (at most 8 KB)' }` (or `64 KB`) before it is read.
+`Authorization: Bearer <token>`. Wrong or missing: `401 { ok: false, error: 'wrong token' }`. Bodies are JSON, at most 8 KB, except `POST /api/awws` and `POST /api/budget`, which take up to 64 KB (the snapshot inside it may be at most 48 KB). A body over the limit is refused with `413 { ok: false, error: 'request body too large (at most 8 KB)' }` (or `64 KB`) before it is read.
 
 | Call | Body | Answer |
 |---|---|---|
@@ -263,10 +263,12 @@ Ops are applied in order and the last one to arrive wins. `set` merges `fields` 
 | `POST /api/layout` | `{ layout: [...] \| null }` | `{ ok, rev, changed, layout }`; see "Tile layout from the Pi" |
 | `GET /api/awws` | | `{ ok, rev, data, tz }`: the stored snapshot, and the hub's time zone so `./hub awws show` can write times the way `./hub calendar status` does |
 | `POST /api/awws` | `{ snapshot: {...} \| null }` | `{ ok, rev, changed, bytes, accepted, cleared, rejected }`; see below |
+| `GET /api/budget` | | `{ ok, rev, data, tz }`: the stored budget snapshot |
+| `POST /api/budget` | `{ snapshot: {...} \| null }` | the same answer as `POST /api/awws`; see below |
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
 | `GET /health` (no token) | | `{ ok, server }` |
 
-Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload` (the hub restarts through the loader with `HUB_UPDATE.restart()`, so it lands on the newest commit; ignored in the first 30 seconds after loading), `lang` `{ lang: 'en'|'es' }`. Anything else is `400`.
+Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload` (the hub restarts through the loader with `HUB_UPDATE.restart()`, so it lands on the newest commit; ignored in the first 30 seconds after loading). Anything else is `400`.
 
 ### The A World Worth Saving snapshot (`awws`)
 
@@ -277,6 +279,10 @@ The full contract, field by field, is [`docs/awws-snapshot.md`](awws-snapshot.md
 - It answers `400` and changes nothing when the snapshot as a whole is wrong (not an object, `v` not 1, `sentAt` missing or more than 10 minutes ahead, no sections, over 48 KB as sent or once merged with what is stored) or every section in it was rejected. The error text names each rejected section and why.
 - Every accepted snapshot is stored and pushed, even when no section changed: its new `sentAt` is what tells the TV the data is fresh. `changed` says whether any section's contents changed. Only a clear when nothing is stored leaves `rev` alone.
 - The log notes each call without its contents, for example `control POST /api/awws -> 200 3 sections stored, 12.4 KB, rev 58`.
+
+### The budget snapshot (`budget`)
+
+The contract is [`docs/budget-snapshot.md`](budget-snapshot.md). The resource is `budget`: `{ v: 1, sentAt, receivedAt, room?, cardDay?, goals?, alerts? }`, empty as `{ v: 1, sentAt: null, receivedAt: null }`. `POST /api/budget` follows exactly the rules of `POST /api/awws` above (each section checked by itself, `null` clears, 48 KB, stored and pushed even when unchanged). It is sent by the budget app on the Pi itself, with the token; the TV keeps its last copy as `homeHub.budget.v1`.
 
 ### The hub's client
 

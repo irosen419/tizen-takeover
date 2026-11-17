@@ -156,3 +156,6 @@
 .wotd-panel.is-full .wotd-def-other { font-size: 1.25rem; }
 .wotd-panel.is-full .wotd-ex { font-size: 1.7rem; }
 .wotd-panel.is-full .wotd-ex-en { font-size: 1.25rem; }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }

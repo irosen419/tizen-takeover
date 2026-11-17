@@ -104,6 +104,21 @@ var HUB_CONFIG = {
       { widget: 'today',         x: 9, y: 0, w: 3, h: 1 },
       { widget: 'weather',       x: 9, y: 1, w: 3, h: 2 },
       { widget: 'calendar',      x: 9, y: 3, w: 3, h: 3 }
+    ] },
+    { id: 'awws-money', name: 'AWWS money', layout: [
+      { widget: 'awws',          x: 0, y: 0, w: 3, h: 3 },
+      { widget: 'awws-money',    x: 3, y: 0, w: 6, h: 3 },
+      { widget: 'calendar',      x: 9, y: 0, w: 3, h: 6 },
+      { widget: 'awws-todo',     x: 0, y: 3, w: 6, h: 3 },
+      { widget: 'entertainment', x: 6, y: 3, w: 3, h: 3 }
+    ] },
+    { id: 'budget', name: 'Budget', layout: [
+      { widget: 'budget-room',   x: 0, y: 0, w: 4, h: 3 },
+      { widget: 'budget-card',   x: 4, y: 0, w: 4, h: 3 },
+      { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 6 },
+      { widget: 'calendar',      x: 0, y: 3, w: 5, h: 3 },
+      { widget: 'today',         x: 5, y: 3, w: 3, h: 1 },
+      { widget: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
     ] }
   ],
 
@@ -182,9 +197,10 @@ var HUB_CONFIG = {
 
     /*
      * A World Worth Saving: the awws tiles (awws, awws-visits, awws-agenda,
-     * awws-todo, awws-reach, and the placeholders awws-outreach,
-     * awws-pipeline and awws-money). One setting for all of them. Reach is
-     * on no layout yet: place it with the Layout Studio or ./hub layout set.
+     * awws-todo, awws-reach, awws-money, and the placeholders awws-outreach
+     * and awws-pipeline). One setting for all of them. Reach is on no layout
+     * yet: place it with the Layout Studio or ./hub layout set. Money
+     * (Earned vs spent) is on the "AWWS money" layout.
      *
      * calendars: which of the Pi's calendars to use, by the name given in the
      * Pi's .env (CALENDAR_n_NAME; case and spaces at the ends don't matter).
@@ -193,7 +209,8 @@ var HUB_CONFIG = {
      * described in docs/awws-snapshot.md.
      *
      * showMoney: the owner said yes to money figures on the TV on
-     * 2026-11-16. Set it to false to keep them off the TV (for guests, say).
+     * 2026-11-16. Set it to false to keep them off the TV (for guests, say):
+     * the Glance drops its money line and Earned vs spent says it is hidden.
      */
     awws: {
       calendars: {
@@ -202,6 +219,18 @@ var HUB_CONFIG = {
       },
       showMoney: true
     },
+
+    /*
+     * Personal budget: Daily room, Card day and Goals (budget-room,
+     * budget-card, budget-goals, on the "Budget" layout), and a banner across
+     * the top when a charge posts at a merchant that was cut ("New charge:
+     * ...", never an amount; OK dismisses it). The budget app on the Pi sends
+     * only totals to the hub server there (docs/budget-snapshot.md).
+     *
+     * show: false hides all of it on this TV (the tiles say so, and the
+     * banner never shows).
+     */
+    budget: { show: true },
 
     /*
      * Weather: today on the tile, the next hours and the week in the panel.
@@ -228,10 +257,12 @@ var HUB_CONFIG = {
      * in the album's colors that moves with the song, filling the full screen
      * page only, with the song as a small card in the corner. true lets the
      * TV pick how much it can show (it checks its own frame rate); false
-     * turns it off; 'radiant' (or 'full'; glow, bloom and motes), 'classic' (the older
-     * flat look), 'lite' (smaller and lighter),
-     * 'glow' (soft glows only) or 'wash' (a still wash of color, with the big
-     * picture) fixes a level. ?viz=off|wash|glow|lite|classic|radiant on the address
+     * turns it off; 'radiant' (or 'full'; glow, bloom and motes), 'sharp'
+     * (the same size canvas, crisp lines, no bloom), 'sharplite' (or
+     * 'sharp-lite'; a little smaller), 'classic' (the older flat look),
+     * 'lite' (smaller and lighter), 'glow' (soft glows only) or 'wash' (a
+     * still wash of color, with the big picture) fixes a level.
+     * ?viz=off|wash|glow|lite|classic|sharplite|sharp|radiant on the address
      * tries one for a visit.
      */
     nowplaying: { visualizer: true }

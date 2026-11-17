@@ -794,6 +794,27 @@
 }
 .cal-strip-title.is-quiet { color: var(--text-2); }
 
+/* ---------- tile: tight ---------- */
+
+/* The tile never draws outside its border. When the date and the next
+   event don't both fit, the next event becomes one line ("NEXT  Tomorrow
+   10:00 AM  Title") and the date gives way if that still isn't enough. */
+.cal-tile { overflow: hidden; }
+.cal-tile.is-tight .cal-next { margin-top: 0.5rem; display: flex; align-items: center; }
+.cal-tile.is-tight .cal-next-label { flex: 0 0 auto; margin-right: 0.7rem; }
+.cal-tile.is-tight .cal-next-line { flex: 1 1 auto; min-width: 0; margin-top: 0; }
+.cal-tile.is-tight .cal-next-text { display: flex; align-items: center; }
+.cal-tile.is-tight .cal-next-when { flex: 0 0 auto; margin-right: 0.6rem; white-space: nowrap; }
+.cal-tile.is-tight .cal-next-title {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: none;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cal-tile.is-tight .cal-tile-empty { margin-top: 0.5rem; }
+
 /* ---------- tile: small sizes ---------- */
 
 .tile-h1 .cal-tile,
@@ -809,3 +830,6 @@
 .tile-w1 .cal-strip-line .cal-bar,
 .tile-w1 .cal-strip-title { display: none; }
 .tile-w1 .cal-strip-when { margin: 0 auto; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }
