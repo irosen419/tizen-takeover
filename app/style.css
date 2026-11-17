@@ -987,8 +987,10 @@ body.has-picture {
    it is loading, or it is a "Soon" placeholder) shows one small, muted line
    and no big mark, a little faded, so the tiles with real data lead. Only
    with motionFx.quietTiles (body.fx-quiet). Focus brings it back to full. */
-.fx-quiet .tile.is-dormant:not(.is-focused) > .tile-head,
-.fx-quiet .tile.is-dormant:not(.is-focused) > .tile-body { opacity: 0.62; }
+/* Faded marks, but never faded words: the muted line stays at 4.5:1 or
+   more on the glass (design pass 2; it was the whole head and body at 0.62). */
+.fx-quiet .tile.is-dormant:not(.is-focused) .tile-icon,
+.fx-quiet .tile.is-dormant:not(.is-focused) .np-quiet-mark { opacity: 0.62; }
 .fx-quiet .tile.is-dormant .tile-icon,
 .fx-quiet .tile.is-dormant .tile-title { color: var(--text-2); }
 .fx-quiet .tile.is-dormant.is-focused .tile-icon,
