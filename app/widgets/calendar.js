@@ -855,8 +855,22 @@
       for (i = 0; i < notes.length; i++) el('div', 'cal-tile-note' + (notes[i].warn ? ' is-warn' : ''), foot, notes[i].text);
     }
     fitRows(list, more, rows);
+    // Nothing else today, so the "next" block sits under the date. If the
+    // tile is too short for all of it, "next" shrinks to one line, then the
+    // date gives way (never drawn outside the tile).
+    function over() { return root.scrollHeight > root.clientHeight + 1 || list.scrollHeight > list.clientHeight + 1; }
+    if (a.next && !a.upcoming.length && over()) {
+      root.className += ' is-tight';
+      while (list.firstChild) list.removeChild(list.firstChild);
+      fitRows(list, more, rows);
+      if (over() && head.parentNode === root) {
+        root.removeChild(head);
+        while (list.firstChild) list.removeChild(list.firstChild);
+        fitRows(list, more, rows);
+      }
+    }
     // A small tile with no room for even one row: the date gives way.
-    if (list.firstChild && list.scrollHeight > list.clientHeight + 1) {
+    if (list.firstChild && list.scrollHeight > list.clientHeight + 1 && head.parentNode === root) {
       root.removeChild(head);
       while (list.firstChild) list.removeChild(list.firstChild);
       fitRows(list, more, rows);
