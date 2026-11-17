@@ -9,7 +9,11 @@
  * still moves; a panel clears and blocks scenes; a layout change ends one;
  * the layout bar blocks scenes and a layout picked there is measured anew;
  * clay: false and ?clay=off load nothing; a missing sprite skips the scene;
- * night hours pick night scenes; a ticked to-do item queues a cheer; the
+ * night hours pick night scenes; by day, over 4000 picks fed their last
+ * scene with HUB_TEST.clay.setLast(name) (a test-only hook: the scene choose()
+ * treats as played last), sock-heist and the fetch family (fetch, fetch-bolt,
+ * fetch-snub) each come 17 to 23 % of the time and no family comes twice in
+ * a row; a ticked to-do item queues a cheer; the
  * status (HUB_CLAY.status(), shown in the About panel) says what is going
  * on and why not; no stylesheet is fetched; a failed sprite list is tried
  * again at the next visit and a skipped scene after 10 minutes; slow frames
@@ -1484,6 +1488,39 @@ async function checkChoosing() {
   for (const h of [23, 2, 5]) assert(picks[h].every((n) => n === 'night'), 'hour ' + h + ': ' + picks[h].join(','));
   assert(picks[14].every((n) => n !== 'night' && n !== 'morning' && n !== 'evening'), 'hour 14: ' + picks[14].join(','));
   assert(picks[7].indexOf('morning') >= 0 && picks[20].indexOf('evening') >= 0, 'no morning or evening scene');
+  // Many visits in a row at 14:00 with no weather outfit, each told the one
+  // before: equal shares by family, and never one family twice in a row.
+  const run = await page.evaluate(() => {
+    const C = window.HUB_TEST.clay;
+    const ws = (window.HUB_WIDGETS || []).filter((x) => x && x.id === 'weather');
+    const saved = ws.map((x) => ({ x, had: x.hasOwnProperty('current'), real: x.current }));
+    for (const x of ws) x.current = function () { return null; };
+    const seq = [];
+    try {
+      C.setHour(14);
+      let last = '';
+      for (let i = 0; i < 4000; i++) {
+        C.setLast(last);
+        last = C.choose();
+        seq.push(last);
+      }
+    } finally {
+      for (const v of saved) { if (v.had) v.x.current = v.real; else delete v.x.current; }
+      C.setLast('');
+      C.setHour(null);
+    }
+    return seq;
+  });
+  const fam = (n) => /^fetch(-|$)/.test(n) ? 'fetch' : n;
+  const count = {};
+  for (const n of run) count[fam(n)] = (count[fam(n)] || 0) + 1;
+  const share = (f) => (count[f] || 0) / run.length;
+  const shares = Object.keys(count).sort().map((f) => f + ' ' + (100 * share(f)).toFixed(1) + '%').join(', ');
+  assert(!count.weather && !count.night && !count.morning && !count.evening, 'hour 14 without weather: ' + shares);
+  assert(share('sock-heist') >= 0.17 && share('sock-heist') <= 0.23, 'sock-heist share: ' + shares);
+  assert(share('fetch') >= 0.17 && share('fetch') <= 0.23, 'fetch family share: ' + shares);
+  for (let i = 1; i < run.length; i++) assert(fam(run[i]) !== fam(run[i - 1]), 'same family twice in a row at ' + i + ': ' + run[i - 1] + ', ' + run[i]);
+  console.log('    day shares over ' + run.length + ' picks: ' + shares);
   // Ticking off an item in the To-do panel queues a cheer for the next visit.
   await page.evaluate(() => window.HUB_TEST.openPanel('todo'));
   await until(() => page.evaluate(() => window.HUB_TEST.open() === 'todo' && !window.HUB_TEST.busy()), 4000, 'to-do did not open');
@@ -1575,7 +1612,7 @@ async function main() {
   await check('6b. The layout bar ends a scene and blocks new ones; a layout picked there is measured anew', checkSwitcher);
   await check('7. clay: false, on: false and ?clay=off load and show nothing', checkOff);
   await check('8. A missing sprite skips that scene; a missing sprite list skips all; the hub is fine', checkMissing);
-  await check('9. Night hours pick night scenes; a ticked to-do item queues a cheer', checkChoosing);
+  await check('9. Night hours pick night scenes; by day each family as likely, never twice in a row; a ticked to-do item queues a cheer', checkChoosing);
   await check('10. The status: playing, stopped, a busy hub, a page that reports hidden', checkStatus);
   await check('11. The sprite list: not valid, too slow (and used when it comes late), and a failure tried again at the next visit', checkSpriteList);
   await check('12. No stylesheet to wait for: a scene plays with clay.css never asked for', checkNoStylesheet);

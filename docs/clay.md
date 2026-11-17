@@ -20,7 +20,7 @@ Ian and his goldendoodle Ember are stop-motion clay puppets. They have no tile. 
 | `cheer` | after a to-do item is ticked off | Ian ticks his clipboard, jumps for joy, stars pop. | 17 to 19 s |
 | `shrug` | after the Pi connection is lost | Ian shrugs, Ember tilts her head. | 15 to 18 s |
 
-The lengths are at the real speed and vary a little with where they stop and which way they go (`dev/clay-test.js` checks every scene stays in its range). A reaction (`cheer`, `shrug`) plays at the next visit. Otherwise the time of day decides, then chance, never the same scene twice in a row.
+The lengths are at the real speed and vary a little with where they stop and which way they go (`dev/clay-test.js` checks every scene stays in its range). A reaction (`cheer`, `shrug`) plays at the next visit. Otherwise the time of day decides, then chance: by day `stroll`, `sock-heist`, `zoomies`, `perch` and the fetch family (`fetch`, `fetch-bolt`, `fetch-snub`, sharing one weight) are equally likely, `morning` and `evening` a little more so in their hours, `weather` the same as the others. Never the same scene twice in a row, nor two of the fetch family.
 
 Any key press or click sends them away in the same instant, before the hub acts on the key. So does a panel, a dashboard or the layout bar opening (a panel also when the Pi opens it), the page being hidden, or the layout changing (picked in the layout bar, sent by the Pi, or a resize); no scene starts while any of those is open. They measure the tiles each time a scene starts, so they work with any layout.
 
@@ -132,7 +132,7 @@ SCENES.bark = function (S) {
 - Steps: `at(x, y)`, `face(dir)` (a `right` sprite is mirrored to face left), `pose(key, ticks, dy)`, `cycle(keys, ticks, every, { dy, dx })`, `walk(keys, toX, step, every, { dy, keepFace, ease, stride })`, `arc(keys, x, y, height, ticks)`, `move(dx, dy, ticks, { key, fade })`, `wait(ticks)`, `hide()`, `fade(opacity)`, `ground(y)` (where the shadow sits), `signal(name)` and `after(name)` (wait for another actor). The helper `go(actor, GAIT, toX, { step, ease })` walks with a gait (`IAN_WALK`, `IAN_RUN`, `EMBER_TROT`, `EMBER_RUN`, ...). Travel with a gait; strike a special pose standing still (the weather outfits come in a puff once Ian has stopped) rather than sliding one picture across the screen.
 - `walkTicks(from, to, step, easeIn, easeOut)` says how many ticks a walk takes, to time something else to it (the ball in `fetch` meets Ember's mouth at the top of her leap).
 - Return `false` when the scene doesn't fit (`perch` with no ledge).
-- Add it to `bagFor()` with a weight, to `PLAYS` and `LENGTHS` in `dev/clay-test.js`, which plays every scene and checks the rules above and its length, and to `SHOTS` in `dev/clay-shots.js`.
+- Add it to `bagFor()` with a weight (a variant of another scene also goes in `FAMILY`, next to it), to `PLAYS` and `LENGTHS` in `dev/clay-test.js`, which plays every scene and checks the rules above and its length, and to `SHOTS` in `dev/clay-shots.js`.
 
 ## Testing and filming
 
