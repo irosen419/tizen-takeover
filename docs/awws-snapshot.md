@@ -129,7 +129,7 @@ Stored like any other section. Ian said yes to money figures on the living room 
 | Field | Type | Notes |
 |---|---|---|
 | `currency` | three capital letters | required, e.g. `USD` |
-| `spent`, `earned` | numbers, 0 to 1,000,000,000 | required: totals to date, rounded to cents by the Pi |
+| `spent`, `earned` | numbers, 0 to 1,000,000,000 | required: totals since the first month on record (not just this month), rounded to cents by the Pi. The AWWS sync sends what Ian's AWWS profit page counts: `spent` is every cost line, `earned` is royalties earned by sale month (not payouts received), so the net is negative until the books pay off |
 | `months` | list, at most 12 | optional: `{ "month": "2026-11", "spent": 120.5, "earned": 80 }`, oldest first |
 | `claude` | object | optional: `{ "month": "2026-11", "cost": 41.2 }` |
 | `nextTransfer` | object | optional: `{ "date": "2026-12-01", "amount": 250 }`; `amount` may be left out |

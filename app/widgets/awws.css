@@ -359,14 +359,12 @@
 .aw-strip-when.is-now { color: var(--text); font-weight: 600; }
 .aw-strip-title + .aw-strip-when { margin: 0 0 0 0.35rem; }
 .aw-strip-when.is-strong { color: var(--text); font-weight: 600; }
-.aw-strip-extra,
-.aw-strip-quiet {
+.aw-strip-extra {
   flex: 0 0 auto;
   margin-left: 0.35rem;
   color: var(--text-2);
   white-space: nowrap;
 }
-.aw-strip-quiet { margin: 0 0.5rem 0 0; color: var(--text-3); }
 .aw-strip-num {
   flex: 0 0 auto;
   margin-right: 0.7rem;

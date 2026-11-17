@@ -122,7 +122,7 @@ The tile changes as soon as you pick, behind the page. All three choices are rem
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.28.13 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather), and **Scripts** only when one of the hub's script files failed to load: `logos.js loaded on a later try` (it was fetched again and the page loaded again by itself) or `logos.js did not load` (see [When a file fails to load](#when-a-file-fails-to-load)).
+- **This hub:** **Version** (for example `v0.28.15 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather), and **Scripts** only when one of the hub's script files failed to load: `logos.js loaded on a later try` (it was fetched again and the page loaded again by itself) or `logos.js did not load` (see [When a file fails to load](#when-a-file-fails-to-load)).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
 - **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `sharp`, `sharp-lite`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, at the canvas levels how long a frame takes to draw (`14 ms a frame`; a 30 fps frame has 33 ms, so this shows the headroom), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
@@ -277,7 +277,7 @@ The tiles:
 - **To-do board** (`awws-todo`): how many Now items are yours, the overdue count in amber, then the items with their owner (Ian, Claude or Both), due date and what they wait on.
 - **Reach** (`awws-reach`): site visits this week as the big number, up or down from last week, and a line of the last 14 days; then buy clicks, flier scans by school, and newsletter subscribers with the day they were last counted. Subscribers are counted by hand for now, so today it shows "2 subscribers, at last check Nov 16"; the visits take over as the big number once the sync sends them. Its panel has each figure with a longer trend.
 
-- **Earned vs spent** (`awws-money`): the net so far this month, big, green when it is up and coral when it is down; "earned $1,265 · spent $1,841"; then a pair of bars per month (earned green, spent coral) and, on a tall tile, the next transfer. It never shows a balance. It is on the **AWWS money** layout.
+- **Earned vs spent** (`awws-money`): the net so far (total earned minus total spent since the first month on record, the same figures as Ian's AWWS profit page), big, green when it is up and coral when it is down; "earned $1,265 · spent $1,841"; then a pair of bars per month (earned green, spent coral) and, on a tall tile, the next transfer. It never shows a balance. It is on the **AWWS money** layout.
 
 Librarians and Books (`awws-outreach`, `awws-pipeline`) hold their spot with a "Soon" tag for now. [docs/tile-sizes.md](docs/tile-sizes.md) says what each tile shows at each size.
 
@@ -497,13 +497,6 @@ The [About panel](#about-panel-the-version-and-status) says how it's going:
 The version on TizenBrew's card for the hub comes from the branch's `package.json` through jsDelivr's cache, so it can lag behind by up to 12 hours. The version in the About panel is the truth.
 
 A few files still come through jsDelivr's 12-hour branch cache: `package.json`, `service.js`, the loader `app/index.html`, and `app/update.js` as the loader uses it. These rarely change. (The shell's copy of `update.js` decides holds too: until it is 0.18.1 or later, and while the commit gone back to is older than 0.18.1, a slow commit is held 6 hours like a broken one, and the notice names it by its short commit id rather than its version.) After changing one of them, purge it at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/<file>` (for example `.../app/update.js`), or wait 12 hours.
-
-**Once, to get this version onto the TV:** jsDelivr still has the old `app/index.html`, so purge these four files once, then reopen the hub:
-
-- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/index.html`
-- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/update.js`
-- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/hub.html`
-- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/package.json`
 
 ### When a file fails to load
 
