@@ -24,9 +24,9 @@ const ROW = [
     await page.click('#panel [data-key="guest-on"]');
     await H.sleep(500);
     await page.screenshot({ path: path.join(out, 'guest-2-clock-page-on.jpg'), quality: 82 });
-    await H.key(page, 'Escape');
-    await H.idle(page);
-    await H.sleep(400);
+    await page.ctx.close();
+    // Before and after differ only in Guest mode: same layout, data, time and focus.
+    page = await env.newPage({ layout: ROW, storage: Object.assign({ 'homeHub.guest.v1': 'on' }, seen), scale: 1 });
     await page.screenshot({ path: path.join(out, 'guest-3-on.jpg'), quality: 82 });
     await H.openPanel(page, 'budget-card');
     await H.sleep(300);
