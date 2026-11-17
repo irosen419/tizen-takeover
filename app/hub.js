@@ -799,7 +799,11 @@
     // Content that lays out by the box's height (a picture sized to it) may
     // need a little more at the new height: grow by what overflows, once.
     var max = panelRect(null).height;
-    var over = panel.body.scrollHeight - panel.body.clientHeight;
+    // (offsets, not scrollHeight: items mid-stagger are moved by transforms)
+    var over = 0;
+    for (var c = panel.body.firstElementChild; c; c = c.nextElementSibling) {
+      if (c.offsetParent === panel.body) over = Math.max(over, Math.ceil(c.offsetTop + c.offsetHeight - panel.body.clientHeight));
+    }
     if (over > 0 && h < max) {
       h = Math.min(max, h + over);
       sizeBoxes({ height: h });
