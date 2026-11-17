@@ -22,6 +22,9 @@
  *   - The opened panel is as tall as its content (within 24 px), at most
  *     26rem; the Back hint is a chip that can't take focus; pushed-aside
  *     tiles show only their icon and title, and get their body back on close.
+ *     Budget lab's panel stops at 26rem and scrolls down to its merchants,
+ *     and its section heads (Merchants, Put it somewhere, Pace) are one line
+ *     each in English, Spanish and Spanish +25%.
  *   - The accent edge (a faint blue border over the tile's whole border):
  *     on a new to-do, a changed snapshot, a changed budget and a calendar
  *     change, and for an event starting within the hour; it goes after its
@@ -75,7 +78,7 @@ function configLayouts() {
 const LAYOUTS = configLayouts();
 
 // Every widget with a title, laid out in tiles of one size class each.
-const WIDS = ['awws', 'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'wotd', 'calendar', 'todo', 'weather',
+const WIDS = ['awws', 'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'wotd', 'calendar', 'todo', 'weather',
   'mirror', 'ambiance', 'entertainment', 'awws-todo', 'awws-visits', 'awws-agenda', 'awws-reach', 'nowplaying', 'today', 'sunpath'];
 function grid(w, h, ids) {
   const out = [];
@@ -372,6 +375,38 @@ function edgeOn(p, id) {
       assert(a.height === b.height && b.ghost === b.height, 'back from full screen: ' + JSON.stringify([a, b]));
     });
 
+    await check('Budget lab panel: 26rem at most and it scrolls to the merchants; its section heads are one line each, English, Spanish and +25%', async () => {
+      for (const v of [{ lang: 'en' }, { lang: 'es' }, { lang: 'es', grow: true }]) {
+        const p = await page(env, { layout: LAYOUTS.budget, lang: v.lang, grow: v.grow });
+        const where = v.lang + (v.grow ? ' +25%' : '');
+        try {
+          await H.openPanel(p, 'budget-lab');
+          const f = await panelFit(p);
+          assert(Math.abs(f.height - f.max) <= 1 && f.overflow, where + ': the panel does not cap and scroll: ' + JSON.stringify(f));
+          // Down to the first merchant: the panel body scrolls it into view.
+          for (let i = 0; i < 3; i++) await H.key(p, 'ArrowDown');
+          const r = await p.evaluate(() => {
+            const body = document.querySelector('#panel .panel-body');
+            const b = body.getBoundingClientRect();
+            const f = document.querySelector('#panel .is-focused');
+            const fr = f.getBoundingClientRect();
+            const heads = Array.prototype.map.call(document.querySelectorAll('#panel .bl-msec > .bu-label, #panel .bl-dest > .bu-label, #panel .bl-pace > .bu-label'), (n) => {
+              const cs = getComputedStyle(n);
+              return { t: n.textContent, lines: Math.round(n.offsetHeight / parseFloat(cs.lineHeight)), lh: parseFloat(cs.lineHeight) / parseFloat(cs.fontSize),
+                cut: n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1 };
+            });
+            return { key: f.getAttribute('data-key'), inside: fr.top >= b.top - 1 && fr.bottom <= b.bottom + 1, top: body.scrollTop, heads: heads };
+          });
+          assert(r.key === 'cut-0' && r.inside && r.top > 0, where + ': the first merchant: ' + JSON.stringify(r).slice(0, 200));
+          assert(r.heads.length === 3, where + ': heads: ' + JSON.stringify(r.heads));
+          const bad = r.heads.filter((h) => h.lines !== 1 || h.lh < 1.245 || h.cut);
+          assert(!bad.length, where + ': ' + JSON.stringify(bad));
+          const errs = H.errorsOf(p, true);
+          assert(!errs.length, where + ': console: ' + errs.join(' | '));
+        } finally { await p.context().close(); }
+      }
+    });
+
     await check('Pushed-aside tiles show only icon and title; the body comes back on close', async () => {
       const p = await pushPage(env, { layout: LAYOUTS.stock });
       await p.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
@@ -496,14 +531,14 @@ function edgeOn(p, id) {
     /* ---------- Guest mode ---------- */
 
     const GUEST = { 'homeHub.guest.v1': 'on' };
-    const MONEY = ['awws-money', 'budget-room', 'budget-card', 'budget-goals'];
+    const MONEY = ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
     const titlesOf = (p) => p.evaluate((ids) => ids.map((id) => {
       const t = document.querySelector('.cell[data-widget="' + id + '"] .tile-title');
       return t ? t.textContent : null;
     }), MONEY);
 
     await check('Guest mode: the money tiles keep the same header (title or short title, icon), English, Spanish and Spanish +25%; their bodies say hidden', async () => {
-      const lays = [LAYOUTS['awws-money'], LAYOUTS.budget, grid(3, 2, MONEY), grid(2, 2, MONEY), grid(6, 3, MONEY)];
+      const lays = [LAYOUTS['awws-money'], LAYOUTS.budget, grid(3, 2, MONEY), grid(2, 2, MONEY), grid(6, 3, MONEY.slice(0, 4)), grid(6, 3, MONEY.slice(4))];
       for (const lay of lays) {
         for (const v of [{ lang: 'en' }, { lang: 'es' }, { lang: 'es', grow: true }]) {
           const off = await page(env, { layout: lay, lang: v.lang, grow: v.grow });
