@@ -15,6 +15,7 @@ const path = require('path');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
 const sample = require('./awws-sample');
+const budgetSample = require('./budget-sample');
 
 const TOKEN = 'preview-token-not-a-secret-000000';
 // Monday 16 November 2026, 10:40 AM in Chicago.
@@ -25,7 +26,7 @@ const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is
    most of them longer than the English. The TV itself stays English. */
 const SPANISH = {
   titles: { awws: 'Un mundo que vale la pena salvar', visits: 'Próxima visita', agenda: 'Esta semana', todo: 'Tablero de tareas',
-    outreach: 'Bibliotecarias', pipeline: 'Libros', money: 'Dinero', reach: 'Alcance' },
+    outreach: 'Bibliotecarias', pipeline: 'Libros', money: 'Ganado y gastado', reach: 'Alcance' },
   days: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
   daysShort: ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'],
   months: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
@@ -76,6 +77,20 @@ const SPANISH = {
   allLive: 'Los {n} publicados',
   moneyLine: 'Gastado {spent} · ganado {earned}',
   moneyLineShort: 'sale {spent} · entra {earned}',
+  netWord: 'neto',
+  netSoFar: 'neto hasta hoy',
+  earnedSpent: 'ganado {earned} · gastado {spent}',
+  earnedSpentShort: 'entra {earned} · sale {spent}',
+  earnedOnly: 'ganado {earned}',
+  moneyHeads: { net: 'Neto hasta hoy', months: 'Por mes', next: 'Próxima transferencia', tools: 'Claude este mes' },
+  earnedWord: 'Ganado',
+  spentWord: 'Gastado',
+  nextTransfer: 'Próxima transferencia: {d}',
+  nextTransferAmt: 'Próxima transferencia: {d} · {n}',
+  moneyStates: {
+    hidden: { head: 'El dinero está oculto', line: 'showMoney está apagado en config.js, así que esta TV no muestra cifras de dinero.', short: 'showMoney está apagado en config.js.' },
+    nodata: { head: 'Todavía no hay datos de dinero', line: 'Las cifras llegan con la próxima sincronización que envíe la sección de dinero.', short: 'Esperando la próxima sincronización.' }
+  },
   reachLine: '{n} visitas esta semana',
   reachLine1: '1 visita esta semana',
   reachSubs: '{n} suscriptores',
@@ -161,8 +176,7 @@ const SPANISH = {
   broken: '{title}: no se pudo mostrar',
   planned: {
     outreach: 'Las respuestas que esperan por ti, y cuántas escuelas respondieron, reservaron y recibieron la visita.',
-    pipeline: 'Cada libro y descarga, desde la escritura hasta la publicación, y qué espera cada uno.',
-    money: 'Lo que el proyecto gastó y ganó, mes a mes.'
+    pipeline: 'Cada libro y descarga, desde la escritura hasta la publicación, y qué espera cada uno.'
   },
   plannedNote: 'Aún no está hecho. Este lugar está reservado.'
 };
@@ -218,6 +232,11 @@ async function start(opts) {
   env.setSnapshot = async (snap) => {
     const r = await env.control('POST', '/api/awws', { snapshot: snap });
     if (!r || !r.ok) throw new Error('the hub server refused the snapshot: ' + JSON.stringify(r));
+    return r;
+  };
+  env.setBudget = async (snap) => {
+    const r = await env.control('POST', '/api/budget', { snapshot: snap });
+    if (!r || !r.ok) throw new Error('the hub server refused the budget snapshot: ' + JSON.stringify(r));
     return r;
   };
   env.feedMode = async (mode) => {
@@ -294,7 +313,7 @@ async function openHub(env, o) {
       for (const k in items) localStorage.setItem(k, items[k]);
     } catch (e) { /* ignore */ }
   }, storage);
-  if (o.spanish) await page.addInitScript((s) => { window.HUB_AWWS_STRINGS = s; }, SPANISH);
+  if (o.spanish) await page.addInitScript((s) => { window.HUB_AWWS_STRINGS = s[0]; window.HUB_BUDGET_STRINGS = s[1]; }, [SPANISH, budgetSample.SPANISH]);
   if (o.config) await page.addInitScript(o.config);
   const live = o.live === undefined ? env.LIVE : o.live;
   await page.goto(env.PAGE + '/?motion=fade&live=' + encodeURIComponent(live));
@@ -371,4 +390,4 @@ async function fullScreen(page) {
   await idle(page);
 }
 
-module.exports = { start, sleep, until, key, idle, focusTile, openPanel, fullScreen, errorsOf, SPANISH, MONDAY, TOKEN, sample };
+module.exports = { start, sleep, until, key, idle, focusTile, openPanel, fullScreen, errorsOf, SPANISH, MONDAY, TOKEN, sample, budgetSample };

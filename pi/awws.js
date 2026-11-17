@@ -657,5 +657,13 @@ module.exports = {
   clearText: clearText,
   sizeText: sizeText,
   isTime: isTime,
-  isDate: isDate
+  isDate: isDate,
+  // The field checks, shared with budget.js so both resources keep the same
+  // text rules (no emails, no links, cut with "…").
+  fields: {
+    isObj: isObj, has: has, field: field, bad: bad, wrong: wrong, bytesOf: bytesOf, commas: commas, words: words,
+    textOf: textOf, wholeOf: wholeOf, boolOf: boolOf, choiceOf: choiceOf, shapedOf: shapedOf, dateOf: dateOf,
+    timeOf: timeOf, listOf: listOf, objectOf: objectOf, put: put, eachWithId: eachWithId, eachEntry: eachEntry,
+    A_TIME: A_TIME, A_DATE: A_DATE
+  }
 };

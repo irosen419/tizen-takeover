@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.3.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.4.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -116,6 +116,26 @@ This adds one new file, `awws.js`, next to `server.js`. Docker uses this folder 
 3. `./hub status` should say `version 0.2.0` (or newer), and `./hub awws show` should say `No A World Worth Saving snapshot yet.` If it says `The server said no: no such call.` instead, the server is still running the old code: do step 2 again.
 
 From the cloud, a mailbox `ping` answers `Home Hub live server 0.2.0 is running.` (or a newer version) once this is in place.
+
+## Budget snapshot
+
+The budget tiles on the TV (Daily room, Card day, Goals) and the "New charge" banner show one small file of totals, the **budget snapshot**. Your budget app, running on this Pi, works the figures out and sends them to the hub server here with the token (`POST http://127.0.0.1:8097/api/budget`); they never go through the cloud. Only totals: the room per day, the card day and how it is covered, goal states, and the names of merchants with a new charge. Never a balance, and never an amount on an alert.
+
+The full description, field by field, with a `curl` example, is in [`docs/budget-snapshot.md`](../docs/budget-snapshot.md). A made-up example is `fixtures/budget-sample.json` in this folder.
+
+- `./hub budget show` says when it was sent, its size, and one line per section with dates, counts and states only (never a label or an amount), such as `cardDay  2026-11-19 (in 3 days), covered, 3 transfers, 2 paychecks, as of 9:05 AM`. Before any snapshot it says `No budget snapshot yet.`
+- `./hub budget set budget.json` stores one by hand (`-` reads it from input).
+- `./hub budget clear` removes it. The tiles then say "Waiting for the budget app".
+
+Each section is checked on its own, with the same rules as the A World Worth Saving snapshot: no email addresses or links, unknown fields dropped, at most 48 KB. To hide the budget on the TV (for guests, say), set `show: false` under `widgets.budget` in `app/config.js`.
+
+### After pulling this change
+
+It adds `budget.js` next to `server.js` and makes the server version 0.4.0. A restart is enough, with no rebuild and no change to `.env`:
+
+1. `cd tizen-takeover && git pull && cd pi`
+2. With Docker: `docker compose restart hub`. With systemd: `sudo systemctl restart home-hub`.
+3. `./hub status` should say `version 0.4.0`, and `./hub budget show` should say `No budget snapshot yet.` If it says `The server said no: no such call.`, the server is still running the old code: do step 2 again.
 
 ## Calendars
 
@@ -324,7 +344,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.3.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.4.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 
@@ -489,7 +509,7 @@ At one look every 10 seconds the Pi makes about 8,600 list calls a day (about 26
 ### How it works (for builders)
 
 - Claude writes `inbox/<id>.json`: `{"id": "<id>", "created": "<ISO time>", "cmd": "<name>", "args": {...}}`. The id is 6 to 64 letters, digits, `_` or `-` and must match the file name; `created` must be within the last 24 hours and at most 5 minutes ahead; the file must be under 64 KB; only `id`, `created`, `cmd` and `args` are allowed.
-- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
+- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `budget.show`, `budget.set {snapshot: {...} or null}`, `budget.clear`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
 - The Pi writes `outbox/<id>.json`: `{id, cmd, ok, state, message, data, started, finished}`. `message` is the same text `./hub` prints (several lines for lists). First it writes `state: "running"` as a claim, then the final result with `state: "done"`; a command with an outbox file is never run again, even after a crash. Then it deletes the inbox file.
 - At most 20 commands per look, oldest `created` first, one at a time.
 - `status.json` is rewritten every minute and after each command: version, uptime, how many screens are listening, the mailbox's last command and last error, and a calendar summary (counts only).

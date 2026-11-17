@@ -20,6 +20,7 @@ const hubServer = require('./server');
 const mailbox = require('./mailbox');
 const hubctl = require('./hubctl');
 const awws = require('./awws');
+const budget = require('./budget');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
 const KEY_ID = 'AKIDTESTKEYID0123456789';
@@ -416,6 +417,30 @@ async function main() {
     assert.strictEqual(r.ok, true);
     assert.strictEqual(r.message, 'There is no A World Worth Saving snapshot to clear. Nothing changed.');
     assert.strictEqual(r.data.changed, false);
+  });
+
+  await check('budget.show, budget.set, budget.clear: same words as ./hub, no labels or amounts in show', async () => {
+    let r = await run(fake, h, 'budget.show');
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.message, 'No budget snapshot yet. The TV tiles say "Waiting for the budget app".');
+    const snap = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'budget-sample.json'), 'utf8'));
+    snap.sentAt = new Date(Date.now() - 60000).toISOString();
+    r = await run(fake, h, 'budget.set', { snapshot: snap });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.ok(/^Stored room, cardDay, goals and alerts \(.* of 48 KB\)\. Screens that are on change now\.$/.test(r.message), r.message);
+    assert.strictEqual(r.message, budget.setText(Object.assign({}, r.data)));
+    const stored = (await h.api('GET', '/api/budget')).body;
+    r = await run(fake, h, 'budget.show');
+    assert.strictEqual(r.message, hubctl.budgetShowLines(stored).join('\n'));
+    assert.strictEqual(r.data.sections.cardDay.transfers, 3);
+    const shown = JSON.stringify(r);
+    assert.ok(shown.indexOf('Bakery') < 0 && shown.indexOf('checking') < 0 && shown.indexOf('42.5') < 0, 'no labels or amounts');
+    r = await run(fake, h, 'budget.set', { snapshot: null });
+    assert.ok(/^Cleared the budget snapshot \(room, cardDay, goals and alerts\)\./.test(r.message), r.message);
+    r = await run(fake, h, 'budget.clear');
+    assert.strictEqual(r.message, 'There is no budget snapshot to clear. Nothing changed.');
+    r = await run(fake, h, 'show', { widget: 'budget-room' });
+    assert.strictEqual(r.ok, true, r.message);
   });
 
   await check('awws.set: a snapshot near the 48 KB cap goes through the mailbox', async () => {

@@ -57,7 +57,7 @@ function look(page) {
   });
 }
 
-var ORDER = 'style.css widgets/today.css widgets/todo.css widgets/weather.css widgets/calendar.css widgets/nowplaying.css widgets/awws.css';
+var ORDER = 'style.css widgets/today.css widgets/todo.css widgets/weather.css widgets/calendar.css widgets/nowplaying.css widgets/awws.css widgets/budget.css';
 
 var CHECKS = [
   ['Every stylesheet ends with the .css-end rule', async function () {
@@ -73,7 +73,7 @@ var CHECKS = [
     await o.page.waitForTimeout(6500);
     var s = await look(o.page);
     assert(o.fetches() === 1, 'fetches: ' + o.fetches());
-    assert(s.status === '' && s.inside && s.links === 7 && s.order === ORDER, JSON.stringify(s));
+    assert(s.status === '' && s.inside && s.links === ORDER.split(' ').length && s.order === ORDER, JSON.stringify(s));
     await o.page.close();
   }],
   ['A failed stylesheet is fetched again and the tile is drawn properly', async function (browser) {
@@ -86,7 +86,7 @@ var CHECKS = [
     var s = await look(o.page);
     if (SHOTS) await o.page.screenshot({ path: path.join(SHOTS, 'styles-2-mended.png') });
     assert(o.fetches() === 4, 'fetches: ' + o.fetches());
-    assert(s.inside && s.links === 7 && s.order === ORDER, JSON.stringify(s));
+    assert(s.inside && s.links === ORDER.split(' ').length && s.order === ORDER, JSON.stringify(s));
     assert(s.status === 'widgets/weather.css loaded on a later try', s.status);
     await o.page.close();
   }],
@@ -94,7 +94,7 @@ var CHECKS = [
     var o = await open(browser, 'cut', 1);
     await o.page.waitForTimeout(6500);
     var s = await look(o.page);
-    assert(o.fetches() === 2 && s.inside && s.links === 7, o.fetches() + ' ' + JSON.stringify(s));
+    assert(o.fetches() === 2 && s.inside && s.links === ORDER.split(' ').length, o.fetches() + ' ' + JSON.stringify(s));
     assert(s.status === 'widgets/weather.css loaded on a later try', s.status);
     await o.page.close();
   }],
@@ -102,14 +102,14 @@ var CHECKS = [
     var o = await open(browser, 'empty', 1);
     await o.page.waitForTimeout(6500);
     var s = await look(o.page);
-    assert(o.fetches() === 2 && s.inside && s.links === 7, o.fetches() + ' ' + JSON.stringify(s));
+    assert(o.fetches() === 2 && s.inside && s.links === ORDER.split(' ').length, o.fetches() + ' ' + JSON.stringify(s));
     await o.page.close();
   }],
   ['Any stylesheet is covered: the Now Playing one fails twice and is fetched again', async function (browser) {
     var o = await open(browser, 'fail', 2, 'nowplaying');
     await o.page.waitForTimeout(6500);
     var s = await look(o.page);
-    assert(o.fetches() === 3 && s.links === 7 && s.order === ORDER, o.fetches() + ' ' + JSON.stringify(s));
+    assert(o.fetches() === 3 && s.links === ORDER.split(' ').length && s.order === ORDER, o.fetches() + ' ' + JSON.stringify(s));
     assert(s.status === 'widgets/nowplaying.css loaded on a later try', s.status);
     await o.page.close();
   }],
@@ -118,7 +118,7 @@ var CHECKS = [
     await o.page.waitForTimeout(9000);
     var s = await look(o.page);
     assert(o.fetches() === 4, 'fetches: ' + o.fetches());
-    assert(s.status === 'widgets/weather.css did not load' && s.links === 7, JSON.stringify(s));
+    assert(s.status === 'widgets/weather.css did not load' && s.links === ORDER.split(' ').length, JSON.stringify(s));
     await o.page.close();
   }]
 ];

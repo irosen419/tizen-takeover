@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "sentAt": "2026-11-16T15:10:00Z",
+  "room": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "cap": 60,
+    "roomPerDay": 42.5,
+    "roomIfRefund": 48,
+    "daysLeft": 9,
+    "throughDate": "2026-11-24"
+  },
+  "cardDay": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "date": "2026-11-19",
+    "daysAway": 3,
+    "covered": true,
+    "transfers": [
+      { "label": "From checking", "amount": 310 },
+      { "label": "From savings", "amount": 125 },
+      { "label": "Side work", "amount": 60 }
+    ],
+    "paychecks": ["2026-11-20", "2026-12-04"]
+  },
+  "goals": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "items": [
+      { "label": "No takeout", "state": "clean", "text": "12 days" },
+      { "label": "Groceries", "state": "on-pace", "text": "$214 of $400", "pct": 53.5 },
+      { "label": "Coffee out", "state": "over", "text": "$62 over", "pct": 100 },
+      { "label": "Fun money", "state": "under", "text": "$38 left", "pct": 62 },
+      { "label": "Streaming", "state": "clean", "text": "2 cut" }
+    ]
+  },
+  "alerts": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "items": [
+      { "id": "a-1042", "label": "Corner Bakery Stand" }
+    ]
+  }
+}

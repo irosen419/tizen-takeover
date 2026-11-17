@@ -931,5 +931,85 @@
 }
 .aw-rpanel .aw-brow-label { flex: 0 1 45%; }
 
+/* ---------- Earned vs spent ---------- */
+
+.aw-tile,
+.aw-panel {
+  --mo-in: #8ee59a;     /* earned, and a net that is up */
+  --mo-out: #ff8a80;    /* spent, and a net that is down */
+}
+.aw-hero-num.is-up,
+.aw-strip-num.is-up,
+.aw-solo-num.is-up,
+.aw-rbig-num.is-up { color: var(--mo-in); }
+.aw-hero-num.is-down,
+.aw-strip-num.is-down,
+.aw-solo-num.is-down,
+.aw-rbig-num.is-down { color: var(--mo-out); }
+.mo-in { color: var(--mo-in); font-weight: 600; }
+.mo-out { color: var(--mo-out); font-weight: 600; }
+/* Old data: the whole tile steps back; "as of" under the title says when. */
+.aw-tile.is-stale,
+.aw-rpanel.is-stale { opacity: 0.55; }
+/* Month bars, drawn to pixel heights by the JS: earned beside spent. */
+.mo-chart {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0.7rem;
+  overflow: hidden;
+}
+.aw-split-b > .mo-chart:first-child { margin-top: 0.3rem; }
+.mo-plot {
+  display: flex;
+  align-items: flex-end;
+  border-bottom: 0.06rem solid var(--aw-hair);
+}
+.mo-pair {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 6%;
+}
+.mo-bar {
+  display: block;
+  flex: 0 1 45%;
+  max-width: 1.4rem;
+  border-radius: 0.15rem 0.15rem 0 0;
+}
+.mo-bar + .mo-bar { margin-left: 8%; }
+.mo-bar-in { background: var(--mo-in); }
+.mo-bar-out { background: var(--mo-out); opacity: 0.85; }
+.mo-labels { display: flex; padding-top: 0.2rem; }
+.mo-label {
+  flex: 1 1 0;
+  min-width: 0;
+  text-align: center;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.mo-chart.is-panel { flex: 0 0 auto; height: 9rem; margin-top: 0.6rem; }
+.aw-panel .mo-label { font-size: 1rem; }
+.aw-panel.is-full .mo-chart.is-panel { height: 16rem; }
+.mo-key { margin-top: 0.5rem; font-size: 1rem; line-height: 1.35; color: var(--text-2); white-space: nowrap; }
+.mo-key-in,
+.mo-key-out { margin-right: 1.2rem; }
+.mo-key-in:before,
+.mo-key-out:before {
+  content: '';
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.4rem;
+  border-radius: 0.15rem;
+  vertical-align: 0.02em;
+}
+.mo-key-in:before { background: var(--mo-in); }
+.mo-key-out:before { background: var(--mo-out); }
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }

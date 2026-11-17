@@ -10,7 +10,10 @@
  *   awws-reach     Reach: site visits and buy clicks this week with their
  *                  trend, flier scans at schools, and newsletter subscribers
  *                  (counted by hand for now, so it works with those alone).
- *   awws-outreach, awws-pipeline, awws-money: placeholders.
+ *   awws-money     Earned vs spent: the net so far (green when positive),
+ *                  earned and spent, and small month bars. Only while
+ *                  HUB_CONFIG.widgets.awws.showMoney is true; never a balance.
+ *   awws-outreach, awws-pipeline: placeholders.
  *
  * Two sources, both from the hub server on the Raspberry Pi:
  *   - the live resource "calendar" (docs/live-updates.md), filtered by
@@ -36,7 +39,7 @@
   var STRINGS = {
     titles: {
       awws: 'A World Worth Saving', visits: 'Next visit', agenda: 'This week', todo: 'To-do board',
-      outreach: 'Librarians', pipeline: 'Books', money: 'Money', reach: 'Reach'
+      outreach: 'Librarians', pipeline: 'Books', money: 'Earned vs spent', reach: 'Reach'
     },
     days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
@@ -92,6 +95,21 @@
     allLive: 'All {n} live',
     moneyLine: 'Spent {spent} · earned {earned}',
     moneyLineShort: '{spent} out · {earned} in',
+    // Earned vs spent
+    netWord: 'net',
+    netSoFar: 'net so far',
+    earnedSpent: 'earned {earned} · spent {spent}',
+    earnedSpentShort: '{earned} in · {spent} out',
+    earnedOnly: 'earned {earned}',
+    moneyHeads: { net: 'Net so far', months: 'By month', next: 'Next transfer', tools: 'Claude this month' },
+    earnedWord: 'Earned',
+    spentWord: 'Spent',
+    nextTransfer: 'Next transfer {d}',
+    nextTransferAmt: 'Next transfer {d} · {n}',
+    moneyStates: {
+      hidden: { head: 'Money is hidden', line: 'showMoney is off in config.js, so no money figures show on this TV.', short: 'showMoney is off in config.js.' },
+      nodata: { head: 'No money data yet', line: 'The figures arrive with the next sync that sends a money section. docs/awws-snapshot.md says how.', short: 'Waiting for the next sync.' }
+    },
     reachLine: '{n} visits this week',
     reachLine1: '1 visit this week',
     reachSubs: '{n} subscribers',
@@ -187,8 +205,7 @@
     broken: '{title} couldn’t be shown',
     planned: {
       outreach: 'Replies waiting on you, and how many schools replied, booked and were visited.',
-      pipeline: 'Each book and download from writing to live, and what each one waits on.',
-      money: 'What the project spent and earned, month by month.'
+      pipeline: 'Each book and download from writing to live, and what each one waits on.'
     },
     plannedNote: 'Not built yet. This spot is reserved for it.'
   };
@@ -2047,6 +2064,201 @@
     }
   }
 
+  /* ---------- Earned vs spent ---------- */
+
+  // The money section, tidied: { cur, spent, earned, net, months [{ m, spent,
+  // earned }], next { day, amount }, tools }, or null. Never a balance: the
+  // snapshot carries none, and nothing here adds one up.
+  function moneyData() {
+    var sec = section('money');
+    if (!sec || typeof sec.spent !== 'number' || typeof sec.earned !== 'number' || !isFinite(sec.spent) || !isFinite(sec.earned)) return null;
+    var d = { cur: str(sec.currency) || 'USD', spent: sec.spent, earned: sec.earned, net: sec.earned - sec.spent, months: [], next: null, tools: null };
+    var list = isArr(sec.months) ? sec.months : [];
+    for (var i = 0; i < list.length; i++) {
+      var m = list[i];
+      var mm = m && /^(\d{4})-(\d{2})$/.exec(str(m.month));
+      if (!mm || typeof m.spent !== 'number' || typeof m.earned !== 'number') continue;
+      d.months.push({ m: +mm[2] - 1, spent: Math.max(0, m.spent), earned: Math.max(0, m.earned) });
+    }
+    if (d.months.length > 12) d.months = d.months.slice(d.months.length - 12);
+    var nt = sec.nextTransfer;
+    var nd = nt && typeof nt === 'object' ? dayFromText(nt.date) : null;
+    if (nd !== null && nd >= today()) d.next = { day: nd, amount: typeof nt.amount === 'number' ? nt.amount : null };
+    var c = sec.claude;
+    if (c && typeof c === 'object' && typeof c.cost === 'number') d.tools = c.cost;
+    return d;
+  }
+
+  function cash(n, d) { return money(n, d.cur); }
+
+  // "+$575", "−$575" (a real minus) or "$0".
+  function signed(n, d) {
+    var r = Math.round(n);
+    return (r > 0 ? '+' : r < 0 ? '−' : '') + money(Math.abs(r), d.cur);
+  }
+
+  function netClass(n) { var r = Math.round(n); return r > 0 ? ' is-up' : r < 0 ? ' is-down' : ''; }
+
+  // "earned $1,265 · spent $1,841", then shorter forms, for fitParts. Each
+  // figure in its color; the words around it stay quiet.
+  function earnedSpentForms(d) {
+    function parts(tpl) {
+      var out = [];
+      var rest = tpl;
+      var re = /\{(earned|spent)\}/;
+      var m;
+      while ((m = re.exec(rest))) {
+        if (m.index) out.push({ t: rest.substring(0, m.index) });
+        out.push({ t: cash(d[m[1]], d), c: m[1] === 'earned' ? 'mo-in' : 'mo-out' });
+        rest = rest.substring(m.index + m[0].length);
+      }
+      if (rest) out.push({ t: rest });
+      return out;
+    }
+    return [parts(STRINGS.earnedSpent), parts(STRINGS.earnedSpentShort), parts(STRINGS.earnedOnly)];
+  }
+
+  function nextText(d) {
+    if (!d.next) return '';
+    var day = dateText(d.next.day, 'short');
+    return d.next.amount !== null ? fill(STRINGS.nextTransferAmt, { d: day, n: cash(d.next.amount, d) }) : fill(STRINGS.nextTransfer, { d: day });
+  }
+
+  // Month bars: earned (green) beside spent (coral), to the box's measured
+  // height in pixels, so no percentage heights are needed. Labels under the
+  // bars while each month has room for one. Returns false when too small.
+  function monthBars(box, d, labels) {
+    var h = box.clientHeight;
+    var w = box.clientWidth;
+    var rem = remPx();
+    if (!d.months.length || !w || h < rem * 2.2) return false;
+    var most = 1;
+    var i;
+    for (i = 0; i < d.months.length; i++) most = Math.max(most, d.months[i].spent, d.months[i].earned);
+    var row = null;
+    if (labels !== false && w / d.months.length >= rem * 2.4 && h >= rem * 4.5) {
+      row = el('div', 'mo-labels', box);
+      for (i = 0; i < d.months.length; i++) el('span', 'mo-label', row, STRINGS.monthsShort[d.months[i].m]);
+      var cut = false;
+      for (i = 0; i < row.childNodes.length; i++) if (overW(row.childNodes[i])) cut = true;
+      if (cut) { box.removeChild(row); row = null; }
+    }
+    var room = Math.floor(h - (row ? row.offsetHeight : 0));
+    var plot = el('div', 'mo-plot', box);
+    if (row) box.insertBefore(plot, row);
+    plot.style.height = room + 'px';
+    for (i = 0; i < d.months.length; i++) {
+      var mo = d.months[i];
+      var pair = el('div', 'mo-pair', plot);
+      el('span', 'mo-bar mo-bar-in', pair).style.height = Math.max(2, Math.round(mo.earned / most * room)) + 'px';
+      el('span', 'mo-bar mo-bar-out', pair).style.height = Math.max(2, Math.round(mo.spent / most * room)) + 'px';
+    }
+    return true;
+  }
+
+  function moneyTile(body, ctx) {
+    var size = sizeOf(ctx);
+    var root = el('div', 'aw-tile aw-money', body);
+    if (!showMoney()) {
+      ctx.setTileSub('');
+      return tileMessage(root, size, STRINGS.moneyStates.hidden, true);
+    }
+    var d = moneyData();
+    var st = snapState();
+    ctx.setTileSub(d ? staleText(false, true) : '');
+    if (!d) {
+      if (st === 'data') return tileMessage(root, size, STRINGS.moneyStates.nodata, true);
+      return tileMessage(root, size, message(st === 'notsetup' ? 'notsetup' : st), st === 'notsetup');
+    }
+    if (snapStale()) root.className += ' is-stale';
+    var net = signed(d.net, d);
+    if (size.cols === 1) {
+      solo(root, net, [STRINGS.netWord]);
+      root.firstChild.className += netClass(d.net);
+      return;
+    }
+    if (size.tier === 'strip') return moneyStrip(root, size, d, net);
+    var wide = size.width === 'wide';
+    var tall = size.tier === 'tall';
+    var left = wide ? el('div', 'aw-split-a', el('div', 'aw-split', root)) : root;
+    var right = wide ? el('div', 'aw-split-b', left.parentNode) : null;
+    var hb = el('div', 'aw-hero', left);
+    hb.numEl = el('span', 'aw-hero-num' + netClass(d.net), hb, net);
+    var cap = el('span', 'aw-hero-cap', hb, STRINGS.netSoFar);
+    var line = el('div', 'aw-rline mo-line', left);
+    var chart = d.months.length ? el('div', 'mo-chart', wide ? right : left) : null;
+    var nf = tall && d.next ? el('div', 'aw-foot', wide ? right : root, nextText(d)) : null;
+    fitHero(hb);
+    if (cap.offsetLeft <= hb.numEl.offsetLeft + 1) cap.textContent = STRINGS.netWord;
+    if (!fitParts(line, earnedSpentForms(d))) { line.parentNode.removeChild(line); line = null; }
+    if (nf && overW(nf)) fitForms(nf, [nextText(d), fill(STRINGS.nextTransfer, { d: dateText(d.next.day, 'short') })]);
+    trim(root, [nf]);
+    if (chart && !monthBars(chart, d, true)) {
+      chart.parentNode.removeChild(chart);
+      chart = null;
+    }
+    if (!chart && size.cols >= 3) mark(root);
+  }
+
+  function moneyStrip(root, size, d, net) {
+    root.className += ' aw-strip';
+    if (size.width === 'narrow') {
+      var hb = el('div', 'aw-hero is-strip', root);
+      hb.numEl = el('span', 'aw-hero-num' + netClass(d.net), hb, net);
+      el('span', 'aw-hero-cap', hb, STRINGS.netWord);
+      fitHero(hb);
+      if (overW(root) && hb.lastChild !== hb.numEl) hb.removeChild(hb.lastChild);
+      return;
+    }
+    var line = el('div', 'aw-strip-line', root);
+    el('span', 'aw-strip-num' + netClass(d.net), line, net);
+    var text = el('span', 'aw-rstrip', line);
+    var forms = earnedSpentForms(d);
+    var withNet = [];
+    for (var i = 0; i < forms.length; i++) withNet.push([{ t: STRINGS.netWord }, sepPart()].concat(forms[i]));
+    fitParts(text, withNet.concat(forms, [[{ t: STRINGS.netSoFar }], [{ t: STRINGS.netWord }]]));
+    text.style.flexShrink = '0';
+    if (d.next) {
+      var more = el('span', 'aw-strip-extra', line, STRINGS.sep + nextText(d));
+      if (overW(line)) line.removeChild(more);
+    }
+  }
+
+  function moneyPanel(root, ctx, opts) {
+    if (!showMoney()) return panelMessage(root, STRINGS.moneyStates.hidden);
+    var d = moneyData();
+    var st = snapState();
+    if (!d) return panelMessage(root, st === 'data' ? STRINGS.moneyStates.nodata : message(st === 'notsetup' ? 'notsetup' : st));
+    var wrap = el('div', 'aw-rpanel mo-panel' + (opts.full ? ' is-cols' : '') + (snapStale() ? ' is-stale' : ''), root);
+    var cols = [el('div', 'aw-rcol', wrap)];
+    if (opts.full) cols.push(el('div', 'aw-rcol', wrap));
+    var first = true;
+    function sect(key, parent, head) {
+      var box = el('div', 'aw-rsec f', parent);
+      box.setAttribute('data-key', 'm-' + key);
+      if (first) { box.setAttribute('data-autofocus', ''); first = false; }
+      label(box, head, 'aw-rsec-head');
+      return box;
+    }
+    var top = sect('net', cols[0], STRINGS.moneyHeads.net);
+    var big = el('div', 'aw-rbig', top);
+    big.numEl = el('span', 'aw-rbig-num' + netClass(d.net), big, signed(d.net, d));
+    var line = el('div', 'aw-rcmp mo-line', top);
+    var side = cols[cols.length - 1];
+    var chart = null;
+    if (d.months.length) {
+      var ms = sect('months', side, STRINGS.moneyHeads.months);
+      chart = el('div', 'mo-chart is-panel', ms);
+      var key = el('div', 'mo-key', ms);
+      el('span', 'mo-key-in', key, STRINGS.earnedWord);
+      el('span', 'mo-key-out', key, STRINGS.spentWord);
+    }
+    if (d.next) el('div', 'aw-rcmp', sect('next', cols[0], STRINGS.moneyHeads.next), nextText(d));
+    if (d.tools !== null) el('div', 'aw-rcmp', sect('tools', cols[0], STRINGS.moneyHeads.tools), cash(d.tools, d));
+    fitParts(line, earnedSpentForms(d));
+    if (chart && !monthBars(chart, d, true)) chart.parentNode.parentNode.removeChild(chart.parentNode);
+  }
+
   /* ---------- the Glance ---------- */
 
   function glanceTile(body, ctx) {
@@ -2330,7 +2542,8 @@
     var b = board();
     var from = opts.from || 'visits';
     var list = el('div', 'aw-launch', root);
-    function row(key, name, status, soon) {
+    // soon: a quiet row that takes no focus; tag: with the Soon tag.
+    function row(key, name, status, soon, tag) {
       var r = el('div', 'aw-lrow' + (soon ? ' is-soon' : ' f'), list);
       if (!soon) {
         r.setAttribute('data-key', 'go-' + key);
@@ -2338,7 +2551,7 @@
       }
       el('div', 'aw-lrow-name', r, name);
       var s = el('div', 'aw-lrow-status aw-cut', r, status);
-      if (soon) el('span', 'aw-lrow-soon', r, STRINGS.soon);
+      if (soon && tag !== false) el('span', 'aw-lrow-soon', r, STRINGS.soon);
       return s;
     }
     var vs;
@@ -2379,7 +2592,9 @@
     el('div', 'aw-ldiv', list);
     for (var k = 0; k < soon.length; k++) {
       var f = figure(soon[k]);
-      var s = row(soon[k], STRINGS.titles[soon[k]], f.missing ? '' : f.forms[0], true);
+      // Money is built (its own tile, Earned vs spent): a quiet figure, no Soon tag.
+      var isMoney = soon[k] === 'money';
+      var s = row(soon[k], isMoney ? STRINGS.figures.money : STRINGS.titles[soon[k]], f.missing ? '' : f.forms[0], true, !isMoney);
       if (f.missing) s.parentNode.removeChild(s);
     }
   }
@@ -2412,6 +2627,7 @@
     else if (view === 'agenda') { ctx.setSub(subText(ctx, view, true, true)); agendaPanel(root, ctx, opts); }
     else if (view === 'todo') { ctx.setSub(subText(ctx, view, false, true)); todoPanel(root, ctx, opts); }
     else if (view === 'reach') { ctx.setSub(subText(ctx, view, false, true)); reachPanel(root, ctx, opts); }
+    else if (view === 'money') { ctx.setSub(showMoney() ? subText(ctx, view, false, true) : ''); moneyPanel(root, ctx, opts); }
     else if (view === 'dash') {
       ctx.setSub(subText(ctx, view, true, true));
       root.className += ' is-fill';
@@ -2557,6 +2773,7 @@
     board: board,
     calFor: calFor,
     snapState: snapState,
+    moneyData: function () { return moneyData(); },
     refresh: function () { refreshAll(); },
     redraws: function () { return S.redraws || 0; },
     store: S
@@ -2568,7 +2785,7 @@
   list.push(real('awws-agenda', 'agenda', agendaTile));
   list.push(real('awws-todo', 'todo', todoTile));
   list.push(real('awws-reach', 'reach', reachTile));
+  list.push(real('awws-money', 'money', moneyTile));
   list.push(placeholder('outreach'));
   list.push(placeholder('pipeline'));
-  list.push(placeholder('money'));
 })();
