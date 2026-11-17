@@ -1,0 +1,9 @@
+{
+ "about": "The first show list, used when the Pi has no data/shows.json yet. Change the list with ./hub shows add|remove (it is then kept in data/shows.json). service is the badge on the TV and the app Watch opens.",
+ "shows": [
+  { "name": "Hell's Kitchen", "service": "Disney+" },
+  { "name": "Shark Tank", "service": "Disney+" },
+  { "name": "The Great British Baking Show", "service": "Netflix" },
+  { "name": "Stick", "service": "Apple TV" }
+ ]
+}

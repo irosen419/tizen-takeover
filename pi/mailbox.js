@@ -30,6 +30,8 @@ const crypto = require('crypto');
 const hubctl = require('./hubctl');
 const awws = require('./awws');
 const budget = require('./budget');
+const shows = require('./shows');
+const linktests = require('./linktests');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -571,6 +573,51 @@ const COMMANDS = {
     run: async (a, ctx) => {
       const r = await ctx.call('POST', '/api/budget', { snapshot: null });
       return { message: budget.clearText(r), data: { changed: r.changed, cleared: r.cleared } };
+    }
+  },
+  'shows.list': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/shows');
+      return { message: lines(hubctl.showsListLines(r)), data: shows.summaryData(r) };
+    }
+  },
+  // Only the shape is checked here; the server's own list check decides.
+  'shows.add': {
+    args: { name: [V.text(80), true], service: [V.text(24), false], tvmazeId: [V.number(1, 999999999), false], serviceOverride: [V.text(24), false] },
+    run: async (a, ctx) => {
+      const entry = { name: a.name };
+      ['service', 'tvmazeId', 'serviceOverride'].forEach((k) => { if (a[k] !== undefined) entry[k] = a[k]; });
+      const r = await ctx.call('POST', '/api/shows', { add: entry });
+      return { message: shows.addText(r), data: { entry: r.entry, replaced: !!r.replaced, list: r.list } };
+    }
+  },
+  'shows.remove': {
+    args: { name: [V.text(80), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows', { remove: a.name });
+      return { message: shows.removeText(r.removed), data: { removed: r.removed, list: r.list } };
+    }
+  },
+  'shows.set': {
+    args: { shows: [V.list(40), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows', { set: a.shows });
+      return { message: shows.setText(r.list || []), data: { list: r.list } };
+    }
+  },
+  'shows.refresh': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows/refresh', {});
+      return { message: shows.refreshText(r), data: Object.assign({ done: !!r.done, changed: !!r.changed, problems: r.problems || [] }, shows.summaryData(r)) };
+    }
+  },
+  'linktests.show': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/linktests');
+      return { message: lines(linktests.lines(r.data)), data: { results: ((r.data && r.data.results) || []).slice(0, 40) } };
     }
   },
   status: {

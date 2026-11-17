@@ -23,6 +23,11 @@
  *   ./hub budget show                the budget snapshot: when sent, size, sections (no amounts)
  *   ./hub budget set <file.json|->   store one (the snapshot, or { snapshot: {...} })
  *   ./hub budget clear               remove it; the TV tiles say "Waiting for the budget app"
+ *   ./hub shows list                 the TV show list: running or ended, what airs next
+ *   ./hub shows add "Stick" --service "Apple TV" [--id 12345] [--watch Hulu]
+ *   ./hub shows remove "Stick"       take a show off the list
+ *   ./hub shows refresh              ask TVmaze about every show now
+ *   ./hub linktests                  the TV's watch link test answers
  *   ./hub spotify status             is Spotify connected, and what is playing
  *   ./hub spotify login              connect Spotify (once): a link to open, then paste the address back
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
@@ -46,6 +51,8 @@ const path = require('path');
 const crypto = require('crypto');
 const awws = require('./awws');
 const budget = require('./budget');
+const shows = require('./shows');
+const linktests = require('./linktests');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
@@ -494,6 +501,54 @@ async function awwsCommand(args) {
   stop('Use one of: awws show, awws set <file.json|->, awws clear. Run ./hub help for examples.');
 }
 
+/* ---------- TV show schedule ---------- */
+
+function showsListLines(r) {
+  return shows.listLines(Object.assign({}, r, { tz: r && zoneOk(r.tz) ? r.tz : 'America/Chicago' }));
+}
+
+async function showsCommand(args) {
+  const sub = args[0];
+  if (!sub || sub === 'list' || sub === 'show') {
+    const r = await call('GET', '/api/shows');
+    showsListLines(r).forEach(say);
+    return;
+  }
+  if (sub === 'add') {
+    const a = parseArgs(args.slice(1), ['service', 'id', 'watch']);
+    const name = a.words.join(' ').trim();
+    if (!name) stop('Say which show, for example: ./hub shows add "Stick" --service "Apple TV"');
+    const entry = { name: name };
+    if (a.opts.service !== undefined) entry.service = a.opts.service;
+    if (a.opts.watch !== undefined) entry.serviceOverride = a.opts.watch;
+    if (a.opts.id !== undefined) {
+      if (!/^\d{1,9}$/.test(String(a.opts.id))) stop('--id must be the TVmaze show number, like 12345.');
+      entry.tvmazeId = Number(a.opts.id);
+    }
+    const r = await call('POST', '/api/shows', { add: entry });
+    say(shows.addText(r));
+    return;
+  }
+  if (sub === 'remove') {
+    const name = args.slice(1).join(' ').trim();
+    if (!name) stop('Say which show, for example: ./hub shows remove "Stick"');
+    const r = await call('POST', '/api/shows', { remove: name });
+    say(shows.removeText(r.removed));
+    return;
+  }
+  if (sub === 'refresh') {
+    const r = await call('POST', '/api/shows/refresh', {}, 40000);
+    say(shows.refreshText(r));
+    return;
+  }
+  stop('Use one of: shows list, shows add "<name>" --service <app>, shows remove "<name>", shows refresh. Run ./hub help for examples.');
+}
+
+async function linktestsCommand() {
+  const r = await call('GET', '/api/linktests');
+  linktests.lines(r.data).forEach(say);
+}
+
 /* ---------- budget snapshot ---------- */
 
 // The lines for ./hub budget show: times in the hub's time zone, no amounts.
@@ -775,6 +830,12 @@ const HELP = [
   '  ./hub budget show           the budget snapshot: when sent, size, sections (no amounts)',
   '  ./hub budget set file.json  store a budget snapshot (- reads it from input; see docs/budget-snapshot.md)',
   '  ./hub budget clear          remove it; the TV tiles say "Waiting for the budget app"',
+  '  ./hub shows list            the TV show list: still running or ended, what airs next',
+  '  ./hub shows add "Stick" --service "Apple TV"   add a show (--id 12345 sets its TVmaze number,',
+  '                              --watch Hulu opens another app than the badge says)',
+  '  ./hub shows remove "Stick"  take a show off the list',
+  '  ./hub shows refresh         ask TVmaze about every show now (it also does so every 6 hours)',
+  '  ./hub linktests             what the TV\'s watch link test found (About panel on the TV)',
   '  ./hub spotify status        is Spotify connected, and what is playing',
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
@@ -814,6 +875,8 @@ async function main(argv) {
   if (cmd === 'layout') return layout(rest);
   if (cmd === 'awws') return awwsCommand(rest);
   if (cmd === 'budget') return budgetCommand(rest);
+  if (cmd === 'shows') return showsCommand(rest);
+  if (cmd === 'linktests') return linktestsCommand(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
@@ -839,6 +902,7 @@ module.exports = {
   layoutResetText: layoutResetText,
   awwsShowLines: awwsShowLines,
   budgetShowLines: budgetShowLines,
+  showsListLines: showsListLines,
   statusLines: statusLines,
   mailboxLines: mailboxLines,
   spotifyStatusLines: spotifyStatusLines,

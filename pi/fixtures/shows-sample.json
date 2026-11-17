@@ -1,0 +1,109 @@
+{
+ "about": "A made-up shows resource (docs/shows-snapshot.md) for the preview, the tests and the screenshots. Every date and episode is invented. sampleToday is the moment the sample is written around: dev/preview.js moves every date by whole days so that it lands on today.",
+ "sampleToday": "2026-11-17T06:00:00Z",
+ "v": 1,
+ "updatedAt": "2026-11-17T12:00:00Z",
+ "shows": [
+  {
+   "id": "slow-horses", "name": "Slow Horses", "service": "Apple TV", "watch": "Apple TV", "channel": "Apple TV",
+   "status": "Running", "running": true, "tvmazeId": 900001, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 5, "number": 5, "name": "Hello Goodbye", "airstamp": "2026-11-24T02:00:00Z" },
+   "upcoming": [
+    { "season": 5, "number": 4, "name": "Tradecraft", "airstamp": "2026-11-17T03:00:00Z" },
+    { "season": 5, "number": 5, "name": "Hello Goodbye", "airstamp": "2026-11-24T02:00:00Z" },
+    { "season": 5, "number": 6, "name": "Last Orders", "airstamp": "2026-12-01T02:00:00Z" }
+   ],
+   "returning": null
+  },
+  {
+   "id": "the-great-british-baking-show", "name": "The Great British Baking Show", "service": "Netflix", "watch": "Netflix", "channel": "Netflix",
+   "status": "Running", "running": true, "tvmazeId": 900002, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 16, "number": 10, "name": "The Final", "airstamp": "2026-11-24T08:00:00Z" },
+   "upcoming": [
+    { "season": 16, "number": 9, "name": "Semi-Final", "airstamp": "2026-11-17T08:00:00Z" },
+    { "season": 16, "number": 10, "name": "The Final", "airstamp": "2026-11-24T08:00:00Z" }
+   ],
+   "returning": null
+  },
+  {
+   "id": "paradise", "name": "Paradise", "service": "Hulu", "watch": "Hulu", "channel": "Hulu",
+   "status": "Running", "running": true, "tvmazeId": 900003, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 2, "number": 6, "name": "The Day After", "airstamp": "2026-11-18T02:00:00Z" },
+   "upcoming": [
+    { "season": 2, "number": 6, "name": "The Day After", "airstamp": "2026-11-18T02:00:00Z" },
+    { "season": 2, "number": 7, "name": "Seven Days", "airstamp": "2026-11-25T02:00:00Z" }
+   ],
+   "returning": null
+  },
+  {
+   "id": "the-pitt", "name": "The Pitt", "service": "HBO Max", "watch": "HBO Max", "channel": "HBO Max",
+   "status": "Running", "running": true, "tvmazeId": 900004, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 2, "number": 7, "name": "1:00 P.M.", "airstamp": "2026-11-18T03:00:00Z" },
+   "upcoming": [
+    { "season": 2, "number": 7, "name": "1:00 P.M.", "airstamp": "2026-11-18T03:00:00Z" },
+    { "season": 2, "number": 8, "name": "2:00 P.M.", "airstamp": "2026-11-25T03:00:00Z" }
+   ],
+   "returning": null
+  },
+  {
+   "id": "hells-kitchen", "name": "Hell's Kitchen", "service": "Disney+", "watch": "Disney+", "channel": "FOX",
+   "status": "Running", "running": true, "tvmazeId": 900005, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z" },
+   "upcoming": [
+    { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z" },
+    { "season": 24, "number": 9, "name": "Black Jacket Night", "airstamp": "2026-11-27T02:00:00Z" },
+    { "season": 24, "number": 10, "name": "Dinner Service", "airstamp": "2026-12-04T02:00:00Z" }
+   ],
+   "returning": null
+  },
+  {
+   "id": "shark-tank", "name": "Shark Tank", "service": "Disney+", "watch": "Disney+", "channel": "ABC",
+   "status": "Running", "running": true, "tvmazeId": 900006, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 17, "number": 6, "name": "Episode 6", "airstamp": "2026-11-21T01:00:00Z" },
+   "upcoming": [
+    { "season": 17, "number": 6, "name": "Episode 6", "airstamp": "2026-11-21T01:00:00Z" },
+    { "season": 17, "number": 7, "name": "Episode 7", "airstamp": "2026-12-05T01:00:00Z" }
+   ],
+   "returning": null
+  },
+  {
+   "id": "task", "name": "Task", "service": "HBO Max", "watch": "HBO Max", "channel": "HBO Max",
+   "status": "Running", "running": true, "tvmazeId": 900007, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 1, "number": 7, "name": "Vigil", "airstamp": "2026-11-22T02:00:00Z" },
+   "upcoming": [
+    { "season": 1, "number": 7, "name": "Vigil", "airstamp": "2026-11-22T02:00:00Z" }
+   ],
+   "returning": null
+  },
+  {
+   "id": "the-bear", "name": "The Bear", "service": "Hulu", "watch": "Hulu", "channel": "FX on Hulu",
+   "status": "Running", "running": true, "tvmazeId": 900008, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 5, "number": 1, "name": "Next", "airstamp": "2026-12-10T08:00:00Z" },
+   "upcoming": [
+    { "season": 5, "number": 1, "name": "Next", "airstamp": "2026-12-10T08:00:00Z" }
+   ],
+   "returning": { "season": 5, "label": "Season 5", "date": "2026-12-10", "airstamp": "2026-12-10T08:00:00Z" }
+  },
+  {
+   "id": "stick", "name": "Stick", "service": "Apple TV", "watch": "Apple TV", "channel": "Apple TV",
+   "status": "Running", "running": true, "tvmazeId": 900009, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": { "season": 2, "number": 1, "name": "Back Nine", "airstamp": "2027-01-21T02:00:00Z" },
+   "upcoming": [],
+   "returning": { "season": 2, "label": "Season 2", "date": "2027-01-20", "airstamp": "2027-01-21T02:00:00Z" }
+  },
+  {
+   "id": "severance", "name": "Severance", "service": "Apple TV", "watch": "Apple TV", "channel": "Apple TV",
+   "status": "To Be Determined", "running": true, "tvmazeId": 900010, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": null,
+   "upcoming": [],
+   "returning": { "season": 3, "label": "Season 3", "date": null, "airstamp": null }
+  },
+  {
+   "id": "andor", "name": "Andor", "service": "Disney+", "watch": "Disney+", "channel": "Disney+",
+   "status": "Ended", "running": false, "tvmazeId": 900011, "checkedAt": "2026-11-17T12:00:00Z",
+   "nextEpisode": null,
+   "upcoming": [],
+   "returning": null
+  }
+ ]
+}
