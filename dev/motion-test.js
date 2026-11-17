@@ -311,7 +311,7 @@ async function checkDisabled(pi) {
     const page = await open(Object.assign({ pi: pi }, c.o));
     await idle(page);
     const st = await fx(page);
-    assert(st.speed === c.why, c.name + ': speed ' + st.speed);
+    assert(st.speed === c.why && st.lightSpeed === c.why, c.name + ': speed ' + st.speed + ', light ' + st.lightSpeed);
     // Ring: the plain border swap.
     await page.keyboard.press('ArrowLeft');
     await sleep(60);
@@ -781,6 +781,35 @@ async function checkActivityTodoEdit(pi) {
   await page.context().close();
 }
 
+async function checkLightStepped(pi) {
+  // Auto stepped down from push to expand, but the screen measured 71 fps:
+  // the heavy extras stay off, the chips and the edge's light still run.
+  const page = await open({ pi: pi, slow: { mode: 'expand', fps: 71 } });
+  await idle(page);
+  const st = await fx(page);
+  assert(st.speed === 'slow' && st.lightSpeed === 'ok', 'speeds: ' + JSON.stringify([st.speed, st.lightSpeed]));
+  await page.keyboard.press('ArrowLeft');
+  await sleep(60);
+  assert(!(await page.evaluate(() => document.querySelectorAll('.fx-ring').length)), 'a ring after stepping down');
+  const row = await page.evaluate(() => window.HUB_FX.statusText());
+  assert(row === 'extras: chips and light only (slow screen)', 'the Motion row: ' + row);
+  await page.evaluate(() => { window.__chips = []; });
+  await postTodo(pi, 'Stepped down ' + Date.now());
+  await until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="todo"] .fx-chip')), 4000, 'no chip after stepping down');
+  const lit = await page.evaluate(() => ({ lap: !!document.querySelector('.cell[data-widget="todo"] .fx-edge'),
+    accent: !!document.querySelector('.cell[data-widget="todo"] .fx-accent') }));
+  assert(lit.lap && lit.accent, 'no light or edge: ' + JSON.stringify(lit));
+  await until(() => page.evaluate(() => !document.querySelector('.fx-chip, .fx-edge')), 4000, 'the chip stayed');
+  noErrors(page);
+  await page.context().close();
+  // Under 60 fps at expand it stays all off (check 2 covers 52 fps); in
+  // Spanish the row says so too.
+  const es = await open({ pi: pi, slow: { mode: 'expand', fps: 71 }, init: 'try { localStorage.setItem("homeHub.lang", "es"); } catch (e) {}' });
+  const rowEs = await es.evaluate(() => window.HUB_FX.statusText());
+  assert(rowEs === 'extras: solo avisos y luz (pantalla lenta)', 'the Motion row in Spanish: ' + rowEs);
+  await es.context().close();
+}
+
 async function checkActivityTodo(pi) {
   const page = await open({ pi: pi, query: 'motion=push' });
   await idle(page);
@@ -1020,6 +1049,7 @@ async function main() {
   await check('14. Activity chips: none while the wanderers are on screen, or behind a panel', () => checkActivityClay(pi));
   await check('15. Activity chips: the Spanish from app/i18n.js fits one line in 3-column tiles (3x1, 3x2, 3x4), 22px+, 4.5:1; a language change applies live', () => checkActivityText(pi));
   await check('16. Activity chips: a to-do whose notes change on the Pi adds one chip; the first list, an unchanged list and a tick add none', () => checkActivityTodoEdit(pi));
+  await check('17. Auto stepped down to expand at 60 fps or more: chips, the accent edge and its light still run, the ring does not; the Motion row says so', () => checkLightStepped(pi));
 }
 
 main().catch((e) => {

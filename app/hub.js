@@ -2720,6 +2720,21 @@
     return 'ok';
   }
 
+  // The same for the light extras only (activity chips, working chips, the
+  // accent edge and its border light: opacity and transform on small
+  // elements): when auto stepped down from push but the screen still
+  // measures 60 fps or more with no stuttering run, they keep running
+  // ('ok') while the heavy ones (ring glide, stagger, cover, bloom) stay
+  // off. Otherwise as fxSpeed.
+  var LIGHT_FPS = 60;
+  function fxLightSpeed() {
+    var sp = fxSpeed();
+    if (sp !== 'slow') return sp;
+    if (motion.source === 'auto' && motion.mode !== LADDER[0] && motion.fps >= LIGHT_FPS &&
+        !(motion.measuring && motion.janky.length)) return 'ok';
+    return 'slow';
+  }
+
   // The focused tile's resting rect, or null.
   function focusRect() {
     var rec = homeIndex >= 0 ? widgets[homeIndex] : null;
@@ -2730,6 +2745,7 @@
     fxCall('start', [{
       config: cfg.motionFx,
       speed: fxSpeed,
+      lightSpeed: fxLightSpeed,
       // The home screen is in view and uncovered (the activity chips wait for it).
       quiet: function () { return !busy && !open && !frameOpen && !sw.on && !typingBox() && !document.hidden; },
       clayDrawing: function () {

@@ -250,6 +250,7 @@
     'motion.working.awws': 'Reuniendo datos',
     'motion.extrasOn': 'extras activados',
     'motion.extrasOff': 'extras desactivados ({why})',
+    'motion.extrasLight': 'extras: solo avisos y luz ({why})',
     'motion.why.fade': 'modo fundido',
     'motion.why.slow': 'pantalla lenta'
   };

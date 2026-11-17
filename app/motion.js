@@ -52,7 +52,12 @@
  * Every moving part animates only transform and opacity, and runs only when
  * the hub's own timing (motion 'auto', see hub.js) says the screen keeps up:
  * in 'fade' mode, after auto stepped down from push, or below 40 frames a
- * second, focus is the plain border swap and the rest happens at once.
+ * second, focus is the plain border swap and the rest happens at once. The
+ * light extras (activity and working chips, the accent edge and its border
+ * light) are the exception: after auto stepped down they still run while
+ * the screen measures 60 frames a second or more without stuttering
+ * (host.lightSpeed, canLight); the About row then says
+ * "extras: chips and light only (slow screen)".
  * With every switch off this file adds no element and no class.
  *
  * Every entry point is wrapped, so if anything here breaks, the hub carries
@@ -69,6 +74,7 @@
   var STRINGS = {
     extrasOn: 'extras on',
     extrasOff: 'extras off ({why})',
+    extrasLight: 'extras: chips and light only ({why})',
     why: { fade: 'fade mode', slow: 'slow screen' }
   };
 
@@ -153,6 +159,16 @@
   }
 
   function can(name) { return on(name) && speed() === 'ok'; }
+
+  // The light extras (activity and working chips, the accent edge and its
+  // border light) have their own speed from the hub: they keep running
+  // after auto stepped down from push while the screen still measures 60
+  // fps or more without stuttering (hub.js, fxLightSpeed). Without it, as speed().
+  function lightSpeed() {
+    try { return host && typeof host.lightSpeed === 'function' ? host.lightSpeed() : speed(); } catch (e) { return 'fade'; }
+  }
+
+  function canLight(name) { return on(name) && lightSpeed() === 'ok'; }
 
   function anyMotion() {
     for (var i = 1; i < FLAGS.length; i++) if (flags[FLAGS[i]]) return true;
@@ -810,13 +826,13 @@
     if (w) {
       delete working[kind];
       workSave();
-      if (w.act && w.act.tile === tile && !w.act.retiring && can('activity') && homeQuiet()) {
+      if (w.act && w.act.tile === tile && !w.act.retiring && canLight('activity') && homeQuiet()) {
         actUpgrade(w.act, kind);
         return true;
       }
       if (w.act) actFade(w.act);
     }
-    if (!can('activity')) return false;
+    if (!canLight('activity')) return false;
     var cur = actOf(tile);
     // (A working chip of this kind that just began to fade, for another tile
     // of the same kind a moment ago: it becomes this tile's arrival chip.)
@@ -918,7 +934,7 @@
         continue;
       }
       left = true;
-      if (!can('activity')) {
+      if (!canLight('activity')) {
         if (w.act) actEnd(w.act);
         continue;
       }
@@ -986,7 +1002,7 @@
 
   function edgeFade(e) {
     clearTimeout(e.timer);
-    if (!can('edge')) { edgeEnd(e); return; }
+    if (!canLight('edge')) { edgeEnd(e); return; }
     e.node.style.transition = 'opacity ' + EDGE_OUT_MS + 'ms linear';
     e.node.style.opacity = '0';
     e.fading = true;
@@ -1002,7 +1018,7 @@
   // true when the activity chip's own light already laps the border.
   function accent(tile, reason, quiet) {
     if (!tile || !on('edge')) return false;
-    var moving = can('edge');
+    var moving = canLight('edge');
     var e = edgeOf(tile);
     if (!e) {
       var node = document.createElement('div');
@@ -1050,6 +1066,8 @@
     var sp = speed();
     if (sp === 'ok') return tr('motion.extrasOn', STRINGS.extrasOn);
     var why = STRINGS.why.hasOwnProperty(sp) ? tr('motion.why.' + sp, STRINGS.why[sp]) : sp;
+    // Stepped down, but the chips and the edge's light still run.
+    if (lightSpeed() === 'ok' && (on('activity') || on('edge'))) return tr('motion.extrasLight', STRINGS.extrasLight, { why: why });
     return tr('motion.extrasOff', STRINGS.extrasOff, { why: why });
   }
 
@@ -1059,6 +1077,8 @@
       ringDrop();
       staggerClear();
       shareEnd();
+    }
+    if (lightSpeed() !== 'ok') {
       activityStop();
       // Edges stay, but as still borders (no lap, no fade).
       for (var i = 0; i < edges.length; i++) {
@@ -1126,6 +1146,7 @@
       return {
         flags: JSON.parse(JSON.stringify(flags)),
         speed: speed(),
+        lightSpeed: lightSpeed(),
         ring: ring.node ? { at: ring.at, shown: ring.shown, gliding: ring.gliding && Date.now() < ring.glideEnd } : null,
         staggering: stag.items.length,
         flying: !!share.fly,
