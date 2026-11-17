@@ -331,6 +331,11 @@ const V = {
     if (typeof v !== 'number' || !isFinite(v) || v < min || v > max) throw argError('"' + name + '" must be a number from ' + min + ' to ' + max);
     return v;
   },
+  // A whole number from min to max.
+  int: (min, max) => (name, v) => {
+    if (!Number.isInteger(v) || v < min || v > max) throw argError('"' + name + '" must be a whole number from ' + min + ' to ' + max);
+    return v;
+  },
   oneOf: (list) => (name, v) => {
     if (typeof v !== 'string' || list.indexOf(v.trim()) < 0) throw argError('"' + name + '" must be one of: ' + list.join(', '));
     return v.trim();
@@ -432,13 +437,14 @@ const COMMANDS = {
     args: {
       title: [V.text(MAX_TITLE), true], section: [V.oneOf(Object.keys(hubctl.SECTION_NAMES)), false],
       level: [V.oneOf(Object.keys(hubctl.LEVEL_NAMES)), false], due: [V.date(), false],
-      notes: [V.notes(MAX_NOTES), false]
+      lead: [V.int(0, hubctl.MAX_LEAD), false], notes: [V.notes(MAX_NOTES), false]
     },
     run: async (a, ctx) => {
       const body = { title: a.title };
       if (a.section !== undefined) body.section = a.section;
       if (a.level !== undefined) body.level = a.level;
       if (a.due !== undefined) body.due = a.due;
+      if (a.lead !== undefined) body.lead = a.lead;
       if (a.notes) body.notes = a.notes;
       const r = await ctx.call('POST', '/api/todo', body);
       return { message: hubctl.todoAddText(r), data: { item: r.item } };
@@ -451,6 +457,7 @@ const COMMANDS = {
       const items = (r.items || []).map((i) => {
         const o = { id: i.id, title: i.title, level: hubctl.levelOf(i), section: i.section, done: i.done };
         if (i.due) o.due = i.due;
+        if (hubctl.leadOf(i) !== null) o.lead = hubctl.leadOf(i);
         if (i.notes) o.notes = i.notes;
         return o;
       });
@@ -492,6 +499,23 @@ const COMMANDS = {
       }
       const after = await hubctl.setLevel(ctx.call, item, a.level);
       return { message: hubctl.todoLevelText(after), data: { id: after.id, title: after.title, level: hubctl.levelOf(after) } };
+    }
+  },
+  // "lead": null goes back to the TV's default (2 days).
+  'todo.lead': {
+    args: { id: [V.text(40), false], title: [V.text(MAX_TITLE), false], lead: [V.int(0, hubctl.MAX_LEAD), true, true] },
+    check: oneOfIdOrTitle,
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/todo');
+      let item;
+      try {
+        item = hubctl.matchItem(r.items || [], a.id !== undefined ? a.id : a.title);
+      } catch (e) {
+        if (e instanceof hubctl.Stop) return { ok: false, message: e.message };
+        throw e;
+      }
+      const after = await hubctl.setLead(ctx.call, item, a.lead);
+      return { message: hubctl.todoLeadText(after), data: { id: after.id, title: after.title, lead: hubctl.leadOf(after) } };
     }
   },
   'calendar.status': {

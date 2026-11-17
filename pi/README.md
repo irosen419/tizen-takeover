@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.6.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.7.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -142,6 +142,12 @@ It adds `budget.js` next to `server.js` and makes the server version 0.4.0. A re
 Every to-do has a level: `must` (Must today), `optional` (If you can, the default) or `passive` (a reminder the TV shows under Coming up from 2 days before its due date). `./hub todo add "Take weekly shot" --level must --due 2026-11-18`, `./hub todo level "Buy milk" passive`, and the mailbox's `todo.add` with `level` and `todo.level`. `./hub todo list` groups items by level. Sections (`--section`) are still taken and kept, but the TV no longer shows them.
 
 An older server keeps a level the TV sets (Move on the TV) but refuses `level` on `todo add` and in the mailbox, and has no `todo level`. Until it is updated, a level can ride in the notes: end them with `[level:must]` or `[level:passive]`; the TV reads the tag and never shows it. To update: `git pull`, then `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.6.0`. Nothing changes in `.env`.
+
+### Coming up lead (server 0.7.0)
+
+A passive to-do can say how many days before its due date the TV starts showing it under Coming up: `lead`, a whole number from 0 to 30 (0 means only on the day it is due; none means 2). `./hub todo add "School meeting" --level passive --due 2026-11-20 --lead 3`, `./hub todo lead "School meeting" 5` (`--clear` goes back to 2), and the mailbox's `todo.add` with `lead` and `todo.lead` (`"lead": null` clears it). `./hub todo list` shows it as `(due 2026-11-20, lead 3 days)`.
+
+An older server drops `lead` on `todo add` (the mailbox refuses it) and has no `todo lead`. Until it is updated, the lead can ride in the notes as `[lead:3]`, next to `[level:passive]`; the TV reads the tag and never shows it, and a `lead` field wins over it. To update: `git pull`, then `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.7.0`. Nothing changes in `.env`.
 
 ### Budget lab sections (server 0.5.0)
 
@@ -354,7 +360,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.6.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.7.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

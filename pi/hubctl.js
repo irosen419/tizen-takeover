@@ -7,9 +7,10 @@
  *   ./hub home                       close whatever is open
  *   ./hub say "Dinner in 10" [--seconds 8]
  *   ./hub reload                     load the hub afresh
- *   ./hub todo add "Buy milk" [--level must|optional|passive] [--due 2026-12-24] [--notes "Oat, not dairy"]
+ *   ./hub todo add "Buy milk" [--level must|optional|passive] [--due 2026-12-24] [--lead 3] [--notes "Oat, not dairy"]
  *   ./hub todo list
  *   ./hub todo level <id or exact title> must|optional|passive
+ *   ./hub todo lead <id or exact title> 3   (days, 0 to 30; or --clear for the default 2)
  *   ./hub todo notes <id or exact title> "Oat, not dairy"   (or --clear)
  *   ./hub todo done <id or exact title>
  *   ./hub todo remove <id or exact title>
@@ -230,9 +231,53 @@ function levelOf(item) {
   return m ? m[1] : 'optional';
 }
 
+// A passive item's "Coming up" lead: how many days before its due date the
+// TV shows it. A "lead" field, else a "[lead:3]" tag in its notes (how it
+// travels through a server older than 0.7.0), else null (the TV's 2).
+const MAX_LEAD = 30;
+const DEFAULT_LEAD = 2;
+
+function isLead(n) {
+  return Number.isInteger(n) && n >= 0 && n <= MAX_LEAD;
+}
+
+function leadOf(item) {
+  if (isLead(item.lead)) return item.lead;
+  const m = typeof item.notes === 'string' ? /\[lead:(\d{1,2})\]/.exec(item.notes) : null;
+  const n = m ? parseInt(m[1], 10) : -1;
+  return isLead(n) ? n : null;
+}
+
+// "3" -> 3; anything but a whole number from 0 to 30 -> null.
+function parseLead(text) {
+  const t = String(text).trim();
+  if (!/^\d{1,2}$/.test(t)) return null;
+  const n = parseInt(t, 10);
+  return isLead(n) ? n : null;
+}
+
+function leadWords(n) {
+  if (n === 0) return 'only on the day it is due';
+  return 'from ' + n + (n === 1 ? ' day' : ' days') + ' before it is due';
+}
+
 function todoAddText(r) {
+  const lead = leadOf(r.item);
   return 'Added "' + r.item.title + '" to ' + LEVEL_NAMES[levelOf(r.item)] + (r.item.due ? ', due ' + r.item.due : '') +
-    (r.item.notes ? ', with notes' : '') + '.';
+    (lead !== null ? ', shown ' + leadWords(lead) : '') + (r.item.notes ? ', with notes' : '') + '.';
+}
+
+function todoLeadText(item) {
+  const lead = leadOf(item);
+  if (lead === null) return '"' + item.title + '" shows under Coming up ' + leadWords(DEFAULT_LEAD) + ' (the default).';
+  return '"' + item.title + '" shows under Coming up ' + leadWords(lead) + '.';
+}
+
+// Sets (or, with null, removes) the lead of one item. Returns the item as
+// the server now holds it.
+async function setLead(callFn, item, lead) {
+  const r = await callFn('POST', '/api/todo/ops', { ops: [{ op: 'set', id: item.id, fields: { lead: lead === null ? null : lead } }] });
+  return (r.items || []).find((i) => i.id === item.id) || item;
 }
 
 function todoLevelText(item) {
@@ -253,7 +298,11 @@ function todoListLines(items) {
     if (!inSec.length) return;
     out.push(LEVEL_NAMES[lv] + ':');
     inSec.forEach((i) => {
-      out.push('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (i.due ? ' (due ' + i.due + ')' : '') + '   id ' + i.id);
+      const lead = leadOf(i);
+      const when = [];
+      if (i.due) when.push('due ' + i.due);
+      if (lead !== null) when.push('lead ' + lead + (lead === 1 ? ' day' : ' days'));
+      out.push('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (when.length ? ' (' + when.join(', ') + ')' : '') + '   id ' + i.id);
       if (i.notes) out.push('      notes: ' + i.notes);
     });
   });
@@ -280,7 +329,7 @@ async function todo(args) {
   const sub = args[0];
   const rest = args.slice(1);
   if (sub === 'add') {
-    const a = parseArgs(rest, ['section', 'level', 'due', 'notes']);
+    const a = parseArgs(rest, ['section', 'level', 'due', 'notes', 'lead']);
     const title = a.words.join(' ').trim();
     if (!title) stop('Say what to add, for example: ./hub todo add "Buy milk"');
     const body = { title: title };
@@ -290,6 +339,11 @@ async function todo(args) {
       body.level = a.opts.level;
     }
     if (a.opts.due) body.due = a.opts.due;
+    if (a.opts.lead !== undefined) {
+      const lead = parseLead(a.opts.lead);
+      if (lead === null) stop('--lead must be a whole number of days from 0 to ' + MAX_LEAD + '.');
+      body.lead = lead;
+    }
     if (a.opts.notes) body.notes = a.opts.notes;
     const r = await call('POST', '/api/todo', body);
     say(todoAddText(r));
@@ -333,7 +387,19 @@ async function todo(args) {
     say(todoLevelText(await setLevel(call, item, level)));
     return;
   }
-  stop('Use one of: todo add, todo list, todo notes, todo level, todo done, todo remove. Run ./hub help for examples.');
+  if (sub === 'lead') {
+    const a = parseArgs(rest, []);
+    const what = (a.words[0] || '').trim();
+    const lead = a.opts.clear ? null : parseLead(a.words[1] || '');
+    if (!what || (lead === null && !a.opts.clear)) {
+      stop('Say which to-do and how many days before its due date it shows, for example: ./hub todo lead "School meeting" 3 (0 to ' +
+        MAX_LEAD + '; or --clear for the default ' + DEFAULT_LEAD + ').');
+    }
+    const item = await findItem(what);
+    say(todoLeadText(await setLead(call, item, lead)));
+    return;
+  }
+  stop('Use one of: todo add, todo list, todo notes, todo level, todo lead, todo done, todo remove. Run ./hub help for examples.');
 }
 
 /* ---------- calendar ---------- */
@@ -852,6 +918,7 @@ const HELP = [
   '  ./hub reload                load the hub afresh',
   '  ./hub todo add "Buy milk"   add a to-do (add --level must or passive, --due 2026-12-24; optional when left out)',
   '  ./hub todo level "Buy milk" must   change a to-do\'s level: must, optional or passive',
+  '  ./hub todo lead "School meeting" 3   a passive to-do shows 3 days before it is due (0 to 30; --clear for 2)',
   '  ./hub todo list             show the to-do list with ids and notes',
   '  ./hub todo add "Buy milk" --notes "Oat, not dairy"   a to-do with notes (up to 300 characters)',
   '  ./hub todo notes "Buy milk" "Oat, not dairy"   set the notes of a to-do (--clear removes them)',
@@ -924,6 +991,10 @@ module.exports = {
   levelOf: levelOf,
   todoLevelText: todoLevelText,
   setLevel: setLevel,
+  leadOf: leadOf,
+  todoLeadText: todoLeadText,
+  setLead: setLead,
+  MAX_LEAD: MAX_LEAD,
   commandText: commandText,
   matchItem: matchItem,
   todoAddText: todoAddText,
