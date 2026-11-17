@@ -649,8 +649,9 @@
        key      its app/i18n.js key, where the Spanish is
        working  the working chip's words, { en, key }; null: it says the
                 arrival words; false: this kind has no working chip
-       figure   room for a character or prop drawn with the chip later
-                (nothing reads it yet)
+       figure   room for a character or prop tied to one kind (nothing
+                reads it: the characters of app/agents.js come to any
+                tile with a chip, whatever its kind; see figure() below)
      How long a chip or a working state lasts is not here: those rules are
      the same for every kind (ACT_HOLD_MS, WORK_MS and the rest, above).
      The words are found when a chip shows, in the language then active. */
@@ -724,8 +725,11 @@
     return null;
   }
 
-  function actEnd(a) {
+  // natural: after its own fade (the character is already leaving); else
+  // taken away at once (a panel, a layout change), and so is she.
+  function actEnd(a, natural) {
     clearTimeout(a.timer);
+    figure(natural ? 'gone' : 'cut', a);
     drop(a.chip);
     lapEnd(a.edge);
     var i = acts.indexOf(a);
@@ -761,6 +765,16 @@
     } catch (e) { return false; }
   }
 
+  // The character beside a chip (app/agents.js, docs/agents.md): told when
+  // a chip shows ('in', with whether the screen keeps full speed and the
+  // home screen is quiet), fades or becomes the arrival chip ('done'), and
+  // goes ('gone' after its fade, 'cut' at once). Never changes the chip.
+  function figure(phase, a) {
+    var A = window.HUB_AGENTS;
+    if (!a || !A || typeof A.chip !== 'function') return;
+    try { A.chip(phase, a.tile, phase === 'in' ? (can('activity') && homeQuiet()) : true); } catch (e) { /* the chip alone */ }
+  }
+
   function kindClass(kind) { return 'fx-chip fx-chip-' + String(kind).replace(/[^a-z0-9-]/gi, ''); }
 
   // The chip element (not yet in a tile): the kind's icon and a label.
@@ -784,7 +798,8 @@
     clearTimeout(a.timer);
     a.retiring = true;
     a.chip.className = a.chip.className.replace(/ is-in\b/g, '').replace(/ is-out\b/g, '') + ' is-out';
-    a.timer = later(ACT_OUT_MS + 60, function () { actEnd(a); });
+    a.timer = later(ACT_OUT_MS + 60, function () { actEnd(a, true); });
+    figure('done', a);
     edgeFocusSync();
   }
 
@@ -806,6 +821,7 @@
     var text = a.chip.querySelector('.fx-chip-text');
     if (text) text.textContent = labelOf(kind);
     if (!a.edge) a.edge = makeEdge(a.tile);
+    figure('done', a);
     actHold(a);
   }
 
@@ -849,6 +865,7 @@
     void chip.offsetWidth;
     chip.className += ' is-in';
     actHold(a);
+    figure('in', a);
     return true;
   }
 
@@ -914,6 +931,7 @@
     w.act = a;
     void chip.offsetWidth;
     chip.className += ' is-in';
+    figure('in', a);
   }
 
   // Puts every working chip where it belongs now, ends the ones whose time
@@ -1077,6 +1095,8 @@
       ringDrop();
       staggerClear();
       shareEnd();
+      // The character needs full speed: she goes, the chips stay.
+      try { if (window.HUB_AGENTS && typeof window.HUB_AGENTS.stop === 'function') window.HUB_AGENTS.stop(); } catch (e) { /* nothing more */ }
     }
     if (lightSpeed() !== 'ok') {
       activityStop();

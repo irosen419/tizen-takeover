@@ -19,6 +19,8 @@ Press OK on a tile to open it in a panel in the middle of the screen; the other 
 
 Now and then, when nobody has touched the remote for a while, Ian and his goldendoodle Ember (clay puppets) wander onto the screen in front of the tiles, do a little scene of 15 to 45 seconds and leave: a stroll, a game of fetch, a stolen sock, a nap at night. They are drawn smoothly between their stop-motion poses when the TV keeps up, and step as before when it doesn't. Any key sends them away at once. See [docs/clay.md](docs/clay.md); `clay: false` in `app/config.js` turns them off.
 
+While a tile shows a working or arrival chip ("Working on to-dos", "Incoming to-do"), Lift, the Edgedancer from the Stormlight books, skates in beside it in pixel art on a trail of Stormlight with her spren Wyndle, waits while the chip lasts, and glides out when it ends. Any tile with a chip can get her; the chip is unchanged and she only comes when the screen keeps full speed. See [docs/agents.md](docs/agents.md); `agents: false` in `app/config.js` turns her off.
+
 ## Install on the TV
 
 1. Open TizenBrew and go to **Module Manager**.
@@ -122,10 +124,11 @@ The tile changes as soon as you pick, behind the page. All three choices are rem
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.29.1 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather), and **Scripts** only when one of the hub's script files failed to load: `logos.js loaded on a later try` (it was fetched again and the page loaded again by itself) or `logos.js did not load` (see [When a file fails to load](#when-a-file-fails-to-load)).
+- **This hub:** **Version** (for example `v0.29.2 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather), and **Scripts** only when one of the hub's script files failed to load: `logos.js loaded on a later try` (it was fetched again and the page loaded again by itself) or `logos.js did not load` (see [When a file fails to load](#when-a-file-fails-to-load)).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
 - **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `sharp`, `sharp-lite`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, at the canvas levels how long a frame takes to draw (`14 ms a frame`; a 30 fps frame has 33 ms, so this shows the headroom), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
+- **Characters:** the character beside the chips, in the hub's language, from the first chip since the page loaded: **Now** (`Lift, on To-do`, or `none`), **Seen** (how many times she has swooped in since the page loaded) and **Drawing** (`on`; `chips only (slow screen)` when the chips show without her; `off (...)` with the reason). See [docs/agents.md](docs/agents.md).
 
 Everything in it changes by itself, once a second, while it is open. It doesn't count as busy: the wanderers keep coming while it is open, behind it. `HUB_TEST.about` (`open()`, `close()`, `isOpen()`, `rows()`) reads it in a laptop browser and in the tests.
 
@@ -525,7 +528,7 @@ A script can't be put back afterwards, because the scripts after it have already
 ## How it works
 
 - `app/index.html` is the loader TizenBrew opens. It runs `update.js`, which moves on to the newest commit's `hub.html` (see [Updating](#updating)).
-- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `guest.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, `clay.js`, `motion.js`, then `hub.js`.
+- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `guest.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, `clay.js`, `agents.js`, `motion.js`, then `hub.js`.
 - `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
@@ -539,6 +542,7 @@ A script can't be put back afterwards, because the scripts after it have already
 - `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/clock-test.js` tests the Clock tile and its faces; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating; `dev/clay-test.js` tests the clay characters.
 - `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
 - `app/clay.js` brings Ian and Ember on screen now and then (with its own few styles, added only when they first come); `app/clay/` holds their sprites and `sprites.js`, the list of them. `art/clay/` holds how they are made (see `art/clay/README.md`), and `docs/clay.md` how the scenes work. `dev/clay-test.js` tests them; `dev/clay-shots.js` films every scene.
+- `app/agents.js` brings a pixel-art character (Lift) beside a tile's working or arrival chip, with its styles in `app/agents.css` and its pictures in `app/agents/lift/` (two small WebP files); see [docs/agents.md](docs/agents.md). `art/agents/extract.py` cuts the pictures out of the source sheet, which is private reference art kept in the project files, not in this repository. `dev/agents-test.js` tests her; `dev/agents-shots.js` takes before and after pictures and a clip.
 - `app/motion.js` holds the [motion extras](#motion-extras) (the gliding focus ring, the panel stagger, the Now Playing cover's flight, the launch bloom, the activity chips and the quiet waiting tiles); their styles are near the end of `app/style.css`, just before its `.css-end` rule. `dev/motion-test.js`, `dev/working-test.js` and `dev/nowplaying-chip-test.js` test them.
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.
