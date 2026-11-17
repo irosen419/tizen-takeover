@@ -83,6 +83,7 @@ const MAX_SAY = 140;
 const DONE_KEEP_MS = 48 * 60 * 60 * 1000;
 const SSE_MAX_BUFFER = 64 * 1024; // a screen this far behind is dropped
 const SECTIONS = ['now', 'next', 'waiting'];
+const LEVELS = ['must', 'optional', 'passive'];
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const DUE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const WIDGET_RE = /^[a-z][a-z0-9_-]{0,39}$/;
@@ -270,6 +271,9 @@ function normalizeItem(raw, now) {
   if (len > MAX_TITLE) throw bad('to-do title is longer than ' + MAX_TITLE + ' characters');
   if (it.section === undefined || it.section === null) it.section = 'now';
   if (SECTIONS.indexOf(it.section) < 0) throw bad('to-do section must be now, next or waiting');
+  // Optional level; none means optional (and is how older items stay).
+  if (it.level === undefined || it.level === null || it.level === '') delete it.level;
+  else if (LEVELS.indexOf(it.level) < 0) throw bad('to-do level must be must, optional or passive');
   if (it.done === undefined || it.done === null) it.done = false;
   if (typeof it.done !== 'boolean') throw bad('to-do "done" must be true or false');
   if (it.done) {
@@ -1172,6 +1176,7 @@ function start(options) {
           const raw = { id: newTodoId(), title: body.title, section: body.section, done: false, doneAt: null, createdAt: Date.now() };
           if (body.due !== undefined) raw.due = body.due;
           if (body.notes !== undefined) raw.notes = body.notes;
+          if (body.level !== undefined) raw.level = body.level;
           const item = normalizeItem(raw, Date.now());
           const items = purgeOld(todoItems(), Date.now());
           if (items.length >= MAX_ITEMS) throw bad('the to-do list is full (' + MAX_ITEMS + ' items)');

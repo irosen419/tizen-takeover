@@ -8,7 +8,7 @@ Out of the box:
 
 - **Clock:** the time and the date. Open it for a big digital or analog clock, a 12-hour or 24-hour choice, and the hub's version and status.
 - **Entertainment:** Netflix, Prime Video, Disney+, Hulu, Peacock, Apple TV, YouTube (TizenTube), Xbox on HDMI 1, Pluto TV, Twitch and a list of every app on the TV.
-- **To-do:** a list kept on the TV. Add, tick off and move things with the remote.
+- **To-do:** a list kept on the TV, in levels: Must today, If you can, and passive reminders under Coming up. Add, tick off and change things with the remote.
 - **Weather:** the temperature, today's high and low and the chance of rain, then the next 12 hours and the week. It finds the TV's city by itself.
 - **Calendar:** today's agenda on the tile, then Day, Week and Month in the panel, from your Google calendars through the Pi.
 - **Now Playing:** what is playing on Spotify: the album picture, the song and the artist, and a thin line that fills as the song goes. Open it for a big picture, the album, the time and where it is playing. In full screen, a classic-style visualizer in the album's colors fills the screen and the song moves to a small card in the corner. The Pi asks Spotify; set it up once with `./hub spotify login` (see [Now Playing](#now-playing)).
@@ -122,7 +122,7 @@ The tile changes as soon as you pick, behind the page. All three choices are rem
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.28.17 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather), and **Scripts** only when one of the hub's script files failed to load: `logos.js loaded on a later try` (it was fetched again and the page loaded again by itself) or `logos.js did not load` (see [When a file fails to load](#when-a-file-fails-to-load)).
+- **This hub:** **Version** (for example `v0.29.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather), and **Scripts** only when one of the hub's script files failed to load: `logos.js loaded on a later try` (it was fetched again and the page loaded again by itself) or `logos.js did not load` (see [When a file fails to load](#when-a-file-fails-to-load)).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
 - **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `sharp`, `sharp-lite`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, at the canvas levels how long a frame takes to draw (`14 ms a frame`; a 30 fps frame has 33 ms, so this shows the headroom), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
@@ -176,20 +176,32 @@ The Spanish word is always the big one and the English the smaller companion. A 
 
 ## To-do
 
-A to-do list kept on this TV. The tile shows how many things are in **Now**, how many are in Next, Waiting on and Done today, and the first few Now items. Anything past its due date says **Overdue**.
+A to-do list kept on this TV. Every item has a **level**:
 
-Open the tile to see the whole list, in four parts: **Now**, **Next**, **Waiting on** and **Done today**.
+- **Must today** (red): a colored edge, a red **MUST** pill after the title (so it never rests on color alone) and a faint red wash behind the row.
+- **If you can** (yellow): a yellow edge, no pill. This is the default: an item added on the TV, from `./hub todo add` without `--level`, and every older item (the former Now, Next and Waiting on) is "If you can".
+- **Passive** (green): a reminder, not a task. No tick box and no section of its own: it shows as a dimmed **Coming up** footnote at the bottom of the tile and the panel, one line each with a small green dot and its date (Today, Tomorrow, Nov 19), only from 2 days before it is due (`COMING_UP_DAYS` in `app/widgets/todo.js`), or always when it has no date. It can be cleared (OK) or removed like any other item.
 
-- **Add something:** the box at the top has focus when the list is empty. Press OK and type with the TV's keyboard, then press Done. The new item goes to the top of Now and the box is ready for the next one. Back stops typing and keeps the text.
+While a must-do due today (or earlier, or with no date) is open, a rounded red strip at the top of the tile and the panel says **1 must-do today: Take weekly shot** (**2 must-dos today: ...** for more), and the tile keeps a red edge. Before 5 PM the strip is still. From 5 PM it pulses slowly (one breath every 3.5 s), a little stronger as the evening goes (its swing grows from 0.15 at 5 PM to 0.55 at midnight, updated every minute); once a must-do is late (after midnight, or a must-do with no date made on an earlier day) it pulses at full strength and the item says **Overdue** until it is done. Only opacity animates (a glow layer over the strip; the shadow itself never changes); in the hub's fade mode, or with "reduce motion" asked for, it does not pulse and the glow just stays.
+
+The tile shows the strip, how many items are open, Done today, the first few items (must-dos first) and the Coming up footnote. Anything past its due date says **Overdue**.
+
+Open the tile to see the whole list: **Must today**, **If you can**, **Done today**, then the **Coming up** footnote.
+
+- **Add something:** the box at the top has focus when the list is empty. Press OK and type with the TV's keyboard, then press Done. The new item goes to the top of If you can and the box is ready for the next one. Back stops typing and keeps the text.
 - **Tick it off:** OK on an item. It stays where it is, crossed out, until you close the list, so a wrong press is fixed with another OK. Next time it shows under Done today. OK on a Done today item puts it back.
-- **Move it:** press Right on an item to reach its two round buttons: the arrow moves it along (its label says where: **To Next**, **To Waiting on** or **To Now**), the bin removes it.
+- **Change its level:** press Right on an item to reach its two round buttons: the arrow moves it along must, optional, passive and round again (its label says where: **To If you can**, **To Coming up** or **To Must today**), the bin removes it.
 - **Remove it:** OK on the bin (**Remove**), then OK again on **Press again**. Moving away or pressing Back cancels.
+
+The words follow the hub's Language (Spanish in `app/i18n.js` under `todo.*`: Para hoy, Si puedes, Próximamente, CLAVE).
+
+**Levels from the Pi:** `./hub todo add "..." --level must|optional|passive`, `./hub todo level "..." passive`, and the mailbox's `todo.add` with `level` and `todo.level` (server 0.6.0). A Pi server older than 0.6.0 refuses `level` there, so a level can also ride in the notes as a tag, `[level:must]` or `[level:passive]`: the TV reads it and never shows it (nor a `[cal:...]` tag, which the calendar converter uses to remember what it converted). A level set on the TV reaches any Pi server, old or new, and comes back.
 
 Done items stay under Done today until the end of the day, then they're cleared.
 
 A USB or Bluetooth keyboard plugged into the TV works too: with the box focused, just start typing, and Enter adds the item. Backspace deletes a letter while you type.
 
-Full screen shows Now on the left and the rest on the right.
+Full screen shows Must today on the left, If you can and Done today on the right, and Coming up across the bottom.
 
 **Notes:** an item can carry notes (up to 300 characters), such as "Oat milk, not dairy". They show under its title in smaller gray text: one line on the tile, up to three in the panel and four in full screen, cut with "..." if longer. An item without notes shows nothing extra. Notes are added from the Pi or by Claude (`./hub todo add "Buy milk" --notes "Oat, not dairy"`, `./hub todo notes "Buy milk" "..."`, or the mailbox's `todo.add` with `notes` and `todo.notes`), not from the remote. Ticking, moving or removing an item on the TV keeps its notes, and a change to them shows on the TV by itself, with no restart.
 
@@ -388,6 +400,8 @@ The preview's hub server also reads four sample calendars from a small local fee
 `node dev/calendar-test.js` checks the calendar's date logic in Node (days in the Pi's zone, all-day ends, midnight crossings, both 2026 clock changes). `node dev/calendar-shots.js` takes the `docs/screenshots/calendar-*` pictures with the clock fixed at Sunday 15 November 2026, 10:40 AM, and checks the keys on the way (needs port 8095 free).
 
 `node dev/live-test.js` runs the checks from the design doc in a headless browser (Playwright): no server, a server that starts late, commands, the to-do list both ways, the TV off then on, the server stopping, refusals and wrong replies, and the same again on the fallback for old browsers. It needs port 8095 free and nothing from the internet. It can't prove the real TV's browser or the home network; the first run on the TV is still a real test.
+
+`node dev/todo-levels-test.js` checks to-do levels with the clock fixed at 3 PM, 6 PM, 11 PM and 1 AM in Chicago: old items as If you can, the sections and their colors, the MUST pill and edges, Coming up only within 2 days and without tick boxes, the strip's words and pulse strength, opacity-only animation, no pulse in fade mode or with reduced motion, Move's cycle, the notes tag, Spanish and Spanish 25% longer, and a level going both ways with the Pi's real server. `--out <folder> --scale 2` also writes screenshots of the tile, panel and full screen in English and Spanish at the four times. It needs port 8095 free.
 
 `node dev/todo-notes-shots.js` checks to-do notes the same way, in English and in Spanish: they show under the title only when an item has them, are cut between lines, never sideways, and survive a tick on the TV. `--out <folder> --scale 2` also writes screenshots.
 

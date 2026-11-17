@@ -430,12 +430,14 @@ const COMMANDS = {
   },
   'todo.add': {
     args: {
-      title: [V.text(MAX_TITLE), true], section: [V.oneOf(Object.keys(hubctl.SECTION_NAMES)), false], due: [V.date(), false],
+      title: [V.text(MAX_TITLE), true], section: [V.oneOf(Object.keys(hubctl.SECTION_NAMES)), false],
+      level: [V.oneOf(Object.keys(hubctl.LEVEL_NAMES)), false], due: [V.date(), false],
       notes: [V.notes(MAX_NOTES), false]
     },
     run: async (a, ctx) => {
       const body = { title: a.title };
       if (a.section !== undefined) body.section = a.section;
+      if (a.level !== undefined) body.level = a.level;
       if (a.due !== undefined) body.due = a.due;
       if (a.notes) body.notes = a.notes;
       const r = await ctx.call('POST', '/api/todo', body);
@@ -447,7 +449,7 @@ const COMMANDS = {
     run: async (a, ctx) => {
       const r = await ctx.call('GET', '/api/todo');
       const items = (r.items || []).map((i) => {
-        const o = { id: i.id, title: i.title, section: i.section, done: i.done };
+        const o = { id: i.id, title: i.title, level: hubctl.levelOf(i), section: i.section, done: i.done };
         if (i.due) o.due = i.due;
         if (i.notes) o.notes = i.notes;
         return o;
@@ -474,6 +476,22 @@ const COMMANDS = {
       const data = { id: after.id, title: after.title };
       if (after.notes) data.notes = after.notes;
       return { message: hubctl.todoNotesText(after), data: data };
+    }
+  },
+  'todo.level': {
+    args: { id: [V.text(40), false], title: [V.text(MAX_TITLE), false], level: [V.oneOf(Object.keys(hubctl.LEVEL_NAMES)), true] },
+    check: oneOfIdOrTitle,
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/todo');
+      let item;
+      try {
+        item = hubctl.matchItem(r.items || [], a.id !== undefined ? a.id : a.title);
+      } catch (e) {
+        if (e instanceof hubctl.Stop) return { ok: false, message: e.message };
+        throw e;
+      }
+      const after = await hubctl.setLevel(ctx.call, item, a.level);
+      return { message: hubctl.todoLevelText(after), data: { id: after.id, title: after.title, level: hubctl.levelOf(after) } };
     }
   },
   'calendar.status': {

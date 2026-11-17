@@ -10,7 +10,8 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Close whatever is open: `./hub home`
 - Short message on the TV: `./hub say "Dinner in 10" --seconds 8`
 - Load the hub afresh: `./hub reload`
-- Add a to-do: `./hub todo add "Buy milk" --section now --due 2026-12-24 --notes "Oat, not dairy"` (section, due and notes are optional; sections are `now`, `next`, `waiting`; notes are plain text up to 300 characters)
+- Add a to-do: `./hub todo add "Buy milk" --level must --due 2026-12-24 --notes "Oat, not dairy"` (level, due and notes are optional; levels are `must`, `optional` (the default) and `passive` (a reminder shown on the TV under "Coming up" from 2 days before its due date); notes are plain text up to 300 characters; `--section` is still taken but no longer shown)
+- Change a to-do's level: `./hub todo level "Buy milk" passive` (id or exact title)
 - See the to-do list with ids and notes: `./hub todo list`
 - Set or change a to-do's notes: `./hub todo notes "Buy milk" "Oat, not dairy"` (id or exact title); `--clear` removes them
 - Tick a to-do: `./hub todo done "Buy milk"` (id or exact title)
@@ -54,7 +55,8 @@ Commands and args (`args` may be left out when empty; unknown args are refused):
 
 - `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals, budget-lab), `home`, `reload`
 - `say {"text": "Dinner in 10", "seconds": 8}` (text up to 140 characters, seconds 1-60)
-- `todo.add {"title": "Buy milk", "section": "next", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
+- `todo.add {"title": "Buy milk", "level": "must", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `level` is `must`, `optional` or `passive`, optional when left out, and needs server 0.6.0: an older server refuses it, so there put `[level:must]` or `[level:passive]` at the end of `notes` instead, which the TV reads and hides; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
+- `todo.level {"title": "Buy milk", "level": "passive"}` or `{"id": "...", "level": "must"}` (server 0.6.0) changes an item's level
 - `todo.notes {"title": "Buy milk", "notes": "Oat, not dairy"}` or `{"id": "...", "notes": "..."}` (exactly one of id and title) sets an item's notes; `"notes": ""` or `null` removes them
 - `todo.done {"title": "Buy milk"}` or `{"id": "..."}` (exactly one), `todo.remove` the same
 - `calendar.status`, `calendar.refresh`

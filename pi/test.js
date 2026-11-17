@@ -323,6 +323,23 @@ async function main() {
     }
   });
 
+  await check('to-do level: POST /api/todo takes it, none stays none, a bad one is refused, the TV can set it', async () => {
+    const a = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Must one', level: 'must' } });
+    assert.strictEqual(a.status, 200);
+    assert.strictEqual(a.json.item.level, 'must');
+    const b = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'No level' } });
+    assert.ok(!('level' in b.json.item));
+    const bad = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'ok', level: 'urgent' } });
+    assert.strictEqual(bad.status, 400);
+    assert.ok(/level must be must, optional or passive/.test(bad.json.error));
+    let r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: b.json.item.id, fields: { level: 'passive' }, to: 'end' }] } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.items.find((i) => i.id === b.json.item.id).level, 'passive');
+    r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: a.json.item.id, fields: { level: null } }] } });
+    assert.ok(!('level' in r.json.items.find((i) => i.id === a.json.item.id)));
+    await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'remove', id: a.json.item.id }, { op: 'remove', id: b.json.item.id }] } });
+  });
+
   await check('to-do ops: add top/end, set, move to end, remove, last one wins', async () => {
     const ops = [
       { op: 'remove', id: 'nothere' },
