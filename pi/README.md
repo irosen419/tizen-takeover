@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.5.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.6.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -69,7 +69,7 @@ Turn the TV on with Home Hub open (it needs to know the Pi's address; that is se
 
 1. `./hub say "Hello from the Pi"`: the message appears at the bottom of the TV. The terminal says `Sent. 1 screen showed it.`
 2. `./hub show weather`: the weather opens. Add `--full` for full screen. `./hub home` closes it.
-3. `./hub todo add "Buy milk"`: the item appears on the TV's to-do list. The terminal says `Added "Buy milk" to Now.`
+3. `./hub todo add "Buy milk"`: the item appears on the TV's to-do list. The terminal says `Added "Buy milk" to If you can.`
 
 If the TV is off you will see `Sent, but no screen is listening`. That is normal: commands are only for a screen that is on right now. To-dos are kept and show up when the TV turns on.
 
@@ -79,7 +79,7 @@ Run `./hub help` for every command.
 
 A to-do can carry notes, plain text up to 300 characters. The TV shows them under the title, in smaller gray text, and shows nothing extra for an item without notes.
 
-- `./hub todo add "Buy milk" --notes "Oat, not dairy"` adds an item with notes. The terminal says `Added "Buy milk" to Now, with notes.`
+- `./hub todo add "Buy milk" --notes "Oat, not dairy"` adds an item with notes. The terminal says `Added "Buy milk" to If you can, with notes.`
 - `./hub todo notes "Buy milk" "Oat, not dairy"` sets or changes the notes of an item (by id or exact title); `./hub todo notes "Buy milk" --clear` removes them.
 - `./hub todo list` prints each item's notes on the line under it.
 
@@ -136,6 +136,12 @@ It adds `budget.js` next to `server.js` and makes the server version 0.4.0. A re
 1. `cd tizen-takeover && git pull && cd pi`
 2. With Docker: `docker compose restart hub`. With systemd: `sudo systemctl restart home-hub`.
 3. `./hub status` should say `version 0.4.0` or later, and `./hub budget show` should say `No budget snapshot yet.` If it says `The server said no: no such call.`, the server is still running the old code: do step 2 again.
+
+### To-do levels (server 0.6.0)
+
+Every to-do has a level: `must` (Must today), `optional` (If you can, the default) or `passive` (a reminder the TV shows under Coming up from 2 days before its due date). `./hub todo add "Take weekly shot" --level must --due 2026-11-18`, `./hub todo level "Buy milk" passive`, and the mailbox's `todo.add` with `level` and `todo.level`. `./hub todo list` groups items by level. Sections (`--section`) are still taken and kept, but the TV no longer shows them.
+
+An older server keeps a level the TV sets (Move on the TV) but refuses `level` on `todo add` and in the mailbox, and has no `todo level`. Until it is updated, a level can ride in the notes: end them with `[level:must]` or `[level:passive]`; the TV reads the tag and never shows it. To update: `git pull`, then `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.6.0`. Nothing changes in `.env`.
 
 ### Budget lab sections (server 0.5.0)
 
@@ -348,7 +354,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.5.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.6.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 
@@ -513,7 +519,7 @@ At one look every 10 seconds the Pi makes about 8,600 list calls a day (about 26
 ### How it works (for builders)
 
 - Claude writes `inbox/<id>.json`: `{"id": "<id>", "created": "<ISO time>", "cmd": "<name>", "args": {...}}`. The id is 6 to 64 letters, digits, `_` or `-` and must match the file name; `created` must be within the last 24 hours and at most 5 minutes ahead; the file must be under 64 KB; only `id`, `created`, `cmd` and `args` are allowed.
-- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `budget.show`, `budget.set {snapshot: {...} or null}`, `budget.clear`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
+- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, level?, section?, due?, notes?}`, `todo.level {id or title, level}`, `todo.notes {id or title, notes}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `budget.show`, `budget.set {snapshot: {...} or null}`, `budget.clear`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
 - The Pi writes `outbox/<id>.json`: `{id, cmd, ok, state, message, data, started, finished}`. `message` is the same text `./hub` prints (several lines for lists). First it writes `state: "running"` as a claim, then the final result with `state: "done"`; a command with an outbox file is never run again, even after a crash. Then it deletes the inbox file.
 - At most 20 commands per look, oldest `created` first, one at a time.
 - `status.json` is rewritten every minute and after each command: version, uptime, how many screens are listening, the mailbox's last command and last error, and a calendar summary (counts only).

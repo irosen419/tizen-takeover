@@ -9,6 +9,9 @@
   --todo-warn: #ffb36b;
   --todo-danger: #d93036;
   --todo-hair: rgba(255, 255, 255, 0.12);
+  --todo-must: #ff6b6b;
+  --todo-optional: #ffc94d;
+  --todo-passive: #5fd38a;
 }
 
 /* ---------- shared bits ---------- */
@@ -60,7 +63,8 @@
   padding-top: 0.9rem;
 }
 
-/* The key number first: open Now items, large and light like the clock. */
+/* The key number first: open must-dos and "If you can" items, large and
+   light like the clock. */
 .todo-hero {
   flex: 0 0 auto;
   display: flex;
@@ -98,7 +102,7 @@
   word-wrap: break-word;
 }
 
-/* Rows of the first open Now items. The JS adds rows while they fit; the
+/* Rows of the first open items, must-dos first. The JS adds rows while they fit; the
    list only shrinks, so "+N more" sits right under the last row. */
 .todo-tile-list {
   flex: 0 1 auto;
@@ -555,9 +559,214 @@
 .panel.is-full .todo-sec-empty { font-size: 1.1rem; }
 .panel.is-full .todo-warn { font-size: 0.9rem; }
 
+/* ---------- levels: must, optional, passive ---------- */
+
+/* The colored edge at a row's left: red for a must-do, yellow for "If you
+   can". A passive line has its green dot instead. */
+.todo-lv {
+  display: block;
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 0.25rem;
+  min-height: 1.3rem;
+  border-radius: 0.125rem;
+  background: var(--todo-optional);
+}
+.lv-must > .todo-lv,
+.lv-must .todo-main > .todo-lv { background: var(--todo-must); }
+.lv-passive .todo-lv { display: none; }
+.todo-tile-row .todo-lv { margin-right: 0.6rem; }
+.todo-main .todo-lv { margin: 0 0.7rem 0 -0.3rem; }
+.todo-row.is-done .todo-lv { opacity: 0.35; }
+
+/* A must-do: a faint red wash from the left, and the MUST pill after the
+   title, so it never rests on color alone. */
+.todo-tile-row.lv-must,
+.todo-row.lv-must .todo-main {
+  background: -webkit-linear-gradient(left, rgba(255, 90, 95, 0.17) 0%, rgba(255, 90, 95, 0) 75%);
+  background: linear-gradient(to right, rgba(255, 90, 95, 0.17) 0%, rgba(255, 90, 95, 0) 75%);
+}
+.todo-tile-row.lv-must { border-radius: 0.4rem; }
+.todo-row.lv-must.is-done .todo-main { background: transparent; }
+.todo-row.lv-must.is-active .todo-main { background: rgba(255, 255, 255, 0.06); }
+.todo-row.lv-must .todo-main.is-focused { background: var(--card-2); }
+.todo-must-pill {
+  display: inline-block;
+  margin: 0 0 0 0.5rem;
+  padding: 0.04rem 0.45rem;
+  border-radius: 0.6rem;
+  background: #d93036;
+  color: #fff;
+  font-size: 0.62em;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.08em;
+  vertical-align: 0.12em;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+/* Section names in their level's color. */
+.todo-sec-must .todo-sec-name { color: var(--todo-must); }
+.todo-sec-optional .todo-sec-name { color: var(--todo-optional); }
+
+/* "Coming up": passive items as a dimmed footnote under everything else,
+   one line each with a small green dot and no tick box. */
+.todo-foot {
+  flex: 0 0 auto;
+  margin-top: 0.8rem;
+  padding-top: 0.55rem;
+  border-top: 0.06rem solid var(--todo-hair);
+}
+.todo-foot-label {
+  font-size: 0.75rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.todo-foot-line {
+  display: flex;
+  align-items: center;
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.todo-dot {
+  display: block;
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.6rem;
+  border-radius: 50%;
+  background: var(--todo-passive);
+  opacity: 0.85;
+}
+.todo-foot-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.todo-foot-when { flex: 0 0 auto; margin-left: 0.4rem; color: var(--text-3); }
+.todo-foot-more { margin-top: 0.2rem; font-size: 0.8rem; line-height: 1.4; color: var(--text-3); }
+.todo-tile-foot { margin-top: auto; }
+.todo-tile-list + .todo-more + .todo-tile-foot { margin-top: 0.8rem; }
+
+.todo-panel-foot { margin-top: 1.1rem; padding-top: 0.6rem; }
+.todo-panel-foot .todo-foot-label { padding: 0 0.9rem 0.2rem; }
+.todo-panel-foot .todo-row { border-top-color: transparent; }
+.todo-row.lv-passive .todo-main { padding-top: 0.35rem; padding-bottom: 0.35rem; }
+.todo-row.lv-passive .todo-main .todo-dot { margin: 0.5rem 0.95rem 0 0.32rem; }
+.todo-row.lv-passive .todo-title { display: inline; font-size: 1rem; line-height: 1.45; color: var(--text-2); }
+.todo-row.lv-passive .todo-notes { display: none; }
+.todo-row.lv-passive .todo-due {
+  display: inline;
+  margin: 0 0 0 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+.todo-row.lv-passive .todo-main.is-focused .todo-title { color: var(--text); }
+.todo-row.lv-passive.is-done .todo-title { color: var(--text-3); }
+
+/* ---------- the must-do strip ---------- */
+
+/* A rounded, red-tinted strip: "1 must-do today: Take weekly shot". It wraps
+   to a second line rather than cutting a long title or Spanish short. */
+.todo-alert {
+  position: relative;
+  flex: 0 0 auto;
+  margin: 0 0 0.7rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 0.1rem solid rgba(255, 107, 107, 0.5);
+  background: rgba(217, 48, 54, 0.2);
+}
+.todo-alert-text {
+  position: relative;
+  z-index: 1;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  max-height: 2.8em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: #ffe1e1;
+  word-wrap: break-word;
+}
+.todo-alert-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.55rem;
+  border-radius: 50%;
+  background: var(--todo-must);
+  vertical-align: 0.08em;
+}
+.todo-tile .todo-alert { margin-bottom: 0.3rem; }
+.todo-hero.is-compact .todo-hero-num { font-size: 2.8rem; }
+.todo-hero.is-compact .todo-hero-cap { font-size: 1rem; }
+.todo-tile .todo-alert-text { font-size: 0.9rem; }
+
+/* The pulse. .todo-glow's opacity (set by todo.js once a minute) is how
+   strong it is: none before 5 PM, then 0.15 rising to 0.55 by midnight, and
+   0.55 once a must-do is late. Its ::after only breathes, opacity 0 to 1
+   and back in 3.5 s; the shadow itself never animates. */
+.todo-glow {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.todo-glow::after {
+  content: '';
+  position: absolute;
+  top: -0.1rem; right: -0.1rem; bottom: -0.1rem; left: -0.1rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 70, 76, 0.3);
+  box-shadow: 0 0 1.2rem 0.15rem rgba(255, 70, 76, 0.9);
+  opacity: 0;
+  will-change: opacity;
+  -webkit-animation: todo-pulse 3500ms ease-in-out infinite;
+  animation: todo-pulse 3500ms ease-in-out infinite;
+}
+@-webkit-keyframes todo-pulse { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+@keyframes todo-pulse { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+
+/* The home tile keeps a red edge while a must-do is open; it glows with the
+   strip after 5 PM. The white focus border wins while the tile has focus. */
+.todo-tile-glow {
+  position: absolute;
+  top: -0.16rem; right: -0.16rem; bottom: -0.16rem; left: -0.16rem;
+  z-index: 2;
+  border-radius: 1.6rem;
+  border: 0.16rem solid rgba(255, 107, 107, 0.6);
+  pointer-events: none;
+}
+.tile.is-focused > .todo-tile-glow { border-color: transparent; }
+.todo-tile-glow .todo-glow::after {
+  border-radius: 1.6rem;
+  background: transparent;
+  box-shadow: 0 0 1.6rem 0.25rem rgba(255, 70, 76, 0.8), inset 0 0 1.4rem rgba(255, 70, 76, 0.35);
+}
+
+/* No pulse in the hub's plain-fade mode or for anyone who asks for less
+   motion: the glow simply stays, as strong as the hour says. */
+.motion-fade .todo-glow::after { -webkit-animation: none; animation: none; opacity: 0.6; }
+@media (prefers-reduced-motion: reduce) {
+  .todo-glow::after { -webkit-animation: none; animation: none; opacity: 0.6; }
+}
+
+.panel.is-full .todo-alert { padding: 0.65rem 1.1rem; margin-bottom: 0.9rem; }
+.panel.is-full .todo-alert-text { font-size: 1.2rem; }
+.panel.is-full .todo-row.lv-passive .todo-title { font-size: 1.15rem; }
+.panel.is-full .todo-row.lv-passive .todo-due { font-size: 0.85rem; }
+.panel.is-full .todo-foot-label { font-size: 0.85rem; }
+
 /* ---------- one-row strip ---------- */
 
-/* The count, then the first Now item on one line ending in "...". */
+/* The count, then the first must-do (or open item) on one line ending in "...". */
 .todo-tile.todo-strip {
   flex-direction: row;
   align-items: center;
@@ -582,6 +791,8 @@
   text-overflow: ellipsis;
 }
 .todo-strip-text.is-late { color: var(--todo-warn); }
+.todo-strip.has-must .todo-strip-num { color: var(--todo-must); }
+.todo-strip-text.is-must { color: #ffc9c9; }
 
 /* ---------- small tiles ---------- */
 

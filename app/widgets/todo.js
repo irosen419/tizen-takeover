@@ -1,21 +1,37 @@
 /*
- * To-do: a list kept on this TV (localStorage). Add, tick off, move between
- * Now, Next and Waiting on, and remove, with only the remote. Typing works
- * with the TV's on-screen keyboard or a USB or Bluetooth keyboard.
+ * To-do: a list kept on this TV (localStorage). Add, tick off, change an
+ * item's level and remove, with only the remote. Typing works with the TV's
+ * on-screen keyboard or a USB or Bluetooth keyboard.
  *
  * Saved as homeHub.todo.v1 = { v: 1, items: [item] }, where an item is
- * { id, title, section: 'now' | 'next' | 'waiting', done, doneAt, createdAt,
- * due: 'YYYY-MM-DD' (optional), notes: 'plain text' (optional, at most 300
- * characters) }. Fields this file doesn't know are kept as they are.
+ * { id, title, level: 'must' | 'optional' | 'passive' (optional; missing
+ * means optional), section: 'now' | 'next' | 'waiting' (kept for older Pi
+ * servers, no longer shown), done, doneAt, createdAt, due: 'YYYY-MM-DD'
+ * (optional), notes: 'plain text' (optional, at most 300 characters) }.
+ * Fields this file doesn't know are kept as they are.
+ *
+ * Levels: "Must today" (red, with a MUST pill), "If you can" (yellow) and
+ * passive ones, which have no tick box: they show as a dimmed "Coming up"
+ * footnote, only from COMING_UP_DAYS before their due date (always when they
+ * have none). While a must-do due today (or earlier, or with no date) is
+ * open, a red strip at the top of the tile and the panel says so; from 5 PM
+ * it pulses slowly, a little stronger each hour until midnight, and at full
+ * strength once the must-do is late. Only opacity animates.
+ *
+ * A Pi server older than 0.6.0 can't take a level through ./hub or the
+ * mailbox, so a level may also come as a tag in the notes: "[level:must]",
+ * "[level:passive]" (a "level" field always wins). Tags in square brackets
+ * that start with "level:" or "cal:" (the calendar converter's own marks)
+ * are never shown.
  *
  * Notes come only from the Pi (./hub todo add --notes, the mailbox's
  * todo.add and todo.notes); the TV shows them under the title, quietly, and
  * shows nothing at all for an item without notes. The TV never edits them,
  * and every change it sends keeps them.
  *
- * Every word is in STRINGS. window.HUB_TODO_STRINGS, when set before this
- * file loads, replaces any of them key by key (the screenshots use it to try
- * Spanish; the TV stays English).
+ * Every word is in EN. window.HUB_TODO_STRINGS, when set before this file
+ * loads, replaces any of them key by key (the screenshots use it); the hub's
+ * language (app/i18n.js, keys 'todo.*') then turns them into Spanish.
  *
  * With live updates (ctx.live, see docs/live-updates.md) the list is also
  * kept on the hub server on the Pi. The copy on the TV stays the working
@@ -30,8 +46,9 @@
   'use strict';
 
   /* Every word the widget shows, in one place for translating. {n} is a
-     number, {d} a date. */
-  var STRINGS = {
+     number, {d} a date, {t} a title. */
+  var EN = {
+    title: 'To-do',
     sub: 'On this TV',
     subSynced: 'In sync',
     subToSend: 'Saved here, {n} to send',
@@ -39,8 +56,6 @@
     heroOne: 'to do now',
     heroMany: 'to do now',
     allClear: 'All clear for now',
-    metaNext: '{n} next',
-    metaWaiting: '{n} waiting',
     metaDone: '{n} done today',
     metaSep: ' · ',
     emptyTitle: 'Nothing on the list yet.',
@@ -49,14 +64,22 @@
     overdue: 'Overdue',
     dueToday: 'Due today',
     dueOn: 'Due {d}',
-    months: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-    sections: { now: 'Now', next: 'Next', waiting: 'Waiting on', done: 'Done today' },
-    moveTo: { now: 'To Now', next: 'To Next', waiting: 'To Waiting on' },
+    today: 'Today',
+    tomorrow: 'Tomorrow',
+    dateShort: '{mon} {d}',
+    monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    sections: { must: 'Must today', optional: 'If you can', done: 'Done today' },
+    comingUp: 'Coming up',
+    mustPill: 'MUST',
+    alertOne: '{n} must-do today: {t}',
+    alertMany: '{n} must-dos today: {t}',
+    moveTo: { must: 'To Must today', optional: 'To If you can', passive: 'To Coming up' },
     remove: 'Remove',
     removeArmed: 'Confirm',
     addPlaceholder: 'Add an item',
     hintOk: 'OK to type',
     hintTyping: 'Done or Enter adds it',
+    emptyMust: 'Nothing you must do today.',
     emptyNow: 'Nothing for now.',
     emptySection: 'Nothing here.',
     listFull: 'The list is full. Tick off or remove something first.',
@@ -82,7 +105,15 @@
       }
     }
   }
-  try { mergeStrings(STRINGS, window.HUB_TODO_STRINGS); } catch (e) { /* keep English */ }
+  try { mergeStrings(EN, window.HUB_TODO_STRINGS); } catch (e) { /* keep English */ }
+
+  // The words in the hub's language; set again when the language changes.
+  var STRINGS = EN;
+  function localizeStrings() {
+    var x = window.HUB_I18N;
+    try { STRINGS = x && typeof x.localize === 'function' ? x.localize(EN, 'todo') : EN; } catch (e) { STRINGS = EN; }
+  }
+  localizeStrings();
 
   var STORE_KEY = 'homeHub.todo.v1';
   var BAD_KEY = 'homeHub.todo.v1.bad';
@@ -90,8 +121,19 @@
   var MAX_NOTES = 300;
   var MAX_OPEN = 60;
   var TILE_ROWS = 8;
+  var TILE_FOOT = 2;          // "Coming up" lines on the home tile
   var SECTIONS = ['now', 'next', 'waiting'];
-  var NEXT_SECTION = { now: 'next', next: 'waiting', waiting: 'now' };
+  var LEVELS = ['must', 'optional', 'passive'];
+  var NEXT_LEVEL = { must: 'optional', optional: 'passive', passive: 'must' };
+  // A passive item shows from this many days before its due date.
+  var COMING_UP_DAYS = 2;
+  // The must-do strip pulses from 5 PM, from a faint swing to a stronger one
+  // at midnight, and at the strongest once a must-do is late.
+  var PULSE_FROM_HOUR = 17;
+  var PULSE_MIN = 0.15;
+  var PULSE_MAX = 0.55;
+  var TAG_LEVEL = /\[level:(must|optional|passive)\]/;
+  var TAGS = /\s*\[(?:level|cal):[^\]]*\]/g;
 
   // 24x24 line icons, same style as icons.js.
   function svg(body, width) {
@@ -151,13 +193,45 @@
     return null;
   }
 
-  // '' when the item has no due date or it's in the future past today.
+  function shortDate(day) {
+    var month = STRINGS.monthsShort[parseInt(day.substring(5, 7), 10) - 1] || '';
+    return STRINGS.dateShort.replace('{mon}', month).replace('{d}', String(parseInt(day.substring(8, 10), 10)));
+  }
+
+  // '' when the item has no due date.
   function dueText(due, now) {
     if (!due) return '';
     if (due < now) return STRINGS.overdue;
     if (due === now) return STRINGS.dueToday;
-    var month = STRINGS.months[parseInt(due.substring(5, 7), 10) - 1] || '';
-    return fill(STRINGS.dueOn, month + ' ' + parseInt(due.substring(8, 10), 10));
+    return fill(STRINGS.dueOn, shortDate(due));
+  }
+
+  // When a passive item is: Today, Tomorrow, Nov 19 (or Overdue).
+  function whenText(due, now) {
+    if (!due) return '';
+    if (due < now) return STRINGS.overdue;
+    if (due === now) return STRINGS.today;
+    if (due === addDays(now, 1)) return STRINGS.tomorrow;
+    return shortDate(due);
+  }
+
+  // 'YYYY-MM-DD' n days after day, in local time.
+  function addDays(day, n) {
+    var d = new Date(parseInt(day.substring(0, 4), 10), parseInt(day.substring(5, 7), 10) - 1, parseInt(day.substring(8, 10), 10) + n);
+    return dayOf(d);
+  }
+
+  // An item's level: its level field, else a "[level:...]" tag in its
+  // notes (from a Pi too old to take the field), else optional.
+  function levelOf(item) {
+    if (LEVELS.indexOf(item.level) >= 0) return item.level;
+    var m = typeof item.notes === 'string' ? TAG_LEVEL.exec(item.notes) : null;
+    return m ? m[1] : 'optional';
+  }
+
+  // Notes as shown: without the machine tags.
+  function shownNotes(item) {
+    return typeof item.notes === 'string' ? tidy(item.notes.replace(TAGS, ' ')) : '';
   }
 
   /* ---------- store ---------- */
@@ -213,9 +287,9 @@
       }
     },
 
-    // New items go to the top of Now.
+    // New items go to the top, as "If you can".
     add: function (title) {
-      var item = { id: newId(), title: title, section: 'now', done: false, doneAt: null, createdAt: new Date().getTime() };
+      var item = { id: newId(), title: title, level: 'optional', section: 'now', done: false, doneAt: null, createdAt: new Date().getTime() };
       store.items.unshift(item);
       return item;
     },
@@ -225,12 +299,12 @@
       item.doneAt = item.done ? new Date().getTime() : null;
     },
 
-    // Moves to the end of the next section in the cycle.
+    // Moves to the end of the next level in the cycle: must, optional, passive.
     move: function (item) {
       var i = store.items.indexOf(item);
       if (i < 0) return;
       store.items.splice(i, 1);
-      item.section = NEXT_SECTION[item.section] || 'now';
+      item.level = NEXT_LEVEL[levelOf(item)];
       store.items.push(item);
     },
 
@@ -257,6 +331,8 @@
       if (!title) continue;
       it.title = title;
       if (SECTIONS.indexOf(it.section) < 0) it.section = 'now';
+      // A level this file doesn't know goes; no level means optional.
+      if (it.level !== undefined && LEVELS.indexOf(it.level) < 0) delete it.level;
       it.done = it.done === true;
       it.doneAt = it.done ? (typeof it.doneAt === 'number' ? it.doneAt : now) : null;
       if (typeof it.createdAt !== 'number') it.createdAt = now;
@@ -524,7 +600,8 @@
   }
 
   function subText() {
-    if (!syncing()) return null;
+    // Not syncing: "On this TV" in the hub's language, unless config.js says otherwise.
+    if (!syncing()) return C && C.config && C.config.sub && C.config.sub !== EN.sub ? null : STRINGS.sub;
     var n = waiting();
     if (n) return fill(STRINGS.subToSend, n);
     return liveStatus().state === 'live' ? STRINGS.subSynced : STRINGS.subSaved;
@@ -571,15 +648,25 @@
     return n;
   }
 
-  // Items in a section as the panel shows them: open ones, plus ones ticked
+  // Items of a level as the panel shows them: open ones, plus ones ticked
   // while the panel is open (they stay in place until it closes).
-  function inSection(section, panelView) {
+  function inLevel(level, panelView) {
     var out = [];
     for (var i = 0; i < store.items.length; i++) {
       var it = store.items[i];
-      if (it.section !== section) continue;
+      if (levelOf(it) !== level) continue;
       if (!it.done || (panelView && ticked[it.id])) out.push(it);
     }
+    return out;
+  }
+
+  // Passive items for the "Coming up" footnote: no due date, or due within
+  // COMING_UP_DAYS (and late ones, until they are cleared).
+  function comingUp(panelView) {
+    var last = addDays(today(), COMING_UP_DAYS);
+    var list = inLevel('passive', panelView);
+    var out = [];
+    for (var i = 0; i < list.length; i++) if (!list[i].due || list[i].due <= last) out.push(list[i]);
     return out;
   }
 
@@ -592,6 +679,82 @@
     return out;
   }
 
+  /* ---------- the must-do strip ---------- */
+
+  // Open must-dos for today: due today or earlier, or with no date (a
+  // must-do due later is in the list, but the strip waits for its day).
+  function mustToday() {
+    var now = today();
+    var out = [];
+    for (var i = 0; i < store.items.length; i++) {
+      var it = store.items[i];
+      if (it.done || levelOf(it) !== 'must') continue;
+      if (!it.due || it.due <= now) out.push(it);
+    }
+    return out;
+  }
+
+  // A must-do is late once its day has gone by: its due date, or for one
+  // without a date, the day it was made.
+  function anyLate(list) {
+    var now = today();
+    for (var i = 0; i < list.length; i++) {
+      var day = list[i].due || dayOf(new Date(list[i].createdAt));
+      if (day < now) return true;
+    }
+    return false;
+  }
+
+  // How strongly the strip pulses now: 0 (still) before 5 PM, then from
+  // PULSE_MIN to PULSE_MAX by midnight; PULSE_MAX when a must-do is late.
+  function pulseLevel(list) {
+    if (!list.length) return 0;
+    if (anyLate(list)) return PULSE_MAX;
+    var d = new Date();
+    var mins = d.getHours() * 60 + d.getMinutes();
+    var from = PULSE_FROM_HOUR * 60;
+    if (mins < from) return 0;
+    var t = (mins - from) / (24 * 60 - 1 - from);
+    return Math.round((PULSE_MIN + (PULSE_MAX - PULSE_MIN) * Math.min(1, t)) * 100) / 100;
+  }
+
+  // The glow layer: its opacity is how strong the pulse is; its ::after
+  // breathes (opacity only, CSS). Hidden while the strip is still.
+  function setGlow(node, level) {
+    if (!node) return;
+    node.style.opacity = String(level);
+    node.style.display = level > 0 ? '' : 'none';
+  }
+
+  function drawAlert(parent, list, cls) {
+    var box = el('div', 'todo-alert ' + cls, '', parent);
+    setGlow(el('span', 'todo-glow', '', box), pulseLevel(list));
+    var text = fill(list.length === 1 ? STRINGS.alertOne : STRINGS.alertMany, list.length).replace('{t}', list[0].title);
+    var line = el('div', 'todo-alert-text', '', box);
+    el('span', 'todo-alert-dot', '', line);
+    line.appendChild(document.createTextNode(text));
+    return box;
+  }
+
+  // The tile's red edge while a must-do is open (it pulses with the strip).
+  function markTile(body, list) {
+    var tile = body && body.parentNode;
+    if (!tile || !tile.classList || !tile.classList.contains('tile')) return;
+    var old = tile.querySelector('.todo-tile-glow');
+    if (old) tile.removeChild(old);
+    if (!list.length) return;
+    var edge = el('span', 'todo-tile-glow', '', tile);
+    edge.setAttribute('aria-hidden', 'true');
+    setGlow(el('span', 'todo-glow', '', edge), pulseLevel(list));
+  }
+
+  // Once a minute: the pulse grows through the evening without a redraw.
+  function updatePulse() {
+    var level = pulseLevel(mustToday());
+    var list = document.querySelectorAll('.todo-glow');
+    for (var i = 0; i < list.length; i++) setGlow(list[i], level);
+  }
+
   function renderError(body, e, cls) {
     body.innerHTML = '';
     var box = el('div', 'todo-error ' + cls, '', body);
@@ -599,20 +762,31 @@
     el('div', 'todo-error-detail', String((e && e.message) || e || ''), box);
   }
 
+  // The MUST pill after a title, so a must-do is not told by color alone.
+  function mustPill(parent) {
+    el('span', 'todo-must-pill', STRINGS.mustPill, parent);
+  }
+
   /* ---------- home tile ---------- */
 
-  // A one-row strip: the number of open Now items and the first of them,
-  // or the one line that says why there are none.
+  // A one-row strip: the number of open must-dos for today and the first of
+  // them (red), else the open items and the first of them, or the one line
+  // that says why there are none.
   function drawStrip(body) {
     var wrap = el('div', 'todo-tile todo-strip', '', body);
-    var nowItems = inSection('now', false);
-    if (!store.items.length) {
+    var must = mustToday();
+    var open = inLevel('must', false).concat(inLevel('optional', false));
+    if (must.length) {
+      wrap.className += ' has-must';
+      el('span', 'todo-strip-num', String(must.length), wrap);
+      var late = anyLate(must);
+      el('div', 'todo-strip-text is-must' + (late ? ' is-late' : ''), must[0].title, wrap);
+    } else if (!store.items.length) {
       el('div', 'todo-strip-text', STRINGS.emptyTitle, wrap);
-    } else if (nowItems.length) {
-      el('span', 'todo-strip-num', String(nowItems.length), wrap);
-      var first = nowItems[0];
-      var late = first.due && first.due < today();
-      el('div', 'todo-strip-text' + (late ? ' is-late' : ''), first.title, wrap);
+    } else if (open.length) {
+      el('span', 'todo-strip-num', String(open.length), wrap);
+      var first = open[0];
+      el('div', 'todo-strip-text' + (first.due && first.due < today() ? ' is-late' : ''), first.title, wrap);
     } else {
       el('div', 'todo-strip-text', STRINGS.allClear, wrap);
     }
@@ -620,38 +794,39 @@
 
   function drawTile(body) {
     var size = C && C.size ? C.size() : null;
+    var must = mustToday();
+    markTile(body, must);
     if (size && size.tier === 'strip') return drawStrip(body);
     var wrap = el('div', 'todo-tile', '', body);
     var now = today();
-    var nowItems = inSection('now', false);
-    var nextN = inSection('next', false).length;
-    var waitN = inSection('waiting', false).length;
+    var open = inLevel('must', false).concat(inLevel('optional', false));
+    var coming = comingUp(false);
     var doneN = doneToday(false).length;
 
+    if (must.length) drawAlert(wrap, must, 'todo-tile-alert');
     if (!store.items.length) {
       var empty = el('div', 'todo-tile-empty', '', wrap);
       el('div', 'todo-tile-empty-title', STRINGS.emptyTitle, empty);
       el('div', 'todo-tile-empty-hint', STRINGS.emptyHint, empty);
     } else {
-      var hero = el('div', 'todo-hero', '', wrap);
-      if (nowItems.length) {
-        el('span', 'todo-hero-num', String(nowItems.length), hero);
-        el('span', 'todo-hero-cap', nowItems.length === 1 ? STRINGS.heroOne : STRINGS.heroMany, hero);
+      // With the strip above, the number steps down so rows keep their room.
+      var hero = el('div', 'todo-hero' + (must.length ? ' is-compact' : ''), '', wrap);
+      if (open.length) {
+        el('span', 'todo-hero-num', String(open.length), hero);
+        el('span', 'todo-hero-cap', open.length === 1 ? STRINGS.heroOne : STRINGS.heroMany, hero);
       } else {
         hero.className += ' is-clear';
         el('span', 'todo-hero-clear', STRINGS.allClear, hero);
       }
       var parts = [];
-      if (nextN) parts.push(fill(STRINGS.metaNext, nextN));
-      if (waitN) parts.push(fill(STRINGS.metaWaiting, waitN));
       if (doneN) parts.push(fill(STRINGS.metaDone, doneN));
       if (parts.length) el('div', 'todo-meta', parts.join(STRINGS.metaSep), wrap);
 
-      if (nowItems.length) {
-        var list = el('div', 'todo-tile-list', '', wrap);
-        var more = el('div', 'todo-more', '', wrap);
-        fitRows(list, more, nowItems, now);
-      }
+      var list = open.length ? el('div', 'todo-tile-list', '', wrap) : null;
+      var more = open.length ? el('div', 'todo-more', '', wrap) : null;
+      // The footnote first, so the rows are fitted to the room it leaves.
+      if (coming.length) drawFoot(wrap, coming, now, false);
+      if (list) fitRows(list, more, open, now);
     }
 
     var w = warnText();
@@ -659,12 +834,16 @@
   }
 
   function tileRow(item, now) {
-    var row = el('div', 'todo-tile-row');
+    var level = levelOf(item);
+    var row = el('div', 'todo-tile-row lv-' + level);
     row.setAttribute('data-id', String(item.id));
+    el('span', 'todo-lv', '', row);
     el('span', 'todo-tick', '', row);
     var text = el('div', 'todo-tile-text', '', row);
-    el('div', 'todo-tile-title', item.title, text);
-    if (item.notes) el('div', 'todo-tile-notes', item.notes, text);
+    var title = el('div', 'todo-tile-title', item.title, text);
+    if (level === 'must') mustPill(title);
+    var notes = shownNotes(item);
+    if (notes) el('div', 'todo-tile-notes', notes, text);
     if (item.due && item.due < now) el('div', 'todo-flag', STRINGS.overdue, text);
     return row;
   }
@@ -694,6 +873,26 @@
     }
   }
 
+  // "Coming up": passive items, dimmed, one line each, with a small green
+  // dot and no tick box. In the panel each line can take focus (OK clears
+  // it, and it has Move and Remove like any row).
+  function drawFoot(parent, items, now, panelView) {
+    var foot = el('div', 'todo-foot' + (panelView ? ' todo-panel-foot' : ' todo-tile-foot'), '', parent);
+    el('div', 'todo-foot-label', STRINGS.comingUp, foot);
+    var n = panelView ? items.length : Math.min(items.length, TILE_FOOT);
+    for (var i = 0; i < n; i++) {
+      if (panelView) { foot.appendChild(panelRow(items[i], now, false)); continue; }
+      var line = el('div', 'todo-foot-line', '', foot);
+      line.setAttribute('data-id', String(items[i].id));
+      el('span', 'todo-dot', '', line);
+      el('span', 'todo-foot-title', items[i].title, line);
+      var when = whenText(items[i].due, now);
+      if (when) el('span', 'todo-foot-when', '· ' + when, line);
+    }
+    if (n < items.length) el('div', 'todo-foot-more', fill(STRINGS.more, items.length - n), foot);
+    return foot;
+  }
+
   /* ---------- panel ---------- */
 
   function drawPanel(body) {
@@ -702,6 +901,8 @@
     armed = null;
     var now = today();
     var wrap = el('div', 'todo-panel', '', body);
+    var must = mustToday();
+    if (must.length) drawAlert(wrap, must, 'todo-panel-alert');
     var cols = el('div', 'todo-cols', '', wrap);
     var main = el('div', 'todo-col todo-col-main', '', cols);
     var side = el('div', 'todo-col todo-col-side', '', cols);
@@ -710,24 +911,28 @@
     var w = warnText();
     if (w) el('div', 'todo-warn todo-panel-warn', w, main);
 
-    var nowItems = inSection('now', true);
-    var focusFirst = null;
-    for (var i = 0; i < nowItems.length; i++) {
-      if (!nowItems[i].done) { focusFirst = nowItems[i].id; break; }
-    }
-    drawSection(main, 'now', nowItems, now, STRINGS.emptyNow, focusFirst);
+    var mustItems = inLevel('must', true);
+    var optItems = inLevel('optional', true);
+    var focusFirst = firstOpen(mustItems) || firstOpen(optItems);
+    drawSection(main, 'must', mustItems, now, STRINGS.emptyMust, focusFirst);
     // In full screen this invisible copy of the add row's box pushes the
     // right column down by exactly the add row's height, so it starts level
-    // with Now. Hidden in panel mode.
+    // with Must today. Hidden in panel mode.
     var spacer = el('div', 'todo-add todo-add-spacer', '', side);
     spacer.setAttribute('aria-hidden', 'true');
-    el('span', 'todo-input todo-spacer-box', ' ', spacer);
-    drawSection(side, 'next', inSection('next', true), now, STRINGS.emptySection, null);
-    drawSection(side, 'waiting', inSection('waiting', true), now, STRINGS.emptySection, null);
+    el('span', 'todo-input todo-spacer-box', '\u00a0', spacer);
+    drawSection(side, 'optional', optItems, now, mustItems.length ? STRINGS.emptySection : STRINGS.emptyNow, focusFirst);
     var done = doneToday(true);
     if (done.length) drawSection(side, 'done', done, now, '', null);
+    var coming = comingUp(true);
+    if (coming.length) drawFoot(wrap, coming, now, true);
     if (!focusFirst) body.querySelector('input.todo-input').setAttribute('data-autofocus', '');
     flash = null;
+  }
+
+  function firstOpen(items) {
+    for (var i = 0; i < items.length; i++) if (!items[i].done) return items[i].id;
+    return null;
   }
 
   // The input is the focusable; the frame after it draws the box, so CSS can
@@ -762,7 +967,7 @@
   function drawSection(parent, key, items, now, emptyText, autofocusId) {
     var openN = 0;
     for (var i = 0; i < items.length; i++) if (!items[i].done || key === 'done') openN++;
-    var sec = el('div', 'todo-sec todo-sec-' + key + (items.length || key === 'now' ? '' : ' is-empty'), '', parent);
+    var sec = el('div', 'todo-sec todo-sec-' + key + (items.length || key === 'optional' ? '' : ' is-empty'), '', parent);
     var label = el('div', 'todo-sec-label', '', sec);
     el('span', 'todo-sec-name', STRINGS.sections[key], label);
     el('span', 'todo-sec-count', String(openN), label);
@@ -788,20 +993,32 @@
     return btn;
   }
 
+  // A row: the level's colored edge, the tick (a green dot for a passive
+  // line, which has no tick box), the title (with the MUST pill for a
+  // must-do), notes and the due date.
   function panelRow(item, now, autofocus) {
     var active = item.id === activeId;
-    var row = el('div', 'todo-row' + (item.done ? ' is-done' : '') + (item.id === flash ? ' is-flash' : '') +
+    var level = levelOf(item);
+    var passive = level === 'passive';
+    var row = el('div', 'todo-row lv-' + level + (item.done ? ' is-done' : '') + (item.id === flash ? ' is-flash' : '') +
       (active ? ' is-active' : ''));
     if (active) activeRow = row;
     var main = el('div', 'todo-main f', '', row);
     main.setAttribute('data-key', 'item:' + item.id);
     if (autofocus) main.setAttribute('data-autofocus', '');
-    var tick = el('span', 'todo-tick', '', main);
-    tick.innerHTML = ICON_TICK;
+    el('span', 'todo-lv', '', main);
+    if (passive && !item.done) {
+      el('span', 'todo-dot', '', main);
+    } else {
+      var tick = el('span', 'todo-tick', '', main);
+      tick.innerHTML = ICON_TICK;
+    }
     var text = el('span', 'todo-text', '', main);
-    el('span', 'todo-title', item.title, text);
-    if (item.notes) el('span', 'todo-notes', item.notes, text);
-    var due = item.done ? '' : dueText(item.due, now);
+    var title = el('span', 'todo-title', item.title, text);
+    if (level === 'must' && !item.done) mustPill(title);
+    var notes = shownNotes(item);
+    if (notes) el('span', 'todo-notes', notes, text);
+    var due = item.done ? '' : (passive ? whenText(item.due, now) : dueText(item.due, now));
     if (due) el('span', 'todo-due' + (item.due < now ? ' is-overdue' : ''), due, text);
 
     // Every row keeps room for two round buttons; a done row has only the
@@ -809,7 +1026,7 @@
     // buttons are focusable (class f); arrows skip the rest.
     var acts = el('div', 'todo-acts', '', row);
     if (item.done) el('span', 'todo-act-slot', '', acts);
-    else actButton(acts, 'todo-move', 'move:' + item.id, ICON_MOVE, STRINGS.moveTo[NEXT_SECTION[item.section]], '', active);
+    else actButton(acts, 'todo-move', 'move:' + item.id, ICON_MOVE, STRINGS.moveTo[NEXT_LEVEL[level]], '', active);
     actButton(acts, 'todo-del', 'del:' + item.id, ICON_BIN, STRINGS.remove, STRINGS.removeArmed, active);
     return row;
   }
@@ -865,14 +1082,22 @@
 
     // Up and Down from a row's button go to the row above or below, in the
     // same column (in panel mode the columns are one list).
+    // The "Coming up" footnote runs under both columns: in full screen,
+    // Down from a column's last row goes there, and Up from its first line
+    // goes back to the main column.
+    var foot = panelBody.querySelector('.todo-panel-foot');
+    var inFoot = !!foot && foot.contains(from);
     if (row && hasCls(from, 'todo-act') && (dir === 'up' || dir === 'down')) {
-      var mains = mainsIn(full ? col : panelBody);
+      var mains = mainsIn(full && col ? col : (full && inFoot ? foot : panelBody));
       var at = mains.indexOf(row.querySelector('.todo-main'));
       if (dir === 'up') {
         if (at > 0) return mains[at - 1];
+        if (full && inFoot) return mainsIn(mainCol).pop() || addBox() || undefined;
         return !full || col === mainCol ? addBox() || undefined : undefined;
       }
-      return at >= 0 && at < mains.length - 1 ? mains[at + 1] : true;
+      if (at >= 0 && at < mains.length - 1) return mains[at + 1];
+      if (full && !inFoot && foot) return mainsIn(foot)[0] || true;
+      return true;
     }
 
     if (!full) return undefined;
@@ -946,7 +1171,7 @@
       if (!item || item.done) return;
       store.move(item);
       store.save();
-      queue({ op: 'set', id: id, fields: { section: item.section }, to: 'end' });
+      queue({ op: 'set', id: id, fields: { level: item.level }, to: 'end' });
       refresh();
       return;
     }
@@ -992,14 +1217,13 @@
 
   /* ---------- widget ---------- */
 
-  return {
+  var widget = {
     id: 'todo',
-    title: 'To-do',
     icon: 'check-list',
     sub: STRINGS.sub,
     expandable: true,
     activity: 'todo',          // its working chip (app/motion.js)
-    stagger: '.todo-col-main > .todo-add, .todo-sec',   // the parts arrive one by one as the panel opens
+    stagger: '.todo-panel-alert, .todo-col-main > .todo-add, .todo-sec, .todo-panel-foot',   // the parts arrive one by one as the panel opens
 
     init: function (ctx) {
       C = ctx;
@@ -1009,7 +1233,18 @@
       if (purge()) store.save();
       setInterval(function () {
         try { checkDay(); } catch (e) { /* try again next minute */ }
+        try { updatePulse(); } catch (e2) { /* try again next minute */ }
       }, 60000);
+      // A language change: new words, the tile and an open panel drawn again
+      // (the hub then draws the title again itself).
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+          window.HUB_I18N.onChange(function () {
+            localizeStrings();
+            try { refresh(); } catch (e) { /* the next redraw has the words */ }
+          });
+        }
+      } catch (e3) { /* stays in the language it started in */ }
     },
 
     renderTile: function (body, ctx) {
@@ -1079,4 +1314,7 @@
       return n;
     }
   };
+  // Read when the hub draws the tile head, so it follows the language.
+  Object.defineProperty(widget, 'title', { get: function () { return STRINGS.title; }, enumerable: true, configurable: true });
+  return widget;
 })());

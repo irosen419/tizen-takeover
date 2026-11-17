@@ -7,8 +7,9 @@
  *   ./hub home                       close whatever is open
  *   ./hub say "Dinner in 10" [--seconds 8]
  *   ./hub reload                     load the hub afresh
- *   ./hub todo add "Buy milk" [--section now|next|waiting] [--due 2026-12-24] [--notes "Oat, not dairy"]
+ *   ./hub todo add "Buy milk" [--level must|optional|passive] [--due 2026-12-24] [--notes "Oat, not dairy"]
  *   ./hub todo list
+ *   ./hub todo level <id or exact title> must|optional|passive
  *   ./hub todo notes <id or exact title> "Oat, not dairy"   (or --clear)
  *   ./hub todo done <id or exact title>
  *   ./hub todo remove <id or exact title>
@@ -214,20 +215,42 @@ function matchItem(items, what) {
   return null;
 }
 
+// Sections are from before levels; still taken and kept, no longer shown.
 const SECTION_NAMES = { now: 'Now', next: 'Next', waiting: 'Waiting on' };
+// Levels, as the TV names them. An item without one is optional; one may
+// also carry its level as a "[level:must]" tag in its notes (how it travels
+// through a server older than 0.6.0).
+const LEVEL_NAMES = { must: 'Must today', optional: 'If you can', passive: 'Coming up' };
+const LEVELS = Object.keys(LEVEL_NAMES);
+
+function levelOf(item) {
+  if (LEVELS.indexOf(item.level) >= 0) return item.level;
+  const m = typeof item.notes === 'string' ? /\[level:(must|optional|passive)\]/.exec(item.notes) : null;
+  return m ? m[1] : 'optional';
+}
 
 function todoAddText(r) {
-  return 'Added "' + r.item.title + '" to ' + SECTION_NAMES[r.item.section] + (r.item.due ? ', due ' + r.item.due : '') +
+  return 'Added "' + r.item.title + '" to ' + LEVEL_NAMES[levelOf(r.item)] + (r.item.due ? ', due ' + r.item.due : '') +
     (r.item.notes ? ', with notes' : '') + '.';
+}
+
+function todoLevelText(item) {
+  return 'Moved "' + item.title + '" to ' + LEVEL_NAMES[levelOf(item)] + '.';
+}
+
+// Sets the level of one item. Returns the item as the server now holds it.
+async function setLevel(callFn, item, level) {
+  const r = await callFn('POST', '/api/todo/ops', { ops: [{ op: 'set', id: item.id, fields: { level: level } }] });
+  return (r.items || []).find((i) => i.id === item.id) || item;
 }
 
 function todoListLines(items) {
   if (!items.length) return ['The to-do list is empty.'];
   const out = [];
-  Object.keys(SECTION_NAMES).forEach((sec) => {
-    const inSec = items.filter((i) => i.section === sec);
+  LEVELS.forEach((lv) => {
+    const inSec = items.filter((i) => levelOf(i) === lv);
     if (!inSec.length) return;
-    out.push(SECTION_NAMES[sec] + ':');
+    out.push(LEVEL_NAMES[lv] + ':');
     inSec.forEach((i) => {
       out.push('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (i.due ? ' (due ' + i.due + ')' : '') + '   id ' + i.id);
       if (i.notes) out.push('      notes: ' + i.notes);
@@ -256,11 +279,15 @@ async function todo(args) {
   const sub = args[0];
   const rest = args.slice(1);
   if (sub === 'add') {
-    const a = parseArgs(rest, ['section', 'due', 'notes']);
+    const a = parseArgs(rest, ['section', 'level', 'due', 'notes']);
     const title = a.words.join(' ').trim();
     if (!title) stop('Say what to add, for example: ./hub todo add "Buy milk"');
     const body = { title: title };
     if (a.opts.section) body.section = a.opts.section;
+    if (a.opts.level) {
+      if (LEVELS.indexOf(a.opts.level) < 0) stop('--level must be must, optional or passive.');
+      body.level = a.opts.level;
+    }
     if (a.opts.due) body.due = a.opts.due;
     if (a.opts.notes) body.notes = a.opts.notes;
     const r = await call('POST', '/api/todo', body);
@@ -294,7 +321,18 @@ async function todo(args) {
     say(todoNotesText(await setNotes(call, item, a.opts.clear ? '' : notes)));
     return;
   }
-  stop('Use one of: todo add, todo list, todo notes, todo done, todo remove. Run ./hub help for examples.');
+  if (sub === 'level') {
+    const a = parseArgs(rest, []);
+    const what = (a.words[0] || '').trim();
+    const level = (a.words[1] || '').trim();
+    if (!what || LEVELS.indexOf(level) < 0) {
+      stop('Say which to-do and its level, for example: ./hub todo level "Buy milk" must (must, optional or passive).');
+    }
+    const item = await findItem(what);
+    say(todoLevelText(await setLevel(call, item, level)));
+    return;
+  }
+  stop('Use one of: todo add, todo list, todo notes, todo level, todo done, todo remove. Run ./hub help for examples.');
 }
 
 /* ---------- calendar ---------- */
@@ -758,7 +796,8 @@ const HELP = [
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
   '  ./hub reload                load the hub afresh',
-  '  ./hub todo add "Buy milk"   add a to-do (add --section next, --due 2026-12-24)',
+  '  ./hub todo add "Buy milk"   add a to-do (add --level must or passive, --due 2026-12-24; optional when left out)',
+  '  ./hub todo level "Buy milk" must   change a to-do\'s level: must, optional or passive',
   '  ./hub todo list             show the to-do list with ids and notes',
   '  ./hub todo add "Buy milk" --notes "Oat, not dairy"   a to-do with notes (up to 300 characters)',
   '  ./hub todo notes "Buy milk" "Oat, not dairy"   set the notes of a to-do (--clear removes them)',
@@ -825,6 +864,10 @@ module.exports = {
   Stop: Stop,
   WIDGETS: WIDGETS,
   SECTION_NAMES: SECTION_NAMES,
+  LEVEL_NAMES: LEVEL_NAMES,
+  levelOf: levelOf,
+  todoLevelText: todoLevelText,
+  setLevel: setLevel,
   commandText: commandText,
   matchItem: matchItem,
   todoAddText: todoAddText,

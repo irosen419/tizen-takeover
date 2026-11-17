@@ -300,11 +300,11 @@ async function main() {
   await check('todo.add, todo.list, todo.done (title), todo.remove (id)', async () => {
     let r = await run(fake, h, 'todo.add', { title: 'Buy milk', section: 'next', due: '2026-12-24' });
     assert.strictEqual(r.ok, true);
-    assert.strictEqual(r.message, 'Added "Buy milk" to Next, due 2026-12-24.');
+    assert.strictEqual(r.message, 'Added "Buy milk" to If you can, due 2026-12-24.');
     const id = r.data.item.id;
     r = await run(fake, h, 'todo.list');
-    assert.strictEqual(r.message, 'Next:\n  [ ] Buy milk (due 2026-12-24)   id ' + id);
-    assert.deepStrictEqual(r.data.items, [{ id: id, title: 'Buy milk', section: 'next', done: false, due: '2026-12-24' }]);
+    assert.strictEqual(r.message, 'If you can:\n  [ ] Buy milk (due 2026-12-24)   id ' + id);
+    assert.deepStrictEqual(r.data.items, [{ id: id, title: 'Buy milk', level: 'optional', section: 'next', done: false, due: '2026-12-24' }]);
     r = await run(fake, h, 'todo.done', { title: 'buy milk' });
     assert.strictEqual(r.message, 'Ticked "Buy milk".');
     assert.strictEqual((await todoItems(h))[0].done, true);
@@ -320,16 +320,16 @@ async function main() {
     const notes = 'Comprar leche de avena, no la de vaca. Preguntar por el pan sin gluten en la panadería de la esquina.';
     let r = await run(fake, h, 'todo.add', { title: 'Comprar leche', notes: '  ' + notes + '\n' });
     assert.strictEqual(r.ok, true, r.message);
-    assert.strictEqual(r.message, 'Added "Comprar leche" to Now, with notes.');
+    assert.strictEqual(r.message, 'Added "Comprar leche" to If you can, with notes.');
     assert.strictEqual(r.data.item.notes, notes);
     const id = r.data.item.id;
     r = await run(fake, h, 'todo.add', { title: 'Sin notas', notes: '' });
-    assert.strictEqual(r.message, 'Added "Sin notas" to Now.');
+    assert.strictEqual(r.message, 'Added "Sin notas" to If you can.');
     assert.ok(!('notes' in r.data.item));
     const plainId = r.data.item.id;
     r = await run(fake, h, 'todo.list');
-    assert.strictEqual(r.message, 'Now:\n  [ ] Sin notas   id ' + plainId + '\n  [ ] Comprar leche   id ' + id + '\n      notes: ' + notes);
-    assert.deepStrictEqual(r.data.items[1], { id: id, title: 'Comprar leche', section: 'now', done: false, notes: notes });
+    assert.strictEqual(r.message, 'If you can:\n  [ ] Sin notas   id ' + plainId + '\n  [ ] Comprar leche   id ' + id + '\n      notes: ' + notes);
+    assert.deepStrictEqual(r.data.items[1], { id: id, title: 'Comprar leche', level: 'optional', section: 'now', done: false, notes: notes });
     assert.ok(!('notes' in r.data.items[0]));
     r = await run(fake, h, 'todo.notes', { title: 'sin notas', notes: 'Ahora sí' });
     assert.strictEqual(r.message, 'Notes on "Sin notas": Ahora sí');
@@ -343,6 +343,32 @@ async function main() {
     assert.strictEqual(r.ok, false);
     await run(fake, h, 'todo.remove', { id: id });
     await run(fake, h, 'todo.remove', { id: plainId });
+  });
+
+  await check('todo.add with a level, todo.level changes it, todo.list groups by level (a notes tag counts too)', async () => {
+    let r = await run(fake, h, 'todo.add', { title: 'Take weekly shot', level: 'must', due: '2026-11-17' });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.strictEqual(r.message, 'Added "Take weekly shot" to Must today, due 2026-11-17.');
+    assert.strictEqual(r.data.item.level, 'must');
+    const shot = r.data.item.id;
+    r = await run(fake, h, 'todo.add', { title: 'Concert tickets', notes: 'On sale Friday. [level:passive]' });
+    assert.strictEqual(r.message, 'Added "Concert tickets" to Coming up, with notes.');
+    const tickets = r.data.item.id;
+    r = await run(fake, h, 'todo.add', { title: 'Call the dentist' });
+    const dentist = r.data.item.id;
+    assert.ok(!('level' in r.data.item));
+    r = await run(fake, h, 'todo.list');
+    assert.strictEqual(r.message, 'Must today:\n  [ ] Take weekly shot (due 2026-11-17)   id ' + shot +
+      '\nIf you can:\n  [ ] Call the dentist   id ' + dentist +
+      '\nComing up:\n  [ ] Concert tickets   id ' + tickets + '\n      notes: On sale Friday. [level:passive]');
+    assert.deepStrictEqual(r.data.items.map((i) => i.level), ['optional', 'passive', 'must']);
+    r = await run(fake, h, 'todo.level', { title: 'call the dentist', level: 'passive' });
+    assert.strictEqual(r.message, 'Moved "Call the dentist" to Coming up.');
+    assert.deepStrictEqual(r.data, { id: dentist, title: 'Call the dentist', level: 'passive' });
+    assert.strictEqual((await todoItems(h)).find((i) => i.id === dentist).level, 'passive');
+    r = await run(fake, h, 'todo.level', { title: 'Nope', level: 'must' });
+    assert.strictEqual(r.ok, false);
+    for (const id of [shot, tickets, dentist]) await run(fake, h, 'todo.remove', { id: id });
   });
 
   await check('calendar.status and calendar.refresh', async () => {
@@ -535,6 +561,8 @@ async function main() {
     ['say seconds out of range', () => ({ raw: envelope('say', { text: 'hi', seconds: 600 }) }), /"seconds" must be a number from 1 to 60/],
     ['todo.add missing title', () => ({ raw: envelope('todo.add', {}) }), /needs "title"/],
     ['todo.add bad section', () => ({ raw: envelope('todo.add', { title: 'A', section: 'later' }) }), /"section" must be one of/],
+    ['todo.add bad level', () => ({ raw: envelope('todo.add', { title: 'A', level: 'urgent' }) }), /"level" must be one of: must, optional, passive/],
+    ['todo.level missing level', () => ({ raw: envelope('todo.level', { title: 'A' }) }), /"todo.level" needs "level"/],
     ['todo.done with id and title', () => ({ raw: envelope('todo.done', { id: 'abc', title: 'A' }) }), /exactly one/],
     ['todo.add notes too long', () => ({ raw: envelope('todo.add', { title: 'A', notes: 'n'.repeat(301) }) }), /"notes" is longer than 300 characters/],
     ['todo.add notes not text', () => ({ raw: envelope('todo.add', { title: 'A', notes: 5 }) }), /"notes" must be text/],
@@ -633,7 +661,7 @@ async function main() {
     await h.mailbox.pollOnce();
     const r = fake.json(okey);
     assert.strictEqual(r.ok, true);
-    assert.strictEqual(r.message, 'Added "Only once" to Now.');
+    assert.strictEqual(r.message, 'Added "Only once" to If you can.');
     assert.ok(!fake.store.has('inbox/' + e.id + '.json'));
     assert.strictEqual(h.mailbox.info().pendingResults, 0);
     await h.mailbox.pollOnce();

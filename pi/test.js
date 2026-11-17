@@ -211,7 +211,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.5.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.6.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -232,7 +232,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.5.0');
+    assert.strictEqual(r.json.server, '0.6.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -319,6 +319,23 @@ async function main() {
       assert.strictEqual(r.status, 400, JSON.stringify(body));
       assert.ok(r.json.error && r.json.error.length > 5);
     }
+  });
+
+  await check('to-do level: POST /api/todo takes it, none stays none, a bad one is refused, the TV can set it', async () => {
+    const a = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Must one', level: 'must' } });
+    assert.strictEqual(a.status, 200);
+    assert.strictEqual(a.json.item.level, 'must');
+    const b = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'No level' } });
+    assert.ok(!('level' in b.json.item));
+    const bad = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'ok', level: 'urgent' } });
+    assert.strictEqual(bad.status, 400);
+    assert.ok(/level must be must, optional or passive/.test(bad.json.error));
+    let r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: b.json.item.id, fields: { level: 'passive' }, to: 'end' }] } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.items.find((i) => i.id === b.json.item.id).level, 'passive');
+    r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: a.json.item.id, fields: { level: null } }] } });
+    assert.ok(!('level' in r.json.items.find((i) => i.id === a.json.item.id)));
+    await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'remove', id: a.json.item.id }, { op: 'remove', id: b.json.item.id }] } });
   });
 
   await check('to-do ops: add top/end, set, move to end, remove, last one wins', async () => {
@@ -454,7 +471,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.5.0');
+    assert.strictEqual(r.json.server, '0.6.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
