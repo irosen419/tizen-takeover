@@ -287,8 +287,8 @@ async function main() {
     assert.deepStrictEqual(fake.keys('inbox/'), []);
   });
 
-  await check('show, home, say, reload (no screen on: same words as ./hub)', async () => {
-    for (const [cmd, args] of [['show', { widget: 'weather', full: true }], ['show', { widget: 'calendar' }], ['home', {}], ['say', { text: '  Dinner in 10 ', seconds: 8 }], ['reload', {}]]) {
+  await check('show, home, say, reload, lang (no screen on: same words as ./hub)', async () => {
+    for (const [cmd, args] of [['show', { widget: 'weather', full: true }], ['show', { widget: 'calendar' }], ['home', {}], ['say', { text: '  Dinner in 10 ', seconds: 8 }], ['reload', {}], ['lang', { lang: 'es' }], ['lang', { lang: 'en' }]]) {
       const r = await run(fake, h, cmd, args);
       assert.strictEqual(r.ok, true, cmd);
       assert.strictEqual(r.message, 'Sent, but no screen is listening (is the TV on with Home Hub open?).');
@@ -501,6 +501,8 @@ async function main() {
     ['unknown arg', () => ({ raw: envelope('ping', { extra: 1 }) }), /does not take "extra"/],
     ['widget not in the list', () => ({ raw: envelope('show', { widget: 'mirror' }) }), /"widget" must be one of: weather, todo, calendar, entertainment/],
     ['say text too long', () => ({ raw: envelope('say', { text: 'x'.repeat(141) }) }), /longer than 140/],
+    ['lang not en or es', () => ({ raw: envelope('lang', { lang: 'fr' }) }), /"lang" must be one of: en, es/],
+    ['lang missing', () => ({ raw: envelope('lang', {}) }), /needs "lang"/],
     ['say seconds out of range', () => ({ raw: envelope('say', { text: 'hi', seconds: 600 }) }), /"seconds" must be a number from 1 to 60/],
     ['todo.add missing title', () => ({ raw: envelope('todo.add', {}) }), /needs "title"/],
     ['todo.add bad section', () => ({ raw: envelope('todo.add', { title: 'A', section: 'later' }) }), /"section" must be one of/],

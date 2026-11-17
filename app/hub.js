@@ -2108,6 +2108,16 @@
     toast(text, Math.round(seconds * 1000));
   }
 
+  // { lang: 'en' | 'es' }: the hub's language (app/i18n.js), as if picked on
+  // the Clock page. Remembered on the TV; widgets that follow it redraw.
+  function liveLang(data) {
+    var L = window.HUB_I18N;
+    if (!L || typeof L.setLang !== 'function') { liveWarn('lang: no languages in this build'); return; }
+    if (data.lang !== 'en' && data.lang !== 'es') { liveWarn('lang: unknown language ' + data.lang); return; }
+    L.setLang(data.lang);
+    toast(data.lang === 'es' ? 'Idioma: Español' : 'Language: English', 2500);
+  }
+
   function liveReload() {
     // A reload loop (an old command arriving right after loading) must not happen.
     if (new Date().getTime() - LOADED_AT < 30000) return;
@@ -2126,6 +2136,7 @@
       else if (type === 'home') liveHome();
       else if (type === 'say') liveSay(data);
       else if (type === 'reload') liveReload();
+      else if (type === 'lang') liveLang(data);
     } catch (e) {
       liveWarn(type + ' failed: ' + (e && e.message));
     }

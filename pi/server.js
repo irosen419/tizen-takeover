@@ -12,7 +12,7 @@
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
  *
  * Control API (needs "Authorization: Bearer <token>"):
- *   POST /api/command    show / home / say / reload on every screen now on
+ *   POST /api/command    show / home / say / reload / lang on every screen now on
  *   GET  /api/todo       the to-do list
  *   POST /api/todo       add one to-do
  *   POST /api/todo/ops   several to-do changes at once
@@ -55,7 +55,7 @@ const awws = require('./awws');
 const mailbox = require('./mailbox');
 const spotify = require('./spotify');
 
-const SERVER_VERSION = '0.3.0';
+const SERVER_VERSION = '0.4.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -430,8 +430,12 @@ function normalizeCommand(body) {
     }
     return { type: type, data: out };
   }
+  if (type === 'lang') {
+    if (data.lang !== 'en' && data.lang !== 'es') throw bad('"lang" needs a language: en or es');
+    return { type: type, data: { lang: data.lang } };
+  }
   if (type === 'home' || type === 'reload') return { type: type, data: {} };
-  throw bad('unknown command type (use show, home, say or reload)');
+  throw bad('unknown command type (use show, home, say, reload or lang)');
 }
 
 /* ---------- state file ---------- */

@@ -373,6 +373,13 @@ async function check4(poll) {
   r = await command('say', { text: 'Dinner in 10', seconds: 3 });
   await until(async () => (await look.toast(page)) === 'Dinner in 10', 3000, 'say did not show');
 
+  // The language: Spanish and back, remembered on the TV.
+  r = await command('lang', { lang: 'es' });
+  assert(r.delivered === 1, 'lang: ' + JSON.stringify(r));
+  await until(() => page.evaluate(() => window.HUB_I18N.lang() === 'es' && localStorage.getItem('homeHub.lang') === 'es'), 3000, 'lang es did not land');
+  await command('lang', { lang: 'en' });
+  await until(() => page.evaluate(() => window.HUB_I18N.lang() === 'en' && localStorage.getItem('homeHub.lang') === 'en'), 3000, 'lang en did not land');
+
   // From typing in another panel straight to a widget, full screen.
   await openTodo(page);
   await page.click('#panel input.todo-input');

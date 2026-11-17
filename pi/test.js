@@ -211,7 +211,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.3.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.4.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -232,7 +232,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.3.0');
+    assert.strictEqual(r.json.server, '0.4.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -281,6 +281,11 @@ async function main() {
     assert.ok(/140/.test(r.json.error));
     r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'say', data: { text: 'hi', seconds: 'ten' } } });
     assert.strictEqual(r.status, 400);
+    for (const data of [undefined, {}, { lang: 'fr' }, { lang: 'ES' }, { lang: 1 }]) {
+      r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'lang', data: data } });
+      assert.strictEqual(r.status, 400, JSON.stringify(data));
+      assert.ok(/en or es/.test(r.json.error), r.json.error);
+    }
   });
 
   await check('a command with no screens: delivered 0 at once, nothing kept', async () => {
@@ -292,6 +297,9 @@ async function main() {
     for (const type of ['home', 'reload']) {
       assert.strictEqual((await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: type } })).json.delivered, 0);
     }
+    const lang = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'lang', data: { lang: 'es' } } });
+    assert.strictEqual(lang.status, 200);
+    assert.strictEqual(lang.json.delivered, 0);
     assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR, spotify: NO_SPOTIFY });
   });
 
@@ -454,7 +462,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.3.0');
+    assert.strictEqual(r.json.server, '0.4.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
@@ -509,6 +517,11 @@ async function main() {
     assert.strictEqual(cmd.data.type, 'show');
     assert.deepStrictEqual(cmd.data.data, { widget: 'weather', mode: 'full' });
     assert.ok(/^c[0-9a-z]+$/.test(cmd.data.id));
+    // lang: only the language reaches the screen, nothing extra.
+    const l = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'lang', data: { lang: 'es', extra: 'x' } } });
+    assert.strictEqual(l.json.delivered, 1);
+    const lc = await es.waitFor((e) => e.event === 'command' && e.data.type === 'lang');
+    assert.deepStrictEqual(lc.data.data, { lang: 'es' });
     const ping = await es.waitFor((e) => e.event === 'ping', 1000);
     assert.strictEqual(ping.data.rev, add.json.rev);
     es.raw.text.split('\n').filter((l) => l.indexOf('data:') === 0).forEach((l) => JSON.parse(l.slice(5)));

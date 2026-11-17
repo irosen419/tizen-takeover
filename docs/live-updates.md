@@ -78,6 +78,7 @@ Commands:
 - `show <widget>`: open a widget (`weather`, `todo`, `calendar`, `entertainment`), optionally full screen.
 - `home`: close whatever is open.
 - `say "<text>"`: a short message at the bottom of the screen for a few seconds.
+- `lang`: `{ lang: 'en' | 'es' }`, the hub's language (as if picked on the Clock page; remembered on the TV). Since hub v0.28.0 and server 0.4.0; an older hub ignores it.
 - `reload`: load the hub afresh. It restarts through the loader (`app/index.html`), so it also picks up the newest version of the hub.
 
 Data:
@@ -221,7 +222,7 @@ Refusals are `403 { ok: false, error: 'screen not allowed' }`.
 `GET /live/state`
 
 ```json
-{ "ok": true, "v": 1, "server": "0.3.0", "epoch": "k3v9x2", "rev": 57,
+{ "ok": true, "v": 1, "server": "0.4.0", "epoch": "k3v9x2", "rev": 57,
   "resources": { "todo": { "rev": 57, "data": { "items": [] } } } }
 ```
 
@@ -265,7 +266,7 @@ Ops are applied in order and the last one to arrive wins. `set` merges `fields` 
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
 | `GET /health` (no token) | | `{ ok, server }` |
 
-Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload` (the hub restarts through the loader with `HUB_UPDATE.restart()`, so it lands on the newest commit; ignored in the first 30 seconds after loading). Anything else is `400`.
+Command types: `show` `{ widget, mode?: 'panel'|'full' }`, `home`, `say` `{ text, seconds? }` (text up to 140 characters), `reload` (the hub restarts through the loader with `HUB_UPDATE.restart()`, so it lands on the newest commit; ignored in the first 30 seconds after loading), `lang` `{ lang: 'en'|'es' }`. Anything else is `400`.
 
 ### The A World Worth Saving snapshot (`awws`)
 

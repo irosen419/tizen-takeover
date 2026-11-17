@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.3.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.4.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -324,7 +324,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.3.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.4.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 
@@ -489,7 +489,7 @@ At one look every 10 seconds the Pi makes about 8,600 list calls a day (about 26
 ### How it works (for builders)
 
 - Claude writes `inbox/<id>.json`: `{"id": "<id>", "created": "<ISO time>", "cmd": "<name>", "args": {...}}`. The id is 6 to 64 letters, digits, `_` or `-` and must match the file name; `created` must be within the last 24 hours and at most 5 minutes ahead; the file must be under 64 KB; only `id`, `created`, `cmd` and `args` are allowed.
-- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
+- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `lang {lang: en or es}`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
 - The Pi writes `outbox/<id>.json`: `{id, cmd, ok, state, message, data, started, finished}`. `message` is the same text `./hub` prints (several lines for lists). First it writes `state: "running"` as a claim, then the final result with `state: "done"`; a command with an outbox file is never run again, even after a crash. Then it deletes the inbox file.
 - At most 20 commands per look, oldest `created` first, one at a time.
 - `status.json` is rewritten every minute and after each command: version, uptime, how many screens are listening, the mailbox's last command and last error, and a calendar summary (counts only).
