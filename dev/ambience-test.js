@@ -28,7 +28,7 @@
  *   - Not set up (no HA_TOKEN): the 6x2 tile says "Set up lights" over its hint, the panel
  *     says how. Error: Home Assistant stops answering, or refuses the
  *     token; the tile keeps the last known lights with a plain note.
- *   - Full screen shows the three sections.
+ *   - Full screen shows the three sections, all on one screen.
  *   - The TV only talks to the Pi (never Home Assistant or the plant wall);
  *     the screen door takes saved ids only, refuses another site's page and
  *     slows a screen that sends too fast; every log line about lights starts
@@ -470,9 +470,10 @@ async function main() {
     const r = await page.evaluate(() => ({
       full: !!document.querySelector('#panel .am-page.is-full'),
       secs: document.querySelectorAll('#panel .am-sec').length,
-      card: document.querySelector('#panel .am-card').getBoundingClientRect().width
+      card: document.querySelector('#panel .am-card').getBoundingClientRect().width,
+      chips: document.querySelector('#panel .am-chips').getBoundingClientRect().bottom <= window.innerHeight
     }));
-    assert(r.full && r.secs === 3 && r.card > 180, JSON.stringify(r));
+    assert(r.full && r.secs === 3 && r.card > 180 && r.chips, 'everything on one screen: ' + JSON.stringify(r));
     await key(page, 'ArrowDown');
     assert(/^scene:/.test(await focused(page)), 'Down from the button: ' + await focused(page));
     await key(page, 'Escape');

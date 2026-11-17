@@ -452,14 +452,14 @@
 .am-fallback { font-size: 1.1rem; line-height: 1.4; color: var(--text-2); }
 
 /* Full screen: the same parts, bigger. */
-.am-page.is-full .am-label { font-size: 0.95rem; margin-top: 1.4rem; margin-bottom: 0.8rem; }
-.am-page.is-full .am-card { width: 12.4rem; height: 11rem; padding: 1.3rem 1.3rem 1.1rem; margin-right: 1.1rem; border-radius: 1.4rem; }
+.am-page.is-full .am-label { font-size: 0.95rem; margin-top: 1rem; margin-bottom: 0.6rem; }
+.am-page.is-full .am-card { width: 12.4rem; height: 9.6rem; padding: 1.1rem 1.3rem 1rem; margin-right: 1.1rem; border-radius: 1.4rem; }
 .am-page.is-full .am-card-glow { border-radius: 1.4rem; }
 .am-page.is-full .am-card-ring { border-radius: 1.06rem; }
 .am-page.is-full .am-card-icon { width: 2.5rem; height: 2.5rem; }
 .am-page.is-full .am-card-name { font-size: 1.5rem; margin-top: 0.8rem; }
 .am-page.is-full .am-card-state { font-size: 0.85rem; min-height: 1.25rem; }
-.am-page.is-full .am-prow { padding: 0.8rem 1rem 0.9rem; }
+.am-page.is-full .am-prow { padding: 0.55rem 1rem 0.6rem; }
 .am-page.is-full .am-prow .am-lrow-name { font-size: 1.35rem; }
 .am-page.is-full .am-prow .am-lrow-state { font-size: 1.2rem; }
 .am-page.is-full .am-prow .am-lrow-dot { width: 0.85rem; height: 0.85rem; }
