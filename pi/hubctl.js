@@ -7,7 +7,6 @@
  *   ./hub home                       close whatever is open
  *   ./hub say "Dinner in 10" [--seconds 8]
  *   ./hub reload                     load the hub afresh
- *   ./hub lang es                    the hub's language: en (English) or es (Spanish)
  *   ./hub todo add "Buy milk" [--section now|next|waiting] [--due 2026-12-24] [--notes "Oat, not dairy"]
  *   ./hub todo list
  *   ./hub todo notes <id or exact title> "Oat, not dairy"   (or --clear)
@@ -46,7 +45,7 @@ const awws = require('./awws');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
-const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'wotd'];
+const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach'];
 
 /* ---------- settings ---------- */
 
@@ -721,7 +720,6 @@ const HELP = [
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
   '  ./hub reload                load the hub afresh',
-  '  ./hub lang es               the hub in Spanish (en: English); remembered on the TV',
   '  ./hub todo add "Buy milk"   add a to-do (add --section next, --due 2026-12-24)',
   '  ./hub todo list             show the to-do list with ids and notes',
   '  ./hub todo add "Buy milk" --notes "Oat, not dairy"   a to-do with notes (up to 300 characters)',
@@ -758,12 +756,6 @@ async function main(argv) {
     return command('show', { widget: widget, mode: a.opts.full ? 'full' : 'panel' });
   }
   if (cmd === 'home' || cmd === 'reload') return command(cmd, {});
-  if (cmd === 'lang') {
-    const a = parseArgs(rest, []);
-    const lang = a.words[0];
-    if (lang !== 'en' && lang !== 'es') stop('Say which language: en (English) or es (Spanish). For example: ./hub lang es');
-    return command('lang', { lang: lang });
-  }
   if (cmd === 'say') {
     const a = parseArgs(rest, ['seconds']);
     const text = a.words.join(' ').trim();

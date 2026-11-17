@@ -423,7 +423,6 @@ const COMMANDS = {
   },
   home: { args: {}, run: sendCommand('home', () => ({})) },
   reload: { args: {}, run: sendCommand('reload', () => ({})) },
-  lang: { args: { lang: [V.oneOf(['en', 'es']), true] }, run: sendCommand('lang', (a) => ({ lang: a.lang })) },
   say: {
     args: { text: [V.text(MAX_TEXT), true], seconds: [V.number(1, 60), false] },
     run: sendCommand('say', (a) => (a.seconds !== undefined ? { text: a.text, seconds: a.seconds } : { text: a.text }))

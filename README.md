@@ -97,7 +97,7 @@ Press OK on it to open the Clock page. At the top right of the page are the choi
 
 - **Face:** **Digital** (a big time with the full date under it, the default) or **Analog** (a round face with ticks and 12, 3, 6 and 9, the day and date in a small window in its lower half, and the date beside it, with no digital time). The second hand steps once a second; nothing sweeps.
 - **Clock:** **12-hour** (`9:41 PM`, the default) or **24-hour** (`21:41`), on the page and the tile. Only shown with the Digital face; on Analog it doesn't apply, and is kept for when you go back to Digital.
-- **Language:** **English** (the default) or **Español** (Latin American Spanish), the hub's language, on both faces. The label turns into **Idioma**; the two names always stay in their own language, so you can find your way back. Today it changes Word of the day (its title, labels and definitions); the Clock itself stays in English for now. The Pi can set it too: `./hub lang es` (or `en`), and `?lang=es` on the page's address tries it for one load without saving.
+- **Language:** **English** (the default) or **Español** (Latin American Spanish), the hub's language, on both faces. The label turns into **Idioma**; the two names always stay in their own language, so you can find your way back. Today it changes Word of the day (its title, labels and definitions); the Clock itself stays in English for now. Set it on the Clock page; `?lang=es` on the page's address tries it for one load without saving.
 
 The tile changes as soon as you pick, behind the page. All three choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
 
@@ -326,7 +326,7 @@ live: { server: HUB_PI + ':8097' },
 | `unexpected reply from the Pi` | Something else answers at that address. Retries every 5 minutes |
 | `the hub needs an update` | The Pi's server is newer than this hub understands |
 
-Commands the Pi can send: `show` a widget (`weather`, `todo`, `calendar`, `entertainment`, optionally full screen), `home` (close whatever is open), `say` a short message for a few seconds, `reload` (which goes through the loader, so it also picks up the newest version), and `lang` (`./hub lang es` or `en`: the hub's language, as if picked on the Clock page). A command sent while the TV is off is dropped, so nothing old fires when the TV turns on.
+Commands the Pi can send: `show` a widget (`weather`, `todo`, `calendar`, `entertainment`, optionally full screen), `home` (close whatever is open), `say` a short message for a few seconds, and `reload` (which goes through the loader, so it also picks up the newest version). A command sent while the TV is off is dropped, so nothing old fires when the TV turns on.
 
 ### For widget authors
 

@@ -10,7 +10,6 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Close whatever is open: `./hub home`
 - Short message on the TV: `./hub say "Dinner in 10" --seconds 8`
 - Load the hub afresh: `./hub reload`
-- The hub's language: `./hub lang es` (Spanish) or `./hub lang en` (English); remembered on the TV
 - Add a to-do: `./hub todo add "Buy milk" --section now --due 2026-12-24 --notes "Oat, not dairy"` (section, due and notes are optional; sections are `now`, `next`, `waiting`; notes are plain text up to 300 characters)
 - See the to-do list with ids and notes: `./hub todo list`
 - Set or change a to-do's notes: `./hub todo notes "Buy milk" "Oat, not dairy"` (id or exact title); `--clear` removes them
@@ -25,7 +24,7 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Is the Claude mailbox (Cloudflare R2) connected: `./hub mailbox status`
 - All commands: `./hub help`
 
-Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach` and `wotd` (Word of the day). A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
+Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo` and `awws-reach`. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
 
 ## From the cloud: the Claude mailbox
 
@@ -51,8 +50,7 @@ Write `cmd.json` in your scratchpad folder. The reply is `{"id", "cmd", "ok", "s
 
 Commands and args (`args` may be left out when empty; unknown args are refused):
 
-- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, wotd), `home`, `reload`
-- `lang {"lang": "es"}` (`es` Spanish or `en` English: the hub's language, remembered on the TV; the same as picking it on the Clock page)
+- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach), `home`, `reload`
 - `say {"text": "Dinner in 10", "seconds": 8}` (text up to 140 characters, seconds 1-60)
 - `todo.add {"title": "Buy milk", "section": "next", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
 - `todo.notes {"title": "Buy milk", "notes": "Oat, not dairy"}` or `{"id": "...", "notes": "..."}` (exactly one of id and title) sets an item's notes; `"notes": ""` or `null` removes them
