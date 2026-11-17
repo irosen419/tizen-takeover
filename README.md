@@ -497,13 +497,6 @@ The version on TizenBrew's card for the hub comes from the branch's `package.jso
 
 A few files still come through jsDelivr's 12-hour branch cache: `package.json`, `service.js`, the loader `app/index.html`, and `app/update.js` as the loader uses it. These rarely change. (The shell's copy of `update.js` decides holds too: until it is 0.18.1 or later, and while the commit gone back to is older than 0.18.1, a slow commit is held 6 hours like a broken one, and the notice names it by its short commit id rather than its version.) After changing one of them, purge it at `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/<file>` (for example `.../app/update.js`), or wait 12 hours.
 
-**Once, to get this version onto the TV:** jsDelivr still has the old `app/index.html`, so purge these four files once, then reopen the hub:
-
-- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/index.html`
-- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/update.js`
-- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/app/hub.html`
-- `https://purge.jsdelivr.net/gh/irosen419/tizen-takeover@main/package.json`
-
 ### When a file fails to load
 
 Every file of the hub reaches the TV through TizenBrew's proxy, one fetch each, and now and then a single fetch fails, comes cut short, comes empty, or comes as the proxy's own "Couldn't find the requested file" words. The hub still starts, only without what that file brings; when `logos.js` was the one, every app on the Entertainment tile was a letter instead of its logo.
