@@ -150,6 +150,7 @@ The **Schedule** item (in More) opens a view of the shows on the Pi's list: Toda
 
 - The list lives on the Pi: `./hub shows list|add|remove|refresh` ([pi/README.md](pi/README.md#tv-shows-the-schedule)). The data comes from TVmaze; its shape is in [docs/shows-snapshot.md](docs/shows-snapshot.md).
 - `watchAliases` sends a whole service to another app: `{ 'Hulu': 'Disney+' }` (the default) shows and opens Hulu titles as Disney+, with "Also on Hulu" offered. `alsoOn` on a show (`./hub shows add "X" --also Hulu`) adds more "Also on" choices.
+- `watchVia` (an example, commented out) is for services billed through another app (Prime Video Channels): `{ 'HBO Max': 'Prime Video' }` keeps the HBO Max badge, adds a small "via Prime Video", and opens Prime Video. One show alone: `./hub shows add "X" --service "HBO Max" --via "Prime Video"`.
 - Without the Pi, the view says so. A made-up sample shows a SAMPLE chip; real data never does.
 
 #### Watch link test

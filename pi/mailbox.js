@@ -586,11 +586,11 @@ const COMMANDS = {
   'shows.add': {
     args: {
       name: [V.text(80), true], service: [V.text(24), false], tvmazeId: [V.number(1, 999999999), false], serviceOverride: [V.text(24), false],
-      alsoOn: [V.list(4), false]
+      alsoOn: [V.list(4), false], via: [V.text(24), false]
     },
     run: async (a, ctx) => {
       const entry = { name: a.name };
-      ['service', 'tvmazeId', 'serviceOverride', 'alsoOn'].forEach((k) => { if (a[k] !== undefined) entry[k] = a[k]; });
+      ['service', 'tvmazeId', 'serviceOverride', 'alsoOn', 'via'].forEach((k) => { if (a[k] !== undefined) entry[k] = a[k]; });
       const r = await ctx.call('POST', '/api/shows', { add: entry });
       return { message: shows.addText(r), data: { entry: r.entry, replaced: !!r.replaced, list: r.list } };
     }

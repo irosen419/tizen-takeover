@@ -215,6 +215,16 @@ var HUB_CONFIG = {
       watchAliases: { 'Hulu': 'Disney+' },
 
       /*
+       * Prime Video Channels: a service billed through another app opens in
+       * that app. The badge still names the service, with a small "via
+       * Prime Video" beside the episode, and Watch opens Prime Video. One
+       * show alone can say so on the Pi instead (./hub shows add "X"
+       * --service "HBO Max" --via "Prime Video"). An example only; uncomment
+       * and change it to match the subscriptions on this TV:
+       */
+      // watchVia: { 'HBO Max': 'Prime Video' },
+
+      /*
        * Watch link test (About panel: Left on a left-most tile, then OK on
        * "Watch link test"). Each recipe opens one app with an app control:
        * op (the operation), and optionally uri, or key + val (one data

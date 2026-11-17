@@ -252,6 +252,44 @@ async function main() {
       assert(seen.join(' ') === '1x1:0 2x1:1 2x2:3 3x1:1 3x4:3 12x1:3', seen.join(' '));
     });
 
+    await check('via (Prime Video Channels): the badge keeps the service, a "via" hint, and Watch opens the via app', async () => {
+      const p = await env.newPage({});
+      try {
+        // Per service in config (watchVia), and per show from the Pi (via).
+        await p.evaluate(() => { window.HUB_CONFIG.widgets.entertainment.watchVia = { 'HBO Max': 'Prime Video' }; });
+        const pure = await p.evaluate(() => {
+          const T = window.HUB_SHOWS._test;
+          return [
+            T.viaApp({ service: 'HBO Max' }, 'HBO Max'),
+            T.viaApp({ service: 'Netflix' }, 'Netflix'),
+            T.viaApp({ service: 'Apple TV', via: 'Prime Video' }, 'Apple TV'),
+            T.viaApp({ service: 'Apple TV', via: 'Apple TV' }, 'Apple TV'),
+            JSON.stringify(window.HUB_SHOWS.availability())
+          ];
+        });
+        assert(pure[0] === 'Prime Video' && pure[1] === '' && pure[2] === 'Prime Video' && pure[3] === '', JSON.stringify(pure));
+        assert(/"Prime Video":1/.test(pure[4]) && !/HBO Max/.test(pure[4]), 'counted under the app OK opens: ' + pure[4]);
+        await H.openSchedule(p, 'week');
+        const row = await p.evaluate(() => {
+          const r = document.querySelector('[data-key^="sh:row:the-pitt:"]');
+          return { badge: r.querySelector('.sh-badge').textContent, via: (r.querySelector('.sh-via') || {}).textContent || '', others: document.querySelectorAll('#panel .sh-via').length };
+        });
+        assert(row.badge === 'HBO Max' && row.via === 'via Prime Video', JSON.stringify(row));
+        assert(row.others === 2, 'via hints this week (The Pitt and Task): ' + row.others);
+        await H.focusKey(p, 'sh:row:the-pitt:');
+        const before = env.launches.length;
+        await H.key(p, 'Enter');
+        await H.until(() => env.launches.length > before, 3000, 'nothing was launched');
+        assert(env.launches[env.launches.length - 1] === 'launch 3201910019365', env.launches.join(' | '));
+        assert(await toastText(p) === 'Opened Prime Video. Search: The Pitt', await toastText(p));
+        // Without the setting, HBO Max opens HBO Max (Max on this TV) and no hint shows.
+        await p.evaluate(() => { delete window.HUB_CONFIG.widgets.entertainment.watchVia; window.HUB_TEST.closePanel(); });
+        await H.sleep(500);
+        await H.openSchedule(p, 'week');
+        assert(await p.evaluate(() => document.querySelectorAll('#panel .sh-via').length) === 0, 'a via hint without the setting');
+      } finally { await p.ctx.close(); }
+    });
+
     await check('Spanish words and a 24 hour clock', async () => {
       const es = await env.newPage({ lang: 'es', hours: '24' });
       try {

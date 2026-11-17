@@ -219,6 +219,10 @@ async function main() {
     assert.deepStrictEqual(shows.normalizeEntry({ name: 'X', alsoOn: 'Hulu, Max' }).alsoOn, ['Hulu', 'HBO Max']);
     assert.throws(() => shows.normalizeEntry({ name: 'X', alsoOn: [1] }), /alsoOn/);
     assert.throws(() => shows.normalizeEntry({ name: 'X', alsoOn: ['a', 'b', 'c', 'd', 'e'] }), /at most 4/);
+    // via: the app it is billed through (Prime Video Channels); names tidied like service.
+    assert.strictEqual(shows.normalizeEntry({ name: 'X', service: 'Max', via: 'Prime Video' }).via, 'Prime Video');
+    assert.strictEqual(shows.normalizeEntry({ name: 'X', service: 'Max', via: 'Prime Video' }).service, 'HBO Max');
+    assert.throws(() => shows.normalizeEntry({ name: 'X', via: 3 }), /"via" must be text/);
   });
 
   await check('the seed list is the four shows, used when there is no list yet; a damaged list falls back to it', () => {
@@ -261,6 +265,8 @@ async function main() {
     assert.strictEqual(an.watch, 'Hulu');
     assert.deepStrictEqual(an.alsoOn, []);
     assert.deepStrictEqual(shows.buildShow({ name: 'Z', alsoOn: ['Hulu'] }, {}, [], NOW).alsoOn, ['Hulu']);
+    assert.strictEqual(shows.buildShow({ name: 'Z', service: 'HBO Max', via: 'Prime Video' }, {}, [], NOW).via, 'Prime Video');
+    assert.strictEqual(an.via, null);
     const tbd = shows.buildShow({ name: 'Y' }, { id: 9, status: 'To Be Determined' }, [{ season: 3, number: 9, airstamp: at(-30) }], NOW);
     assert.deepStrictEqual(tbd.returning, { season: 4, label: 'Season 4', date: null, airstamp: null });
     assert.strictEqual(tbd.running, true);
@@ -446,6 +452,10 @@ async function main() {
       assert.strictEqual(out.stdout.trim(), 'Removed Paradise from the show list. The TV drops it now.');
       out = await hubctl(h, ['shows', 'refresh']);
       assert.strictEqual(out.stdout.trim(), 'Read 3 shows from TVmaze (no change).');
+      out = await hubctl(h, ['shows', 'add', 'The Pitt', '--service', 'HBO Max', '--via', 'Prime Video']);
+      out = await hubctl(h, ['shows', 'list']);
+      assert.ok(/The Pitt \(HBO Max, via Prime Video\)/.test(out.stdout), out.stdout);
+      out = await hubctl(h, ['shows', 'remove', 'The Pitt']);
       out = await hubctl(h, ['shows', 'nonsense']);
       assert.strictEqual(out.status, 1);
       out = await hubctl(h, ['help']);
@@ -465,6 +475,9 @@ async function main() {
       r = await mail(h, 'shows.add', { name: 'Paradise', service: 'Hulu', tvmazeId: 77, alsoOn: ['Disney+'] });
       assert.strictEqual(r.data.entry.tvmazeId, 77);
       assert.deepStrictEqual(r.data.entry.alsoOn, ['Disney+']);
+      r = await mail(h, 'shows.add', { name: 'The Pitt', service: 'HBO Max', via: 'Prime Video' });
+      assert.strictEqual(r.data.entry.via, 'Prime Video');
+      r = await mail(h, 'shows.remove', { name: 'The Pitt' });
       r = await mail(h, 'shows.remove', { name: 'Paradise' });
       assert.strictEqual(r.data.removed.name, 'Paradise');
       r = await mail(h, 'shows.set', { shows: [{ name: 'Stick', service: 'Apple TV' }, { name: 'Andor' }] });

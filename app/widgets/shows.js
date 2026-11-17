@@ -62,6 +62,7 @@
     premiere: 'Premiere',
     watchOn: 'Watch on {service}',
     alsoOn: 'Also on {service}',
+    via: 'via {service}',
     noService: 'No app set',
     soonHead: 'Coming soon',
     returns: 'Season {n} returns {date}',
@@ -404,6 +405,23 @@
     return own && a.hasOwnProperty(own) && typeof a[own] === 'string' && a[own] ? a[own] : own;
   }
 
+  // The app a service is billed through and opened in (Prime Video Channels:
+  // HBO Max through Prime Video): the show's own via from the Pi when it is
+  // for this service, or else widgets.entertainment.watchVia[service]. ''
+  // when it opens in its own app.
+  function viaApp(show, service) {
+    if (!service) return '';
+    var own = show && typeof show.via === 'string' ? show.via : '';
+    var v = '';
+    if (own && service === watchApp(show)) v = own;
+    else {
+      var c = S.C && S.C.config;
+      var m = c && c.watchVia;
+      if (m && typeof m === 'object' && m.hasOwnProperty(service) && typeof m[service] === 'string') v = m[service];
+    }
+    return v && v !== service ? v : '';
+  }
+
   // The other apps that carry it: the one the alias moved it from, then alsoOn.
   function alternatives(show) {
     var main = watchApp(show);
@@ -424,7 +442,9 @@
     var list = airings(d, t - 7 * DAY, addDays(dayStart(t), 1));
     var seen = {};
     for (var i = 0; i < list.length; i++) {
-      var app = watchApp(list[i].show);
+      // Counted under the app OK opens: Prime Video for a show watched via it.
+      var main = watchApp(list[i].show);
+      var app = viaApp(list[i].show, main) || main;
       var k = app + '|' + list[i].show.id;
       if (!app || seen[k]) continue;
       seen[k] = true;
@@ -463,6 +483,8 @@
     var service = other || watchApp(show);
     var toast = function (text, ms) { try { if (C) C.toast(text, ms || 5000); } catch (e) { /* ignore */ } };
     if (!service) { toast(word('noApp', { name: show.name }), 7000); return 'noservice'; }
+    // Billed through another app (via): that app opens instead.
+    service = viaApp(show, service) || service;
     var lad = ladder(service);
     if (typeof lad.tryDeepLink === 'function') {
       var link = null;
@@ -620,6 +642,8 @@
     else if (on) el('span', 'sh-note is-live', meta, word('now'));
     else if (soon) el('span', 'sh-note is-live', meta, word('inMin', { n: Math.max(1, Math.round((a.ms - t) / MIN)) }));
     if (a.eps[0].number === 1 && !past) el('span', 'sh-chip', meta, word('premiere'));
+    var via = viaApp(a.show, app);
+    if (via) el('span', 'sh-via', meta, word('via', { service: via }));
     var side = el('div', 'sh-side', row);
     badge(side, app);
     var w = el('span', 'sh-watch', side);
@@ -853,7 +877,7 @@
     // For the tests (dev/shows-test.js): the pure parts and the state.
     _test: {
       view: view, airings: airings, groupByDay: groupByDay, returning: returning, tileLine: tileLine,
-      ladder: ladder, watch: watch, watchApp: watchApp, alternatives: alternatives, availability: availability, timeText: timeText, epCode: epCode, rangeText: rangeText, word: word,
+      ladder: ladder, watch: watch, watchApp: watchApp, viaApp: viaApp, alternatives: alternatives, availability: availability, timeText: timeText, epCode: epCode, rangeText: rangeText, word: word,
       weekStart: weekStart, monthEnd: monthEnd, setData: function (d) { S.data = d; S.fromCache = false; changed(); },
       tab: function (t) { if (t) S.tab = t; return S.tab; }
     }

@@ -10,7 +10,7 @@
  *   const text = await clockPage.line(page, 'updates'); // the updates text, or null
  *   await clockPage.waitFor(page, (about) => about.live === 'Live', 3000, 'no Live line');
  *
- * lines are the shown values of every row but the Wanderers ones, in order;
+ * lines are the shown values of every row but the Wanderers and Watch links ones, in order;
  * live and updates are those rows' source texts ('Live: lost the Pi at
  * 9:41 AM', 'Updates: can't reach GitHub'); rows is every row as
  * { group, label, value, raw }. waitFor keeps the panel open while it waits,
@@ -38,7 +38,7 @@ function read(page) {
     const rows = window.HUB_TEST.about.rows();
     const raw = (label) => { const r = rows.filter((x) => x.label === label)[0]; return r ? r.raw : null; };
     return {
-      lines: rows.filter((r) => r.group !== 'Wanderers' && r.label !== 'Weather picture').map((r) => r.value),
+      lines: rows.filter((r) => r.group !== 'Wanderers' && r.group !== 'Watch links' && r.label !== 'Weather picture').map((r) => r.value),
       live: raw('Live updates'),
       updates: raw('Version check'),
       rows: rows

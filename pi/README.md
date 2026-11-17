@@ -151,6 +151,7 @@ The Entertainment panel on the TV has a **Schedule**: what airs today, this week
   - `--id 12345` sets its TVmaze number when the name finds the wrong show (the number is in the show's address on tvmaze.com).
   - `--watch Hulu` opens a different app than the badge.
   - `--also "Hulu,Peacock"` lists other apps that carry it (up to 4); the TV offers each as "Also on Hulu".
+  - `--via "Prime Video"` is for a service billed through another app (Prime Video Channels). The badge still says HBO Max, the TV adds "via Prime Video", and Watch opens Prime Video. `watchVia` in `app/config.js` does this for every show of a service.
   Adding a show that is already there updates it.
 - `./hub shows remove "Stick"` takes one off.
 - `./hub shows refresh` asks TVmaze about every show now and waits up to 25 seconds. Otherwise the Pi asks every 6 hours, and right after the list changes.

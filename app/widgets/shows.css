@@ -182,6 +182,7 @@
 .sh-meta-text { white-space: nowrap; margin-right: 0.6rem; }
 .sh-note { display: inline-block; color: var(--text-3); white-space: nowrap; }
 .sh-note.is-live { color: #7fd1ff; font-weight: 600; }
+.sh-via { display: inline-block; margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-3); white-space: nowrap; }
 .sh-chip {
   display: inline-block;
   margin-left: 0.55rem;

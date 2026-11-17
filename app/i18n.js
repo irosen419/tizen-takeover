@@ -264,6 +264,7 @@
     'shows.premiere': 'Estreno',
     'shows.watchOn': 'Ver en {service}',
     'shows.alsoOn': 'También en {service}',
+    'shows.via': 'vía {service}',
     'shows.noService': 'Sin app',
     'shows.soonHead': 'Pronto',
     'shows.returns': 'Temporada {n} regresa el {date}',

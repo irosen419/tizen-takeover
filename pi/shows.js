@@ -6,12 +6,15 @@
  * hands the result to server.js, which keeps it as the resource "shows" and
  * pushes it to the TV. The contract is docs/shows-snapshot.md.
  *
- *   list entry   { name, service?, tvmazeId?, serviceOverride?, alsoOn? }
+ *   list entry   { name, service?, tvmazeId?, serviceOverride?, alsoOn?, via? }
  *                name: as the owner says it; service: the show's watch app,
  *                its badge on the TV (wins over what TVmaze says);
  *                serviceOverride: the app "Watch on" opens when it differs
  *                from the badge; alsoOn: other apps that carry it (the TV
- *                offers them as "Also on ..."); tvmazeId: filled in by the
+ *                offers them as "Also on ..."); via: the app it is
+ *                billed through and opened in ("Prime Video" for HBO Max
+ *                through Prime Video Channels; the badge still says
+ *                HBO Max); tvmazeId: filled in by the
  *                first lookup and kept. The TV may also send a whole
  *                service elsewhere (widgets.entertainment.watchAliases in
  *                app/config.js, Hulu -> Disney+ by default).
@@ -146,15 +149,15 @@ function normalizeEntry(raw, where) {
   if (typeof raw === 'string') raw = { name: raw };
   if (!isObj(raw)) throw bad('each show must be an object like {"name": "Stick", "service": "Apple TV"}' + at);
   Object.keys(raw).forEach((k) => {
-    if (['name', 'service', 'tvmazeId', 'serviceOverride', 'alsoOn'].indexOf(k) < 0) {
-      throw bad('unknown field "' + cleanText(k, 30) + '" (use name, service, tvmazeId, serviceOverride, alsoOn)' + at);
+    if (['name', 'service', 'tvmazeId', 'serviceOverride', 'alsoOn', 'via'].indexOf(k) < 0) {
+      throw bad('unknown field "' + cleanText(k, 30) + '" (use name, service, tvmazeId, serviceOverride, alsoOn, via)' + at);
     }
   });
   const name = cleanText(raw.name, MAX_NAME + 1);
   if (!name) throw bad('"name" is missing or empty' + at);
   if (Array.from(name).length > MAX_NAME) throw bad('"name" is longer than ' + MAX_NAME + ' characters' + at);
   const out = { name: name };
-  ['service', 'serviceOverride'].forEach((k) => {
+  ['service', 'serviceOverride', 'via'].forEach((k) => {
     if (raw[k] === undefined || raw[k] === null || raw[k] === '') return;
     if (typeof raw[k] !== 'string') throw bad('"' + k + '" must be text' + at);
     const t = cleanText(raw[k], MAX_SERVICE + 1);
@@ -282,6 +285,7 @@ function buildShow(entry, show, episodes, nowMs) {
     watch: entry.serviceOverride || entry.service || channel,
     channel: channel,
     alsoOn: (entry.alsoOn || []).slice(),
+    via: entry.via || null,
     status: status,
     running: status !== 'Ended',
     tvmazeId: Number.isInteger(s.id) ? s.id : entry.tvmazeId || null,
@@ -297,7 +301,7 @@ function buildShow(entry, show, episodes, nowMs) {
 function placeholder(entry, error) {
   return {
     id: slug(entry.name), name: entry.name, service: entry.service || '', watch: entry.serviceOverride || entry.service || '',
-    channel: '', alsoOn: (entry.alsoOn || []).slice(), status: '', running: null, tvmazeId: entry.tvmazeId || null, checkedAt: null,
+    channel: '', alsoOn: (entry.alsoOn || []).slice(), via: entry.via || null, status: '', running: null, tvmazeId: entry.tvmazeId || null, checkedAt: null,
     nextEpisode: null, upcoming: [], returning: null, error: error || 'not looked up yet'
   };
 }
@@ -329,6 +333,7 @@ function cleanShow(s) {
     watch: cleanText(s.watch, MAX_SERVICE),
     channel: cleanText(s.channel, MAX_SERVICE),
     alsoOn: (Array.isArray(s.alsoOn) ? s.alsoOn : []).map((x) => cleanText(x, MAX_SERVICE)).filter(Boolean).slice(0, MAX_ALSO),
+    via: cleanText(s.via, MAX_SERVICE) || null,
     status: cleanText(s.status, 24),
     running: typeof s.running === 'boolean' ? s.running : null,
     tvmazeId: Number.isInteger(s.tvmazeId) ? s.tvmazeId : null,
@@ -550,6 +555,7 @@ function createTracker(o) {
       copy.service = e.service || copy.channel;
       copy.watch = e.serviceOverride || e.service || copy.channel;
       copy.alsoOn = (e.alsoOn || []).slice();
+      copy.via = e.via || null;
       copy.upcoming = copy.upcoming.filter((x) => Date.parse(x.airstamp) >= t - BACK_MS);
       if (why) { copy.stale = true; copy.error = why; }
       return copy;
@@ -732,7 +738,7 @@ function listLines(r) {
     const s = byId[slug(e.name)];
     const badge = e.service || (s && s.channel) || 'no service';
     let line = '  ' + e.name + ' (' + badge + (e.serviceOverride ? ', watch on ' + e.serviceOverride : '') +
-      (e.alsoOn && e.alsoOn.length ? ', also on ' + e.alsoOn.join(', ') : '') + ')';
+      (e.alsoOn && e.alsoOn.length ? ', also on ' + e.alsoOn.join(', ') : '') + (e.via ? ', via ' + e.via : '') + ')';
     if (!s || s.checkedAt === null) line += ': ' + ((s && s.error) || 'not looked up yet');
     else {
       line += ': ' + (s.running === false ? 'ended' : 'still running' + (s.status && s.status !== 'Running' ? ' (' + s.status.toLowerCase() + ')' : ''));
@@ -758,6 +764,7 @@ function summaryData(r) {
       const o = { name: e.name, service: e.service || (s && s.channel) || '', running: s ? s.running : null };
       if (e.serviceOverride) o.serviceOverride = e.serviceOverride;
       if (e.alsoOn) o.alsoOn = e.alsoOn.slice();
+      if (e.via) o.via = e.via;
       if (e.tvmazeId) o.tvmazeId = e.tvmazeId;
       if (s && s.status) o.status = s.status;
       if (s && s.nextEpisode) o.next = s.nextEpisode.airstamp;

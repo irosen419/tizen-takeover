@@ -4,11 +4,12 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
 
 ## Where it comes from
 
-- **The list** lives on the Pi in `data/shows.json`, started from `pi/shows-seed.json` (Hell's Kitchen and Shark Tank on Disney+, The Great British Baking Show on Netflix, Stick on Apple TV). Each entry is `{ name, service?, tvmazeId?, serviceOverride?, alsoOn? }`:
+- **The list** lives on the Pi in `data/shows.json`, started from `pi/shows-seed.json` (Hell's Kitchen and Shark Tank on Disney+, The Great British Baking Show on Netflix, Stick on Apple TV). Each entry is `{ name, service?, tvmazeId?, serviceOverride?, alsoOn?, via? }`:
   - `name`: the show as the owner says it.
   - `service`: the show's watch app and its badge on the TV. It wins over what TVmaze says.
   - `serviceOverride`: the app Watch opens when it differs from the badge.
   - `alsoOn`: up to 4 other apps that carry it. The TV offers each as "Also on ...".
+  - `via`: the app the show is billed through and opened in, such as `Prime Video` for HBO Max through Prime Video Channels.
   - `tvmazeId`: filled in by the first lookup and kept.
   Change it with `./hub shows add|remove`, the mailbox (`shows.add`, `shows.remove`, `shows.set`) or `POST /api/shows`.
 - **TVmaze** (`https://api.tvmaze.com`, public, no key). Per show and refresh:
@@ -62,6 +63,7 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
 | `watch` | The app Watch opens: `serviceOverride`, or else `service`. The TV may still send a whole service elsewhere with `watchAliases`, see below. |
 | `channel` | Where TVmaze says it airs (`FOX`, `FX on Hulu`). Informational. |
 | `alsoOn` | Optional: other apps that carry it. |
+| `via` | Optional (`null` when not set): the app it is billed through. The badge still names `service`; the TV adds a small "via Prime Video" and Watch opens that app. |
 | `status`, `running` | TVmaze's status (`Running`, `Ended`, `To Be Determined`, `In Development`), and whether that means it continues. The TV shows "Still running" or "Ended". |
 | `checkedAt` | When this show was last read well, or `null` if never. |
 | `stale`, `error` | Present when the last read failed and this is the last good copy. `error` is a code only: `timeout`, `unreachable`, `not-found`, `rate-limited`, `http-503`, `not-json` or `no-id`. |
@@ -81,6 +83,7 @@ At most 40 shows. Episode names are cut at 80 characters, service names at 24.
   - The focused row shows "Watch on X"; OK opens that app with the toast "Opened X. Search: <show>".
   - A show that is also on another app gets an "Also on Hulu" chip beside its row. Right reaches the chip, and OK on it opens that app instead.
 - `widgets.entertainment.watchAliases` in `app/config.js` sends a whole service to another app. The default is `{ Hulu: 'Disney+' }`, so titles tagged Hulu show and open as Disney+, with "Also on Hulu" offered.
+- `widgets.entertainment.watchVia` (commented out by default, for example `{ 'HBO Max': 'Prime Video' }`) does the same as `via` for every show of a service. The badge keeps the service, the row adds "via Prime Video", Watch opens Prime Video, and the tile counts the show under Prime Video.
 - The **Entertainment tile** puts first the apps that have something airing today or out in the last 7 days, with a small count on the logo. The tile's line reads "Tonight: Paradise 8 PM" while something still airs today.
 - The TV keeps its last copy as `homeHub.shows.v1`, so the Schedule draws at once after a restart.
 - When there is nothing to show, the Schedule says why:
