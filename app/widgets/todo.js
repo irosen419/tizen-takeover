@@ -315,8 +315,7 @@
     sending: false,         // one request at a time
     server: null,           // { epoch, rev, items }: the newest list from the server
     retryTimer: null,
-    redrawLater: false,     // a list arrived while typing in the add box
-    adopted: false          // a server list has been taken this run (the first is never "new")
+    redrawLater: false      // a list arrived while typing in the add box
   };
 
   function copy(x) { return JSON.parse(JSON.stringify(x)); }
@@ -485,27 +484,15 @@
     });
   }
 
-  // Takes the server's list as the working copy. Open items it has that
-  // were nowhere here before are new from a sync: after the first list this
-  // run (never on it) the hub shows them arriving (ctx.handoff).
+  // Takes the server's list as the working copy.
   function adopt(items) {
     if (!isArray(items)) return;
     var list = clean(copy(items));
-    var first = !sync.adopted;
-    sync.adopted = true;
     if (JSON.stringify(list) === JSON.stringify(store.items)) return;
-    var had = {};
-    var k;
-    for (k = 0; k < store.items.length; k++) had[store.items[k].id] = true;
-    var fresh = [];
-    for (k = 0; k < list.length; k++) if (!had[list[k].id] && !list[k].done) fresh.push(list[k].id);
     store.items = list;
     purge();
     store.save();
     refreshQuiet();
-    if (!first && fresh.length && C && typeof C.handoff === 'function') {
-      try { C.handoff(fresh); } catch (e) { /* the rows just show */ }
-    }
   }
 
   function addTyping() {

@@ -85,8 +85,6 @@
  *   ctx.setSub(text)          the small line in the panel head
  *   ctx.setTileSub(text)      the small line under the tile's title ('' hides it)
  *   ctx.focus(el)             move panel focus to el
- *   ctx.handoff(ids)          new items (data-id on their tile rows) arrived from
- *                             a sync: the motion extras show where they came from
  *   ctx.bloom(node)           an app is opening from node: { cancel() } or null
  *   (A waiting tile marks itself quiet with an element of class hub-dormant.)
  *   ctx.live                  live updates from the hub server on the Pi (see
@@ -1300,7 +1298,6 @@
       setTileSub: function (text) { setTileSub(rec, text); },
       live: liveFacade(),
       focus: function (node) { if (open === rec) focusPanel(node); },
-      handoff: function (ids) { fxHandoff(rec, ids); },
       bloom: function (node) { return fxCall('bloom', [node]) || null; },
       _bind: function (r) { rec = r; }
     };
@@ -2340,7 +2337,7 @@
   /* ---------- motion extras ---------- */
 
   // app/motion.js: the focus ring that glides, items that arrive in an
-  // opened panel, the to-do handoff, the Now Playing cover's flight, the
+  // opened panel, the Now Playing cover's flight, the
   // launch bloom and quiet waiting tiles. They run only when the timing
   // above says the screen keeps up (speed 'ok'), and every call is wrapped,
   // so without motion.js, or with a broken one, nothing changes.
@@ -2369,40 +2366,10 @@
     return rec && rec.home ? rec.home : null;
   }
 
-  // Where a handed-off to-do comes from: an A World Worth Saving tile on
-  // screen (the board first), else none (no dot; the rows and pulse still show).
-  function fxSource(to) {
-    var prefer = ['awws-todo', 'awws'];
-    for (var i = 0; i < prefer.length; i++) {
-      var r = widgetById(prefer[i]);
-      if (r && r !== to && r.home) return r;
-    }
-    for (var j = 0; j < widgets.length; j++) {
-      if (widgets[j] !== to && widgets[j].home && /^awws/.test(widgets[j].w.id)) return widgets[j];
-    }
-    return null;
-  }
-
-  function fxHandoff(rec, ids) {
-    if (!rec || !ids || !ids.length || !rec.home) return;
-    var rows = [];
-    for (var i = 0; i < ids.length; i++) {
-      var list = rec.body.querySelectorAll('[data-id]');
-      for (var k = 0; k < list.length; k++) if (list[k].getAttribute('data-id') === String(ids[i])) rows.push(list[k]);
-    }
-    var src = fxSource(rec);
-    fxCall('handoff', [rec.tile, rec.home, src ? src.home : null, rows]);
-  }
-
   function startFx() {
     fxCall('start', [{
       config: cfg.motionFx,
-      speed: fxSpeed,
-      quiet: function () { return !busy && !open && !frameOpen && !sw.on && !typingBox() && !document.hidden; },
-      clayDrawing: function () {
-        var K = clayApi('drawing');
-        try { return K ? K.drawing() === true : false; } catch (e) { return false; }
-      }
+      speed: fxSpeed
     }]);
   }
 

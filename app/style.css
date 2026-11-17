@@ -1006,34 +1006,6 @@ body.has-picture {
 .fx-ring-on .tile.is-focused { border-color: var(--line); }
 .is-glass.fx-ring-on .tile.is-focused { border-color: rgba(255, 255, 255, 0.16); }
 
-/* The to-do handoff: a glowing dot (one fixed element, its arc is keyframes
-   on transform and opacity), and the To-do tile's border pulse, an overlay
-   whose only change is its opacity. */
-.fx-dot {
-  position: fixed;
-  top: 0; left: 0;
-  border-radius: 50%;
-  background: #7fd1ff;
-  box-shadow: 0 0 1.2rem 0.35rem rgba(127, 209, 255, 0.55);
-  opacity: 0;
-  pointer-events: none;
-  z-index: 14;
-  will-change: transform, opacity;
-}
-.tile.fx-pulse::after {
-  content: "";
-  position: absolute;
-  top: calc(-1 * var(--edge)); right: calc(-1 * var(--edge));
-  bottom: calc(-1 * var(--edge)); left: calc(-1 * var(--edge));
-  border: var(--edge) solid #7fd1ff;
-  border-radius: 1.6rem;
-  box-shadow: 0 0 0 0.45rem rgba(127, 209, 255, 0.3), 0 0 1.6rem rgba(127, 209, 255, 0.35);
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 650ms ease-out;
-}
-.tile.fx-pulse.fx-pulse-up::after { opacity: 1; transition: opacity 180ms ease-out; }
-
 /* The Now Playing cover in flight, over the panel. */
 .fx-fly {
   position: fixed;

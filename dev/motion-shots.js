@@ -9,7 +9,7 @@
  *   quiet-before-en.png, quiet-after-en.png (and -es): the waiting tiles
  *     (the Pi out of reach) with the extras off (?fx=off, as before) and on.
  *   --clip: one mp4 per moment (needs ffmpeg; webm without it): quiet tiles,
- *     ring, stagger, handoff, cover, bloom, in the real hub.
+ *     ring, stagger, cover, bloom, in the real hub.
  *   --fps: the frame rate headless Chromium reached during each motion
  *     (three runs each), printed and saved as fps.json. A desktop is not the
  *     TV: these numbers say the motion is cheap, not that the TV is smooth.
@@ -25,7 +25,6 @@ const { SPANISH: AWWS_ES } = require('./awws-harness');
 
 const PAGE = 'http://127.0.0.1:8090';
 const LIVE = 'http://127.0.0.1:8097';
-const TOKEN = 'preview-token-not-a-secret-000000';
 const BLOCKED = ['192.168.1.219', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io'];
 
 const args = process.argv.slice(2);
@@ -61,19 +60,6 @@ async function until(fn, ms, text) {
   const end = Date.now() + ms;
   while (Date.now() < end) { try { if (await fn()) return; } catch (e) { /* again */ } await sleep(50); }
   throw new Error(text);
-}
-
-function post(route, body) {
-  return new Promise((resolve, reject) => {
-    const text = JSON.stringify(body);
-    const req = http.request(LIVE + route, { method: 'POST', headers: { Authorization: 'Bearer ' + TOKEN, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(text) } }, (res) => {
-      let out = '';
-      res.on('data', (c) => { out += c; });
-      res.on('end', () => { try { resolve(JSON.parse(out)); } catch (e) { reject(e); } });
-    });
-    req.on('error', reject);
-    req.end(text);
-  });
 }
 
 async function newPage(o) {
@@ -121,11 +107,6 @@ const MOMENTS = [
       await page.keyboard.press(k);
       await sleep(520);
     }
-  } },
-  { name: '4-handoff', query: LIVE_Q, async run(page) {
-    await sleep(400);
-    await post('/api/todo', { title: 'Write to the library about the visit', section: 'now' });
-    await sleep(2600);
   } },
   { name: '5-cover-flight', query: LIVE_Q, async run(page) {
     await page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
@@ -207,7 +188,6 @@ function sampler(page, ms) {
 const MEASURE = [
   { name: 'ring glide (190 ms)', query: LIVE_Q, ms: 260, async go(page, i) { await page.keyboard.press(i % 2 ? 'ArrowRight' : 'ArrowLeft'); } },
   { name: 'open Entertainment: grow + stagger (500 ms)', query: LIVE_Q, ms: 600, async go(page) { await page.keyboard.press('Enter'); }, async reset(page) { await page.keyboard.press('Escape'); await sleep(700); } },
-  { name: 'handoff dot + row + pulse (900 + 260 ms)', query: LIVE_Q, ms: 1300, async go(page, i) { await post('/api/todo', { title: 'Measure ' + Date.now() + ' ' + i, section: 'now' }); await sleep(120); } },
   { name: 'cover flight to the card (520 ms, visualizer on)', query: LIVE_Q, ms: 600, async pre(page) { await page.evaluate(() => window.HUB_TEST.openPanel('nowplaying')); await sleep(1200); },
     async go(page) { await page.evaluate(() => document.querySelector('.panel-btn').click()); }, async reset(page) { await sleep(400); await page.keyboard.press('Escape'); await sleep(900); } },
   { name: 'launch bloom (480 ms)', query: LIVE_Q, ms: 560, async pre(page) { await page.keyboard.press('Enter'); await sleep(1200); },

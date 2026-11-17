@@ -11,9 +11,6 @@
  *               from tile to tile, instead of the instant border swap.
  *   stagger     A panel's items (a widget's `stagger` selector) arrive from
  *               the opening tile's side, 35 ms apart, all in by 500 ms.
- *   handoff     A to-do that a sync brings (never the first sync) arrives
- *               as a glowing dot from the A World Worth Saving tile, its row
- *               slides in and the To-do tile's border pulses once.
  *   cover       The Now Playing cover flies between the page and the
  *               visualizer's card when full screen opens and closes.
  *   bloom       An app's icon grows to fill the screen while the app opens.
@@ -21,8 +18,7 @@
  * Every moving part animates only transform and opacity, and runs only when
  * the hub's own timing (motion 'auto', see hub.js) says the screen keeps up:
  * in 'fade' mode, after auto stepped down from push, or below 40 frames a
- * second, focus is the plain border swap and the rest happens at once. While
- * the clay wanderers are on screen the dot stays home (they draw too).
+ * second, focus is the plain border swap and the rest happens at once.
  * With every switch off this file adds no element and no class.
  *
  * Every entry point is wrapped, so if anything here breaks, the hub carries
@@ -49,14 +45,12 @@
   }
   try { mergeStrings(STRINGS, window.HUB_MOTION_STRINGS); } catch (e) { /* keep English */ }
 
-  var FLAGS = ['quietTiles', 'ring', 'stagger', 'handoff', 'cover', 'bloom'];
+  var FLAGS = ['quietTiles', 'ring', 'stagger', 'cover', 'bloom'];
   var EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';   // ease-out: every entrance
   var RING_MS = 190;
   var STAGGER_MS = 260;
   var STAGGER_STEP = 35;
   var STAGGER_TOTAL = 500;
-  var DOT_MS = 900;
-  var ROW_MS = 260;
   var COVER_IN_MS = 520;
   var COVER_OUT_MS = 420;
   var BLOOM_MS = 480;
@@ -64,8 +58,6 @@
 
   var host = null;               // from hub.js (see start)
   var flags = {};
-  var styleEl = null;            // keyframes for the dot's arc
-  var runs = 0;
 
   function safe(fn) {
     return function () {
@@ -132,22 +124,6 @@
   }
 
   function later(ms, fn) { return setTimeout(safe(fn), ms); }
-
-  // cb once, on transitionend/animationend of node or after ms + 80.
-  function after(node, ms, cb, type) {
-    var called = false;
-    var ev = type || 'transitionend';
-    function finish(e) {
-      if (e && e.target !== node) return;
-      if (called) return;
-      called = true;
-      node.removeEventListener(ev, finish);
-      clearTimeout(timer);
-      safe(cb)();
-    }
-    var timer = setTimeout(finish, ms + 80);
-    node.addEventListener(ev, finish);
-  }
 
   /* ---------- quiet tiles (no motion) ---------- */
 
@@ -288,111 +264,6 @@
     stag.timer = later(wait + STAGGER_TOTAL + 80, staggerClear);
   }
 
-  /* ---------- handoff: a new to-do arrives ---------- */
-
-  var hand = { busy: false, dot: null, timers: [] };
-
-  // Cubic bezier easing, for the arc's keyframes (CSS eases each keyframe
-  // step on its own, so the easing is baked into where the steps fall).
-  function bezier(x1, y1, x2, y2) {
-    function a(p, q) { return 1 - 3 * q + 3 * p; }
-    function b(p, q) { return 3 * q - 6 * p; }
-    function c(p) { return 3 * p; }
-    function at(t, p, q) { return ((a(p, q) * t + b(p, q)) * t + c(p)) * t; }
-    function slope(t, p, q) { return 3 * a(p, q) * t * t + 2 * b(p, q) * t + c(p); }
-    return function (x) {
-      var t = x;
-      for (var i = 0; i < 8; i++) {
-        var sl = slope(t, x1, x2);
-        if (Math.abs(sl) < 1e-6) break;
-        t -= (at(t, x1, x2) - x) / sl;
-      }
-      return at(Math.max(0, Math.min(1, t)), y1, y2);
-    };
-  }
-  var travel = bezier(0.4, 0, 0.2, 1);
-
-  function keyframes(name, from, to) {
-    var steps = 16;
-    var lift = Math.min(220, 80 + Math.abs(to.x - from.x) * 0.25);
-    var cx = (from.x + to.x) / 2;
-    var cy = Math.min(from.y, to.y) - lift;
-    var css = '@keyframes ' + name + '{';
-    for (var k = 0; k <= steps; k++) {
-      var t = k / steps;
-      var p = travel(t);
-      var u = 1 - p;
-      var x = u * u * from.x + 2 * u * p * cx + p * p * to.x;
-      var y = u * u * from.y + 2 * u * p * cy + p * p * to.y;
-      var sc = 1.15 - 0.45 * p * p;
-      var op = t < 0.1 ? t * 10 : t > 0.9 ? (1 - t) * 10 : 1;
-      css += (t * 100).toFixed(2) + '%{transform:' + translate(x, y, sc.toFixed(3)) + ';opacity:' + op.toFixed(2) + '}';
-    }
-    return css + '}';
-  }
-
-  function handoffTimer(ms, fn) { hand.timers.push(later(ms, fn)); }
-
-  // to: the receiving tile; toRect, fromRect: resting rects (fromRect null:
-  // no source tile on screen, so no dot); rows: the new rows in the tile,
-  // already drawn. False when nothing moved (the rows just show).
-  function handoff(to, toRect, fromRect, rows) {
-    if (!can('handoff') || hand.busy) return false;
-    var quiet = false;
-    try { quiet = host.quiet() && !host.clayDrawing(); } catch (e) { quiet = false; }
-    if (!quiet) return false;
-    hand.busy = true;
-    rows = rows || [];
-    var i;
-    for (i = 0; i < rows.length; i++) {
-      rows[i].style.transition = 'none';
-      rows[i].style.opacity = '0';
-      rows[i].style.transform = translate(-30, 0);
-    }
-    function land() {
-      for (var j = 0; j < rows.length; j++) {
-        var s = rows[j].style;
-        s.transition = 'transform ' + ROW_MS + 'ms ' + EASE + ', opacity ' + ROW_MS + 'ms ease-out';
-        s.transform = translate(0, 0);
-        s.opacity = '1';
-      }
-      to.classList.add('fx-pulse');
-      // A frame later, so the overlay starts from opacity 0.
-      handoffTimer(30, function () { to.classList.add('fx-pulse-up'); });
-      handoffTimer(230, function () { to.classList.remove('fx-pulse-up'); });
-      handoffTimer(950, function () {
-        to.classList.remove('fx-pulse');
-        for (var k = 0; k < rows.length; k++) { rows[k].style.transition = ''; rows[k].style.transform = ''; rows[k].style.opacity = ''; }
-        hand.busy = false;
-      });
-    }
-    if (!fromRect) { land(); return true; }
-
-    var D = 22;   // the dot's size in px at 1920 wide; scaled with the screen
-    var size = Math.round(D * window.innerWidth / 1920);
-    var first = rows[0] ? rectOf(rows[0]) : null;
-    var from = { x: fromRect.left + fromRect.width / 2 - size / 2, y: fromRect.top + fromRect.height * 0.62 - size / 2 };
-    var to2 = first ? { x: first.left + 14 - size / 2, y: first.top + first.height / 2 - size / 2 } :
-      { x: toRect.left + toRect.width / 2 - size / 2, y: toRect.top + toRect.height * 0.3 - size / 2 };
-    if (!hand.dot) hand.dot = el('div', 'fx-dot');
-    if (!styleEl) { styleEl = document.createElement('style'); document.head.appendChild(styleEl); }
-    runs += 1;
-    var name = 'fxArc' + runs;
-    styleEl.textContent = keyframes(name, from, to2);
-    var d = hand.dot;
-    d.style.width = size + 'px';
-    d.style.height = size + 'px';
-    d.style.animation = 'none';
-    void d.offsetWidth;
-    d.style.animation = name + ' ' + DOT_MS + 'ms linear forwards';
-    after(d, DOT_MS, function () {
-      d.style.animation = 'none';
-      d.style.opacity = '0';
-      land();
-    }, 'animationend');
-    return true;
-  }
-
   /* ---------- shared cover (Now Playing) ---------- */
 
   var share = { fly: null, dest: null, timer: null };
@@ -531,7 +402,7 @@
 
   /* ---------- start ---------- */
 
-  // host: { config, speed() 'ok'|'fade'|'slow', quiet(), clayDrawing() }
+  // host: { config, speed() 'ok'|'fade'|'slow' }
   function start(h) {
     host = h;
     flags = readFlags(h && h.config);
@@ -547,7 +418,6 @@
     ringHide: safe(ringHide),
     relayout: safe(relayout),
     stagger: safe(stagger),
-    handoff: safe(function () { return handoff.apply(null, arguments) === true; }),
     shareFrom: safe(shareFrom),
     shareTo: safe(shareTo),
     bloom: safe(bloom),
@@ -559,8 +429,6 @@
         flags: JSON.parse(JSON.stringify(flags)),
         speed: speed(),
         ring: ring.node ? { at: ring.at, shown: ring.shown, gliding: ring.gliding && Date.now() < ring.glideEnd } : null,
-        handoff: hand.busy,
-        arcs: runs,
         staggering: stag.items.length,
         flying: !!share.fly,
         blooming: !!bloomState.node

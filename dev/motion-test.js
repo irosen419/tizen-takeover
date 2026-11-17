@@ -13,8 +13,8 @@
  * waiting tiles are one small line, in English and in Spanish, with nothing
  * cut or clipped, while tiles with real data are left alone; the ring sits
  * on the focused tile, glides on a press, jumps on a held key, and is right
- * after a layout switch and a window resize; the stagger; the to-do handoff
- * (never on the first sync, one at a time); the cover's flight; the bloom.
+ * after a layout switch and a window resize; the stagger; a new to-do from
+ * a sync just shows its row, nothing added; the cover's flight; the bloom.
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  * It cannot prove the TV: a desktop browser runs far faster.
@@ -195,11 +195,9 @@ const focused = (page) => page.evaluate(() => {
 
 // Everything the extras could have added.
 const extras = (page) => page.evaluate(() => ({
-  nodes: document.querySelectorAll('.fx-ring, .fx-dot, .fx-fly, .fx-bloom').length,
+  nodes: document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom').length,
   body: document.body.className.split(' ').filter((c) => /^fx-/.test(c)),
-  dormant: document.querySelectorAll('.tile.is-dormant').length,
-  pulse: document.querySelectorAll('.fx-pulse').length,
-  styles: Array.prototype.filter.call(document.querySelectorAll('style'), (s) => /fxArc/.test(s.textContent)).length
+  dormant: document.querySelectorAll('.tile.is-dormant').length
 }));
 
 function noErrors(page) { assert(!page.errors.length, 'page errors: ' + page.errors.join(' | ')); }
@@ -264,7 +262,7 @@ async function checkOff(pi) {
     await until(() => page.evaluate(() => document.querySelectorAll('.todo-tile-row').length > 0), 4000, 'the to-do did not arrive');
     await sleep(400);
     x = await extras(page);
-    assert(!x.nodes && !x.body.length && !x.dormant && !x.pulse && !x.styles, 'extras after a handoff: ' + JSON.stringify(x));
+    assert(!x.nodes && !x.body.length && !x.dormant, 'extras after a new to-do: ' + JSON.stringify(x));
     const about = await page.evaluate(() => { window.HUB_TEST.about.open(); const r = window.HUB_TEST.about.rows().filter((r) => r.label === 'Motion')[0]; window.HUB_TEST.about.close(); return r && r.value; });
     assert(about && !/extras/.test(about), 'About Motion row: ' + about);
     noErrors(page);
@@ -302,13 +300,13 @@ async function checkDisabled(pi) {
     await page.keyboard.press('Escape');
     await idle(page);
     await sleep(300);
-    // Handoff: the row shows, no dot, no pulse.
+    // A new to-do: the row just shows.
     const id = await postTodo(pi, 'Slow ' + c.name);
     await until(() => page.evaluate((i) => !!document.querySelector('.todo-tile-row[data-id="' + i + '"]'), id), 4000, 'the to-do did not arrive');
     await sleep(100);
     const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return { o: r.style.opacity, t: r.style.transform }; }, id);
     x = await extras(page);
-    assert(!x.nodes && !x.pulse && !row.o && !row.t, c.name + ': handoff moved: ' + JSON.stringify({ x, row }));
+    assert(!x.nodes && !row.o && !row.t, c.name + ': the new row moved: ' + JSON.stringify({ x, row }));
     // Cover: no flight to the card.
     await page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
     await idle(page);
@@ -480,39 +478,26 @@ async function checkStagger(pi) {
   noErrors(page);
 }
 
-async function checkHandoff(pi) {
-  // The Pi already has items: the first sync brings them, and that is no handoff.
-  await control(pi, 'POST', '/api/todo/ops', { ops: [] }).catch(() => null);
-  await postTodo(pi, 'Already on the Pi');
+async function checkNewTodo(pi) {
+  // A to-do that a sync brings just shows its row: no element, class or style is added.
   const page = await open({ pi: pi, query: 'motion=push' });
-  await until(() => page.evaluate(() => document.querySelectorAll('.todo-tile-row').length > 0), 5000, 'the first sync did not arrive');
-  await sleep(300);
-  let st = await fx(page);
-  let x = await extras(page);
-  const dots = await page.evaluate(() => document.querySelectorAll('.fx-dot').length);
-  assert(st.arcs === 0 && !st.handoff && !dots && !x.pulse && !x.styles, 'the first sync handed off: ' + JSON.stringify({ st, x, dots }));
   await idle(page);
-  // A new one from a sync: the dot flies from A World Worth Saving, the row slides in, the tile pulses.
-  const id = await postTodo(pi, 'Write to the library');
-  await until(async () => (await fx(page)).handoff, 3000, 'no handoff');
-  const mid = await page.evaluate((i) => {
-    const d = document.querySelector('.fx-dot');
-    const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]');
-    return { dot: !!d && /fxArc/.test(d.style.animation), rowOpacity: r && r.style.opacity };
-  }, id);
-  assert(mid.dot && mid.rowOpacity === '0', 'during the flight: ' + JSON.stringify(mid));
-  // A second one while the first is in the air: no second dot.
-  const id2 = await postTodo(pi, 'Second while flying');
-  await until(() => page.evaluate((i) => !!document.querySelector('.todo-tile-row[data-id="' + i + '"]'), id2), 3000, 'the second to-do did not arrive');
-  st = await fx(page);
-  assert(st.arcs === 1, 'more than one at a time: ' + st.arcs);
-  await until(() => page.evaluate(() => document.querySelector('.cell[data-widget="todo"] .tile').classList.contains('fx-pulse')), 2000, 'no pulse');
-  await until(async () => !(await fx(page)).handoff, 3000, 'the handoff never ended');
-  const end = await page.evaluate(() => Array.prototype.filter.call(document.querySelectorAll('.todo-tile-row'), (r) => r.style.opacity || r.style.transform).length);
-  assert(end === 0, 'rows left styled: ' + end);
-  // Once it is over, a new one flies again.
-  await postTodo(pi, 'Third');
-  await until(async () => (await fx(page)).arcs === 2, 3000, 'no second handoff after the first ended');
+  await sleep(300);
+  const look = () => page.evaluate(() => ({
+    fx: Array.prototype.map.call(document.querySelectorAll('[class*="fx-"]'), (n) => n.className).sort().join(' | '),
+    tile: document.querySelector('.cell[data-widget="todo"] .tile').className,
+    styles: document.querySelectorAll('style').length
+  }));
+  const before = await look();
+  const id = await postTodo(pi, 'Write to the library ' + Date.now());
+  await until(() => page.evaluate((i) => !!document.querySelector('.todo-tile-row[data-id="' + i + '"]'), id), 4000, 'the to-do did not arrive');
+  for (let k = 0; k < 6; k++) {
+    const row = await page.evaluate((i) => { const r = document.querySelector('.todo-tile-row[data-id="' + i + '"]'); return { o: r.style.opacity, t: r.style.transform, tr: r.style.transition }; }, id);
+    assert(!row.o && !row.t && !row.tr, 'the new row moved: ' + JSON.stringify(row));
+    await sleep(120);
+  }
+  const after = await look();
+  assert(after.fx === before.fx && after.tile === before.tile && after.styles === before.styles, 'something was added: ' + JSON.stringify({ before, after }));
   noErrors(page);
 }
 
@@ -579,31 +564,6 @@ async function checkBloom(pi) {
   noErrors(page);
 }
 
-async function checkClay(pi) {
-  // The wanderers are on screen: a new to-do just shows, no dot flies over them.
-  const page = await open({ pi: pi, query: 'motion=push', clay: true });
-  await idle(page);
-  await sleep(300);
-  const started = await page.evaluate(() => {
-    const K = window.HUB_TEST.clay;
-    if (!K) return 'no clay';
-    const names = K.scenes();
-    for (let i = 0; i < names.length; i++) if (K.play(names[i], { seed: 3 })) return K.state().scene;
-    return 'nothing played';
-  });
-  assert(started && !/^no|nothing/.test(started), 'no scene: ' + started);
-  const id = await postTodo(pi, 'While they wander ' + Date.now());
-  await until(() => page.evaluate((i) => !!document.querySelector('.todo-tile-row[data-id="' + i + '"]'), id), 4000, 'the to-do did not arrive');
-  await sleep(150);
-  const st = await fx(page);
-  const row = await page.evaluate((i) => document.querySelector('.todo-tile-row[data-id="' + i + '"]').style.opacity, id);
-  const playing = await page.evaluate(() => window.HUB_TEST.clay.state().scene);
-  assert(playing, 'the scene ended by itself before the check');
-  assert(st.arcs === 0 && !st.handoff && row === '', 'a handoff ran during a scene: ' + JSON.stringify({ st, row }));
-  await page.evaluate(() => window.HUB_TEST.clay.stop());
-  noErrors(page);
-}
-
 /* ---------- run ---------- */
 
 async function main() {
@@ -625,10 +585,9 @@ async function main() {
   await check('3. Waiting tiles are one quiet line, in English and Spanish; real data stays', () => checkQuiet(pi));
   await check('4. The ring: on the focused tile, glides, jumps on a held key, right after a layout switch and a resize', () => checkRing(pi));
   await check('5. Stagger: the items arrive from the tile side, all in within about 500 ms', () => checkStagger(pi));
-  await check('6. Handoff: not on the first sync, one at a time, the row slides and the tile pulses', () => checkHandoff(pi));
+  await check('6. A new to-do from a sync just shows its row, nothing added', () => checkNewTodo(pi));
   await check('7. Cover: flies to the full-screen card and back', () => checkCover(pi));
   await check('8. Bloom: an app\'s icon fills the screen, and goes again', () => checkBloom(pi));
-  await check('9. While the wanderers are on screen, a new to-do just shows (no dot)', () => checkClay(pi));
 }
 
 main().catch((e) => {
