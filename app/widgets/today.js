@@ -402,6 +402,11 @@
     if (face === 'digital') {
       group(controls, 'Clock', [['hours-12', '12-hour', hours === '12'], ['hours-24', '24-hour', hours === '24']]);
     }
+    // Guest mode (guest.js): On hides every money figure until it is off again.
+    if (window.HUB_GUEST) {
+      var guest = window.HUB_GUEST.on();
+      group(controls, 'Guest mode', [['guest-off', 'Off', !guest], ['guest-on', 'On', guest]]);
+    }
     // Opened on the face choice: the first thing people change.
     var marked = controls.querySelectorAll('[data-autofocus]');
     for (var i = 1; i < marked.length; i++) marked[i].removeAttribute('data-autofocus');
@@ -412,6 +417,12 @@
   }
 
   function choose(key, ctx) {
+    if (key === 'guest-on' || key === 'guest-off') {
+      if (!window.HUB_GUEST || window.HUB_GUEST.on() === (key === 'guest-on')) return;
+      window.HUB_GUEST.set(key === 'guest-on');
+      ctx.redrawPanel();
+      return;
+    }
     var nextFace = key === 'face-digital' ? 'digital' : key === 'face-analog' ? 'analog' : face;
     var nextHours = key === 'hours-12' ? '12' : key === 'hours-24' ? '24' : hours;
     if (nextFace === face && nextHours === hours) return;

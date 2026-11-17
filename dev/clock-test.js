@@ -294,25 +294,29 @@ async function checkLiveSwitch() {
   await clockPage.open(page);
   let s = await clockPage.state(page);
   assert(s.face === 'digital' && s.readout, 'page on Digital has no digital time');
-  assert(s.keys.join(',') === 'face-digital,face-analog,hours-12,hours-24', 'Digital page options: ' + s.keys.join(','));
+  assert(s.keys.join(',') === 'face-digital,face-analog,hours-12,hours-24,guest-off,guest-on', 'Digital page options: ' + s.keys.join(','));
   assert(s.focused === 'face-digital', 'opened on ' + s.focused);
 
   await clockPage.pick(page, 'face-analog');
   s = await clockPage.state(page);
   assert(s.face === 'analog', 'the page did not switch to Analog');
   assert(!s.readout, 'the page on Analog still shows a digital time');
-  assert(s.keys.join(',') === 'face-digital,face-analog', 'Analog page options: ' + s.keys.join(','));
+  assert(s.keys.join(',') === 'face-digital,face-analog,guest-off,guest-on', 'Analog page options: ' + s.keys.join(','));
   assert(s.focused === 'face-analog', 'focus after the switch: ' + s.focused);
   assert(!/\d{1,2}:\d{2}|\b[AP]M\b/.test(s.text), 'the Analog page text has a time: ' + s.text);
   let t = await clockPage.tile(page);
   assert(t.face === 'analog', 'the tile did not follow to Analog');
   assertNoDigitalTime(t, 'tile after the switch');
-  // With no 12/24 group below, Down stays on the face choice; Up reaches
-  // the page's button and Down comes back to the face choice.
+  // With no 12/24 group, Down goes straight to Guest mode and Up comes back;
+  // Up again reaches the page's button and Down comes back to the face choice.
   await page.keyboard.press('ArrowDown');
   await sleep(100);
   s = await clockPage.state(page);
-  assert(/^face-/.test(s.focused || ''), 'focus after Down: ' + s.focused);
+  assert(/^guest-/.test(s.focused || ''), 'focus after Down: ' + s.focused);
+  await page.keyboard.press('ArrowUp');
+  await sleep(100);
+  s = await clockPage.state(page);
+  assert(/^face-/.test(s.focused || ''), 'focus after Down, Up: ' + s.focused);
   await page.keyboard.press('ArrowUp');
   await sleep(100);
   s = await clockPage.state(page);
@@ -333,7 +337,7 @@ async function checkLiveSwitch() {
   // Analog again from the 12/24 group: the group goes, focus lands on the face choice.
   await clockPage.pick(page, 'face-analog');
   s = await clockPage.state(page);
-  assert(s.focused === 'face-analog' && s.keys.length === 2, 'Analog from 24-hour: ' + JSON.stringify(s));
+  assert(s.focused === 'face-analog' && s.keys.length === 4, 'Analog from 24-hour: ' + JSON.stringify(s));
   await clockPage.close(page);
 
   // Closed, on Analog: one more once-a-second loop (the tile's), not more.
@@ -361,7 +365,7 @@ async function checkPageOpensOnAnalog() {
   const page = await openHub({ face: 'analog', hours: '12', at: SUNDAY });
   await clockPage.open(page);
   const s = await clockPage.state(page);
-  assert(s.face === 'analog' && !s.readout && s.keys.join(',') === 'face-digital,face-analog', JSON.stringify(s));
+  assert(s.face === 'analog' && !s.readout && s.keys.join(',') === 'face-digital,face-analog,guest-off,guest-on', JSON.stringify(s));
   assert(s.focused === 'face-analog', 'opened on ' + s.focused);
   const win = await page.evaluate(() => document.querySelector('#panel .clock-window-text').textContent);
   assert(win === 'SUN 15', 'page window: ' + win);

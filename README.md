@@ -463,7 +463,7 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 ## How it works
 
 - `app/index.html` is the loader TizenBrew opens. It runs `update.js`, which moves on to the newest commit's `hub.html` (see [Updating](#updating)).
-- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, `clay.js`, then `hub.js`.
+- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `guest.js`, `icons.js`, `logos.js`, the files in `widgets/`, `live.js`, `clay.js`, then `hub.js`.
 - `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
