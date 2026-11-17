@@ -22,11 +22,15 @@
  *               edge while the light sweeps (see edgeFocusSync).
  *               Never on the first data after the hub starts, while the
  *               wanderers are on screen, or while the home screen is covered.
- *               Widgets call ctx.activity(kind); HUB_FX.addActivity(kind,
- *               { icon, key, label, working, workingKey }) adds a kind (key: an
- *               app/i18n.js key, label: its English, or a function giving
- *               the words; working and workingKey: the same for its
- *               working chip).
+ *               Widgets call ctx.activity(kind). Every kind (todo,
+ *               calendar, awws, budget, nowplaying: "New song" when the
+ *               Spotify song changes) is one row of KIND_TABLE below: its
+ *               icon, English, i18n key and working words. HUB_FX.addActivity
+ *               (kind, { icon, key, label, working, workingKey }) still adds
+ *               one at run time (key: an app/i18n.js key, label: its
+ *               English, or a function giving the words; working and
+ *               workingKey: the same for its working chip; working: false
+ *               for none).
  *               While a sync is still on its way (the Pi passes on a
  *               "hub:working <kind> [seconds]" say text, see hub.js), the
  *               tile that declares that kind shows a quieter "working" chip
@@ -55,27 +59,15 @@
 (function () {
   'use strict';
 
-  /* Every word this file shows, in English. The Spanish is in app/i18n.js
-     under the same keys ('motion.' + the path here, in its "Motion extras"
+  /* Every word this file shows, in English, except the chips' (those are in
+     the kinds table, KIND_TABLE below). The Spanish is in app/i18n.js under
+     the same keys ('motion.' + the path here, in its "Motion extras"
      section); each word is looked up when it is shown, so a language change
      on the Clock page applies to the next chip and the next About refresh. */
   var STRINGS = {
     extrasOn: 'extras on',
     extrasOff: 'extras off ({why})',
-    why: { fade: 'fade mode', slow: 'slow screen' },
-    // The activity chips, one line each (Spanish runs about a quarter longer).
-    activity: {
-      todo: 'Incoming to-do',
-      calendar: 'Updating calendar',
-      awws: 'Syncing data'
-    },
-    // The working chips, while a sync is still on its way (one line each).
-    // Spanish in app/i18n.js: motion.working.<kind>.
-    working: {
-      todo: 'Working on to-dos',
-      calendar: 'Checking calendar',
-      awws: 'Gathering data'
-    }
+    why: { fade: 'fade mode', slow: 'slow screen' }
   };
 
   // key: an i18n key; english: the text when HUB_I18N is missing or has no
@@ -105,9 +97,14 @@
   var EDGE_HOLD_MS = 60000;      // the accent edge stays this long (edgeHold() changes it, for tests)
   var EDGE_IN_MS = 400;
   var EDGE_OUT_MS = 600;
-  var WORK_MS = 120000;          // a working chip without a time given lasts this long
-  var WORK_MIN_S = 10;           // and a time given is kept within these (seconds)
+  // How long a working state lives, for every kind alike (never per kind,
+  // never in the chip drawing): 120 s unless told, a time given kept within
+  // 10 to 900 s, and data that brought nothing new ends it 1.5 s after it
+  // lands (hub.js reads WORK_SETTLE_MS through HUB_FX.rules()).
+  var WORK_MS = 120000;
+  var WORK_MIN_S = 10;
   var WORK_MAX_S = 900;
+  var WORK_SETTLE_MS = 1500;
   var WORK_TICK_MS = 1000;       // how often the working chips look around
   var WORK_KIND_RE = /^[a-z][a-z0-9-]{0,23}$/;
   var WORK_SAVE_KEY = 'homeHub.working';   // sessionStorage: kept over a reload (layout switch)
@@ -482,10 +479,51 @@
 
   /* ---------- activity chips ---------- */
 
-  // The kinds a widget can say: { icon (HTML), key, label }. The icons are
-  // plain elements so every loop moves only transform or opacity (style.css).
-  // The words are found when a chip shows, in the language then active:
-  //   key    an app/i18n.js key ('budget.activity'); label is its English
+  /* The kinds table: every activity kind the hub knows, in one place. One
+     row per kind:
+       kind     what a widget says (ctx.activity(kind)) and a tile declares
+                (activity: kind, for its working chip)
+       icon     the chip's icon, plain elements (HTML) so every loop moves
+                only transform or opacity (style.css, .fx-act-*)
+       en       the arrival chip's English
+       key      its app/i18n.js key, where the Spanish is
+       working  the working chip's words, { en, key }; null: it says the
+                arrival words; false: this kind has no working chip
+       figure   room for a character or prop drawn with the chip later
+                (nothing reads it yet)
+     How long a chip or a working state lasts is not here: those rules are
+     the same for every kind (ACT_HOLD_MS, WORK_MS and the rest, above).
+     The words are found when a chip shows, in the language then active. */
+  var KIND_TABLE = [
+    // A pencil writing a line.
+    { kind: 'todo', en: 'Incoming to-do', key: 'motion.activity.todo',
+      working: { en: 'Working on to-dos', key: 'motion.working.todo' }, figure: null, icon:
+      '<i class="fx-act-line"></i>' +
+      '<i class="fx-act-pen"><svg viewBox="0 0 34 34"><path d="M6 22 L22 6 L27 11 L11 27 L5 28 Z" fill="#cfeeff"/></svg></i>' },
+    // A calendar whose dots tick in turn.
+    { kind: 'calendar', en: 'Updating calendar', key: 'motion.activity.calendar',
+      working: { en: 'Checking calendar', key: 'motion.working.calendar' }, figure: null, icon:
+      '<svg viewBox="0 0 34 34"><rect x="4" y="7" width="26" height="23" rx="5" fill="none" stroke="#7fd1ff" stroke-width="2.5"/></svg>' +
+      '<i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i>' },
+    // Three bars rising and falling.
+    { kind: 'awws', en: 'Syncing data', key: 'motion.activity.awws',
+      working: { en: 'Gathering data', key: 'motion.working.awws' }, figure: null, icon:
+      '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' },
+    // The budget tiles (app/widgets/budget.js), its words in that widget's
+    // own i18n section: the same three bars.
+    { kind: 'budget', en: 'Updating budget', key: 'budget.activity', working: null, figure: null, icon:
+      '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' },
+    // A music note that bobs: a new song on Spotify (app/widgets/nowplaying.js).
+    { kind: 'nowplaying', en: 'New song', key: 'motion.activity.nowplaying', working: false, figure: null, icon:
+      '<i class="fx-act-note"><svg viewBox="0 0 34 34">' +
+      '<ellipse cx="13.5" cy="24.5" rx="5.6" ry="4.3" transform="rotate(-20 13.5 24.5)" fill="#cfeeff"/>' +
+      '<rect x="17.2" y="5" width="2.6" height="20" rx="1.2" fill="#cfeeff"/>' +
+      '<path d="M18.5 5 C21 10 28 10 27 18 C25.5 13.5 22.5 12.5 18.5 12 Z" fill="#7fd1ff"/></svg></i>' }
+  ];
+
+  // kind -> { icon, key, label, working, workingKey, noWork, figure }, built
+  // from KIND_TABLE (and HUB_FX.addActivity, for a kind added later):
+  //   key    an app/i18n.js key; label is its English
   //   label  a string (shown as it is when there is no key), or a function
   //          that returns the words in the hub's language at that moment
   var KINDS = {};
@@ -496,8 +534,17 @@
     var key = typeof def.key === 'string' && def.key ? def.key : '';
     KINDS[kind] = { icon: typeof def.icon === 'string' ? def.icon : '', key: key, label: label,
       working: typeof def.working === 'string' ? def.working : '',
-      workingKey: typeof def.workingKey === 'string' && def.workingKey ? def.workingKey : '' };
+      workingKey: typeof def.workingKey === 'string' && def.workingKey ? def.workingKey : '',
+      noWork: def.working === false,
+      figure: def.figure === undefined ? null : def.figure };
     return true;
+  }
+
+  for (var kt = 0; kt < KIND_TABLE.length; kt++) {
+    var row = KIND_TABLE[kt];
+    addActivity(row.kind, { icon: row.icon, key: row.key, label: row.en, figure: row.figure,
+      working: row.working === false ? false : (row.working ? row.working.en : ''),
+      workingKey: row.working ? row.working.key : '' });
   }
 
   // The chip's words for a kind, in the language active now.
@@ -509,21 +556,6 @@
     }
     return def.key ? tr(def.key, def.label) : def.label;
   }
-
-  // A pencil writing a line.
-  addActivity('todo', { key: 'motion.activity.todo', label: STRINGS.activity.todo,
-    working: STRINGS.working.todo, workingKey: 'motion.working.todo', icon:
-    '<i class="fx-act-line"></i>' +
-    '<i class="fx-act-pen"><svg viewBox="0 0 34 34"><path d="M6 22 L22 6 L27 11 L11 27 L5 28 Z" fill="#cfeeff"/></svg></i>' });
-  // A calendar whose dots tick in turn.
-  addActivity('calendar', { key: 'motion.activity.calendar', label: STRINGS.activity.calendar,
-    working: STRINGS.working.calendar, workingKey: 'motion.working.calendar', icon:
-    '<svg viewBox="0 0 34 34"><rect x="4" y="7" width="26" height="23" rx="5" fill="none" stroke="#7fd1ff" stroke-width="2.5"/></svg>' +
-    '<i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i>' });
-  // Three bars rising and falling.
-  addActivity('awws', { key: 'motion.activity.awws', label: STRINGS.activity.awws,
-    working: STRINGS.working.awws, workingKey: 'motion.working.awws', icon:
-    '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' });
 
   var acts = [];                 // [{ tile, kind, chip, edge, timer }]
 
@@ -700,7 +732,7 @@
       var saved = JSON.parse(raw);
       var t = Date.now();
       for (var k in saved) {
-        if (!saved.hasOwnProperty(k) || !WORK_KIND_RE.test(k) || !KINDS.hasOwnProperty(k)) continue;
+        if (!saved.hasOwnProperty(k) || !WORK_KIND_RE.test(k) || !KINDS.hasOwnProperty(k) || KINDS[k].noWork) continue;
         var until = Number(saved[k]);
         if (!isFinite(until) || until <= t) continue;
         // (started a little ahead: the first sync after the reload is the
@@ -761,7 +793,7 @@
 
   // A sync for kind is on its way: seconds (10 to 900, 120 when null) at most.
   function workStart(kind, seconds) {
-    if (!on('activity') || typeof kind !== 'string' || !WORK_KIND_RE.test(kind) || !KINDS.hasOwnProperty(kind)) return false;
+    if (!on('activity') || typeof kind !== 'string' || !WORK_KIND_RE.test(kind) || !KINDS.hasOwnProperty(kind) || KINDS[kind].noWork) return false;
     var s = seconds === null || seconds === undefined || seconds === '' ? WORK_MS / 1000 : Number(seconds);
     if (!isFinite(s)) return false;
     s = Math.max(WORK_MIN_S, Math.min(WORK_MAX_S, s));
@@ -939,6 +971,10 @@
       return EDGE_HOLD_MS;
     }),
     working: safe(function (kind, seconds) { return workStart(kind, seconds) === true; }),
+    // The working rules every kind shares (hub.js waits settleMs after data).
+    rules: function () {
+      return { defaultS: WORK_MS / 1000, minS: WORK_MIN_S, maxS: WORK_MAX_S, settleMs: WORK_SETTLE_MS };
+    },
     workingDone: safe(function (kind, before) { return workDone(kind, before) === true; }),
     statusText: safe(statusText),
     motionChanged: safe(motionChanged),

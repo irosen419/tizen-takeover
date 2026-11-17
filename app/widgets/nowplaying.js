@@ -33,6 +33,14 @@
  * adds the song's "vibe" (data.vibe) a moment after the song; it is not part
  * of signature(), so it changes the visualizer in place, never redraws the
  * page.
+ *
+ * A new song (another track id or title than the last one this run) shows
+ * the tile's "New song" activity chip (ctx.activity('nowplaying'), see
+ * app/motion.js): never for the first data after the hub starts, a pause,
+ * resume, seek, the vibe arriving or nothing playing, and at most one chip
+ * in SONG_CHIP_GAP_MS however fast the songs are skipped. Whether it shows
+ * (motion speed, a panel or the wanderers covering the home screen) is
+ * motion.js's to say, as for every chip.
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -47,6 +55,9 @@
   var page = null;         // the open page's parts, or null
   var timer = null;
   var lastSig = '';
+  var SONG_CHIP_GAP_MS = 8000;
+  var songKey = null;      // the song of the last data this run with one ('' none yet); null before any data
+  var songChipAt = -Infinity;   // when the last "New song" chip was asked for
 
   /* ---------- small helpers ---------- */
 
@@ -692,14 +703,46 @@
       v.dim, v.device, v.shuffle, v.repeat, data && data.problem]);
   }
 
+  // What makes a song this song: its id and title ('' when none plays).
+  function songOf(d) {
+    var t = d && typeof d === 'object' ? d.track : null;
+    if (!t || typeof t !== 'object') return '';
+    var id = t.id === undefined || t.id === null ? '' : String(t.id);
+    var title = typeof t.title === 'string' ? t.title : '';
+    return id || title ? id + '\n' + title : '';
+  }
+
+  // True when d brings another song than the last one seen this run. The
+  // first data only sets what was playing; data without a song (idle, an
+  // advert, the Pi away) keeps it, so the same song again is not news.
+  function songChanged(d) {
+    var key = songOf(d);
+    var first = songKey === null;
+    var news = !first && key !== '' && songKey !== '' && key !== songKey;
+    if (key !== '' || first) songKey = key;
+    return news;
+  }
+
+  function songChip() {
+    var t = now();
+    if (t - songChipAt < SONG_CHIP_GAP_MS) return;
+    songChipAt = t;
+    if (C && typeof C.activity === 'function') {
+      try { C.activity('nowplaying'); } catch (e) { /* the song just shows */ }
+    }
+  }
+
   function changed(newData, rev, nowAt) {
     data = newData && typeof newData === 'object' ? newData : null;
     gotAt = nowAt || now();
+    var news = songChanged(data);
     if (data && data.track) {
       cached = { track: data.track, playedAt: data.playedAt || 0 };
       lsSet(CACHE_KEY, cached);
     }
     refresh(false);
+    // After the redraw, so the chip goes on the tile as it is now.
+    if (news) songChip();
   }
 
   // Redraws the tile and the page when what they show changed. A seek or a
@@ -725,6 +768,7 @@
     title: 'Now Playing',
     icon: 'music',
     head: false,
+    activity: 'nowplaying',    // its activity kind, "New song" (app/motion.js)
 
     init: safe(function (ctx) {
       C = ctx;
@@ -732,7 +776,7 @@
       if (cached && !(cached.track && typeof cached.track.title === 'string')) cached = null;
       if (ctx.live) {
         var held = ctx.live.get('nowplaying');
-        if (held) { data = held; gotAt = now(); }
+        if (held) { data = held; gotAt = now(); songChanged(held); }
         ctx.live.on('nowplaying', safe(function (d, rev) { changed(d, rev); }));
         // The line to the Pi going or coming changes what is true to say.
         ctx.live.onStatus(safe(function () { refresh(false); }));

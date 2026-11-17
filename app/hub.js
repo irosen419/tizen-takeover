@@ -97,8 +97,10 @@
  *                             live sync (never call it for the first data after
  *                             the hub starts, or for a refetch that changed
  *                             nothing): the motion extras show a small chip
- *                             saying so, e.g. 'todo', 'calendar', 'awws' (more,
- *                             with their words' app/i18n.js key, via HUB_FX.addActivity in app/motion.js)
+ *                             saying so: 'todo', 'calendar', 'awws', 'budget',
+ *                             'nowplaying' (a new song). Every kind is a row of
+ *                             the kinds table (KIND_TABLE in app/motion.js);
+ *                             HUB_FX.addActivity adds one at run time
  *   (A waiting tile marks itself quiet with an element of class hub-dormant.)
  *   ctx.live                  live updates from the hub server on the Pi (see
  *                             docs/live-updates.md), or undefined when live.js
@@ -127,7 +129,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.12';
+  var BUILD = 'v0.28.13';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -2493,14 +2495,22 @@
   // The live resources whose arrival can end a working chip of the same
   // kind. Data that brought news turns the chip into the arrival chip (the
   // widget calls ctx.activity); otherwise, shortly after, it just ends.
+  // How long after the data that is (HUB_FX.rules().settleMs, 1.5 s; the
+  // working rules live with the chips in app/motion.js).
   var WORK_RESOURCES = ['todo', 'calendar', 'awws'];
   var WORK_SETTLE_MS = 1500;
+
+  function workSettleMs() {
+    var r = fxCall('rules');
+    var ms = r && typeof r.settleMs === 'number' && isFinite(r.settleMs) ? r.settleMs : WORK_SETTLE_MS;
+    return Math.max(0, Math.min(10000, ms));
+  }
 
   function onWorkData(kind) {
     return function () {
       try {
         var at = new Date().getTime();
-        setTimeout(function () { fxCall('workingDone', [kind, at]); }, WORK_SETTLE_MS);
+        setTimeout(function () { fxCall('workingDone', [kind, at]); }, workSettleMs());
       } catch (e) { /* the chip ends by itself */ }
     };
   }

@@ -1164,6 +1164,18 @@ body.has-picture {
 .fx-act-bar:nth-of-type(3) { left: 67.65%; animation-delay: 320ms; }
 @keyframes fx-act-bar { 0% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } 100% { transform: scaleY(0.3); } }
 
+/* now playing: a music note that bobs and tilts, a new song (no working chip) */
+.fx-act-note {
+  left: 0; top: 0; width: 100%; height: 100%;
+  transform-origin: 50% 80%;
+  animation: fx-act-note 900ms ease-in-out infinite both;
+}
+@keyframes fx-act-note {
+  0% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-12%) rotate(-8deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}
+
 /* The light along the tile's top edge: a gradient moved with transform,
    twice, inside a strip on the straight part of the edge. */
 .fx-edge {
