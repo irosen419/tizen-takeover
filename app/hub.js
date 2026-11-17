@@ -1848,6 +1848,8 @@
     }
     var P = panelRect(rec);
     sizeBoxes(P);
+    // Content built already: its items hide now, before the first frame shows them.
+    if (prebuilt && !fade && rec.w.stagger) fxCall('stagger', [panel.body, rec.w.stagger, T, P, 140 - (now() - openedAt)]);
     var stop = fade ? function () {} : startSampling();
 
     function finish() {
@@ -1907,7 +1909,7 @@
       skip = [t0, now()];
       panelEl.style.opacity = '1';
       // Motion extras: the items arrive from the tile's side (not in fade mode).
-      if (!fade && rec.w.stagger) fxCall('stagger', [panel.body, rec.w.stagger, T, P, 140 - (now() - openedAt)]);
+      if (!prebuilt && !fade && rec.w.stagger) fxCall('stagger', [panel.body, rec.w.stagger, T, P, 140 - (now() - openedAt)]);
       built = true;
       finish();
     });
