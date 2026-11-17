@@ -23,14 +23,18 @@
  * HUB_CONFIG.widgets.budget.show: false hides all of it (the tiles say so,
  * the banner never shows).
  *
- * Every word is in STRINGS. window.HUB_BUDGET_STRINGS, when set before this
- * file loads, replaces any of them key by key (the tests use it for Spanish).
+ * Every word is in EN (English). The tiles follow the hub's language (the
+ * Clock page's Language choice): HUB_I18N.localize turns EN into STRINGS,
+ * with the Spanish under 'budget.<path>' keys in app/i18n.js. Amounts keep
+ * their US form and what the budget app sends (goal names, transfer labels,
+ * merchants) is shown as sent. window.HUB_BUDGET_STRINGS, when set before
+ * this file loads, replaces any English word key by key (the tests use it).
  * Plain ES5 for the TV's browser; nothing animates but opacity and transform.
  */
 (function () {
   'use strict';
 
-  var STRINGS = {
+  var EN = {
     titles: { room: 'Daily room', card: 'Card day', goals: 'Goals' },
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
@@ -121,7 +125,21 @@
       }
     }
   }
-  try { mergeStrings(STRINGS, window.HUB_BUDGET_STRINGS); } catch (e) { /* keep English */ }
+  try { mergeStrings(EN, window.HUB_BUDGET_STRINGS); } catch (e) { /* keep English */ }
+
+  // The words in the hub's language; set again when the language changes.
+  var STRINGS = EN;
+
+  function I18N() {
+    var x = window.HUB_I18N;
+    return x && typeof x.localize === 'function' ? x : null;
+  }
+
+  function localizeStrings() {
+    var x = I18N();
+    try { STRINGS = x ? x.localize(EN, 'budget') : EN; } catch (e) { STRINGS = EN; }
+  }
+  localizeStrings();
 
   var CACHE_KEY = 'homeHub.budget.v1';
   var SEEN_KEY = 'homeHub.budget.seen.v1';
@@ -704,6 +722,11 @@
         forms.push(STRINGS.sep + w[i]);
       }
       fitForms(rest, forms);
+      // A word too long for the line (a longer language): the word alone, shrunk to fit.
+      if (overW(line)) {
+        root.removeChild(line);
+        fitHero(hero(root, c.word, '', c.tone, 'is-strip is-word'));
+      }
       return;
     }
     var wide = size.width === 'wide' && c.transfers.length > 0;
@@ -948,9 +971,8 @@
   /* ---------- registering ---------- */
 
   function real(id, titleKey, drawTile, drawPanel) {
-    return {
+    var w = {
       id: id,
-      title: STRINGS.titles[titleKey],
       icon: 'wallet',
       expandable: true,
       init: function (ctx) { try { bind(ctx); } catch (e) { warn('init: ' + (e && e.message)); } },
@@ -976,11 +998,40 @@
       onMode: function (mode, ctx) { ctx.redrawPanel(); },
       onStatus: function () { try { refreshAll(); } catch (e) { /* next change tries again */ } }
     };
+    // Read when the hub draws the tile head, so it follows the language.
+    Object.defineProperty(w, 'title', { get: function () { return STRINGS.titles[titleKey]; }, enumerable: true, configurable: true });
+    return w;
   }
+
+  // A language change: new words, every tile and an open panel drawn again,
+  // with their titles (the hub draws those once).
+  function onLang() {
+    localizeStrings();
+    for (var i = 0; i < S.order.length; i++) {
+      var id = S.order[i];
+      var ctx = S.ctxs[id];
+      var key = id.replace('budget-', '');
+      var heads = document.querySelectorAll('.cell[data-widget="' + id + '"] .tile-title');
+      for (var j = 0; j < heads.length; j++) heads[j].textContent = STRINGS.titles[key] || '';
+      if (ctx && ctx.isOpen()) {
+        var pt = document.querySelector('#panel .panel-title');
+        if (pt) pt.textContent = STRINGS.titles[key] || '';
+      }
+    }
+    S.sig = '';
+    refreshAll();
+    updateBanner();
+  }
+
+  try {
+    var lx = I18N();
+    if (lx && typeof lx.onChange === 'function') lx.onChange(function () { try { onLang(); } catch (e) { warn('language: ' + (e && e.message)); } });
+  } catch (e) { /* stays in the language it started in */ }
 
   // For dev/money-test.js. Not used by the hub.
   window.HUB_BUDGET_TEST = {
-    STRINGS: STRINGS,
+    STRINGS: EN,
+    strings: function () { return STRINGS; },
     store: S,
     refresh: function () { refreshAll(); updateBanner(); },
     seen: function () { return seenList().slice(); }

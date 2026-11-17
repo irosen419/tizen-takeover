@@ -430,6 +430,11 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
 .pp-hint { position: absolute; right: 3.8cqw; bottom: 1.6cqw; font-size: 0.66em; color: var(--tile-mute); max-width: 50%; }
 .sm { font-size: 0.72em; }
 .xs { font-size: 0.64em; }
+/* Word of the day previews (app/widgets/wotd.css). */
+.wd-es { font-size: calc(var(--r) * 1.9); font-weight: 600; line-height: 1.3; letter-spacing: 0; }
+.t-strip .wd-line { font-size: calc(var(--r) * 1.1); line-height: 1.35; flex: 1 1 auto; }
+.wd-ex { font-style: italic; }
+.pp .wd-es { font-size: 1.7em; font-weight: 600; }
 .pp-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.5em 0.6em; text-align: center; }
 .pp-grid .lg { font-size: 0.95em; }
 .pp-sec { display: flex; flex-direction: column; gap: 0.25em; min-width: 0; }
@@ -555,17 +560,20 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     'awws-pipeline': { title: 'Books',               sub: 'AWWS: each book and download from writing to live', soon: true },
     'awws-money':  { title: 'Money',                 sub: 'AWWS: what the project spent and earned', soon: true },
     ambiance:      { title: 'Ambiance',              sub: 'Pick the light vibe from the TV', soon: true },
-    mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true }
+    mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true },
+    // app/widgets/wotd.js (v0.28.5): one Latin American Spanish word a day, easy in January, B1 by December.
+    wotd:          { title: 'Word of the day',       sub: 'One Spanish word a day with its English, from A1 in January to B1 in December' }
   };
   var BASE = [
     { id: 'today', x: 0, y: 0, w: 3, h: 2 }, { id: 'entertainment', x: 3, y: 0, w: 6, h: 2 }, { id: 'weather', x: 9, y: 0, w: 3, h: 2 },
     { id: 'todo', x: 0, y: 2, w: 3, h: 4 }, { id: 'calendar', x: 3, y: 2, w: 3, h: 4 }, { id: 'nowplaying', x: 6, y: 2, w: 3, h: 2 },
     { id: 'awws', x: 9, y: 2, w: 3, h: 2 }, { id: 'ambiance', x: 6, y: 4, w: 3, h: 2 }, { id: 'mirror', x: 9, y: 4, w: 3, h: 2 }
   ];
-  // The TV's own built-in layout (HUB_CONFIG.layout in app/config.js, same since v0.12.0). The submit summary compares against this, not Stock.
+  // The TV's own built-in layout (HUB_CONFIG.layout in app/config.js; Word of the day under Mirror since v0.28.5). The submit summary compares against this, not Stock.
   var TV_DEFAULT = [
     { id: 'today', x: 0, y: 0, w: 3, h: 1 }, { id: 'calendar', x: 3, y: 0, w: 3, h: 4 }, { id: 'awws', x: 6, y: 0, w: 3, h: 4 },
-    { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 1, w: 3, h: 4 }, { id: 'mirror', x: 9, y: 2, w: 3, h: 4 },
+    { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 1, w: 3, h: 4 }, { id: 'mirror', x: 9, y: 2, w: 3, h: 2 },
+    { id: 'wotd', x: 9, y: 4, w: 3, h: 2 },
     { id: 'ambiance', x: 3, y: 4, w: 6, h: 1 }, { id: 'nowplaying', x: 0, y: 5, w: 3, h: 1 }, { id: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
   ];
   // Layouts the TV ships with (HUB_CONFIG.layouts in app/config.js, v0.17.0), offered under "From the TV".
@@ -648,10 +656,10 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       title: { en: 'Clock', es: 'Reloj' },
       sample: {
         en: { time: '11:24', ampm: 'PM', dow: 'Wednesday', md: 'November 18', dowShort: 'Wed', mdShort: 'Nov 18', long: 'Wednesday, November 18', fullDate: 'Wednesday, November 18, 2026',
-              face: 'Face', faces: ['Digital', 'Analog'], clock: 'Clock', hours: ['12-hour', '24-hour'], about: 'About this hub',
+              face: 'Face', faces: ['Digital', 'Analog'], clock: 'Clock', hours: ['12-hour', '24-hour'], language: 'Language', langs: ['English', 'Español'], about: 'About this hub',
               status: ['v0.13.0 · Chrome 153', 'Motion: push (auto, measuring)', 'Live'] },
         es: { time: '11:24', ampm: 'p. m.', dow: 'Miércoles', md: '18 de noviembre', dowShort: 'Mié.', mdShort: '18 nov.', long: 'Miércoles, 18 de noviembre', fullDate: 'Miércoles, 18 de noviembre de 2026',
-              face: 'Esfera', faces: ['Digital', 'Analógica'], clock: 'Reloj', hours: ['12 horas', '24 horas'], about: 'Acerca de este centro',
+              face: 'Esfera', faces: ['Digital', 'Analógica'], clock: 'Reloj', hours: ['12 horas', '24 horas'], language: 'Idioma', langs: ['English', 'Español'], about: 'Acerca de este centro',
               status: ['v0.13.0 · Chrome 153', 'Movimiento: empuje (automático, midiendo)', 'En directo · Última actualización 23:20'] }
       },
       strip: { en: 'The time, with the date stacked right beside it: the weekday over the month and day. A part too long for the room takes its short form (Wed, Sep 30). A narrow strip (1–2 columns) shows the time only, shrunk to fit; at 6+ columns the date is a little bigger.',
@@ -660,10 +668,10 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
                   es: 'Solo la hora y la fecha, centradas en el mosaico: la hora en grande sobre «Miércoles, 18 de noviembre» (puede ocupar dos líneas y luego termina en «…»). Sin nombre del lugar ni líneas de estado: ahora están en la página del Reloj. En mosaicos estrechos la fecha se acorta a «mié., 18 nov.». La hora se reduce para caber a lo ancho.' },
       tall: { en: 'The same as Standard with a bigger clock (biggest at 6+ columns).',
               es: 'Igual que Estándar, con un reloj más grande (el mayor a partir de 6 columnas).' },
-      panel: { en: 'The tile now takes focus and OK opens the Clock page. Digital face by default: the big time over “Wednesday, November 18, 2026”. Analog instead shows a dial with a day-date window (WED 18), with the time, then the weekday over the date, beside it. On the right, Face (Digital or Analog) and Clock (12-hour or 24-hour), both remembered on the TV; 12/24 changes the tile too. At the bottom, About this hub: version and browser, motion, and live updates and updates when they have news.',
-               es: 'Ahora el mosaico recibe el foco y OK abre la página del Reloj. Por defecto, esfera digital: la hora en grande sobre «Miércoles, 18 de noviembre de 2026». La analógica muestra una esfera con ventanilla de día y fecha (MIÉ 18) y, a su lado, la hora y debajo el día de la semana sobre la fecha. A la derecha, Esfera (Digital o Analógica) y Reloj (12 o 24 horas), que el televisor recuerda; 12/24 cambia también el mosaico. Abajo, Acerca de este centro: versión y navegador, movimiento, y directo y actualizaciones cuando hay novedades.' },
-      full: { en: 'The same page filling the screen: a much bigger time (or a bigger analog face), bigger Face and Clock choices, and About this hub along the bottom.',
-              es: 'La misma página a pantalla completa: la hora mucho más grande (o una esfera analógica mayor), las opciones de Esfera y Reloj más grandes y Acerca de este centro abajo.' }
+      panel: { en: 'The tile now takes focus and OK opens the Clock page. Digital face by default: the big time over “Wednesday, November 18, 2026”. Analog instead shows a dial with a day-date window (WED 18), with the time, then the weekday over the date, beside it. On the right, Face (Digital or Analog), Clock (12-hour or 24-hour) and Language (English or Español, the hub’s language), all remembered on the TV; 12/24 changes the tile too. At the bottom, About this hub: version and browser, motion, and live updates and updates when they have news.',
+               es: 'Ahora el mosaico recibe el foco y OK abre la página del Reloj. Por defecto, esfera digital: la hora en grande sobre «Miércoles, 18 de noviembre de 2026». La analógica muestra una esfera con ventanilla de día y fecha (MIÉ 18) y, a su lado, la hora y debajo el día de la semana sobre la fecha. A la derecha, Esfera (Digital o Analógica), Reloj (12 o 24 horas) e Idioma (English o Español, el idioma del centro), que el televisor recuerda; 12/24 cambia también el mosaico. Abajo, Acerca de este centro: versión y navegador, movimiento, y directo y actualizaciones cuando hay novedades.' },
+      full: { en: 'The same page filling the screen: a much bigger time (or a bigger analog face), bigger Face, Clock and Language choices, and About this hub along the bottom.',
+              es: 'La misma página a pantalla completa: la hora mucho más grande (o una esfera analógica mayor), las opciones de Esfera, Reloj e Idioma más grandes y Acerca de este centro abajo.' }
     },
     entertainment: {
       title: { en: 'Entertainment', es: 'Entretenimiento' },
@@ -895,11 +903,31 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     ambiance: plannedEntry({ en: 'Ambiance', es: 'Ambiente' },
       { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),
     mirror: plannedEntry({ en: 'Mirror', es: 'Espejo' },
-      { en: 'A camera mirror for mornings and nights out.', es: 'Un espejo con cámara para las mañanas y las noches de salida.' })
+      { en: 'A camera mirror for mornings and nights out.', es: 'Un espejo con cámara para las mañanas y las noches de salida.' }),
+    wotd: {
+      title: { en: 'Word of the day', es: 'Palabra del día' },
+      sample: {
+        en: { es: 'darse cuenta', en: 'to realize', pos: 'phrase', say: 'DAHR-seh KWEN-tah', date: 'Tuesday, November 17 · Level B1',
+              def: 'To notice or understand something suddenly.', defOther: 'Notar o entender algo de pronto.',
+              ex: 'Me di cuenta de que era tarde.', exEn: 'I realized it was late.', meaning: 'What it means', example: 'Example' },
+        es: { es: 'darse cuenta', en: 'to realize', pos: 'expresión', say: 'DAHR-seh KWEN-tah', date: 'Martes, 17 de noviembre · Nivel B1',
+              def: 'Notar o entender algo de pronto.', defOther: 'To notice or understand something suddenly.',
+              ex: 'Me di cuenta de que era tarde.', exEn: 'I realized it was late.', meaning: 'Qué significa', example: 'Ejemplo' }
+      },
+      strip: { en: '“darse cuenta · to realize” on one line, Spanish bold, shrunk to fit; a long pair wraps between words. A narrow strip (1–2 columns) and a 3–5 column strip show only the icon beside it, no title. 1 column: only the Spanish word, as large as fits.',
+               es: '«darse cuenta · to realize» en una línea, el español en negrita, reducido para caber; un par largo pasa a otra línea entre palabras. En una tira estrecha (1–2 columnas) y en una de 3 a 5 columnas solo se ve el icono al lado, sin título. 1 columna: solo la palabra en español, lo más grande que quepa.' },
+      standard: { en: 'The Spanish word big, then “to realize · phrase” and the Spanish example in italics. What doesn’t fit leaves, lowest first: the example, then the part of speech.',
+                  es: 'La palabra en español en grande, luego «to realize · expresión» y el ejemplo en español en cursiva. Lo que no cabe se quita, de abajo arriba: el ejemplo y luego la categoría.' },
+      tall: { en: 'Standard plus how to say it [DAHR-seh KWEN-tah], the definition (in Spanish when the hub is in Spanish) and the example’s English.',
+              es: 'Estándar más cómo se dice [DAHR-seh KWEN-tah], la definición (en español cuando el centro está en español) y el ejemplo en inglés.' },
+      panel: { en: 'Two columns. Left: the date and level (A1, A2 or B1), the word big, how to say it, the English and part of speech. Right: What it means (both languages, the hub’s first) and Example (Spanish, then English).',
+               es: 'Dos columnas. A la izquierda: la fecha y el nivel (A1, A2 o B1), la palabra en grande, cómo se dice, el inglés y la categoría. A la derecha: Qué significa (en los dos idiomas, primero el del centro) y Ejemplo (en español y en inglés).' },
+      full: { en: 'The same two columns, much bigger.', es: 'Las mismas dos columnas, mucho más grandes.' }
+    }
   };
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'ambiance', 'mirror'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'ambiance', 'mirror'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -1402,10 +1430,11 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     plus: '<path d="M12 5v14M5 12h14"/>',
     grid: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
     play: '<path d="M9 7.5v9l7.5-4.5z" fill="#fff" stroke="none"/>',
-    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+    clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    speech: '<path d="M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4.5A1.5 1.5 0 0 1 3 15.5V7a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M7.5 10h9M7.5 13h5.5"/>'
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
-    'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe' };
+    'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';
@@ -1549,6 +1578,13 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   function tilePreview(id, tier) {
     var M = SIZE_MATRIX[id], S = M.sample[lang], U = I18N[lang], T = M.title[lang], cls = 'pv t-' + tier, h = '';
     if (AW_TILE[id]) return AW_TILE[id](S, T, tier, cls, id);
+    if (id === 'wotd') {
+      if (tier === 'strip') return '<div class="' + cls + '"><div class="ph">' + ic('speech', 'ph-i') + '</div><div class="wd-line l1"><b>' + esc(S.es) + '</b><span class="mu"> · ' + esc(S.en) + '</span></div></div>';
+      h = head(id, T) + '<div class="wd-es l1">' + esc(S.es) + '</div>' + (tier === 'tall' ? '<div class="xs mu l1">[' + esc(S.say) + ']</div>' : '') +
+        '<div class="l1">' + esc(S.en) + '<span class="mu"> · ' + esc(S.pos) + '</span></div>' + (tier === 'tall' ? '<div class="c2 mu">' + esc(S.def) + '</div>' : '') +
+        '<div class="c2 wd-ex">' + esc(S.ex) + '</div>' + (tier === 'tall' ? '<div class="xs mu c2">' + esc(S.exEn) + '</div>' : '');
+      return '<div class="' + cls + '">' + h + '</div>';
+    }
     if (id === 'today') {
       var fit = tier === 'strip' ? '' : ' data-fit="var(--r) * ' + (tier === 'tall' ? '5.6' : '4.4') + '"';
       var time = '<div class="big ck-time"' + fit + '>' + esc(S.time) + '<small>' + esc(S.ampm) + '</small></div>';
@@ -1609,13 +1645,21 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     var M = SIZE_MATRIX[id], S = M.sample[lang], U = I18N[lang], cls = 'pp' + (full ? ' full' : ''), b = '';
     var hint = '<div class="pp-hint l1">' + esc(full ? U.shrink : U.close) + '</div>';
     if (AW_PANEL[id]) return '<div class="' + cls + '">' + panelHead(id, full, '') + '<div class="pp-body">' + AW_PANEL[id](S, full) + '</div></div>';
+    if (id === 'wotd') {
+      b = '<div class="cols2" style="align-items:center;height:100%"><div style="flex:1 1 0;min-width:0"><div class="xs mu l1">' + esc(S.date) + '</div><div class="wd-es big l1">' + esc(S.es) + '</div>' +
+        '<div class="xs mu l1">[' + esc(S.say) + ']</div><div class="l1">' + esc(S.en) + '<span class="mu"> · ' + esc(S.pos) + '</span></div></div>' +
+        '<div style="flex:1 1 0;min-width:0"><div class="secl"><span class="l1">' + esc(S.meaning) + '</span></div><div class="wr">' + esc(S.def) + '</div><div class="xs mu wr">' + esc(S.defOther) + '</div>' +
+        '<div class="secl"><span class="l1">' + esc(S.example) + '</span></div><div class="wr wd-ex">' + esc(S.ex) + '</div><div class="xs mu wr">' + esc(S.exEn) + '</div></div></div>';
+      return '<div class="' + cls + '">' + panelHead(id, full, '') + '<div class="pp-body">' + b + '</div></div>';
+    }
     if (id === 'today') {
       // The default face (digital); the focus starts on the chosen face, so Digital is the white pill.
       var opt = function (label, on, fx) { return '<span class="ck-opt' + (on ? ' on' : '') + (fx ? ' fx' : '') + '">' + (on ? '<i></i>' : '') + '<span class="l1">' + esc(label) + '</span></span>'; };
       b = '<div class="ck-main"><div class="ck-disp"><div class="big ck-big" data-fit="' + (full ? 'min(5.6em, 14.5cqw)' : '4.2em') + '">' + esc(S.time) + '<small>' + esc(S.ampm) + '</small></div>' +
         '<div class="ck-full c2">' + esc(S.fullDate) + '</div></div><div class="ck-ctl">' +
         '<div class="ck-gl l1">' + esc(S.face) + '</div><div class="ck-seg">' + opt(S.faces[0], true, true) + opt(S.faces[1]) + '</div>' +
-        '<div class="ck-gl l1">' + esc(S.clock) + '</div><div class="ck-seg">' + opt(S.hours[0], true) + opt(S.hours[1]) + '</div></div></div>' +
+        '<div class="ck-gl l1">' + esc(S.clock) + '</div><div class="ck-seg">' + opt(S.hours[0], true) + opt(S.hours[1]) + '</div>' +
+        '<div class="ck-gl l1">' + esc(S.language) + '</div><div class="ck-seg">' + opt(S.langs[0], lang === 'en') + opt(S.langs[1], lang === 'es') + '</div></div></div>' +
         '<div class="ck-about"><div class="ck-at">' + esc(S.about) + '</div><div class="ck-al">' + S.status.map(function (x) { return '<div class="l1">' + esc(x) + '</div>'; }).join('') + '</div></div>';
       return '<div class="' + cls + '">' + panelHead(id, full, '') + '<div class="pp-body ck-pg">' + b + '</div></div>';
     }
