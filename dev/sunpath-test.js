@@ -10,12 +10,16 @@
  *     several moments, solar noon on Jun 21 and Dec 21 against 90 - lat +/-
  *     23.44, and Ian's own look on Nov 17 2026 at 3:05 PM (sun about 226
  *     degrees, 22 up, nowhere near the window's 263.3 degree edge).
- *   - The window and the plants with the default settings: June 21 evening
- *     sun reaches the plant spot (6:10 PM is in it), Dec 21 has none, Nov 17
- *     has no sun through the window at all.
- *   - The next sun: Nov 17 gives a date in March, Jun 21 at 2 PM a time the
- *     same day, at 6:10 PM "now" with its end, at 7 PM tomorrow; the search
- *     is cached and cheap.
+ *   - The window and the plants with the default settings (the plants run
+ *     2 to 6 ft into the room): June 21 evening sun reaches them (5:15 to
+ *     7:07 PM, 6:10 PM in it), Dec 21 has none, Nov 17 has no sun through
+ *     the window at all. A single plant spot (an older config's one number)
+ *     still works and gives its own, shorter window (5:20 to 6:26 PM).
+ *   - The next sun: Nov 17 gives Mar 9, Jun 21 at 2 PM a time the same day,
+ *     at 6:10 PM "now" with its end, at 7:30 PM tomorrow; the search is
+ *     cached and cheap.
+ *   - The room plan draws the three plants near, middle and far along the
+ *     wall, not in a clump.
  *   - The tile at 1x1, 2x1, 3x1, 6x1, 3x2, 3x4, 6x3 and 12x6, lit (Jun 21,
  *     6:10 PM) and in winter (Nov 17, 3:05 PM), in English and in Spanish
  *     with every Spanish sunpath text 25% longer (with Á, É, ñ, ¿, ¡): what
@@ -312,6 +316,8 @@ async function checkMath() {
       litNow: H.hitsPlant(H.sunpos(at(2026, 5, 21, 18, 10), st.lat, st.lon)),
       jun: spans(2026, 5, 21, 'plants'),
       junWin: spans(2026, 5, 21, 'window'),
+      mar: spans(2026, 2, 20, 'plants'),
+      marWin: spans(2026, 2, 20, 'window'),
       dec: spans(2026, 11, 21, 'plants'),
       decWin: spans(2026, 11, 21, 'window'),
       nov: spans(2026, 10, 17, 'plants'),
@@ -320,7 +326,7 @@ async function checkMath() {
   }, moments);
   // The settings: the weather's rounded location and the defaults, placeholders marked.
   assert(r.st.lat === 32.78 && r.st.lon === -96.78, 'location: ' + r.st.lat + ', ' + r.st.lon);
-  assert(r.st.roof === 40 && r.st.gap === 2 && r.st.placeholder === true && Math.abs(r.st.depth - 4.67) < 0.01 && r.st.height === 3, 'settings: ' + JSON.stringify(r.st));
+  assert(r.st.roof === 40 && r.st.gap === 2 && r.st.placeholder === true && r.st.near === 2 && r.st.far === 6 && r.st.height === 3, 'settings: ' + JSON.stringify(r.st));
   assert(r.st.shy === 'Maranta Gold Lines' && r.st.plants.length === 3, 'plants: ' + JSON.stringify(r.st.plants));
   assert(r.c.MAG_DECLINATION === 3.3 && Math.abs(r.c.AZ_LO - 263.3) < 1e-9 && Math.abs(r.c.AZ_HI - 348.3) < 1e-9 && Math.abs(r.c.FACE - 305.8) < 1e-9, 'window: ' + JSON.stringify(r.c));
   moments.forEach((ms, i) => {
@@ -339,8 +345,10 @@ async function checkMath() {
   assert(Math.abs(r.ian330.az - 229.7) < 0.5 && Math.abs(r.ian330.alt - 19.8) < 0.5, 'Nov 17 3:30 PM: ' + r.ian330.az.toFixed(2) + '° / ' + r.ian330.alt.toFixed(2) + '°');
   assert(Math.abs(r.ian.az - 226) < 1.5 && Math.abs(r.ian.alt - 22) < 2, 'Nov 17 3:05 PM: ' + r.ian.az.toFixed(2) + '° / ' + r.ian.alt.toFixed(2) + '° up');
   assert(r.ian.az < r.c.AZ_LO - 30, 'Nov 17: the sun should be far left of the view');
-  assert(r.litNow, 'June 21 at 6:10 PM should reach the plant spot');
-  assert(r.jun.length === 1 && /^17:/.test(r.jun[0]) && /-18:/.test(r.jun[0]), 'June 21 on the plants: ' + r.jun.join(', '));
+  assert(r.litNow, 'June 21 at 6:10 PM should reach the plants');
+  assert(r.jun.length === 1 && r.jun[0] === '17:15-19:07', 'June 21 on the plants: ' + r.jun.join(', '));
+  // Mar 20 and Sep 22: what gets through the window lands on the plants.
+  assert(r.mar.length === 1 && r.mar[0] === r.marWin[0], 'Mar 20: ' + r.mar.join(',') + ' / ' + r.marWin.join(','));
   assert(r.junWin.length >= 1, 'June 21 through the window: none');
   assert(!r.dec.length && !r.decWin.length, 'Dec 21: ' + r.dec.join(',') + ' / ' + r.decWin.join(','));
   assert(!r.nov.length && !r.novWin.length, 'Nov 17 should have no sun through the window at all: ' + r.novWin.join(','));
@@ -360,14 +368,16 @@ async function checkSearch() {
       nov: brief(nov), novMonth: nov.start ? new Date(nov.start).getMonth() : -1, ms: ms,
       afternoon: brief(H.search(at(2026, 5, 21, 14, 0))),
       lit: brief(H.search(at(2026, 5, 21, 18, 10))),
-      evening: brief(H.search(at(2026, 5, 21, 19, 0))),
+      late: brief(H.search(at(2026, 5, 21, 19, 5))),
+      evening: brief(H.search(at(2026, 5, 21, 19, 30))),
       feb: brief(H.search(at(2027, 1, 20, 12, 0)))
     };
   });
-  assert(r.nov.k === 'later' && r.nov.days > 90 && r.novMonth === 2, 'Nov 17: ' + JSON.stringify(r.nov));
+  assert(r.nov.k === 'later' && r.nov.days > 90 && r.novMonth === 2 && /Mar 09 2027 18:15/.test(r.nov.start), 'Nov 17: ' + JSON.stringify(r.nov));
   assert(r.afternoon.k === 'later' && r.afternoon.days === 0 && /Jun 21 2026 17:/.test(r.afternoon.start), 'Jun 21 at 2 PM: ' + JSON.stringify(r.afternoon));
-  assert(r.lit.k === 'now' && /Jun 21 2026 18:/.test(r.lit.end), 'Jun 21 at 6:10 PM: ' + JSON.stringify(r.lit));
-  assert(r.evening.k === 'later' && r.evening.days === 1 && /Jun 22 2026 17:/.test(r.evening.start), 'Jun 21 at 7 PM: ' + JSON.stringify(r.evening));
+  assert(r.lit.k === 'now' && /Jun 21 2026 19:07/.test(r.lit.end), 'Jun 21 at 6:10 PM: ' + JSON.stringify(r.lit));
+  assert(r.late.k === 'now', 'Jun 21 at 7:05 PM: ' + JSON.stringify(r.late));
+  assert(r.evening.k === 'later' && r.evening.days === 1 && /Jun 22 2026 17:/.test(r.evening.start), 'Jun 21 at 7:30 PM: ' + JSON.stringify(r.evening));
   assert(r.feb.k === 'later' && /Mar /.test(r.feb.start), 'Feb 20: ' + JSON.stringify(r.feb));
   assert(r.ms < 400, 'the winter search took ' + r.ms.toFixed(0) + ' ms');
   // Cached: the same answer is not worked out again within the hour.
@@ -393,17 +403,17 @@ function expectTile(t, size, when, lang, name) {
     if (cols === 1) assert(/Now|Ahora/.test(t.text), name + ': ' + t.text);
     else if (rows === 1) assert(/Sun|Sol/.test(t.text), name + ': ' + t.text);
     else {
-      assert(/Sun on the plants now|Sol en las plantas ahora/.test(t.text.replace(/[ÁÉñíóú¿?¡!]/g, '')) && /6:26/.test(t.text), name + ': ' + t.text);
+      assert(/Sun on the plants now|Sol en las plantas ahora/.test(t.text.replace(/[ÁÉñíóú¿?¡!]/g, '')) && /7:07/.test(t.text), name + ': ' + t.text);
       assert(/Maranta Gold Lines/.test(t.text), name + ': no Maranta warning: ' + t.text);
     }
   } else if (when === 'winter') {
     assert(t.state === 'date', name + ': state ' + t.state);
     assert(!/on the plants now|en las plantas ahora/i.test(t.text), name + ': says sun now: ' + t.text);
-    assert(/Mar|mar/.test(t.text) && /14/.test(t.text), name + ': no March date: ' + t.text);
+    assert(/Mar|mar/.test(t.text) && /\b9\b/.test(t.text), name + ': no March date: ' + t.text);
     if (rows >= 2 && cols >= 3 && !es) assert(/Grow lights/.test(t.text), name + ': no grow lights line: ' + t.text);
   } else if (when === 'today') {
     assert(t.state === 'today', name + ': state ' + t.state);
-    assert(/5:20/.test(t.text), name + ': ' + t.text);
+    assert(/5:15/.test(t.text), name + ': ' + t.text);
   }
   if (rows >= 4 && cols >= 3 && when !== 'today') assert(/Dec 21|21 dic/.test(t.text) && /Jun 21|21 jun/.test(t.text), name + ': no season table: ' + t.text);
 }
@@ -466,14 +476,13 @@ async function checkKeys() {
   let s = await st();
   assert(s.focus === 'time' && s.p.minute === 18 * 60 + 15 && s.p.day === 'today', 'start: ' + JSON.stringify(s));
   assert(/Direct sun on the wall\. Keep the Maranta Gold Lines out of the beam\./.test(s.say), 'lit status: ' + s.say);
-  await page.keyboard.press('ArrowRight');
-  await page.keyboard.press('ArrowRight');
+  for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowRight');
   s = await st();
-  assert(s.p.minute === 18 * 60 + 45 && /6:45/.test(s.when), 'two steps right: ' + JSON.stringify(s));
-  assert(!/Direct sun on the wall/.test(s.say), 'at 6:45 the sun has left the plants: ' + s.say);
+  assert(s.p.minute === 19 * 60 + 15 && /7:15/.test(s.when), 'four steps right: ' + JSON.stringify(s));
+  assert(!/Direct sun on the wall/.test(s.say), 'at 7:15 the sun has left the plants: ' + s.say);
   await page.keyboard.press('ArrowLeft');
   s = await st();
-  assert(s.p.minute === 18 * 60 + 30 && s.focus === 'time', 'one step left: ' + JSON.stringify(s));
+  assert(s.p.minute === 19 * 60 && s.focus === 'time', 'one step left: ' + JSON.stringify(s));
   for (let i = 0; i < 30; i++) await page.keyboard.press('ArrowLeft');
   s = await st();
   assert(s.p.minute === 12 * 60, 'stops at noon: ' + s.p.minute);
@@ -513,14 +522,43 @@ async function checkKeys() {
 }
 
 async function checkTimer() {
-  // 6:24 PM: two minutes of sun left. The minute timer turns the tile over.
-  const page = await openHub({ at: Date.parse('2026-06-21T23:24:00Z'), size: [3, 2], install: true });
+  // 7:05 PM: two minutes of sun left. The minute timer turns the tile over.
+  const page = await openHub({ at: Date.parse('2026-06-22T00:05:00Z'), size: [3, 2], install: true });
   let t = await inspect(page, TILE, 0.85, 0.8);
   assert(t.state === 'now', 'before: ' + t.state);
   await page.clock.runFor(4 * 60000);
   await until(async () => (await inspect(page, TILE, 0.85, 0.8)).state === 'tomorrow', 3000, 'the tile did not turn to tomorrow');
   t = await inspect(page, TILE, 0.85, 0.8);
-  assert(/tomorrow/i.test(t.text) && /5:2\d/.test(t.text) && !t.problems.length, 'after: ' + t.text + ' ' + t.problems.join('; '));
+  assert(/tomorrow/i.test(t.text) && /5:1\d/.test(t.text) && !t.problems.length, 'after: ' + t.text + ' ' + t.problems.join('; '));
+  noErrors(page);
+}
+
+async function checkPlantRange() {
+  // The room plan (6x3 tile, Jun 21 at 6:10 PM): three plants down the wall
+  // at 2, 4 and 6 ft, not a clump; the near ones in the beam light up.
+  let page = await openHub({ at: LIT, size: [6, 3] });
+  const plan = await page.evaluate(() => {
+    const cs = Array.prototype.slice.call(document.querySelectorAll('.cell[data-widget="sunpath"] .sp-plants circle'));
+    return { ys: cs.map((c) => +c.getAttribute('cy')), lit: cs.map((c) => c.classList.contains('is-lit')), run: !!document.querySelector('.cell[data-widget="sunpath"] .sp-plant-run') };
+  });
+  assert(plan.ys.length === 3 && plan.run, 'plants: ' + JSON.stringify(plan));
+  const step1 = plan.ys[1] - plan.ys[0], step2 = plan.ys[2] - plan.ys[1];
+  assert(step1 > 60 && Math.abs(step1 - step2) < 0.5, 'plants not spread evenly 2 to 6 ft: ' + plan.ys.join(', '));
+  assert(plan.lit.some(Boolean), 'no plant lit at 6:10 PM: ' + plan.lit.join(','));
+  await openPanel(page);
+  const note = await page.evaluate(() => (document.querySelector('.sp-place') || {}).textContent || '');
+  assert(/Roof angle 40° and plant spots 2 to 6 ft are estimates/.test(note), 'note: ' + note);
+  noErrors(page);
+  await page.close();
+  // An older config with one number: a single plant spot, its own window.
+  page = await openHub({ at: LIT, config: [[/plantFromWindowFeet: \[2\.0, 6\]/, 'plantFromWindowFeet: 4.67']] });
+  const one = await page.evaluate(() => {
+    const H = window.HUB_SUNPATH;
+    const fmt = (ms) => { const d = new Date(ms); return d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); };
+    return { st: H.settings(), jun: H.daySpans(new Date(2026, 5, 21), 'plants').map((s) => fmt(s.start) + '-' + fmt(s.end)) };
+  });
+  assert(Math.abs(one.st.near - 4.67) < 1e-9 && Math.abs(one.st.far - 4.67) < 1e-9, 'one number: ' + JSON.stringify(one.st));
+  assert(one.jun.join() === '17:20-18:26', 'one spot, June 21: ' + one.jun.join());
   noErrors(page);
 }
 
@@ -577,6 +615,7 @@ async function checkLayout() {
     await check('the panel views and full screen in Spanish +25%', () => checkPanels('es', true));
     await check('the remote: time slider, day chooser, views, Back', checkKeys);
     await check('the minute timer turns the tile over when the sun leaves', checkTimer);
+    await check('the plants run 2 to 6 ft: spread on the plan, the note says so; one number still works', checkPlantRange);
     await check('placeholder: false hides the badge and the note', checkPlaceholderOff);
   } catch (e) {
     failed++;

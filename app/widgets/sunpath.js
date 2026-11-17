@@ -7,19 +7,22 @@
  * 260 to 345 degrees on a phone compass, 263.3 to 348.3 true once the
  * magnetic declination (MAG_DECLINATION) is added. The balcony roof blocks
  * the sun above roofAngle. The plant wall is to the right of the right
- * window, gapFeet from its right edge; the plants sit plantFromWindowFeet
- * into the room, plantHeightFeet off the floor. All of these, the place and
- * the plants are in HUB_CONFIG.widgets.sunpath (app/config.js); roofAngle
- * and gapFeet are estimates until measured, and the tile and panel say so
- * while placeholder is true.
+ * window, gapFeet from its right edge; the plants run along it from
+ * plantFromWindowFeet[0] (the nearest) to plantFromWindowFeet[1] (the
+ * furthest) into the room, plantHeightFeet off the floor. "Sun on the
+ * plants" means the beam lands on the wall somewhere in that stretch at
+ * plant height. All of these, the place and the plants are in
+ * HUB_CONFIG.widgets.sunpath (app/config.js); roofAngle and the plant spots
+ * are estimates until measured, and the tile and panel say so while
+ * placeholder is true.
  *
  * Times are the TV's own clock and time zone: sunpos() takes UTC ms, and a
  * day's times are made with new Date(y, m, d, 0, minute), so daylight
  * saving needs no table.
  *
  *   1 column   only the answer: "Now", a time, or a date
- *   strip      one line: "Sun on the plants now · until 6:26 PM",
- *              "Next sun at 5:20 PM", "Next sun Mar 14, 7:20 PM"
+ *   strip      one line: "Sun on the plants now · until 7:07 PM",
+ *              "Next sun at 5:15 PM", "Next sun Mar 9, 6:15 PM"
  *   standard   the answer, then today's sun window(s) on a small day bar,
  *              or (November to February) "grow lights do the work"
  *   tall       adds the season table: Dec 21, Mar 20, Jun 21, Sep 22
@@ -124,7 +127,7 @@
       growHead: 'Grow lights',
       grow: 'No direct sun reaches the wall from November to February: the 11W full-spectrum bulbs do the work in those months.',
       placeTag: 'Placeholder',
-      place: 'Roof angle {r}° and wall gap {g} ft are estimates.'
+      place: 'Roof angle {r}° and plant spots {a} to {b} ft are estimates.'
     }
   };
   var S = EN;
@@ -173,7 +176,7 @@
     var d = new Date(ms);
     return nb(fill(S.dateShort, { mon: monShort(d), d: d.getDate() }));
   }
-  // "5:20 to 6:26 PM" (one AM/PM when both ends share it).
+  // "5:15 to 7:07 PM" (one AM/PM when both ends share it).
   function fmtRange(a, b) {
     var same = new Date(a).getHours() >= 12 === new Date(b).getHours() >= 12;
     return fill(S.range, { a: same ? fmtClock(a) : fmtTime(a), b: fmtTime(b) });
@@ -184,6 +187,22 @@
   var P = null;
 
   function num(v, dflt) { return typeof v === 'number' && isFinite(v) ? v : dflt; }
+
+  // plantFromWindowFeet: [nearest, furthest], or one number (an older
+  // config: a single plant spot).
+  function spots(v) {
+    var a, b;
+    if (v && typeof v === 'object' && v.length) {
+      a = num(v[0], NaN);
+      b = num(v[v.length - 1], NaN);
+    } else {
+      a = b = num(v, NaN);
+    }
+    if (isNaN(a) || isNaN(b) || a < 0 || b < 0) { a = 2; b = 6; }
+    return a <= b ? [a, b] : [b, a];
+  }
+  // "2" or "2.5": feet without a needless ".0".
+  function feet(n) { return String(Math.round(n * 10) / 10); }
 
   function settings(config) {
     var c = config || {};
@@ -197,7 +216,8 @@
       lon: lon,
       roof: num(c.roofAngle, 40),
       gap: num(c.gapFeet, 2),
-      depth: num(c.plantFromWindowFeet, 56 / 12),
+      near: spots(c.plantFromWindowFeet)[0],
+      far: spots(c.plantFromWindowFeet)[1],
       height: num(c.plantHeightFeet, 3),
       placeholder: c.placeholder !== false,
       plants: plants,
@@ -241,18 +261,25 @@
   // Gets through the window: up, inside the view, under the roof.
   function enters(s) { return s.alt > 0 && s.alt <= P.roof && s.az >= AZ_LO && s.az <= AZ_HI; }
 
-  // Lands on the plant spot: the beam through the window reaches the plant
-  // wall at the plants' depth, at their height.
-  function hitsPlant(s) {
+  // Lands on the plants: the beam through the window reaches the plant wall
+  // somewhere from depth lo to hi (ft into the room) at the plants' height.
+  // Without lo and hi, the whole stretch from the nearest plant to the
+  // furthest.
+  function hitsPlant(s, lo, hi) {
     if (!enters(s)) return false;
     var d = s.az - FACE;
     if (d >= 0) return false;                // sun to the right: the beam goes left, away from the wall
     var t = Math.tan(rad(-d));
-    var y0 = P.gap / t;
-    var y1 = (WIN_W + P.gap) / t;
-    if (P.depth < y0 || P.depth > y1) return false;
-    var drop = (P.depth / Math.cos(rad(d))) * Math.tan(rad(s.alt));
-    return P.height + PLANT_SLACK >= SILL - drop && P.height - PLANT_SLACK <= WIN_TOP - drop;
+    var a = Math.max(lo === undefined ? P.near : lo, P.gap / t);           // where the beam is on the wall...
+    var b = Math.min(hi === undefined ? P.far : hi, (WIN_W + P.gap) / t);
+    // ...and at depth y it has dropped k * y: lit at plant height while
+    // SILL - drop <= height + slack and WIN_TOP - drop >= height - slack.
+    var k = Math.tan(rad(s.alt)) / Math.cos(rad(d));
+    if (k > 0) {
+      a = Math.max(a, (SILL - P.height - PLANT_SLACK) / k);
+      b = Math.min(b, (WIN_TOP - P.height + PLANT_SLACK) / k);
+    }
+    return a <= b;
   }
 
   // What the sun does at ms, in one word.
@@ -721,11 +748,19 @@
     out.push('<line class="sp-wall" x1="' + X(left) + '" x2="' + X(wallX) + '" y1="' + Y(0) + '" y2="' + Y(0) + '"/>');
     out.push('<line class="sp-wall" x1="' + X(wallX) + '" x2="' + X(wallX) + '" y1="' + Y(0) + '" y2="' + Y(depth) + '"/>');
     out.push('<rect class="sp-glass" x="' + X(0) + '" y="' + (Y(0) - 7) + '" width="' + (WIN_W * ft) + '" height="14" rx="3"/>');
-    // The plants: three leaves along the wall at the plant spot.
-    var py = Y(P.depth);
-    var px = X(wallX) - 22;
-    out.push('<g class="sp-plants' + (st.k === 'lit' ? ' is-lit' : '') + '">' +
-      '<circle cx="' + px + '" cy="' + (py - 16) + '" r="11"/><circle cx="' + (px - 6) + '" cy="' + py + '" r="13"/><circle cx="' + px + '" cy="' + (py + 17) + '" r="11"/></g>');
+    // The plants: near, middle and far along the wall; each one the beam
+    // reaches (within half a foot) lights up.
+    var px = X(wallX) - 18;
+    var mid = (P.near + P.far) / 2;
+    var py = Y(mid);
+    var where = [P.near, mid, P.far];
+    var leaves = [];
+    for (var pi = 0; pi < where.length; pi++) {
+      var on = st.k === 'lit' && hitsPlant(s, where[pi] - 0.5, where[pi] + 0.5);
+      leaves.push('<circle' + (on ? ' class="is-lit"' : '') + ' cx="' + px + '" cy="' + Y(where[pi]).toFixed(1) + '" r="' + (pi === 1 ? 13 : 11) + '"/>');
+    }
+    if (P.far > P.near) out.push('<line class="sp-plant-run" x1="' + px + '" x2="' + px + '" y1="' + Y(P.near).toFixed(1) + '" y2="' + Y(P.far).toFixed(1) + '"/>');
+    out.push('<g class="sp-plants' + (st.k === 'lit' ? ' is-lit' : '') + '">' + leaves.join('') + '</g>');
     // The sun outside, on an arc above the window, and its ray.
     var cx = X(WIN_W / 2);
     var cy = Y(0);
@@ -841,7 +876,7 @@
     if (!P.placeholder) return null;
     var n = div('sp-place', parent);
     span('sp-place-tag', n, S.notes.placeTag);
-    span('sp-place-text', n, fill(S.notes.place, { r: P.roof, g: P.gap.toFixed(1) }));
+    span('sp-place-text', n, fill(S.notes.place, { r: P.roof, a: feet(P.near), b: feet(P.far), g: feet(P.gap) }));
     return n;
   }
 

@@ -296,19 +296,25 @@ var HUB_CONFIG = {
      * PLACEHOLDERS, not measured yet:
      *   roofAngle  the balcony roof blocks the sun above this angle (degrees)
      *   gapFeet    from the right window's right edge to the plant wall (ft)
+     *   plantFromWindowFeet  (below) where the plants start and end
      * While placeholder is true the tile's badge says "Estimate" and the
      * panel says which numbers are estimates. Put in the measured numbers
      * and set placeholder to false.
      *
-     * plantFromWindowFeet and plantHeightFeet: where the plants sit (56 in
-     * from the window wall, 3 ft up). plants: shown in the panel's note;
-     * keepOutOfSun: the one to keep out of the summer evening beam.
+     *   plantFromWindowFeet  [nearest, furthest]: how far into the room
+     *              the plants run along the wall (ft). "Sun on the plants"
+     *              means the beam lands anywhere in that stretch. One number
+     *              (a single plant spot) still works.
+     *
+     * plantHeightFeet: how high the plants sit (3 ft up). plants: shown in
+     * the panel's note; keepOutOfSun: the one to keep out of the summer
+     * evening beam.
      */
     sunpath: {
       roofAngle: 40,
       gapFeet: 2.0,
       placeholder: true,
-      plantFromWindowFeet: 4.67,
+      plantFromWindowFeet: [2.0, 6],      // PLACEHOLDER: nearest and furthest plant
       plantHeightFeet: 3,
       plants: ['4in Birkin philodendron', 'Golden pothos', 'Maranta Gold Lines'],
       keepOutOfSun: 'Maranta Gold Lines'

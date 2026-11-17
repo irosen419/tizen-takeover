@@ -9,8 +9,8 @@
  * about changes.
  *
  *   plant-wall-1-lit.png            "Plant wall" layout, Jun 21 2026 6:10 PM (sun on the plants)
- *   plant-wall-2-later-today.png    the same, 2:00 PM ("Next sun at 5:20 PM")
- *   plant-wall-3-nov17.png          Nov 17 2026 3:05 PM ("Next sun Mar 14, 7:20 PM")
+ *   plant-wall-2-later-today.png    the same, 2:00 PM ("Next sun at 5:15 PM")
+ *   plant-wall-3-nov17.png          Nov 17 2026 3:05 PM ("Next sun Mar 9, 6:15 PM")
  *   panel-lit.png, full-lit.png     the panel and full screen at 6:10 PM, slider one step back (6:00 PM)
  *   panel-lit-arc.png, panel-lit-seasons.png   the panel's other two views
  *   panel-nov17.png, full-nov17.png the same on Nov 17, slider six steps on (4:30 PM)

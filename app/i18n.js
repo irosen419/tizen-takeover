@@ -346,7 +346,7 @@
     'sunpath.notes.growHead': 'Luces de cultivo',
     'sunpath.notes.grow': 'De noviembre a febrero no llega sol directo a la pared: los focos de espectro completo de 11 W hacen el trabajo esos meses.',
     'sunpath.notes.placeTag': 'Provisional',
-    'sunpath.notes.place': 'Ángulo del techo ({r}°) y distancia a la pared ({g} pies): estimados.',
+    'sunpath.notes.place': 'Ángulo del techo ({r}°) y lugar de las plantas ({a} a {b} pies): estimados.',
 
     /* ---- Motion extras: the activity chips and the About panel's Motion row (app/motion.js) ----
      * The chips' English is in motion.js's kinds table (KIND_TABLE), each row

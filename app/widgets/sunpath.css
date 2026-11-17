@@ -463,7 +463,8 @@
 .sp-wall { stroke: rgba(244, 245, 247, 0.72); stroke-width: 5; stroke-linecap: round; }
 .sp-glass { fill: rgba(124, 196, 255, 0.55); }
 .sp-plants circle { fill: #4f9b6c; stroke: #050506; stroke-width: 2; }
-.sp-plants.is-lit circle { fill: #7ed9a0; stroke: #ffd166; stroke-width: 3; }
+.sp-plants circle.is-lit { fill: #7ed9a0; stroke: #ffd166; stroke-width: 3; }
+.sp-plant-run { stroke: #4f9b6c; stroke-width: 4; stroke-linecap: round; opacity: 0.55; }
 .sp-sky { fill: none; stroke: rgba(255, 255, 255, 0.14); stroke-width: 2; stroke-dasharray: 3 7; }
 .sp-view { fill: none; stroke: rgba(255, 209, 102, 0.42); stroke-width: 6; stroke-linecap: round; }
 .sp-ray { stroke: rgba(255, 255, 255, 0.3); stroke-width: 2; stroke-dasharray: 6 6; }
