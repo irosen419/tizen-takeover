@@ -129,7 +129,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.15';
+  var BUILD = 'v0.28.16';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -332,12 +332,18 @@
 
   // auto starts at the top rung and steps down when a rung stutters twice.
   var LADDER = ['push', 'expand', 'fade'];
+  var RETRY_MS = 24 * 60 * 60 * 1000;   // how long a step-down lasts
+  var HITCH_MS = 100;                   // a frame gap this long is a stall
+  var HITCH_MAX = 3;                    // stalls (or more) that make a run janky
+  var FREEZE_MS = 400;                  // one gap this long is a freeze by itself
+  var JANKY_RUNS = 3;                   // janky runs in a row that step down
 
   var motion = {
     mode: 'push',         // what runs now: 'push' | 'expand' | 'fade'
     source: 'auto',       // 'auto' | 'config' | 'URL'
     measuring: false,
     fps: 0,
+    worst: 0,             // the longest single frame gap (ms) of the run that stepped down
     clean: [],            // fps of clean runs at the current rung
     janky: []             // fps of janky runs at the current rung
   };
@@ -354,7 +360,11 @@
       var raw = window.localStorage && localStorage.getItem(MOTION_KEY);
       if (!raw) return null;
       var data = JSON.parse(raw);
-      return data && data.build === BUILD && isMode(data.mode) ? data : null;
+      if (!data || data.build !== BUILD || !isMode(data.mode)) return null;
+      // A step-down is only for a day: after that the top rung is timed
+      // again, so a few stalls can't lock extras off for good.
+      if (data.mode !== LADDER[0] && data.at && Date.now() - data.at > RETRY_MS) return null;
+      return data;
     } catch (e) { return null; }
   }
 
@@ -379,6 +389,7 @@
     if (stored) {
       motion.mode = stored.mode;
       motion.fps = stored.fps || 0;
+      motion.worst = stored.worst || 0;
       // A rung reached by stepping down is still being timed.
       motion.measuring = !!stored.measuring && stored.mode !== 'fade';
       return;
@@ -398,7 +409,8 @@
     var s = 'Motion: ' + motion.mode;
     if (motion.source !== 'auto') return s + ' (' + motion.source + ')';
     if (motion.measuring) return s + ' (auto, measuring)';
-    return s + ' (auto' + (motion.fps ? ', ' + motion.fps + ' fps' : '') + ')';
+    return s + ' (auto' + (motion.fps ? ', ' + motion.fps + ' fps' : '') +
+      (motion.worst ? ', stalled ' + motion.worst + ' ms' : '') + ')';
   }
 
   function announceStatus() {
@@ -445,27 +457,38 @@
     if (gaps.length < 2) return;
     var total = 0;
     var worst = 0;
-    for (var j = 0; j < gaps.length; j++) { total += gaps[j]; if (gaps[j] > worst) worst = gaps[j]; }
+    var stalls = 0;
+    for (var j = 0; j < gaps.length; j++) {
+      total += gaps[j];
+      if (gaps[j] > worst) worst = gaps[j];
+      if (gaps[j] > HITCH_MS) stalls++;
+    }
     var fps = gaps.length && total > 0 ? Math.round(gaps.length * 1000 / total) : 0;
-    var janky = fps < 40 || worst > 120;
-    if (janky) motion.janky.push(fps); else motion.clean.push(fps);
+    // Sustained speed decides, not one long frame: a single stall (a panel
+    // paint, a live update) is not the TV failing to keep up.
+    var janky = fps < 40 || stalls >= HITCH_MAX || worst > FREEZE_MS;
+    if (janky) { motion.janky.push(fps); motion.worstJanky = Math.max(motion.worstJanky || 0, Math.round(worst)); }
+    else motion.clean.push(fps);
 
-    if (motion.janky.length >= 2) {
+    if (motion.janky.length >= JANKY_RUNS) {
       // Step down one rung. Fade is the last one, so it ends the timing.
       var next = LADDER[LADDER.indexOf(motion.mode) + 1] || 'fade';
       motion.fps = average(motion.janky);
+      motion.worst = motion.worstJanky && motion.worstJanky > HITCH_MS ? motion.worstJanky : 0;
+      motion.worstJanky = 0;
       motion.mode = next;
       motion.clean = [];
       motion.janky = [];
       motion.measuring = next !== 'fade';
-      store({ mode: next, build: BUILD, fps: motion.fps, measuring: motion.measuring });
+      store({ mode: next, build: BUILD, fps: motion.fps, worst: motion.worst, measuring: motion.measuring, at: Date.now() });
       markMotion();
       fxHook('motionChanged');
       announceStatus();
     } else if (motion.clean.length >= 3) {
       motion.measuring = false;
       motion.fps = average(motion.clean);
-      store({ mode: motion.mode, build: BUILD, fps: motion.fps });
+      motion.worst = 0;
+      store({ mode: motion.mode, build: BUILD, fps: motion.fps, at: Date.now() });
       announceStatus();
     }
   }
@@ -623,6 +646,14 @@
   // For tests in a laptop browser. Not used by the hub itself.
   window.HUB_TEST = {
     ringLayout: ringLayout,
+    // Feeds frame times (ms, one list per run) to the motion timing from the
+    // top rung, as if opening panels had produced them; returns where it ended.
+    motionRuns: function (runs) {
+      motion.mode = LADDER[0]; motion.source = 'auto'; motion.measuring = true;
+      motion.fps = 0; motion.worst = 0; motion.worstJanky = 0; motion.clean = []; motion.janky = [];
+      for (var i = 0; i < runs.length; i++) { if (motion.measuring) recordRun(runs[i], null); }
+      return { mode: motion.mode, measuring: motion.measuring, fps: motion.fps, worst: motion.worst, status: motionStatus() };
+    },
     panelRect: function () { return panelRect(open); },
     homeRects: function () {
       var out = {};

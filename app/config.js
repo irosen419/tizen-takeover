@@ -26,7 +26,7 @@ var HUB_CONFIG = {
 
   /* How opening a widget looks:
        'auto'    start with 'push', time it on the TV, and step down to
-                 'expand', then 'fade', if the TV can't keep up (the default)
+                 'expand', then 'fade', if the TV can't keep up, and tries push again after a day (the default)
        'push'    the widget grows in the middle and the other tiles slide aside
        'expand'  the widget grows over a dimmed screen
        'fade'    a plain fade (lightest on slow TVs) */
