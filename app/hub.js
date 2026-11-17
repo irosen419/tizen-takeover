@@ -127,7 +127,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.7';
+  var BUILD = 'v0.28.8';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1139,6 +1139,11 @@
     // A stylesheet that had to be fetched again, or never arrived (see hub.html).
     { group: 'This hub', label: 'Styles', value: function () {
       var S = window.HUB_STYLES;
+      try { return S && typeof S.status === 'function' ? S.status() || '' : ''; } catch (e) { return ''; }
+    } },
+    // A script that failed to load: the page loaded again for it, or it never came (see hub.html).
+    { group: 'This hub', label: 'Scripts', value: function () {
+      var S = window.HUB_SCRIPTS;
       try { return S && typeof S.status === 'function' ? S.status() || '' : ''; } catch (e) { return ''; }
     } },
     { group: 'Updates', label: 'Live updates', value: function () {

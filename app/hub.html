@@ -72,6 +72,169 @@
         }
       };
     })();
+
+    /*
+     * Scripts that fail to load. The same proxy, the same now-and-then failed
+     * fetch. The page still runs without one script, only without what it
+     * brings (seen with logos.js: every app drawn as a letter instead of its
+     * logo). A script can't be put back afterwards, because the ones after
+     * it have already run without it. So: a script of this page that fails
+     * is fetched again by itself, up to three times, and once it has come
+     * the page is loaded again, at most twice in a row.
+     * window.HUB_SCRIPTS.status() says what happened, for the About panel.
+     * pending() tells update.js that a missing script is still on its way,
+     * so that a version is not called broken in the meantime.
+     */
+    (function () {
+      var MAX = 3;                    // fetches of a failed script, after the page's own
+      var RELOADS = 2;                // times in a row the page is loaded again
+      var CHAIN_MS = 120000;          // a reload longer ago than this doesn't count
+      var WAIT_MS = [300, 1200, 2500];
+      var FETCH_MS = 8000;
+      var KEY = 'homeHub.scripts';
+      var FILE_RE = /^[A-Za-z0-9_.\-\/]{1,80}$/;
+      var waiting = {};     // file -> true while it is being fetched again
+      var lost = {};        // file -> true when it never came, or reloading didn't help
+      var got = [];         // files that came on a later fetch, waiting for the reload
+      var before = [];      // files this page was loaded again for
+      var reloads = 0;      // reloads made in a row so far
+      var failures = 0;
+      var leaving = false;
+      var store = null;
+      try { store = window.sessionStorage; } catch (e) { store = null; }
+
+      function now() { return new Date().getTime(); }
+      function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+      function add(list, file) {
+        for (var i = 0; i < list.length; i++) if (list[i] === file) return;
+        if (list.length < 12) list.push(file);
+      }
+      // What an earlier load of this page left: only what looks like ours.
+      (function () {
+        try {
+          var r = store ? JSON.parse(store.getItem(KEY) || 'null') : null;
+          if (!r || typeof r.n !== 'number' || typeof r.at !== 'number') return;
+          if (!(r.n >= 1 && r.n <= RELOADS) || now() - r.at > CHAIN_MS || now() < r.at) return;
+          reloads = Math.floor(r.n);
+          var files = r.files && typeof r.files.length === 'number' ? r.files : [];
+          for (var i = 0; i < files.length; i++) {
+            if (typeof files[i] === 'string' && FILE_RE.test(files[i])) add(before, files[i]);
+          }
+        } catch (e) { reloads = 0; before = []; }
+      })();
+
+      function fileOf(script) {
+        return String(script.getAttribute('src') || '').split('#')[0].split('?')[0];
+      }
+      function busy() {
+        for (var f in waiting) if (own(waiting, f)) return true;
+        return false;
+      }
+      function giveUp() {
+        for (var i = 0; i < got.length; i++) lost[got[i]] = true;
+        got = [];
+      }
+      // Every missing script has come or been given up: load the page again
+      // for the ones that came, unless that was already done twice.
+      function settle() {
+        if (leaving || busy() || !got.length) return;
+        if (!store || reloads >= RELOADS) return giveUp();
+        var files = before.slice(0);
+        for (var i = 0; i < got.length; i++) add(files, got[i]);
+        try {
+          store.setItem(KEY, JSON.stringify({ n: reloads + 1, at: now(), files: files }));
+        } catch (e) { return giveUp(); }     // can't count reloads: don't start
+        leaving = true;
+        try { window.location.reload(); } catch (e2) { leaving = false; giveUp(); }
+      }
+      // Every script of the hub ends with ; } or ) and a cut one almost never does.
+      function whole(text) {
+        var t = String(text || '').replace(/\s+$/, '');
+        return t.length > 0 && /[;})]$/.test(t);
+      }
+      function fetchAgain(file, n) {
+        setTimeout(function () {
+          var done = false;
+          function end(ok) {
+            if (done) return;
+            done = true;
+            if (!ok && n + 1 < MAX) return fetchAgain(file, n + 1);
+            delete waiting[file];
+            if (ok) add(got, file); else lost[file] = true;
+            settle();
+          }
+          try {
+            var x = new XMLHttpRequest();
+            x.open('GET', file, true);
+            x.timeout = FETCH_MS;
+            x.onload = function () { end(x.status >= 200 && x.status < 300 && whole(x.responseText)); };
+            x.onerror = function () { end(false); };
+            x.ontimeout = function () { end(false); };
+            x.onabort = function () { end(false); };
+            x.send();
+          } catch (e) { end(false); }
+        }, WAIT_MS[n] || WAIT_MS[WAIT_MS.length - 1]);
+      }
+      function failed(script) {
+        var file = fileOf(script);
+        if (!file || !FILE_RE.test(file) || waiting[file] || lost[file] || leaving) return;
+        failures += 1;
+        waiting[file] = true;
+        fetchAgain(file, 0);
+      }
+      // Only the page's own script tags: one added later by a script (async)
+      // is looked after by whoever added it.
+      function mine(t) {
+        return !!t && !!t.tagName && String(t.tagName).toUpperCase() === 'SCRIPT' && !t.async && !!t.getAttribute('src');
+      }
+      function plain(url) { return String(url || '').split('#')[0].split('?')[0]; }
+      function byUrl(url) {
+        var list = document.getElementsByTagName('script');
+        for (var i = 0; i < list.length; i++) if (mine(list[i]) && plain(list[i].src) === plain(url)) return list[i];
+        return null;
+      }
+      // Three ways a script arrives broken: the fetch fails (an error on the
+      // tag), it comes cut short or as the proxy's own words (it loads, and
+      // the window hears a SyntaxError naming it), or it comes empty.
+      function onError(e) {
+        try {
+          var t = e.target;
+          if (mine(t)) return failed(t);
+          if (t === window && e.filename && /SyntaxError/.test(String(e.message))) {
+            var script = byUrl(e.filename);
+            if (script) failed(script);
+          }
+        } catch (err) { /* ignore */ }
+      }
+      function onLoad(e) {
+        try {
+          var t = e.target;
+          if (!mine(t) || !window.performance || typeof performance.getEntriesByName !== 'function') return;
+          var list = performance.getEntriesByName(t.src) || [];
+          var last = list.length ? list[list.length - 1] : null;
+          // Sent over the line (not out of the browser's cache) with nothing in it.
+          if (last && last.decodedBodySize === 0 && last.encodedBodySize === 0 && last.transferSize > 0) failed(t);
+        } catch (err) { /* ignore */ }
+      }
+      document.addEventListener('error', onError, true);
+      window.addEventListener('error', onError, false);
+      document.addEventListener('load', onLoad, true);
+      // A start with every script there ends the row of reloads.
+      window.addEventListener('load', function () {
+        try { if (!failures && store) store.removeItem(KEY); } catch (e) { /* ignore */ }
+      }, false);
+
+      window.HUB_SCRIPTS = {
+        pending: function () { return leaving || busy(); },
+        status: function () {
+          var bad = [], f;
+          for (f in lost) if (own(lost, f)) bad.push(f);
+          if (bad.length) return bad.join(', ') + ' did not load';
+          if (before.length) return before.join(', ') + ' loaded on a later try';
+          return '';
+        }
+      };
+    })();
   </script>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="widgets/today.css">
