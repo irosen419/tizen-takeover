@@ -2194,8 +2194,12 @@
   // need a second line. Only reads layout when the full one may not fit.
   function fitTitle(node, full, short) {
     if (node.textContent !== full) node.textContent = full;
+    if (node.getAttribute('data-full')) node.removeAttribute('data-full');
     if (!short || short === full || !node.clientWidth) return;
-    if (node.scrollWidth > node.clientWidth + 1) node.textContent = short;
+    if (node.scrollWidth > node.clientWidth + 1) {
+      node.textContent = short;
+      node.setAttribute('data-full', full);    // the name it stands for (tests, and anyone curious)
+    }
   }
 
   // The title (or its short form) beside the badge; if even that can't fit,

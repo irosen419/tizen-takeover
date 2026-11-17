@@ -38,6 +38,8 @@
     titles: { room: 'Daily room', card: 'Card day', goals: 'Goals' },
     // Short forms, only when a title doesn't fit its tile on one line (the hub measures).
     titlesShort: { room: 'Room', card: 'Card', goals: 'Goals' },
+    // The activity chip when new figures arrive (app/motion.js shows it).
+    activity: 'Updating budget',
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     // {dow} short weekday, {mon} short month, {d} day
@@ -993,7 +995,7 @@
   function addKind() {
     try {
       if (S.kindAdded || !window.HUB_FX || typeof window.HUB_FX.addActivity !== 'function') return;
-      S.kindAdded = window.HUB_FX.addActivity('budget', { key: 'budget.activity', label: 'Updating budget',
+      S.kindAdded = window.HUB_FX.addActivity('budget', { key: 'budget.activity', label: EN.activity,
         icon: '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' });
     } catch (e) { /* no chip; the figures just show */ }
   }

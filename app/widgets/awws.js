@@ -2264,7 +2264,7 @@
       return;
     }
     var line = el('div', 'aw-strip-line', root);
-    el('span', 'aw-strip-num' + netClass(d.net), line, net);
+    var num = el('span', 'aw-strip-num' + netClass(d.net), line, net);
     var text = el('span', 'aw-rstrip', line);
     var forms = earnedSpentForms(d);
     var withNet = [];
@@ -2274,6 +2274,10 @@
     if (d.next) {
       var more = el('span', 'aw-strip-extra', line, STRINGS.sep + nextText(d));
       if (overW(line)) line.removeChild(more);
+    }
+    // Still too wide (a long tile title beside it): the number gets smaller.
+    for (var k = 0; k < 6 && line.clientWidth && overW(line); k++) {
+      num.style.fontSize = ((parseFloat(window.getComputedStyle(num).fontSize) || 40) * 0.9).toFixed(1) + 'px';
     }
   }
 
