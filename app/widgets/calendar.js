@@ -1461,6 +1461,7 @@
     title: 'Calendar',
     icon: 'calendar',
     expandable: true,
+    activity: 'calendar',      // its working chip (app/motion.js)
 
     init: function (ctx) {
       C = ctx;

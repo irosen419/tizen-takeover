@@ -2506,6 +2506,7 @@
         }
       }
     };
+    if (SNAP_TILES[id]) w.activity = 'awws';   // the working chip goes on the first of these
     var hooks = panelHooks(id);
     for (var k in hooks) if (hooks.hasOwnProperty(k)) w[k] = hooks[k];
     return w;
