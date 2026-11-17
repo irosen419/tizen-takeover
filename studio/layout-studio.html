@@ -585,7 +585,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     ambiance:      { title: 'Ambiance',              sub: 'Pick the light vibe from the TV', soon: true },
     mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true },
     // app/widgets/wotd.js (v0.28.5): one Latin American Spanish word a day, easy in January, B1 by December.
-    // The budget tiles (app/widgets/budget.js, v0.28.4; budget-lab.js, v0.28.16): the "Budget" layout. Runway is a proposal (it comes in Budget lab's full screen).
+    // The budget tiles (app/widgets/budget.js, v0.28.4; budget-lab.js, v0.28.16, merchants and Put it somewhere v0.28.17): the "Budget" layout. Runway is a proposal (it comes in Budget lab's full screen).
     'budget-room':  { title: 'Daily room',           sub: 'What is left to spend each day until card day' },
     'budget-card':  { title: 'Card day',             sub: 'When the card is due and whether it is covered' },
     'budget-goals': { title: 'Goals',                sub: 'Each spending goal: clean, on pace, over or under' },
@@ -1034,10 +1034,14 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       sample: {
         en: { n: '1', unit: 'day under', y: 'Yesterday $41 of $65, $24 under', yTiny: '$41 of $65', move: 'Stay under $62 today for 2 days in a row', out: 'Nov 19: Covered, nothing to spare',
               head: 'Nov 19 · in 3 days', ok: 'Covered', capLabel: 'Daily cap', cap: '$62', aDay: 'a day', ticks: 'calculated $62 · no saved cap', modes: ['Set the cap', 'Set what to keep'],
-              keep: 'Nothing to spare on Nov 19', monthly: 'Monthly remaining $186', gap: 'same as calculated', buttons: ['Save this cap', 'Back to calculated'], pace: 'Pace' },
+              keep: 'Nothing to spare on Nov 19', monthly: 'Monthly remaining $186', gap: 'same as calculated', buttons: ['Save this cap', 'Back to calculated'], pace: 'Pace',
+              mHead: 'Merchants', cuts: [['Hilltop Grocer · $184 so far · cut $12', 0.34], ['Quick Bites Delivery · $127 so far · cut $0', 0]],
+              dHead: 'Put it somewhere', dest: [['Card day', 'Covered', 1], ['Savings', '$12 of $500', 0.03], ['AWWS', '$0 of $150', 0], ['Buffer', '$0 of $350', 0]] },
         es: { n: '1', unit: 'día bajo el tope', y: 'Ayer $41 de $65, $24 por debajo', yTiny: '$41 de $65', move: 'Quédate bajo $62 hoy y van 2 días seguidos', out: '19 nov: cubierto, sin sobrante',
               head: '19 nov · en 3 días', ok: 'Cubierto', capLabel: 'Tope diario', cap: '$62', aDay: 'al día', ticks: 'calculado $62 · sin tope guardado', modes: ['Fijar el tope', 'Fijar cuánto guardar'],
-              keep: 'Nada de sobra el 19 nov', monthly: 'Te queda para gastar $186', gap: 'igual que el calculado', buttons: ['Guardar este tope', 'Volver al calculado'], pace: 'Ritmo' }
+              keep: 'Nada de sobra el 19 nov', monthly: 'Te queda para gastar $186', gap: 'igual que el calculado', buttons: ['Guardar este tope', 'Volver al calculado'], pace: 'Ritmo',
+              mHead: 'Comercios', cuts: [['Hilltop Grocer · $184 en lo que va de mes · recortas $12', 0.34], ['Quick Bites Delivery · $127 en lo que va de mes · recortas $0', 0]],
+              dHead: 'A dónde va', dest: [['Pago de tarjeta', 'Cubierto', 1], ['Ahorro', '$12 de $500', 0.03], ['AWWS', '$0 de $150', 0], ['Colchón', '$0 de $350', 0]] }
       },
       strip: { en: '“1 day under · $41 of $65” (from 4 columns; narrower, the streak alone). Green while under, coral “Over yesterday”. 1 column: the count.',
                es: '«1 día bajo el tope · $41 de $65» (desde 4 columnas; más estrecho, solo la racha). Verde mientras va bajo el tope, coral «Ayer te pasaste». 1 columna: la cuenta.' },
@@ -1045,10 +1049,10 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
                   es: 'La racha en grande («1 día bajo el tope»), «Ayer $41 de $65, $24 por debajo» y el movimiento sugerido en hasta dos líneas.' },
       tall: { en: 'Standard plus the card day outcome: “Nov 19: Covered, nothing to spare” (or “Short by $10” in coral).',
               es: 'Estándar más el resultado del pago de tarjeta: «19 nov: cubierto, sin sobrante» (o «Faltan $10» en coral).' },
-      panel: { en: 'The head line, the cap slider ($1 a press, faster when held, the calculated and saved marks), Set the cap / Set what to keep, the outcome with monthly remaining and its gap, Save this cap and Back to calculated, then Pace.',
-               es: 'La línea de cabecera, el control del tope ($1 por pulsación, más rápido al mantener, con las marcas del calculado y del guardado), Fijar el tope / Fijar cuánto guardar, el resultado con lo que queda para gastar y su diferencia, Guardar este tope y Volver al calculado, y Ritmo.' },
-      full: { en: 'Two columns, bigger: the rows on the left, Pace on the right. Merchants, Put it somewhere and the runway come later.',
-              es: 'Dos columnas, más grandes: las filas a la izquierda y Ritmo a la derecha. Comercios, A dónde va y la pista llegan más adelante.' }
+      panel: { en: 'The head line, the cap slider ($1 a press, faster when held, the calculated and saved marks), Set the cap / Set what to keep, the outcome with monthly remaining and its gap, Save this cap and Back to calculated, Merchants (a cut slider for each of the top five, the label above its track), Put it somewhere (card day, savings, AWWS, buffer, funded of planned), then Pace.',
+               es: 'La línea de cabecera, el control del tope ($1 por pulsación, más rápido al mantener, con las marcas del calculado y del guardado), Fijar el tope / Fijar cuánto guardar, el resultado con lo que queda para gastar y su diferencia, Guardar este tope y Volver al calculado, Comercios (un control de recorte para cada uno de los cinco primeros, con la etiqueta sobre su barra), A dónde va (pago de tarjeta, ahorro, AWWS, colchón, cubierto de lo previsto) y Ritmo.' },
+      full: { en: 'Two columns, bigger: the rows down to Merchants on the left, Put it somewhere and Pace on the right. The runway comes later.',
+              es: 'Dos columnas, más grandes: las filas hasta Comercios a la izquierda, y A dónde va y Ritmo a la derecha. La pista llega más adelante.' }
     },
     ambiance: plannedEntry({ en: 'Ambiance', es: 'Ambiente' },
       { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),
@@ -1813,8 +1817,11 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
         buMeter(0.38, 'bu-ok') + '<div class="bu-pline q l1">' + esc(S.ticks) + '</div>' +
         '<div class="pp-tabs">' + S.modes.map(function (m, i) { return '<span class="chipb l1' + (i ? '' : ' on') + '">' + esc(m) + '</span>'; }).join('') + '</div>' +
         '<div class="bu-pline bu-ok wr" style="font-size:1.3em">' + esc(S.keep) + '</div><div class="bu-pline l1">' + esc(S.monthly) + '</div><div class="bu-pline q l1">' + esc(S.gap) + '</div>' +
-        '<div class="pp-tabs">' + S.buttons.map(function (b) { return '<span class="chipb l1">' + esc(b) + '</span>'; }).join('') + '</div>';
-      var right = '<div class="secl"><span class="l1">' + esc(S.pace) + '</span></div><div class="td-hero"><span class="big td-num bu-ok">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.unit) + '</span></div>' +
+        '<div class="pp-tabs">' + S.buttons.map(function (b) { return '<span class="chipb l1">' + esc(b) + '</span>'; }).join('') + '</div>' +
+        '<div class="secl"><span class="l1">' + esc(S.mHead) + '</span></div>' + S.cuts.map(function (c) { return '<div class="bu-pline wr">' + esc(c[0]) + '</div>' + buMeter(c[1], 'bu-ok'); }).join('');
+      var dest = '<div class="secl"><span class="l1">' + esc(S.dHead) + '</span></div>' +
+        S.dest.map(function (d) { return '<div class="bu-trow"><span class="l1">' + esc(d[0]) + '</span><b>' + esc(d[1]) + '</b></div>' + buMeter(d[2], 'bu-ok'); }).join('');
+      var right = dest + '<div class="secl"><span class="l1">' + esc(S.pace) + '</span></div><div class="td-hero"><span class="big td-num bu-ok">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.unit) + '</span></div>' +
         '<div class="bu-pline l1">' + esc(S.y) + '</div><div class="bu-pline wr">' + esc(S.move) + '</div>';
       return full ? '<div class="cols2"><div style="flex:1 1 0">' + left + '</div><div style="flex:1 1 0">' + right + '</div></div>' : left + right;
     },

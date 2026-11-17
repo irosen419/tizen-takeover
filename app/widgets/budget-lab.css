@@ -1,6 +1,6 @@
-/* Budget lab: the pace streak tile and the cap panel. Every class starts with
-   bl-; the shared budget look (bu-tile, bu-hero, bu-psec, the colors) comes
-   from budget.css.
+/* Budget lab: the pace streak tile and the panel (the cap, the merchants'
+   cuts, Put it somewhere, the pace). Every class starts with bl-; the shared
+   budget look (bu-tile, bu-hero, bu-psec, the colors) comes from budget.css.
 
    Same rules as style.css and budget.css: no grid, no flex gap, only opacity
    and transform ever change, and nothing a slider touches has a transition
@@ -152,11 +152,59 @@
 }
 .bl-btn.is-focused { background: var(--card-2); border-color: var(--focus); }
 
+/* Row 6, the merchants: a head, then one slider row each, the label on its
+   own line above the track so a longer language wraps instead of pushing.
+   The fill is a scaleX set directly, like the cap's. */
+.bl-msec { padding: 0.7rem 0.9rem 0.2rem; }
+.bl-msec > .bu-label:first-child { margin-top: 0; }
+.bl-msub { margin-top: 0.2rem; font-size: 1rem; line-height: 1.4; color: var(--text-3); word-wrap: break-word; }
+.bl-mline { margin-top: 0.3rem; }
+.bl-clabel { font-size: 1.1rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+.bl-ctrack { height: 0.45rem; margin: 0.5rem 0 0.15rem; }
+.bl-cut.is-locked { opacity: 0.5; }
+.bl-mnote { padding: 0.1rem 0.9rem 0.3rem; font-size: 1rem; line-height: 1.4; color: var(--text-2); word-wrap: break-word; }
+.bl-mnote.is-neg { color: var(--bu-neg); }
+
+/* Row 7, Put it somewhere: not focusable. Name and figure on one line, the
+   bar under them. */
+.bl-dest { padding: 0.7rem 0.9rem 0.3rem; }
+.bl-dest > .bu-label:first-child { margin-top: 0; }
+.bl-drow { padding: 0.35rem 0 0.2rem; }
+.bl-drow-top { display: flex; align-items: baseline; }
+.bl-dname { flex: 1 1 auto; min-width: 0; font-size: 1.1rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+.bl-dval { flex: 0 0 auto; margin-left: 0.6rem; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); white-space: nowrap; }
+.bl-dval.is-neg { color: var(--bu-neg); }
+.bl-dtrack {
+  position: relative;
+  height: 0.45rem;
+  margin-top: 0.3rem;
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.bl-dfill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bu-ok);
+  -webkit-transform-origin: 0 50%;
+  transform-origin: 0 50%;
+  -webkit-transform: scaleX(0);
+  transform: scaleX(0);
+}
+.bl-dfill.is-neg { background: var(--bu-neg); }
+.bl-dextra { color: var(--bu-ok); }
+
 .bl-pace .bu-hero.is-panel .bu-hero-num { font-size: 2.8rem; }
 .bl-pmove { color: var(--text); }
 
 /* ---------- full screen: two columns, bigger ---------- */
 
+/* The right column (Put it somewhere, Pace) stays in view while the left
+   one scrolls down to the merchants: the panel body scrolls as one. */
+.bl-pwrap.is-full .bu-pcol + .bu-pcol { position: -webkit-sticky; position: sticky; top: 0; }
 .bl-panel.is-full .bl-head { font-size: 1.5rem; }
 .bl-panel.is-full .bl-big { font-size: 4.2rem; }
 .bl-panel.is-full .bl-unit { font-size: 1.5rem; }
@@ -167,5 +215,12 @@
 .bl-panel.is-full .bl-btn { font-size: 1.3rem; }
 .bl-panel.is-full .bl-outcome { font-size: 2rem; }
 .bl-panel.is-full .bl-pace .bu-hero.is-panel .bu-hero-num { font-size: 3.6rem; }
+.bl-panel.is-full .bl-clabel,
+.bl-panel.is-full .bl-dname { font-size: 1.3rem; }
+.bl-panel.is-full .bl-dval { font-size: 1.25rem; }
+.bl-panel.is-full .bl-msub,
+.bl-panel.is-full .bl-mnote { font-size: 1.2rem; }
+.bl-panel.is-full .bl-ctrack,
+.bl-panel.is-full .bl-dtrack { height: 0.6rem; }
 
 .css-end { top: 0; }

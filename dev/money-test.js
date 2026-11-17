@@ -34,8 +34,12 @@
  *   the mode pills, Save this cap and Back to calculated; a saved cap
  *   survives a reload and is dropped at a new card day; holding Right for
  *   3 s with the key repeat below lands on the value the math module's
- *   holdStep gives; Guest mode hides it all and clears the session;
- *   app/ files touched here are plain ES5.
+ *   holdStep gives; the merchants' cut rows at panel and full screen (label
+ *   above the track, a press changes text and one transform per changed bar,
+ *   a cut stops at its p_i and the five together at combined, locked at a
+ *   $0 cap); Put it somewhere filling card day first, then savings, AWWS and
+ *   buffer (example B); Guest mode hides it all and clears the session and
+ *   its cuts; app/ files touched here are plain ES5.
  * Needs Playwright and port 8095 free. Prints one line per check and
  * "N passed, M failed"; exits 1 on a failure. Nothing reaches the internet.
  */
@@ -681,6 +685,212 @@ async function main() {
         await H.openPanel(page, 'budget-lab');
         const back = await labPanel(page);
         assert(/\$62\s*a day/.test(back) && /saved \$61/.test(back), 'after Guest mode: ' + back);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    /* ---------- Budget lab: merchants (row 6) and Put it somewhere (row 7) ---------- */
+    // Presses with no pause: the page clock stands still, so each is $1 (one hold, held 0 ms).
+    const press = async (page, k, n) => { for (let i = 0; i < (n || 1); i++) await page.keyboard.press(k); };
+    // Moves focus with Up or Down until the row with that data-key has it.
+    const goTo = async (page, want, dir) => {
+      for (let i = 0; i < 16 && (await focusedKey(page)) !== want; i++) await press(page, dir || 'ArrowDown');
+      assert((await focusedKey(page)) === want, 'could not reach ' + want + ', at ' + await focusedKey(page));
+    };
+    const cutLabels = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-clabel'), (n) => n.textContent));
+    const destVals = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-drow'), (n) =>
+      n.querySelector('.bl-dname').textContent + ': ' + n.querySelector('.bl-dval').textContent));
+    const fills = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-fill, #panel .bl-dfill'), (n) => n.style.transform));
+    // The sample: room 186.40 over 3 days of a 16 day month. p_i is
+    // round(mtd / 16 * 3): 35, 24, 17, 11, 10; combined 498.57 gives 93.48.
+    const P_I = [35, 24, 17, 11, 10];
+
+    await check('Budget lab merchants: five slider rows, label above the track; a press changes text and one transform per changed bar; p_i stops it', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        let labels = await cutLabels(page);
+        assert(labels.length === 5 && labels[0] === 'Hilltop Grocer · $184 so far · cut $0' && labels[4] === 'Riverside Fuel · $55 so far · cut $0', 'rows: ' + labels.join(' | '));
+        const above = await page.evaluate(() => Array.prototype.every.call(document.querySelectorAll('#panel .bl-cut'), (row) =>
+          row.querySelector('.bl-clabel').getBoundingClientRect().bottom <= row.querySelector('.bl-ctrack').getBoundingClientRect().top + 0.5));
+        assert(above, 'a label is not on its own line above its track');
+        assert(/MERCHANTS|Merchants/.test(await labPanel(page)) && /Cut what you would skip before Nov 19/.test(await labPanel(page)), 'merchants head: ' + await labPanel(page));
+        assert(/PUT IT SOMEWHERE|Put it somewhere/.test(await labPanel(page)), 'no Put it somewhere');
+        let dest = await destVals(page);
+        assert(dest.join(' | ') === 'Card day: Covered | Savings: $0 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'destinations: ' + dest.join(' | '));
+        assert(!(await has(page, '#panel .bl-dest.f, #panel .bl-dest .f')), 'Put it somewhere takes focus');
+        // The panel is longer than its box at this size: it scrolls to the focused row.
+        await goTo(page, 'cut-0');
+        const view = await page.evaluate(() => {
+          const body = document.querySelector('#panel .panel-body');
+          const b = body.getBoundingClientRect();
+          const r = document.querySelector('#panel [data-key="cut-0"]').getBoundingClientRect();
+          return { scrolls: body.scrollHeight > body.clientHeight, top: body.scrollTop, inside: r.top >= b.top - 1 && r.bottom <= b.bottom + 1 };
+        });
+        assert(view.inside && (!view.scrolls || view.top > 0), 'the merchants are out of view: ' + JSON.stringify(view));
+        const before = await fills(page);
+        await page.evaluate(() => {
+          window.__labRoot = document.querySelector('#panel .bl-panel');
+          window.__cutText = document.querySelector('#panel .bl-clabel').firstChild;
+        });
+        await press(page, 'ArrowRight', 3);
+        const after = await page.evaluate(() => ({
+          same: window.__labRoot === document.querySelector('#panel .bl-panel') && window.__cutText === document.querySelector('#panel .bl-clabel').firstChild,
+          trans: Array.prototype.map.call(document.querySelectorAll('#panel .bl-cfill, #panel .bl-dfill'), (n) => getComputedStyle(n).transitionDuration)
+        }));
+        assert(after.same, 'the panel was drawn again for a key press');
+        assert(after.trans.every((t) => /^0s(, 0s)*$/.test(t)), 'a bar has a transition: ' + after.trans.join());
+        assert((await focusedKey(page)) === 'cut-0', 'Right moved focus away');
+        const s = await session(page);
+        assert(JSON.stringify(s.cuts) === '{"Hilltop Grocer":3}', 'session: ' + JSON.stringify(s));
+        labels = await cutLabels(page);
+        assert(labels[0] === 'Hilltop Grocer · $184 so far · cut $3', 'row: ' + labels[0]);
+        const now = await fills(page);
+        const changed = now.map((t, i) => t !== before[i] ? i : -1).filter((i) => i >= 0);
+        // Index 0 is the cap's fill, 1 to 5 the cuts, 6 card day, 7 savings.
+        assert(changed.join() === '1,7', 'changed bars: ' + changed.join() + ' ' + JSON.stringify(now));
+        assert(now[1] === 'scaleX(' + Math.round(3 / 35 * 10000) / 10000 + ')', 'cut fill: ' + now[1]);
+        dest = await destVals(page);
+        assert(dest[1] === 'Savings: $3 of $500', 'destinations: ' + dest.join(' | '));
+        assert(/Keep \$3 on Nov 19/.test(await labPanel(page)), 'outcome: ' + await labPanel(page));
+        // Held on and on: the cut stops at the merchant's projection, $35.
+        await press(page, 'ArrowRight', 45);
+        assert((await session(page)).cuts['Hilltop Grocer'] === P_I[0], 'at the top: ' + JSON.stringify(await session(page)));
+        assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'row: ' + (await cutLabels(page))[0]);
+        assert((await fills(page))[1] === 'scaleX(1)', 'full fill: ' + (await fills(page))[1]);
+        // Up and Down go through the rows in order; Up from the first is Save this cap.
+        await press(page, 'ArrowDown');
+        assert((await focusedKey(page)) === 'cut-1', 'Down: ' + await focusedKey(page));
+        await press(page, 'ArrowUp', 2);
+        assert((await focusedKey(page)) === 'save', 'Up from the first row: ' + await focusedKey(page));
+        // Full screen: the rows on the left, Put it somewhere on the right; the cut is still there.
+        await H.fullScreen(page);
+        const cols = await page.evaluate(() => {
+          const c = document.querySelectorAll('#panel .bl-pwrap > .bu-pcol');
+          return { n: c.length, cuts: c[0] && c[0].querySelectorAll('.bl-cut').length, dest: c[1] && !!c[1].querySelector('.bl-dest'), pace: c[1] && !!c[1].querySelector('.bl-pace') };
+        });
+        assert(cols.n === 2 && cols.cuts === 5 && cols.dest && cols.pace, 'full screen: ' + JSON.stringify(cols));
+        assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'full row: ' + (await cutLabels(page))[0]);
+        assert((await destVals(page))[1] === 'Savings: $35 of $500', 'full destinations: ' + (await destVals(page)).join(' | '));
+        await goTo(page, 'cut-0');
+        await press(page, 'ArrowLeft');
+        assert((await session(page)).cuts['Hilltop Grocer'] === 34, 'Left at full screen: ' + JSON.stringify(await session(page)));
+        const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+        assert(!p.length, 'full screen: ' + p.slice(0, 5).join('; '));
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Budget lab merchants: together the cuts stop at combined ($93.48 over 3 days), and lock at a $0 cap', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await goTo(page, 'cut-0');
+        for (let i = 0; i < 4; i++) {
+          await press(page, 'ArrowRight', P_I[i] + 5);
+          await press(page, 'ArrowDown');
+        }
+        assert((await focusedKey(page)) === 'cut-4', 'at ' + await focusedKey(page));
+        // 35 + 24 + 17 + 11 = 87 leaves $6 of the combined $93.48 for the fuel's $10.
+        await press(page, 'ArrowRight', 12);
+        const s = await session(page);
+        assert(JSON.stringify(s.cuts) === JSON.stringify({ 'Hilltop Grocer': 35, 'Quick Bites Delivery': 24, 'Corner Bakery Stand': 17, 'Maple Street Books': 11, 'Riverside Fuel': 6 }),
+          'cuts: ' + JSON.stringify(s.cuts));
+        const r = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result());
+        assert(r.cuts === 93 && r.cuts <= r.cutsLimit && r.cutsLimit === 93.48, 'together: ' + r.cuts + ' of ' + r.cutsLimit);
+        assert(/The five together cut at most \$93/.test(await labPanel(page)), 'note: ' + await labPanel(page));
+        assert((await destVals(page))[1] === 'Savings: $93 of $500', 'destinations: ' + (await destVals(page)).join(' | '));
+        // The cap down to $0: nothing left to cut from; the rows lock and dim.
+        await goTo(page, 'cap', 'ArrowUp');
+        await press(page, 'ArrowLeft', 70);
+        assert((await text(page, '#panel .bl-big')) === '$0', 'cap: ' + await text(page, '#panel .bl-big'));
+        const locked = await page.evaluate(() => ({
+          rows: document.querySelectorAll('#panel .bl-cut.is-locked').length,
+          r: window.HUB_BUDGET_LAB_TEST.result(),
+          fills: Array.prototype.map.call(document.querySelectorAll('#panel .bl-cfill'), (n) => n.style.transform)
+        }));
+        assert(locked.rows === 5 && locked.r.locked && locked.r.cuts === 0 && locked.r.merchants.every((m) => m.cut === 0 && m.max === 0), 'locked: ' + JSON.stringify(locked).slice(0, 300));
+        assert(locked.fills.every((f) => f === 'scaleX(0)'), 'locked fills: ' + locked.fills.join());
+        assert(/Nothing left to cut from/.test(await labPanel(page)), 'no locked note: ' + await labPanel(page));
+        assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $0', 'locked row: ' + (await cutLabels(page))[0]);
+        await goTo(page, 'cut-0');
+        await press(page, 'ArrowRight', 3);
+        const kept = await session(page);
+        assert(kept.cuts['Hilltop Grocer'] === 35 && kept.cap === 0, 'a locked press changed the session: ' + JSON.stringify(kept));
+        assert((await focusedKey(page)) === 'cut-0', 'a locked press moved focus');
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Budget lab Put it somewhere: example B fills card day first, then savings, AWWS, buffer', async () => {
+      // Example B (made-up figures): room 1,334 over 14 days of a 17 day month; Amazon 495 so far projects to 408, DoorDash 120 to 99.
+      const b = H.budgetSample.snapshot({ sentAt: FRESH });
+      Object.assign(b.lab, { room: 1334, spentToday: 0, daysLeft: 14, monthDay: 17, cardDate: '2026-11-30' });
+      b.merchants.combined = 640;
+      b.merchants.items = [{ label: 'Amazon', mtd: 495, count: 11 }, { label: 'DoorDash', mtd: 120, count: 4 }, { label: 'Corner Bakery Stand', mtd: 40, count: 8 }];
+      await env.setBudget(b);
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert(/\$95\s*a day/.test(await labPanel(page)), 'start: ' + await labPanel(page));
+        assert((await cutLabels(page))[0] === 'Amazon · $495 so far · cut $0', 'row: ' + (await cutLabels(page))[0]);
+        // Cap $80: K = 1,334 - 1,120 = 214, all of it to savings.
+        await press(page, 'ArrowLeft', 16);
+        assert((await session(page)).cap === 80, 'cap: ' + JSON.stringify(await session(page)));
+        let d = await destVals(page);
+        assert(d.join(' | ') === 'Card day: Covered | Savings: $214 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'cap $80: ' + d.join(' | '));
+        // Cut Amazon $40 and DoorDash $15: K = 269.
+        await goTo(page, 'cut-0');
+        await press(page, 'ArrowRight', 40);
+        await press(page, 'ArrowDown');
+        await press(page, 'ArrowRight', 15);
+        assert((await cutLabels(page))[0] === 'Amazon · $495 so far · cut $40', 'row: ' + (await cutLabels(page))[0]);
+        d = await destVals(page);
+        assert(d[1] === 'Savings: $269 of $500' && d[0] === 'Card day: Covered', 'with cuts: ' + d.join(' | '));
+        assert(/Keep \$269 on Nov 30/.test(await labPanel(page)), 'outcome: ' + await labPanel(page));
+        // Cap $100 is short 66 before any cut; the 55 of cuts go to card day first, 11 still short, nothing to savings.
+        await goTo(page, 'cap', 'ArrowUp');
+        await press(page, 'ArrowRight', 20);
+        d = await destVals(page);
+        assert(d.join(' | ') === 'Card day: $55 of $66 · short $11 | Savings: $0 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'cap $100: ' + d.join(' | '));
+        assert(await has(page, '#panel .bl-dfill.is-neg') && await has(page, '#panel .bl-dval.is-neg'), 'card day short is not coral');
+        // Cap $0: everything kept, the split filled in order and the rest is extra.
+        await press(page, 'ArrowLeft', 110);
+        d = await destVals(page);
+        assert(d.join(' | ') === 'Card day: Covered | Savings: $500 of $500 | AWWS: $150 of $150 | Buffer: $350 of $350', 'cap $0: ' + d.join(' | '));
+        assert(/\+\$334 more to savings/.test(await labPanel(page)), 'extra: ' + await labPanel(page));
+        const f = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-dfill'), (n) => n.style.transform));
+        assert(f.join() === 'scaleX(1),scaleX(1),scaleX(1),scaleX(1)', 'fills: ' + f.join());
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Guest mode: Budget lab hides the merchants and Put it somewhere, and clears the session cuts', async () => {
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await goTo(page, 'cut-1');
+        await press(page, 'ArrowRight', 5);
+        assert((await session(page)).cuts['Quick Bites Delivery'] === 5, 'session: ' + JSON.stringify(await session(page)));
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await page.evaluate(() => window.HUB_GUEST.set(true));
+        await H.sleep(300);
+        const s = await session(page);
+        assert(!Object.keys(s.cuts).length && s.cap === null, 'cuts kept: ' + JSON.stringify(s));
+        await H.openPanel(page, 'budget-lab');
+        const p = await labPanel(page);
+        assert(/Hidden for guests/.test(p) && !/\$|Quick Bites|Hilltop|Savings|AWWS/.test(p), 'panel: ' + p);
+        assert(!(await has(page, '#panel .bl-cut, #panel .bl-dest')), 'rows drawn for a guest');
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await page.evaluate(() => window.HUB_GUEST.set(false));
+        await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back');
+        await H.openPanel(page, 'budget-lab');
+        assert((await cutLabels(page))[1] === 'Quick Bites Delivery · $127 so far · cut $0', 'a cut came back: ' + (await cutLabels(page))[1]);
         noErrors(page);
       } finally { await page.ctx.close(); }
     });

@@ -20,7 +20,9 @@
  *   - the banner in Spanish ("Cargo nuevo: <label>");
  *   - Budget lab (budget-lab) in Spanish: the tile, every key with its
  *     Spanish, and the panel (the cap, the pills, the buttons, the pace) at
- *     25% longer with nothing clipped and accents whole;
+ *     25% longer with nothing clipped and accents whole; the merchants' cut
+ *     rows (label on its own line over the track) and "A dónde va" at panel
+ *     and full screen, plain and 25% longer, line height 1.25 or more;
  *   - a language change (HUB_I18N.setLang) redraws the tiles, their titles
  *     and an open panel, and back to English;
  *   - app/i18n.js is plain ES5 and every money key has a Spanish text.
@@ -328,6 +330,51 @@ async function main() {
             await H.key(page, 'Escape');
             await H.until(() => page.evaluate(() => !window.HUB_TEST.open()), 5000, id + ' did not close');
             await H.idle(page);
+          }
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      });
+
+      // Budget lab rows 6 and 7: the merchants' cut sliders and Put it
+      // somewhere, scrolled to at panel size and at full screen.
+      await check(name + ': Budget lab merchants and "A dónde va" at panel and full, label over track, accents whole', async () => {
+        const page = await open(env, { layout: ROW, lang: 'es', long: long });
+        const look = () => page.evaluate(() => {
+          const q = (s) => Array.prototype.slice.call(document.querySelectorAll('#panel ' + s));
+          const lh = (n) => { const cs = getComputedStyle(n); return parseFloat(cs.lineHeight) / parseFloat(cs.fontSize); };
+          const out = [];
+          q('.bl-clabel, .bl-msub, .bl-mnote, .bl-dname, .bl-dval, .bl-dextra').forEach((n) => {
+            if (n.offsetHeight && lh(n) < 1.245) out.push('line height ' + lh(n).toFixed(2) + ': ' + n.textContent.slice(0, 30));
+          });
+          q('.bl-cut').forEach((row) => {
+            const a = row.querySelector('.bl-clabel').getBoundingClientRect();
+            const t = row.querySelector('.bl-ctrack').getBoundingClientRect();
+            const r = row.getBoundingClientRect();
+            if (a.bottom > t.top + 0.5) out.push('label over its track: ' + row.textContent.slice(0, 30));
+            if (a.right > r.right + 1) out.push('label out of its row: ' + row.textContent.slice(0, 30));
+          });
+          q('.bl-drow').forEach((row) => {
+            const r = row.getBoundingClientRect();
+            const v = row.querySelector('.bl-dval').getBoundingClientRect();
+            const nm = row.querySelector('.bl-dname').getBoundingClientRect();
+            if (v.right > r.right + 1 || nm.right > v.left + 1) out.push('destination does not fit: ' + row.textContent.slice(0, 40));
+          });
+          return { bad: out, labels: q('.bl-clabel').map((n) => n.textContent), dest: q('.bl-dname').map((n) => n.textContent), head: q('.bl-dest .bu-label').map((n) => n.textContent) };
+        });
+        try {
+          await H.openPanel(page, 'budget-lab');
+          for (let i = 0; i < 3; i++) await H.key(page, 'ArrowDown');
+          assert(await page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f && f.getAttribute('data-key'); }) === 'cut-0', 'not on the first merchant');
+          await H.key(page, 'ArrowRight', 2);
+          for (const mode of ['panel', 'full']) {
+            if (mode === 'full') await H.fullScreen(page);
+            const l = await look();
+            assert(!l.bad.length, mode + ': ' + l.bad.slice(0, 4).join('; '));
+            assert(l.labels.length === 5 && /^¡?Hilltop Grocer · \$184 /.test(l.labels[0]) && /recortas/.test(l.labels[0]) && /\$2!?$/.test(l.labels[0]), mode + ' row: ' + l.labels[0]);
+            assert(/Pago/.test(l.dest[0]) && /tarjeta/.test(l.dest[0]) && /Ahorro/.test(l.dest[1]) && /AWWS/.test(l.dest[2]) && /Colchón/.test(l.dest[3]), mode + ' destinations: ' + l.dest.join(' | '));
+            assert(/dónde/.test(l.head[0]), mode + ' head: ' + l.head[0]);
+            const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+            assert(!p.length, mode + ': ' + p.slice(0, 5).join('; '));
           }
           noErrors(page);
         } finally { await page.ctx.close(); }

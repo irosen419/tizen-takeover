@@ -342,6 +342,17 @@
     // cap at 0 there is nothing left to cut from: the sliders lock at 0.
     var locked = c <= EPS;
     var F = locked ? 0 : Math.min(Fwant, c * D);
+
+    // How far each cut may go from here: its own p_i, and what the five
+    // together have left under combined (and under the cap's c * D, so a cut
+    // never asks for spending below zero), in whole dollars. A key press on
+    // a cut stops there; locked, nothing moves.
+    var cutsMax = combinedLimit === null ? c * D : Math.min(combinedLimit, c * D);
+    for (i = 0; i < rows.length; i++) {
+      var others = toCents(asked - rows[i].cut);
+      var left = Math.floor(toCents(cutsMax - others) + EPS);
+      rows[i].max = locked ? 0 : Math.max(0, Math.min(rows[i].projected, left));
+    }
     var ce = c - F / D;
     var P = c * D - F;
     var K = R - P;
@@ -370,6 +381,7 @@
     res.cutsAsked = toCents(asked);
     res.cuts = toCents(F);
     res.cutsLimited = toCents(F) < toCents(asked);
+    res.cutsLimit = combinedLimit === null ? null : toCents(combinedLimit);
     res.effectiveCap = toCents(ce);
     res.planned = toCents(P);
     res.keep = toCents(K);
@@ -379,7 +391,7 @@
     res.monthly = { calculated: toCents(Mc0), saved: Ms === null ? null : toCents(Ms), session: toCents(Mc) };
     res.gapBase = saved ? 'saved' : 'calculated';
     res.gap = toCents((saved ? Ms : Mc) - Mc0);
-    res.destinations = destinations(K, L.split);
+    res.destinations = destinations(K, L.split, c * D - R);
     res.roomCap = roomCapNote(input.room, res.c0);
     res.move = suggestedMove(res, rows, D, R, c, F, combinedLimit);
     return res;
@@ -393,15 +405,23 @@
       count: m.count,
       runCost: m.count > 0 ? toCents(m.mtd / m.count) : null,
       projected: p,
-      cut: 0
+      cut: 0,
+      max: p
     };
   }
 
   // Where K goes, in one order: a card day shortfall first (nothing is free),
   // then the split's buckets in their order, then anything past them as extra.
-  function destinations(K, split) {
+  // need is what card day is short at the session cap before any cut
+  // (c * D - R, when above 0): card.planned is that, card.funded the part
+  // the cuts cover, so a freed dollar fills card day before savings. With
+  // K short, card day still lacks short = planned - funded.
+  function destinations(K, split, need) {
     var Kc = toCents(K);
     var left = Kc > 0 ? Kc : 0;
+    var cardPlanned = isNum(need) && need > 0 ? toCents(need) : 0;
+    var cardShort = Kc < 0 ? toCents(-Kc) : 0;
+    var card = { planned: cardPlanned, funded: toCents(Math.max(0, cardPlanned - cardShort)) };
     var buckets = [];
     for (var i = 0; i < split.items.length; i++) {
       var s = split.items[i];
@@ -409,7 +429,7 @@
       left = toCents(left - funded);
       buckets.push({ key: s.key, planned: toCents(s.amount), funded: toCents(funded) });
     }
-    return { short: Kc < 0 ? toCents(-Kc) : 0, buckets: buckets, extra: toCents(left), splitSource: split.source };
+    return { short: cardShort, card: card, buckets: buckets, extra: toCents(left), splitSource: split.source };
   }
 
   // The Daily room tile's cap when it is not the lab's calculated one (a
@@ -490,7 +510,8 @@
     for (var i = 0; i < result.merchants.length; i++) {
       var r = result.merchants[i];
       if (r.label !== label) continue;
-      var v = step(isNum(s.cuts[label]) ? Math.min(s.cuts[label], r.projected) : 0, dir, size || CAP_TICK, 0, r.projected);
+      var hi = isNum(r.max) ? r.max : r.projected;
+      var v = step(isNum(s.cuts[label]) ? Math.min(s.cuts[label], hi) : 0, dir, size || CAP_TICK, 0, hi);
       if (v > 0) s.cuts[label] = v; else delete s.cuts[label];
     }
     return s;

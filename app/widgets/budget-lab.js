@@ -1,8 +1,8 @@
 /*
  * Budget lab: the pace streak on the tile, and a daily cap to try out in the
- * panel (the plan's rows 1 to 5 and 8: the head line, the cap slider, the
- * mode pills, the outcome, Save this cap and Back to calculated, and the
- * pace). Merchants, "Put it somewhere" and the runway chart come later.
+ * panel (the plan's rows 1 to 8: the head line, the cap slider, the mode
+ * pills, the outcome, Save this cap and Back to calculated, the merchants'
+ * cut sliders, Put it somewhere, and the pace). The runway chart comes later.
  *
  * Tile: the streak big ("8 days under", green; "Over yesterday", coral), then
  * "Yesterday $71 of $95", then the one suggested move. A tall tile adds the
@@ -14,7 +14,15 @@
  * keys. The data, Guest mode and widgets.budget.show come from budget.js
  * through window.HUB_BUDGET, so they stay in one place.
  *
- * Session: the cap, the mode and the keep goal, in this file's memory only,
+ * Merchants (row 6): up to five slider rows, the label on its own line above
+ * the track ("Amazon · $495 so far · cut $40"), $1 a press with the same hold
+ * to speed up as the cap. A cut stops at the merchant's projection p_i and at
+ * what the five together have left (combined); with the cap at $0 they lock.
+ * Put it somewhere (row 7, not focusable): card day, then the split's buckets
+ * (savings, AWWS, buffer, from lab.split), each funded of planned, filled in
+ * the math module's order: a freed dollar covers card day first.
+ *
+ * Session: the cap, the mode, the keep goal and the cuts, in this file's memory only,
  * until the hub reloads. Saved: one localStorage key, homeHub.budget.capPref.v1
  * = { v: 1, cardDate, keep, at }, a keep amount re-averaged each morning and
  * dropped when card day moves on. Guest mode hides it all and clears the
@@ -108,6 +116,24 @@
     reset: 'Back to calculated',
     toastSaved: 'Cap saved: {n} a day (re-averaged each morning)',
     paceHead: 'Pace',
+    // Row 6: the merchants' cut sliders
+    merchantsHead: 'Merchants',
+    merchantsSub: 'Cut what you would skip before {d}',
+    merchantsSubShort: 'Cut what you would skip',
+    cutRow: '{merchant} · {mtd} so far · cut {cut}',
+    cutRowShort: '{merchant} · cut {cut}',
+    soFar: '{merchant} · {mtd} so far',
+    cutsLocked: 'Nothing left to cut from: the cap is $0 a day',
+    cutsLockedShort: 'Nothing left to cut from',
+    cutsTogether: 'The five together cut at most {n} (a shared order counts once)',
+    cutsTogetherShort: 'The five together: at most {n}',
+    // Row 7: Put it somewhere
+    destHead: 'Put it somewhere',
+    dest: { card: 'Card day', savings: 'Savings', awws: 'AWWS', buffer: 'Buffer', extra: 'Extra to savings' },
+    destOf: '{funded} of {planned}',
+    destCovered: 'Covered',
+    destShortBy: '{funded} of {planned} · short {short}',
+    destExtra: '+{n} more to savings',
     noLab: 'Card day needs a payday in the budget app',
     cardToday: 'Card day is today: {state}'
   };
@@ -565,6 +591,154 @@
       var mf = moveForms(r);
       setText(refs.move, mf.length ? mf[0] : '');
     }
+    paintCuts(refs, r);
+    paintDest(refs, r);
+  }
+
+  // One transform, written only when it changed.
+  function setScale(node, f) {
+    var tf = 'scaleX(' + (Math.round(f * 10000) / 10000) + ')';
+    if (node.tf === tf) return;
+    node.tf = tf;
+    node.style.webkitTransform = tf;
+    node.style.transform = tf;
+  }
+
+  function setShown(node, on) {
+    var d = on ? '' : 'none';
+    if (node && node.style.display !== d) node.style.display = d;
+  }
+
+  // Row 6: each cut's words and its fill (cut of p_i), the locked look and
+  // the one note under the rows.
+  function cutForms(m) {
+    var map = { merchant: m.label, mtd: near(m.mtd), cut: down(m.cut) };
+    return [fill(STRINGS.cutRow, map), fill(STRINGS.cutRowShort, map)];
+  }
+
+  function paintCuts(refs, r) {
+    if (!refs.cuts) return;
+    for (var i = 0; i < refs.cuts.length; i++) {
+      var c = refs.cuts[i];
+      var m = r.merchants[i];
+      if (!m || m.label !== c.label) continue;
+      setText(c.text, cutForms(m)[c.form]);
+      setScale(c.fill, m.projected > 0 ? frac(m.cut, { lo: 0, hi: m.projected }) : 0);
+      if (c.locked !== r.locked) {
+        c.locked = r.locked;
+        if (r.locked) c.node.classList.add('is-locked'); else c.node.classList.remove('is-locked');
+      }
+    }
+    var note = '';
+    var forms;
+    if (r.locked) {
+      forms = [STRINGS.cutsLocked, STRINGS.cutsLockedShort];
+    } else if (r.cutsLimit !== null && r.merchants.some(function (m) { return m.max < m.projected; })) {
+      forms = [fill(STRINGS.cutsTogether, { n: down(r.cutsLimit) }), fill(STRINGS.cutsTogetherShort, { n: down(r.cutsLimit) })];
+    } else {
+      forms = null;
+    }
+    if (forms) note = forms[refs.noteForm || 0];
+    setText(refs.cutNote, note);
+    setShown(refs.cutNote, !!note);
+    setTone(refs.cutNote, 'bl-mnote', r.locked ? 'is-neg' : '');
+  }
+
+  // Row 7: card day, then the split's buckets, funded of planned.
+  function destValue(row) {
+    if (row.card) {
+      if (!(row.planned > 0)) return STRINGS.destCovered;
+      var map = { funded: down(row.funded), planned: up(row.planned), short: up(row.short) };
+      return row.short > 0 ? fill(STRINGS.destShortBy, map) : fill(STRINGS.destOf, map);
+    }
+    return fill(STRINGS.destOf, { funded: down(row.funded), planned: near(row.planned) });
+  }
+
+  function destRows(r) {
+    var d = r.destinations;
+    var rows = [{ key: 'card', card: true, planned: d.card.planned, funded: d.card.funded, short: d.short }];
+    for (var i = 0; i < d.buckets.length; i++) rows.push(d.buckets[i]);
+    return rows;
+  }
+
+  function paintDest(refs, r) {
+    if (!refs.dest || !r.destinations) return;
+    var rows = destRows(r);
+    for (var i = 0; i < refs.dest.length && i < rows.length; i++) {
+      var b = refs.dest[i];
+      var row = rows[i];
+      setText(b.val, destValue(row));
+      var f = row.planned > 0 ? frac(row.funded, { lo: 0, hi: row.planned }) : (row.card ? 1 : 0);
+      setScale(b.fill, f);
+      var neg = row.card && row.short > 0;
+      setTone(b.fill, 'bl-dfill', neg ? 'is-neg' : '');
+      setTone(b.val, 'bl-dval', neg ? 'is-neg' : '');
+    }
+    var extra = MATH().wholeDown(r.destinations.extra);
+    setText(refs.destExtra, extra > 0 ? fill(STRINGS.destExtra, { n: cash(extra) }) : '');
+    setShown(refs.destExtra, extra > 0);
+  }
+
+  // Lines that wrap past two take their short form; picked once when the
+  // panel is drawn, so a key press never changes how many lines a row has.
+  function tooTall(node, lines) {
+    var cs = window.getComputedStyle(node);
+    var lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.35;
+    return node.offsetHeight > lh * lines + 1;
+  }
+
+  function fitPanelForms(refs, r) {
+    var again = false;
+    var i;
+    for (i = 0; refs.cuts && i < refs.cuts.length; i++) {
+      if (refs.cuts[i].form === 0 && tooTall(refs.cuts[i].text, 2)) { refs.cuts[i].form = 1; again = true; }
+    }
+    if (refs.cutNote && refs.cutNote.textContent && tooTall(refs.cutNote, 2)) { refs.noteForm = 1; again = true; }
+    if (refs.msub && refs.msubForms && tooTall(refs.msub, 2)) setText(refs.msub, refs.msubForms[1]);
+    if (again) paint(refs, r);
+  }
+
+  function drawMerchants(col, r, refs) {
+    if (!r.merchants.length) return;
+    var head = el('div', 'bl-msec', col);
+    el('div', 'bu-label', head, STRINGS.merchantsHead);
+    if (!r.ok) {
+      // No equation (no payday, or card day is today): the five as they stand.
+      for (var j = 0; j < r.merchants.length; j++) {
+        var m = r.merchants[j];
+        el('div', 'bu-pline bl-mline', head, fill(STRINGS.soFar, { merchant: m.label, mtd: near(m.mtd) }));
+      }
+      return;
+    }
+    refs.msubForms = [fill(STRINGS.merchantsSub, { d: dateText(r.cardDate) }), STRINGS.merchantsSubShort];
+    refs.msub = el('div', 'bl-msub', head, refs.msubForms[0]);
+    refs.cuts = [];
+    for (var i = 0; i < r.merchants.length; i++) {
+      var row = section(col, 'cut-' + i, 'bl-cut');
+      var text = el('div', 'bl-clabel', row);
+      var track = el('div', 'bl-track bl-ctrack', row);
+      var f = el('span', 'bl-fill bl-cfill', track);
+      refs.cuts.push({ node: row, label: r.merchants[i].label, text: text, fill: f, form: 0 });
+    }
+    refs.cutNote = el('div', 'bl-mnote', col);
+    refs.noteForm = 0;
+  }
+
+  function drawDest(col, r, refs) {
+    if (!r.ok || !r.destinations) return;
+    var box = el('div', 'bl-dest', col);
+    el('div', 'bu-label', box, STRINGS.destHead);
+    var rows = destRows(r);
+    refs.dest = [];
+    for (var i = 0; i < rows.length; i++) {
+      var line = el('div', 'bl-drow', box);
+      var top = el('div', 'bl-drow-top', line);
+      el('span', 'bl-dname', top, STRINGS.dest[rows[i].key] || rows[i].key);
+      var val = el('span', 'bl-dval', top);
+      var track = el('div', 'bl-dtrack', line);
+      refs.dest.push({ val: val, fill: el('span', 'bl-dfill', track) });
+    }
+    refs.destExtra = el('div', 'bu-pline bl-dextra', box);
   }
 
   function section(parent, key, cls) {
@@ -645,39 +819,61 @@
       reset.setAttribute('data-key', 'reset');
     }
 
+    // 6. The merchants' cuts; 7. Put it somewhere (on the right at full screen).
+    drawMerchants(colA, r, refs);
+    drawDest(colB || colA, r, refs);
+
     // 8. The pace.
     var pace = drawPace(colB || colA, r, refs);
+    refs.pace = pace;
     if (!r.ok) pace.setAttribute('data-autofocus', '');
     paint(refs, r);
+    fitPanelForms(refs, r);
     fitWidth(refs.paceHero.numEl);
     LAB.refs = refs;
   }
 
   /* ---------- keys ---------- */
 
-  function nudge(dir) {
+  // slider: 'cap' (the cap or keep goal) or a merchant's label (its cut).
+  function nudge(dir, slider) {
     var m = MATH();
     var r = result();
     if (!m || !r || !r.ok) return;
     var t = now();
     var h = LAB.hold;
-    if (!h || h.dir !== dir || h.mode !== LAB.session.mode || t - h.last >= HOLD_GAP || t < h.last) {
-      h = LAB.hold = { dir: dir, mode: LAB.session.mode, start: t, last: t };
+    var mode = slider === 'cap' ? LAB.session.mode : 'cap';
+    if (!h || h.dir !== dir || h.mode !== mode || h.slider !== slider || t - h.last >= HOLD_GAP || t < h.last) {
+      h = LAB.hold = { dir: dir, mode: mode, slider: slider, start: t, last: t };
     }
     h.last = t;
-    var size = m.holdStep(t - h.start, LAB.session.mode);
+    var size = m.holdStep(t - h.start, mode);
     var d = dir === 'right' ? 1 : -1;
-    LAB.session = LAB.session.mode === 'keep' ? m.nudgeKeep(LAB.session, r, d, size) : m.nudgeCap(LAB.session, r, d, size);
+    if (slider !== 'cap') LAB.session = m.nudgeCut(LAB.session, r, slider, d, size);
+    else LAB.session = LAB.session.mode === 'keep' ? m.nudgeKeep(LAB.session, r, d, size) : m.nudgeCap(LAB.session, r, d, size);
     paint(LAB.refs, result());
+  }
+
+  function cutOf(refs, node) {
+    for (var i = 0; refs.cuts && i < refs.cuts.length; i++) if (refs.cuts[i].node === node) return i;
+    return -1;
   }
 
   // Up and Down between the rows go in their order (the buttons sit
   // left, so a move by position could skip them for the wider Pace row).
   function rowMove(dir, from, refs) {
     var key = from && from.getAttribute ? from.getAttribute('data-key') : null;
+    var cuts = refs.cuts || [];
+    var i = cutOf(refs, from);
     if (dir === 'down' && key === 'mode') return refs.save;
     if (dir === 'up' && (key === 'save' || key === 'reset')) return refs.modes;
-    if (dir === 'up' && key === 'pace' && refs.save && !refs.full) return refs.save;
+    if (dir === 'down' && (key === 'save' || key === 'reset') && cuts.length) return cuts[0].node;
+    if (i >= 0) {
+      if (dir === 'up') return i > 0 ? cuts[i - 1].node : refs.save;
+      if (i < cuts.length - 1) return cuts[i + 1].node;
+      return refs.full ? true : refs.pace;
+    }
+    if (dir === 'up' && key === 'pace' && !refs.full) return cuts.length ? cuts[cuts.length - 1].node : refs.save;
     return undefined;
   }
 
@@ -685,8 +881,11 @@
     var refs = LAB.refs;
     if (!refs) return undefined;
     if (dir === 'up' || dir === 'down') return rowMove(dir, from, refs);
-    if (!refs.slider || from !== refs.slider || (dir !== 'left' && dir !== 'right')) return undefined;
-    try { nudge(dir); } catch (e) { warn('slider: ' + (e && e.message)); }
+    if (dir !== 'left' && dir !== 'right') return undefined;
+    var i = cutOf(refs, from);
+    var slider = from === refs.slider && refs.slider ? 'cap' : i >= 0 ? refs.cuts[i].label : null;
+    if (!slider) return undefined;
+    try { nudge(dir, slider); } catch (e) { warn('slider: ' + (e && e.message)); }
     return true;
   }
 

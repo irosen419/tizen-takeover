@@ -136,6 +136,7 @@ check('B: cap $80 keeps $214, savings 214 of 500, monthly $1,120 vs $1,334, gap 
   assert.strictEqual(r.planned, 1120);
   same(r.destinations, {
     short: 0,
+    card: { planned: 0, funded: 0 },
     buckets: [{ key: 'savings', planned: 500, funded: 214 }, { key: 'awws', planned: 150, funded: 0 }, { key: 'buffer', planned: 350, funded: 0 }],
     extra: 0,
     splitSource: 'default'
@@ -314,6 +315,50 @@ check('cuts: they come out of the cap and cannot make spending negative', () => 
   assert.strictEqual(r.effectiveCap, 0);
   assert.strictEqual(r.planned, 0);
   assert.strictEqual(r.keep, 1334);
+});
+
+check('cuts: a key press stops at p_i, at what combined has left, and at c * D', () => {
+  // Amazon alone may go to its p_i of 408.
+  const r = run({ session: { mode: 'cap', cap: 80, keep: null, cuts: {} } });
+  assert.strictEqual(r.merchants[0].max, 408);
+  assert.strictEqual(L.nudgeCut({ mode: 'cap', cap: 80, cuts: { Amazon: 407 } }, r, 'Amazon', 1, 25).cuts.Amazon, 408);
+  // With Amazon and DoorDash at their p_i, the bakery has 527.06 - 507 left: $20, not its 33.
+  const s = { mode: 'cap', cap: 80, keep: null, cuts: { Amazon: 408, DoorDash: 99 } };
+  const r2 = run({ session: s });
+  assert.strictEqual(r2.cutsLimit, 527.06);
+  same(r2.merchants.map((m) => [m.projected, m.max]), [[408, 408], [99, 99], [33, 20]]);
+  let n = s;
+  for (let k = 0; k < 40; k++) n = L.nudgeCut(n, run({ session: n }), 'Corner Bakery Stand', 1);
+  assert.strictEqual(n.cuts['Corner Bakery Stand'], 20);
+  assert.strictEqual(run({ session: n }).cuts, 527, 'the five together stay under combined');
+  // A $10 cap over 14 days: the cuts together stop at $140.
+  const r3 = run({ session: { mode: 'cap', cap: 10, keep: null, cuts: { DoorDash: 99 } } });
+  assert.strictEqual(r3.merchants[0].max, 41);
+  // Locked at $0 a day: every max is 0 and a press does nothing.
+  const r4 = run({ session: { mode: 'cap', cap: 0, keep: null, cuts: { Amazon: 40 } } });
+  same(r4.merchants.map((m) => m.max), [0, 0, 0]);
+  same(L.nudgeCut({ mode: 'cap', cap: 0, cuts: { Amazon: 40 } }, r4, 'Amazon', 1).cuts, { Amazon: 40 }, 'locked: the session cut waits, unchanged');
+});
+
+check('destinations: card day first, from the cuts, then savings, AWWS, buffer (example B at a $100 cap)', () => {
+  // A $100 cap is short 66 before any cut (1,400 - 1,334).
+  const r = run({ session: { mode: 'cap', cap: 100, keep: null, cuts: {} } });
+  same(r.destinations.card, { planned: 66, funded: 0 });
+  assert.strictEqual(r.destinations.short, 66);
+  // Amazon $40 and DoorDash $15 free 55: all of it to card day, still short 11.
+  const r2 = run({ session: { mode: 'cap', cap: 100, keep: null, cuts: { Amazon: 40, DoorDash: 15 } } });
+  same(r2.destinations.card, { planned: 66, funded: 55 });
+  assert.strictEqual(r2.destinations.short, 11);
+  same(r2.destinations.buckets.map((b) => b.funded), [0, 0, 0]);
+  // Amazon $100: card day covered, 34 on to savings.
+  const r3 = run({ session: { mode: 'cap', cap: 100, keep: null, cuts: { Amazon: 100 } } });
+  same(r3.destinations.card, { planned: 66, funded: 66 });
+  same(r3.destinations.buckets.map((b) => b.funded), [34, 0, 0]);
+  // At $40 a day: 774 kept, savings full, AWWS full, buffer 124.
+  const r4 = run({ session: { mode: 'cap', cap: 40, keep: null, cuts: {} } });
+  same(r4.destinations.buckets.map((b) => b.funded), [500, 150, 124]);
+  // Example A: nothing to cut from, the whole 9.54 is still short.
+  same(run({ lab: lab(-9.54) }).destinations.card, { planned: 9.54, funded: 0 });
 });
 
 check('destinations: past the split is extra; a sent split wins, with fewer keys too', () => {

@@ -238,6 +238,28 @@
     'budgetLab.paceHead': 'Ritmo',
     'budgetLab.noLab': 'El pago de tarjeta necesita un día de pago en la app de presupuesto',
     'budgetLab.cardToday': 'Hoy es el pago de tarjeta: {state}',
+    // Row 6, the merchants' cut sliders, and row 7, Put it somewhere. Merchant
+    // names stay as sent; AWWS is a name and stays AWWS.
+    'budgetLab.merchantsHead': 'Comercios',
+    'budgetLab.merchantsSub': 'Recorta lo que te saltarías antes del {d}',
+    'budgetLab.merchantsSubShort': 'Recorta lo que te saltarías',
+    'budgetLab.cutRow': '{merchant} · {mtd} en lo que va de mes · recortas {cut}',
+    'budgetLab.cutRowShort': '{merchant} · recortas {cut}',
+    'budgetLab.soFar': '{merchant} · {mtd} en lo que va de mes',
+    'budgetLab.cutsLocked': 'No queda nada que recortar: el tope está en $0 al día',
+    'budgetLab.cutsLockedShort': 'No queda nada que recortar',
+    'budgetLab.cutsTogether': 'Entre los cinco recortas como mucho {n} (un pedido compartido cuenta una vez)',
+    'budgetLab.cutsTogetherShort': 'Entre los cinco: como mucho {n}',
+    'budgetLab.destHead': 'A dónde va',
+    'budgetLab.dest.card': 'Pago de tarjeta',
+    'budgetLab.dest.savings': 'Ahorro',
+    'budgetLab.dest.awws': 'AWWS',
+    'budgetLab.dest.buffer': 'Colchón',
+    'budgetLab.dest.extra': 'Extra al ahorro',
+    'budgetLab.destOf': '{funded} de {planned}',
+    'budgetLab.destCovered': 'Cubierto',
+    'budgetLab.destShortBy': '{funded} de {planned} · faltan {short}',
+    'budgetLab.destExtra': '+{n} más al ahorro',
 
     /* ---- Earned vs spent tile (awws-money in app/widgets/awws.js) ----
      * Key 'awws.<path in STRINGS>'; the English is STRINGS at that path in
