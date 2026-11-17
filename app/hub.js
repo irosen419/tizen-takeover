@@ -140,7 +140,6 @@
   var cfg = window.HUB_CONFIG || {};
   var ICONS = window.HUB_ICONS || {};
 
-  var stageEl = document.getElementById('stage');
   var gridEl = document.getElementById('grid');
   var scrimEl = document.getElementById('scrim');
   var ghostEl = document.getElementById('ghost');
