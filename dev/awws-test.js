@@ -13,7 +13,7 @@
  *   overdue in amber; partial data (calendar only, snapshot only, neither);
  *   an old Pi with no awws resource; a malformed snapshot; a repeated
  *   snapshot that doesn't redraw; the launcher, a view and Back; the owner
- *   filter with Left and Right; full screen; the layout switcher with five
+ *   filter with Left and Right; full screen; the layout switcher with seven
  *   layouts, to AWWS desk and back.
  *   Reach at every size in both languages with its three shapes of data
  *   (subscribers alone, traffic alone, both), its panel and full screen,
@@ -26,8 +26,10 @@
 
 const H = require('./awws-harness');
 
-const REAL = ['awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach'];
-const PLACEHOLDERS = ['awws-outreach', 'awws-pipeline', 'awws-money'];
+// awws-money (Earned vs spent) has its own checks in dev/money-test.js; it is
+// here too so every awws tile is tried together at every size.
+const REAL = ['awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-money'];
+const PLACEHOLDERS = ['awws-outreach', 'awws-pipeline'];
 const SIZES = [[1, 1], [2, 1], [3, 1], [6, 1], [12, 1], [2, 2], [3, 2], [6, 2], [3, 4], [6, 4], [9, 6]];
 const DESK = [
   { widget: 'awws-visits', x: 0, y: 0, w: 3, h: 2 }, { widget: 'awws-agenda', x: 3, y: 0, w: 6, h: 2 },
@@ -260,7 +262,7 @@ async function main() {
       await check(lang + ': full screen for each view fits', async () => {
         const page = await env.newPage({ layout: DESK, spanish: es });
         try {
-          for (const id of REAL.filter((x) => x !== 'awws-reach')) {
+          for (const id of REAL.filter((x) => x !== 'awws-reach' && x !== 'awws-money')) {
             await H.openPanel(page, id);
             await H.fullScreen(page);
             const p = await panelProblems(page);
@@ -532,7 +534,7 @@ async function main() {
     });
 
     /* ---------- the layout switcher ---------- */
-    await check('the switcher shows five layouts; to AWWS desk and back', async () => {
+    await check('the switcher shows seven layouts; to AWWS desk and back', async () => {
       const page = await env.newPage({});
       try {
         const start = await page.evaluate(() => document.querySelectorAll('.cell').length);
@@ -561,7 +563,7 @@ async function main() {
           return { items: items, over: b.scrollWidth > b.clientWidth + 1, width: window.innerWidth,
             active: (document.querySelector('.switcher-item.is-active') || {}).textContent };
         });
-        assert(bar.items.length === 5, 'layouts: ' + bar.items.map((i) => i.name).join(', '));
+        assert(bar.items.length === 7, 'layouts: ' + bar.items.map((i) => i.name).join(', '));
         assert(!bar.over, 'the bar overflows');
         for (const it of bar.items) assert(it.left >= 0 && it.right <= bar.width && !it.cut, 'pill cut: ' + it.name);
         const was = bar.active;

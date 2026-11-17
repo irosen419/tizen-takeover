@@ -1,0 +1,421 @@
+/* Personal budget tiles and the new-charge banner. Every class starts with bu-.
+
+   Same rules as style.css and awws.css: no grid, no flex gap, only opacity
+   and transform ever animate (the banner's fade). Every line that can be cut
+   has a line-height of 1.25 or more. Nothing under 0.85rem on a tile or 1rem
+   in a panel. */
+
+.bu-tile,
+.bu-panel,
+.bu-alert {
+  --bu-ok: #8ee59a;      /* covered, room at the cap, a clean goal */
+  --bu-under: #ffb36b;   /* amber: under the daily cap */
+  --bu-neg: #ff8a80;     /* coral: below zero, short, over */
+  --bu-pace: #7cc4ff;    /* a goal on pace */
+  --bu-hair: rgba(255, 255, 255, 0.12);
+}
+
+.bu-cut {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bu-sep { color: var(--text-3); }
+.bu-tile .is-ok, .bu-panel .is-ok { color: var(--bu-ok); }
+.bu-tile .is-under, .bu-panel .is-under { color: var(--bu-under); }
+.bu-tile .is-neg, .bu-panel .is-neg { color: var(--bu-neg); }
+
+/* ---------- tile ---------- */
+
+.bu-tile {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: 0.35rem;
+}
+/* Old data: the tile steps back; "as of" under the title says when. */
+.bu-tile.is-stale,
+.bu-pwrap.is-stale { opacity: 0.55; }
+
+.bu-hero {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  min-width: 0;
+}
+.bu-hero-num {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin-right: 0.6rem;
+  font-size: 4rem;
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.bu-hero-num.is-ok { color: var(--bu-ok); }
+.bu-hero-num.is-under { color: var(--bu-under); }
+.bu-hero-num.is-neg { color: var(--bu-neg); }
+.bu-hero.is-word .bu-hero-num { font-size: 2.6rem; letter-spacing: -0.01em; }
+.bu-hero-cap {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 1.1rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.tile-wn .bu-hero-num { font-size: 3.2rem; }
+.tile-wn .bu-hero.is-word .bu-hero-num { font-size: 2.1rem; }
+.tile-h3 .bu-hero-num { font-size: 4.6rem; }
+.tile-h3 .bu-hero.is-word .bu-hero-num { font-size: 3rem; }
+
+/* A thin bar: how much is left, or how far a goal is. */
+.bu-meter {
+  flex: 0 0 auto;
+  height: 0.5rem;
+  margin-top: 0.45rem;
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.bu-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0.25rem;
+  background: var(--text-2);
+}
+.bu-meter-fill.is-ok { background: var(--bu-ok); }
+.bu-meter-fill.is-under { background: var(--bu-under); }
+.bu-meter-fill.is-neg { background: var(--bu-neg); }
+.bu-meter.is-panel { height: 0.8rem; margin-top: 0.6rem; }
+
+.bu-line,
+.bu-when {
+  flex: 0 0 auto;
+  margin-top: 0.4rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.bu-when { margin-top: 0; }
+.bu-quiet {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.bu-note {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.bu-foot {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding-top: 0.45rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.bu-label {
+  flex: 0 0 auto;
+  margin-top: 0.7rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bu-sect {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.bu-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  margin-top: 0.25rem;
+}
+.bu-more {
+  flex: 0 0 auto;
+  padding-top: 0.25rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+
+/* Transfer rows: label, then the amount at the right. */
+.bu-trow {
+  display: flex;
+  align-items: baseline;
+  padding: 0.25rem 0;
+  border-bottom: 0.06rem solid var(--bu-hair);
+}
+.bu-trow-label { flex: 1 1 auto; min-width: 0; font-size: 1rem; line-height: 1.35; color: var(--text-2); }
+.bu-trow-value {
+  flex: 0 0 auto;
+  margin-left: 0.6rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* Goal rows: label and its text on one line, the bar under them. */
+.bu-glist { flex: 0 1 auto; }
+.bu-grow { padding: 0.3rem 0 0.4rem; }
+.bu-grow-top { display: flex; align-items: baseline; }
+.bu-grow-label { flex: 1 1 auto; min-width: 0; font-size: 1rem; line-height: 1.35; color: var(--text); }
+.bu-grow-text {
+  flex: 0 0 auto;
+  margin-left: 0.6rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.bu-grow-state { font-size: 0.85rem; line-height: 1.35; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bu-meter.is-goal { height: 0.4rem; margin-top: 0.25rem; }
+.bu-grow.is-g-clean .bu-meter-fill,
+.bu-grow.is-g-under .bu-meter-fill { background: var(--bu-ok); }
+.bu-grow.is-g-on-pace .bu-meter-fill { background: var(--bu-pace); }
+.bu-grow.is-g-over .bu-meter-fill { background: var(--bu-neg); }
+.bu-grow.is-g-over .bu-grow-text,
+.bu-grow.is-g-over .bu-grow-state { color: var(--bu-neg); }
+.bu-grow.is-g-clean .bu-grow-state,
+.bu-grow.is-g-under .bu-grow-state { color: var(--bu-ok); }
+.bu-grow.is-g-on-pace .bu-grow-state { color: var(--bu-pace); }
+/* A narrow tile: label over its text, so neither is crushed. */
+.bu-glist.is-narrow .bu-grow-top { display: block; }
+.bu-glist.is-narrow .bu-grow-label { display: block; }
+.bu-glist.is-narrow .bu-grow-text { display: block; margin-left: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- wide: two columns ---------- */
+
+.bu-split { flex: 1 1 auto; min-height: 0; display: flex; }
+.bu-split-a,
+.bu-split-b {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.bu-split-a { padding-right: 1.2rem; }
+.bu-split-b { padding-left: 1.2rem; border-left: 0.06rem solid var(--bu-hair); }
+.bu-split-b > .bu-sect:first-child > .bu-label { margin-top: 0.2rem; }
+
+/* ---------- strip: one line ---------- */
+
+.bu-tile.bu-strip {
+  flex-direction: row;
+  align-items: center;
+  padding-top: 0;
+}
+.bu-strip-line {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: var(--text-2);
+}
+.bu-strip-num,
+.bu-strip-word2 {
+  flex: 0 0 auto;
+  margin-right: 0.5rem;
+  font-size: 2.4rem;
+  font-weight: 300;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.bu-strip-word2 { font-size: 1.6rem; font-weight: 400; margin-right: 0.2rem; }
+.bu-strip-word,
+.bu-strip-rest,
+.bu-strip-count,
+.bu-strip-goal { flex: 0 0 auto; white-space: nowrap; }
+.bu-strip-rest { flex: 0 1 auto; min-width: 0; overflow: hidden; }
+.bu-strip-count { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--text); }
+.bu-strip-count.is-neg { color: var(--bu-neg); }
+.bu-strip-goal.is-g-over { color: var(--bu-neg); }
+.bu-meter.is-strip { flex: 0 0 5rem; margin: 0 0.4rem 0 0.8rem; }
+.bu-strip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  color: var(--text);
+}
+.bu-strip-text.is-quiet { color: var(--text-2); }
+.bu-hero.is-strip { flex: 0 1 auto; flex-wrap: nowrap; }
+.bu-hero.is-strip .bu-hero-num { font-size: 2.4rem; margin-right: 0.45rem; }
+.bu-hero.is-strip.is-word .bu-hero-num { font-size: 1.6rem; }
+.bu-hero.is-strip .bu-hero-cap { font-size: 1rem; }
+
+/* ---------- one column: only the figure ---------- */
+
+.bu-tile.bu-solo {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding-top: 0;
+}
+.bu-solo-num {
+  flex: 0 0 auto;
+  max-width: 100%;
+  font-size: 2.4rem;
+  font-weight: 300;
+  line-height: 1.25;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.bu-solo-cap {
+  flex: 0 0 auto;
+  max-width: 100%;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ---------- waiting and trouble ---------- */
+
+.bu-msg { position: relative; z-index: 1; padding-top: 0.2rem; }
+.bu-msg-head { font-size: 1.3rem; line-height: 1.3; color: var(--text); word-wrap: break-word; }
+.bu-msg-head.is-small { font-size: 1.05rem; }
+.bu-msg-line {
+  margin-top: 0.4rem;
+  max-width: 92%;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.bu-mark {
+  position: absolute;
+  right: -0.4rem;
+  bottom: -0.4rem;
+  width: 5rem;
+  height: 5rem;
+  opacity: 0.06;
+  color: #fff;
+}
+.bu-mark svg { display: block; width: 100%; height: 100%; }
+.bu-mark.is-solo { position: static; width: 2rem; height: 2rem; margin: auto; opacity: 0.45; }
+.bu-mark.is-panel { width: 10rem; height: 10rem; right: 0; bottom: 0; }
+
+/* ---------- panels ---------- */
+
+.bu-panel { position: relative; padding: 0.2rem 0 0.8rem; }
+.bu-pmsg { position: relative; z-index: 1; max-width: 34rem; padding-top: 0.6rem; }
+.bu-pmsg-head { font-size: 1.5rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+.bu-pmsg-line { margin-top: 0.7rem; font-size: 1rem; line-height: 1.45; color: var(--text-2); word-wrap: break-word; }
+.bu-panel.is-full .bu-pmsg { max-width: 50rem; }
+.bu-panel.is-full .bu-pmsg-head { font-size: 2rem; }
+.bu-panel.is-full .bu-pmsg-line { font-size: 1.2rem; }
+.bu-panel.is-full .bu-mark.is-panel { width: 18rem; height: 18rem; }
+.bu-pwrap.is-cols { display: flex; align-items: flex-start; }
+.bu-pcol { flex: 1 1 0; min-width: 0; }
+.bu-pwrap.is-cols .bu-pcol + .bu-pcol { margin-left: 1.6rem; }
+/* Each part takes focus, with the hub's white ring, so a long one scrolls. */
+.bu-psec {
+  padding: 0.6rem 0.9rem 0.7rem;
+  margin: 0.1rem 0;
+  border-radius: 0.7rem;
+  border: var(--edge) solid transparent;
+}
+.bu-psec.is-focused { background: var(--card-2); border-color: var(--focus); }
+.bu-psec > .bu-label:first-child { margin-top: 0; }
+.bu-panel .bu-label { font-size: 1rem; }
+.bu-hero.is-panel .bu-hero-num { font-size: 3.4rem; }
+.bu-hero.is-panel.is-word .bu-hero-num { font-size: 2.8rem; }
+.bu-hero.is-panel .bu-hero-cap { font-size: 1.2rem; }
+.bu-pline { margin-top: 0.4rem; font-size: 1.1rem; line-height: 1.4; color: var(--text-2); word-wrap: break-word; }
+.bu-pline.is-quiet { color: var(--text-3); }
+.bu-panel .bu-trow-label,
+.bu-panel .bu-trow-value { font-size: 1.15rem; }
+.bu-panel .bu-grow-label { font-size: 1.15rem; }
+.bu-panel .bu-grow-text,
+.bu-panel .bu-grow-state { font-size: 1.05rem; }
+.bu-panel .bu-meter.is-goal { height: 0.55rem; margin-top: 0.35rem; }
+.bu-panel.is-full .bu-hero.is-panel .bu-hero-num { font-size: 4.6rem; }
+.bu-panel.is-full .bu-pline { font-size: 1.3rem; }
+.bu-panel.is-full .bu-grow-label,
+.bu-panel.is-full .bu-trow-label,
+.bu-panel.is-full .bu-trow-value { font-size: 1.35rem; }
+.bu-panel.is-full .bu-grow-text { font-size: 1.2rem; }
+
+/* ---------- the banner: "New charge: <label>" ---------- */
+
+.bu-alert {
+  position: fixed;
+  top: 1.1rem;
+  left: 50%;
+  z-index: 19;            /* over the tiles and panels, under a dashboard (20) and the toast (30) */
+  display: none;
+  align-items: center;
+  width: -webkit-max-content;
+  width: max-content;
+  max-width: 56rem;
+  padding: 0.75rem 1rem 0.75rem 1.1rem;
+  border-radius: 1rem;
+  background: #2a1d1f;
+  border: 0.1rem solid var(--bu-neg);
+  box-shadow: 0 0.4rem 1.6rem rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  opacity: 0;
+  -webkit-transform: translate(-50%, -1rem);
+  transform: translate(-50%, -1rem);
+  -webkit-transition: opacity 0.25s ease, -webkit-transform 0.25s ease;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.bu-alert.is-on { display: flex; }
+.bu-alert.is-shown { opacity: 1; -webkit-transform: translate(-50%, 0); transform: translate(-50%, 0); }
+.bu-alert-icon { flex: 0 0 auto; width: 1.6rem; height: 1.6rem; margin-right: 0.8rem; color: var(--bu-neg); }
+.bu-alert-icon svg { display: block; width: 100%; height: 100%; }
+.bu-alert-text { flex: 1 1 auto; min-width: 0; font-size: 1.3rem; line-height: 1.35; }
+.bu-alert-more { flex: 0 0 auto; margin-left: 0.8rem; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); white-space: nowrap; }
+.bu-alert-ok {
+  flex: 0 0 auto;
+  margin-left: 1rem;
+  padding: 0.15rem 0.8rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 1.05rem;
+  line-height: 1.35;
+  font-weight: 600;
+  white-space: nowrap;
+}

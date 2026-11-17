@@ -110,7 +110,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.0';
+  var BUILD = 'v0.29.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1897,6 +1897,16 @@
 
   function isBack(code) { return code === KEY.BACK || code === KEY.ESC || code === KEY.BACKSPACE; }
 
+  // window.HUB_ALERT, from a widget that shows a banner: { shown(), dismiss() }.
+  function alertShown() {
+    var A = window.HUB_ALERT;
+    try { return !!(A && typeof A.shown === 'function' && A.shown()); } catch (e) { return false; }
+  }
+
+  function dismissAlert() {
+    try { window.HUB_ALERT.dismiss(); } catch (e) { /* nothing more to do */ }
+  }
+
   document.addEventListener('keydown', function (e) {
     var code = e.keyCode;
     var dir = dirOf(code);
@@ -1923,6 +1933,13 @@
     if (busy) return;
     // The TV keyboard can send a stray Enter after Done or Back after Cancel.
     if ((code === KEY.ENTER || isBack(code)) && Date.now() - typingEndedAt < 300) return;
+
+    // A banner over the home screen (budget.js's "New charge: ..."): OK or
+    // Back dismisses it first; the arrows still move between tiles.
+    if (!open && !sw.on && !ab.on && (code === KEY.ENTER || isBack(code)) && alertShown()) {
+      dismissAlert();
+      return;
+    }
 
     if (ab.on) {
       if (dir === 'right' || isBack(code)) closeAbout();

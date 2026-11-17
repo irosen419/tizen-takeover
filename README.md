@@ -104,7 +104,7 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.28.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand), then **Weather picture** when the weather picture is still or off (see Weather).
+- **This hub:** **Version** (for example `v0.29.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand), then **Weather picture** when the weather picture is still or off (see Weather).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
 - **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, how long a frame takes to draw (`3.1 ms a frame`), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
@@ -236,7 +236,7 @@ The plainest motion setting (`fade`) starts at the still wash.
 
 ## A World Worth Saving
 
-Five tiles for the book project, all with a globe icon. They read two things from the hub server on the Raspberry Pi:
+Six tiles for the book project, all with a globe icon. They read two things from the hub server on the Raspberry Pi:
 
 - **Calendars, by name.** Visits come from the calendar named "School Visits"; project dates from "A World Worth Saving". Any other calendar on the Pi (the family one, say) never shows on these tiles. The names are in `app/config.js`, under `widgets.awws.calendars`.
 - **A snapshot of the project**, sent to the Pi by a Claude sync through the mailbox, or by hand with `./hub awws set` (the file is described in [docs/awws-snapshot.md](docs/awws-snapshot.md)): the to-do board, handoffs, librarians, books, the rewrite, money and reach. Each copy that arrives is checked and the tiles redraw only when what they show changes.
@@ -251,13 +251,17 @@ The tiles:
 - **To-do board** (`awws-todo`): how many Now items are yours, the overdue count in amber, then the items with their owner (Ian, Claude or Both), due date and what they wait on.
 - **Reach** (`awws-reach`): site visits this week as the big number, up or down from last week, and a line of the last 14 days; then buy clicks, flier scans by school, and newsletter subscribers with the day they were last counted. Subscribers are counted by hand for now, so today it shows "2 subscribers, at last check Nov 16"; the visits take over as the big number once the sync sends them. Its panel has each figure with a longer trend.
 
-Librarians, Books and Money (`awws-outreach`, `awws-pipeline`, `awws-money`) hold their spot with a "Soon" tag for now. [docs/tile-sizes.md](docs/tile-sizes.md) says what each tile shows at each size.
+- **Earned vs spent** (`awws-money`): the net so far this month, big, green when it is up and coral when it is down; "earned $1,265 · spent $1,841"; then a pair of bars per month (earned green, spent coral) and, on a tall tile, the next transfer. It never shows a balance. It is on the **AWWS money** layout.
+
+Librarians and Books (`awws-outreach`, `awws-pipeline`) hold their spot with a "Soon" tag for now. [docs/tile-sizes.md](docs/tile-sizes.md) says what each tile shows at each size.
 
 Reach is a real tile but is on no layout yet. To place it, on the Pi run `./hub layout show`, change one tile in the list to `{"widget": "awws-reach", "x": 9, "y": 3, "w": 3, "h": 3}` (any free spot and size), and send the list back with `./hub layout set layout.json`. The Glance's panel opens Reach as well.
 
 ![Reach at every size, with visits, buy clicks, scans and subscribers](docs/screenshots/awws-sizes-reach-a.jpg)
 
-Two layouts in the switcher use them: **AWWS desk** (above) and **AWWS one screen**, the Glance as a big dashboard with Today, Weather and Calendar beside it. **Main** keeps the Glance at 3 × 4.
+Three layouts in the switcher use them: **AWWS desk** (above), **AWWS one screen**, the Glance as a big dashboard with Today, Weather and Calendar beside it, and **AWWS money**, the Glance, Earned vs spent and the To-do board with Calendar and Entertainment.
+
+![AWWS money: the Glance, Earned vs spent with its month bars, the To-do board, Calendar and Entertainment](docs/screenshots/awws-layout-money.jpg) **Main** keeps the Glance at 3 × 4.
 
 ![AWWS one screen: the Glance as a dashboard of four parts](docs/screenshots/awws-layout-one-screen.jpg)
 
@@ -280,7 +284,7 @@ widgets: {
 }
 ```
 
-`showMoney: true` adds a money line ("Spent $1,841 · earned $1,265") to the Glance's list and dashboard. Ian said yes to money on the TV on 2026-11-16; set it to `false` to keep money figures off the TV (for guests, say). Every word on the tiles is in one `STRINGS` object at the top of `app/widgets/awws.js`; `window.HUB_AWWS_STRINGS` replaces any of them (the tests use it to try the tiles in Spanish, which runs about a quarter longer).
+`showMoney: true` adds a money line ("Spent $1,841 · earned $1,265") to the Glance's list and dashboard and fills Earned vs spent. Ian said yes to money on the TV on 2026-11-16; set it to `false` to keep money figures off the TV (for guests, say): the line goes and Earned vs spent says "Money is hidden". Every word on the tiles is in one `STRINGS` object at the top of `app/widgets/awws.js`; `window.HUB_AWWS_STRINGS` replaces any of them (the tests use it to try the tiles in Spanish, which runs about a quarter longer).
 
 To try it on a laptop, with `node dev/preview.js` running, send the sample snapshot to the preview's hub server:
 
@@ -293,6 +297,23 @@ Add `--reach subscribers` to `node dev/awws-sample.js` (only the hand-counted su
 The preview's sample calendars aren't named "School Visits", so Next visit says that calendar is missing; the tests and screenshots bring their own.
 
 `node dev/awws-test.js` runs the real hub and the real hub server from `pi/` in a headless browser (Playwright), with the clock fixed at Monday 16 November 2026, 10:40 AM in Chicago and the sample calendars and snapshot from `dev/awws-sample.js`. It checks every AWWS tile at 11 sizes in English and in Spanish (no console errors, never blank, nothing clipped, no type under 0.85rem on a tile or 1rem in a panel), that a Family event never shows, the countdown across midnight in Chicago (with the TV in Chicago and in Tokyo), overdue in amber, a calendar without a snapshot and the other way round, an old Pi with no snapshot, broken snapshots and a broken saved copy, the same snapshot sent twice, the Glance's list and Back, the owner filter, full screen, and the layout switcher with five layouts. For Reach it checks every size in both languages with subscribers alone, traffic alone and both, its panel and full screen, no reach section, and the Glance opening it; and that `showMoney` shows and hides the money line. It needs port 8095 free.
+
+`node dev/money-test.js` does the same for Earned vs spent and the budget tiles: every size in English and Spanish, the panels and full screen, the colors (green up, coral down; amber, coral and green for the room), old data dimmed with "as of", `showMoney: false` and `budget.show: false`, the "New charge" banner (OK and Back dismiss it, a dismissed one stays gone after a reload), the AWWS money and Budget layouts, and the empty states. It needs port 8095 free.
+
+## Budget
+
+Three tiles with a wallet icon, filled by the budget app on the Pi. The app works out the totals and sends them to the hub server on the same Pi (`POST /api/budget` with the token); nothing goes through the cloud. The shape is in [docs/budget-snapshot.md](docs/budget-snapshot.md). Only totals ever reach the TV: never a balance, a transaction list or an amount on an alert.
+
+- **Daily room** (`budget-room`): what is left to spend per day, big; amber when it is under the daily cap, coral below zero, green at the cap. A bar of the cap, "of $60 a day · 9 days left", "through Tue, Nov 24", and what it will be once a pending refund posts.
+- **Card day** (`budget-card`): "Thu, Nov 19 · in 3 days", then "Covered" in green or "Short by $120" in coral, the transfers that cover it and the next paycheck.
+- **Goals** (`budget-goals`): one row per goal with a bar, green when clean or under, blue on pace, coral when over.
+- **New charge**: when the app reports a charge at a merchant that was cut, a banner across the top says "New charge: Corner Bakery Stand" (never the amount). OK or Back on the home screen dismisses it; the TV remembers which it has shown.
+
+![The New charge banner across the top of the screen](docs/screenshots/budget-banner.jpg)
+
+![The Budget layout: Daily room, Card day and Goals with Calendar, Today and Entertainment](docs/screenshots/budget-layout.jpg)
+
+The **Budget** layout in the switcher places the three tiles with Calendar, Today and Entertainment. Until the app sends anything the tiles say "Waiting for the budget app"; after 2 hours without a new snapshot they say "as of 9:10 AM" and dim. `widgets.budget.show: false` in `app/config.js` hides it all on that TV. On the Pi, `./hub budget show` says when the last snapshot came and what is in it (dates, counts and states only), and `./hub budget clear` removes it. To try it in the preview: `node dev/budget-sample.js | HUB_TOKEN=preview-token-not-a-secret-000000 node pi/hubctl.js budget set -`.
 
 `node dev/awws-shots.js` takes the `docs/screenshots/awws-*` pictures, each in English and in Spanish (`-es`): the layouts, the size sheets, the panels and the states. A layout holds each widget once, so the Reach size sheets are put together from one page per tile. `--out <folder>` saves them elsewhere, `--scale 2` doubles the pixels, `--only <text>` takes only the shots whose name holds the text, and `--clip <folder>` records a short walk through the tiles into that folder instead of the pictures (mp4 with ffmpeg, otherwise webm).
 
