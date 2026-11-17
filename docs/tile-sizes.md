@@ -1,6 +1,6 @@
 # Home Hub: what shows at each tile size
 
-This mirrors `SIZE_MATRIX` in the Layout Studio artifact (English text only; the artifact also has Spanish). Checked against the TV code in PR 19 (v0.13.0), and Now Playing at v0.15.0 (`app/hub.js` `sizeOf`/`applySize`, `app/style.css` tile sizes, `app/widgets/*.js` and `*.css`). The A World Worth Saving rows were checked against v0.17.0 (`app/widgets/awws.js` and `awws.css`), Earned vs spent and the budget tiles (`app/widgets/budget.js`) at v0.29.0; a budget tile with no data says “Waiting for the budget app”. When their data is missing, each of those tiles says why instead (Not synced yet, Needs the Pi, No “School Visits” calendar on the Pi, School Visits couldn’t be read), and “as of 7:10 AM” under the title when the data is old.
+This mirrors `SIZE_MATRIX` in the Layout Studio artifact (English text only; the artifact also has Spanish). Checked against the TV code in PR 19 (v0.13.0), and Now Playing at v0.15.0 (`app/hub.js` `sizeOf`/`applySize`, `app/style.css` tile sizes, `app/widgets/*.js` and `*.css`). The A World Worth Saving rows were checked against v0.17.0 (`app/widgets/awws.js` and `awws.css`), Earned vs spent and the budget tiles (`app/widgets/budget.js`) at v0.28.4; a budget tile with no data says “Waiting for the budget app”. When their data is missing, each of those tiles says why instead (Not synced yet, Needs the Pi, No “School Visits” calendar on the Pi, School Visits couldn’t be read), and “as of 7:10 AM” under the title when the data is old.
 
 ## Rules
 

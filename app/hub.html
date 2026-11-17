@@ -4,6 +4,75 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Home Hub</title>
+  <script>
+    /*
+     * Stylesheets that arrive broken. Every file comes through TizenBrew's
+     * proxy, one fetch each, and now and then a fetch fails or is cut short.
+     * A page without one stylesheet still runs but draws that widget
+     * unstyled (seen with weather.css: giant icons, no forecast). So: a
+     * stylesheet that fails, comes back empty or lacks its closing
+     * ".css-end" rule is fetched again, up to three more times.
+     * window.HUB_STYLES.status() says what happened, for the About panel.
+     */
+    (function () {
+      var MAX = 3;
+      var tries = {};      // file -> fetches made after the first
+      var fixed = {};      // file -> true once a later fetch was whole
+      var lost = {};       // file -> true when every fetch failed
+      function fileOf(link) {
+        var h = String(link.getAttribute('data-file') || link.getAttribute('href') || '');
+        return h.split('?')[0];
+      }
+      function whole(link) {
+        try {
+          var rules = link.sheet && link.sheet.cssRules;
+          if (!rules || !rules.length) return false;
+          return rules[rules.length - 1].selectorText === '.css-end';
+        } catch (e) { return true; }   // can't look inside: trust the load
+      }
+      function again(link) {
+        var file = fileOf(link);
+        if (link.getAttribute('data-gone')) return;
+        var n = tries[file] || 0;
+        if (n >= MAX) { lost[file] = true; return; }
+        tries[file] = n + 1;
+        link.setAttribute('data-gone', '1');
+        setTimeout(function () {
+          var next = document.createElement('link');
+          next.rel = 'stylesheet';
+          next.setAttribute('data-file', file);
+          // The first retry asks for the same address; later ones a new one,
+          // in case a failed answer was kept somewhere on the way.
+          next.href = n === 0 ? file : file + '?retry=' + n;
+          // Same place in the order, so later sheets still win over it.
+          if (link.parentNode) link.parentNode.replaceChild(next, link);
+          else document.getElementsByTagName('head')[0].appendChild(next);
+        }, 300 + n * 900);
+      }
+      function check(link) {
+        var file = fileOf(link);
+        if (whole(link)) { if (tries[file]) fixed[file] = true; }
+        else again(link);
+      }
+      // Capture phase: a stylesheet's load and error don't bubble.
+      function isSheet(t) {
+        return !!t && !!t.tagName && String(t.tagName).toUpperCase() === 'LINK' &&
+          String(t.rel).toLowerCase() === 'stylesheet';
+      }
+      document.addEventListener('load', function (e) { if (isSheet(e.target)) check(e.target); }, true);
+      document.addEventListener('error', function (e) { if (isSheet(e.target)) again(e.target); }, true);
+      window.HUB_STYLES = {
+        status: function () {
+          var bad = [], ok = [], f;
+          for (f in lost) if (lost.hasOwnProperty(f) && !fixed[f]) bad.push(f);
+          for (f in fixed) if (fixed.hasOwnProperty(f)) ok.push(f);
+          if (bad.length) return bad.join(', ') + ' did not load';
+          if (ok.length) return ok.join(', ') + ' loaded on a later try';
+          return '';
+        }
+      };
+    })();
+  </script>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="widgets/today.css">
   <link rel="stylesheet" href="widgets/todo.css">

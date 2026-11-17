@@ -1010,3 +1010,6 @@
 }
 .mo-key-in:before { background: var(--mo-in); }
 .mo-key-out:before { background: var(--mo-out); }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }

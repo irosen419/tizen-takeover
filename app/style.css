@@ -947,3 +947,6 @@ body.has-picture {
 /* Entertainment without its sub line: a little air between the title row
    and the logos (a margin, so the chip fit still measures the body). */
 .cell[data-widget="entertainment"] .tile:not(.tile-h1) .tile-body { margin-top: 0.8rem; }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }
