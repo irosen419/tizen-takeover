@@ -221,12 +221,18 @@ body {
   height: 1.8rem;
   margin: 0.1rem 0.8rem 0 0;
 }
-.panel-titles { flex: 1 1 auto; min-width: 0; }
+.panel-titles { flex: 1 1 0; min-width: 0; }
+/* One line, like the tile titles: a long title gives way to its short form
+   (fitPanelTitle), and the ellipsis only catches what is still too long. */
 .panel-title {
   font-size: 1.5rem;
   font-weight: 600;
   line-height: 1.3;
-  word-wrap: break-word;
+  padding: 0.06rem 0;
+  margin: -0.06rem 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .panel-sub {
   font-size: 0.9rem;

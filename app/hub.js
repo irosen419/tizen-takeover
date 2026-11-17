@@ -1546,11 +1546,17 @@
   function drawPanelHead() {
     var w = open.w;
     panel.icon.innerHTML = iconHTML(w.icon);
-    panel.title.textContent = w.title;
     var full = mode === 'full';
     panel.btnIcon.innerHTML = iconHTML(full ? 'shrink' : 'expand');
     panel.btnLabel.textContent = full ? hubWord('exitFull', 'Exit full screen') : hubWord('full', 'Full screen');
     drawPanelHint();
+    fitPanelTitle();
+  }
+
+  // The open widget's title on one line, else its short form (AWWS).
+  function fitPanelTitle() {
+    if (!open) return;
+    fitTitle(panel.title, String(open.w.title || ''), widgetShort(open));
   }
 
   // typing: true or false when the caller knows, otherwise worked out here.
@@ -2195,6 +2201,7 @@
   }
 
   function retitle(rec) {
+    if (rec && rec === open) fitPanelTitle();
     if (!rec || !rec.titleEl) return;
     if (rec.badgeText === undefined || rec.badgeText === null) {
       setBadgeText(rec.badgeEl, rec.w.planned ? hubWord('soon', 'Soon') : '');
