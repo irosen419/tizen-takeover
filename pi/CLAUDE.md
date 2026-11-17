@@ -21,11 +21,12 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - A World Worth Saving snapshot: `./hub awws show` (when it was sent, its size, one line per section); a new one: `./hub awws set snapshot.json` (the snapshot itself, or `{"snapshot": {...}}`; `-` reads it from input; shape in `docs/awws-snapshot.md`); remove it: `./hub awws clear`
 - Budget snapshot (totals from the budget app on this Pi): `./hub budget show` (dates, counts and states, never amounts or labels); by hand `./hub budget set budget.json` (shape in `docs/budget-snapshot.md`); remove it: `./hub budget clear`
 - What is playing on Spotify, and sign-in: `./hub spotify status`; one-time sign-in `./hub spotify login` (prints a link, then asks for the pasted address) or `./hub spotify code "<address>"`; `./hub spotify logout`
+- What plays anywhere (Echo speakers through Home Assistant, and Spotify), for the test widget All sounds: `./hub allsounds status` (state, source, speaker, title and artist only)
 - Is the server up, which screens are on: `./hub status`
 - Is the Claude mailbox (Cloudflare R2) connected: `./hub mailbox status`
 - All commands: `./hub help`
 
-Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals) and `budget-lab` (Budget lab: the pace streak, the cap slider and the runway to card day; it reaches the TV with a later hub update; until then the TV ignores the id). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
+Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals), `budget-lab` (Budget lab: the pace streak, the cap slider and the runway to card day; it reaches the TV with a later hub update; until then the TV ignores the id) and `allsounds` (All sounds, a test widget: what plays on any speaker; only on the "All sounds test" layout, from v0.28.16). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
 
 ## From the cloud: the Claude mailbox
 
@@ -51,7 +52,7 @@ Write `cmd.json` in your scratchpad folder. The reply is `{"id", "cmd", "ok", "s
 
 Commands and args (`args` may be left out when empty; unknown args are refused):
 
-- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals, budget-lab), `home`, `reload`
+- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals, budget-lab, allsounds), `home`, `reload`
 - `say {"text": "Dinner in 10", "seconds": 8}` (text up to 140 characters, seconds 1-60)
 - `todo.add {"title": "Buy milk", "section": "next", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
 - `todo.notes {"title": "Buy milk", "notes": "Oat, not dairy"}` or `{"id": "...", "notes": "..."}` (exactly one of id and title) sets an item's notes; `"notes": ""` or `null` removes them
@@ -61,6 +62,7 @@ Commands and args (`args` may be left out when empty; unknown args are refused):
 - `awws.set {"snapshot": {"v": 1, "sentAt": "2026-11-16T15:10:00Z", "todos": {...}}}` (`{"snapshot": null}` removes it all, a section sent as `null` removes that section), `awws.show` (counts and times only, never the titles), `awws.clear`. The whole command file must stay under 64 KB and the snapshot under 48 KB. `data` of `awws.set` lists `accepted`, `cleared` and `rejected` (with the reason for each); a rejected section keeps its last good copy on the Pi
 - `budget.show` (dates, counts and states only), `budget.set {"snapshot": {...}}` (`null` removes it), `budget.clear`. The budget app on the Pi normally sends this itself with the local token, so it never travels through the mailbox; use these only when the owner asks
 - `spotify.status`, `spotify.login` (the sign-in link to give the owner), `spotify.code {"address": "<the pasted address>"}`, `spotify.logout`. Signing in: run `spotify.login`, give the owner the `url` from its `message` to open and agree to, ask them to paste back the address of the error page they land on (it contains `?code=`), then run `spotify.code` with it and report `message`. The pasted code is single-use and useless without the secret on the Pi, so it is fine in chat; never ask for or print the client secret.
+- `allsounds.status`: what plays anywhere (the All sounds test widget): state, source, speaker, title and artist only. Never the Home Assistant token or address.
 - `status`, `ping` (answers with the server version)
 - `restart`: the server stops after replying and Docker starts it again with the code already on the Pi. It does not `git pull`; the owner does that on the Pi.
 
@@ -75,6 +77,7 @@ Other calls: list replies `curl -sS "$B?prefix=outbox/"` (an array of `{key, ...
 - "No screen is listening" is not an error: the TV is off or Home Hub is closed. Say so plainly.
 - If the server is not running, try `docker compose up -d` from this folder, then `./hub status`. If it still fails, show the last lines of `docker compose logs hub` (they never contain the token).
 - Never print, copy, echo or paste `SPOTIFY_CLIENT_SECRET` or anything in `data/spotify.json`.
+- Never print, copy, echo or paste `HA_TOKEN` (the Home Assistant token), and never log what plays (titles, speaker names).
 - Never show, print, copy or log a calendar link (the `CALENDAR_*_URL` lines in `.env`). They are secret keys to the owner's calendars. If one may have leaked, tell the owner to reset it in Google Calendar (README.md, "If a secret address leaks").
 - To put an event on the TV, add it through the Google Calendar connector, then run `./hub calendar refresh`. Google may take a while to include it; if it is not there yet, say so and try again in a few minutes.
 - Do not edit `data/state.json` by hand while the server runs; use `./hub todo ...`.

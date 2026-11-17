@@ -615,6 +615,19 @@ const COMMANDS = {
       return { message: hubctl.spotifyLogoutText(r), data: { changed: !!r.changed } };
     }
   },
+  // What plays anywhere (allsounds.js): state, source, speaker, title and
+  // artist only; never a token or an address.
+  'allsounds.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/allsounds');
+      const s = r.allsounds || null;
+      return {
+        message: lines(hubctl.allsoundsStatusLines(s)),
+        data: { allsounds: s ? { state: s.state, source: s.source, device: s.device, title: s.title, artist: s.artist } : null }
+      };
+    }
+  },
   ping: {
     args: {},
     run: async (a, ctx) => ({ message: 'Pong. Home Hub live server ' + ctx.version + ' is running.', data: { version: ctx.version } })

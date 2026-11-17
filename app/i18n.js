@@ -58,6 +58,36 @@
     'nowplaying.badge.offline': 'Sin la Pi',
     'nowplaying.badge.update': 'Necesita la Pi',
 
+    /* ---- All sounds, the test widget (app/widgets/allsounds.js) ----
+     * The source chip ("TuneIn", "Spotify") and the speaker's name come from
+     * the Pi as they are. The badge words are in capitals: a word or two. */
+    'allsounds.title': 'Todo lo que suena',
+    'allsounds.playing': 'Sonando ahora',
+    'allsounds.paused': 'En pausa',
+    'allsounds.on': 'En {device}',
+    'allsounds.idle': 'Nada sonando',
+    'allsounds.idleHint': 'Pon algo en un Echo o en Spotify y aparecerá aquí.',
+    'allsounds.notset': 'Aún sin configurar',
+    'allsounds.notsetHint': 'Agrega un token de Home Assistant (HA_TOKEN) a pi/.env en la Pi.',
+    'allsounds.error': 'No se puede conectar con Home Assistant',
+    'allsounds.errorHint': 'Lo sigue intentando por su cuenta.',
+    'allsounds.errorAuth': 'Home Assistant rechazó el token. Crea uno nuevo y ponlo en pi/.env.',
+    'allsounds.waiting': 'Esperando a la Pi',
+    'allsounds.waitingHint': 'Todo lo que suena viene de la Pi.',
+    'allsounds.offline': 'No se puede conectar con la Pi',
+    'allsounds.offlineHint': 'Lo que suena vuelve a aparecer cuando la Pi regrese.',
+    'allsounds.update': 'La Pi necesita una actualización',
+    'allsounds.updateHint': 'En la Pi: git pull y luego docker compose restart hub.',
+    'allsounds.liveOff': 'Las actualizaciones en vivo están apagadas',
+    'allsounds.liveOffHint': 'Todo lo que suena necesita la Pi. Revisa HUB_CONFIG.live en config.js.',
+    'allsounds.broken': 'No se pudo mostrar Todo lo que suena.',
+    'allsounds.badge.idle': 'En silencio',
+    'allsounds.badge.notset': 'Sin configurar',
+    'allsounds.badge.error': 'Sin conexión',
+    'allsounds.badge.waiting': 'Esperando',
+    'allsounds.badge.offline': 'Sin la Pi',
+    'allsounds.badge.update': 'Necesita la Pi',
+
     /* ---- Guest mode on the Clock page (app/guest.js, app/widgets/today.js) ---- */
     'guest.label': 'Modo invitados',
     'guest.off': 'No',
