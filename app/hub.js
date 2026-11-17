@@ -1119,6 +1119,11 @@
       var S = window.HUB_STYLES;
       try { return S && typeof S.status === 'function' ? S.status() || '' : ''; } catch (e) { return ''; }
     } },
+    // A script that failed to load: the page loaded again for it, or it never came (see hub.html).
+    { group: 'This hub', label: 'Scripts', value: function () {
+      var S = window.HUB_SCRIPTS;
+      try { return S && typeof S.status === 'function' ? S.status() || '' : ''; } catch (e) { return ''; }
+    } },
     { group: 'Updates', label: 'Live updates', value: function () {
       var L = liveFacade();
       var t = L ? (L.status() || {}).text || '' : '';
