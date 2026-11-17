@@ -332,7 +332,7 @@ Three tiles with a wallet icon, filled by the budget app on the Pi. The app work
 - **Daily room** (`budget-room`): what is left to spend per day, big; amber when it is under the daily cap, coral below zero, green at the cap. A bar of the cap, "of $60 a day · 9 days left", "through Tue, Nov 24", and what it will be once a pending refund posts.
 - **Card day** (`budget-card`): "Thu, Nov 19 · in 3 days", then "Covered" in green or "Short by $120" in coral, the transfers that cover it and the next paycheck.
 - **Goals** (`budget-goals`): one row per goal with a bar, green when clean or under, blue on pace, coral when over.
-- **New charge**: when the app reports a charge at a merchant that was cut, a banner across the top says "New charge: Corner Bakery Stand" (never the amount). OK or Back on the home screen dismisses it; the TV remembers which it has shown.
+- **New charge**: when the app reports a charge at a merchant that was cut, a banner across the top says "New charge: Corner Bakery Stand" (never the amount). OK or Back dismisses it from any screen, and it clears itself after 5 minutes; the TV remembers which it has shown.
 
 ![The New charge banner across the top of the screen](docs/screenshots/budget-banner.jpg)
 

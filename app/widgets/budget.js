@@ -12,8 +12,8 @@
  *                  pace, over, under).
  *   The banner     "New charge: <label>" across the top when a charge posts
  *                  at a merchant that was cut. No amount, ever. OK (or Back)
- *                  on the home screen dismisses it; this TV remembers which
- *                  ones it has shown (homeHub.budget.seen.v1).
+ *                  dismisses it from any screen, and it clears itself after
+ *                  5 minutes; this TV remembers which ones it has shown (homeHub.budget.seen.v1).
  *
  * The data is the live resource "budget" from the hub server on the Pi
  * (docs/budget-snapshot.md): only totals, sent by the budget app on the Pi
@@ -927,6 +927,28 @@
   }
 
   var hideTimer = null;
+  var expireTimer = null;
+  var expireFor = null;               // the alert id the expiry timer is counting for
+  var EXPIRE_MS = 5 * MIN;            // a banner nobody dismissed clears itself after this
+
+  function stopExpiry() {
+    if (expireTimer) clearTimeout(expireTimer);
+    expireTimer = null;
+    expireFor = null;
+  }
+
+  // Counts from when this TV first shows each charge, so one left up on a
+  // screen nobody is watching doesn't sit there for days.
+  function startExpiry(id) {
+    if (expireTimer && expireFor === id) return;
+    stopExpiry();
+    expireFor = id;
+    expireTimer = setTimeout(function () {
+      expireTimer = null;
+      expireFor = null;
+      try { if (S.current && S.current.id === id) { markSeen(id); S.current = null; updateBanner(); } } catch (e) { warn('expiry: ' + (e && e.message)); }
+    }, EXPIRE_MS);
+  }
 
   function updateBanner() {
     try {
@@ -934,6 +956,7 @@
       var b = S.banner;
       if (!list.length) {
         S.current = null;
+        stopExpiry();
         if (b && b.className.indexOf('is-shown') >= 0) {
           b.className = 'bu-alert is-on';
           if (hideTimer) clearTimeout(hideTimer);
@@ -944,6 +967,7 @@
       b = bannerEl();
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
       S.current = list[0];
+      startExpiry(list[0].id);
       b.textEl.textContent = fill(STRINGS.newCharge, { label: list[0].label });
       b.moreEl.textContent = list.length > 1 ? fill(STRINGS.moreCharges, { n: list.length - 1 }) : '';
       b.moreEl.style.display = list.length > 1 ? '' : 'none';
@@ -955,7 +979,7 @@
     } catch (e) { warn('banner: ' + (e && e.message)); }
   }
 
-  // For hub.js: OK or Back on the home screen dismisses the banner first.
+  // For hub.js: OK or Back on any screen dismisses the banner first.
   window.HUB_ALERT = {
     shown: function () { return !!S.current; },
     dismiss: function () {
@@ -965,6 +989,8 @@
       updateBanner();
       return true;
     },
+    // For tests: how long a banner stays up before it clears itself.
+    setExpiry: function (ms) { EXPIRE_MS = ms; stopExpiry(); updateBanner(); },
     text: function () { return S.current && S.banner ? S.banner.textContent : ''; }
   };
 
