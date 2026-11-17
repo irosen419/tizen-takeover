@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.5.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.6.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -139,7 +139,7 @@ It adds `budget.js` next to `server.js` and makes the server version 0.4.0. A re
 
 ### Budget lab sections (server 0.5.0)
 
-Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0`.
+Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0` or later.
 
 ## Calendars
 
@@ -348,7 +348,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.5.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.6.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 
@@ -407,6 +407,17 @@ The TV carries on as normal without it.
 | `The server rejected the token in pi/.env.` | The running server has a different token | Restart the server so it reads `.env` again: `docker compose restart hub` |
 | `The server has no token yet.` | `.env` had no token when the server started | `./hub token`, then `docker compose restart hub` |
 | You want to see what it is doing | | Docker: `docker compose logs -f hub` (Ctrl+C to stop watching). systemd: `journalctl -u home-hub -f` |
+| You want to see only what went wrong | | `./hub log --errors` (see below) |
+
+### Recent log lines: `./hub log`
+
+The server keeps its last 400 log lines in memory (they are gone after a restart; the Docker log keeps more).
+
+- `./hub log` prints the last 50, each with its local time.
+- `./hub log --errors` prints only the problems.
+- `./hub log --lines 120` prints more (1 to 200).
+
+The last line counts the problems, for example `3 problems in the last 24 hours.` Reading the log does not add to it. The Spotify account name is never logged.
 
 ## Optional: only allow the TV
 
@@ -439,7 +450,7 @@ Claude runs in the cloud and cannot reach your Pi (that is good: nothing on the 
 - Claude drops a small note in it, such as "add Buy milk to the to-do list".
 - Every 10 seconds the Pi looks in the bucket, does what the note says, and leaves a reply note next to it.
 
-The Pi only ever goes *out* to Cloudflare; nothing comes in. It can only do the things `./hub` does (show a widget, say a message, to-dos, calendar status and refresh, layout, the A World Worth Saving snapshot, status, and restart the server). It cannot run any other command, git or Docker. Notes older than a day, or that do not look exactly right, are refused and never run.
+The Pi only ever goes *out* to Cloudflare; nothing comes in. It can only do the things `./hub` does (show a widget, say a message, to-dos, calendar status and refresh, layout, the A World Worth Saving snapshot, status, recent log lines with addresses and names taken out, and restart the server). It cannot run any other command, git or Docker. Notes older than a day, or that do not look exactly right, are refused and never run.
 
 ### One-time setup
 
@@ -515,10 +526,11 @@ At one look every 10 seconds the Pi makes about 8,600 list calls a day (about 26
 ### How it works (for builders)
 
 - Claude writes `inbox/<id>.json`: `{"id": "<id>", "created": "<ISO time>", "cmd": "<name>", "args": {...}}`. The id is 6 to 64 letters, digits, `_` or `-` and must match the file name; `created` must be within the last 24 hours and at most 5 minutes ahead; the file must be under 64 KB; only `id`, `created`, `cmd` and `args` are allowed.
-- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `budget.show`, `budget.set {snapshot: {...} or null}`, `budget.clear`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
+- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, section?, due?}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `budget.show`, `budget.set {snapshot: {...} or null}`, `budget.clear`, `log.tail {lines?, errors?}`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
 - The Pi writes `outbox/<id>.json`: `{id, cmd, ok, state, message, data, started, finished}`. `message` is the same text `./hub` prints (several lines for lists). First it writes `state: "running"` as a claim, then the final result with `state: "done"`; a command with an outbox file is never run again, even after a crash. Then it deletes the inbox file.
 - At most 20 commands per look, oldest `created` first, one at a time.
-- `status.json` is rewritten every minute and after each command: version, uptime, how many screens are listening, the mailbox's last command and last error, and a calendar summary (counts only).
+- `status.json` is rewritten every minute and after each command: version, uptime, how many screens are listening, the mailbox's last command and last error, a calendar summary (counts only), and `log: {errors24h, lastErrorAt}` (a count and a time, never log text).
+- `log.tail` answers with the last log lines (`lines` 1 to 200, default 50; `errors: true` for problems only). Its text is always scrubbed on the Pi before it is written to the bucket: every IP address becomes `[address]`, and each calendar's name, the Spotify account's name, the bucket name and the R2 host become `[name]`. Each line is cut to 300 characters. `message` is one line, such as `50 lines, 3 problems in the last 24 hours.`; `data` is `{lines: [{t, text, level}], errors24h}`.
 - About once an hour, results older than 7 days and leftover inbox files older than 24 hours are deleted.
 - `restart` writes its result, then stops the server; Docker (`restart: unless-stopped`) starts it again with whatever code is on the Pi. It does not run `git pull`. Without Docker or systemd the server just stops.
 - Settings: `HUB_MAILBOX_ENDPOINT`, `HUB_MAILBOX_BUCKET` (default `home-hub-mailbox`), `HUB_MAILBOX_ACCESS_KEY_ID`, `HUB_MAILBOX_SECRET_ACCESS_KEY`, `HUB_MAILBOX_POLL_SECONDS` (default 10, at least 3). The code is `mailbox.js`; tests are `node pi/mailbox-test.js`.
@@ -554,4 +566,5 @@ To restore, stop the server, copy the file back to `data/state.json`, and start 
 - `./hub` never prints the token, and the server never logs it.
 - The calendar secret addresses are also only in `.env`. The server never logs them or shows them in any answer.
 - The Claude mailbox keys (`HUB_MAILBOX_ACCESS_KEY_ID`, `HUB_MAILBOX_SECRET_ACCESS_KEY`) are only in `.env` too, and are never logged or written to the bucket. If one leaks, delete the token in Cloudflare ("If a key leaks" above).
+- Log lines that leave the Pi (the mailbox's `log.tail`) are scrubbed first: no IP addresses, calendar names, Spotify name, bucket name or R2 host. `./hub log` on the Pi shows them as they are, like `docker compose logs`.
 - If you think it leaked, delete the `HUB_TOKEN=` line from `.env`, run `./hub token`, and restart the server.
