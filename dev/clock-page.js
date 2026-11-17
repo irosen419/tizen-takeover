@@ -6,7 +6,7 @@
  * read it, and close it again.
  *
  *   const clockPage = require('./clock-page');
- *   const lines = await clockPage.lines(page);          // ['v0.25.0', 'Chrome 120', 'push (auto, 58 fps)']
+ *   const lines = await clockPage.lines(page);          // ['v0.27.0', 'Chrome 120', 'push (auto, 58 fps)']
  *   const text = await clockPage.line(page, 'updates'); // the updates text, or null
  *   await clockPage.waitFor(page, (about) => about.live === 'Live', 3000, 'no Live line');
  *
@@ -36,7 +36,7 @@ function read(page) {
     const rows = window.HUB_TEST.about.rows();
     const raw = (label) => { const r = rows.filter((x) => x.label === label)[0]; return r ? r.raw : null; };
     return {
-      lines: rows.filter((r) => r.group !== 'Wanderers').map((r) => r.value),
+      lines: rows.filter((r) => r.group !== 'Wanderers' && r.label !== 'Weather picture').map((r) => r.value),
       live: raw('Live updates'),
       updates: raw('Version check'),
       rows: rows

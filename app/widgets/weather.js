@@ -612,10 +612,18 @@
     m.date = LONG_DAYS[today.getUTCDay()] + ', ' + MONTHS[today.getUTCMonth()] + ' ' + today.getUTCDate();
     var code = fromHourly ? at(h.weather_code, hi) : cur.weather_code;
     var isDay = fromHourly ? at(h.is_day, hi) : cur.is_day;
+    var forced = sceneQuery('wxscene');
+    if (forced) {
+      var fs = sceneSpec({ code: code, isDay: isDay !== 0, wind: null, twilight: '' }, forced);
+      code = fs.code;
+      isDay = fs.day ? 1 : 0;
+    }
     var cond = condition(code, isDay);
     m.temp = fromHourly ? tnum(at(h.temperature_2m, hi)) : tnum(cur.temperature_2m);
     m.text = cond.text;
     m.icon = cond.icon;
+    m.code = code;
+    m.isDay = isDay !== 0;
     // "Feels like" belongs to the old reading, so it goes once the hourly forecast takes over.
     m.feels = fromHourly ? null : tnum(cur.apparent_temperature);
     m.wind = wnum(cur.wind_speed_10m);
@@ -623,6 +631,11 @@
     m.lo = tnum(at(d.daily.temperature_2m_min, di));
     var rise = parseTime(at(d.daily.sunrise, di));
     var set = parseTime(at(d.daily.sunset, di));
+    // Within 40 minutes of sunrise or sunset the sky is dawn or dusk coloured.
+    var nowMs = now;
+    m.twilight = '';
+    if (!isNaN(rise) && Math.abs(nowMs - rise) <= 40 * MIN) m.twilight = 'dawn';
+    else if (!isNaN(set) && Math.abs(nowMs - set) <= 40 * MIN) m.twilight = 'dusk';
     m.sunrise = isNaN(rise) ? '–' : wallClock(rise);
     m.sunset = isNaN(set) ? '–' : wallClock(set);
 
@@ -863,7 +876,7 @@
     stat(stats, pct(m.rain), 'wx-drop', 'Rain today', rainClass(m.rain));
     stat(stats, m.sunrise, 'wx-sunrise', 'Sunrise', '');
     stat(stats, m.sunset, 'wx-sunset', 'Sunset', '');
-    nowEls = { band: band, words: words, temp: main.firstChild };
+    nowEls = { band: band, words: words, temp: main.firstChild, cond: words.firstChild && words.firstChild.className === 'wx-now-cond' ? words.firstChild : null };
   }
 
   // Four stats in a row leave little room beside the temperature. When the
@@ -875,6 +888,22 @@
     n.band.className = 'wx-now';
     var tight = n.band.scrollWidth > n.band.clientWidth + 1 || n.words.offsetHeight > n.temp.offsetHeight + 1;
     if (tight) n.band.className = 'wx-now is-tight';
+    fitWord(n);
+  }
+
+  // A condition word wider than its room ("Thunderstorm", a long Spanish word)
+  // gets a smaller size instead of being cut in two.
+  function fitWord(n) {
+    var c = n.cond;
+    if (!c) return;
+    c.style.fontSize = '';
+    c.style.wordWrap = 'normal';
+    var size = parseFloat(getComputedStyle(c).fontSize) || 0;
+    for (var i = 0; i < 4 && size && c.scrollWidth > c.clientWidth + 1; i++) {
+      size = size * 0.9;
+      c.style.fontSize = size + 'px';
+    }
+    c.style.wordWrap = '';
   }
 
   // Without room for a readable curve (a two-line head, a folded now band,
@@ -1186,6 +1215,7 @@
   }
 
   function onVisible() {
+    pauseTile();
     if (document.hidden) return;
     if (clockJumped()) {
       nextDue = 0;
@@ -1197,6 +1227,387 @@
     var due = rec ? ageOf(rec) >= REFRESH_EVERY || Date.now() >= nextDue : Date.now() >= nextDue;
     if (due) refresh();
     else redraw();
+  }
+
+
+  /* ---------- living scene ---------- */
+
+  // A quiet picture of the weather behind the tile and the panel: drifting
+  // clouds, rain and snow sheets, a sun with slow rays, stars, fog, lightning.
+  // Only transform and opacity ever animate, and each kind is a handful of
+  // layers (the rain is three sheets of a repeating picture, not hundreds of
+  // drops). If the TV can't keep up, the picture stays but stands still.
+  var SCENE_KEY = 'homeHub.weather.scene';
+  var SCENE_PROBE_MS = 1600;
+  var SCENE_MIN_FPS = 30;
+  var SCENE_TRUST_MS = 6 * HOUR;   // how long a measured result is believed
+  var scene = {
+    calm: false,      // true: the picture stands still
+    why: '',          // 'slow' | 'fade' | 'config' | 'URL' | '' (moving)
+    fps: 0,
+    probing: false,
+    probed: false,
+    source: 'auto'    // 'auto' | 'config' | 'URL'
+  };
+  var tileSceneEl = null;
+  var panelSceneEl = null;
+
+  function sceneQuery(name) {
+    var m = new RegExp('[?&]' + name + '=([^&#]*)').exec(location.search || '');
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
+  // The condition behind the picture: a kind and how much of it (1 to 3).
+  function sceneOf(code) {
+    var c = num(code);
+    if (c === null) return { kind: 'cloudy', level: 2 };
+    if (c === 0) return { kind: 'clear', level: 1 };
+    if (c === 1) return { kind: 'clear', level: 2 };
+    if (c === 2) return { kind: 'partly', level: 2 };
+    if (c === 3) return { kind: 'cloudy', level: 3 };
+    if (c === 45 || c === 48) return { kind: 'fog', level: 2 };
+    if (c >= 51 && c <= 57) return { kind: 'drizzle', level: c === 51 ? 1 : c === 53 ? 2 : 3 };
+    if (c === 61 || c === 80) return { kind: 'rain', level: 1 };
+    if (c === 63 || c === 81 || c === 66) return { kind: 'rain', level: 2 };
+    if (c === 65 || c === 82 || c === 67) return { kind: 'rain', level: 3 };
+    if (c === 71 || c === 77 || c === 85) return { kind: 'snow', level: 1 };
+    if (c === 73 || c === 86) return { kind: 'snow', level: 2 };
+    if (c === 75) return { kind: 'snow', level: 3 };
+    if (c >= 95) return { kind: 'storm', level: 3 };
+    return { kind: 'cloudy', level: 2 };
+  }
+
+  // What the picture shows now, from the model (or a test override).
+  function sceneSpec(m, forced) {
+    var o = forced || sceneQuery('wxscene');
+    var code = m.code;
+    var day = m.isDay;
+    var wind = m.wind;
+    var twi = m.twilight || '';
+    if (o) {
+      // Preview: ?wxscene=rain-3, snow-2-night, storm-wind, clear-dusk, partly-day
+      var bits = o.split('-');
+      var table = { clear: 0, mostlyclear: 1, partly: 2, cloudy: 3, fog: 45, drizzle: 53, rain: 63,
+        snow: 73, storm: 95 };
+      if (table.hasOwnProperty(bits[0])) code = table[bits[0]];
+      for (var i = 1; i < bits.length; i++) {
+        var b = bits[i];
+        if (b === 'night') day = false;
+        else if (b === 'day') { day = true; twi = ''; }
+        else if (b === 'wind') wind = 24;
+        else if (b === 'dawn' || b === 'dusk') twi = b;
+        else if (/^[123]$/.test(b)) {
+          var base = bits[0];
+          var pick = { drizzle: [51, 53, 55], rain: [61, 63, 65], snow: [71, 73, 75] }[base];
+          if (pick) code = pick[+b - 1];
+        }
+      }
+    }
+    var s = sceneOf(code);
+    s.code = code;
+    s.day = day !== false;
+    s.twilight = !s.day && twi === 'dawn' ? '' : twi;
+    // Wind carries the clouds faster and slants the rain (mph, or km/h on Celsius).
+    var mph = wind === null ? 0 : (units === 'celsius' ? wind / 1.609 : wind);
+    s.wind = mph >= 28 ? 2 : mph >= 14 ? 1 : 0;
+    return s;
+  }
+
+  function rnd(i, salt) {
+    var x = Math.sin(i * 127.1 + salt * 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  // A picture that repeats: a tile of random-looking streaks, flakes or stars.
+  // Made once per look and kept as a data address.
+  var tileCache = {};
+  function pattern(kind, count, salt, w, h) {
+    var key = kind + count + '-' + salt + '-' + w + 'x' + h;
+    if (tileCache[key]) return tileCache[key];
+    var out = '<svg xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '">';
+    for (var i = 0; i < count; i++) {
+      var x = 14 + rnd(i, salt) * (w - 28);
+      var y = 34 + rnd(i, salt + 7) * (h - 68);
+      var o = (0.35 + rnd(i, salt + 3) * 0.6).toFixed(2);
+      if (kind === 'rain') {
+        var len = 14 + rnd(i, salt + 5) * 16;
+        out += '<line x1="' + x.toFixed(1) + '" y1="' + y.toFixed(1) + '" x2="' + (x - len * 0.12).toFixed(1) + '" y2="' + (y + len).toFixed(1) +
+          '" stroke="#a8d4ff" stroke-width="0.9" stroke-linecap="round" opacity="' + o + '"/>';
+      } else if (kind === 'snow') {
+        out += '<circle cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" r="' + (1.1 + rnd(i, salt + 5) * 1.6).toFixed(1) +
+          '" fill="#ffffff" opacity="' + o + '"/>';
+      } else {
+        out += '<circle cx="' + x.toFixed(1) + '" cy="' + (rnd(i, salt + 7) * h * 0.7).toFixed(1) + '" r="' + (0.8 + rnd(i, salt + 5) * 1.2).toFixed(1) +
+          '" fill="#fff6dc" opacity="' + o + '"/>';
+      }
+    }
+    out += '</svg>';
+    tileCache[key] = 'url("data:image/svg+xml,' + encodeURIComponent(out) + '")';
+    return tileCache[key];
+  }
+
+  var RAYS = null;
+  function raysImage() {
+    if (RAYS) return RAYS;
+    var out = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="-100 -100 200 200"><defs><radialGradient id="g" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="100">' +
+      '<stop offset="0.1" stop-color="#ffd166" stop-opacity="0.55"/><stop offset="1" stop-color="#ffd166" stop-opacity="0"/>' +
+      '</radialGradient></defs>';
+    for (var i = 0; i < 16; i++) {
+      var a = i * Math.PI / 8;
+      var len = i % 2 ? 70 : 100;
+      var a1 = a - 0.05;
+      var a2 = a + 0.05;
+      out += '<path d="M0 0L' + (Math.cos(a1) * len).toFixed(1) + ' ' + (Math.sin(a1) * len).toFixed(1) + 'L' +
+        (Math.cos(a2) * len).toFixed(1) + ' ' + (Math.sin(a2) * len).toFixed(1) + 'Z" fill="url(#g)"/>';
+    }
+    out += '</svg>';
+    RAYS = 'url("data:image/svg+xml,' + encodeURIComponent(out) + '")';
+    return RAYS;
+  }
+
+  function cssAnim(node, name, seconds, shift, extra) {
+    // A negative delay joins the loop where the clock says it is, so redrawing
+    // the picture never restarts it.
+    var phase = ((Date.now() / 1000) + shift * seconds) % seconds;
+    var v = name + ' ' + seconds.toFixed(1) + 's ' + (extra || 'linear') + ' ' + (-phase).toFixed(2) + 's infinite';
+    node.style.webkitAnimation = v;
+    node.style.animation = v;
+  }
+
+  // One sheet of falling streaks or flakes. Its size is in the stylesheet
+  // (wx-sheet-rain-0 ...), where its keyframes travel exactly one picture high,
+  // so the loop has no seam. i: 0 far, 1 middle, 2 near.
+  function sheet(root, kind, level, i, seconds, salt, tilt) {
+    var wrap = el('div', 'wx-wrap wx-wrap-' + kind, root);
+    var s = el('div', 'wx-sheet wx-sheet-' + kind + '-' + i, wrap);
+    var counts = kind === 'rain' ? [5, 8, 12] : [4, 7, 10];
+    s.style.backgroundImage = pattern(kind, counts[level - 1], salt, 120, 160);
+    cssAnim(s, 'wx-fall-' + kind + '-' + i, seconds, 0);
+    if (kind === 'snow') cssAnim(wrap, 'wx-sway', 6 + i * 2.2, rnd(i, 4), 'ease-in-out');
+    if (tilt) {
+      var css = 'rotate(' + tilt + 'deg)';
+      wrap.style.webkitTransform = css;
+      wrap.style.transform = css;
+    }
+    return wrap;
+  }
+
+  function cloud(root, i, dark, seconds, top, size) {
+    var c = el('div', 'wx-cloud wx-cloud-' + (i % 3) + (dark ? ' is-dark' : ''), root);
+    c.style.top = top + '%';
+    c.style.width = size + '%';
+    cssAnim(c, 'wx-drift', seconds, rnd(i, 9));
+    return c;
+  }
+
+  function buildScene(spec, big) {
+    var root = document.createElement('div');
+    root.className = 'wx-scene wx-sc-' + spec.kind + ' ' + (spec.day ? 'is-day' : 'is-night') +
+      (spec.twilight ? ' is-' + spec.twilight : '') + (big ? ' wx-scene-panel' : ' wx-scene-tile') +
+      (scene.calm ? ' is-calm' : '');
+    root.setAttribute('aria-hidden', 'true');
+    el('div', 'wx-sky', root);
+    var k = spec.kind;
+    var windFast = spec.wind === 2 ? 0.45 : spec.wind === 1 ? 0.7 : 1;
+    var i;
+
+    // Sun, or moon and stars: behind the clouds.
+    if (k === 'clear' || k === 'partly') {
+      if (spec.day) {
+        var rays = el('div', 'wx-sun-rays', root);
+        cssAnim(rays, 'wx-turn', 180, 0);
+        rays.style.backgroundImage = raysImage();
+        var sun = el('div', 'wx-sun', root);
+        cssAnim(sun, 'wx-glow', 7, 0, 'ease-in-out');
+        if (k === 'partly') sun.className += ' is-dim';
+      } else {
+        for (i = 0; i < 2; i++) {
+          var st = el('div', 'wx-stars wx-stars-' + i, root);
+          st.style.backgroundImage = pattern('star', big ? 22 : 14, 40 + i * 9, 120, 160);
+          cssAnim(st, 'wx-twinkle', 3.4 + i * 2.1, i * 0.5, 'ease-in-out');
+        }
+        el('div', 'wx-moon', root);
+      }
+    }
+    // Clouds.
+    var clouds = { clear: spec.level > 1 ? 1 : 0, partly: 3, cloudy: 4, fog: 2, drizzle: 3, rain: 4, snow: 3, storm: 5 }[k];
+    var dark = k === 'storm' || k === 'rain';
+    for (i = 0; i < clouds; i++) {
+      var secs = (big ? 62 : 74) * windFast * (0.8 + rnd(i, 21) * 0.7);
+      cloud(root, i, dark && (k === 'storm' || i % 2 === 0), secs, -6 + rnd(i, 23) * 46, 52 + rnd(i, 25) * 30);
+    }
+
+    // Fog: slow banks.
+    if (k === 'fog') {
+      for (i = 0; i < 3; i++) {
+        var f = el('div', 'wx-fogbank wx-fogbank-' + i, root);
+        cssAnim(f, 'wx-bank', 38 + i * 17, i * 0.3, 'ease-in-out');
+      }
+    }
+
+    // Rain and drizzle: three sheets at three depths, slanted by the wind.
+    if (k === 'rain' || k === 'drizzle' || k === 'storm') {
+      var lvl = k === 'drizzle' ? Math.max(1, spec.level - 1) : spec.level;
+      var pace = (lvl === 1 ? 1.35 : lvl === 2 ? 1.1 : 0.9) * (k === 'drizzle' ? 1.5 : 1) * (spec.wind ? 0.85 : 1);
+      var tilt = (k === 'drizzle' ? 3 : 7) + spec.wind * 8;
+      sheet(root, 'rain', lvl, 0, 0.62 * pace, 3, tilt);
+      sheet(root, 'rain', lvl, 1, 0.5 * pace, 11, tilt);
+      if (k !== 'drizzle') sheet(root, 'rain', lvl, 2, 0.42 * pace, 19, tilt);
+    }
+    if (k === 'snow') {
+      sheet(root, 'snow', spec.level, 0, 3.4, 5, 0);
+      sheet(root, 'snow', spec.level, 1, 3.6, 15, 0);
+      sheet(root, 'snow', spec.level, 2, 3.8, 25, 0);
+    }
+    if (k === 'storm') {
+      for (i = 0; i < 2; i++) {
+        var flash = el('div', 'wx-flash wx-flash-' + i, root);
+        var bolt = el('div', 'wx-bolt wx-bolt-' + i, root);
+        bolt.innerHTML = '<svg viewBox="0 0 40 100" preserveAspectRatio="none"><path d="M26 0L10 46h11L8 100l26-60H22L32 0z" fill="#fff8d6" stroke="rgba(170,190,255,0.6)" stroke-width="3" stroke-linejoin="round"/></svg>';
+        cssAnim(flash, 'wx-strike', i ? 14.3 : 10.7, i ? 0.35 : 0.05);
+        cssAnim(bolt, 'wx-strike', i ? 14.3 : 10.7, i ? 0.35 : 0.05);
+      }
+    }
+
+    // Wind: a few streaks across the top.
+    if (spec.wind && k !== 'rain' && k !== 'drizzle' && k !== 'storm') {
+      for (i = 0; i < 3; i++) {
+        var g = el('div', 'wx-gust wx-gust-' + i, root);
+        cssAnim(g, 'wx-gust', (spec.wind === 2 ? 3.4 : 5.2) + i * 1.3, rnd(i, 31));
+      }
+    }
+    return root;
+  }
+
+  function sceneSig(spec, big) {
+    return spec.kind + spec.level + (spec.day ? 'd' : 'n') + spec.twilight + spec.wind + (big ? 'P' : 'T') + (scene.calm ? 'c' : 'm');
+  }
+
+  // Puts the picture for spec into host (the tile or the panel box), reusing
+  // the one already there when nothing changed.
+  function placeScene(host, spec, big) {
+    var old = big ? panelSceneEl : tileSceneEl;
+    var sig = sceneSig(spec, big);
+    if (old && old.parentNode === host && old.getAttribute('data-sig') === sig) return old;
+    removeScene(big);
+    var node = buildScene(spec, big);
+    node.setAttribute('data-sig', sig);
+    host.insertBefore(node, host.firstChild);
+    if (big) panelSceneEl = node; else tileSceneEl = node;
+    return node;
+  }
+
+  function removeScene(big) {
+    var node = big ? panelSceneEl : tileSceneEl;
+    if (big) panelSceneEl = null; else tileSceneEl = null;
+    if (!node) return;
+    var host = node.parentNode;
+    if (host) host.removeChild(node);
+  }
+
+  // The tile's picture sits under the tile's text; the panel's, under the panel's.
+  function showScene(body, big) {
+    try {
+      var m = model();
+      if (!m || scene.off || !body.parentNode) { removeScene(big); return; }
+      placeScene(body.parentNode, sceneSpec(m), big);
+      pauseTile();
+    } catch (e) {
+      removeScene(big);
+      if (window.console && console.warn) console.warn('Weather picture: ' + (e && e.message));
+    }
+  }
+
+  // While the panel is open the tile is hidden behind it, so it stands still.
+  function pauseTile() {
+    if (!tileSceneEl) return;
+    var paused = !!panelSceneEl || (document.hidden === true);
+    var has = tileSceneEl.className.indexOf(' is-paused') !== -1;
+    if (paused && !has) tileSceneEl.className += ' is-paused';
+    else if (!paused && has) tileSceneEl.className = tileSceneEl.className.replace(' is-paused', '');
+  }
+
+  function setCalm(calm, why, fps) {
+    if (scene.calm === calm && scene.why === why) { scene.fps = fps || scene.fps; return; }
+    scene.calm = calm;
+    scene.why = why;
+    if (fps) scene.fps = fps;
+    var nodes = [tileSceneEl, panelSceneEl];
+    for (var i = 0; i < nodes.length; i++) {
+      if (!nodes[i]) continue;
+      var on = nodes[i].className.indexOf(' is-calm') !== -1;
+      if (calm && !on) nodes[i].className += ' is-calm';
+      else if (!calm && on) nodes[i].className = nodes[i].className.replace(' is-calm', '');
+      nodes[i].setAttribute('data-sig', nodes[i].getAttribute('data-sig').replace(/[cm]$/, calm ? 'c' : 'm'));
+    }
+  }
+
+  // How the picture is allowed to run: settings first, then what the TV said
+  // about its motion, then what the TV showed the last time it was measured.
+  function sceneChoice() {
+    var q = sceneQuery('weatherscene');
+    var set = C && C.config ? C.config.scene : null;
+    var wanted = q || set;
+    if (wanted === 'off' || wanted === false) { scene.off = true; scene.source = q ? 'URL' : 'config'; return; }
+    scene.off = false;
+    if (wanted === 'calm' || wanted === 'still') { scene.source = q ? 'URL' : 'config'; setCalm(true, scene.source, 0); return; }
+    if (wanted === 'full' || wanted === 'moving') { scene.source = q ? 'URL' : 'config'; setCalm(false, '', 0); scene.probed = true; return; }
+    scene.source = 'auto';
+    var saved = lsGet(SCENE_KEY);
+    if (saved && saved.build === window.HUB_BUILD && Date.now() - saved.at < SCENE_TRUST_MS && Date.now() - saved.at >= 0) {
+      scene.probed = true;
+      scene.fps = saved.fps || 0;
+      scene.calm = !!saved.calm;
+      scene.why = saved.calm ? 'slow' : '';
+    }
+  }
+
+  // Measures how many frames a second the page really draws with the picture
+  // moving, once, a little after the page has settled. Under SCENE_MIN_FPS,
+  // or when the hub already fell back to plain fades, the picture stands still.
+  function probeScene() {
+    if (scene.probed || scene.probing || scene.off || !window.requestAnimationFrame || !tileSceneEl) return;
+    if (document.body.className.indexOf('motion-fade') !== -1) {
+      scene.probed = true;
+      setCalm(true, 'fade', 0);
+      return;
+    }
+    scene.probing = true;
+    var frames = 0;
+    var started = 0;
+    var worst = 0;
+    var last = 0;
+    function step(t) {
+      if (document.hidden) { scene.probing = false; return; }
+      if (!started) started = t;
+      else if (last) worst = Math.max(worst, t - last);
+      last = t;
+      frames++;
+      if (t - started < SCENE_PROBE_MS) { window.requestAnimationFrame(step); return; }
+      scene.probing = false;
+      scene.probed = true;
+      var fps = Math.round((frames - 1) * 1000 / (t - started));
+      var slow = fps < SCENE_MIN_FPS;
+      setCalm(slow, slow ? 'slow' : '', fps);
+      lsSet(SCENE_KEY, { build: window.HUB_BUILD, calm: slow, fps: fps, at: Date.now() });
+    }
+    window.requestAnimationFrame(step);
+  }
+
+  // For the About panel, which only has a line for it when something is off: a
+  // picture that is moving is plain to see, so it says nothing, unless all is true.
+  function sceneStatus(all) {
+    if (scene.off) return 'Off' + (scene.source === 'auto' ? '' : ' (' + scene.source + ')');
+    var m = null;
+    try { m = model(); } catch (e) { m = null; }
+    if (!m) return '';
+    if (scene.calm) {
+      var why = scene.why === 'slow' ? 'this TV drew ' + scene.fps + ' frames a second' :
+        scene.why === 'fade' ? 'the hub is on plain fades' : 'set to calm (' + scene.source + ')';
+      return 'Still, ' + why;
+    }
+    if (!all) return '';
+    return 'Moving' + (scene.fps ? ', ' + scene.fps + ' frames a second' : (scene.source === 'auto' ? ', measuring' : ' (' + scene.source + ')'));
   }
 
   /* ---------- widget ---------- */
@@ -1217,6 +1628,7 @@
 
     init: function (ctx) {
       C = ctx;
+      sceneChoice();
       units = ctx.config.units === 'celsius' ? 'celsius' : 'fahrenheit';
       // Draw from the cache at once if there is one, then update in the background.
       if (placeFromSaved()) rec = loadCache();
@@ -1225,12 +1637,18 @@
       if (document.addEventListener) document.addEventListener('visibilitychange', safe(onVisible));
       // After the hub has drawn every tile, so the first paint isn't held up.
       setTimeout(safe(function () { refresh(); }), 0);
+      // The speed check waits until the page has settled and the picture is up.
+      setTimeout(safe(probeScene), 6000);
     },
+
+    // For the About panel: how the picture is running.
+    sceneStatus: sceneStatus,
 
     renderTile: function (body, ctx) {
       C = ctx;
       try {
         drawTile(body);
+        showScene(body, false);
       } catch (e) {
         if (window.console && console.warn) console.warn('Weather tile: ' + (e && e.message));
         fallbackText(body, 'The weather couldn’t be shown.');
@@ -1241,6 +1659,7 @@
       C = ctx;
       try {
         drawPanel(body, ctx);
+        showScene(body, true);
       } catch (e) {
         if (window.console && console.warn) console.warn('Weather panel: ' + (e && e.message));
         rootEl = null;
@@ -1268,6 +1687,8 @@
 
     onClose: function () {
       rootEl = null;
+      removeScene(true);
+      pauseTile();
     },
 
     // The weather now, for app/clay.js: { code, temp, wind, isDay, units }

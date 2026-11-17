@@ -110,7 +110,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.25.0';
+  var BUILD = 'v0.27.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1108,6 +1108,12 @@
     } },
     { group: 'This hub', label: 'Browser', value: function () { return browserText; } },
     { group: 'This hub', label: 'Motion', value: function () { return noPrefix(motionStatus(), 'Motion: '); } },
+    // The Weather picture behind the tile and panel: moving, or standing still on a slow TV.
+    { group: 'This hub', label: 'Weather picture', value: function () {
+      var w = widgetById('weather');
+      var fn = w && w.w ? w.w.sceneStatus : null;
+      try { return typeof fn === 'function' ? fn() || '' : ''; } catch (e) { return ''; }
+    } },
     { group: 'Updates', label: 'Live updates', value: function () {
       var L = liveFacade();
       var t = L ? (L.status() || {}).text || '' : '';

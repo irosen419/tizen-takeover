@@ -104,9 +104,9 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.25.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand).
+- **This hub:** **Version** (for example `v0.27.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand), then **Weather picture** when the weather picture is still or off (see Weather).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
-- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
+- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, how long a frame takes to draw (`3.1 ms a frame`), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
 
 Everything in it changes by itself, once a second, while it is open. It doesn't count as busy: the wanderers keep coming while it is open, behind it. `HUB_TEST.about` (`open()`, `close()`, `isOpen()`, `rows()`) reads it in a laptop browser and in the tests.
@@ -141,6 +141,12 @@ The tile shows the city, the temperature and the sky now, and today's high, low 
 - An exact spot: `{ name: 'Home', latitude: 38.72, longitude: -9.14 }`.
 
 `units` is `'fahrenheit'` (wind in mph) or `'celsius'` (wind in km/h).
+
+**The picture behind the weather.** The tile and the panel have a quiet picture of the sky behind the text, made from the real forecast: a sun with slow rays by day (warmer at dawn and dusk), a moon glow and twinkling stars by night, clouds drifting across (faster in wind, with streaks of wind on dry days), rain and drizzle falling at a slant, snow drifting down, banks of fog, and for a thunderstorm dark clouds with a pale flash and a bolt now and then. The more rain or snow there is, the more falls. Only transform and opacity ever animate, a kind is about a dozen layers, and the tile's picture pauses while the panel is open. Wind is 14 mph (or km/h on Celsius) and up for "windy", 28 for "very windy".
+
+![Twelve weather pictures on the tile: sunny, clear night, dusk, partly cloudy, cloudy, fog, drizzle, light and heavy rain, light and heavy snow, thunderstorm](docs/screenshots/weather-living-tiles.jpg)
+
+If the TV can't draw it smoothly, the picture stays but stands still ("calm"). The hub decides by itself: it counts the frames a second the page really draws with the picture moving, 6 seconds after it starts, and goes still under 30 (the result is kept on the TV for 6 hours and for this build), or straight away when the hub has already fallen back to plain fades. The About panel's **Weather picture** row appears only when the picture is not moving, and says why: `Still, this TV drew 14 frames a second`, `Still, the hub is on plain fades`, `Still, set to calm (config)` or `Off (URL)`. A moving picture is plain to see, so it gets no row. To decide by hand, set `widgets.weather.scene` in `config.js` to `'calm'` (always still), `'full'` (always moving) or `'off'` (no picture), or add `?weatherscene=calm` (`full`, `off`) to the page's address. To preview a kind on a laptop, add `?wxscene=rain-3`, `snow-2-night`, `storm`, `clear-dusk`, `partly-day`, `cloudy-wind`... (kinds: clear, mostlyclear, partly, cloudy, fog, drizzle, rain, snow, storm; levels 1 to 3; then `day`, `night`, `dawn`, `dusk`, `wind`). `node dev/weather-scene-test.js` checks all of it.
 
 Forecasts come from [Open-Meteo](https://open-meteo.com/), which is free and needs no account. The panel credits it, as its licence asks. The TV asks Open-Meteo directly; if the TV's browser can't reach it, the hub's local helper (`service.js`) asks for it. The forecast updates every 20 minutes while the hub is on screen, and right away when you come back to the hub after a while. When it can't update, the tile keeps the last forecast and says "as of" and the time it was fetched. After 24 hours without an update the old forecast is dropped and the tile says "No forecast right now" with the time of the next try. **Update now** in the panel tries at once. If the TV's clock jumps back, the hub updates straight away instead of waiting.
 
@@ -210,19 +216,20 @@ It plays six scenes, a phrase each (16 or 32 beats), in an order that belongs to
 
 It follows the song's **vibe**, which the Pi looks up once per song (see "Spotify" in [pi/README.md](pi/README.md)): the tempo sets the beat (a brief kick in width, brightness and zoom; never faster than 2.5 a second, so fast songs kick on every other beat), energy how many pens and sparks, how thick and bright and how fast the trails move, danceability against acousticness whether it leans to the sharp scenes (tunnel, kaleidoscope, starburst) or the flowing ones (spirograph, ribbons, lattice), and mood (valence) how far the colors swing round the album's hues. The intensity eases in at the start of the song, swells and settles at the end. Everything is timed from the song's position, so a seek lands in the right scene; paused, it settles into a still picture and stops drawing; the next song morphs out of the last one. There is no sound to react to (Spotify sends none): it moves at the song's speed and feel, not to its actual beats. A "124 BPM" chip shows when the tempo is the song's real one. A song with no vibe (a podcast, a song ReccoBeats doesn't know, the lookups turned off) gets a gentle 100 BPM; a song known only by its artist's genres gets a guess. When the picture can't be read for colors, the mood picks them.
 
-It draws on one small canvas (480 × 270), stretched over the screen, at up to 30 frames a second: each frame, the last one is drawn back a little zoomed and turned and faded into a deep tint of the album's main color, then a few new shapes go on top. After it starts it times its own frame rate twice; two poor results step it down one level, and the answer is remembered on this TV until the next version:
+It draws on a canvas, stretched over the screen: each frame, the last one is drawn back a little zoomed and turned and faded into a deep tint of the album's main color, then a few new shapes go on top. At the top level (`radiant`, since v0.27.0) the canvas is 960 × 540, every line gets a soft wide halo under its sharp core, glowing sparks and drifting motes of light (three depths, brighter on the beat) are stamped on, a bloom (the picture shrunk and stretched back over itself) is added on a second canvas so it never feeds back into the trails, and a soft dark vignette rests the edges. It aims for 60 frames a second and drops to 30 when drawing a frame takes more than 11 ms. A frame that takes more than 24 ms steps it down at once; otherwise, after it starts it times its own frame rate twice, and two poor results step it down one level. The answer is remembered on this TV until the next version:
 
 | Level | What it shows |
 |---|---|
-| `classic` | 480 × 270 at 30 fps; where lines cross their colors add up toward white |
+| `radiant` | 960 × 540, 60 fps (30 when slower); halos, sparks, motes, bloom and vignette |
+| `classic` | 480 × 270 at 30 fps (the v0.21.0 look); where lines cross their colors add up toward white |
 | `lite` | 320 × 180 at 24 fps, fewer pens and sparks, plain colors |
 | `glow` | soft glows that drift, moved by the graphics chip alone; the card stays |
 | `wash` | a still wash of the album's colors, and the big picture layout back |
 
 The plainest motion setting (`fade`) starts at the still wash.
 
-- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'classic'`, `'lite'`, `'glow'` or `'wash'` to fix a level; `'full'` still means `'classic'`). Off, the page is the big picture layout as before.
-- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow`, `?viz=lite` or `?viz=classic` (`?viz=full` is the same as `classic`) to the address.
+- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'radiant'`, `'classic'`, `'lite'`, `'glow'` or `'wash'` to fix a level; `'full'` means `'radiant'`). Off, the page is the big picture layout as before.
+- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow`, `?viz=lite`, `?viz=classic` or `?viz=radiant` (`?viz=full` is the same as `radiant`) to the address.
 - **See what it chose:** the About panel's **Visualizer** row.
 
 ![Now Playing full screen: the kaleidoscope scene on an upbeat song, with the song card in the upper left](docs/screenshots/nowplaying-viz-upbeat.jpg)
@@ -399,7 +406,7 @@ It can't leave you worse off:
 - If GitHub can't be reached, the hub opens the last commit that started on this TV. A TV that has never got that far opens the branch, as it always did.
 - If a new commit breaks while starting (its page finished loading but `hub.js` never said it had started), the hub goes back to the last one that did at once, and doesn't try the broken one again for 6 hours.
 - If a new commit is slow (after 15 seconds its page is still waiting for files), the hub gives it more time, looking again every 5 seconds, up to 60 seconds in all. If it still hasn't started, the hub goes back and tries the new one again after 20 minutes.
-- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.25.0 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.19.1 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
+- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.24.0 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.19.1 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
 - Push a fix and the fix is tried straight away: a hold is only ever for the one commit.
 - If jsDelivr doesn't have the new commit yet, the hub stays where it is and tries again at the next check.
 
@@ -412,8 +419,8 @@ The [About panel](#about-panel-the-version-and-status) says how it's going:
 | `(newest)` after the version | GitHub confirmed this is the newest commit of the branch |
 | nothing extra, no Version check row | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
 | Version check: `can't reach GitHub` | GitHub didn't answer, or refused (too many lookups). This is the newest version the TV knows of. It asks again later |
-| Version check: `a newer version didn't start (0.25.0: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
-| Version check: `a newer version didn't start (0.25.0: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.1 shows no brackets |
+| Version check: `a newer version didn't start (0.24.0: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
+| Version check: `a newer version didn't start (0.24.0: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.1 shows no brackets |
 | Version check: `a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
 | Version check: `a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
 
