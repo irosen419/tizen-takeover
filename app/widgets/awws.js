@@ -45,6 +45,9 @@
       awws: 'A World Worth Saving', visits: 'Next visit', agenda: 'This week', todo: 'To-do board',
       outreach: 'Librarians', pipeline: 'Books', money: 'Earned vs spent', reach: 'Reach'
     },
+    // Each title's short form, only when the full one doesn't fit its tile on
+    // one line (the hub decides, by measuring). Never half a name: "AWWS".
+    titlesShort: { awws: 'AWWS', visits: 'Visit', agenda: 'Week', todo: 'To-dos', money: 'Money' },
     days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -2766,8 +2769,11 @@
         });
       }
     };
-    // Read when the hub draws the tile head, so a local tile follows the language.
-    Object.defineProperty(w, 'title', { get: function () { return run(function () { return STRINGS.titles[titleKey]; }); },
+    // Read when the hub draws the tile head: every tile's title follows the
+    // language (app/i18n.js 'awws.titles.*'), its body only when local.
+    Object.defineProperty(w, 'title', { get: function () { return inLang(function () { return STRINGS.titles[titleKey]; }); },
+      enumerable: true, configurable: true });
+    Object.defineProperty(w, 'shortTitle', { get: function () { return inLang(function () { return (STRINGS.titlesShort || {})[titleKey] || ''; }); },
       enumerable: true, configurable: true });
     var hooks = panelHooks(id);
     for (var k in hooks) if (hooks.hasOwnProperty(k)) w[k] = hooks[k];
@@ -2782,8 +2788,12 @@
     x.onChange(function () {
       try {
         var t = inLang(function () { return STRINGS.titles[titleKey]; });
-        var heads = document.querySelectorAll('.cell[data-widget="' + ctx.id + '"] .tile-title');
-        for (var i = 0; i < heads.length; i++) heads[i].textContent = t;
+        // The hub fits the title (or its short form) to the tile.
+        if (typeof ctx.retitle === 'function') ctx.retitle();
+        else {
+          var heads = document.querySelectorAll('.cell[data-widget="' + ctx.id + '"] .tile-title');
+          for (var i = 0; i < heads.length; i++) heads[i].textContent = t;
+        }
         ctx.redrawTile();
         if (ctx.isOpen()) {
           ctx.redrawPanel();
@@ -2822,9 +2832,8 @@
 
   function placeholder(key) {
     var words = STRINGS.planned[key];
-    return {
+    var w = {
       id: 'awws-' + key,
-      title: STRINGS.titles[key],
       icon: 'globe',
       expandable: true,
       planned: true,
@@ -2845,6 +2854,9 @@
         m.innerHTML = (window.HUB_ICONS && window.HUB_ICONS.globe) || '';
       }
     };
+    Object.defineProperty(w, 'title', { get: function () { return inLang(function () { return STRINGS.titles[key]; }); },
+      enumerable: true, configurable: true });
+    return w;
   }
 
   /* ---------- test hook ---------- */

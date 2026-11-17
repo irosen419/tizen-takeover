@@ -660,6 +660,7 @@
 .wx-scene-panel { border-radius: 1.74rem; }
 .panel.is-full > .wx-scene-panel { border-radius: 0; }
 .wx-scene ~ .tile-body,
+.wx-scene ~ .tile-head,
 .wx-scene ~ .panel-head,
 .wx-scene ~ .panel-body { position: relative; z-index: 1; }
 .wx-scene ~ .tile-body,

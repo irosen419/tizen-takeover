@@ -36,6 +36,8 @@
 
   var EN = {
     titles: { room: 'Daily room', card: 'Card day', goals: 'Goals' },
+    // Short forms, only when a title doesn't fit its tile on one line (the hub measures).
+    titlesShort: { room: 'Room', card: 'Card', goals: 'Goals' },
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     // {dow} short weekday, {mon} short month, {d} day
@@ -1000,6 +1002,7 @@
     };
     // Read when the hub draws the tile head, so it follows the language.
     Object.defineProperty(w, 'title', { get: function () { return STRINGS.titles[titleKey]; }, enumerable: true, configurable: true });
+    Object.defineProperty(w, 'shortTitle', { get: function () { return (STRINGS.titlesShort || {})[titleKey] || ''; }, enumerable: true, configurable: true });
     return w;
   }
 
@@ -1011,8 +1014,12 @@
       var id = S.order[i];
       var ctx = S.ctxs[id];
       var key = id.replace('budget-', '');
-      var heads = document.querySelectorAll('.cell[data-widget="' + id + '"] .tile-title');
-      for (var j = 0; j < heads.length; j++) heads[j].textContent = STRINGS.titles[key] || '';
+      // The hub fits the title, or its short form, to the tile.
+      if (ctx && typeof ctx.retitle === 'function') ctx.retitle();
+      else {
+        var heads = document.querySelectorAll('.cell[data-widget="' + id + '"] .tile-title');
+        for (var j = 0; j < heads.length; j++) heads[j].textContent = STRINGS.titles[key] || '';
+      }
       if (ctx && ctx.isOpen()) {
         var pt = document.querySelector('#panel .panel-title');
         if (pt) pt.textContent = STRINGS.titles[key] || '';

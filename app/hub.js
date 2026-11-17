@@ -943,6 +943,7 @@
     clayHook('layout');
     // A tile of another size may want another layout: draw it again.
     for (var r = 0; r < resized.length; r++) drawTile(resized[r]);
+    retitleAll();
     fxCall('relayout', [focusRect()]);
   }
 
@@ -1304,9 +1305,34 @@
         var z = (rec && rec.size) || sizeOf(null);
         return { cols: z.cols, rows: z.rows, tier: z.tier, width: z.width };
       },
-      redrawPanel: function () { if (open === rec) drawPanelBody(true); },
+      redrawPanel: function () { if (open === rec) { drawPanelBody(true); refitOpen(); } },
       setSub: function (text) { if (open === rec) setPanelSub(text); },
       setTileSub: function (text) { setTileSub(rec, text); },
+      // The header: a title other than the widget's own ('' goes back to
+      // it), a badge on the right ('' hides it), the title fitted again
+      // (after the widget's title or short form changed), and a header of
+      // the same kind drawn by a widget without the hub's (head: false).
+      setTitle: function (text) {
+        if (!rec) return;
+        rec.titleText = text ? String(text) : '';
+        retitle(rec);
+      },
+      setBadge: function (text) {
+        if (!rec || !rec.badgeEl) return;
+        rec.badgeText = text ? String(text) : '';
+        setBadgeText(rec.badgeEl, rec.badgeText || (rec.w.planned ? hubWord('soon', 'Soon') : ''));
+        retitle(rec);
+      },
+      retitle: function () { retitle(rec); },
+      drawHead: function (parent, o) {
+        o = o || {};
+        var parts = buildHead(parent, o.icon || w.icon, '', o.badge || '');
+        fitHead(parts.head, parts.title, parts.badge, String(o.title || w.title || ''), o.short || '');
+        return parts.head;
+      },
+      // The accent edge along the tile's top ("something to see here"),
+      // for a reason other than ctx.activity (which raises it by itself).
+      accent: function (reason) { if (rec && rec.tile) fxCall('accent', [rec.tile, reason || 'update']); },
       live: liveFacade(),
       focus: function (node) { if (open === rec) focusPanel(node); },
       bloom: function (node) { return fxCall('bloom', [node]) || null; },
@@ -1335,16 +1361,14 @@
       cell.setAttribute('data-widget', w.id);
       placeCell(cell, entry);
 
-      var tile = el('div', 'tile' + (w.planned ? ' is-planned' : '') + (rec.expandable ? '' : ' is-static'), cell);
+      var tile = el('div', 'tile' + (w.planned ? ' is-planned' : '') + (rec.expandable ? '' : ' is-static') +
+        (w.head === false ? ' is-headless' : ''), cell);
       if (w.head !== false) {
-        var head = el('div', 'tile-head', tile);
-        var icon = el('span', 'icon tile-icon', head);
-        icon.innerHTML = iconHTML(w.icon);
-        var titles = el('div', 'tile-titles', head);
-        el('div', 'tile-title', titles).textContent = w.title;
+        var parts = buildHead(tile, w.icon, '', w.planned ? hubWord('soon', 'Soon') : '');
+        rec.titleEl = parts.title;
+        rec.badgeEl = parts.badge;
         var sub = ctx.config.sub || w.sub || '';
-        if (sub) el('div', 'tile-sub', titles).textContent = sub;
-        if (w.planned) el('span', 'tile-soon', head).textContent = 'Soon';
+        if (sub) el('div', 'tile-sub', parts.titles).textContent = sub;
       }
       rec.cell = cell;
       rec.tile = tile;
@@ -1358,6 +1382,17 @@
     for (var j = 0; j < widgets.length; j++) call(widgets[j], 'init', [widgets[j].ctx]);
     for (var k = 0; k < widgets.length; k++) drawTile(widgets[k]);
     measureHome();
+    retitleAll();
+    // A language change: every title (and its short form) again, after the
+    // widgets' own listeners (registered in init, above) have run.
+    try {
+      if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+        window.HUB_I18N.onChange(function () {
+          retitleAll();
+          if (open) { drawPanelHead(); }
+        });
+      }
+    } catch (e) { /* titles stay in the language they started in */ }
 
     var start = -1;
     for (var s = 0; s < widgets.length; s++) {
@@ -2006,6 +2041,86 @@
     keyRepeat = false;
   });
 
+  /* ---------- tile header ---------- */
+
+  /*
+   * Every tile with a title has one header: the icon (1.5rem), the title on
+   * one line (never wrapped) and, on the right, an optional badge (Soon,
+   * Sample, a state). A title that doesn't fit on one line at its size takes
+   * the widget's short form (w.shortTitle: a string, a getter or a function
+   * of the tile's size), and only if that doesn't fit either does it end in
+   * "...". The hub's own words follow the language: 'hub.<key>' in i18n.js.
+   */
+  function hubWord(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') {
+      try { return String(L.t('hub.' + key, english, vars)); } catch (e) { /* English below */ }
+    }
+    return english;
+  }
+
+  // The header's elements, in parent (a tile, or a widget's own body that
+  // draws a header of the same kind: ctx.drawHead).
+  function buildHead(parent, iconName, title, badge) {
+    var head = el('div', 'tile-head', parent);
+    var icon = el('span', 'icon tile-icon', head);
+    icon.innerHTML = iconHTML(iconName);
+    var titles = el('div', 'tile-titles', head);
+    var t = el('div', 'tile-title', titles);
+    t.textContent = title || '';
+    var b = el('span', 'tile-badge', head);
+    setBadgeText(b, badge);
+    return { head: head, title: t, titles: titles, badge: b };
+  }
+
+  function setBadgeText(node, text) {
+    text = text ? String(text) : '';
+    if (node.textContent !== text) node.textContent = text;
+    node.style.display = text ? '' : 'none';
+    // The planned tiles' tag kept its old name, for the tests and the CSS.
+    if (text && node.parentNode && hasClass(node.parentNode.parentNode || node, 'is-planned')) node.classList.add('tile-soon');
+  }
+
+  function widgetShort(rec) {
+    var s = rec.w.shortTitle;
+    try { if (typeof s === 'function') s = s(rec.size || sizeOf(null)); } catch (e) { s = ''; }
+    return s ? String(s) : '';
+  }
+
+  // Puts text in a title element, or its short form when the full one would
+  // need a second line. Only reads layout when the full one may not fit.
+  function fitTitle(node, full, short) {
+    if (node.textContent !== full) node.textContent = full;
+    if (!short || short === full || !node.clientWidth) return;
+    if (node.scrollWidth > node.clientWidth + 1) node.textContent = short;
+  }
+
+  // The title (or its short form) beside the badge; if even that can't fit,
+  // the badge goes to the next line (class is-crowded) and the title is
+  // fitted again with the whole row.
+  function fitHead(head, title, badge, full, short) {
+    head.classList.remove('is-crowded');
+    fitTitle(title, full, short);
+    if (!badge || !badge.textContent || badge.style.display === 'none' || !title.clientWidth) return;
+    if (title.scrollWidth <= title.clientWidth + 1) return;
+    if (getComputedStyle(badge).display === 'none') return;
+    head.classList.add('is-crowded');
+    fitTitle(title, full, short);
+  }
+
+  function retitle(rec) {
+    if (!rec || !rec.titleEl) return;
+    if (rec.badgeText === undefined || rec.badgeText === null) {
+      setBadgeText(rec.badgeEl, rec.w.planned ? hubWord('soon', 'Soon') : '');
+    }
+    var full = rec.titleText || String(rec.w.title || '');
+    fitHead(rec.titleEl.parentNode.parentNode, rec.titleEl, rec.badgeEl, full, rec.titleText ? '' : widgetShort(rec));
+  }
+
+  function retitleAll() {
+    for (var i = 0; i < widgets.length; i++) retitle(widgets[i]);
+  }
+
   /* ---------- tile sub line ---------- */
 
   // Sets the small line under a tile's title, adding or removing it. The tile
@@ -2430,7 +2545,7 @@
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
     clayHook('layout');
-    resizeTimer = setTimeout(function () { measureHome(); placeGlass(); fxCall('relayout', [focusRect()]); }, 150);
+    resizeTimer = setTimeout(function () { measureHome(); placeGlass(); retitleAll(); fxCall('relayout', [focusRect()]); }, 150);
   });
 
   reportStarted();
