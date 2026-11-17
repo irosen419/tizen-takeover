@@ -133,6 +133,12 @@ var HUB_CONFIG = {
       { widget: 'calendar',      x: 0, y: 3, w: 5, h: 3 },
       { widget: 'today',         x: 5, y: 3, w: 3, h: 1 },
       { widget: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
+    ] },
+    /* A test layout: Ambience (app/widgets/ambience.js, the room's lights)
+       on its own, filling the screen, to try it before it joins a real
+       layout. New widgets are tried the same way: one layout, one widget. */
+    { id: 'ambience-test', name: 'Ambience test', layout: [
+      { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
 
