@@ -224,9 +224,10 @@ var HUB_CONFIG = {
      * in the album's colors that moves with the song, filling the full screen
      * page only, with the song as a small card in the corner. true lets the
      * TV pick how much it can show (it checks its own frame rate); false
-     * turns it off; 'classic' (or 'full'), 'lite' (smaller and lighter),
+     * turns it off; 'radiant' (or 'full'; glow, bloom and motes), 'classic' (the older
+     * flat look), 'lite' (smaller and lighter),
      * 'glow' (soft glows only) or 'wash' (a still wash of color, with the big
-     * picture) fixes a level. ?viz=off|wash|glow|lite|classic on the address
+     * picture) fixes a level. ?viz=off|wash|glow|lite|classic|radiant on the address
      * tries one for a visit.
      */
     nowplaying: { visualizer: true }
