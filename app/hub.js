@@ -127,7 +127,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.12';
+  var BUILD = 'v0.28.13';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -140,7 +140,6 @@
   var cfg = window.HUB_CONFIG || {};
   var ICONS = window.HUB_ICONS || {};
 
-  var stageEl = document.getElementById('stage');
   var gridEl = document.getElementById('grid');
   var scrimEl = document.getElementById('scrim');
   var ghostEl = document.getElementById('ghost');
