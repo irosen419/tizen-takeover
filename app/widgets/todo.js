@@ -24,6 +24,11 @@
  * that start with "level:" or "cal:" (the calendar converter's own marks)
  * are never shown.
  *
+ * The calendar converter keeps its prefix in the title: "TODO!:" (must),
+ * "TODO:" (optional), "TODO~:" (passive), as in "TODO!: Take weekly shot".
+ * The saved title keeps it; the TV never shows it (shownTitle), and an item
+ * without a "level" field takes its level from it (before any notes tag).
+ *
  * Notes come only from the Pi (./hub todo add --notes, the mailbox's
  * todo.add and todo.notes); the TV shows them under the title, quietly, and
  * shows nothing at all for an item without notes. The TV never edits them,
@@ -134,6 +139,9 @@
   var PULSE_MAX = 0.55;
   var TAG_LEVEL = /\[level:(must|optional|passive)\]/;
   var TAGS = /\s*\[(?:level|cal):[^\]]*\]/g;
+  // A leading "TODO!:", "TODO:" or "TODO~:" (any case, spaces after the colon).
+  var PREFIX = /^\s*todo([!~]?):\s*/i;
+  var PREFIX_LEVEL = { '!': 'must', '': 'optional', '~': 'passive' };
 
   // 24x24 line icons, same style as icons.js.
   function svg(body, width) {
@@ -221,12 +229,23 @@
     return dayOf(d);
   }
 
-  // An item's level: its level field, else a "[level:...]" tag in its
-  // notes (from a Pi too old to take the field), else optional.
+  // An item's level: its level field, else the calendar prefix of its
+  // title, else a "[level:...]" tag in its notes (from a Pi too old to take
+  // the field), else optional.
   function levelOf(item) {
     if (LEVELS.indexOf(item.level) >= 0) return item.level;
+    var p = typeof item.title === 'string' ? PREFIX.exec(item.title) : null;
+    if (p) return PREFIX_LEVEL[p[1]];
     var m = typeof item.notes === 'string' ? TAG_LEVEL.exec(item.notes) : null;
     return m ? m[1] : 'optional';
+  }
+
+  // The title as shown: without a leading calendar prefix (the saved title
+  // keeps it). A title that is only a prefix shows as it is.
+  function shownTitle(item) {
+    var title = typeof item.title === 'string' ? item.title : '';
+    var rest = title.replace(PREFIX, '').trim();
+    return rest || title;
   }
 
   // Notes as shown: without the machine tags.
@@ -744,7 +763,7 @@
   function drawAlert(parent, list, cls) {
     var box = el('div', 'todo-alert ' + cls, '', parent);
     setGlow(el('span', 'todo-glow', '', box), pulseLevel(list));
-    var text = fill(list.length === 1 ? STRINGS.alertOne : STRINGS.alertMany, list.length).replace('{t}', list[0].title);
+    var text = fill(list.length === 1 ? STRINGS.alertOne : STRINGS.alertMany, list.length).replace('{t}', shownTitle(list[0]));
     var line = el('div', 'todo-alert-text', '', box);
     el('span', 'todo-alert-dot', '', line);
     line.appendChild(document.createTextNode(text));
@@ -795,13 +814,13 @@
       wrap.className += ' has-must';
       el('span', 'todo-strip-num', String(must.length), wrap);
       var late = anyLate(must);
-      el('div', 'todo-strip-text is-must' + (late ? ' is-late' : ''), must[0].title, wrap);
+      el('div', 'todo-strip-text is-must' + (late ? ' is-late' : ''), shownTitle(must[0]), wrap);
     } else if (!store.items.length) {
       el('div', 'todo-strip-text', STRINGS.emptyTitle, wrap);
     } else if (open.length) {
       el('span', 'todo-strip-num', String(open.length), wrap);
       var first = open[0];
-      el('div', 'todo-strip-text' + (first.due && first.due < today() ? ' is-late' : ''), first.title, wrap);
+      el('div', 'todo-strip-text' + (first.due && first.due < today() ? ' is-late' : ''), shownTitle(first), wrap);
     } else {
       el('div', 'todo-strip-text', STRINGS.allClear, wrap);
     }
@@ -855,7 +874,7 @@
     el('span', 'todo-lv', '', row);
     el('span', 'todo-tick', '', row);
     var text = el('div', 'todo-tile-text', '', row);
-    var title = el('div', 'todo-tile-title', item.title, text);
+    var title = el('div', 'todo-tile-title', shownTitle(item), text);
     if (level === 'must') mustPill(title);
     var notes = shownNotes(item);
     if (notes) el('div', 'todo-tile-notes', notes, text);
@@ -900,7 +919,7 @@
       var line = el('div', 'todo-foot-line', '', foot);
       line.setAttribute('data-id', String(items[i].id));
       el('span', 'todo-dot', '', line);
-      el('span', 'todo-foot-title', items[i].title, line);
+      el('span', 'todo-foot-title', shownTitle(items[i]), line);
       var when = whenText(items[i].due, now);
       if (when) el('span', 'todo-foot-when', '· ' + when, line);
     }
@@ -1029,7 +1048,7 @@
       tick.innerHTML = ICON_TICK;
     }
     var text = el('span', 'todo-text', '', main);
-    var title = el('span', 'todo-title', item.title, text);
+    var title = el('span', 'todo-title', shownTitle(item), text);
     if (level === 'must' && !item.done) mustPill(title);
     var notes = shownNotes(item);
     if (notes) el('span', 'todo-notes', notes, text);
