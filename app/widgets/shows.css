@@ -24,6 +24,9 @@
   z-index: 2;
 }
 .tile-h1 .ent-count { top: -0.25rem; right: -0.25rem; }
+/* Narrow tiles: logos can sit at the tile's edge, so the count sits inside
+   the logo's corner rather than over the edge. */
+.tile-wn .ent-count { top: 0.1rem; right: 0.1rem; min-width: 1.2rem; font-size: 0.75rem; line-height: 1.2rem; }
 
 /* ---------- Schedule ---------- */
 

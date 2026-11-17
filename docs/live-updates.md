@@ -212,7 +212,7 @@ Control API: `GET /api/spotify` (`{ ok, spotify: { configured, signedIn, user, s
 
 - `rev` is one counter for the whole server. Every change adds 1 and stamps the changed resource.
 - `epoch` is made once with the file. A new epoch means "forget what you knew, take everything".
-- The resources are `todo`, `calendar`, `layout`, `awws`, `budget` and `nowplaying`. A state file from before a resource existed loads fine: the missing one starts empty.
+- The resources are `todo`, `calendar`, `layout`, `awws`, `budget`, `nowplaying`, `shows` (the TV show schedule, [`docs/shows-snapshot.md`](shows-snapshot.md)) and `linktests` (the watch link test answers). A state file from before a resource existed loads fine: the missing one starts empty.
 - A to-do item: `{ id, title, section: 'now'|'next'|'waiting', done, doneAt, createdAt, due?, notes? }`, the same shape the TV already saves. Order in `items` is display order. At most 200 items; title 1 to 80 characters; `notes` plain text of 1 to 300 characters (control characters and runs of spaces become one space; empty or `null` removes the field, so an item never holds empty notes); id up to 40 of `A-Z a-z 0-9 _ -`; one item at most 2000 bytes as JSON. Done items ticked more than 48 hours ago are dropped on the next write.
 
 ### Screen API (no token; private addresses only, or `HUB_TV_IPS`)
@@ -249,6 +249,8 @@ Refusals are `403 { ok: false, error: 'screen not allowed' }`.
 
 Ops are applied in order and the last one to arrive wins. `set` merges `fields` into the item, so a change from the TV (`done`, `section`) keeps fields it did not send, `notes` among them; `{ "notes": null }` or `""` removes the notes.
 
+`POST /linktests` with `{ "result": { id, app, name, outcome, op?, uri?, data?, detail?, at, build? } }` stores one watch link test answer from the About panel (`outcome`: `title`, `app`, `nothing` or `error`), answered with `{ ok, rev }`. Like `POST /todo/ops` it refuses an `Origin` not on the allowed list. The Pi keeps the last 100 as the resource `linktests`; its log says only `screen sent a watch link test answer (app)`.
+
 ### Control API (token; both doors)
 
 `Authorization: Bearer <token>`. Wrong or missing: `401 { ok: false, error: 'wrong token' }`. Bodies are JSON, at most 8 KB, except `POST /api/awws` and `POST /api/budget`, which take up to 64 KB (the snapshot inside it may be at most 48 KB). A body over the limit is refused with `413 { ok: false, error: 'request body too large (at most 8 KB)' }` (or `64 KB`) before it is read.
@@ -265,6 +267,10 @@ Ops are applied in order and the last one to arrive wins. `set` merges `fields` 
 | `POST /api/awws` | `{ snapshot: {...} \| null }` | `{ ok, rev, changed, bytes, accepted, cleared, rejected }`; see below |
 | `GET /api/budget` | | `{ ok, rev, data, tz }`: the stored budget snapshot |
 | `POST /api/budget` | `{ snapshot: {...} \| null }` | the same answer as `POST /api/awws`; see below |
+| `GET /api/shows` | | `{ ok, rev, data, list, tz }`: the schedule (`docs/shows-snapshot.md`) and the owner's list |
+| `POST /api/shows` | exactly one of `{ add: { name, service?, tvmazeId?, serviceOverride?, alsoOn? } }`, `{ remove: "name" }`, `{ set: [...] }` | `{ ok, entry?, replaced?, removed?, list }`; TVmaze is asked again at once |
+| `POST /api/shows/refresh` | `{}` | `{ ok, done, changed, problems, count, data, list }`, after at most 25 s (`done: false` while it still reads) |
+| `GET /api/linktests` | | `{ ok, rev, data: { v, results: [...] } }`, newest first, at most 100 |
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
 | `GET /health` (no token) | | `{ ok, server }` |
 

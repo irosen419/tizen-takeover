@@ -141,6 +141,44 @@ It adds `budget.js` next to `server.js` and makes the server version 0.4.0. A re
 
 Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0`.
 
+## TV shows (the Schedule)
+
+The Entertainment panel on the TV has a **Schedule**: what airs today, this week and this month from the shows on your list, and which seasons are coming back. The Entertainment tile also puts first the apps that have something new, with a small count. The Pi keeps the list and looks the shows up on [TVmaze](https://www.tvmaze.com/api), a free public TV guide that needs no key or account.
+
+- `./hub shows list` shows the list. For each show it says still running or ended, what airs next and when, a returning season, or why it couldn't be read.
+- `./hub shows add "Stick" --service "Apple TV"` adds a show. The options:
+  - `--service` names the app it shows under (its badge on the TV). It wins over what TVmaze says.
+  - `--id 12345` sets its TVmaze number when the name finds the wrong show (the number is in the show's address on tvmaze.com).
+  - `--watch Hulu` opens a different app than the badge.
+  - `--also "Hulu,Peacock"` lists other apps that carry it (up to 4); the TV offers each as "Also on Hulu".
+  Adding a show that is already there updates it.
+- `./hub shows remove "Stick"` takes one off.
+- `./hub shows refresh` asks TVmaze about every show now and waits up to 25 seconds. Otherwise the Pi asks every 6 hours, and right after the list changes.
+
+The list starts with Hell's Kitchen and Shark Tank (Disney+), The Great British Baking Show (Netflix) and Stick (Apple TV), and lives in `data/shows.json`. The schedule itself is kept in `data/state.json`.
+
+If TVmaze can't be reached, each show keeps its last good copy and the TV keeps showing it. `./hub shows list` then says the copy is old. The Pi asks TVmaze at most 20 times in 10 seconds (TVmaze's limit), one call at a time; a list of 4 shows takes about 12 calls.
+
+On the TV, OK on a show opens its app (with "Search: Stick" as a reminder, since the apps don't take a show from outside yet). Hulu titles open in Disney+ by default (`watchAliases` in `app/config.js`), with "Also on Hulu" beside them. The shape of the data is in [`docs/shows-snapshot.md`](../docs/shows-snapshot.md).
+
+`HUB_SHOWS=off` in `.env` stops the TVmaze lookups. `HUB_SHOWS=sample` sends a made-up sample instead (`fixtures/shows-sample.json`), to try the TV without TVmaze.
+
+The log names no show. It only counts, for example `shows refresh: 4 of 4 shows read` or `shows refresh: 3 of 4 shows read, 1 failed (timeout)`.
+
+### Watch link test answers
+
+The TV's About panel has a **Watch link test**: each recipe tries one way of opening a title straight in an app (Prime Video, Netflix, Apple TV, Disney+...). You answer "Opened the title", "Only opened the app" or "Nothing". The TV sends each answer here, and the Pi keeps the last 100. `./hub linktests` lists them, newest first, so a Claude thread can see which deep links work on this TV.
+
+### After pulling this change
+
+It adds `shows.js`, `shows-seed.json` and `linktests.js` next to `server.js` and makes the server version 0.6.0. A restart is enough, with no rebuild and no change to `.env`:
+
+1. `cd tizen-takeover && git pull && cd pi`
+2. With Docker: `docker compose restart hub`. With systemd: `sudo systemctl restart home-hub`.
+3. `./hub status` should say `version 0.6.0`. In a few seconds, `./hub shows list` should list the four shows with what airs next. If it says `The server said no: no such call.`, the server is still running the old code: do step 2 again.
+
+The Pi needs to reach `api.tvmaze.com` over HTTPS. If your network blocks it, the Schedule says "TVmaze couldn't be reached".
+
 ## Calendars
 
 The Pi can read your Google calendars and send the coming events to the TV. Each calendar has a private link, called the **secret address**. The Pi reads that link every few minutes. Nobody needs to sign in to Google on the Pi.

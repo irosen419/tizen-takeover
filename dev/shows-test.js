@@ -226,6 +226,32 @@ async function main() {
     if (pageErrors(page).length) console.log('      page errors: ' + pageErrors(page).join(' | '));
     await page.ctx.close();
 
+    await check('Small tiles (docs/tile-sizes.md): the counts stay inside the tile at every size', async () => {
+      const seen = [];
+      for (const [w, h] of [[1, 1], [2, 1], [2, 2], [3, 1], [3, 4], [12, 1]]) {
+        const layout = [{ widget: 'entertainment', x: 0, y: 0, w: w, h: h }, { widget: 'today', x: w === 12 ? 0 : w, y: w === 12 ? 1 : 0, w: 3, h: 2 }];
+        const p = await env.newPage({ layout: layout });
+        try {
+          await H.sleep(500);
+          const v = await p.evaluate(() => {
+            const c = document.querySelector('.cell[data-widget="entertainment"] .tile');
+            const r = c.getBoundingClientRect();
+            let out = 0;
+            const b = c.querySelectorAll('.ent-count');
+            for (let i = 0; i < b.length; i++) {
+              const q = b[i].getBoundingClientRect();
+              if (q.right > r.right + 1 || q.left < r.left - 1 || q.top < r.top - 1 || q.bottom > r.bottom + 1) out++;
+            }
+            return { n: b.length, out: out };
+          });
+          seen.push(w + 'x' + h + ':' + v.n);
+          assert(v.out === 0, w + 'x' + h + ': ' + v.out + ' counts outside the tile');
+        } finally { await p.ctx.close(); }
+      }
+      // 1 column shows only the TV icon; a narrow strip has room for one logo.
+      assert(seen.join(' ') === '1x1:0 2x1:1 2x2:3 3x1:1 3x4:3 12x1:3', seen.join(' '));
+    });
+
     await check('Spanish words and a 24 hour clock', async () => {
       const es = await env.newPage({ lang: 'es', hours: '24' });
       try {

@@ -66,7 +66,7 @@ const spotify = require('./spotify');
 const shows = require('./shows');
 const linktests = require('./linktests');
 
-const SERVER_VERSION = '0.5.0';
+const SERVER_VERSION = '0.6.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
