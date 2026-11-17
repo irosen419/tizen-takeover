@@ -457,6 +457,34 @@ async function main() {
       });
     }
 
+    await check('banner: OK dismisses it from inside a panel; an undismissed one clears itself', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-goals');
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, alerts: [{ id: 'a-2999', label: 'Corner Bakery Stand' }] }));
+        await H.until(() => page.evaluate(() => window.HUB_ALERT.shown()), 5000, 'no banner over the panel');
+        await H.key(page, 'Escape');
+        await H.sleep(400);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'Back in a panel did not dismiss it');
+        assert(await page.evaluate(() => !!window.HUB_TEST.open()), 'Back closed the panel too');
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, alerts: [{ id: 'a-3001', label: 'Late Night Tacos' }] }));
+        await H.until(() => page.evaluate(() => window.HUB_ALERT.shown()), 5000, 'a new charge did not show');
+        await H.key(page, 'Enter');
+        await H.sleep(400);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'OK in a panel did not dismiss it');
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, alerts: [{ id: 'a-3002', label: 'Game Store Online' }] }));
+        await H.until(() => page.evaluate(() => window.HUB_ALERT.shown()), 5000, 'the next charge did not show');
+        await page.evaluate(() => window.HUB_ALERT.setExpiry(600));
+        await H.until(() => page.evaluate(() => !window.HUB_ALERT.shown()), 3000, 'the banner did not expire');
+        await H.sleep(500);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'an expired banner came back');
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
     /* ---------- the layouts ---------- */
     for (const id of ['awws-money', 'budget']) {
       const preset = C.layouts.find((l) => l.id === id);

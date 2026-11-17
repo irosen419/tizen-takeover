@@ -110,7 +110,7 @@ A list of at most 5.
 | `id` | text | required, unique, 1 to 40 of `A-Z a-z 0-9 _ -`. Keep it the same while the alert stands: the TV remembers the ids it has shown |
 | `label` | text, 30 | required: the merchant, as the owner knows it |
 
-There is no amount field, and one sent is dropped. On the TV: a banner across the top of the screen, "New charge: Corner Bakery Stand", with "+1 more" when there are more. OK (or Back) on the home screen dismisses it and the next one shows; a dismissed id never shows again on that TV (it keeps the last 50, in `homeHub.budget.seen.v1`). Send the list with only the alerts that still stand; an empty list (or `null`) clears them.
+There is no amount field, and one sent is dropped. On the TV: a banner across the top of the screen, "New charge: Corner Bakery Stand", with "+1 more" when there are more. OK (or Back) on any screen (a panel, the layout switcher and About too) dismisses it and the next one shows; one nobody dismisses clears itself 5 minutes after this TV first shows it; a dismissed id never shows again on that TV (it keeps the last 50, in `homeHub.budget.seen.v1`). Send the list with only the alerts that still stand; an empty list (or `null`) clears them.
 
 ## What the Pi keeps
 

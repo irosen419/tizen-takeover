@@ -127,7 +127,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.10';
+  var BUILD = 'v0.28.11';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -2173,9 +2173,10 @@
     // The TV keyboard can send a stray Enter after Done or Back after Cancel.
     if ((code === KEY.ENTER || isBack(code)) && Date.now() - typingEndedAt < 300) return;
 
-    // A banner over the home screen (budget.js's "New charge: ..."): OK or
-    // Back dismisses it first; the arrows still move between tiles.
-    if (!open && !sw.on && !ab.on && (code === KEY.ENTER || isBack(code)) && alertShown()) {
+    // A banner over the screen (budget.js's "New charge: ..."): OK or Back
+    // dismisses it first, wherever you are (home, a panel, the layout switcher,
+    // About); the arrows still move as usual.
+    if ((code === KEY.ENTER || isBack(code)) && alertShown()) {
       dismissAlert();
       return;
     }
