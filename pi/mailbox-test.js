@@ -505,6 +505,59 @@ async function main() {
     assert.ok(lines.some((l) => /^Last command: status/.test(l)));
   });
 
+  /* --- log.tail --- */
+
+  await check('log.tail: accepted with and without args, same count words as ./hub log', async () => {
+    let r = await run(fake, h, 'log.tail');
+    assert.strictEqual(r.ok, true, r.message);
+    assert.ok(/^\d+ lines, \d+ problems? in the last 24 hours\.$/.test(r.message), r.message);
+    assert.deepStrictEqual(Object.keys(r.data).sort(), ['errors24h', 'lines']);
+    assert.ok(r.data.lines.length >= 1 && r.data.lines.length <= 50);
+    r = await run(fake, h, 'log.tail', { lines: 2, errors: false });
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.data.lines.length, 2);
+    assert.ok(/^2 lines, /.test(r.message));
+    h.note('calendar Work: timed out');
+    r = await run(fake, h, 'log.tail', { errors: true, lines: 200 });
+    assert.strictEqual(r.ok, true);
+    assert.ok(r.data.lines.length >= 1 && r.data.lines.every((l) => l.level === 'error'));
+    assert.ok(r.data.errors24h >= 1);
+    assert.ok(/problem lines?, /.test(r.message), r.message);
+    assert.ok(h.lines.some((l) => / Claude mailbox: log\.tail \(cmd[^)]*\) -> ok$/.test(l)));
+  });
+
+  await check('log.tail: only scrubbed text reaches the bucket (no address, no calendar name)', async () => {
+    const lines = [];
+    const h2 = await startHub(fake, {
+      allowHttp: true, calendarTimeout: 400, log: (x) => lines.push(x),
+      calendars: [{ name: 'Rosen Family', url: 'http://127.0.0.1:1/family.ics' }]
+    });
+    h2.note('screen connected (poll) ::ffff:192.168.1.5');
+    h2.note('screen connected (live line) 10.0.0.7');
+    h2.note('calendar ROSEN FAMILY: could not be reached (connection refused)');
+    const r = await run(fake, h2, 'log.tail', { lines: 200 });
+    assert.strictEqual(r.ok, true, r.message);
+    const raw = fake.store.get('outbox/' + r.id + '.json').body.toString('utf8');
+    assert.ok(raw.indexOf('[address]') >= 0 && raw.indexOf('[name]') >= 0, raw);
+    assert.ok(!/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(raw), 'no IPv4 address');
+    assert.ok(raw.indexOf('::ffff') < 0, 'no IPv6 address');
+    assert.ok(!/rosen/i.test(raw), 'no calendar name');
+    assert.ok(raw.indexOf('home-hub-mailbox') < 0, 'not even the bucket name');
+    assert.ok(lines.some((l) => /Rosen Family/.test(l)), 'the Pi\'s own log still has it');
+    await stopHub(h2);
+  });
+
+  await check('status.json: log.errors24h and log.lastErrorAt, never log text', async () => {
+    h.note('calendar Work: timed out');
+    await run(fake, h, 'ping');
+    const st = fake.json('status.json');
+    assert.deepStrictEqual(Object.keys(st.log).sort(), ['errors24h', 'lastErrorAt']);
+    assert.ok(typeof st.log.errors24h === 'number' && st.log.errors24h >= 1);
+    assert.ok(isFinite(Date.parse(st.log.lastErrorAt)) && Date.now() - Date.parse(st.log.lastErrorAt) < 60000);
+    const text = JSON.stringify(st);
+    assert.ok(text.indexOf('timed out') < 0 && text.indexOf('calendar Work') < 0);
+  });
+
   /* --- rejected --- */
 
   await check('rejected: bad file name, never run, answered as invalid-...', async () => {
@@ -546,6 +599,10 @@ async function main() {
     ['awws.set snapshot not an object', () => ({ raw: envelope('awws.set', { snapshot: [1, 2] }) }), /"snapshot" must be an object/],
     ['awws.set snapshot nested too deep', () => ({ raw: envelope('awws.set', { snapshot: { a: { b: { c: { d: { e: { f: { g: { h: { i: { j: 1 } } } } } } } } } } }) }), /nested more than 8 levels deep/],
     ['awws.set over 64 KB', () => ({ raw: envelope('awws.set', { snapshot: { v: 1, sentAt: new Date().toISOString(), todos: { items: [], pad: 'x'.repeat(66 * 1024) } } }) }), /larger than 64 KB/],
+    ['log.tail with an unknown arg', () => ({ raw: envelope('log.tail', { lines: 5, scrub: false }) }), /"log\.tail" does not take "scrub" \(it takes lines, errors\)/],
+    ['log.tail lines out of range', () => ({ raw: envelope('log.tail', { lines: 500 }) }), /"lines" must be a number from 1 to 200/],
+    ['log.tail lines not whole', () => ({ raw: envelope('log.tail', { lines: 2.5 }) }), /"lines" must be a whole number from 1 to 200/],
+    ['log.tail errors not a boolean', () => ({ raw: envelope('log.tail', { errors: 1 }) }), /"errors" must be true or false/],
     ['awws.show with args', () => ({ raw: envelope('awws.show', { full: true }) }), /"awws\.show" does not take "full" \(it takes no args\)/]
   ];
   for (const [name, make, re] of rejects) {

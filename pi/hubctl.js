@@ -29,6 +29,7 @@
  *   ./hub spotify logout             forget the Spotify sign-in
  *   ./hub status                     is the server up, which screens are on
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
+ *   ./hub log [--errors] [--lines 120]   the server's recent log lines (50 unless --lines says)
  *   ./hub token                      create the password, once
  *   ./hub help
  *
@@ -746,6 +747,59 @@ async function mailbox(args) {
   mailboxLines(r.mailbox).forEach(say);
 }
 
+/* ---------- recent log lines ---------- */
+
+function problemsText(n) {
+  return (n === 1 ? '1 problem' : n + ' problems') + ' in the last 24 hours';
+}
+
+// "2026-11-17 09:30:05" in the Pi's own time zone (TZ in Docker).
+function localTime(iso) {
+  const d = new Date(iso);
+  if (!isFinite(d.getTime())) return String(iso || '');
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+// The lines for ./hub log, from a GET /api/log answer: one per log line,
+// then the count.
+function logLines(r, errorsOnly) {
+  const list = (r && r.lines) || [];
+  const out = list.map((l) => localTime(l.t) + ' ' + l.text);
+  if (!list.length) out.push(errorsOnly ? 'No problems in the log the server keeps.' : 'The log is empty.');
+  out.push(problemsText(r && r.errors24h || 0) + '.');
+  return out;
+}
+
+// The one-line answer for the mailbox's log.tail.
+function logSummaryText(r, errorsOnly) {
+  const n = ((r && r.lines) || []).length;
+  return n + (errorsOnly ? (n === 1 ? ' problem line' : ' problem lines') : (n === 1 ? ' line' : ' lines')) + ', ' + problemsText(r && r.errors24h || 0) + '.';
+}
+
+// The query for GET /api/log. lines: 1-200 or undefined.
+function logQuery(lines, errorsOnly, scrub) {
+  const q = [];
+  if (lines !== undefined) q.push('lines=' + lines);
+  if (errorsOnly) q.push('errors=1');
+  if (scrub) q.push('scrub=1');
+  return '/api/log' + (q.length ? '?' + q.join('&') : '');
+}
+
+async function logCommand(args) {
+  const a = parseArgs(args, ['lines']);
+  if (a.words.length || Object.keys(a.opts).some((k) => k !== 'lines' && k !== 'errors')) {
+    stop('Use: ./hub log, ./hub log --errors or ./hub log --lines 120. Run ./hub help for examples.');
+  }
+  let lines;
+  if (a.opts.lines !== undefined) {
+    lines = /^\d{1,3}$/.test(a.opts.lines) ? Number(a.opts.lines) : 0;
+    if (lines < 1 || lines > 200) stop('--lines must be a whole number from 1 to 200.');
+  }
+  const r = await call('GET', logQuery(lines, !!a.opts.errors, false));
+  logLines(r, !!a.opts.errors).forEach(say);
+}
+
 /* ---------- help ---------- */
 
 const HELP = [
@@ -780,6 +834,7 @@ const HELP = [
   '  ./hub spotify logout        forget the Spotify sign-in',
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
+  '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
   '  ./hub token                 create the password in pi/.env (only once)'
 ].join('\n');
 
@@ -816,6 +871,7 @@ async function main(argv) {
   if (cmd === 'budget') return budgetCommand(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
+  if (cmd === 'log') return logCommand(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
@@ -841,6 +897,9 @@ module.exports = {
   budgetShowLines: budgetShowLines,
   statusLines: statusLines,
   mailboxLines: mailboxLines,
+  logLines: logLines,
+  logSummaryText: logSummaryText,
+  logQuery: logQuery,
   spotifyStatusLines: spotifyStatusLines,
   vibeLine: vibeLine,
   spotifyLoginLines: spotifyLoginLines,
