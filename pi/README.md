@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.6.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.7.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -146,6 +146,86 @@ An older server keeps a level the TV sets (Move on the TV) but refuses `level` o
 ### Budget lab sections (server 0.5.0)
 
 Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0` or later.
+
+## Ambience (the room's lights)
+
+The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
+
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.7.0` or later.
+
+### Before you start: your bulbs must be in Home Assistant
+
+The hub does not talk to any bulb itself. Every light must first show up in Home Assistant as a `light.` entity (or a `switch.` entity for a plug). Check in Home Assistant under Settings, Devices and services, Entities: you should see each bulb there, and turning it on and off from Home Assistant should work.
+
+- **Geeni** bulbs are Tuya devices inside. The usual ways into Home Assistant are the built-in **Tuya** integration (through the Tuya cloud) or the community **LocalTuya** integration (on your network, needs each bulb's local key). Which one works for your bulbs has **not been tried** yet. Get them working in Home Assistant first; the hub can't do this part.
+- **Sengled** bulbs come in through their own hub or Zigbee. They often drop off the network. That is between the bulb, its hub and Home Assistant, and this code can't fix it. What the hub does: a scene still applies to every light that answers, and the TV names the one that didn't.
+- The **camera plug** (or any smart plug) works as a `switch.` entity: on and off, no level.
+
+### Step 1: a token from Home Assistant (once)
+
+1. In Home Assistant, open your profile (your name, bottom left), then the **Security** tab.
+2. Under **Long-lived access tokens**, choose **Create token**, name it `Home Hub`, and copy it. It is shown only once.
+3. On the Pi, add it to `pi/.env` (keep it only there, never in git or a chat):
+
+   ```sh
+   HA_TOKEN=PASTE-LONG-LIVED-TOKEN
+   # Only if Home Assistant is not on this Pi:
+   # HA_URL=http://homeassistant.local:8123
+   # Only if you have the plant wall's WLED controller:
+   # WLED_URL=http://PASTE-WLED-ADDRESS
+   ```
+
+4. Restart: `docker compose restart hub` (or `sudo systemctl restart home-hub`). The log says `ambience: on (0 lights, 0 scenes, 3 moods)`.
+
+### Step 2: tell the hub which lights and scenes you have
+
+The lights, scenes and plant wall moods are kept in `data/ambience.json`. Start from the example:
+
+```sh
+cp ambience.example.json my-lights.json
+```
+
+Edit `my-lights.json`:
+
+- `lights`: one per bulb or plug. `id` is your short name for it (a-z, 0-9, `-` or `_`), `name` is what the TV shows, `entity` is its entity id in Home Assistant (like `light.living_room_lamp`), `kind` is `light` or `switch`. Add `"flaky": true` for a bulb that often drops off.
+- `scenes`: each has an `id`, a `name`, an `icon` (`moon`, `sun`, `book`, `film`, `power`, `sparkle`, `bulb`, `leaf`, `sofa` or `bed`) and, for each light, `on`, a level `pct` (1 to 100), and either a white `kelvin` (1500 to 6500) or a `color` `[red, green, blue]`. `wled` names a plant wall mood to set with the scene.
+- `moods`: the plant wall's moods, each a WLED state (`on`, `bri` from 0 to 255, optionally `ps` for a WLED preset).
+
+At most 12 lights, 10 scenes and 12 moods; the file is at most 8 KB. Then:
+
+```sh
+./hub ambience set my-lights.json
+```
+
+It says `Saved: 3 lights, 5 scenes, 3 moods. Screens that are on change now.` or, if something is wrong, which part and why (for example `scene 1 uses a light id that is not in "lights"`). With Docker the file must be in this folder; `./hub ambience set - < my-lights.json` reads it from input instead.
+
+### Commands
+
+- `./hub ambience status`: how many lights answer and are on, which scene is on, one line per light, and the plant wall.
+- `./hub ambience scenes`: the ids of the scenes, lights and moods.
+- `./hub ambience scene chill`: apply a scene. `Chill night: applied (2 of 2 lights answered).` or `Chill night: partly applied (1 of 2 lights answered; Sengled lamp didn't answer).`
+- `./hub ambience light geeni 40` (or `on`, `off`): one light.
+- `./hub ambience mood dim`: a plant wall mood.
+- `./hub ambience reset`: back to the defaults (no lights; the three plant wall moods Off, Dim and Bright).
+
+From the cloud, the Claude mailbox has the same: `ambience.status`, `ambience.scene` `{ "id": "chill" }`, `ambience.light` `{ "id": "geeni", "pct": 40 }` (or `"on": true|false`), `ambience.mood`, `ambience.set` `{ "config": { ... } }` and `ambience.reset`.
+
+The server asks Home Assistant how the lights are every 10 seconds while a TV is on, and every minute when none is, waiting longer (up to 5 minutes) while Home Assistant doesn't answer. The log only ever says counts and results, such as `ambience: scene applied (1 of 2 lights answered)`: never the token, an address, an entity id or a light's name.
+
+### If it says something else
+
+| What you see | What it means | What to do |
+|---|---|---|
+| TV: **Set up lights**, "Home Assistant isn't connected yet"; log `ambience: off (no HA_TOKEN in .env)` | No token | Step 1 |
+| Log `ambience: off (HA_TOKEN or HA_URL does not look right)` | The token is too short or has spaces, or `HA_URL` is not an `http://` or `https://` address | Copy the token again; check `HA_URL` |
+| TV: **Set up lights**, "No lights added yet" | No lights saved | Step 2 |
+| TV: "Home Assistant refused the token"; log `ambience: Home Assistant refused the token (401)` | The token was deleted or mistyped | Make a new one (Step 1) and restart |
+| TV: "Home Assistant isn't answering"; log `ambience: Home Assistant did not answer (timeout)` or `(network)` | Home Assistant is off or restarting, or `HA_URL` is wrong | The tile keeps the last known lights and the server keeps trying. Check Home Assistant opens in a browser |
+| TV and `./hub ambience scene` say "Sengled lamp didn't answer" | **Sengled keeps dropping: scenes still apply to the others.** That bulb is offline in Home Assistant | Nothing to do here. Power the bulb off and on, or look at its hub. Its reliability is outside this code |
+| `light ... didn't answer` for a Geeni bulb | Home Assistant has it but can't reach it | Check it in Home Assistant first (Tuya or LocalTuya, see above) |
+| Log `ambience: plant wall did not answer` | The WLED controller is off or `WLED_URL` is wrong | Open `WLED_URL` in a browser on the same network |
+| Log `ambience: plant wall off (WLED_URL does not look right)` | `WLED_URL` is not an `http://` address | Fix it in `.env` and restart |
+| Log `ambience: a screen sent commands too fast (asked it to slow down)` | Someone held a button down | Nothing: the TV waits and tries again |
 
 ## Calendars
 
