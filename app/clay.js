@@ -1311,6 +1311,8 @@
     } else {
       put('stroll', 3);
       put('fetch', 3);
+      put('fetch-bolt', 2);
+      put('fetch-snub', 2);
       put('sock-heist', 2);
       put('zoomies', 2);
       put('perch', 2);
@@ -1492,6 +1494,8 @@
   // the one picture slid along (kept short; see docs/clay.md). Optional:
   // a scene that would go over MAX_FRAMES with them is built without.
   var BALL_TROT = { seq: 'ember.ball-trot', keys: ['ember/stand-ball'], step: 18, stride: 72, dy: [0, -6, -3, 0], optional: true };
+  // Ember galloping with the ball: the sock-run recipe with the ball.
+  var BALL_RUN = { seq: 'ember.ball-run', keys: ['ember/stand-ball'], step: 46, stride: 138, dy: [0, -10, -4], optional: true };
   var SOCK_RUN = { seq: 'ember.sock-run', keys: ['ember/sock-run'], step: 46, stride: 138, dy: [0, -10, -4], optional: true };
   var plainExtras = false;     // while building: leave the optional cycles out
   var trimmed = false;         // while building: leave a scene's small touches out
@@ -1854,6 +1858,168 @@
       .pose('ember/shake', 6)
       .pose('ember/stand-2', 3);
     go(ember, EMBER_ZOOM, S.start - S.sgn * 40, { ease: 'in' }).hide();
+  };
+
+  // Both new fetches start the same way as `fetch`: Ember bounds in, Ian
+  // walks in, a real throw, she gallops after the ball and picks it up.
+  function fetchStart(S, ian, ember, ball, landF) {
+    var F = S.floor;
+    var ianX = S.across(S.rand(0.16, 0.22));
+    var emberWait = ianX + S.sgn * 125;
+    var landX = S.across(landF);
+    var runTo = landX - S.sgn * 34;
+    var runTicks = walkTicks(emberWait, runTo, EMBER_RUN.step, true, false);
+    go(ian.at(S.start, F).face(S.dir), IAN_WALK, ianX)
+      .pose('ian/stand', 0)
+      .after('here')
+      .pose('ian/stand', 3)
+      .pose('ian/throw-1', 6)
+      .signal('throw')
+      .pose('ian/throw-2', 6)
+      .pose('ian/stand', 0);
+    go(ember.at(S.start - S.sgn * 130, F).face(S.dir), EMBER_RUN, emberWait, { ease: 'out' })
+      .signal('here')
+      .pose('ember/stand-2', 0)
+      .after('throw')
+      .pose('ember/jump-crouch', 1);
+    go(ember, EMBER_RUN, runTo, { ease: 'in' })
+      .move(S.sgn * 16, 0, 1, { key: 'ember/skid' })
+      .move(S.sgn * 6, 0, 2, { key: 'ember/skid' })
+      .pose('ember/stand-2', 2)
+      .signal('pick')
+      .pose('ember/stand-ball', 3);
+    ball.after('throw')
+      .at(ianX + S.sgn * 36, F - 118)
+      .ground(F)
+      .arc(['props/ball'], landX, F - 4, Math.min(380, 160 + runTicks * 14), runTicks + 1)
+      .pose('props/ball', 0)
+      .after('pick')
+      .hide();
+    return { ianX: ianX, landX: landX, runTo: runTo };
+  }
+
+  // 2b. Where'd she go? Ember catches the ball and bolts the other way, past
+  // Ian and off the screen. He turns to peer after her; she comes back from
+  // the far side, tiptoes up behind him, drops the ball at his heels and
+  // barks. He yelps; then he laughs, points, and she snatches it up and
+  // is off again, with him walking after.
+  SCENES['fetch-bolt'] = function (S) {
+    var F = S.floor;
+    var ian = S.actor('ian', 'char', { shadow: 62 });
+    var ember = S.actor('ember', 'char', { shadow: 76 });
+    var ball = S.actor('ball', 'prop', { shadow: 18, scale: 1.6 });
+    var bang = S.actor('bang', 'prop', { scale: 1.4 });
+    var P = fetchStart(S, ian, ember, ball, S.rand(0.72, 0.8));
+    var nearX = P.ianX + S.sgn * 100;
+    var dropX = nearX - S.sgn * 38;      // her mouth, facing him
+    // Ian watches her run past, searches for her, shrugs, searches again.
+    ian.after('pick')
+      .pose('ian/stand', 8)
+      .signal('bolted')
+      .face(S.back)
+      .pose('ian/search', 8)
+      .pose('ian/stand-shrug', 8)
+      .face(S.back)
+      .pose('ian/search', 0)
+      .after('bark')
+      .pose('ian/startled', 4)
+      .face(S.dir)
+      .pose('ian/stand', 3)
+      .pose('ian/laugh', 12)
+      .pose('ian/stand', 2)
+      .pose('ian/point', 8)
+      .signal('point')
+      .pose('ian/point', 0)
+      .after('snatch');
+    go(ian, IAN_WALK, S.end).hide();
+    // She bolts with the ball: past him and off the far edge, then round.
+    go(ember, BALL_RUN, S.start - S.sgn * 140, { ease: 'in' })
+      .face(S.back)
+      .signal('gone')
+      .wait(6)
+      .at(S.end + S.sgn * 70, F)
+      .face(S.back);
+    go(ember, BALL_TROT, nearX + S.sgn * 300, { step: 40, ease: 'none' });
+    go(ember, BALL_TROT, nearX, { step: 12, ease: 'out' })
+      .pose('ember/stand-ball', 4)
+      .pose('ember/stand-bark', 2)
+      .signal('bark')
+      .pose('ember/stand-bark', 4)
+      .pose('ember/stand-2', 0)
+      .after('point')
+      .pose('ember/stand-ball', 1)
+      .signal('snatch');
+    go(ember, BALL_RUN, S.end + S.sgn * 120, { ease: 'in' }).hide();
+    // Dropped at his heels, behind him.
+    ball.after('bark')
+      .at(dropX, F - 56)
+      .ground(F)
+      .arc(['props/ball'], dropX - S.sgn * 10, F - 4, 14, 2)
+      .pose('props/ball', 0)
+      .after('snatch')
+      .hide();
+    bang.after('bark').at(P.ianX, F - 196).pose('props/bang', 6).hide();
+  };
+
+  // 2c. The snub. Ember catches the ball, trots most of the way back, drops
+  // it, looks the other way and slowly walks off. Ian throws up his hands
+  // ("What??"), goes over, picks the ball up himself and sits on the floor
+  // with it, sulking. She looks back over her shoulder; he poofs away.
+  SCENES['fetch-snub'] = function (S) {
+    var F = S.floor;
+    var ian = S.actor('ian', 'char', { shadow: 62 });
+    var ember = S.actor('ember', 'char', { shadow: 76 });
+    var ball = S.actor('ball', 'prop', { shadow: 18, scale: 1.6 });
+    var bang = S.actor('bang', 'prop', { scale: 1.4 });
+    var poof = S.actor('poof', 'prop', { scale: 3 });
+    var P = fetchStart(S, ian, ember, ball, S.rand(0.7, 0.76));
+    var dropX = S.across(S.rand(0.5, 0.54));
+    var mouthX = dropX + S.sgn * 30;     // she faces back toward him
+    var sitX = dropX - S.sgn * 36;
+    go(ember, BALL_TROT, dropX)
+      .pose('ember/stand-ball', 3)
+      .signal('drop')
+      .pose('ember/stand-2', 6)
+      .pose('ember/stand-look', 8)
+      .signal('snub');
+    go(ember, EMBER_TROT, S.across(0.8), { step: 8 })
+      .pose('ember/stand-look', 0)
+      .after('sat')
+      .pose('ember/stand-look', 8);
+    go(ember, EMBER_TROT, S.end + S.sgn * 80, { step: 12 }).hide();
+    // The drop: out of her mouth to the floor (after the ball hid in her mouth, on 'pick').
+    ball.after('drop')
+      .at(mouthX, F - 56)
+      .ground(F)
+      .arc(['props/ball'], mouthX + S.sgn * 8, F - 4, 12, 2)
+      .pose('props/ball', 0)
+      .after('lifted')
+      .hide()
+      .after('sat')
+      .at(sitX + S.sgn * 4, F - 18)
+      .pose('props/ball', 0)
+      .after('bye')
+      .hide();
+    ian.after('snub')
+      .face(S.dir)
+      .pose('ian/stand', 2)
+      .pose('ian/hands-up', 12)
+      .signal('what')
+      .pose('ian/stand-shrug', 6);
+    go(ian, IAN_WALK, sitX - S.sgn * 40)
+      .face(S.dir)
+      .pose('ian/pick-up', 5)
+      .signal('lifted')
+      .signal('down')
+      .at(sitX, F)
+      .face('right')
+      .pose('ian/sit-ball', 6)
+      .signal('sat')
+      .pose('ian/sit-ball', 40)
+      .signal('bye')
+      .hide();
+    bang.after('what').at(P.ianX, F - 190).pose('props/bang', 6).hide();
+    poof.after('bye').at(sitX, F - 8).pose('props/poof', 3).hide();
   };
 
   // Where a perch pose's bottom goes, against the ledge's y (by eye, from the sprites).

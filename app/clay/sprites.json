@@ -110,6 +110,69 @@
    "faces": "right",
    "about": "Lying down, side view facing right, guarding a yellow tennis ball between her front paws."
   },
+  "ember/ball-run-1": {
+   "file": "sprites/ember/ball-run-1.webp",
+   "w": 82,
+   "h": 93,
+   "cx": 42.8,
+   "sheet": "ember-ball-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/gallop-1."
+  },
+  "ember/ball-run-2": {
+   "file": "sprites/ember/ball-run-2.webp",
+   "w": 95,
+   "h": 92,
+   "cx": 50.8,
+   "sheet": "ember-ball-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/gallop-2."
+  },
+  "ember/ball-run-3": {
+   "file": "sprites/ember/ball-run-3.webp",
+   "w": 104,
+   "h": 97,
+   "cx": 53.7,
+   "sheet": "ember-ball-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/gallop-3."
+  },
+  "ember/ball-run-4": {
+   "file": "sprites/ember/ball-run-4.webp",
+   "w": 103,
+   "h": 73,
+   "cx": 54.2,
+   "sheet": "ember-ball-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/gallop-4."
+  },
+  "ember/ball-run-5": {
+   "file": "sprites/ember/ball-run-5.webp",
+   "w": 99,
+   "h": 83,
+   "cx": 54.6,
+   "sheet": "ember-ball-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/gallop-5."
+  },
+  "ember/ball-run-6": {
+   "file": "sprites/ember/ball-run-6.webp",
+   "w": 107,
+   "h": 70,
+   "cx": 57.0,
+   "sheet": "ember-ball-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/gallop-6."
+  },
+  "ember/ball-run-7": {
+   "file": "sprites/ember/ball-run-7.webp",
+   "w": 96,
+   "h": 82,
+   "cx": 55.8,
+   "sheet": "ember-ball-run",
+   "faces": "right",
+   "about": "Galloping, side view facing right, with a yellow tennis ball in her mouth: the pose of ember/gallop-7."
+  },
   "ember/ball-trot-a1": {
    "file": "sprites/ember/ball-trot-a1.webp",
    "w": 89,
@@ -758,6 +821,15 @@
    "faces": "front",
    "about": "Standing facing the camera with one hand flat over his face, shoulders slumped."
   },
+  "ian/hands-up": {
+   "file": "sprites/ian/hands-up.webp",
+   "w": 104,
+   "h": 161,
+   "cx": 50.3,
+   "sheet": "ian-fetch2",
+   "faces": "front",
+   "about": "Facing the camera, flinging both arms up and out with palms open in baffled outrage, eyebrows high, mouth open as if shouting 'WHAT?', feet planted."
+  },
   "ian/hang": {
    "file": "sprites/ian/hang.webp",
    "w": 63,
@@ -866,6 +938,15 @@
    "faces": "front",
    "about": "Lying flat on his back, seen from the side, hands behind his head, one knee up, eyes closed, fast asleep."
   },
+  "ian/pick-up": {
+   "file": "sprites/ian/pick-up.webp",
+   "w": 74,
+   "h": 143,
+   "cx": 34.7,
+   "sheet": "ian-fetch2",
+   "faces": "right",
+   "about": "Bending forward at the waist, side view facing right, one arm reaching straight down with open fingers to grab something small off the floor, the other hand resting on his knee, knees slightly bent."
+  },
   "ian/point": {
    "file": "sprites/ian/point.webp",
    "w": 73,
@@ -956,6 +1037,24 @@
    "faces": "right",
    "about": "Running, side view facing right, FLIGHT: both feet clearly off the ground, legs split wide: his far leg stretched straight out behind him after pushing off, his near leg reaching far forward; arms pumping wide. A long stretched pose."
   },
+  "ian/search": {
+   "file": "sprites/ian/search.webp",
+   "w": 67,
+   "h": 162,
+   "cx": 32.0,
+   "sheet": "ian-fetch2",
+   "faces": "right",
+   "about": "Standing, side view facing right, leaning forward and peering into the distance, one flat hand shading his eyes at his brow, the other hand on his hip, puzzled."
+  },
+  "ian/sit-ball": {
+   "file": "sprites/ian/sit-ball.webp",
+   "w": 64,
+   "h": 112,
+   "cx": 30.8,
+   "sheet": "ian-fetch2",
+   "faces": "front",
+   "about": "Sitting cross-legged on the floor facing the camera, shoulders slumped, a grumpy sulky pout, both hands cupped together in his lap as if holding something small (the hands are empty)."
+  },
   "ian/sit-edge": {
    "file": "sprites/ian/sit-edge.webp",
    "w": 87,
@@ -989,6 +1088,15 @@
    "h": 163,
    "cx": 33.5,
    "sheet": "ian-move",
+   "faces": "front",
+   "about": "Standing upright and relaxed, facing the camera, arms at his sides, warm half-smile."
+  },
+  "ian/stand-3": {
+   "file": "sprites/ian/stand-3.webp",
+   "w": 68,
+   "h": 163,
+   "cx": 33.4,
+   "sheet": "ian-fetch2",
    "faces": "front",
    "about": "Standing upright and relaxed, facing the camera, arms at his sides, warm half-smile."
   },
@@ -1054,6 +1162,15 @@
    "sheet": "ian-fix",
    "faces": "front",
    "about": "Standing upright facing the camera, one open hand raised beside his head in a friendly wave, smiling."
+  },
+  "ian/startled": {
+   "file": "sprites/ian/startled.webp",
+   "w": 94,
+   "h": 153,
+   "cx": 44.5,
+   "sheet": "ian-fetch2",
+   "faces": "front",
+   "about": "Facing the camera at a slight angle, leaping into the air in fright: both feet off the ground, arms flung out wide, eyes huge, mouth open in a yelp."
   },
   "ian/sunny": {
    "file": "sprites/ian/sunny.webp",
@@ -1358,6 +1475,15 @@
    "ember/ball-trot-b1",
    "ember/ball-trot-b2"
   ],
+  "ember.ball-run": [
+   "ember/ball-run-1",
+   "ember/ball-run-2",
+   "ember/ball-run-3",
+   "ember/ball-run-4",
+   "ember/ball-run-5",
+   "ember/ball-run-6",
+   "ember/ball-run-7"
+  ],
   "ember.sock-run": [
    "ember/sock-run-1",
    "ember/sock-run-2",
@@ -1374,7 +1500,8 @@
   "ember.trot": 56,
   "ember.run": 120,
   "ember.ball-trot": 56,
-  "ember.sock-run": 120
+  "ember.sock-run": 120,
+  "ember.ball-run": 120
  },
  "lifts": {
   "ian/run-5": 12,
@@ -1384,6 +1511,9 @@
   "ember/gallop-7": 4,
   "ember/sock-run-1": 14,
   "ember/sock-run-4": 11,
-  "ember/sock-run-7": 4
+  "ember/sock-run-7": 4,
+  "ember/ball-run-1": 14,
+  "ember/ball-run-4": 11,
+  "ember/ball-run-7": 4
  }
 }

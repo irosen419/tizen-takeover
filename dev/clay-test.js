@@ -61,6 +61,8 @@ const SWAPPED = [
 const PLAYS = [
   ['stroll', { dir: 'right' }], ['stroll', { dir: 'left' }],
   ['fetch', { dir: 'right' }], ['fetch', { dir: 'left' }],
+  ['fetch-bolt', { dir: 'right' }], ['fetch-bolt', { dir: 'left' }],
+  ['fetch-snub', { dir: 'right' }], ['fetch-snub', { dir: 'left' }],
   ['sock-heist', {}], ['zoomies', {}],
   ['perch', { pose: 'sit-edge' }], ['perch', { pose: 'lie-chin' }], ['perch', { pose: 'climb' }],
   ['morning', {}], ['evening', {}], ['night', { nap: true }], ['night', { nap: false }],
@@ -1026,7 +1028,7 @@ async function checkStepped() {
 // engine's limit, MAX_FRAMES).
 const LENGTHS = {
   perch: [20, 30], zoomies: [18, 25], stroll: [30, 40], morning: [30, 40], evening: [30, 40], weather: [30, 40],
-  fetch: [35, 45], 'sock-heist': [35, 45], cheer: [15, 20], shrug: [15, 20], night: [40, 60]
+  fetch: [35, 45], 'fetch-bolt': [30, 45], 'fetch-snub': [30, 45], 'sock-heist': [35, 45], cheer: [15, 20], shrug: [15, 20], night: [40, 60]
 };
 async function checkLengths() {
   const page = await newHub();
