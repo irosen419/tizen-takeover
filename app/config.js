@@ -130,9 +130,9 @@ var HUB_CONFIG = {
       { widget: 'budget-room',   x: 0, y: 0, w: 4, h: 3 },
       { widget: 'budget-card',   x: 4, y: 0, w: 4, h: 3 },
       { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 6 },
-      { widget: 'calendar',      x: 0, y: 3, w: 5, h: 3 },
-      { widget: 'today',         x: 5, y: 3, w: 3, h: 1 },
-      { widget: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
+      { widget: 'budget-lab',    x: 0, y: 3, w: 4, h: 3 },
+      { widget: 'today',         x: 4, y: 3, w: 4, h: 1 },
+      { widget: 'entertainment', x: 4, y: 4, w: 4, h: 2 }
     ] }
   ],
 
@@ -235,8 +235,9 @@ var HUB_CONFIG = {
     },
 
     /*
-     * Personal budget: Daily room, Card day and Goals (budget-room,
-     * budget-card, budget-goals, on the "Budget" layout), and a banner across
+     * Personal budget: Daily room, Card day, Goals and Budget lab (budget-room,
+     * budget-card, budget-goals, budget-lab, on the "Budget" layout; the lab
+     * is the pace streak and a daily cap to try out), and a banner across
      * the top when a charge posts at a merchant that was cut ("New charge:
      * ...", never an amount; OK dismisses it). The budget app on the Pi sends
      * only totals to the hub server there (docs/budget-snapshot.md).

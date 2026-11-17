@@ -18,6 +18,9 @@
  *   - the empty states in Spanish ("Esperando la app de presupuesto",
  *     "Sin sincronizar todavía");
  *   - the banner in Spanish ("Cargo nuevo: <label>");
+ *   - Budget lab (budget-lab) in Spanish: the tile, every key with its
+ *     Spanish, and the panel (the cap, the pills, the buttons, the pace) at
+ *     25% longer with nothing clipped and accents whole;
  *   - a language change (HUB_I18N.setLang) redraws the tiles, their titles
  *     and an open panel, and back to English;
  *   - app/i18n.js is plain ES5 and every money key has a Spanish text.
@@ -35,7 +38,7 @@ const path = require('path');
 const H = require('./awws-harness');
 
 const ROOT = path.join(__dirname, '..');
-const IDS = ['awws-money', 'budget-room', 'budget-card', 'budget-goals'];
+const IDS = ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
 const SIZES = [[1, 1], [2, 1], [3, 1], [6, 1], [12, 1], [2, 2], [3, 2], [6, 2], [3, 4], [6, 4], [9, 6]];
 const SEL = '.cell[data-widget="awws-money"] .tile-body, .cell[data-widget^="budget"] .tile-body';
 const SEEN = { 'homeHub.budget.seen.v1': '["a-1042"]' };
@@ -43,7 +46,8 @@ const FRESH = new Date(H.MONDAY - 60000).toISOString().replace(/\.\d+Z$/, 'Z');
 const ROW = [
   { widget: 'awws-money', x: 0, y: 0, w: 3, h: 3 }, { widget: 'budget-room', x: 3, y: 0, w: 3, h: 3 },
   { widget: 'budget-card', x: 6, y: 0, w: 3, h: 3 }, { widget: 'budget-goals', x: 9, y: 0, w: 3, h: 3 },
-  { widget: 'awws', x: 0, y: 3, w: 6, h: 3 }, { widget: 'entertainment', x: 6, y: 3, w: 6, h: 3 }
+  { widget: 'awws', x: 0, y: 3, w: 6, h: 3 }, { widget: 'budget-lab', x: 6, y: 3, w: 3, h: 3 },
+  { widget: 'entertainment', x: 9, y: 3, w: 3, h: 3 }
 ];
 
 let SHOTS = process.env.MONEY_I18N_SHOTS || '';
@@ -84,7 +88,7 @@ function longer() {
         const es = v.strings.es;
         const extra = 'ÁÉñíóú';
         Object.keys(es).forEach((k) => {
-          if (!/^(budget|awws)\./.test(k)) return;
+          if (!/^(budget|budgetLab|awws)\./.test(k)) return;
           const text = es[k];
           const words = text.replace(/\{\w+\}/g, '').match(/[A-Za-zÁÉÍÓÚáéíóúñÑ]{3,}/g);
           if (!words) return;
@@ -228,18 +232,32 @@ async function main() {
     const es = ctx.window.HUB_I18N.strings.es;
     const budget = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'budget.js'), 'utf8');
     const awws = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'awws.js'), 'utf8');
+    const lab = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'budget-lab.js'), 'utf8');
     // An activity chip's English is in app/motion.js's kinds table, its row naming the key.
     const motion = fs.readFileSync(path.join(ROOT, 'app', 'motion.js'), 'utf8');
     const bad = [];
     Object.keys(es).forEach((k) => {
-      const m = /^(budget|awws)\.(.+)$/.exec(k);
+      const m = /^(budget|budgetLab|awws)\.(.+)$/.exec(k);
       if (!m) return;
       if (motion.indexOf('key: \'' + k + '\'') >= 0) return;
       const last = m[2].split('.').pop();
-      const file = m[1] === 'budget' ? budget : awws;
+      const file = m[1] === 'budget' ? budget : m[1] === 'budgetLab' ? lab : awws;
       if (file.indexOf(last + ':') < 0 && file.indexOf('\'' + last + '\':') < 0) bad.push(k);
     });
     assert(!bad.length, 'no such English key: ' + bad.join(', '));
+    // And the other way: every Budget lab word has its Spanish (the figure
+    // forms that read the same in both languages excepted).
+    const box = { window: {} };
+    require('vm').runInNewContext(lab.replace(/\(function \(\) \{/, '(function () { window.__EN = null;').replace("var EN = {", "var EN = window.__EN = {"), Object.assign(box, { document: {} }));
+    const missing = [];
+    (function walk(o, at) {
+      Object.keys(o).forEach((k) => {
+        const key = at + '.' + k;
+        if (typeof o[k] === 'string') { if (!es.hasOwnProperty(key) && ['budgetLab.cash', 'budgetLab.minus', 'budgetLab.sep', 'budgetLab.full'].indexOf(key) < 0) missing.push(key); }
+        else if (!Array.isArray(o[k])) walk(o[k], key);
+      });
+    })(box.window.__EN, 'budgetLab');
+    assert(!missing.length, 'no Spanish for: ' + missing.join(', '));
   });
 
   const env = await H.start({});
@@ -250,7 +268,9 @@ async function main() {
       const page = await open(env, { layout: ROW, lang: 'es' });
       try {
         const titles = await text(page, IDS.map(titleOf).join(', '));
-        assert(titles === 'Ganado y gastado | Margen diario | Pago de tarjeta | Metas', 'titles: ' + titles);
+        assert(titles === 'Ganado y gastado | Margen diario | Pago de tarjeta | Metas | Laboratorio', 'titles: ' + titles);
+        const l = await text(page, tileOf('budget-lab'));
+        assert(/día bajo el tope/.test(l) && /Ayer \$41 de \$65/.test(l) && /Quédate bajo \$62 hoy/.test(l) && /19 nov: cubierto/.test(l), 'lab: ' + l);
         const m = await text(page, tileOf('awws-money'));
         assert(/neto/.test(m) && /−\$575/.test(m) && /\$1,265/.test(m) && /ganado/.test(m) && /gastado/.test(m), 'money: ' + m);
         assert(/Próxima transferencia: 1 dic/.test(m), 'no Spanish date for the next transfer: ' + m);

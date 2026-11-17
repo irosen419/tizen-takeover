@@ -585,12 +585,12 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     ambiance:      { title: 'Ambiance',              sub: 'Pick the light vibe from the TV', soon: true },
     mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true },
     // app/widgets/wotd.js (v0.28.5): one Latin American Spanish word a day, easy in January, B1 by December.
-    // The budget tiles (app/widgets/budget.js, v0.28.4): the "Budget" layout. The last two are proposals for the budget tab v2 (not built).
+    // The budget tiles (app/widgets/budget.js, v0.28.4; budget-lab.js, v0.28.16): the "Budget" layout. Runway is a proposal (it comes in Budget lab's full screen).
     'budget-room':  { title: 'Daily room',           sub: 'What is left to spend each day until card day' },
     'budget-card':  { title: 'Card day',             sub: 'When the card is due and whether it is covered' },
     'budget-goals': { title: 'Goals',                sub: 'Each spending goal: clean, on pace, over or under' },
     'budget-runway': { title: 'Runway',              sub: 'Proposed (budget tab v2): cash ready for card day against what the cards owe, today to Dec 1', soon: true },
-    'budget-pace':  { title: 'Pace streak',          sub: 'Proposed (budget tab v2): yesterday against the cap, days under, one move for today', soon: true },
+    'budget-lab':   { title: 'Budget lab',           sub: 'The pace streak, yesterday against its cap, one move for today, and a daily cap to try out' },
     wotd:          { title: 'Word of the day',       sub: 'One Spanish word a day with its English, from A1 in January to B1 in December' }
   };
   var BASE = [
@@ -633,7 +633,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     ] },
     { id: 'budget', name: 'Budget', layout: [
       { id: 'budget-room', x: 0, y: 0, w: 4, h: 3 }, { id: 'budget-card', x: 4, y: 0, w: 4, h: 3 }, { id: 'budget-goals', x: 8, y: 0, w: 4, h: 6 },
-      { id: 'calendar', x: 0, y: 3, w: 5, h: 3 }, { id: 'today', x: 5, y: 3, w: 3, h: 1 }, { id: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
+      { id: 'budget-lab', x: 0, y: 3, w: 4, h: 3 }, { id: 'today', x: 4, y: 3, w: 4, h: 1 }, { id: 'entertainment', x: 4, y: 4, w: 4, h: 2 }
     ] }
   ];
   // A preset hides the Stock tiles it leaves out, as the TV does.
@@ -1029,9 +1029,27 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
     'budget-runway': budgetPlanned({ en: 'Runway', es: 'Pista de caja' },
       { en: 'Proposed for the budget tab v2: a line of cash ready for card day from today to Dec 1, stepping up on payday and down for bills, against a line of what the cards owe; the gap on Dec 1 says short or covered and moves with the slider pace.',
         es: 'Propuesta para la pestaña de presupuesto v2: una línea del efectivo listo para el pago de tarjeta desde hoy hasta el 1 de dic., que sube con el sueldo y baja con las facturas, frente a una línea de lo que deben las tarjetas; la brecha del 1 de dic. dice si falta o está cubierto y se mueve con el ritmo del control deslizante.' }),
-    'budget-pace': budgetPlanned({ en: 'Pace streak', es: 'Racha de ritmo' },
-      { en: 'Proposed for the budget tab v2, shown prominently: yesterday’s spend against the cap, a count of days under, and one suggested move for today.',
-        es: 'Propuesta para la pestaña de presupuesto v2, bien visible: el gasto de ayer frente al tope, una cuenta de días por debajo y un movimiento sugerido para hoy.' }),
+    'budget-lab': {
+      title: { en: 'Budget lab', es: 'Laboratorio' },
+      sample: {
+        en: { n: '1', unit: 'day under', y: 'Yesterday $41 of $65, $24 under', yTiny: '$41 of $65', move: 'Stay under $62 today for 2 days in a row', out: 'Nov 19: Covered, nothing to spare',
+              head: 'Nov 19 · in 3 days', ok: 'Covered', capLabel: 'Daily cap', cap: '$62', aDay: 'a day', ticks: 'calculated $62 · no saved cap', modes: ['Set the cap', 'Set what to keep'],
+              keep: 'Nothing to spare on Nov 19', monthly: 'Monthly remaining $186', gap: 'same as calculated', buttons: ['Save this cap', 'Back to calculated'], pace: 'Pace' },
+        es: { n: '1', unit: 'día bajo el tope', y: 'Ayer $41 de $65, $24 por debajo', yTiny: '$41 de $65', move: 'Quédate bajo $62 hoy y van 2 días seguidos', out: '19 nov: cubierto, sin sobrante',
+              head: '19 nov · en 3 días', ok: 'Cubierto', capLabel: 'Tope diario', cap: '$62', aDay: 'al día', ticks: 'calculado $62 · sin tope guardado', modes: ['Fijar el tope', 'Fijar cuánto guardar'],
+              keep: 'Nada de sobra el 19 nov', monthly: 'Te queda para gastar $186', gap: 'igual que el calculado', buttons: ['Guardar este tope', 'Volver al calculado'], pace: 'Ritmo' }
+      },
+      strip: { en: '“1 day under · $41 of $65” (from 4 columns; narrower, the streak alone). Green while under, coral “Over yesterday”. 1 column: the count.',
+               es: '«1 día bajo el tope · $41 de $65» (desde 4 columnas; más estrecho, solo la racha). Verde mientras va bajo el tope, coral «Ayer te pasaste». 1 columna: la cuenta.' },
+      standard: { en: 'The streak big (“1 day under”), “Yesterday $41 of $65, $24 under”, then the one suggested move on up to two lines.',
+                  es: 'La racha en grande («1 día bajo el tope»), «Ayer $41 de $65, $24 por debajo» y el movimiento sugerido en hasta dos líneas.' },
+      tall: { en: 'Standard plus the card day outcome: “Nov 19: Covered, nothing to spare” (or “Short by $10” in coral).',
+              es: 'Estándar más el resultado del pago de tarjeta: «19 nov: cubierto, sin sobrante» (o «Faltan $10» en coral).' },
+      panel: { en: 'The head line, the cap slider ($1 a press, faster when held, the calculated and saved marks), Set the cap / Set what to keep, the outcome with monthly remaining and its gap, Save this cap and Back to calculated, then Pace.',
+               es: 'La línea de cabecera, el control del tope ($1 por pulsación, más rápido al mantener, con las marcas del calculado y del guardado), Fijar el tope / Fijar cuánto guardar, el resultado con lo que queda para gastar y su diferencia, Guardar este tope y Volver al calculado, y Ritmo.' },
+      full: { en: 'Two columns, bigger: the rows on the left, Pace on the right. Merchants, Put it somewhere and the runway come later.',
+              es: 'Dos columnas, más grandes: las filas a la izquierda y Ritmo a la derecha. Comercios, A dónde va y la pista llegan más adelante.' }
+    },
     ambiance: plannedEntry({ en: 'Ambiance', es: 'Ambiente' },
       { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),
     mirror: plannedEntry({ en: 'Mirror', es: 'Espejo' },
@@ -1059,7 +1077,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   };
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-runway', 'budget-pace', 'ambiance', 'mirror'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'ambiance', 'mirror'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -1572,7 +1590,7 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
     'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
-    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', 'budget-pace': 'bolt' };
+    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', 'budget-lab': 'wallet' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';
@@ -1748,6 +1766,13 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       if (tier === 'tall') h += '<div class="aw-foot l1 push">' + esc(S.pay) + '</div>';
       return '<div class="' + cls + '">' + h + '</div>';
     },
+    'budget-lab': function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b class="bu-ok">' + esc(S.n + ' ' + S.unit) + '</b><span class="mu"> · ' + esc(S.yTiny) + '</span></div></div>';
+      var h = head(id, T) + '<div class="td-hero"><span class="big td-num bu-ok">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.unit) + '</span></div>' +
+        '<div class="bu-pline l1 mu">' + esc(S.y) + '</div><div class="bu-pline wr">' + esc(S.move) + '</div>';
+      if (tier === 'tall') h += '<div class="aw-foot l1 push bu-ok">' + esc(S.out) + '</div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    },
     'budget-goals': function (S, T, tier, cls, id) {
       if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b class="bu-neg">' + esc(S.head) + '</b><span class="mu"> · ' + esc(S.goals[0][0] + ' ' + S.goals[0][1]) + '</span></div></div>';
       var tone = { over: 'bu-neg', 'on-pace': 'bu-blue', under: 'bu-ok', clean: 'bu-ok' };
@@ -1780,6 +1805,17 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
       var left = '<div class="aw-school l1" style="font-size:1.2em">' + esc(S.date) + ' · ' + esc(S.away) + '</div><div class="big bu-ok" style="font-size:2.2em">' + esc(S.ok) + '</div>' +
         '<div class="secl"><span class="l1">' + esc(S.tHead) + '</span></div>' + S.transfers.map(function (t) { return '<div class="bu-trow"><span class="l1">' + esc(t[0]) + '</span><b>' + esc(t[1]) + '</b></div>'; }).join('');
       var right = '<div class="secl"><span class="l1">' + esc(S.pays) + '</span></div><div class="bu-trow"><span class="l1">' + esc(S.pay) + '</span></div>';
+      return full ? '<div class="cols2"><div style="flex:1 1 0">' + left + '</div><div style="flex:1 1 0">' + right + '</div></div>' : left + right;
+    },
+    'budget-lab': function (S, full) {
+      var left = '<div class="bu-pline l1">' + esc(S.head) + ' · <b class="bu-ok">' + esc(S.ok) + '</b></div>' +
+        '<div class="secl"><span class="l1">' + esc(S.capLabel) + '</span></div><div class="td-hero"><span class="big td-num" style="font-size:' + (full ? '3.4em' : '2.6em') + '">' + esc(S.cap) + '</span><span class="td-cap wr">' + esc(S.aDay) + '</span></div>' +
+        buMeter(0.38, 'bu-ok') + '<div class="bu-pline q l1">' + esc(S.ticks) + '</div>' +
+        '<div class="pp-tabs">' + S.modes.map(function (m, i) { return '<span class="chipb l1' + (i ? '' : ' on') + '">' + esc(m) + '</span>'; }).join('') + '</div>' +
+        '<div class="bu-pline bu-ok wr" style="font-size:1.3em">' + esc(S.keep) + '</div><div class="bu-pline l1">' + esc(S.monthly) + '</div><div class="bu-pline q l1">' + esc(S.gap) + '</div>' +
+        '<div class="pp-tabs">' + S.buttons.map(function (b) { return '<span class="chipb l1">' + esc(b) + '</span>'; }).join('') + '</div>';
+      var right = '<div class="secl"><span class="l1">' + esc(S.pace) + '</span></div><div class="td-hero"><span class="big td-num bu-ok">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.unit) + '</span></div>' +
+        '<div class="bu-pline l1">' + esc(S.y) + '</div><div class="bu-pline wr">' + esc(S.move) + '</div>';
       return full ? '<div class="cols2"><div style="flex:1 1 0">' + left + '</div><div style="flex:1 1 0">' + right + '</div></div>' : left + right;
     },
     'budget-goals': function (S, full) {

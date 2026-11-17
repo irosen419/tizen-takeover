@@ -5,7 +5,8 @@
  * and the hub server from pi/, on spare ports with a fresh data folder:
  * the TV-side layout check, the saved layout at start, a new layout that
  * moves tiles in place, waiting while a panel is open, a new set of widgets
- * that reloads once, the reset, and the guard against a reload loop.
+ * that reloads once, the reset, the guard against a reload loop, and
+ * config.js's Budget layout with Budget lab.
  * Needs Playwright (require('playwright')).
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
@@ -399,6 +400,44 @@ async function checkNoLoop() {
   noErrors(context);
 }
 
+async function checkBudgetLayout() {
+  // config.js's "Budget" layout: Budget lab at 4 x 3 under Daily room, the
+  // whole grid covered, every tile drawn, and Down from Daily room reaches it.
+  await setLayout(null);
+  const box = { window: {} };
+  require('vm').runInNewContext(fs.readFileSync(path.join(ROOT, 'app', 'config.js'), 'utf8') + ';this.C = HUB_CONFIG;', box);
+  const budget = box.C.layouts.filter((l) => l.id === 'budget')[0].layout;
+  const cells = {};
+  for (const t of budget) {
+    for (let x = t.x; x < t.x + t.w; x++) for (let y = t.y; y < t.y + t.h; y++) {
+      assert(!cells[x + ',' + y], 'overlap at ' + x + ',' + y);
+      cells[x + ',' + y] = t.widget;
+    }
+  }
+  assert(Object.keys(cells).length === 72, 'gaps: ' + Object.keys(cells).length + ' of 72 cells');
+  const lab = budget.filter((t) => t.widget === 'budget-lab')[0];
+  assert(lab && lab.x === 0 && lab.y === 3 && lab.w === 4 && lab.h === 3, 'budget-lab: ' + JSON.stringify(lab));
+  const context = await newContext();
+  const page = await openHub(context, liveQuery());
+  await until(async () => (await look.live(page)) === 'live', 8000, 'the hub did not go live');
+  await waitIdle(page);
+  await setLayout(budget);
+  await until(() => page.loads >= 2, 6000, 'the hub did not reload for the Budget layout');
+  await ready(page);
+  await until(async () => JSON.stringify(await look.ids(page)) === JSON.stringify(budget.map((t) => t.widget).sort()), 4000, 'tiles on the Budget layout');
+  assert(await cellAt(page, 'budget-lab', 0, 3, 4, 3), 'budget-lab cell: ' + JSON.stringify(await look.cell(page, 'budget-lab')));
+  await waitIdle(page);
+  await page.evaluate(() => { const t = document.querySelector('.cell[data-widget="budget-room"] .tile'); if (t) t.click(); });
+  await until(async () => (await look.open(page)) === 'budget-room', 4000, 'Daily room did not open');
+  await page.keyboard.press('Escape');
+  await until(async () => (await look.open(page)) === null, 4000, 'the panel did not close');
+  await waitIdle(page);
+  await page.keyboard.press('ArrowDown');
+  assert((await look.focused(page)) === 'budget-lab', 'Down from Daily room: ' + (await look.focused(page)));
+  await setLayout(null);
+  noErrors(context);
+}
+
 /* ---------- run ---------- */
 
 async function main() {
@@ -424,6 +463,7 @@ async function main() {
   await check('4. A layout waits while a panel is open, then applies', checkWaitsForPanel);
   await check('5. A new set of widgets reloads once; the reset reloads once more', checkReload);
   await check('6. A layout that cannot be saved does not reload in a loop', checkNoLoop);
+  await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, no gaps', checkBudgetLayout);
 }
 
 main().catch((e) => {

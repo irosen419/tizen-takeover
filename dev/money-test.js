@@ -28,6 +28,13 @@
  *   panel opens), it stays dismissed after a reload, a new charge shows again;
  *   the two layouts in the switcher ("AWWS money" and "Budget"), every pill
  *   whole, and each layout drawn with no gaps;
+ *   Budget lab (budget-lab): the streak, yesterday and the suggested move on
+ *   the tile, the card day outcome on a tall one; the panel's cap slider
+ *   (a press changes text and the fill's one transform, never the panel),
+ *   the mode pills, Save this cap and Back to calculated; a saved cap
+ *   survives a reload and is dropped at a new card day; holding Right for
+ *   3 s with the key repeat below lands on the value the math module's
+ *   holdStep gives; Guest mode hides it all and clears the session;
  *   app/ files touched here are plain ES5.
  * Needs Playwright and port 8095 free. Prints one line per check and
  * "N passed, M failed"; exits 1 on a failure. Nothing reaches the internet.
@@ -40,7 +47,23 @@ const vm = require('vm');
 const H = require('./awws-harness');
 
 const ROOT = path.join(__dirname, '..');
-const IDS = ['awws-money', 'budget-room', 'budget-card', 'budget-goals'];
+const IDS = ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
+const LABM = require(path.join(ROOT, 'app', 'budget-lab-math.js'));
+// The test's key repeat for a held Right: one press, then the repeat after
+// 500 ms, every 50 ms, until 3 s. Presses closer than 250 ms are one hold.
+const REPEAT = [0];
+for (let t = 500; t <= 3000; t += 50) REPEAT.push(t);
+function holdOnPaper(from, capMax) {
+  let v = from;
+  let start = 0;
+  let last = -Infinity;
+  for (const t of REPEAT) {
+    if (t - last >= 250) start = t;
+    last = t;
+    v = LABM.step(v, 1, LABM.holdStep(t - start, 'cap'), 0, capMax);
+  }
+  return v;
+}
 const SIZES = [[1, 1], [2, 1], [3, 1], [6, 1], [12, 1], [2, 2], [3, 2], [6, 2], [3, 4], [6, 4], [9, 6]];
 const SEL = '.cell[data-widget="awws-money"] .tile-body, .cell[data-widget^="budget"] .tile-body';
 const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
@@ -164,7 +187,8 @@ function subOf(id) { return '.cell[data-widget="' + id + '"] .tile-sub'; }
 const ROW = [
   { widget: 'awws-money', x: 0, y: 0, w: 3, h: 3 }, { widget: 'budget-room', x: 3, y: 0, w: 3, h: 3 },
   { widget: 'budget-card', x: 6, y: 0, w: 3, h: 3 }, { widget: 'budget-goals', x: 9, y: 0, w: 3, h: 3 },
-  { widget: 'awws', x: 0, y: 3, w: 6, h: 3 }, { widget: 'entertainment', x: 6, y: 3, w: 6, h: 3 }
+  { widget: 'awws', x: 0, y: 3, w: 6, h: 3 }, { widget: 'budget-lab', x: 6, y: 3, w: 3, h: 3 },
+  { widget: 'entertainment', x: 9, y: 3, w: 3, h: 3 }
 ];
 
 async function main() {
@@ -315,7 +339,7 @@ async function main() {
     });
 
     /* ---------- Guest mode ---------- */
-    const GUEST_ROW = ROW.slice(0, 5).concat([{ widget: 'today', x: 6, y: 3, w: 6, h: 3 }]);
+    const GUEST_ROW = ROW.slice(0, 6).concat([{ widget: 'today', x: 9, y: 3, w: 3, h: 3 }]);
     const GUEST_CACHE = JSON.stringify({ v: 1, at: H.MONDAY, data: Object.assign(H.budgetSample.snapshot({ sentAt: FRESH }), { receivedAt: FRESH }) });
 
     await check('Guest mode on: every money tile says "Hidden for guests", no figure, no banner, no budget kept', async () => {
@@ -405,7 +429,7 @@ async function main() {
         await H.until(() => page.evaluate(() => !document.querySelector('.cell[data-widget="budget-goals"]') && !!window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0), 15000, 'still on Budget');
         await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 15000 });
         const ids = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#grid .cell'), (c) => c.getAttribute('data-widget')));
-        assert(!ids.some((id) => ['awws-money', 'budget-room', 'budget-card', 'budget-goals'].indexOf(id) >= 0), 'money tiles: ' + ids.join(', '));
+        assert(!ids.some((id) => ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'].indexOf(id) >= 0), 'money tiles: ' + ids.join(', '));
         assert(await page.evaluate(() => window.HUB_GUEST.on()), 'Guest mode is off after the reload');
       } finally { await page.ctx.close(); }
     });
@@ -483,6 +507,182 @@ async function main() {
         await page.ctx.close();
         await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
       }
+    });
+
+    /* ---------- Budget lab ---------- */
+    const LAB_TILE = tileOf('budget-lab');
+    const PREF = 'homeHub.budget.capPref.v1';
+    const labPanel = (page) => text(page, '#panel .panel-body');
+    const focusedKey = (page) => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
+    const session = (page) => page.evaluate(() => window.HUB_BUDGET_LAB_TEST.session());
+
+    await check('Budget lab tile: the streak, yesterday and the suggested move; a tall tile adds the card day outcome', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const t = await text(page, LAB_TILE);
+        assert(/^1\s*day under/.test(t.trim()) && /Yesterday \$41 of \$65, \$24 under/.test(t), 'tile: ' + t);
+        assert(/Stay under \$62 today/.test(t) && /Nov 19: Covered, nothing to spare/.test(t), 'tile: ' + t);
+        assert(await has(page, LAB_TILE + ' .bu-hero-num.is-ok'), 'the streak is not green');
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+      const strip = await env.newPage({ layout: [{ widget: 'budget-lab', x: 0, y: 0, w: 6, h: 1 }, { widget: 'today', x: 6, y: 0, w: 6, h: 1 }],
+        storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const t = await text(strip, LAB_TILE);
+        assert(/1 day under · \$41 of \$65/.test(t), 'strip: ' + t);
+        noErrors(strip);
+      } finally { await strip.ctx.close(); }
+    });
+
+    await check('Budget lab panel: a key press changes text and the fill only; mode, Save this cap and Back to calculated', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert((await focusedKey(page)) === 'cap', 'the cap slider does not have focus: ' + await focusedKey(page));
+        let p = await labPanel(page);
+        assert(/Nov 19 · in 3 days · Covered/.test(p) && /\$62\s*a day/.test(p) && /calculated \$62 · no saved cap/.test(p), 'panel: ' + p);
+        assert(/Monthly remaining \$186/.test(p) && /same as calculated/.test(p) && /The Daily room tile uses \$60 a day/.test(p), 'panel: ' + p);
+        assert(/PACE|Pace/.test(p) && /Stay under \$62 today for 2 days in a row/.test(p), 'pace: ' + p);
+        const before = await page.evaluate(() => {
+          window.__labRoot = document.querySelector('#panel .bl-panel');
+          window.__labBig = document.querySelector('#panel .bl-big').firstChild;
+          return document.querySelector('#panel .bl-fill').style.transform;
+        });
+        await H.key(page, 'ArrowRight');
+        const after = await page.evaluate(() => ({
+          same: window.__labRoot === document.querySelector('#panel .bl-panel') && window.__labBig === document.querySelector('#panel .bl-big').firstChild,
+          fill: document.querySelector('#panel .bl-fill').style.transform,
+          big: document.querySelector('#panel .bl-big').textContent,
+          trans: getComputedStyle(document.querySelector('#panel .bl-fill')).transitionDuration
+        }));
+        assert(after.same, 'the panel was drawn again for a key press');
+        assert(after.big === '$63' && after.fill !== before && /^scaleX\(/.test(after.fill), 'after Right: ' + JSON.stringify(after) + ' from ' + before);
+        assert(/^0s(, 0s)*$/.test(after.trans), 'the fill has a transition: ' + after.trans);
+        assert((await session(page)).cap === 63, 'session: ' + JSON.stringify(await session(page)));
+        p = await labPanel(page);
+        assert(/Short by \$3/.test(p) && /\$3 more than calculated/.test(p), 'at $63: ' + p);
+        await H.key(page, 'ArrowLeft', 2);
+        assert((await session(page)).cap === 61, 'after Left twice: ' + JSON.stringify(await session(page)));
+        assert((await focusedKey(page)) === 'cap', 'Left moved focus away');
+        // Mode: OK on the pills turns the slider into the keep goal.
+        await H.key(page, 'ArrowDown');
+        assert((await focusedKey(page)) === 'mode', 'Down from the slider: ' + await focusedKey(page));
+        await H.key(page, 'Enter');
+        p = await labPanel(page);
+        assert(/Keep on Nov 19/i.test(p) && /to keep/.test(p) && /cap \$61 a day/.test(p), 'keep mode: ' + p);
+        assert((await session(page)).mode === 'keep', 'mode: ' + JSON.stringify(await session(page)));
+        assert(after.same && await page.evaluate(() => window.__labRoot === document.querySelector('#panel .bl-panel')), 'the panel was drawn again for OK');
+        // Save this cap: stored as a keep amount for this card day, and a toast.
+        await H.key(page, 'ArrowDown');
+        assert((await focusedKey(page)) === 'save', 'Down from the pills: ' + await focusedKey(page));
+        await H.key(page, 'Enter');
+        await H.sleep(150);
+        const toast = await text(page, '#toast');
+        assert(/Cap saved: \$61 a day \(re-averaged each morning\)/.test(toast), 'toast: ' + toast);
+        const pref = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), PREF));
+        assert(pref.v === 1 && pref.cardDate === '2026-11-19' && Math.abs(pref.keep - 3.4) < 0.001 && typeof pref.at === 'string', 'stored: ' + JSON.stringify(pref));
+        p = await labPanel(page);
+        assert(/saved \$61/.test(p) && /saved cap: \$3 less than calculated/.test(p), 'after Save: ' + p);
+        assert(await page.evaluate(() => getComputedStyle(document.querySelector('#panel .bl-tick.is-saved')).display !== 'none'), 'no saved mark on the track');
+        // Back to calculated: the cap, the mode and the cuts go back; the saved cap stays.
+        await H.key(page, 'ArrowRight');
+        assert((await focusedKey(page)) === 'reset', 'Right from Save: ' + await focusedKey(page));
+        await H.key(page, 'Enter');
+        const s = await session(page);
+        assert(s.mode === 'cap' && s.cap === null && s.keep === null, 'after reset: ' + JSON.stringify(s));
+        p = await labPanel(page);
+        assert(/Daily cap/i.test(p) && /\$62\s*a day/.test(p) && /saved \$61/.test(p), 'after reset: ' + p);
+        assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'reset dropped the saved cap');
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Budget lab: a saved cap survives a reload; a new card day drops it', async () => {
+      const pref = JSON.stringify({ v: 1, cardDate: '2026-11-19', keep: 3.4, at: FRESH });
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]', [PREF]: pref } });
+      try {
+        await page.reload();
+        await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 15000 });
+        await H.until(() => page.evaluate(() => window.HUB_LIVE.status().state === 'live'), 10000, 'not live after the reload');
+        await H.idle(page);
+        await H.openPanel(page, 'budget-lab');
+        let p = await labPanel(page);
+        assert(/saved \$61/.test(p) && /\$62\s*a day/.test(p), 'after the reload: ' + p);
+        const next = H.budgetSample.snapshot({ sentAt: FRESH });
+        next.lab.cardDate = '2026-11-20';
+        next.lab.daysLeft = 4;
+        await env.setBudget(next);
+        await H.until(async () => /no saved cap/.test(await labPanel(page)), 5000, 'the old cycle\'s cap stayed: ' + await labPanel(page));
+        assert(await page.evaluate((k) => localStorage.getItem(k) === null, PREF), 'the old cycle\'s cap is still stored');
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Budget lab: holding Right for 3 s (repeat after 500 ms, every 50 ms) lands where holdStep says', async () => {
+      const big = H.budgetSample.snapshot({ sentAt: FRESH });
+      big.lab.room = 7000;      // $500 a day for 14 days: room to run without reaching the top
+      big.lab.daysLeft = 14;
+      big.lab.cardDate = '2026-11-30';
+      await env.setBudget(big);
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert(/\$500\s*a day/.test(await labPanel(page)), 'start: ' + await labPanel(page));
+        const capMax = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result().capMax);
+        const want = holdOnPaper(500, capMax);
+        assert(want === 900 && capMax === 1000, 'on paper: ' + want + ' of ' + capMax);
+        for (const t of REPEAT) {
+          await page.clock.setFixedTime(new Date(H.MONDAY + t));
+          await page.keyboard.press('ArrowRight');
+        }
+        const s = await session(page);
+        assert(s.cap === want, 'held 3 s: ' + JSON.stringify(s) + ', want ' + want);
+        assert((await text(page, '#panel .bl-big')) === '$900', 'shown: ' + await text(page, '#panel .bl-big'));
+        // A gap of 250 ms or more starts again at $1.
+        await page.clock.setFixedTime(new Date(H.MONDAY + 3400));
+        await page.keyboard.press('ArrowRight');
+        assert((await session(page)).cap === 901, 'after a pause: ' + JSON.stringify(await session(page)));
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Guest mode: Budget lab says "Hidden for guests", forgets the session, keeps the saved cap hidden', async () => {
+      const pref = JSON.stringify({ v: 1, cardDate: '2026-11-19', keep: 3.4, at: FRESH });
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]', [PREF]: pref } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await H.key(page, 'ArrowRight', 4);
+        assert((await session(page)).cap === 66, 'session: ' + JSON.stringify(await session(page)));
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        assert(/Stay under \$66 today/.test(await text(page, LAB_TILE)) || /Short by/.test(await text(page, LAB_TILE)) || /Skip/.test(await text(page, LAB_TILE)),
+          'the tile does not follow the session: ' + await text(page, LAB_TILE));
+        await page.evaluate(() => window.HUB_GUEST.set(true));
+        await H.sleep(300);
+        const t = await text(page, LAB_TILE);
+        assert(/Hidden for guests/.test(t) && !/\$/.test(t), 'tile: ' + t);
+        const s = await session(page);
+        assert(s.mode === 'cap' && s.cap === null && s.keep === null && !Object.keys(s.cuts).length, 'session kept: ' + JSON.stringify(s));
+        assert(await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result() === null && window.HUB_BUDGET.data() === null), 'figures still readable');
+        assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'Guest mode deleted the saved cap');
+        await H.openPanel(page, 'budget-lab');
+        const p = await labPanel(page);
+        assert(/Hidden for guests/.test(p) && !/\$/.test(p), 'panel: ' + p);
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await page.evaluate(() => window.HUB_GUEST.set(false));
+        await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back: ' + await text(page, LAB_TILE));
+        await H.openPanel(page, 'budget-lab');
+        const back = await labPanel(page);
+        assert(/\$62\s*a day/.test(back) && /saved \$61/.test(back), 'after Guest mode: ' + back);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
     });
 
     /* ---------- the layouts ---------- */
@@ -619,7 +819,7 @@ async function main() {
       try { acorn = require(p); break; } catch (e) { /* next */ }
     }
     const bad = [];
-    for (const f of ['app/widgets/budget.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
+    for (const f of ['app/widgets/budget.js', 'app/widgets/budget-lab.js', 'app/budget-lab-math.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
       const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
       if (acorn) {
         try { acorn.parse(src, { ecmaVersion: 5 }); } catch (e) { bad.push(f + ': ' + e.message); }

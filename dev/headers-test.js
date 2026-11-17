@@ -74,7 +74,7 @@ function configLayouts() {
 const LAYOUTS = configLayouts();
 
 // Every widget with a title, laid out in tiles of one size class each.
-const WIDS = ['awws', 'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'wotd', 'calendar', 'todo', 'weather',
+const WIDS = ['awws', 'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'wotd', 'calendar', 'todo', 'weather',
   'mirror', 'ambiance', 'entertainment', 'awws-todo', 'awws-visits', 'awws-agenda', 'awws-reach', 'nowplaying', 'today'];
 function grid(w, h, ids) {
   const out = [];
@@ -490,14 +490,14 @@ function edgeOn(p, id) {
     /* ---------- Guest mode ---------- */
 
     const GUEST = { 'homeHub.guest.v1': 'on' };
-    const MONEY = ['awws-money', 'budget-room', 'budget-card', 'budget-goals'];
+    const MONEY = ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
     const titlesOf = (p) => p.evaluate((ids) => ids.map((id) => {
       const t = document.querySelector('.cell[data-widget="' + id + '"] .tile-title');
       return t ? t.textContent : null;
     }), MONEY);
 
     await check('Guest mode: the money tiles keep the same header (title or short title, icon), English, Spanish and Spanish +25%; their bodies say hidden', async () => {
-      const lays = [LAYOUTS['awws-money'], LAYOUTS.budget, grid(3, 2, MONEY), grid(2, 2, MONEY), grid(6, 3, MONEY)];
+      const lays = [LAYOUTS['awws-money'], LAYOUTS.budget, grid(3, 2, MONEY), grid(2, 2, MONEY), grid(6, 3, MONEY.slice(0, 4)), grid(6, 3, MONEY.slice(4))];
       for (const lay of lays) {
         for (const v of [{ lang: 'en' }, { lang: 'es' }, { lang: 'es', grow: true }]) {
           const off = await page(env, { layout: lay, lang: v.lang, grow: v.grow });

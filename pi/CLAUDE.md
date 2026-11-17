@@ -25,7 +25,7 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Is the Claude mailbox (Cloudflare R2) connected: `./hub mailbox status`
 - All commands: `./hub help`
 
-Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals) and `budget-lab` (Budget lab: the pace streak, the cap slider and the runway to card day; it reaches the TV with a later hub update; until then the TV ignores the id). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
+Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals) and `budget-lab` (Budget lab: the pace streak and the cap slider, from hub v0.28.16; the runway to card day comes in a later hub update; an older hub ignores the id). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
 
 ## From the cloud: the Claude mailbox
 

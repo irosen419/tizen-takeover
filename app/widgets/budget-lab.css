@@ -1,0 +1,171 @@
+/* Budget lab: the pace streak tile and the cap panel. Every class starts with
+   bl-; the shared budget look (bu-tile, bu-hero, bu-psec, the colors) comes
+   from budget.css.
+
+   Same rules as style.css and budget.css: no grid, no flex gap, only opacity
+   and transform ever change, and nothing a slider touches has a transition
+   (a held key moves the fill by scaleX, set directly). Every line that can
+   be cut has a line-height of 1.25 or more, so accents never clip. Nothing
+   under 0.85rem on a tile or 1rem in a panel. */
+
+/* ---------- tile ---------- */
+
+.bl-move {
+  flex: 0 0 auto;
+  margin-top: 0.45rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  /* Two lines at most, cut at the end of the second. */
+  overflow: hidden;
+  max-height: 2.7em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-wrap: break-word;
+}
+.tile-h3 .bl-move { font-size: 1.1rem; }
+.bl-foot.is-ok { color: var(--bu-ok); }
+.bl-foot.is-neg { color: var(--bu-neg); }
+
+.bl-strip-head {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 1.6rem;
+  line-height: 1.3;
+  color: var(--text);
+}
+.bl-strip-head.is-ok { color: var(--bu-ok); }
+.bl-strip-head.is-neg { color: var(--bu-neg); }
+.bu-solo-num.is-ok { color: var(--bu-ok); }
+.bu-solo-num.is-neg { color: var(--bu-neg); }
+
+/* ---------- panel ---------- */
+
+.bl-head {
+  padding: 0.1rem 0.9rem 0.2rem;
+  font-size: 1.2rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.bl-head-state { color: var(--text); }
+.bl-head-state.is-ok { color: var(--bu-ok); }
+.bl-head-state.is-neg { color: var(--bu-neg); }
+.bl-note {
+  padding: 0 0.9rem 0.2rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+
+/* The cap slider: its label on its own line (a longer language wraps there
+   instead of pushing the figure), the figure, the track, the tick legend. */
+.bl-label {
+  font-size: 1rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.bl-value { margin-top: 0.15rem; line-height: 1.25; }
+.bl-big {
+  font-size: 3rem;
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.bl-big.is-neg { color: var(--bu-neg); }
+.bl-unit { margin-left: 0.5rem; font-size: 1.2rem; line-height: 1.3; color: var(--text-2); }
+.bl-track {
+  position: relative;
+  height: 0.6rem;
+  margin: 0.75rem 0 0.7rem;
+  border-radius: 0.3rem;
+  background: rgba(255, 255, 255, 0.12);
+}
+.bl-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0.3rem;
+  background: var(--bu-ok);
+  -webkit-transform-origin: 0 50%;
+  transform-origin: 0 50%;
+  -webkit-transform: scaleX(0);
+  transform: scaleX(0);
+}
+.bl-fill.is-neg { background: var(--bu-neg); }
+/* Calculated (white) and saved (blue) marks across the track. */
+.bl-tick {
+  position: absolute;
+  top: -0.35rem;
+  bottom: -0.35rem;
+  width: 0.2rem;
+  margin-left: -0.1rem;
+  border-radius: 0.1rem;
+  background: var(--text);
+}
+.bl-tick.is-saved { background: var(--bu-pace); }
+.bl-ticks { font-size: 1rem; line-height: 1.4; color: var(--text-2); word-wrap: break-word; }
+
+/* The mode pills: one focusable row, OK switches. */
+.bl-modes { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.bl-pill {
+  display: inline-block;
+  margin: 0.15rem 0.5rem 0.15rem 0;
+  padding: 0.25rem 0.9rem;
+  border-radius: 1.2rem;
+  border: 0.08rem solid var(--bu-hair);
+  font-size: 1.05rem;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+.bl-pill.is-on { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.4); color: var(--text); }
+
+/* The outcome: not focusable. */
+.bl-oblock { padding: 0.4rem 0.9rem 0.3rem; }
+.bl-outcome { font-size: 1.6rem; line-height: 1.3; color: var(--text); word-wrap: break-word; }
+.bl-outcome.is-ok { color: var(--bu-ok); }
+.bl-outcome.is-neg { color: var(--bu-neg); }
+
+/* Save this cap, Back to calculated. */
+.bl-buttons { padding: 0.3rem 0.9rem 0.4rem 0.75rem; }
+.bl-btn {
+  display: inline-block;
+  margin: 0.2rem 0.6rem 0.2rem 0;
+  padding: 0.45rem 1.1rem;
+  border-radius: 0.7rem;
+  border: var(--edge) solid var(--bu-hair);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 1.1rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.bl-btn.is-focused { background: var(--card-2); border-color: var(--focus); }
+
+.bl-pace .bu-hero.is-panel .bu-hero-num { font-size: 2.8rem; }
+.bl-pmove { color: var(--text); }
+
+/* ---------- full screen: two columns, bigger ---------- */
+
+.bl-panel.is-full .bl-head { font-size: 1.5rem; }
+.bl-panel.is-full .bl-big { font-size: 4.2rem; }
+.bl-panel.is-full .bl-unit { font-size: 1.5rem; }
+.bl-panel.is-full .bl-track { height: 0.8rem; }
+.bl-panel.is-full .bl-ticks,
+.bl-panel.is-full .bl-note { font-size: 1.2rem; }
+.bl-panel.is-full .bl-pill,
+.bl-panel.is-full .bl-btn { font-size: 1.3rem; }
+.bl-panel.is-full .bl-outcome { font-size: 2rem; }
+.bl-panel.is-full .bl-pace .bu-hero.is-panel .bu-hero-num { font-size: 3.6rem; }
+
+.css-end { top: 0; }
