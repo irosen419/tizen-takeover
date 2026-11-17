@@ -228,10 +228,13 @@ async function main() {
     const es = ctx.window.HUB_I18N.strings.es;
     const budget = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'budget.js'), 'utf8');
     const awws = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'awws.js'), 'utf8');
+    // An activity chip's English is in app/motion.js's kinds table, its row naming the key.
+    const motion = fs.readFileSync(path.join(ROOT, 'app', 'motion.js'), 'utf8');
     const bad = [];
     Object.keys(es).forEach((k) => {
       const m = /^(budget|awws)\.(.+)$/.exec(k);
       if (!m) return;
+      if (motion.indexOf('key: \'' + k + '\'') >= 0) return;
       const last = m[2].split('.').pop();
       const file = m[1] === 'budget' ? budget : awws;
       if (file.indexOf(last + ':') < 0 && file.indexOf('\'' + last + '\':') < 0) bad.push(k);

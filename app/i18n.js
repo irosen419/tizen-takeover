@@ -164,7 +164,8 @@
     'budget.states.guest.line': 'El modo invitados está activado, así que no se muestran cifras del presupuesto. Apágalo en la página del reloj.',
     'budget.states.guest.short': 'Modo invitados activado.',
     'budget.broken': '{title}: no se pudo mostrar',
-    // The activity chip when new figures arrive (one line at 22 px in a 3-column tile).
+    // The activity chip when new figures arrive (one line at 22 px in a 3-column tile;
+    // its English is in app/motion.js's kinds table).
     'budget.activity': 'Presupuesto nuevo',
 
     /* ---- Earned vs spent tile (awws-money in app/widgets/awws.js) ----
@@ -235,13 +236,15 @@
     'awws.broken': '{title}: no se pudo mostrar',
 
     /* ---- Motion extras: the activity chips and the About panel's Motion row (app/motion.js) ----
-     * Key 'motion.<path in STRINGS>'; the English is STRINGS at that path in
-     * motion.js. Each chip is one line at 22 px in a 3-column tile, so keep
-     * these short. A tile kind added later with HUB_FX.addActivity names its
-     * own key in its widget's section (for example 'budget.activity'). */
+     * The chips' English is in motion.js's kinds table (KIND_TABLE), each row
+     * naming its key here; the rest is 'motion.<path in STRINGS>'. Each chip
+     * is one line at 22 px in a 3-column tile, so keep these short. A kind
+     * may name a key in its widget's own section instead (for example
+     * 'budget.activity'). */
     'motion.activity.todo': 'Nueva tarea',
     'motion.activity.calendar': 'Actualizando el calendario',
     'motion.activity.awws': 'Sincronizando datos',
+    'motion.activity.nowplaying': 'Canción nueva',
     'motion.working.todo': 'Preparando tareas',
     'motion.working.calendar': 'Revisando el calendario',
     'motion.working.awws': 'Reuniendo datos',

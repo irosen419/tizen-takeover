@@ -40,8 +40,6 @@
     titles: { room: 'Daily room', card: 'Card day', goals: 'Goals' },
     // Short forms, only when a title doesn't fit its tile on one line (the hub measures).
     titlesShort: { room: 'Room', card: 'Card', goals: 'Goals' },
-    // The activity chip when new figures arrive (app/motion.js shows it).
-    activity: 'Updating budget',
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     // {dow} short weekday, {mon} short month, {d} day
@@ -497,7 +495,6 @@
   try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(onGuest); } catch (e) { /* no Guest mode on this page */ }
 
   function bind(ctx) {
-    addKind();
     if (!S.ctxs[ctx.id]) S.order.push(ctx.id);
     S.ctxs[ctx.id] = ctx;
     bindLive();
@@ -1032,17 +1029,6 @@
     setExpiry: function (ms) { EXPIRE_MS = ms; stopExpiry(); updateBanner(); },
     text: function () { return S.current && S.banner ? S.banner.textContent : ''; }
   };
-
-  // The activity chip for new figures (app/motion.js): three bars, its words
-  // in the hub's language at the moment it shows ('budget.activity').
-  // (motion.js loads after this file: added on the first bind.)
-  function addKind() {
-    try {
-      if (S.kindAdded || !window.HUB_FX || typeof window.HUB_FX.addActivity !== 'function') return;
-      S.kindAdded = window.HUB_FX.addActivity('budget', { key: 'budget.activity', label: EN.activity,
-        icon: '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' });
-    } catch (e) { /* no chip; the figures just show */ }
-  }
 
   /* ---------- registering ---------- */
 
