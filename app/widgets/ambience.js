@@ -666,11 +666,15 @@
   function applyScene(id) {
     var s = find(scenesOf(data), id);
     if (!s) return;
-    pendingScene = { id: id, at: now() };
+    var mine = { id: id, at: now() };
+    pendingScene = mine;
     setNote(T('sending', 'Sending…'), 'ok');
     redraw();
     post('/ambience/scene', { id: id }, safe(function (err, r, code) {
-      if (!pendingScene || pendingScene.id !== id) return;
+      // Another scene went after this one: its answer is the one to show.
+      // (The Pi's push may already have confirmed this one: pendingScene is
+      // null then, and the answer still says how it went.)
+      if (pendingScene && pendingScene !== mine) return;
       pendingScene = null;
       if (err) {
         setNote(failText(err, code), 'bad');
@@ -702,8 +706,10 @@
     var on, pct;
     if (!dir) { on = !l.on; pct = on ? (l.kind === 'switch' ? 100 : 0) : 0; }
     else {
+      // To the next step of 10 that way (85 goes to 90 or 80).
       var base = l.on ? l.pct : 0;
-      pct = Math.max(0, Math.min(100, Math.round((base + dir * step) / 10) * 10));
+      var from = dir > 0 ? Math.floor(base / 10) * 10 : Math.ceil(base / 10) * 10;
+      pct = Math.max(0, Math.min(100, from + dir * step));
       if (dir > 0 && pct < 10) pct = 10;
       on = pct > 0;
     }
@@ -782,7 +788,8 @@
     var L = window.HUB_I18N;
     var lang = '';
     try { lang = L && L.lang ? L.lang() : ''; } catch (e) { lang = ''; }
-    return JSON.stringify([lang, v.kind, v.stale, v.big, v.meta, v.note, v.tone, v.active, v.lights, v.scenes, v.moods, data && data.wled]);
+    return JSON.stringify([lang, v.kind, v.stale, v.big, v.meta, v.note, v.tone, v.active, v.lights, v.scenes, v.moods, data && data.wled,
+      pendingScene && pendingScene.id, pendingMood && pendingMood.id]);
   }
 
   function redraw() {

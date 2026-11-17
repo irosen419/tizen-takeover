@@ -767,7 +767,8 @@ function createController(o) {
         const result = !total ? (both[1] === 'ok' ? 'ok' : 'failed') : okCount === total ? 'ok' : okCount ? 'partial' : 'failed';
         const missing = list.filter((x) => x.result !== 'ok').map((x) => lightById(x.id).name);
         lastResult = { scene: scene.id, result: result, missing: missing, at: new Date(now()).toISOString() };
-        lastScene = result === 'failed' ? null : scene.id;
+        // A scene no light took changed nothing: the one before still holds.
+        if (result !== 'failed') lastScene = scene.id;
         if (mood && both[1] === 'ok') lastMood = mood.id;
         log('ambience: scene ' + (result === 'failed' ? 'failed' : 'applied') + ' (' + okCount + ' of ' + total + ' lights answered)');
         put();
