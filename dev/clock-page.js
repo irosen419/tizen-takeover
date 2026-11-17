@@ -6,7 +6,7 @@
  * read it, and close it again.
  *
  *   const clockPage = require('./clock-page');
- *   const lines = await clockPage.lines(page);          // ['v0.26.0', 'Chrome 120', 'push (auto, 58 fps)']
+ *   const lines = await clockPage.lines(page);          // ['v0.27.0', 'Chrome 120', 'push (auto, 58 fps)']
  *   const text = await clockPage.line(page, 'updates'); // the updates text, or null
  *   await clockPage.waitFor(page, (about) => about.live === 'Live', 3000, 'no Live line');
  *

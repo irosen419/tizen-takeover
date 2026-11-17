@@ -59,6 +59,8 @@ function day(h, m) { return new Date(2026, 10, 16, h, m || 0, 0).getTime(); }
 const SHOTS = [
   { name: 'stroll', scene: 'stroll', opts: { seed: 3, dir: 'right' }, at: day(14, 10), stills: [0.12, '@phone+4', '@rub+12', 0.92] },
   { name: 'fetch', scene: 'fetch', opts: { seed: 5, dir: 'right' }, at: day(15, 20), stills: ['@fake+8', '@throw+7', '@caught', '@swap+10'] },
+  { name: 'fetch-bolt', scene: 'fetch-bolt', opts: { seed: 5, dir: 'right' }, at: day(15, 40), stills: ['@pick+2', '@gone+4', '@bark-6', '@bark+10', '@point+4'] },
+  { name: 'fetch-snub', scene: 'fetch-snub', opts: { seed: 6, dir: 'right' }, at: day(15, 50), stills: ['@drop+3', '@snub+6', '@what+4', '@lifted+2', '@sat+10'] },
   { name: 'sock-heist', scene: 'sock-heist', opts: { seed: 2, dir: 'right' }, at: day(16, 5), stills: ['@found-4', '@seen+3', '@grab+8', 0.9] },
   { name: 'zoomies', scene: 'zoomies', opts: { seed: 4, dir: 'left' }, at: day(11, 30), stills: [0.2, 0.42, 0.62, 0.8] },
   { name: 'perch', scene: 'perch', opts: { seed: 1, pose: 'climb', ledge: 0 }, at: day(13, 0), stills: [0.04, 0.2, 0.45, 0.8] },
