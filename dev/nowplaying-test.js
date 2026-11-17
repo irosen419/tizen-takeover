@@ -1035,9 +1035,9 @@ async function vizChecks() {
     await closePage(s.page);
     const rows = await s.page.evaluate(() => { window.HUB_TEST.about.open(); const r = window.HUB_TEST.about.rows(); window.HUB_TEST.about.close(); return r; });
     const row = rows.filter((x) => x.label === 'Visualizer')[0];
-    const name = { radiant: 'radiant', sharp: 'sharp', sharplite: 'sharp-lite', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash' }[kept.d.level];
+    const name = { radiant: 'radiant', native: 'native 1080p', sharp: 'sharp', sharplite: 'sharp-lite', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash' }[kept.d.level];
     // Every canvas level says how long a frame takes, even after the page closed.
-    const canvasLevel = ['radiant', 'sharp', 'sharplite', 'classic', 'lite'].indexOf(kept.d.level) >= 0;
+    const canvasLevel = ['radiant', 'native', 'sharp', 'sharplite', 'classic', 'lite'].indexOf(kept.d.level) >= 0;
     const ms = canvasLevel ? ', [0-9.]+ ms a frame' : '';
     const tail = canvasLevel ? ', [a-z]+' : '';
     assert(row && row.group === 'Now Playing' && new RegExp('^' + name + ', \\d+ fps' + ms + ', 124 BPM from features' + tail + '$').test(row.value), 'About: ' + JSON.stringify(row) + ' ' + scene);
@@ -1056,7 +1056,7 @@ async function vizChecks() {
       if (l === 'wash') break;
       await sleep(50);
     }
-    assert(levels.join(' ') === 'radiant sharp sharplite classic lite glow wash', 'steps: ' + levels.join(' '));
+    assert(levels.join(' ') === 'radiant native sharp sharplite classic lite glow wash', 'steps: ' + levels.join(' '));
     await until(async () => { const L = await layout(t.page); return !L.card && L.art && L.art.w > 450; }, 4000, 'the big picture did not come back');
     const after = await t.page.evaluate(() => ({ d: window.HUB_NP_VIZ.debug(), ls: JSON.parse(localStorage.getItem('homeHub.npViz')) }));
     assert(after.ls.level === 'wash' && after.ls.settled && !after.d.canvas && !after.d.loop, JSON.stringify(after));
@@ -1149,16 +1149,20 @@ async function vizChecks() {
       await t.context.close();
       return { levels: levels.join(' '), skipped: skipped.join(' '), ls: ls };
     }
-    // 30 ms a frame at radiant: over the quick step's 24, and sharp's
-    // estimate (30 x 0.25 = 7.5 ms) holds: sharp, at once.
-    let w = await walk(30, false, 'sharp');
-    assert(w.levels === 'radiant sharp' && w.skipped === '' && w.ls.level === 'sharp' && !w.ls.settled, JSON.stringify(w));
+    // 30 ms a frame at radiant: over the quick step's 24; native is always
+    // tried once (the frame-rate check judges it, not an estimate), and holds.
+    let w = await walk(30, false, 'native');
+    assert(w.levels === 'radiant native' && w.skipped === '' && w.ls.level === 'native' && !w.ls.settled, JSON.stringify(w));
+    // From native with a poor frame rate: 30 ms a frame, sharp's estimate
+    // (30 x 0.25 = 7.5 ms) holds: sharp.
+    w = await walk(30, true, 'sharp', 'native');
+    assert(w.levels === 'native sharp' && w.skipped === '' && w.ls.level === 'sharp', JSON.stringify(w));
     // 160 ms: sharp's estimate 40 ms is over 28, sharp-lite's 22.5 ms is not.
-    w = await walk(160, false, 'sharplite');
-    assert(w.levels === 'radiant sharplite' && w.skipped === 'sharp' && w.ls.level === 'sharplite', JSON.stringify(w));
+    w = await walk(160, true, 'sharplite', 'native');
+    assert(w.levels === 'native sharplite' && w.skipped === 'sharp' && w.ls.level === 'sharplite', JSON.stringify(w));
     // 600 ms: both are skipped, but never past classic by estimate alone.
-    w = await walk(600, false, 'classic');
-    assert(w.levels === 'radiant classic' && w.skipped === 'sharp sharplite' && w.ls.level === 'classic', JSON.stringify(w));
+    w = await walk(600, true, 'classic', 'native');
+    assert(w.levels === 'native classic' && w.skipped === 'sharp sharplite' && w.ls.level === 'classic', JSON.stringify(w));
     // From sharp (kept from an earlier check), 60 ms a frame and a poor
     // frame rate: sharp-lite's estimate (60 x 0.5625 = 34 ms) is skipped;
     // below classic every rung is tried, however slow.
@@ -1166,10 +1170,24 @@ async function vizChecks() {
     assert(w.levels === 'sharp classic lite glow wash' && w.skipped === 'sharplite', JSON.stringify(w));
   });
 
+  await check('visualizer: native is 1920 x 1080 at 30 fps on one canvas shown 1:1 (no stretch), crisp lines and sparks, no bloom; ?viz=native; the About row names it', async () => {
+    await playSong(pi, 0);
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=native' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => window.HUB_NP_VIZ.debug().frames > 30), 8000, 'canvas');
+    const d = await s.page.evaluate(VIZ);
+    assert(d.level === 'native' && d.size === '1920x1080' && d.fpsCap === 30 && !d.bloom && d.crisp && d.sprites && d.loop && d.ms > 0, JSON.stringify(d));
+    const dom = await s.page.evaluate(() => { const c = document.querySelector('#panel > .npv > .npv-canvas'); const r = c.getBoundingClientRect(); return { w: r.width, h: r.height, cw: c.width, ch: c.height }; });
+    assert(dom.w === dom.cw && dom.h === dom.ch, 'one canvas pixel per screen pixel: ' + JSON.stringify(dom));
+    assert(/^native 1080p, [0-9.]+ ms a frame, 124 BPM from features, [a-z]+ \(URL\)$/.test(await s.page.evaluate(() => window.HUB_NP_VIZ.status())), 'about text');
+    await s.context.close();
+  });
+
   await check('rough smoothness with the CPU slowed 6x, radiant, sharp, sharp-lite, classic and lite (desktop Chromium: a sanity check, not the TV)', async () => {
     const out = [];
     const runs = [];
-    for (const level of ['radiant', 'sharp', 'sharplite', 'classic', 'lite']) runs.push([4, 'calm', level], [3, 'hard', level]);
+    for (const level of ['radiant', 'native', 'sharp', 'sharplite', 'classic', 'lite']) runs.push([4, 'calm', level], [3, 'hard', level]);
     for (const [n, name, level] of runs) {
       await playSong(pi, n);
       const s = await open(pi, ONLY(3, 2), { query: '&viz=' + level });

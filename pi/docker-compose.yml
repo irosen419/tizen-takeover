@@ -14,6 +14,8 @@
 #
 # Data: the to-do list is kept in ./data on the Pi through the same mount.
 #
+# The log is kept to about 15 MB (three files of 5 MB; the oldest is dropped).
+#
 # TZ makes the log show local time. Compose fills it in from HUB_TIMEZONE in
 # .env (it reads .env in this folder for that by itself), or uses Chicago.
 
@@ -29,3 +31,8 @@ services:
       - TZ=${HUB_TIMEZONE:-America/Chicago}
     restart: unless-stopped
     init: true
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
