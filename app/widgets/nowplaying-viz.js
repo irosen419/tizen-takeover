@@ -23,7 +23,7 @@
  * song's start at its tempo, and the "waves" are sums of sines. It moves at
  * the song's speed and feel, not to its actual sound.
  *
- * Radiant (the top level, v0.25.0): the same scenes on a 960 x 540 canvas
+ * Radiant (the top level, v0.26.0): the same scenes on a 960 x 540 canvas
  * with a wide faint halo under every line, soft light sprites on the
  * sparks, drifting motes of light at three depths, a bloom (the picture
  * shrunk to 1/4 and 1/16 and stretched back over itself, added on) and a
