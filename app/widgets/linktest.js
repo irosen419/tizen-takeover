@@ -11,8 +11,11 @@
  * (localStorage homeHub.linkTests) and sent to the Pi (POST /linktests), where
  * ./hub linktests and the mailbox's linktests.show read them.
  *
- * {name} in a recipe is filled from linkTests.ids. A recipe still holding a
- * <placeholder> says "needs id" and never fires. Plain ES5. English only:
+ * {name} in a recipe is filled from linkTests.ids. The ids named in
+ * linkTests.editable (the Prime title id by default) also get a text box at
+ * the top of the list; what is typed there is kept on this TV and wins over
+ * config.js. A recipe still holding a <placeholder> says "needs id" and
+ * never fires. Plain ES5. English only:
  * it is a tool for the owner and Claude, not part of the everyday screen.
  */
 (function () {
@@ -26,8 +29,11 @@
     { id: 'nothing', label: 'Nothing', short: 'nothing happened' }
   ];
   var PLACEHOLDER = /<[^<>]*>/;
+  // A typed id: printable, no spaces, quotes or angle brackets, at most 200.
+  var ID_RE = /^[\x21\x23-\x3b\x3d\x3f-\x7e]{1,200}$/;
+  var DEFAULT_EDITABLE = ['primeGti'];
 
-  var S = { C: null, host: null, pending: null, results: [] };
+  var S = { C: null, host: null, pending: null, results: [], ids: {} };
 
   function el(tag, cls, parent, text) {
     var node = document.createElement(tag);
@@ -51,11 +57,51 @@
     });
   }
 
+  // The ids that get a text box: [{ name, value, own (typed on this TV) }].
+  function editable() {
+    var c = conf();
+    var names = isArr(c.editable) ? c.editable : DEFAULT_EDITABLE;
+    var base = c.ids && typeof c.ids === 'object' ? c.ids : {};
+    var out = [];
+    for (var i = 0; i < names.length; i++) {
+      var n = names[i];
+      if (typeof n !== 'string' || !/^\w{1,40}$/.test(n)) continue;
+      var own = S.ids.hasOwnProperty(n) ? S.ids[n] : null;
+      out.push({ name: n, value: own !== null ? own : (typeof base[n] === 'string' ? base[n] : ''), own: own !== null });
+    }
+    return out;
+  }
+
+  // config.js's ids, with the ones typed on this TV over them.
+  function allIds() {
+    var c = conf();
+    var base = c.ids && typeof c.ids === 'object' ? c.ids : {};
+    var out = {};
+    for (var k in base) if (base.hasOwnProperty(k)) out[k] = base[k];
+    var ed = editable();
+    for (var i = 0; i < ed.length; i++) if (ed[i].own) out[ed[i].name] = ed[i].value;
+    return out;
+  }
+
+  // A typed id: '' goes back to config.js's. Returns null, or what is wrong.
+  function setId(name, value) {
+    var ed = editable();
+    var ok = false;
+    for (var i = 0; i < ed.length; i++) if (ed[i].name === name) ok = true;
+    if (!ok) return 'that id can’t be changed here';
+    var v = String(value === undefined || value === null ? '' : value).replace(/^\s+|\s+$/g, '');
+    if (v === '') delete S.ids[name];
+    else if (!ID_RE.test(v)) return 'an id has no spaces, quotes or angle brackets and is at most 200 characters';
+    else S.ids[name] = v;
+    save();
+    return null;
+  }
+
   // The recipes, ready to fire: { id, app, name, op, uri, key, val, needsId }.
   function recipes() {
     var c = conf();
     var list = isArr(c.recipes) ? c.recipes : [];
-    var ids = c.ids && typeof c.ids === 'object' ? c.ids : {};
+    var ids = allIds();
     var out = [];
     for (var i = 0; i < list.length; i++) {
       var r = list[i];
@@ -80,13 +126,17 @@
       if (d && typeof d === 'object') {
         S.results = isArr(d.results) ? d.results.slice(0, MAX_KEPT) : [];
         S.pending = typeof d.pending === 'string' ? d.pending : null;
+        S.ids = {};
+        if (d.ids && typeof d.ids === 'object') {
+          for (var k in d.ids) if (d.ids.hasOwnProperty(k) && typeof d.ids[k] === 'string' && ID_RE.test(d.ids[k])) S.ids[k] = d.ids[k];
+        }
       }
-    } catch (e) { S.results = []; S.pending = null; }
+    } catch (e) { S.results = []; S.pending = null; S.ids = {}; }
   }
 
   function save() {
     try {
-      if (window.localStorage) localStorage.setItem(KEY, JSON.stringify({ results: S.results.slice(0, MAX_KEPT), pending: S.pending }));
+      if (window.localStorage) localStorage.setItem(KEY, JSON.stringify({ results: S.results.slice(0, MAX_KEPT), pending: S.pending, ids: S.ids }));
     } catch (e) { /* kept for this visit only */ }
   }
 
@@ -198,11 +248,24 @@
       return;
     }
     var focusSet = false;
+    var ed = editable();
+    for (var e = 0; e < ed.length; e++) {
+      var field = el('label', 'lt-field', root);
+      el('span', 'lt-field-name', field, ed[e].name + (ed[e].own ? ' (typed on this TV; empty for config.js’s)' : ' (OK to edit)'));
+      var box = el('input', 'lt-input f', field);
+      box.setAttribute('type', 'text');
+      box.setAttribute('spellcheck', 'false');
+      box.setAttribute('autocomplete', 'off');
+      box.setAttribute('data-key', 'lt:id:' + ed[e].name);
+      box.value = ed[e].value;
+    }
     for (var i = 0; i < list.length; i++) {
       var rec = list[i];
       var st = stateText(rec);
       var row = el('div', 'lt-row f' + (rec.needsId || st === 'app not installed' ? ' is-off' : ''), root);
-      row.setAttribute('data-key', 'lt:run:' + rec.id);
+      // While its question is up the row's key changes, so the redraw puts
+      // focus on the first answer rather than back on the row.
+      row.setAttribute('data-key', 'lt:run:' + rec.id + (S.pending === rec.id ? ':asked' : ''));
       var main = el('div', 'lt-main', row);
       el('div', 'lt-name', main, rec.app + ' · ' + rec.name);
       el('div', 'lt-detail', main, shortOp(rec.op) + (rec.uri ? ' · ' + rec.uri : '') + (rec.key ? ' · ' + rec.key + '=' + rec.val : ''));
@@ -232,6 +295,18 @@
     return true;
   }
 
+  // Done on an id's text box: keep it, and the recipes use it at once.
+  function onSubmit(box) {
+    var key = (box && box.getAttribute('data-key')) || '';
+    if (key.indexOf('lt:id:') !== 0) return false;
+    var err = setId(key.substring(6), box.value);
+    if (S.C) {
+      S.C.toast(err ? 'Not saved: ' + err + '.' : 'Saved on this TV.', err ? 6000 : 3000);
+      if (!err) S.C.redrawPanel();
+    }
+    return true;
+  }
+
   // Back while the question is up: drop the question first.
   function onBack() {
     if (!S.pending) return false;
@@ -254,6 +329,7 @@
     title: function () { return 'Watch link test'; },
     renderPanel: renderPanel,
     onSelect: onSelect,
+    onSubmit: onSubmit,
     onBack: onBack,
     // The About panel's row: how far the test has come.
     aboutText: function () {
@@ -267,6 +343,6 @@
       }
       return 'OK to open · ' + tried + ' of ' + ready + ' tried' + (ready < list.length ? ' (' + (list.length - ready) + ' need an id)' : '');
     },
-    _test: { recipes: recipes, fire: fire, record: record, state: function () { return S; }, stateText: stateText }
+    _test: { recipes: recipes, fire: fire, record: record, setId: setId, editable: editable, state: function () { return S; }, stateText: stateText }
   };
 })();

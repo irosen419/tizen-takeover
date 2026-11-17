@@ -132,8 +132,11 @@
 
   function now() { return new Date().getTime(); }
 
-  function warn(text) {
-    try { if (window.console && console.warn) console.warn('Schedule: ' + text); } catch (e) { /* ignore */ }
+  // Only where it failed and the error's kind (TypeError...), never a
+  // message: one could quote a show's name.
+  function warn(where, e) {
+    var kind = (e && e.name) || 'error';
+    try { if (window.console && console.warn) console.warn('Schedule: ' + where + ' failed (' + kind + ')'); } catch (x) { /* ignore */ }
   }
 
   function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
@@ -511,7 +514,7 @@
   function changed() {
     checkSoon();
     for (var i = 0; i < S.listeners.length; i++) {
-      try { S.listeners[i](); } catch (e) { warn(e && e.message); }
+      try { S.listeners[i](); } catch (e) { warn('a listener', e); }
     }
   }
 
@@ -534,7 +537,7 @@
   function schedule() {
     clearTimeout(S.timer);
     S.timer = setTimeout(function () {
-      try { changed(); } catch (e) { warn(e && e.message); }
+      try { changed(); } catch (e) { warn('the minute update', e); }
       schedule();
     }, MIN - (now() % MIN) + 300);
   }
@@ -825,7 +828,7 @@
         var d = Lv.get('shows');
         if (validData(d)) onData(d);
       } catch (e) { /* wait for it */ }
-      try { Lv.on('shows', function (d) { try { onData(d); } catch (e) { warn(e && e.message); } }); } catch (e) { warn('live: ' + (e && e.message)); }
+      try { Lv.on('shows', function (d) { try { onData(d); } catch (e) { warn('new shows data', e); } }); } catch (e) { warn('listening for shows', e); }
     }
     try {
       var I = L();

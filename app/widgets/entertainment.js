@@ -588,6 +588,12 @@
       if (key && key.indexOf('app:') !== 0) lastKey = key;
     },
 
+    // Done on the watch link test's id box.
+    onSubmit: function (box) {
+      if (view === 'linktests' && window.HUB_LINKTEST && HUB_LINKTEST.onSubmit) return HUB_LINKTEST.onSubmit(box);
+      return false;
+    },
+
     onSelect: function (target) {
       var key = target.getAttribute('data-key') || '';
       if (key.indexOf('sh:') === 0 && window.HUB_SHOWS) return HUB_SHOWS.onSelect(target);

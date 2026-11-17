@@ -327,6 +327,22 @@
 /* ---------- watch link test ---------- */
 
 .lt { padding: 0.2rem 0 0.3rem; }
+.lt-field { display: block; margin-bottom: 0.7rem; }
+.lt-field-name { display: block; margin-bottom: 0.25rem; font-size: 0.85rem; line-height: 1.35; color: var(--text-2); }
+.lt-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.7rem;
+  border: var(--edge) solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+.lt-input.is-focused { border-color: var(--focus); }
 .lt-intro { margin-bottom: 0.7rem; font-size: 0.95rem; line-height: 1.4; color: var(--text-2); }
 .lt-row {
   display: flex;

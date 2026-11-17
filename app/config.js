@@ -221,9 +221,12 @@ var HUB_CONFIG = {
        * item). app is the Entertainment item's label (its match names find
        * the app). {name} is filled from ids below. A value still in
        * <angle brackets> is a placeholder: its recipes say "needs id" and
-       * never fire. Answers go to the Pi: ./hub linktests.
+       * never fire. Answers go to the Pi: ./hub linktests. The ids in
+       * editable also get a text box at the top of the test, so one can be
+       * changed with the remote (kept on that TV, over the one here).
        */
       linkTests: {
+        editable: ['primeGti'],
         ids: {
           // EDIT: the Prime Video title id (GTI) the Prime recipe opens.
           primeGti: 'amzn1.dv.gti.50f41028-8256-4293-9d0d-14556b501136',
