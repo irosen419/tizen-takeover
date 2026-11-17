@@ -90,8 +90,8 @@
  *                             live sync (never call it for the first data after
  *                             the hub starts, or for a refetch that changed
  *                             nothing): the motion extras show a small chip
- *                             saying so, e.g. 'todo', 'calendar', 'awws' (more
- *                             with HUB_FX.addActivity in app/motion.js)
+ *                             saying so, e.g. 'todo', 'calendar', 'awws' (more,
+ *                             with their words' app/i18n.js key, via HUB_FX.addActivity in app/motion.js)
  *   (A waiting tile marks itself quiet with an element of class hub-dormant.)
  *   ctx.live                  live updates from the hub server on the Pi (see
  *                             docs/live-updates.md), or undefined when live.js

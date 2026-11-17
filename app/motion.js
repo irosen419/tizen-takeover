@@ -21,7 +21,8 @@
  *               Never on the first data after the hub starts, while the
  *               wanderers are on screen, or while the home screen is covered.
  *               Widgets call ctx.activity(kind); HUB_FX.addActivity(kind,
- *               { icon, label }) adds a kind.
+ *               { icon, key, label }) adds a kind (key: an app/i18n.js key,
+ *               label: its English, or a function giving the words).
  *
  * Every moving part animates only transform and opacity, and runs only when
  * the hub's own timing (motion 'auto', see hub.js) says the screen keeps up:
@@ -35,8 +36,10 @@
 (function () {
   'use strict';
 
-  /* Every word this file shows (the About panel's Motion row), for
-     translating. window.HUB_MOTION_STRINGS replaces any of them. */
+  /* Every word this file shows, in English. The Spanish is in app/i18n.js
+     under the same keys ('motion.' + the path here, in its "Motion extras"
+     section); each word is looked up when it is shown, so a language change
+     on the Clock page applies to the next chip and the next About refresh. */
   var STRINGS = {
     extrasOn: 'extras on',
     extrasOff: 'extras off ({why})',
@@ -49,15 +52,17 @@
     }
   };
 
-  function mergeStrings(dst, src) {
-    if (!src || typeof src !== 'object') return;
-    for (var k in src) {
-      if (!src.hasOwnProperty(k) || !dst.hasOwnProperty(k)) continue;
-      if (dst[k] && typeof dst[k] === 'object') mergeStrings(dst[k], src[k]);
-      else if (typeof src[k] === 'string') dst[k] = src[k];
+  // key: an i18n key; english: the text when HUB_I18N is missing or has no
+  // Spanish for it. vars fill {name} in either.
+  function tr(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') {
+      try { return String(L.t(key, english, vars)); } catch (e) { /* English below */ }
     }
+    var text = String(english);
+    if (vars) for (var v in vars) if (vars.hasOwnProperty(v)) text = text.split('{' + v + '}').join(String(vars[v]));
+    return text;
   }
-  try { mergeStrings(STRINGS, window.HUB_MOTION_STRINGS); } catch (e) { /* keep English */ }
 
   var FLAGS = ['quietTiles', 'ring', 'stagger', 'cover', 'bloom', 'activity'];
   var EASE = 'cubic-bezier(0.2, 0.7, 0.2, 1)';   // ease-out: every entrance
@@ -399,31 +404,42 @@
 
   /* ---------- activity chips ---------- */
 
-  // The kinds a widget can say: { icon (HTML), label }. The icons are plain
-  // elements so every loop moves only transform or opacity (style.css).
+  // The kinds a widget can say: { icon (HTML), key, label }. The icons are
+  // plain elements so every loop moves only transform or opacity (style.css).
+  // The words are found when a chip shows, in the language then active:
+  //   key    an app/i18n.js key ('budget.activity'); label is its English
+  //   label  a string (shown as it is when there is no key), or a function
+  //          that returns the words in the hub's language at that moment
   var KINDS = {};
 
   function addActivity(kind, def) {
     if (!kind || !def || typeof def !== 'object') return false;
-    var label = typeof def.label === 'string' ? def.label : '';
-    try {
-      var tr = window.HUB_MOTION_STRINGS && window.HUB_MOTION_STRINGS.activity;
-      if (tr && typeof tr[kind] === 'string') label = tr[kind];
-    } catch (e) { /* keep it */ }
-    KINDS[kind] = { icon: typeof def.icon === 'string' ? def.icon : '', label: label };
+    var label = typeof def.label === 'string' || typeof def.label === 'function' ? def.label : '';
+    var key = typeof def.key === 'string' && def.key ? def.key : '';
+    KINDS[kind] = { icon: typeof def.icon === 'string' ? def.icon : '', key: key, label: label };
     return true;
   }
 
+  // The chip's words for a kind, in the language active now.
+  function labelOf(kind) {
+    var def = KINDS[kind];
+    if (!def) return '';
+    if (typeof def.label === 'function') {
+      try { return String(def.label() || ''); } catch (e) { return ''; }
+    }
+    return def.key ? tr(def.key, def.label) : def.label;
+  }
+
   // A pencil writing a line.
-  addActivity('todo', { label: STRINGS.activity.todo, icon:
+  addActivity('todo', { key: 'motion.activity.todo', label: STRINGS.activity.todo, icon:
     '<i class="fx-act-line"></i>' +
     '<i class="fx-act-pen"><svg viewBox="0 0 34 34"><path d="M6 22 L22 6 L27 11 L11 27 L5 28 Z" fill="#cfeeff"/></svg></i>' });
   // A calendar whose dots tick in turn.
-  addActivity('calendar', { label: STRINGS.activity.calendar, icon:
+  addActivity('calendar', { key: 'motion.activity.calendar', label: STRINGS.activity.calendar, icon:
     '<svg viewBox="0 0 34 34"><rect x="4" y="7" width="26" height="23" rx="5" fill="none" stroke="#7fd1ff" stroke-width="2.5"/></svg>' +
     '<i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i>' });
   // Three bars rising and falling.
-  addActivity('awws', { label: STRINGS.activity.awws, icon:
+  addActivity('awws', { key: 'motion.activity.awws', label: STRINGS.activity.awws, icon:
     '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' });
 
   var acts = [];                 // [{ tile, kind, chip, edge, timer }]
@@ -445,6 +461,19 @@
     while (acts.length) actEnd(acts[0]);
   }
 
+  // The language changed on the Clock page: a chip still showing says its
+  // words again in the new one (the next chips look theirs up as they show).
+  try {
+    if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+      window.HUB_I18N.onChange(safe(function () {
+        for (var i = 0; i < acts.length; i++) {
+          var t = acts[i].chip.querySelector('.fx-chip-text');
+          if (t) t.textContent = labelOf(acts[i].kind);
+        }
+      }));
+    }
+  } catch (e) { /* the chips keep their words */ }
+
   // The home screen is in view and nothing else draws over it.
   function homeQuiet() {
     try {
@@ -464,7 +493,7 @@
     chip.setAttribute('aria-hidden', 'true');
     var ico = el('span', 'fx-act-ico', chip);
     ico.innerHTML = def.icon;
-    el('span', 'fx-chip-text', chip).textContent = def.label;
+    el('span', 'fx-chip-text', chip).textContent = labelOf(kind);
     var edge = document.createElement('div');
     edge.className = 'fx-edge';
     edge.setAttribute('aria-hidden', 'true');
@@ -488,8 +517,9 @@
   function statusText() {
     if (!anyMotion()) return '';
     var sp = speed();
-    if (sp === 'ok') return STRINGS.extrasOn;
-    return STRINGS.extrasOff.replace('{why}', STRINGS.why[sp] || sp);
+    if (sp === 'ok') return tr('motion.extrasOn', STRINGS.extrasOn);
+    var why = STRINGS.why.hasOwnProperty(sp) ? tr('motion.why.' + sp, STRINGS.why[sp]) : sp;
+    return tr('motion.extrasOff', STRINGS.extrasOff, { why: why });
   }
 
   // The hub's motion setting changed (auto stepped down): drop what is shown.
@@ -538,7 +568,9 @@
         staggering: stag.items.length,
         flying: !!share.fly,
         blooming: !!bloomState.node,
-        chips: acts.map(function (a) { return a.kind; })
+        chips: acts.map(function (a) { return a.kind; }),
+        // The words each kind's chip would show now.
+        labels: (function () { var o = {}; for (var k in KINDS) if (KINDS.hasOwnProperty(k)) o[k] = labelOf(k); return o; })()
       };
     }
   };

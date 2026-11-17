@@ -76,8 +76,17 @@ const SPANISH_INIT = 'window.HUB_AWWS_STRINGS = ' + JSON.stringify(AWWS_ES) + ';
   'window.HUB_PLANNED_STRINGS = ' + JSON.stringify(PLANNED_ES) + ';' +
   'window.HUB_TODO_STRINGS = ' + JSON.stringify(TODO_ES) + ';';
 
-// Spanish for the activity chips.
-const MOTION_ES = { activity: { todo: 'Nueva tarea', calendar: 'Actualizando el calendario', awws: 'Sincronizando datos' } };
+// The hub's Spanish table (app/i18n.js), read the way the TV runs it: the
+// activity chips' Spanish comes from there ('motion.activity.<kind>').
+const I18N_ES = (function () {
+  const ctx = { window: { location: { search: '' } }, document: { documentElement: { setAttribute() {} } }, location: { search: '' } };
+  require('vm').runInNewContext(fs.readFileSync(path.join(ROOT, 'app', 'i18n.js'), 'utf8'), ctx);
+  return ctx.window.HUB_I18N.strings.es;
+})();
+const KINDS = ['todo', 'calendar', 'awws'];
+const MOTION_ES = {};
+KINDS.forEach((k) => { MOTION_ES[k] = I18N_ES['motion.activity.' + k]; });
+
 
 // Notes every chip the page ever adds (window.__chips), from the first moment.
 const CHIP_WATCH = '(function () { window.__chips = []; function watch() {' +
@@ -838,25 +847,27 @@ const NARROW = [
 ];
 
 async function checkActivityText(pi) {
+  for (const k of KINDS) assert(typeof MOTION_ES[k] === 'string' && MOTION_ES[k], 'no Spanish in app/i18n.js for motion.activity.' + k);
   await control(pi, 'POST', '/api/layout', { layout: NARROW });
   try {
+    // es: the Spanish from app/i18n.js (?lang=es); en: the English.
     for (const lang of ['es', 'en']) {
-      const init = lang === 'es' ? 'window.HUB_MOTION_STRINGS = ' + JSON.stringify(MOTION_ES) + ';' : undefined;
-      const page = await open({ pi: pi, query: 'motion=push', init: init });
+      const es = lang !== 'en';
+      const page = await open({ pi: pi, query: 'motion=push' + (es ? '&lang=es' : ''), });
       await idle(page);
       await until(() => page.evaluate(() => { const r = window.HUB_TEST.homeRects(); return r.todo && r.todo.height < 200; }), 4000, 'the layout did not arrive');
       await sleep(300);
-      const shown = await page.evaluate(() => ['todo', 'calendar', 'awws'].map((k) =>
-        window.HUB_FX.activity(document.querySelector('.cell[data-widget="' + k + '"] .tile'), k)));
+      const shown = await page.evaluate((kinds) => kinds.map((k) =>
+        window.HUB_FX.activity(document.querySelector('.cell[data-widget="' + k + '"] .tile'), k)), KINDS);
       assert(shown.every(Boolean), lang + ': not every chip showed: ' + JSON.stringify(shown));
       await sleep(400);
-      const info = await page.evaluate(() => {
+      const info = await page.evaluate((kinds) => {
         function lum(c) {
           const v = c.map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
           return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2];
         }
         function rgba(s) { const m = s.match(/[\d.]+/g).map(Number); return { c: m.slice(0, 3), a: m.length > 3 ? m[3] : 1 }; }
-        return ['todo', 'calendar', 'awws'].map((k) => {
+        return kinds.map((k) => {
           const tile = document.querySelector('.cell[data-widget="' + k + '"] .tile');
           const c = tile.querySelector('.fx-chip');
           const t = c.querySelector('.fx-chip-text');
@@ -878,7 +889,7 @@ async function checkActivityText(pi) {
             font: parseFloat(cs.fontSize), maxOk: R.width <= T.width - 56 + 1, inside: R.left >= T.left && R.right <= T.right && R.top >= T.top && R.bottom <= T.bottom,
             contrast: Math.min.apply(null, ratios), tileH: Math.round(T.height) };
         });
-      });
+      }, KINDS);
       for (const i of info) {
         const where = lang + ' ' + i.k + ' (' + i.tileW + 'x' + i.tileH + ', "' + i.text + '")';
         assert(i.fits, where + ': cut with "…" (' + i.chipW + ' px)');
@@ -887,11 +898,38 @@ async function checkActivityText(pi) {
         assert(i.maxOk && i.inside, where + ': wider than the tile minus 56 px, or outside it: ' + JSON.stringify(i));
         assert(i.contrast >= 4.5, where + ': contrast ' + i.contrast.toFixed(2));
       }
-      if (lang === 'es') assert(info[1].text === 'Actualizando el calendario', 'the Spanish words did not arrive: ' + info[1].text);
+      if (lang === 'es') {
+        for (const i of info) assert(i.text === MOTION_ES[i.k], 'the Spanish from app/i18n.js did not arrive for ' + i.k + ': ' + i.text);
+      } else {
+        assert(info.map((i) => i.text).join('|') === 'Incoming to-do|Updating calendar|Syncing data', 'the English: ' + info.map((i) => i.text).join('|'));
+      }
       console.log('      ' + lang + ': ' + info.map((i) => i.k + ' ' + i.chipW + '/' + i.tileW + ' px, ' + i.contrast.toFixed(1) + ':1').join('; '));
       noErrors(page);
       await page.context().close();
     }
+
+    // The language changes live (the Clock page's Language): a chip showing
+    // then switches its words, and the next chip shows in the new language.
+    const page = await open({ pi: pi, query: 'motion=push' });
+    await idle(page);
+    await sleep(300);
+    const words = () => page.evaluate(() => { const t = document.querySelector('.cell[data-widget="todo"] .fx-chip-text'); return t ? t.textContent : null; });
+    const show = (k) => page.evaluate((kind) => window.HUB_FX.activity(document.querySelector('.cell[data-widget="' + kind + '"] .tile'), kind), k);
+    assert(await show('todo'), 'the first chip did not show');
+    assert((await words()) === 'Incoming to-do', 'English first: ' + (await words()));
+    await page.evaluate(() => window.HUB_I18N.setLang('es'));
+    assert((await words()) === MOTION_ES.todo, 'the chip showing did not switch to Spanish: ' + (await words()));
+    await until(() => page.evaluate(() => !document.querySelector('.fx-chip')), 4000, 'the chip stayed');
+    assert(await show('calendar'), 'the chip after the change did not show');
+    const cal = await page.evaluate(() => document.querySelector('.cell[data-widget="calendar"] .fx-chip-text').textContent);
+    assert(cal === MOTION_ES.calendar, 'the next chip is not in Spanish: ' + cal);
+    const about = await page.evaluate(() => window.HUB_FX.statusText());
+    assert(about === I18N_ES['motion.extrasOn'], 'the Motion row in Spanish: ' + about);
+    await page.evaluate(() => window.HUB_I18N.setLang('en'));
+    assert((await page.evaluate(() => window.HUB_FX.statusText())) === 'extras on', 'the Motion row back in English');
+    console.log('      live change: "Incoming to-do" -> "' + MOTION_ES.todo + '", next chip "' + cal + '"');
+    noErrors(page);
+    await page.context().close();
   } finally {
     await control(pi, 'POST', '/api/layout', { layout: null });
   }
@@ -928,7 +966,7 @@ async function main() {
   await check('12. Activity chips: a refetch with the same data, or a to-do that only changed, adds none (changed events and snapshot do)', () => checkActivitySame(pi));
   await check('13. Activity chips: a new to-do adds exactly one chip in the To-do tile, which goes by itself and leaves nothing', () => checkActivityTodo(pi));
   await check('14. Activity chips: none while the wanderers are on screen, or behind a panel', () => checkActivityClay(pi));
-  await check('15. Activity chips: the Spanish words fit one line in 3-column tiles (3x1, 3x2, 3x4), 22px+, 4.5:1', () => checkActivityText(pi));
+  await check('15. Activity chips: the Spanish from app/i18n.js fits one line in 3-column tiles (3x1, 3x2, 3x4), 22px+, 4.5:1; a language change applies live', () => checkActivityText(pi));
 }
 
 main().catch((e) => {
