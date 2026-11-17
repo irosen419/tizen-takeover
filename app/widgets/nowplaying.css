@@ -531,3 +531,6 @@
   pointer-events: none;
   background-image: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 52%, rgba(4,2,10,0.5) 100%);
 }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }
