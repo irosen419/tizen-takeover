@@ -97,7 +97,7 @@ Press OK on it to open the Clock page. At the top right of the page are the choi
 
 - **Face:** **Digital** (a big time with the full date under it, the default) or **Analog** (a round face with ticks and 12, 3, 6 and 9, the day and date in a small window in its lower half, and the date beside it, with no digital time). The second hand steps once a second; nothing sweeps.
 - **Clock:** **12-hour** (`9:41 PM`, the default) or **24-hour** (`21:41`), on the page and the tile. Only shown with the Digital face; on Analog it doesn't apply, and is kept for when you go back to Digital.
-- **Language:** **English** (the default) or **Español** (Latin American Spanish), the hub's language, on both faces. The label turns into **Idioma**; the two names always stay in their own language, so you can find your way back. Today it changes Word of the day (its title, labels and definitions); the Clock itself stays in English for now. Set it on the Clock page; `?lang=es` on the page's address tries it for one load without saving.
+- **Language:** **English** (the default) or **Español** (Latin American Spanish), the hub's language, on both faces. The label turns into **Idioma**; the two names always stay in their own language, so you can find your way back. Today it changes Word of the day (its title, labels and definitions) and the money tiles: Earned vs spent, Daily room, Card day, Goals and the "New charge" banner (their titles, words and dates; amounts stay `$1,265`, and goal names, transfer labels and merchants stay as the budget app sends them). The Clock itself, the other A World Worth Saving tiles and the hub's own buttons stay in English for now. Set it on the Clock page; `?lang=es` on the page's address tries it for one load without saving.
 
 The tile changes as soon as you pick, behind the page. All three choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
 
@@ -309,6 +309,8 @@ The preview's sample calendars aren't named "School Visits", so Next visit says 
 
 `node dev/money-test.js` does the same for Earned vs spent and the budget tiles: every size in English and Spanish, the panels and full screen, the colors (green up, coral down; amber, coral and green for the room), old data dimmed with "as of", `showMoney: false` and `budget.show: false`, the "New charge" banner (OK and Back dismiss it, a dismissed one stays gone after a reload), the AWWS money and Budget layouts, and the empty states. It needs port 8095 free.
 
+`node dev/money-i18n-test.js` checks the same tiles with the hub in Spanish (`homeHub.lang`): the Spanish titles, words and dates from `app/i18n.js`, amounts and the budget app's own text left as sent, every tile at 11 sizes and each panel and full screen with the real Spanish and again with every Spanish money string 25% longer (with Á, É, ñ, ¿ and ¡), the empty states and the banner in Spanish, and a language change redrawing the tiles, their titles and an open panel. `--shots <folder>` also saves the `docs/screenshots/money-en-*` and `money-es-*` pictures. It needs port 8095 free.
+
 ## Budget
 
 Three tiles with a wallet icon, filled by the budget app on the Pi. The app works out the totals and sends them to the hub server on the same Pi (`POST /api/budget` with the token); nothing goes through the cloud. The shape is in [docs/budget-snapshot.md](docs/budget-snapshot.md). Only totals ever reach the TV: never a balance, a transaction list or an amount on an alert.
@@ -417,6 +419,17 @@ A widget that throws an error shows a short message instead of stopping the hub.
 
 Keep to plain ES5 JavaScript (`var`, `function`, no arrow functions or `fetch`) and animate only `transform` and `opacity`. The TV's browser is old and its graphics chip is slow.
 
+### Adding text in both languages
+
+The hub speaks English and Latin American Spanish (Language on the Clock page; `app/i18n.js`). Every word a widget shows has one English text and, next to it, one Spanish text:
+
+- **English** lives in the widget, as the fallback: `HUB_I18N.t('wotd.title', 'Word of the day')`, or in a widget's `STRINGS` object turned into the hub's language with `HUB_I18N.localize(STRINGS, 'budget')` (each text at path `p` looks up `'budget.' + p`).
+- **Spanish** goes in the `ES` table in `app/i18n.js`, under one key, in **that widget's own commented section** (`wotd.`, `budget.`, `awws.`, ...). Start a new section for a new widget. `{n}`, `{d}` and the like are filled in the same way in both languages; keep them in the Spanish.
+- **A missing Spanish key falls back to the English**, so a widget never shows a key or nothing. Adding a word in English alone is safe; it just stays English in Spanish.
+- **User data is never translated**: names, labels and texts that come from the Pi, a calendar or the budget app, and amounts (`$1,265`), are shown as sent. Weekday and month names come from `HUB_I18N` (`dayName`, `monthName`, or the `days`/`daysShort`/`months`/`monthsShort` lists that `localize` fills in), never from the browser.
+- A widget redraws on `HUB_I18N.onChange`, including its title (the hub draws titles once; see `app/widgets/budget.js` `onLang`).
+- **Check the fit**: Spanish runs longer, so every text must fit at +25% with room for á, É, ñ, ¿ and ¡ above and below (line height 1.25 or more wherever text is cut). Run the widget's language checks, for example `node dev/wotd-test.js` and `node dev/money-i18n-test.js` (it grows every Spanish money string by 25% and checks every size, the panels and full screen); a new widget's test should do the same.
+
 ## Preview on a laptop
 
 ```
@@ -476,7 +489,7 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
-- `app/i18n.js` holds the hub's languages (`HUB_I18N`: English and Latin American Spanish, with its own Spanish day and month names); a missing Spanish string falls back to the English the widget gives.
+- `app/i18n.js` holds the hub's languages (`HUB_I18N`: English and Latin American Spanish, with its own Spanish day and month names); a missing Spanish string falls back to the English the widget gives. Its Spanish table has one commented section per widget (`wotd.`, `budget.`, `awws.` keys); `HUB_I18N.localize(STRINGS, 'budget')` turns a widget's English STRINGS into the hub's language, so translating more of a widget is adding its keys there.
 - `app/icons.js` holds the white line icons; `app/logos.js` the app logos.
 - `app/widgets/` holds one file per widget: `today.js` (the Clock, with its page's styles in `today.css`), `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) `wotd.js` (Word of the day, with `wotd.css`; its words are in `app/wotd-data.js`) and `planned.js` (the "Soon" placeholders).
 - `app/hub.js` builds the home screen, moves focus, opens panels and runs the animations.

@@ -48,7 +48,128 @@
     'wotd.pos.conj': 'conjunción',
     'wotd.pos.interj': 'interjección',
     'wotd.pos.num': 'número',
-    'wotd.none': 'No hay palabra para hoy.'
+    'wotd.none': 'No hay palabra para hoy.',
+
+    /* ---- Budget tiles: Daily room, Card day, Goals and the "New charge" banner (app/widgets/budget.js) ----
+     * Key 'budget.<path in STRINGS>'; the English is STRINGS at that path in
+     * budget.js. Amounts keep their US form ($1,265): cash, thousands and minus
+     * are left out on purpose, and so is anything the budget app sends (goal
+     * names, goal texts, transfer labels, merchant names). Weekday and month
+     * names come from the lists below. */
+    'budget.titles.room': 'Margen diario',
+    'budget.titles.card': 'Pago de tarjeta',
+    'budget.titles.goals': 'Metas',
+    'budget.dateLong': '{dow} {d} {mon}',
+    'budget.dateShort': '{d} {mon}',
+    'budget.am': 'a. m.',
+    'budget.pm': 'p. m.',
+    'budget.asOf': 'datos de: {t}',
+    'budget.more': '+{n} más',
+    'budget.aDay': 'al día',
+    'budget.roomADay': 'disponible al día',
+    'budget.ofCap': 'de {n} al día',
+    'budget.capShort': 'tope {n}',
+    'budget.daysLeft': 'quedan {n} días',
+    'budget.daysLeft1': 'queda 1 día',
+    'budget.daysLeft0': 'último día',
+    'budget.through': 'hasta el {d}',
+    'budget.refund': 'unos {n} cuando entre el reembolso pendiente',
+    'budget.refundShort': 'unos {n} tras el reembolso',
+    'budget.refundTiny': '{n} tras reembolso',
+    'budget.underCap': 'por debajo del tope',
+    'budget.overBudget': 'por encima del presupuesto',
+    'budget.covered': 'Cubierto',
+    'budget.coveredWord': 'cubierto',
+    'budget.shortBy': 'Faltan {n}',
+    'budget.shortWord': 'faltan {n}',
+    'budget.today': 'hoy',
+    'budget.tomorrow': 'mañana',
+    'budget.inDays': 'en {n} días',
+    'budget.todayCap': 'Hoy',
+    'budget.cardOn': 'Pago de tarjeta: {d}',
+    'budget.transfersHead': 'Transferencias',
+    'budget.nextPay': 'Próximo sueldo: {d}',
+    'budget.nextPayShort': 'Sueldo: {d}',
+    'budget.paychecksHead': 'Sueldos',
+    'budget.noTransfers': 'No hace falta transferir',
+    'budget.goalStates.clean': 'Sin gastar',
+    'budget.goalStates.on-pace': 'A buen ritmo',
+    'budget.goalStates.over': 'Excedida',
+    'budget.goalStates.under': 'Por debajo',
+    'budget.overN': '{n} excedidas',
+    'budget.overN1': '1 excedida',
+    'budget.goalsN': '{n} metas',
+    'budget.goals1': '1 meta',
+    'budget.allOnTrack': 'todo en orden',
+    'budget.noGoals': 'Sin metas todavía',
+    'budget.overWord': 'excedidas',
+    'budget.goalsWord': 'metas',
+    'budget.newCharge': 'Cargo nuevo: {label}',
+    'budget.moreCharges': '+{n} más',
+    'budget.states.off.head': 'Necesita la Pi',
+    'budget.states.off.line': 'El presupuesto viene del servidor del hub en la Raspberry Pi. Las actualizaciones en vivo están apagadas en esta TV: pon la dirección de la Pi en live.server de config.js.',
+    'budget.states.off.short': 'Actualizaciones en vivo apagadas.',
+    'budget.states.quiet.head': 'Necesita la Pi',
+    'budget.states.quiet.line': 'Esta TV todavía no se conecta al servidor del hub en la Pi. Sigue intentando sin avisar.',
+    'budget.states.quiet.short': 'Esperando a la Pi.',
+    'budget.states.lost.head': 'No hay conexión con la Pi',
+    'budget.states.lost.line': 'Estos mosaicos se llenan en cuanto la Pi vuelva a responder.',
+    'budget.states.lost.short': 'Reintentando sin avisar.',
+    'budget.states.loading.head': 'Cargando…',
+    'budget.states.waiting.head': 'Esperando la app de presupuesto',
+    'budget.states.waiting.line': 'La app de presupuesto de la Pi envía aquí sus totales. docs/budget-snapshot.md explica cómo.',
+    'budget.states.waiting.short': 'Envía sus totales a la Pi.',
+    'budget.states.hidden.head': 'Presupuesto oculto',
+    'budget.states.hidden.line': 'widgets.budget.show está apagado en config.js, así que esta TV no muestra cifras del presupuesto.',
+    'budget.states.hidden.short': 'Apagado en config.js.',
+    'budget.broken': '{title}: no se pudo mostrar',
+
+    /* ---- Earned vs spent tile (awws-money in app/widgets/awws.js) ----
+     * Key 'awws.<path in STRINGS>'; the English is STRINGS at that path in
+     * awws.js. Only the Earned vs spent tile and its panel read these for
+     * now; the other A World Worth Saving tiles stay English until their
+     * keys are added here (the same 'awws.' keys). Amounts keep their US
+     * form (thousands is left out). */
+    'awws.titles.money': 'Ganado y gastado',
+    'awws.dateLong': '{dow} {d} {mon}',
+    'awws.dateShort': '{d} {mon}',
+    'awws.dateFull': '{dowLong}, {d} de {month}',
+    'awws.am': 'a. m.',
+    'awws.pm': 'p. m.',
+    'awws.asOf': 'datos de: {t}',
+    'awws.netWord': 'neto',
+    'awws.netSoFar': 'neto hasta hoy',
+    'awws.earnedSpent': 'ganado {earned} · gastado {spent}',
+    'awws.earnedSpentShort': 'entró {earned} · salió {spent}',
+    'awws.earnedOnly': 'ganado {earned}',
+    'awws.moneyHeads.net': 'Neto hasta hoy',
+    'awws.moneyHeads.months': 'Por mes',
+    'awws.moneyHeads.next': 'Próxima transferencia',
+    'awws.moneyHeads.tools': 'Claude este mes',
+    'awws.earnedWord': 'Ganado',
+    'awws.spentWord': 'Gastado',
+    'awws.nextTransfer': 'Próxima transferencia: {d}',
+    'awws.nextTransferAmt': 'Próxima transferencia: {d} · {n}',
+    'awws.moneyStates.hidden.head': 'Dinero oculto',
+    'awws.moneyStates.hidden.line': 'showMoney está apagado en config.js, así que esta TV no muestra cifras de dinero.',
+    'awws.moneyStates.hidden.short': 'showMoney está apagado en config.js.',
+    'awws.moneyStates.nodata.head': 'Todavía no hay datos de dinero',
+    'awws.moneyStates.nodata.line': 'Las cifras llegan con la próxima sincronización que envíe la sección de dinero. docs/awws-snapshot.md explica cómo.',
+    'awws.moneyStates.nodata.short': 'Esperando la próxima sincronización.',
+    'awws.states.off.head': 'Necesita la Pi',
+    'awws.states.off.line': 'Los datos vienen del servidor del hub en la Raspberry Pi. Las actualizaciones en vivo están apagadas en esta TV: pon la dirección de la Pi en live.server de config.js.',
+    'awws.states.off.short': 'Actualizaciones apagadas. Pon live.server en config.js.',
+    'awws.states.quiet.head': 'Necesita la Pi',
+    'awws.states.quiet.line': 'Esta TV todavía no se conecta al servidor del hub en la Pi. Sigue intentando sin avisar. Cómo instalarlo está en pi/README.md.',
+    'awws.states.quiet.short': 'Esperando el servidor de la Pi.',
+    'awws.states.lost.head': 'No hay conexión con la Pi',
+    'awws.states.lost.line': '{live}. Estos mosaicos se llenan en cuanto la Pi vuelva a responder.',
+    'awws.states.lost.short': 'Reintentando sin avisar.',
+    'awws.states.refused.head': 'Necesita la Pi',
+    'awws.states.loading.head': 'Cargando…',
+    'awws.states.notsetup.head': 'Sin sincronizar todavía',
+    'awws.states.notsetup.line': 'Los datos llegan cuando la sincronización esté lista. docs/awws-snapshot.md explica cómo.',
+    'awws.broken': '{title}: no se pudo mostrar'
   };
 
   var DAYS = {
@@ -153,6 +274,32 @@
     return dayName(date, false, l) + ', ' + monthName(date, false, l) + ' ' + date.getDate();
   }
 
+  var NAME_LISTS = { days: DAYS, daysShort: DAYS_SHORT, months: MONTHS, monthsShort: MONTHS_SHORT };
+
+  function isList(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+
+  function localize(english, prefix, l) {
+    l = pickLang(l);
+    function walk(src, path) {
+      if (typeof src === 'string') {
+        return l === 'es' && ES.hasOwnProperty(path) ? ES[path] : src;
+      }
+      if (isList(src)) {
+        var name = path.substring(path.lastIndexOf('.') + 1);
+        var names = NAME_LISTS.hasOwnProperty(name) ? NAME_LISTS[name][l] : null;
+        if (l !== 'en' && names && names.length === src.length) return names.slice();
+        return src.slice();
+      }
+      if (src && typeof src === 'object') {
+        var out = {};
+        for (var k in src) if (src.hasOwnProperty(k)) out[k] = walk(src[k], path + '.' + k);
+        return out;
+      }
+      return src;
+    }
+    return walk(english, prefix);
+  }
+
   window.HUB_I18N = {
     t: t,
     lang: function () { return current; },
@@ -163,6 +310,11 @@
     dayName: dayName,
     monthName: monthName,
     longDate: longDate,
+    // localize(english, 'budget'): a copy of a widget's STRINGS in the hub's
+    // language. Each text at path p becomes t('budget.' + p, its English);
+    // lists of seven or twelve names named days/daysShort/months/monthsShort
+    // become this file's lists. English (or no Spanish key) keeps the text.
+    localize: localize,
     strings: { es: ES }
   };
 })();

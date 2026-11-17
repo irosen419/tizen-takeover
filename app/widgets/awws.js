@@ -30,7 +30,11 @@
  *
  * Every word is in STRINGS. window.HUB_AWWS_STRINGS, when set before this
  * file loads, replaces any of them key by key (the screenshots use it to try
- * Spanish; the TV stays English).
+ * Spanish). Earned vs spent follows the hub's language (the Clock page's
+ * Language choice): while it draws, STRINGS is HUB_I18N.localize's copy,
+ * with the Spanish under 'awws.<path>' keys in app/i18n.js. The other tiles
+ * stay English for now; adding their 'awws.' keys there is enough to
+ * translate them once they draw through inLang too.
  */
 (function () {
   'use strict';
@@ -229,6 +233,33 @@
     }
   }
   try { mergeStrings(STRINGS, window.HUB_AWWS_STRINGS); } catch (e) { /* keep English */ }
+
+  /* ---------- the hub's language (Earned vs spent only, for now) ---------- */
+
+  var EN = STRINGS;
+  var LOCAL = { lang: '', strings: null };
+
+  function I18N() {
+    var x = window.HUB_I18N;
+    return x && typeof x.localize === 'function' && typeof x.lang === 'function' ? x : null;
+  }
+
+  function localStrings() {
+    var x = I18N();
+    var lang = x ? x.lang() : 'en';
+    if (!x || lang === 'en') return EN;
+    if (LOCAL.lang !== lang || !LOCAL.strings) {
+      try { LOCAL = { lang: lang, strings: x.localize(EN, 'awws') }; } catch (e) { return EN; }
+    }
+    return LOCAL.strings;
+  }
+
+  // Runs fn with STRINGS in the hub's language, then puts English back.
+  function inLang(fn) {
+    var keep = STRINGS;
+    STRINGS = localStrings();
+    try { return fn(); } finally { STRINGS = keep; }
+  }
 
   /* One color per calendar number, the same as calendar.js. */
   var PALETTE = [
@@ -2192,7 +2223,7 @@
     if (cap.offsetLeft <= hb.numEl.offsetLeft + 1) cap.textContent = STRINGS.netWord;
     if (!fitParts(line, earnedSpentForms(d))) { line.parentNode.removeChild(line); line = null; }
     if (nf && overW(nf)) fitForms(nf, [nextText(d), fill(STRINGS.nextTransfer, { d: dateText(d.next.day, 'short') })]);
-    trim(root, [nf]);
+    trim(root, [line, nf]);
     if (chart && !monthBars(chart, d, true)) {
       chart.parentNode.removeChild(chart);
       chart = null;
@@ -2617,6 +2648,11 @@
   }
 
   function drawPanel(body, ctx) {
+    if (ctx.id === 'awws-money') return inLang(function () { drawPanelNow(body, ctx); });
+    drawPanelNow(body, ctx);
+  }
+
+  function drawPanelNow(body, ctx) {
     var ps = pstate(ctx.id);
     var isFull = full(ctx);
     var view = ps.view;
@@ -2640,7 +2676,9 @@
       renderPanel: function (body, ctx) {
         try { drawPanel(body, ctx); } catch (e) {
           warn('panel: ' + (e && e.message));
-          broken(body, STRINGS.titles[id === 'awws' ? 'awws' : id.replace('awws-', '')] || '');
+          var key = id === 'awws' ? 'awws' : id.replace('awws-', '');
+          if (id === 'awws-money') inLang(function () { broken(body, STRINGS.titles[key] || ''); });
+          else broken(body, STRINGS.titles[key] || '');
         }
       },
       onSelect: function (target, ctx) {
@@ -2686,26 +2724,55 @@
 
   /* ---------- registering ---------- */
 
-  function real(id, titleKey, drawTile) {
+  // local: the tile follows the hub's language (Earned vs spent).
+  function real(id, titleKey, drawTile, local) {
+    function run(fn) { return local ? inLang(fn) : fn(); }
     var w = {
       id: id,
-      title: STRINGS.titles[titleKey],
       icon: 'globe',
       expandable: true,
-      init: function (ctx) { try { bind(ctx); } catch (e) { warn('init: ' + (e && e.message)); } },
+      init: function (ctx) {
+        try { bind(ctx); } catch (e) { warn('init: ' + (e && e.message)); }
+        if (local) watchLang(ctx, titleKey);
+      },
       renderTile: function (body, ctx) {
-        try {
-          if (!S.ctxs[ctx.id]) bind(ctx);
-          drawTile(body, ctx);
-        } catch (e) {
-          warn('tile ' + id + ': ' + (e && e.message));
-          broken(body, STRINGS.titles[titleKey]);
-        }
+        run(function () {
+          try {
+            if (!S.ctxs[ctx.id]) bind(ctx);
+            drawTile(body, ctx);
+          } catch (e) {
+            warn('tile ' + id + ': ' + (e && e.message));
+            broken(body, STRINGS.titles[titleKey]);
+          }
+        });
       }
     };
+    // Read when the hub draws the tile head, so a local tile follows the language.
+    Object.defineProperty(w, 'title', { get: function () { return run(function () { return STRINGS.titles[titleKey]; }); },
+      enumerable: true, configurable: true });
     var hooks = panelHooks(id);
     for (var k in hooks) if (hooks.hasOwnProperty(k)) w[k] = hooks[k];
     return w;
+  }
+
+  // A language change redraws the tile and its open panel, with the title
+  // (the hub draws titles once).
+  function watchLang(ctx, titleKey) {
+    var x = I18N();
+    if (!x || typeof x.onChange !== 'function') return;
+    x.onChange(function () {
+      try {
+        var t = inLang(function () { return STRINGS.titles[titleKey]; });
+        var heads = document.querySelectorAll('.cell[data-widget="' + ctx.id + '"] .tile-title');
+        for (var i = 0; i < heads.length; i++) heads[i].textContent = t;
+        ctx.redrawTile();
+        if (ctx.isOpen()) {
+          ctx.redrawPanel();
+          var pt = document.querySelector('#panel .panel-title');
+          if (pt) pt.textContent = t;
+        }
+      } catch (e) { warn('language: ' + (e && e.message)); }
+    });
   }
 
   /* Placeholders, in the style of planned.js (its fitLines, copied small). */
@@ -2785,7 +2852,7 @@
   list.push(real('awws-agenda', 'agenda', agendaTile));
   list.push(real('awws-todo', 'todo', todoTile));
   list.push(real('awws-reach', 'reach', reachTile));
-  list.push(real('awws-money', 'money', moneyTile));
+  list.push(real('awws-money', 'money', moneyTile, true));
   list.push(placeholder('outreach'));
   list.push(placeholder('pipeline'));
 })();
