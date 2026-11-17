@@ -1151,5 +1151,24 @@ body.has-picture {
   .fx-edge { display: none; }
 }
 
+/* Working chips: a sync is still on its way (app/motion.js). The same chip,
+   a little quieter (a fainter border), the icon held still in a finished
+   pose while the icon as a whole breathes: one opacity loop per chip, and
+   nothing else moves. When the data lands, the class goes and the same chip
+   becomes the arrival chip (loops, edge sweep). */
+.fx-chip-working { border-color: rgba(127, 209, 255, 0.28); }
+.fx-chip-working .fx-act-ico { animation: fx-act-breathe 1600ms ease-in-out infinite; }
+.fx-chip-working .fx-act-ico i { animation: none; }
+.fx-chip-working .fx-act-line { transform: none; }                    /* the line fully drawn */
+.fx-chip-working .fx-act-pen { transform: translateX(29.4%); }        /* the pencil at its end */
+.fx-chip-working .fx-act-dot { opacity: 1; }
+.fx-chip-working .fx-act-bar:nth-of-type(1) { transform: scaleY(0.6); }
+.fx-chip-working .fx-act-bar:nth-of-type(2) { transform: scaleY(1); }
+.fx-chip-working .fx-act-bar:nth-of-type(3) { transform: scaleY(0.8); }
+@keyframes fx-act-breathe { 0% { opacity: 1; } 50% { opacity: 0.45; } 100% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .fx-chip-working .fx-act-ico { animation: none; }
+}
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }

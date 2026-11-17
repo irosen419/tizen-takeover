@@ -37,8 +37,15 @@
  *     onClose: function (ctx) {},          // panel closed
  *     onStatus: function (ctx) {},         // the motion, live updates or updates status
  *                                          // changed (ctx.live.status())
- *     stagger: '.my-item'                  // panel items that arrive one by one when it
+ *     stagger: '.my-item',                 // panel items that arrive one by one when it
  *                                          // opens (motion extras, app/motion.js)
+ *     activity: 'todo'                     // the activity kind this tile shows the
+ *                                          // "working" chip for while a sync of that
+ *                                          // kind is on its way (a "hub:working <kind>"
+ *                                          // say text from the Pi). The first tile in
+ *                                          // layout order that declares the kind gets
+ *                                          // it; without one, the tile whose id is the
+ *                                          // kind. See app/motion.js.
  *   });
  *
  * Everything except id and title is optional. Every call into a widget is
@@ -120,7 +127,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.6';
+  var BUILD = 'v0.28.8';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -2160,9 +2167,25 @@
     });
   }
 
+  // "hub:working <kind> [seconds|done]" in a say text: a sync of that kind is
+  // on its way (or ended with nothing new). The Pi passes say texts on as
+  // they are, so this needs nothing new there.
+  var WORK_SAY_RE = /^hub:working ([a-z][a-z0-9-]{0,23})(?: ([0-9]{1,6}|done))?$/;
+
+  // Texts that start with "hub:" are for the hub, never shown, even when
+  // they make no sense to this version.
+  function liveHubSay(text) {
+    var m = WORK_SAY_RE.exec(text);
+    if (!m) return;
+    if (m[2] === 'done') fxCall('workingDone', [m[1]]);
+    else fxCall('working', [m[1], m[2] ? Number(m[2]) : null]);
+  }
+
   function liveSay(data) {
     var text = String(data.text === undefined || data.text === null ? '' : data.text).replace(/\s+/g, ' ');
-    text = text.replace(/^\s+|\s+$/g, '').substring(0, 140);
+    text = text.replace(/^\s+|\s+$/g, '');
+    if (text.substring(0, 4) === 'hub:') { liveHubSay(text); return; }
+    text = text.substring(0, 140);
     if (!text) return;
     var seconds = Number(data.seconds);
     if (data.seconds === undefined || data.seconds === null || !isFinite(seconds)) seconds = 6;
@@ -2193,6 +2216,21 @@
     }
   }
 
+  // The live resources whose arrival can end a working chip of the same
+  // kind. Data that brought news turns the chip into the arrival chip (the
+  // widget calls ctx.activity); otherwise, shortly after, it just ends.
+  var WORK_RESOURCES = ['todo', 'calendar', 'awws'];
+  var WORK_SETTLE_MS = 1500;
+
+  function onWorkData(kind) {
+    return function () {
+      try {
+        var at = new Date().getTime();
+        setTimeout(function () { fxCall('workingDone', [kind, at]); }, WORK_SETTLE_MS);
+      } catch (e) { /* the chip ends by itself */ }
+    };
+  }
+
   function startLive() {
     var L = window.HUB_LIVE;
     if (!L || typeof L !== 'object' || typeof L.start !== 'function') return;
@@ -2202,6 +2240,9 @@
       if (typeof L.onCommand === 'function') L.onCommand(onLiveCommand);
       if (typeof L.onStatus === 'function') L.onStatus(function () { announceStatus(); });
       if (typeof L.on === 'function') L.on('layout', onLayoutData);
+      if (typeof L.on === 'function') {
+        for (var i = 0; i < WORK_RESOURCES.length; i++) L.on(WORK_RESOURCES[i], onWorkData(WORK_RESOURCES[i]));
+      }
       L.start({ server: server });
     } catch (e) {
       liveWarn('could not start: ' + (e && e.message));
@@ -2411,8 +2452,33 @@
       clayDrawing: function () {
         var K = clayApi('drawing');
         try { return K ? K.drawing() === true : false; } catch (e) { return false; }
-      }
+      },
+      tileFor: fxTileFor
     }]);
+  }
+
+  // The home tile for a kind's working chip: the first in layout order whose
+  // widget declares activity: kind, else the one whose id is kind, or null.
+  var fxLayout = { key: null, list: [] };
+  function fxTileFor(kind) {
+    if (fxLayout.key !== layoutKey) {
+      fxLayout.key = layoutKey;
+      try { fxLayout.list = layoutKey ? JSON.parse(layoutKey) : []; } catch (e) { fxLayout.list = []; }
+    }
+    var order = [];
+    var i;
+    for (i = 0; i < fxLayout.list.length; i++) {
+      var rec = fxLayout.list[i] ? widgetById(fxLayout.list[i].widget) : null;
+      if (rec && order.indexOf(rec) < 0) order.push(rec);
+    }
+    for (i = 0; i < widgets.length; i++) if (order.indexOf(widgets[i]) < 0) order.push(widgets[i]);
+    for (i = 0; i < order.length; i++) {
+      if (order[i].tile && order[i].home && order[i].w.activity === kind) return order[i].tile;
+    }
+    for (i = 0; i < order.length; i++) {
+      if (order[i].tile && order[i].home && order[i].w.id === kind) return order[i].tile;
+    }
+    return null;
   }
 
   window.HUB_TEST.fx = function () { return fxCall('state') || null; };
