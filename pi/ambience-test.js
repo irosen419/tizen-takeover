@@ -141,10 +141,10 @@ async function main() {
     assert.strictEqual(ambience.configFromEnv({ HA_TOKEN: m.token, HA_URL: m.url + '/' }).url, m.url);
     const badTok = ambience.configFromEnv({ HA_TOKEN: 'paste here' });
     assert.ok(!badTok.configured && /HA_TOKEN/.test(badTok.problem));
-    const creds = ambience.configFromEnv({ HA_TOKEN: m.token, HA_URL: 'http://user:pw@10.0.0.9:8123' });
-    assert.ok(!creds.configured && creds.problem.indexOf('pw') < 0 && creds.problem.indexOf('10.0.0.9') < 0 && creds.problem.indexOf(m.token) < 0);
-    const w = ambience.configFromEnv({ HA_TOKEN: m.token, WLED_URL: 'ftp://10.0.0.50' });
-    assert.ok(w.configured && !w.wledUrl && /WLED_URL/.test(w.wledProblem) && w.wledProblem.indexOf('10.0.0.50') < 0);
+    const creds = ambience.configFromEnv({ HA_TOKEN: m.token, HA_URL: 'http://user:pw@192.0.2.9:8123' });
+    assert.ok(!creds.configured && creds.problem.indexOf('pw') < 0 && creds.problem.indexOf('192.0.2.9') < 0 && creds.problem.indexOf(m.token) < 0);
+    const w = ambience.configFromEnv({ HA_TOKEN: m.token, WLED_URL: 'ftp://192.0.2.50' });
+    assert.ok(w.configured && !w.wledUrl && /WLED_URL/.test(w.wledProblem) && w.wledProblem.indexOf('192.0.2.50') < 0);
     assert.strictEqual(ambience.configFromEnv({ HA_TOKEN: m.token, WLED_URL: m.wledUrl }).wledUrl, m.wledUrl);
   });
 

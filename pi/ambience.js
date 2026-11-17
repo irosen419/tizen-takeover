@@ -12,7 +12,7 @@
  *   HA_URL     Home Assistant's address; http://127.0.0.1:8123 when left out
  *              (it runs on the same Pi).
  *   WLED_URL   optional: the plant wall's WLED controller, e.g.
- *              http://192.168.1.50 (no token; WLED has none).
+ *              http://plant-wall.local (no token; WLED has none).
  *
  * The lights, scenes and plant wall moods live in data/ambience.json
  * (written from the defaults below when missing; a damaged file is moved
@@ -23,7 +23,7 @@
  * (the Sengled bulbs often drop off the network) never stops the others: the
  * scene is then "partial" and the TV names the light that did not answer.
  *
- * The log only ever gets fixed words and counts (Ian's rule): every line
+ * The log only ever gets fixed words and counts: every line
  * starts "ambience:", and never holds the token, an address, an entity id,
  * a light, scene or mood name, or anything Home Assistant sent back.
  *
@@ -95,7 +95,7 @@ function configFromEnv(env) {
   const token = str(e.HA_TOKEN).trim();
   const wledRaw = str(e.WLED_URL).trim();
   const wledUrl = wledRaw ? cleanUrl(wledRaw) : '';
-  const wledProblem = wledRaw && !wledUrl ? 'WLED_URL does not look right (it is like http://192.168.1.50)' : '';
+  const wledProblem = wledRaw && !wledUrl ? 'WLED_URL does not look right (it is like http://plant-wall.local)' : '';
   if (!token) return { configured: false, problem: '', wledUrl: wledUrl, wledProblem: wledProblem };
   if (!/^[A-Za-z0-9._-]{20,2000}$/.test(token)) {
     return { configured: false, problem: 'HA_TOKEN does not look like a Home Assistant token', wledUrl: wledUrl, wledProblem: wledProblem };
