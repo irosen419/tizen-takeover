@@ -1123,7 +1123,21 @@
     layoutChance();
   }
 
-  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(guestLayout); } catch (e) { /* no Guest mode on this page */ }
+  // Guest mode turned on: a money tile has nothing to see any more, so its
+  // accent edge (motion.js) goes at once. Its header stays as it is.
+  function guestEdges(on) {
+    if (!on) return;
+    for (var i = 0; i < widgets.length; i++) {
+      if (widgets[i].tile && window.HUB_GUEST.MONEY.indexOf(widgets[i].w.id) >= 0) fxCall('accentClear', [widgets[i].tile]);
+    }
+  }
+
+  try {
+    if (window.HUB_GUEST) {
+      window.HUB_GUEST.onChange(guestLayout);
+      window.HUB_GUEST.onChange(guestEdges);
+    }
+  } catch (e) { /* no Guest mode on this page */ }
 
   function drawSwitcher() {
     switcherEl.innerHTML = '';

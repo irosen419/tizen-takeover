@@ -27,6 +27,13 @@
  *     goes after its hold (a short one here, through HUB_FX.edgeHold) and
  *     when the tile is opened; 60 s by default; never on focus; static (no
  *     sweep, no fades) in fade mode; none with motionFx.edge off.
+ *   - Guest mode (app/guest.js): the money tiles keep the same header (the
+ *     same title and short title, in English, Spanish and Spanish +25%)
+ *     while their bodies say "Hidden for guests"; turning it on takes the
+ *     edge off the money tiles at once and a budget sent then raises none,
+ *     while other tiles keep theirs; the Clock page with its four control
+ *     groups (Face, Clock, Language, Guest mode) fits its panel, every group
+ *     inside, at the panel's size and full screen, in English and Spanish.
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  */
@@ -478,6 +485,106 @@ function edgeOn(p, id) {
       const none = await q.evaluate(() => document.querySelectorAll('.fx-accent').length);
       await q.context().close();
       assert(flags.edge === false && flags.activity === true && none === 0, JSON.stringify({ flags, none }));
+    });
+
+    /* ---------- Guest mode ---------- */
+
+    const GUEST = { 'homeHub.guest.v1': 'on' };
+    const MONEY = ['awws-money', 'budget-room', 'budget-card', 'budget-goals'];
+    const titlesOf = (p) => p.evaluate((ids) => ids.map((id) => {
+      const t = document.querySelector('.cell[data-widget="' + id + '"] .tile-title');
+      return t ? t.textContent : null;
+    }), MONEY);
+
+    await check('Guest mode: the money tiles keep the same header (title or short title, icon), English, Spanish and Spanish +25%; their bodies say hidden', async () => {
+      const lays = [LAYOUTS['awws-money'], LAYOUTS.budget, grid(3, 2, MONEY), grid(2, 2, MONEY), grid(6, 3, MONEY)];
+      for (const lay of lays) {
+        for (const v of [{ lang: 'en' }, { lang: 'es' }, { lang: 'es', grow: true }]) {
+          const off = await page(env, { layout: lay, lang: v.lang, grow: v.grow });
+          const before = await titlesOf(off);
+          await off.context().close();
+          const p = await page(env, { layout: lay, lang: v.lang, grow: v.grow, storage: GUEST });
+          const r = await headerProblems(p, !v.grow);
+          const after = await titlesOf(p);
+          const hidden = await p.evaluate((ids) => ids.filter((id) => {
+            const c = document.querySelector('.cell[data-widget="' + id + '"] .tile-body');
+            return c && !/Hidden for guests|Oculto para invitados|Guest mode is on|Modo invitados activado/.test(c.textContent);
+          }), MONEY.filter((id) => lay.some((e) => e.widget === id)));
+          const errs = H.errorsOf(p, true);
+          await p.context().close();
+          const where = lay.map((e) => e.widget + ' ' + e.w + 'x' + e.h).join(', ') + ' ' + v.lang + (v.grow ? ' +25%' : '');
+          assert(!r.bad.length, where + ': ' + r.bad.join('; '));
+          assert(JSON.stringify(before) === JSON.stringify(after), where + ': titles changed: ' + JSON.stringify([before, after]));
+          assert(!hidden.length, where + ': not hidden: ' + hidden.join(', '));
+          assert(!errs.length, where + ': console: ' + errs.join(' | '));
+        }
+      }
+    });
+
+    await check('Guest mode: turning it on takes the edge off the money tiles; a budget sent then raises none; other tiles keep theirs', async () => {
+      const lay = [
+        { widget: 'budget-room', x: 0, y: 0, w: 3, h: 3 }, { widget: 'budget-card', x: 3, y: 0, w: 3, h: 3 }, { widget: 'todo', x: 6, y: 0, w: 3, h: 6 },
+        { widget: 'calendar', x: 9, y: 0, w: 3, h: 6 }, { widget: 'awws-money', x: 0, y: 3, w: 6, h: 3 }
+      ];
+      const p = await pushPage(env, { layout: lay });
+      await p.evaluate(() => window.HUB_FX.edgeHold(60000));
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, short: true }));
+      await H.until(async () => (await edgeOn(p, 'budget-room')) && (await edgeOn(p, 'budget-card')), 5000, 'no edge on the budget tiles');
+      await env.control('POST', '/api/todo', { title: 'Guest edge ' + Date.now(), section: 'now' });
+      await H.until(() => edgeOn(p, 'todo'), 4000, 'no edge on the To-do tile');
+      const heads = await titlesOf(p);
+      await p.evaluate(() => window.HUB_GUEST.set(true));
+      await H.sleep(300);
+      const st = await edges(p);
+      const headsOn = await titlesOf(p);
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      await H.sleep(2500);
+      const st2 = await edges(p);
+      const chips = await p.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.fx-chip'), (c) => c.closest('.cell').getAttribute('data-widget')));
+      await p.evaluate(() => window.HUB_GUEST.set(false));
+      await p.context().close();
+      assert(!st.some((e) => MONEY.indexOf(e.widget) >= 0), 'an edge stayed on a money tile: ' + JSON.stringify(st));
+      assert(st.some((e) => e.widget === 'todo'), 'the To-do edge went too: ' + JSON.stringify(st));
+      assert(!st2.some((e) => MONEY.indexOf(e.widget) >= 0) && !chips.some((w) => MONEY.indexOf(w) >= 0), 'a budget in Guest mode raised news: ' + JSON.stringify({ st2, chips }));
+      assert(JSON.stringify(heads) === JSON.stringify(headsOn), 'the headers changed: ' + JSON.stringify([heads, headsOn]));
+    });
+
+    await check('The Clock page with four control groups fits its panel, every group inside (English and Spanish, panel and full screen)', async () => {
+      for (const lang of ['en', 'es']) {
+        const p = await pushPage(env, { layout: LAYOUTS.stock, lang: lang });
+        await p.evaluate(() => window.HUB_TEST.openPanel('today'));
+        await H.until(() => p.evaluate(() => window.HUB_TEST.open() === 'today' && !window.HUB_TEST.busy()), 5000, 'no Clock page');
+        await H.sleep(250);
+        const look = () => p.evaluate(() => {
+          const body = document.querySelector('#panel .panel-body').getBoundingClientRect();
+          const panel = document.getElementById('panel');
+          const groups = Array.prototype.map.call(document.querySelectorAll('#panel .clock-group'), (g) => {
+            const r = g.getBoundingClientRect();
+            return { label: (g.querySelector('.clock-group-label') || {}).textContent, top: r.top, bottom: r.bottom, right: r.right, left: r.left };
+          });
+          return { body: { top: body.top, bottom: body.bottom, left: body.left, right: body.right }, groups: groups,
+            frame: panel.offsetHeight, ghost: document.getElementById('ghost').offsetHeight };
+        });
+        const out = [];
+        const a = await look();
+        await H.fullScreen(p);
+        await H.sleep(250);
+        const b = await look();
+        await p.keyboard.press('Escape');
+        await H.until(() => p.evaluate(() => window.HUB_TEST.mode() === 'panel' && !window.HUB_TEST.busy()), 5000, 'not back');
+        const errs = H.errorsOf(p, true);
+        await p.context().close();
+        [['panel', a], ['full screen', b]].forEach(([w, s]) => {
+          if (s.groups.length !== 4) out.push(w + ': ' + s.groups.length + ' groups');
+          if (s.frame !== s.ghost) out.push(w + ': frame ' + s.frame + ' vs content ' + s.ghost);
+          s.groups.forEach((g) => {
+            if (g.bottom > s.body.bottom + 1 || g.top < s.body.top - 1 || g.right > s.body.right + 1 || g.left < s.body.left - 1) out.push(w + ': "' + g.label + '" outside the panel ' + JSON.stringify(g) + ' ' + JSON.stringify(s.body));
+          });
+        });
+        assert(a.groups.length && /Guest mode|Modo invitados/.test(a.groups[3] && a.groups[3].label), lang + ': last group ' + JSON.stringify(a.groups[3]));
+        assert(!out.length, lang + ': ' + out.join('; '));
+        assert(!errs.length, lang + ': console: ' + errs.join(' | '));
+      }
     });
   } finally {
     await env.stop();
