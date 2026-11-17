@@ -417,6 +417,15 @@
       var lang = I18N().lang();
       group(controls, I18N().t('lang.label', 'Language'), [['lang-en', 'English', lang === 'en'], ['lang-es', 'Español', lang === 'es']]);
     }
+    // Guest mode (guest.js): On hides every money figure until it is off again.
+    if (window.HUB_GUEST) {
+      var guest = window.HUB_GUEST.on();
+      var gt = function (k, en) { return I18N() ? I18N().t(k, en) : en; };
+      group(controls, gt('guest.label', 'Guest mode'), [['guest-off', gt('guest.off', 'Off'), !guest], ['guest-on', gt('guest.on', 'On'), guest]]);
+    }
+    // Four groups (Digital, with Language and Guest mode): closer together, so
+    // the last one stays inside the panel.
+    if (controls.children.length >= 4) controls.className += ' is-tight';
     // Opened on the face choice: the first thing people change.
     var marked = controls.querySelectorAll('[data-autofocus]');
     for (var i = 1; i < marked.length; i++) marked[i].removeAttribute('data-autofocus');
@@ -431,6 +440,12 @@
     // included (the listener in init redraws it).
     if (key === 'lang-en' || key === 'lang-es') {
       if (I18N()) I18N().setLang(key.slice(5));
+      return;
+    }
+    if (key === 'guest-on' || key === 'guest-off') {
+      if (!window.HUB_GUEST || window.HUB_GUEST.on() === (key === 'guest-on')) return;
+      window.HUB_GUEST.set(key === 'guest-on');
+      ctx.redrawPanel();
       return;
     }
     var nextFace = key === 'face-digital' ? 'digital' : key === 'face-analog' ? 'analog' : face;

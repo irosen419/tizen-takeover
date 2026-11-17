@@ -21,11 +21,22 @@
  *               Never on the first data after the hub starts, while the
  *               wanderers are on screen, or while the home screen is covered.
  *               Widgets call ctx.activity(kind); HUB_FX.addActivity(kind,
- *               { icon, key, label }) adds a kind (key: an app/i18n.js key,
- *               label: its English, or a function giving the words).
+ *               { icon, key, label, working, workingKey }) adds a kind (key: an
+ *               app/i18n.js key, label: its English, or a function giving
+ *               the words; working and workingKey: the same for its
+ *               working chip).
+ *               While a sync is still on its way (the Pi passes on a
+ *               "hub:working <kind> [seconds]" say text, see hub.js), the
+ *               tile that declares that kind shows a quieter "working" chip
+ *               whose icon is still and only breathes (one opacity loop).
+ *               It ends by itself when its time is up (120 s unless told,
+ *               10 to 900 s), on "hub:working <kind> done", or when the
+ *               data lands: real news turns that same chip into the
+ *               arrival chip, unchanged data lets it fade.
  *   edge        The accent edge: a thin 4px light along the top of a tile
- *               that has something new to see (every activity above, and
- *               ctx.accent(), e.g. an event starting within the hour). It
+ *               that has something new to see (every arrival chip above,
+ *               not a working chip, and ctx.accent(), e.g. an event
+ *               starting within the hour). It
  *               fades in, stays about 60 s and fades out; opening the tile
  *               clears it. Static (no sweep, no fades) in 'fade' mode or
  *               on a slow screen. Never on focus.
@@ -55,6 +66,13 @@
       todo: 'Incoming to-do',
       calendar: 'Updating calendar',
       awws: 'Syncing data'
+    },
+    // The working chips, while a sync is still on its way (one line each).
+    // Spanish in app/i18n.js: motion.working.<kind>.
+    working: {
+      todo: 'Working on to-dos',
+      calendar: 'Checking calendar',
+      awws: 'Gathering data'
     }
   };
 
@@ -85,6 +103,13 @@
   var EDGE_HOLD_MS = 60000;      // the accent edge stays this long (edgeHold() changes it, for tests)
   var EDGE_IN_MS = 400;
   var EDGE_OUT_MS = 600;
+  var WORK_MS = 120000;          // a working chip without a time given lasts this long
+  var WORK_MIN_S = 10;           // and a time given is kept within these (seconds)
+  var WORK_MAX_S = 900;
+  var WORK_TICK_MS = 1000;       // how often the working chips look around
+  var WORK_KIND_RE = /^[a-z][a-z0-9-]{0,23}$/;
+  var WORK_SAVE_KEY = 'homeHub.working';   // sessionStorage: kept over a reload (layout switch)
+  var WORK_RESTORE_GRACE_MS = 15000;       // after that reload, data this soon does not end one
 
   var host = null;               // from hub.js (see start)
   var flags = {};
@@ -425,7 +450,9 @@
     if (!kind || !def || typeof def !== 'object') return false;
     var label = typeof def.label === 'string' || typeof def.label === 'function' ? def.label : '';
     var key = typeof def.key === 'string' && def.key ? def.key : '';
-    KINDS[kind] = { icon: typeof def.icon === 'string' ? def.icon : '', key: key, label: label };
+    KINDS[kind] = { icon: typeof def.icon === 'string' ? def.icon : '', key: key, label: label,
+      working: typeof def.working === 'string' ? def.working : '',
+      workingKey: typeof def.workingKey === 'string' && def.workingKey ? def.workingKey : '' };
     return true;
   }
 
@@ -440,15 +467,18 @@
   }
 
   // A pencil writing a line.
-  addActivity('todo', { key: 'motion.activity.todo', label: STRINGS.activity.todo, icon:
+  addActivity('todo', { key: 'motion.activity.todo', label: STRINGS.activity.todo,
+    working: STRINGS.working.todo, workingKey: 'motion.working.todo', icon:
     '<i class="fx-act-line"></i>' +
     '<i class="fx-act-pen"><svg viewBox="0 0 34 34"><path d="M6 22 L22 6 L27 11 L11 27 L5 28 Z" fill="#cfeeff"/></svg></i>' });
   // A calendar whose dots tick in turn.
-  addActivity('calendar', { key: 'motion.activity.calendar', label: STRINGS.activity.calendar, icon:
+  addActivity('calendar', { key: 'motion.activity.calendar', label: STRINGS.activity.calendar,
+    working: STRINGS.working.calendar, workingKey: 'motion.working.calendar', icon:
     '<svg viewBox="0 0 34 34"><rect x="4" y="7" width="26" height="23" rx="5" fill="none" stroke="#7fd1ff" stroke-width="2.5"/></svg>' +
     '<i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i><i class="fx-act-dot"></i>' });
   // Three bars rising and falling.
-  addActivity('awws', { key: 'motion.activity.awws', label: STRINGS.activity.awws, icon:
+  addActivity('awws', { key: 'motion.activity.awws', label: STRINGS.activity.awws,
+    working: STRINGS.working.awws, workingKey: 'motion.working.awws', icon:
     '<i class="fx-act-bar"></i><i class="fx-act-bar"></i><i class="fx-act-bar"></i>' });
 
   var acts = [];                 // [{ tile, kind, chip, edge, timer }]
@@ -464,6 +494,9 @@
     drop(a.edge);
     var i = acts.indexOf(a);
     if (i >= 0) acts.splice(i, 1);
+    // A working chip taken away (a panel opened): its state stays, so it can come back.
+    var w = a.workKind && working.hasOwnProperty(a.workKind) ? working[a.workKind] : null;
+    if (w && w.act === a) w.act = null;
   }
 
   function activityStop() {
@@ -477,7 +510,7 @@
       window.HUB_I18N.onChange(safe(function () {
         for (var i = 0; i < acts.length; i++) {
           var t = acts[i].chip.querySelector('.fx-chip-text');
-          if (t) t.textContent = labelOf(acts[i].kind);
+          if (t) t.textContent = acts[i].workKind ? workLabel(acts[i].workKind) : labelOf(acts[i].kind);
         }
       }));
     }
@@ -489,6 +522,56 @@
       if (!host || !host.quiet || !host.quiet()) return false;
       return !(host.clayDrawing && host.clayDrawing());
     } catch (e) { return false; }
+  }
+
+  function kindClass(kind) { return 'fx-chip fx-chip-' + String(kind).replace(/[^a-z0-9-]/gi, ''); }
+
+  // The chip element (not yet in a tile): the kind's icon and a label.
+  function makeChip(kind, label, extra) {
+    var chip = document.createElement('div');
+    chip.className = kindClass(kind) + (extra ? ' ' + extra : '');
+    chip.setAttribute('aria-hidden', 'true');
+    var ico = el('span', 'fx-act-ico', chip);
+    ico.innerHTML = KINDS[kind].icon;
+    el('span', 'fx-chip-text', chip).textContent = label;
+    return chip;
+  }
+
+  function makeEdge(tile) {
+    var edge = document.createElement('div');
+    edge.className = 'fx-edge';
+    edge.setAttribute('aria-hidden', 'true');
+    el('i', '', edge);
+    tile.appendChild(edge);
+    return edge;
+  }
+
+  // Fades a chip out (150 ms), then takes it away.
+  function actFade(a) {
+    clearTimeout(a.timer);
+    a.retiring = true;
+    a.chip.className = a.chip.className.replace(/ is-in\b/g, '').replace(/ is-out\b/g, '') + ' is-out';
+    a.timer = later(ACT_OUT_MS + 60, function () { actEnd(a); });
+  }
+
+  // The arrival chip's hold: about 2.4 s, then the fade.
+  function actHold(a) {
+    clearTimeout(a.timer);
+    a.timer = later(ACT_HOLD_MS, function () { actFade(a); });
+  }
+
+  // A working chip becomes the arrival chip, the same element: the arrival
+  // label, the icon's loops run, the edge sweeps, then the usual hold.
+  function actUpgrade(a, kind) {
+    clearTimeout(a.timer);
+    a.workKind = null;
+    a.retiring = false;
+    a.kind = kind;
+    a.chip.className = kindClass(kind) + ' is-in';
+    var text = a.chip.querySelector('.fx-chip-text');
+    if (text) text.textContent = labelOf(kind);
+    if (!a.edge) a.edge = makeEdge(a.tile);
+    actHold(a);
   }
 
   // tile: the tile's element (the chip goes inside it, over its content, so
@@ -503,29 +586,161 @@
   }
 
   function activityChip(tile, kind) {
+    // Real data for this kind landed: its working state ends, here or anywhere.
+    var w = working.hasOwnProperty(kind) ? working[kind] : null;
+    if (w) {
+      delete working[kind];
+      workSave();
+      if (w.act && w.act.tile === tile && !w.act.retiring && can('activity') && homeQuiet()) {
+        actUpgrade(w.act, kind);
+        return true;
+      }
+      if (w.act) actFade(w.act);
+    }
     if (!can('activity')) return false;
-    if (actOf(tile) || !homeQuiet()) return false;
-    var def = KINDS[kind];
-    var chip = document.createElement('div');
-    chip.className = 'fx-chip fx-chip-' + String(kind).replace(/[^a-z0-9-]/gi, '');
-    chip.setAttribute('aria-hidden', 'true');
-    var ico = el('span', 'fx-act-ico', chip);
-    ico.innerHTML = def.icon;
-    el('span', 'fx-chip-text', chip).textContent = labelOf(kind);
-    var edge = document.createElement('div');
-    edge.className = 'fx-edge';
-    edge.setAttribute('aria-hidden', 'true');
-    el('i', '', edge);
-    tile.appendChild(edge);
+    var cur = actOf(tile);
+    // (A working chip of this kind that just began to fade, for another tile
+    // of the same kind a moment ago: it becomes this tile's arrival chip.)
+    if (cur && cur.retiring && cur.wasWork === kind && homeQuiet()) {
+      actUpgrade(cur, kind);
+      return true;
+    }
+    if (cur || !homeQuiet()) return false;
+    var chip = makeChip(kind, labelOf(kind));
+    var edge = makeEdge(tile);
     tile.appendChild(chip);
     var a = { tile: tile, kind: kind, chip: chip, edge: edge, timer: null };
     acts.push(a);
     void chip.offsetWidth;
     chip.className += ' is-in';
-    a.timer = later(ACT_HOLD_MS, function () {
-      chip.className = chip.className.replace(' is-in', '') + ' is-out';
-      a.timer = later(ACT_OUT_MS + 60, function () { actEnd(a); });
-    });
+    actHold(a);
+    return true;
+  }
+
+  /* ---------- working chips ---------- */
+
+  // kind -> { until (ms), started (ms, the last signal), act (the chip shown, or null) }
+  var working = {};
+  var workTimer = null;
+
+  // The words for a working chip, looked up when it shows.
+  function workLabel(kind) {
+    var def = KINDS[kind];
+    if (!def) return '';
+    if (def.working) return def.workingKey ? tr(def.workingKey, def.working) : def.working;
+    return labelOf(kind);
+  }
+
+  function workSave() {
+    try {
+      if (!window.sessionStorage) return;
+      var out = {};
+      var any = false;
+      for (var k in working) {
+        if (working.hasOwnProperty(k)) { out[k] = working[k].until; any = true; }
+      }
+      if (any) sessionStorage.setItem(WORK_SAVE_KEY, JSON.stringify(out));
+      else sessionStorage.removeItem(WORK_SAVE_KEY);
+    } catch (e) { /* kept in memory only */ }
+  }
+
+  // After a reload (a layout with other tiles reloads the page): what was still working.
+  function workLoad() {
+    try {
+      if (!window.sessionStorage) return;
+      var raw = sessionStorage.getItem(WORK_SAVE_KEY);
+      if (!raw) return;
+      var saved = JSON.parse(raw);
+      var t = Date.now();
+      for (var k in saved) {
+        if (!saved.hasOwnProperty(k) || !WORK_KIND_RE.test(k) || !KINDS.hasOwnProperty(k)) continue;
+        var until = Number(saved[k]);
+        if (!isFinite(until) || until <= t) continue;
+        // (started a little ahead: the first sync after the reload is the
+        // state now, not the job's end, so it does not end the chip.)
+        working[k] = { until: Math.min(until, t + WORK_MAX_S * 1000), started: t + WORK_RESTORE_GRACE_MS, act: null };
+      }
+      workSave();
+    } catch (e) { /* start without them */ }
+  }
+
+  function workTileFor(kind) {
+    try {
+      var t = host && host.tileFor ? host.tileFor(kind) : null;
+      return t && t.nodeType === 1 ? t : null;
+    } catch (e) { return null; }
+  }
+
+  function workShow(kind, w, tile) {
+    var chip = makeChip(kind, workLabel(kind), 'fx-chip-working');
+    tile.appendChild(chip);
+    var a = { tile: tile, kind: kind, chip: chip, edge: null, timer: null, workKind: kind, wasWork: kind, retiring: false };
+    acts.push(a);
+    w.act = a;
+    void chip.offsetWidth;
+    chip.className += ' is-in';
+  }
+
+  // Puts every working chip where it belongs now, ends the ones whose time
+  // is up, and looks again in a second while any is left.
+  function workReconcile() {
+    clearTimeout(workTimer);
+    workTimer = null;
+    var t = Date.now();
+    var left = false;
+    var changed = false;
+    for (var kind in working) {
+      if (!working.hasOwnProperty(kind)) continue;
+      var w = working[kind];
+      if (t >= w.until) {
+        delete working[kind];
+        changed = true;
+        if (w.act) actFade(w.act);
+        continue;
+      }
+      left = true;
+      if (!can('activity')) {
+        if (w.act) actEnd(w.act);
+        continue;
+      }
+      var quiet = homeQuiet();
+      var tile = quiet ? workTileFor(kind) : null;
+      if (w.act && (!quiet || w.act.tile !== tile || !document.documentElement.contains(w.act.tile))) actEnd(w.act);
+      if (!w.act && tile && !actOf(tile)) workShow(kind, w, tile);
+    }
+    if (changed) workSave();
+    if (left) workTimer = later(WORK_TICK_MS, workReconcile);
+  }
+
+  // A sync for kind is on its way: seconds (10 to 900, 120 when null) at most.
+  function workStart(kind, seconds) {
+    if (!on('activity') || typeof kind !== 'string' || !WORK_KIND_RE.test(kind) || !KINDS.hasOwnProperty(kind)) return false;
+    var s = seconds === null || seconds === undefined || seconds === '' ? WORK_MS / 1000 : Number(seconds);
+    if (!isFinite(s)) return false;
+    s = Math.max(WORK_MIN_S, Math.min(WORK_MAX_S, s));
+    var t = Date.now();
+    var w = working.hasOwnProperty(kind) ? working[kind] : null;
+    if (w) {
+      w.until = Math.max(w.until, t + s * 1000);
+      w.started = t;
+    } else {
+      working[kind] = { until: t + s * 1000, started: t, act: null };
+    }
+    workSave();
+    workReconcile();
+    return true;
+  }
+
+  // The sync for kind ended with nothing new: the chip fades quietly. With
+  // before (ms), only when no new signal came after that moment.
+  function workDone(kind, before) {
+    if (typeof kind !== 'string' || !working.hasOwnProperty(kind)) return false;
+    var w = working[kind];
+    if (typeof before === 'number' && w.started > before) return false;
+    delete working[kind];
+    workSave();
+    if (w.act) actFade(w.act);
+    workReconcile();
     return true;
   }
 
@@ -637,11 +852,16 @@
   /* ---------- start ---------- */
 
   // host: { config, speed() 'ok'|'fade'|'slow', quiet() (the home screen is
-  // in view, uncovered), clayDrawing() (the wanderers are on screen) }
+  // in view, uncovered), clayDrawing() (the wanderers are on screen),
+  // tileFor(kind) (the home tile for a kind's working chip, or null) }
   function start(h) {
     host = h;
     flags = readFlags(h && h.config);
     if (on('quietTiles')) document.body.classList.add('fx-quiet');
+    if (on('activity')) {
+      workLoad();
+      workReconcile();
+    }
   }
 
   window.HUB_FX = {
@@ -670,6 +890,8 @@
       for (var i = 0; i < edges.length; i++) if (!edges[i].fading) edgeArm(edges[i], ms);
       return EDGE_HOLD_MS;
     }),
+    working: safe(function (kind, seconds) { return workStart(kind, seconds) === true; }),
+    workingDone: safe(function (kind, before) { return workDone(kind, before) === true; }),
     statusText: safe(statusText),
     motionChanged: safe(motionChanged),
     // For tests: what is going on now.
@@ -683,6 +905,14 @@
         blooming: !!bloomState.node,
         chips: acts.map(function (a) { return a.kind; }),
         edges: edges.map(function (e) { return { widget: (e.tile.parentNode && e.tile.parentNode.getAttribute('data-widget')) || '', reason: e.reason, fading: !!e.fading }; }),
+        working: (function () {
+          var out = [];
+          var t = Date.now();
+          for (var k in working) {
+            if (working.hasOwnProperty(k)) out.push({ kind: k, shown: !!working[k].act, left: Math.max(0, working[k].until - t) });
+          }
+          return out;
+        })(),
         // The words each kind's chip would show now.
         labels: (function () { var o = {}; for (var k in KINDS) if (KINDS.hasOwnProperty(k)) o[k] = labelOf(k); return o; })()
       };

@@ -294,14 +294,14 @@ async function checkLiveSwitch() {
   await clockPage.open(page);
   let s = await clockPage.state(page);
   assert(s.face === 'digital' && s.readout, 'page on Digital has no digital time');
-  assert(s.keys.join(',') === 'face-digital,face-analog,hours-12,hours-24,lang-en,lang-es', 'Digital page options: ' + s.keys.join(','));
+  assert(s.keys.join(',') === 'face-digital,face-analog,hours-12,hours-24,lang-en,lang-es,guest-off,guest-on', 'Digital page options: ' + s.keys.join(','));
   assert(s.focused === 'face-digital', 'opened on ' + s.focused);
 
   await clockPage.pick(page, 'face-analog');
   s = await clockPage.state(page);
   assert(s.face === 'analog', 'the page did not switch to Analog');
   assert(!s.readout, 'the page on Analog still shows a digital time');
-  assert(s.keys.join(',') === 'face-digital,face-analog,lang-en,lang-es', 'Analog page options: ' + s.keys.join(','));
+  assert(s.keys.join(',') === 'face-digital,face-analog,lang-en,lang-es,guest-off,guest-on', 'Analog page options: ' + s.keys.join(','));
   assert(s.focused === 'face-analog', 'focus after the switch: ' + s.focused);
   assert(!/\d{1,2}:\d{2}|\b[AP]M\b/.test(s.text), 'the Analog page text has a time: ' + s.text);
   let t = await clockPage.tile(page);
@@ -338,7 +338,7 @@ async function checkLiveSwitch() {
   // Analog again from the 12/24 group: the group goes, focus lands on the face choice.
   await clockPage.pick(page, 'face-analog');
   s = await clockPage.state(page);
-  assert(s.focused === 'face-analog' && s.keys.length === 4, 'Analog from 24-hour: ' + JSON.stringify(s));
+  assert(s.focused === 'face-analog' && s.keys.length === 6, 'Analog from 24-hour: ' + JSON.stringify(s));
   await clockPage.close(page);
 
   // Closed, on Analog: one more once-a-second loop (the tile's), not more.
@@ -366,7 +366,7 @@ async function checkPageOpensOnAnalog() {
   const page = await openHub({ face: 'analog', hours: '12', at: SUNDAY });
   await clockPage.open(page);
   const s = await clockPage.state(page);
-  assert(s.face === 'analog' && !s.readout && s.keys.join(',') === 'face-digital,face-analog,lang-en,lang-es', JSON.stringify(s));
+  assert(s.face === 'analog' && !s.readout && s.keys.join(',') === 'face-digital,face-analog,lang-en,lang-es,guest-off,guest-on', JSON.stringify(s));
   assert(s.focused === 'face-analog', 'opened on ' + s.focused);
   const win = await page.evaluate(() => document.querySelector('#panel .clock-window-text').textContent);
   assert(win === 'SUN 15', 'page window: ' + win);
@@ -493,7 +493,7 @@ async function checkLanguage() {
   let label = await page.evaluate(() => document.querySelectorAll('.clock-group-label')[2].textContent);
   assert(label === 'Language', 'group label: ' + label);
   let s = await clockPage.state(page);
-  assert(s.keys.slice(-2).join(',') === 'lang-en,lang-es', 'keys: ' + s.keys.join(','));
+  assert(s.keys.slice(-4, -2).join(',') === 'lang-en,lang-es', 'keys: ' + s.keys.join(','));
   let bad = await controlsFit(page);
   assert(!bad.length, 'English panel: ' + bad.join('; '));
   await clockPage.pick(page, 'lang-es');

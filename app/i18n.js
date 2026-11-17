@@ -58,6 +58,11 @@
     'nowplaying.badge.offline': 'Sin la Pi',
     'nowplaying.badge.update': 'Necesita la Pi',
 
+    /* ---- Guest mode on the Clock page (app/guest.js, app/widgets/today.js) ---- */
+    'guest.label': 'Modo invitados',
+    'guest.off': 'No',
+    'guest.on': 'Sí',
+
     'wotd.title': 'Palabra del día',
     // Short form: only when "Palabra del día" doesn't fit the tile on one line.
     'wotd.titleShort': 'Palabra',
@@ -155,6 +160,9 @@
     'budget.states.hidden.head': 'Presupuesto oculto',
     'budget.states.hidden.line': 'widgets.budget.show está apagado en config.js, así que esta TV no muestra cifras del presupuesto.',
     'budget.states.hidden.short': 'Apagado en config.js.',
+    'budget.states.guest.head': 'Oculto para invitados',
+    'budget.states.guest.line': 'El modo invitados está activado, así que no se muestran cifras del presupuesto. Apágalo en la página del reloj.',
+    'budget.states.guest.short': 'Modo invitados activado.',
     'budget.broken': '{title}: no se pudo mostrar',
     // The activity chip when new figures arrive (one line at 22 px in a 3-column tile).
     'budget.activity': 'Presupuesto nuevo',
@@ -205,6 +213,9 @@
     'awws.moneyStates.hidden.head': 'Dinero oculto',
     'awws.moneyStates.hidden.line': 'showMoney está apagado en config.js, así que esta TV no muestra cifras de dinero.',
     'awws.moneyStates.hidden.short': 'showMoney está apagado en config.js.',
+    'awws.moneyStates.guest.head': 'Oculto para invitados',
+    'awws.moneyStates.guest.line': 'El modo invitados está activado, así que no se muestran cifras de dinero. Apágalo en la página del reloj.',
+    'awws.moneyStates.guest.short': 'Modo invitados activado.',
     'awws.moneyStates.nodata.head': 'Todavía no hay datos de dinero',
     'awws.moneyStates.nodata.line': 'Las cifras llegan con la próxima sincronización que envíe la sección de dinero. docs/awws-snapshot.md explica cómo.',
     'awws.moneyStates.nodata.short': 'Esperando la próxima sincronización.',
@@ -231,6 +242,9 @@
     'motion.activity.todo': 'Nueva tarea',
     'motion.activity.calendar': 'Actualizando el calendario',
     'motion.activity.awws': 'Sincronizando datos',
+    'motion.working.todo': 'Preparando tareas',
+    'motion.working.calendar': 'Revisando el calendario',
+    'motion.working.awws': 'Reuniendo datos',
     'motion.extrasOn': 'extras activados',
     'motion.extrasOff': 'extras desactivados ({why})',
     'motion.why.fade': 'modo fundido',
