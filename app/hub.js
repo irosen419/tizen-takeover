@@ -127,7 +127,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.28.8';
+  var BUILD = 'v0.28.9';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1014,12 +1014,44 @@
       if (!p || typeof p.name !== 'string' || !p.name) continue;
       var list = p.layout ? usableLayout(p.layout) : null;
       if (p.layout && !list) continue;
+      // Guest mode: the money layouts ("AWWS money", "Budget") leave the bar.
+      if (guestOn() && window.HUB_GUEST.hasMoney(list || cfg.layout)) continue;
       out.push({ name: p.name, layout: list });
     }
     return out;
   }
 
   function presetSig(p) { return layoutSig(p.layout || cfg.layout); }
+
+  function guestOn() {
+    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
+  }
+
+  // Guest mode turned on while a money layout from the bar is on screen: the
+  // first layout in the bar without money takes its place (applied once the
+  // Clock page closes). Any other layout stays; its money tiles say "Hidden
+  // for guests".
+  function guestLayout(on) {
+    if (!on) return;
+    var src = cfg.layouts;
+    if (!src || Object.prototype.toString.call(src) !== '[object Array]') return;
+    var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
+    var onMoney = false;
+    for (var i = 0; i < src.length; i++) {
+      var list = src[i] && src[i].layout ? usableLayout(src[i].layout) : null;
+      if (list && window.HUB_GUEST.hasMoney(list) && layoutSig(list) === current) { onMoney = true; break; }
+    }
+    if (!onMoney) return;
+    var safe = switcherPresets();
+    if (!safe.length) return;
+    var live = window.HUB_LIVE && typeof window.HUB_LIVE.get === 'function' ? window.HUB_LIVE.get('layout') : null;
+    saveChoice({ id: safe[0].name, piSig: layoutSig(live && live.layout) });
+    saveLayout(safe[0].layout);
+    pendingLayout = safe[0].layout;
+    layoutChance();
+  }
+
+  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(guestLayout); } catch (e) { /* no Guest mode on this page */ }
 
   function drawSwitcher() {
     switcherEl.innerHTML = '';

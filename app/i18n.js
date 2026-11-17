@@ -31,6 +31,11 @@
     'lang.en': 'English',
     'lang.es': 'Español',
 
+    /* ---- Guest mode on the Clock page (app/guest.js, app/widgets/today.js) ---- */
+    'guest.label': 'Modo invitados',
+    'guest.off': 'No',
+    'guest.on': 'Sí',
+
     'wotd.title': 'Palabra del día',
     'wotd.meaning': 'Qué significa',
     'wotd.example': 'Ejemplo',
@@ -122,6 +127,9 @@
     'budget.states.hidden.head': 'Presupuesto oculto',
     'budget.states.hidden.line': 'widgets.budget.show está apagado en config.js, así que esta TV no muestra cifras del presupuesto.',
     'budget.states.hidden.short': 'Apagado en config.js.',
+    'budget.states.guest.head': 'Oculto para invitados',
+    'budget.states.guest.line': 'El modo invitados está activado, así que no se muestran cifras del presupuesto. Apágalo en la página del reloj.',
+    'budget.states.guest.short': 'Modo invitados activado.',
     'budget.broken': '{title}: no se pudo mostrar',
 
     /* ---- Earned vs spent tile (awws-money in app/widgets/awws.js) ----
@@ -153,6 +161,9 @@
     'awws.moneyStates.hidden.head': 'Dinero oculto',
     'awws.moneyStates.hidden.line': 'showMoney está apagado en config.js, así que esta TV no muestra cifras de dinero.',
     'awws.moneyStates.hidden.short': 'showMoney está apagado en config.js.',
+    'awws.moneyStates.guest.head': 'Oculto para invitados',
+    'awws.moneyStates.guest.line': 'El modo invitados está activado, así que no se muestran cifras de dinero. Apágalo en la página del reloj.',
+    'awws.moneyStates.guest.short': 'Modo invitados activado.',
     'awws.moneyStates.nodata.head': 'Todavía no hay datos de dinero',
     'awws.moneyStates.nodata.line': 'Las cifras llegan con la próxima sincronización que envíe la sección de dinero. docs/awws-snapshot.md explica cómo.',
     'awws.moneyStates.nodata.short': 'Esperando la próxima sincronización.',

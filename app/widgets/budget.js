@@ -21,7 +21,9 @@
  * without a new copy the tiles say "as of" and the time, and step back.
  *
  * HUB_CONFIG.widgets.budget.show: false hides all of it (the tiles say so,
- * the banner never shows).
+ * the banner never shows). So does Guest mode (guest.js), and while it is on
+ * the budget the Pi sends is dropped as it arrives and the copy this TV kept
+ * is deleted; turning it off reads the Pi's latest copy again.
  *
  * Every word is in EN (English). The tiles follow the hub's language (the
  * Clock page's Language choice): HUB_I18N.localize turns EN into STRINGS,
@@ -103,7 +105,8 @@
       waiting: { head: 'Waiting for the budget app',
         line: 'The budget app on the Pi sends its totals here. docs/budget-snapshot.md says how.',
         short: 'It sends its totals to the Pi.' },
-      hidden: { head: 'Budget is hidden', line: 'widgets.budget.show is off in config.js, so no budget figures show on this TV.', short: 'Turned off in config.js.' }
+      hidden: { head: 'Budget is hidden', line: 'widgets.budget.show is off in config.js, so no budget figures show on this TV.', short: 'Turned off in config.js.' },
+      guest: { head: 'Hidden for guests', line: 'Guest mode is on, so no budget figures show. Turn it off on the Clock page.', short: 'Guest mode is on.' }
     },
     broken: '{title} couldn’t be shown'
   };
@@ -329,7 +332,14 @@
     return c && typeof c === 'object' ? c : {};
   }
 
-  function shown() { return config().show !== false; }
+  function allowed() { return config().show !== false; }
+
+  function guestOn() {
+    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
+  }
+
+  // Figures may show: config.js allows them and Guest mode is off.
+  function shown() { return allowed() && !guestOn(); }
 
   function L() {
     var x = window.HUB_LIVE;
@@ -358,7 +368,8 @@
 
   // Why a tile has nothing to show: a key of STRINGS.states.
   function emptyState() {
-    if (!shown()) return 'hidden';
+    if (!allowed()) return 'hidden';
+    if (guestOn()) return 'guest';
     if (ready(S.data)) return 'waiting';
     return lineState();
   }
@@ -396,6 +407,7 @@
 
   function onData(d) {
     if (!d || typeof d !== 'object' || isArr(d)) return;
+    if (guestOn()) return;     // Guest mode: not kept, not drawn
     // { sentAt: null } is the Pi saying "nothing stored": forget the copy too.
     S.data = ready(d) ? d : null;
     S.fromCache = false;
@@ -445,18 +457,42 @@
       return;
     }
     S.bound = true;
-    if (!shown()) return;
-    loadCache();
-    try {
-      var d = x.get('budget');
-      if (d && typeof d === 'object') { S.data = ready(d) ? d : null; S.fromCache = false; saveCache(); }
-    } catch (e) { /* wait for it */ }
+    if (!allowed()) return;
+    if (guestOn()) dropData();
+    else readLatest(x);
     try { x.on('budget', function (d) { try { onData(d); } catch (e) { warn(e && e.message); } }); } catch (e) { warn('live: ' + (e && e.message)); }
     try { if (typeof x.onStatus === 'function') x.onStatus(function () { try { refreshAll(); } catch (e) { /* next time */ } }); } catch (e) { /* ignore */ }
     S.sig = signature();
     schedule();
     updateBanner();
   }
+
+  // The budget from the live line now, else this TV's copy.
+  function readLatest(x) {
+    loadCache();
+    try {
+      var d = x && x.get('budget');
+      if (d && typeof d === 'object') { S.data = ready(d) ? d : null; S.fromCache = false; saveCache(); }
+    } catch (e) { /* wait for it */ }
+  }
+
+  // Guest mode: forget the budget here and on this TV's storage.
+  function dropData() {
+    S.data = null;
+    S.fromCache = false;
+    saveCache();
+  }
+
+  function onGuest(on) {
+    if (!allowed()) return;
+    if (on) dropData();
+    else readLatest(L());
+    S.sig = '';
+    refreshAll();
+    updateBanner();
+  }
+
+  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(onGuest); } catch (e) { /* no Guest mode on this page */ }
 
   function bind(ctx) {
     if (!S.ctxs[ctx.id]) S.order.push(ctx.id);
