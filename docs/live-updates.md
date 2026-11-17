@@ -77,7 +77,7 @@ Commands:
 
 - `show <widget>`: open a widget (`weather`, `todo`, `calendar`, `entertainment`), optionally full screen.
 - `home`: close whatever is open.
-- `say "<text>"`: a short message at the bottom of the screen for a few seconds.
+- `say "<text>"`: a short message at the bottom of the screen for a few seconds. A text that starts with `hub:` is for the hub and never shown: `hub:working <kind> [seconds]` (kind `todo`, `calendar` or `awws`, seconds 10 to 900, 120 by default) puts a quiet "working" chip on that tile while a job that will change that data is still running, and `hub:working <kind> done` ends it. The chip also ends when the data lands (turning into the usual activity chip if something changed) or when its time is up. The Pi passes the text on unchanged, so this needed nothing new on the Pi; an older hub would show it as a message.
 - `reload`: load the hub afresh. It restarts through the loader (`app/index.html`), so it also picks up the newest version of the hub.
 
 Data:

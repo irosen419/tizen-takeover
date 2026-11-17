@@ -62,6 +62,8 @@ Commands and args (`args` may be left out when empty; unknown args are refused):
 - `status`, `ping` (answers with the server version)
 - `restart`: the server stops after replying and Docker starts it again with the code already on the Pi. It does not `git pull`; the owner does that on the Pi.
 
+Working signal: before a job that will take more than a few seconds and will end by changing the to-dos (kind `todo`), the calendar (`calendar`) or the A World Worth Saving snapshot (`awws`), send `say {"text": "hub:working <kind> <seconds>"}` with a generous time, for example `say {"text": "hub:working awws 300"}`. The TV then shows a small quiet "working" chip on that tile. It clears itself when the data lands (it turns into the usual "new data" chip when something changed), when the time is up (10 to 900 seconds, 120 if you leave the number out), or when you send `say {"text": "hub:working <kind> done"}`, which you should do when the job ends with no change (a calendar refresh or a to-do list that finds nothing new sends the TV nothing, so only `done` or the time ends it). Only use this once the TV runs a hub version that knows the signal (the version this ships in, vX.Y.Z; check the About panel): an older hub shows the text as a message on the screen.
+
 Other calls: list replies `curl -sS "$B?prefix=outbox/"` (an array of `{key, ...}`); delete an object with `curl -sS -X DELETE "$B/inbox%2F$ID.json"` (only to take back a command the Pi has not picked up yet). Results are kept 7 days. No git, docker or shell commands can be sent this way, by design.
 
 ## Rules
