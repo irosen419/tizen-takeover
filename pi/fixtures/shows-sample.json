@@ -46,7 +46,7 @@
    "returning": null
   },
   {
-   "id": "hells-kitchen", "name": "Hell's Kitchen", "service": "Disney+", "watch": "Disney+", "channel": "FOX",
+   "id": "hells-kitchen", "name": "Hell's Kitchen", "service": "Disney+", "watch": "Disney+", "channel": "FOX", "alsoOn": ["Hulu"],
    "status": "Running", "running": true, "tvmazeId": 900005, "checkedAt": "2026-11-17T12:00:00Z",
    "nextEpisode": { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z" },
    "upcoming": [

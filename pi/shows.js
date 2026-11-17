@@ -6,11 +6,15 @@
  * hands the result to server.js, which keeps it as the resource "shows" and
  * pushes it to the TV. The contract is docs/shows-snapshot.md.
  *
- *   list entry   { name, service?, tvmazeId?, serviceOverride? }
- *                name: as the owner says it; service: the badge on the TV
- *                (wins over what TVmaze says); serviceOverride: the app
- *                "Watch on" opens when it differs from the badge;
- *                tvmazeId: filled in by the first lookup and kept.
+ *   list entry   { name, service?, tvmazeId?, serviceOverride?, alsoOn? }
+ *                name: as the owner says it; service: the show's watch app,
+ *                its badge on the TV (wins over what TVmaze says);
+ *                serviceOverride: the app "Watch on" opens when it differs
+ *                from the badge; alsoOn: other apps that carry it (the TV
+ *                offers them as "Also on ..."); tvmazeId: filled in by the
+ *                first lookup and kept. The TV may also send a whole
+ *                service elsewhere (widgets.entertainment.watchAliases in
+ *                app/config.js, Hulu -> Disney+ by default).
  *
  * TVmaze calls, per show and refresh: GET /singlesearch/shows?q=<name> once
  * (until the id is known), then GET /shows/<id>?embed[]=nextepisode&
@@ -52,6 +56,7 @@ const MAX_UPCOMING = 40;         // episodes per show
 const MAX_NAME = 80;
 const MAX_SERVICE = 24;
 const MAX_EP_NAME = 80;
+const MAX_ALSO = 4;
 const STATUSES = ['Running', 'Ended', 'To Be Determined', 'In Development'];
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f]+/g;
 
@@ -141,8 +146,8 @@ function normalizeEntry(raw, where) {
   if (typeof raw === 'string') raw = { name: raw };
   if (!isObj(raw)) throw bad('each show must be an object like {"name": "Stick", "service": "Apple TV"}' + at);
   Object.keys(raw).forEach((k) => {
-    if (['name', 'service', 'tvmazeId', 'serviceOverride'].indexOf(k) < 0) {
-      throw bad('unknown field "' + cleanText(k, 30) + '" (use name, service, tvmazeId, serviceOverride)' + at);
+    if (['name', 'service', 'tvmazeId', 'serviceOverride', 'alsoOn'].indexOf(k) < 0) {
+      throw bad('unknown field "' + cleanText(k, 30) + '" (use name, service, tvmazeId, serviceOverride, alsoOn)' + at);
     }
   });
   const name = cleanText(raw.name, MAX_NAME + 1);
@@ -160,6 +165,20 @@ function normalizeEntry(raw, where) {
     const n = typeof raw.tvmazeId === 'string' && /^\d{1,9}$/.test(raw.tvmazeId) ? Number(raw.tvmazeId) : raw.tvmazeId;
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > 999999999) throw bad('"tvmazeId" must be a whole number' + at);
     out.tvmazeId = n;
+  }
+  if (raw.alsoOn !== undefined && raw.alsoOn !== null) {
+    const list = typeof raw.alsoOn === 'string' ? raw.alsoOn.split(',') : raw.alsoOn;
+    if (!Array.isArray(list)) throw bad('"alsoOn" must be a list of app names, like ["Hulu"]' + at);
+    const also = [];
+    list.forEach((v) => {
+      if (typeof v !== 'string') throw bad('"alsoOn" must be a list of app names' + at);
+      const t = cleanText(v, MAX_SERVICE + 1);
+      if (Array.from(t).length > MAX_SERVICE) throw bad('an "alsoOn" app is longer than ' + MAX_SERVICE + ' characters' + at);
+      const name = t ? serviceName(t) : '';
+      if (name && also.indexOf(name) < 0) also.push(name);
+    });
+    if (also.length > MAX_ALSO) throw bad('"alsoOn" has ' + also.length + ' apps; at most ' + MAX_ALSO + at);
+    if (also.length) out.alsoOn = also;
   }
   return out;
 }
@@ -262,6 +281,7 @@ function buildShow(entry, show, episodes, nowMs) {
     service: entry.service || channel,
     watch: entry.serviceOverride || entry.service || channel,
     channel: channel,
+    alsoOn: (entry.alsoOn || []).slice(),
     status: status,
     running: status !== 'Ended',
     tvmazeId: Number.isInteger(s.id) ? s.id : entry.tvmazeId || null,
@@ -277,7 +297,7 @@ function buildShow(entry, show, episodes, nowMs) {
 function placeholder(entry, error) {
   return {
     id: slug(entry.name), name: entry.name, service: entry.service || '', watch: entry.serviceOverride || entry.service || '',
-    channel: '', status: '', running: null, tvmazeId: entry.tvmazeId || null, checkedAt: null,
+    channel: '', alsoOn: (entry.alsoOn || []).slice(), status: '', running: null, tvmazeId: entry.tvmazeId || null, checkedAt: null,
     nextEpisode: null, upcoming: [], returning: null, error: error || 'not looked up yet'
   };
 }
@@ -308,6 +328,7 @@ function cleanShow(s) {
     service: cleanText(s.service, MAX_SERVICE),
     watch: cleanText(s.watch, MAX_SERVICE),
     channel: cleanText(s.channel, MAX_SERVICE),
+    alsoOn: (Array.isArray(s.alsoOn) ? s.alsoOn : []).map((x) => cleanText(x, MAX_SERVICE)).filter(Boolean).slice(0, MAX_ALSO),
     status: cleanText(s.status, 24),
     running: typeof s.running === 'boolean' ? s.running : null,
     tvmazeId: Number.isInteger(s.tvmazeId) ? s.tvmazeId : null,
@@ -528,6 +549,7 @@ function createTracker(o) {
       copy.name = e.name;
       copy.service = e.service || copy.channel;
       copy.watch = e.serviceOverride || e.service || copy.channel;
+      copy.alsoOn = (e.alsoOn || []).slice();
       copy.upcoming = copy.upcoming.filter((x) => Date.parse(x.airstamp) >= t - BACK_MS);
       if (why) { copy.stale = true; copy.error = why; }
       return copy;
@@ -709,7 +731,8 @@ function listLines(r) {
   list.forEach((e) => {
     const s = byId[slug(e.name)];
     const badge = e.service || (s && s.channel) || 'no service';
-    let line = '  ' + e.name + ' (' + badge + (e.serviceOverride ? ', watch on ' + e.serviceOverride : '') + ')';
+    let line = '  ' + e.name + ' (' + badge + (e.serviceOverride ? ', watch on ' + e.serviceOverride : '') +
+      (e.alsoOn && e.alsoOn.length ? ', also on ' + e.alsoOn.join(', ') : '') + ')';
     if (!s || s.checkedAt === null) line += ': ' + ((s && s.error) || 'not looked up yet');
     else {
       line += ': ' + (s.running === false ? 'ended' : 'still running' + (s.status && s.status !== 'Running' ? ' (' + s.status.toLowerCase() + ')' : ''));
@@ -734,6 +757,7 @@ function summaryData(r) {
       const s = byId[slug(e.name)] || null;
       const o = { name: e.name, service: e.service || (s && s.channel) || '', running: s ? s.running : null };
       if (e.serviceOverride) o.serviceOverride = e.serviceOverride;
+      if (e.alsoOn) o.alsoOn = e.alsoOn.slice();
       if (e.tvmazeId) o.tvmazeId = e.tvmazeId;
       if (s && s.status) o.status = s.status;
       if (s && s.nextEpisode) o.next = s.nextEpisode.airstamp;

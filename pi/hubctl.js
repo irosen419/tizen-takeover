@@ -24,7 +24,7 @@
  *   ./hub budget set <file.json|->   store one (the snapshot, or { snapshot: {...} })
  *   ./hub budget clear               remove it; the TV tiles say "Waiting for the budget app"
  *   ./hub shows list                 the TV show list: running or ended, what airs next
- *   ./hub shows add "Stick" --service "Apple TV" [--id 12345] [--watch Hulu]
+ *   ./hub shows add "Stick" --service "Apple TV" [--id 12345] [--watch Hulu] [--also "Hulu,Peacock"]
  *   ./hub shows remove "Stick"       take a show off the list
  *   ./hub shows refresh              ask TVmaze about every show now
  *   ./hub linktests                  the TV's watch link test answers
@@ -515,12 +515,13 @@ async function showsCommand(args) {
     return;
   }
   if (sub === 'add') {
-    const a = parseArgs(args.slice(1), ['service', 'id', 'watch']);
+    const a = parseArgs(args.slice(1), ['service', 'id', 'watch', 'also']);
     const name = a.words.join(' ').trim();
     if (!name) stop('Say which show, for example: ./hub shows add "Stick" --service "Apple TV"');
     const entry = { name: name };
     if (a.opts.service !== undefined) entry.service = a.opts.service;
     if (a.opts.watch !== undefined) entry.serviceOverride = a.opts.watch;
+    if (a.opts.also !== undefined) entry.alsoOn = String(a.opts.also).split(',').map((x) => x.trim()).filter(Boolean);
     if (a.opts.id !== undefined) {
       if (!/^\d{1,9}$/.test(String(a.opts.id))) stop('--id must be the TVmaze show number, like 12345.');
       entry.tvmazeId = Number(a.opts.id);
@@ -832,7 +833,8 @@ const HELP = [
   '  ./hub budget clear          remove it; the TV tiles say "Waiting for the budget app"',
   '  ./hub shows list            the TV show list: still running or ended, what airs next',
   '  ./hub shows add "Stick" --service "Apple TV"   add a show (--id 12345 sets its TVmaze number,',
-  '                              --watch Hulu opens another app than the badge says)',
+  '                              --watch Hulu opens another app than the badge says,',
+  '                              --also "Hulu,Peacock" lists other apps that carry it)',
   '  ./hub shows remove "Stick"  take a show off the list',
   '  ./hub shows refresh         ask TVmaze about every show now (it also does so every 6 hours)',
   '  ./hub linktests             what the TV\'s watch link test found (About panel on the TV)',

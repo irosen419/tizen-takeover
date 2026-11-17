@@ -215,6 +215,10 @@ async function main() {
     assert.throws(() => shows.normalizeEntry(JSON.parse('{"name":"X","__proto__":{"a":1}}')), /unknown field/);
     assert.throws(() => shows.normalizeList([{ name: 'Stick' }, { name: 'stick' }]), /twice/);
     assert.strictEqual(shows.slug("Hell's Kitchen"), 'hells-kitchen');
+    assert.deepStrictEqual(shows.normalizeEntry({ name: 'X', alsoOn: ['hulu', 'Peacock', 'Hulu'] }).alsoOn, ['Hulu', 'Peacock']);
+    assert.deepStrictEqual(shows.normalizeEntry({ name: 'X', alsoOn: 'Hulu, Max' }).alsoOn, ['Hulu', 'HBO Max']);
+    assert.throws(() => shows.normalizeEntry({ name: 'X', alsoOn: [1] }), /alsoOn/);
+    assert.throws(() => shows.normalizeEntry({ name: 'X', alsoOn: ['a', 'b', 'c', 'd', 'e'] }), /at most 4/);
   });
 
   await check('the seed list is the four shows, used when there is no list yet; a damaged list falls back to it', () => {
@@ -255,6 +259,8 @@ async function main() {
     assert.strictEqual(an.status, 'Ended');
     assert.strictEqual(an.returning, null);
     assert.strictEqual(an.watch, 'Hulu');
+    assert.deepStrictEqual(an.alsoOn, []);
+    assert.deepStrictEqual(shows.buildShow({ name: 'Z', alsoOn: ['Hulu'] }, {}, [], NOW).alsoOn, ['Hulu']);
     const tbd = shows.buildShow({ name: 'Y' }, { id: 9, status: 'To Be Determined' }, [{ season: 3, number: 9, airstamp: at(-30) }], NOW);
     assert.deepStrictEqual(tbd.returning, { season: 4, label: 'Season 4', date: null, airstamp: null });
     assert.strictEqual(tbd.running, true);
@@ -430,8 +436,10 @@ async function main() {
       assert.ok(/Hell's Kitchen \(Disney\+\): still running; next S24 E8 Wed, Nov 18, 8:00 PM \[TVmaze 101\]/.test(out.stdout), out.stdout);
       assert.ok(/Stick \(Apple TV\): still running; Season 2 returns 2027-01-20/.test(out.stdout), out.stdout);
       assert.ok(/Andor \(Disney\+, watch on Hulu\): ended/.test(out.stdout), out.stdout);
-      out = await hubctl(h, ['shows', 'add', 'Paradise', '--service', 'Hulu', '--id', '12']);
+      out = await hubctl(h, ['shows', 'add', 'Paradise', '--service', 'Hulu', '--id', '12', '--also', 'Disney+']);
       assert.ok(/^Added Paradise \(Hulu\)\. Looking it up/.test(out.stdout), out.stdout);
+      out = await hubctl(h, ['shows', 'list']);
+      assert.ok(/Paradise \(Hulu, also on Disney\+\)/.test(out.stdout), out.stdout);
       out = await hubctl(h, ['shows', 'add', 'X', '--id', 'abc']);
       assert.strictEqual(out.status, 1);
       out = await hubctl(h, ['shows', 'remove', 'Paradise']);
@@ -454,8 +462,9 @@ async function main() {
       let r = await mail(h, 'shows.list');
       assert.deepStrictEqual(r.data.shows.map((s) => s.running), [true, true, false]);
       assert.ok(/3 shows on the list/.test(r.message));
-      r = await mail(h, 'shows.add', { name: 'Paradise', service: 'Hulu', tvmazeId: 77 });
+      r = await mail(h, 'shows.add', { name: 'Paradise', service: 'Hulu', tvmazeId: 77, alsoOn: ['Disney+'] });
       assert.strictEqual(r.data.entry.tvmazeId, 77);
+      assert.deepStrictEqual(r.data.entry.alsoOn, ['Disney+']);
       r = await mail(h, 'shows.remove', { name: 'Paradise' });
       assert.strictEqual(r.data.removed.name, 'Paradise');
       r = await mail(h, 'shows.set', { shows: [{ name: 'Stick', service: 'Apple TV' }, { name: 'Andor' }] });
