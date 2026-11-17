@@ -512,7 +512,7 @@ async function main() {
       });
     }
 
-    await check('the switcher: seven pills, all whole; "Budget" switches and back', async () => {
+    await check('the switcher: eight pills, all whole; "Budget" switches and back', async () => {
       const page = await env.newPage({ storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.focusTile(page, await page.evaluate(() => {

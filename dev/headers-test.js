@@ -76,7 +76,7 @@ const LAYOUTS = configLayouts();
 
 // Every widget with a title, laid out in tiles of one size class each.
 const WIDS = ['awws', 'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'wotd', 'calendar', 'todo', 'weather',
-  'mirror', 'ambiance', 'entertainment', 'awws-todo', 'awws-visits', 'awws-agenda', 'awws-reach', 'nowplaying', 'today'];
+  'mirror', 'ambiance', 'entertainment', 'awws-todo', 'awws-visits', 'awws-agenda', 'awws-reach', 'nowplaying', 'today', 'sunpath'];
 function grid(w, h, ids) {
   const out = [];
   const perRow = 12 / w;
@@ -98,7 +98,7 @@ const SIZES = [];
 const I18N = fs.readFileSync(path.join(ROOT, 'app', 'i18n.js'), 'utf8');
 const GROW = '\n;(function () { var es = window.HUB_I18N.strings.es; var add = " ÁÉñ¿¡áéíóúÑÍÓÚ";' +
   ' for (var k in es) { if (!es.hasOwnProperty(k)) continue;' +
-  ' if (/\\.titles\\.|\\.titlesShort\\.|^wotd\\.title|^hub\\.soon$|^nowplaying\\.badge\\.|^weather\\.(sample|asOf)$/.test(k)) {' +
+  ' if (/\\.titles\\.|\\.titlesShort\\.|^wotd\\.title|^sunpath\\.(title|titleShort|badge)$|^hub\\.soon$|^nowplaying\\.badge\\.|^weather\\.(sample|asOf)$/.test(k)) {' +
   ' var s = es[k]; var n = Math.max(1, Math.ceil(s.length * 0.25)); es[k] = s + add.slice(0, n); } } })();\n';
 async function growSpanish(context) {
   await context.route(/\/i18n\.js(\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: 'application/javascript', body: I18N + GROW }));

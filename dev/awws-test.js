@@ -13,7 +13,7 @@
  *   overdue in amber; partial data (calendar only, snapshot only, neither);
  *   an old Pi with no awws resource; a malformed snapshot; a repeated
  *   snapshot that doesn't redraw; the launcher, a view and Back; the owner
- *   filter with Left and Right; full screen; the layout switcher with seven
+ *   filter with Left and Right; full screen; the layout switcher with eight
  *   layouts, to AWWS desk and back.
  *   Reach at every size in both languages with its three shapes of data
  *   (subscribers alone, traffic alone, both), its panel and full screen,
