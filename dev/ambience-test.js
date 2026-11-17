@@ -25,7 +25,7 @@
  *     a plain message in the panel's head.
  *   - Partial: the Sengled lamp drops; the scene still applies to the
  *     others and both the panel and the tile say which lamp didn't answer.
- *   - Not set up (no HA_TOKEN): the tile says "Set up lights", the panel
+ *   - Not set up (no HA_TOKEN): the 6x2 tile says "Set up lights" over its hint, the panel
  *     says how. Error: Home Assistant stops answering, or refuses the
  *     token; the tile keeps the last known lights with a plain note.
  *   - Full screen shows the three sections.
@@ -481,9 +481,15 @@ async function main() {
 
   await check('not set up (no HA_TOKEN): the tile says "Set up lights", the panel says how', async () => {
     const bare = await startPi({ env: {} });
-    const p = await open({ pi: bare, layout: [{ widget: 'ambience', x: 0, y: 0, w: 3, h: 2 }] });
+    const p = await open({ pi: bare, layout: [{ widget: 'ambience', x: 0, y: 0, w: 6, h: 2 }] });
     const t = await tileText(p);
     assert(/Set up lights/.test(t) && /Home Assistant isn.t connected yet/.test(t), 'the tile: ' + t);
+    const stacked = await p.evaluate(() => {
+      const m = document.querySelector('.am-msg').getBoundingClientRect();
+      const h = document.querySelector('.am-hint').getBoundingClientRect();
+      return h.top >= m.bottom - 1;
+    });
+    assert(stacked, 'the message and its hint share a line at 6x2');
     await openPanel(p);
     const how = await p.evaluate(() => (document.querySelector('#panel .am-empty') || {}).innerText || '');
     assert(/HA_TOKEN/.test(how) && /pi\/README\.md/.test(how), 'the panel: ' + how);

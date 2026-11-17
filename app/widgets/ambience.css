@@ -235,6 +235,9 @@
 
 /* Wide: the name and bulbs on the left, a row per light on the right. */
 .am-l-wide { flex-direction: row; }
+/* A message (not set up, waiting) stacks at every width. */
+.am-l-wide.am-k-notset, .am-l-wide.am-k-waiting, .am-l-wide.am-k-offline,
+.am-l-wide.am-k-update, .am-l-wide.am-k-liveoff { flex-direction: column; }
 .am-l-wide .am-main { flex: 1 1 45%; padding-right: 1.4rem; }
 .am-l-wide .am-rows {
   flex: 1 1 55%;
