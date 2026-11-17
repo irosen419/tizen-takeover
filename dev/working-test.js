@@ -22,7 +22,11 @@
  * app/i18n.js) on one line in 3-column
  * tiles at 22px+; a repeated start keeps the element and extends the time;
  * a layout switch (in place, and one that reloads the page) puts the chip on
- * the new layout's tile.
+ * the new layout's tile; on the focused tile the focus highlight leaves the
+ * top edge while the light sweeps (the ring's top clipped, or without the
+ * ring the tile's own top border transparent, same size) and comes back when
+ * the sweep ends, the focus moves or a panel opens, never on an unfocused
+ * tile, and nothing is left behind.
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  * WORKING_GREP=<text> runs only the checks whose name contains it.
@@ -625,6 +629,169 @@ async function check13(pi) {
   }
 }
 
+// Moves the focus with the arrow keys to the tile of widget (always toward
+// it, so it never steps off an edge into the layout bar or About).
+async function focusOn(page, widget) {
+  for (let n = 0; n < 12; n++) {
+    const d = await page.evaluate((w) => {
+      const f = document.querySelector('#grid .tile.is-focused');
+      const t = document.querySelector('.cell[data-widget="' + w + '"] .tile');
+      if (!t) return 'none';
+      if (f === t) return '';
+      const a = f.getBoundingClientRect();
+      const b = t.getBoundingClientRect();
+      const dx = (b.left + b.width / 2) - (a.left + a.width / 2);
+      const dy = (b.top + b.height / 2) - (a.top + a.height / 2);
+      if (b.top >= a.bottom - 1) return 'ArrowDown';
+      if (b.bottom <= a.top + 1) return 'ArrowUp';
+      return dx > 0 ? 'ArrowRight' : dx < 0 ? 'ArrowLeft' : (dy > 0 ? 'ArrowDown' : 'ArrowUp');
+    }, widget);
+    if (d === '') { await sleep(300); return; }
+    assert(d !== 'none', 'no ' + widget + ' tile');
+    await page.keyboard.press(d);
+    await sleep(250);
+  }
+  throw new Error('could not focus the ' + widget + ' tile');
+}
+
+// The focus highlight around the edge sweep, now: the ring's class and clip,
+// which tiles carry the tile class, the To-do tile's border colours and size.
+const edgeState = (page) => page.evaluate(() => {
+  const ring = document.querySelector('.fx-ring');
+  const tile = document.querySelector('.cell[data-widget="todo"] .tile');
+  const cs = getComputedStyle(tile);
+  const r = tile.getBoundingClientRect();
+  const chip = tile.querySelector('.fx-chip');
+  return {
+    ring: !!ring, ringCls: !!(ring && ring.classList.contains('fx-ring-edge')),
+    ringClip: ring ? getComputedStyle(ring).clipPath : null,
+    tiles: Array.prototype.map.call(document.querySelectorAll('.fx-edge-focus'), (t) => { const c = t.closest('.cell'); return c && c.getAttribute('data-widget'); }),
+    left: document.querySelectorAll('.fx-edge-focus, .fx-ring-edge').length,
+    edge: !!tile.querySelector('.fx-edge'), out: !!(chip && chip.classList.contains('is-out')),
+    focused: tile.classList.contains('is-focused'),
+    top: cs.borderTopColor, side: cs.borderLeftColor, topW: cs.borderTopWidth,
+    box: [r.left, r.top, r.width, r.height].map((x) => Math.round(x * 100) / 100).join(',')
+  };
+});
+
+// Samples every frame: is the sweep playing (edge there, chip not fading),
+// and is the highlight off the top (ring class, or the To-do tile's class)?
+async function edgeWatch(page) {
+  await page.evaluate(() => {
+    window.__edge = [];
+    const tile = document.querySelector('.cell[data-widget="todo"] .tile');
+    function frame() {
+      const ring = document.querySelector('.fx-ring');
+      const chip = tile.querySelector('.fx-chip');
+      window.__edge.push({ edge: !!tile.querySelector('.fx-edge'), out: !!(chip && chip.classList.contains('is-out')),
+        focused: tile.classList.contains('is-focused'),
+        hidden: !!(ring && ring.classList.contains('fx-ring-edge')) || tile.classList.contains('fx-edge-focus'),
+        others: document.querySelectorAll('.fx-edge-focus').length - (tile.classList.contains('fx-edge-focus') ? 1 : 0) });
+      if (window.__edge.length < 400) requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+const WHITE = 'rgb(255, 255, 255)';
+const CLEAR = 'rgba(0, 0, 0, 0)';
+const NO_RING = 'motion=push&fx=quietTiles,stagger,cover,bloom,activity';
+
+async function arrival(pi, page) {
+  await postTodo(pi, 'Arrived ' + Date.now());
+  await until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="todo"] .tile .fx-edge')), 4000, 'no edge sweep');
+}
+
+async function check14(pi) {
+  // With the ring: its top is clipped while the sweep plays, then not.
+  let page = await open({ pi: pi });
+  await focusOn(page, 'todo');
+  let before = await edgeState(page);
+  assert(before.ring && !before.ringCls && before.ringClip === 'none' && !before.left, 'before: ' + JSON.stringify(before));
+  await edgeWatch(page);
+  await arrival(pi, page);
+  let mid = await edgeState(page);
+  assert(mid.ringCls && /^inset\(/.test(mid.ringClip) && !mid.tiles.length, 'ring not clipped during the sweep: ' + JSON.stringify(mid));
+  assert(mid.box === before.box && mid.top === before.top, 'the tile itself changed under the ring: ' + JSON.stringify([before, mid]));
+  await sleep(1200);
+  assert((await edgeState(page)).ringCls, 'the clip went before the sweep ended');
+  await noneLeft(page, 3000, 'the chip stayed');
+  let after = await edgeState(page);
+  assert(!after.ringCls && after.ringClip === 'none' && !after.left, 'left behind with the ring: ' + JSON.stringify(after));
+  let log = await page.evaluate(() => window.__edge);
+  let bad = log.filter((s) => s.hidden !== (s.edge && !s.out && s.focused) || s.others);
+  assert(log.some((s) => s.hidden) && !bad.length, 'the clip did not follow the sweep: ' + JSON.stringify(bad.slice(0, 3)));
+  noErrors(page);
+
+  // Focus moving to another tile mid-sweep: everything back at once, the new tile not clipped.
+  await arrival(pi, page);
+  assert((await edgeState(page)).ringCls, 'second sweep: no clip');
+  await page.keyboard.press('ArrowUp');
+  let moved = await edgeState(page);
+  assert(!moved.focused && moved.edge, 'the focus did not move off the To-do tile mid-sweep: ' + JSON.stringify(moved));
+  assert(!moved.ringCls && moved.ringClip === 'none' && !moved.left, 'not restored at once on the move: ' + JSON.stringify(moved));
+  await sleep(400);
+  assert(!(await edgeState(page)).left, 'clipped after the glide');
+  await noneLeft(page, 3500, 'the chip stayed (moved)');
+
+  // An unfocused tile's arrival changes nothing about the ring.
+  await edgeWatch(page);
+  await arrival(pi, page);
+  const other = await edgeState(page);
+  assert(!other.focused && !other.ringCls && other.ringClip === 'none' && !other.left, 'an unfocused tile changed the ring: ' + JSON.stringify(other));
+  await noneLeft(page, 3500, 'the chip stayed (unfocused)');
+  log = await page.evaluate(() => window.__edge);
+  assert(log.some((s) => s.edge) && log.every((s) => !s.hidden && !s.others), 'hidden on an unfocused tile');
+
+  // A panel opening mid-sweep: everything back.
+  await focusOn(page, 'todo');
+  await arrival(pi, page);
+  assert((await edgeState(page)).ringCls, 'third sweep: no clip');
+  await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
+  const panel = await edgeState(page);
+  assert(!panel.edge && !panel.ringCls && !panel.left, 'not restored on a panel: ' + JSON.stringify(panel));
+  await idle(page);
+  await page.evaluate(() => window.HUB_TEST.closePanel());
+  await idle(page);
+  await sleep(400);
+  assert(!(await edgeState(page)).left, 'left behind after the panel');
+  noErrors(page);
+  await page.context().close();
+
+  // Without the ring: the tile's own top border goes transparent (same size), then back.
+  page = await open({ pi: pi, query: NO_RING });
+  await focusOn(page, 'todo');
+  before = await edgeState(page);
+  assert(!before.ring && before.top === WHITE && !before.left, 'before (no ring): ' + JSON.stringify(before));
+  await edgeWatch(page);
+  await arrival(pi, page);
+  mid = await edgeState(page);
+  assert(mid.tiles.join() === 'todo' && mid.top === CLEAR && mid.side === WHITE, 'top border not cleared: ' + JSON.stringify(mid));
+  assert(mid.box === before.box && mid.topW === before.topW, 'the tile moved or resized: ' + JSON.stringify([before, mid]));
+  await noneLeft(page, 3500, 'the chip stayed (no ring)');
+  after = await edgeState(page);
+  assert(!after.left && after.top === WHITE, 'not restored (no ring): ' + JSON.stringify(after));
+  log = await page.evaluate(() => window.__edge);
+  bad = log.filter((s) => s.hidden !== (s.edge && !s.out && s.focused) || s.others);
+  assert(log.some((s) => s.hidden) && !bad.length, 'the tile class did not follow the sweep: ' + JSON.stringify(bad.slice(0, 3)));
+  // Focus moving away mid-sweep, and a panel, without the ring.
+  await arrival(pi, page);
+  await page.keyboard.press('ArrowUp');
+  moved = await edgeState(page);
+  assert(!moved.focused && moved.edge && !moved.left && moved.top !== CLEAR, 'not restored at once on the move (no ring): ' + JSON.stringify(moved));
+  await noneLeft(page, 3500, 'the chip stayed (no ring, moved)');
+  await focusOn(page, 'todo');
+  await arrival(pi, page);
+  assert((await edgeState(page)).tiles.join() === 'todo', 'no ring, third sweep: not cleared');
+  await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
+  assert(!(await edgeState(page)).left, 'not restored on a panel (no ring)');
+  await idle(page);
+  await page.evaluate(() => window.HUB_TEST.closePanel());
+  await idle(page);
+  assert(!(await edgeState(page)).left, 'left behind after the panel (no ring)');
+  noErrors(page);
+}
+
 /* ---------- run ---------- */
 
 async function main() {
@@ -656,6 +823,7 @@ async function main() {
   await check('11. Spanish (app/i18n.js) and English on one line in 3-column tiles, 22px+, 4.5:1', () => check11(pi));
   await check('12. A repeated start extends the time and keeps the same element', () => check12(pi));
   await check('13. A layout switch (in place, and one that reloads) puts the chip on the new layout\'s tile', () => check13(pi));
+  await check('14. On the focused tile the highlight leaves the top edge while the light sweeps (ring clipped, or the tile\'s top border), and comes back on its end, a focus move or a panel', () => check14(pi));
 }
 
 main().catch((e) => {

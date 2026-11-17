@@ -18,6 +18,8 @@
  *               to-do, changed events, a changed snapshot), that tile shows a
  *               small chip in its lower left corner ("Incoming to-do") for
  *               about 2.4 s, with a light that sweeps its top edge twice.
+ *               On the focused tile, the focus highlight leaves its top
+ *               edge while the light sweeps (see edgeFocusSync).
  *               Never on the first data after the hub starts, while the
  *               wanderers are on screen, or while the home screen is covered.
  *               Widgets call ctx.activity(kind); HUB_FX.addActivity(kind,
@@ -186,11 +188,12 @@
   var ring = { node: null, at: null, gliding: false, glideEnd: 0, shown: true };
 
   function ringDrop() {
-    if (!ring.node) return;
+    if (!ring.node) { edgeFocusSync(); return; }
     drop(ring.node);
     ring.node = null;
     ring.at = null;
     document.body.classList.remove('fx-ring-on');
+    edgeFocusSync();
   }
 
   // Where the ring is drawn now, mid-glide or not.
@@ -230,6 +233,7 @@
     s.transform = translate(rect.left, rect.top);
     ring.at = { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
     if (ring.shown) { s.opacity = '1'; }
+    edgeFocusSync();
   }
 
   var lastFocusAt = 0;
@@ -241,14 +245,54 @@
     lastFocusAt = t;
     ring.shown = true;
     ringTo(rect, !(opts && opts.repeat) && !quick);
+    edgeFocusSync();
   }
 
   // A panel opens: the ring goes (the tile itself rides to the middle).
   function ringHide() {
     ring.shown = false;
+    edgeFocusSync();
     if (!ring.node) return;
     ring.node.style.transition = 'opacity 120ms linear';
     ring.node.style.opacity = '0';
+  }
+
+  /* ---------- the edge sweep on the focused tile ---------- */
+
+  // While an arrival chip's light sweeps the top edge of the tile that has
+  // focus, the focus highlight leaves that edge so the light shows: the ring
+  // gets EDGE_RING (style.css clips its top border away, statically), or,
+  // without the ring, the tile gets EDGE_TILE (its own top border goes
+  // transparent, same width, so nothing moves). Worked out again from what
+  // is there now (which tiles have a sweep playing, which tile has focus,
+  // whether the ring shows) every time any of that changes, so nothing is
+  // ever left behind. On any failure both classes come off.
+  var EDGE_RING = 'fx-ring-edge';
+  var EDGE_TILE = 'fx-edge-focus';
+
+  function edgeFocusSync() {
+    try {
+      var lit = null;
+      var list = typeof acts !== 'undefined' && acts ? acts : [];
+      for (var i = 0; i < list.length; i++) {
+        var a = list[i];
+        if (a.edge && !a.retiring && a.edge.parentNode === a.tile && a.tile.classList.contains('is-focused')) { lit = a.tile; break; }
+      }
+      var ringShows = !!(ring.node && ring.shown);
+      var want = lit && !ringShows ? lit : null;
+      var marked = document.querySelectorAll('.' + EDGE_TILE);
+      for (var j = 0; j < marked.length; j++) if (marked[j] !== want) marked[j].classList.remove(EDGE_TILE);
+      if (want) want.classList.add(EDGE_TILE);
+      if (ring.node) {
+        if (lit && ringShows) ring.node.classList.add(EDGE_RING);
+        else ring.node.classList.remove(EDGE_RING);
+      }
+    } catch (e) {
+      try {
+        var left = document.querySelectorAll('.' + EDGE_TILE + ', .' + EDGE_RING);
+        for (var k = 0; k < left.length; k++) { left[k].classList.remove(EDGE_TILE); left[k].classList.remove(EDGE_RING); }
+      } catch (e2) { /* nothing more to do */ }
+    }
   }
 
   // Layout changed or the window resized: straight to the focused tile.
@@ -484,6 +528,7 @@
     drop(a.edge);
     var i = acts.indexOf(a);
     if (i >= 0) acts.splice(i, 1);
+    edgeFocusSync();
     // A working chip taken away (a panel opened): its state stays, so it can come back.
     var w = a.workKind && working.hasOwnProperty(a.workKind) ? working[a.workKind] : null;
     if (w && w.act === a) w.act = null;
@@ -542,12 +587,14 @@
     a.retiring = true;
     a.chip.className = a.chip.className.replace(/ is-in\b/g, '').replace(/ is-out\b/g, '') + ' is-out';
     a.timer = later(ACT_OUT_MS + 60, function () { actEnd(a); });
+    edgeFocusSync();
   }
 
   // The arrival chip's hold: about 2.4 s, then the fade.
   function actHold(a) {
     clearTimeout(a.timer);
     a.timer = later(ACT_HOLD_MS, function () { actFade(a); });
+    edgeFocusSync();
   }
 
   // A working chip becomes the arrival chip, the same element: the arrival
@@ -745,6 +792,7 @@
       shareEnd();
       activityStop();
     }
+    edgeFocusSync();
   }
 
   /* ---------- start ---------- */

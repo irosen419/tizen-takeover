@@ -1170,5 +1170,15 @@ body.has-picture {
   .fx-chip-working .fx-act-ico { animation: none; }
 }
 
+/* The edge sweep on the tile that has focus (edgeFocusSync in app/motion.js):
+   while the light runs along the top edge, the white focus highlight leaves
+   that edge so the light shows. The ring loses its top border to a static
+   clip (the border, 0.16rem, plus a little; nothing animates it); without
+   the ring, the tile's own top border turns transparent, the same width,
+   so nothing moves. */
+.fx-ring.fx-ring-edge { clip-path: inset(0.22rem 0 0 0); }
+.tile.is-focused.fx-edge-focus,
+.is-glass .tile.is-focused.fx-edge-focus { border-top-color: transparent; }
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }
