@@ -18,8 +18,9 @@
  *     changes, no filters, no layout reads while a scene runs.
  *   - One fixed, click-through layer above the tiles and below the scrim, the
  *     panel, the dashboard frame and the toast. It never takes focus.
- *   - A scene's frames load (new Image()) before it starts. If one fails
- *     (onerror, or it loads 0 px wide) the scene is skipped and left out for
+ *   - A scene's frames load (new Image()) before it starts. One that fails
+ *     (onerror) is asked for again, three times in all. If it still fails,
+ *     or one loads 0 px wide, the scene is skipped and left out for
  *     10 minutes; if they take over 30 s the visit is skipped and the same
  *     scene comes at the next visit (the files go on loading into the cache,
  *     nothing is cancelled). Its DOM is removed when it ends. Nothing loads
@@ -57,6 +58,8 @@
   var AHEAD_MS = 3000;         // after a visit ends, this long until the next one's frames start loading
   var CHECK_MS = 5000;         // how often to look again while a panel is open or the page is hidden
   var BROKEN_MS = 10 * 60000;  // a scene whose frames failed is left out this long
+  var FRAME_TRIES = 3;         // a picture that fails is asked for this many times in all
+  var FRAME_RETRY_MS = [1000, 2500]; // how long after a failure the next try starts
   var MAX_TICKS = 700;         // no scene runs longer than this (100 s), whatever its script says
   var DESIGN_H = 1080;         // scenes are written for a 1080-row screen
   var FLOOR_GAP = 6;           // feet this far above the bottom of the screen
@@ -334,6 +337,7 @@
     info.t0 = now();
     info.ms = null;
     info.timedOut = false;
+    info.retried = 0;
     var guard = setTimeout(function () {
       info.timedOut = true;
       finish(null, 'its frames took over ' + Math.round(loadMs / 1000) + ' s (' + info.got + ' of ' + info.of + ' in)', 'slow');
@@ -356,11 +360,26 @@
         }
       };
     }
-    function failed(key, img) {
+    // A picture that fails is asked for again, twice, a little later each
+    // time: through the TV's proxy one request in a batch now and then fails
+    // though the file is fine. Only after the last try is the scene skipped.
+    function failed(key, img, n) {
       return function () {
         unsettle(img);
-        finish(null, 'frame ' + key + ' failed (onerror)', 'broken');
+        if (finished) return;
+        if (n >= FRAME_TRIES) return finish(null, 'frame ' + key + ' failed (onerror, ' + n + ' tries)', 'broken');
+        info.retried++;
+        setTimeout(function () { if (!finished) ask(key, n + 1); }, FRAME_RETRY_MS[n - 1] || FRAME_RETRY_MS[FRAME_RETRY_MS.length - 1]);
       };
+    }
+    function ask(key, n) {
+      var img = new Image();
+      img.onload = loaded(key, img);
+      img.onerror = failed(key, img, n);
+      images[key] = img;
+      settling.push(img);
+      if (settling.length > MAX_SETTLING) settling.shift();
+      img.src = spriteUrl(key);
     }
     for (var i = 0; i < keys.length; i++) {
       var key = keys[i];
@@ -368,13 +387,7 @@
         setTimeout(function () { finish(null, 'frame ' + key + ' is not in the sprite list', 'broken'); }, 0);
         return function () { finished = true; clearTimeout(guard); };
       }
-      var img = new Image();
-      img.onload = loaded(key, img);
-      img.onerror = failed(key, img);
-      images[key] = img;
-      settling.push(img);
-      if (settling.length > MAX_SETTLING) settling.shift();
-      img.src = spriteUrl(key);
+      ask(key, 1);
     }
     if (!keys.length) setTimeout(function () { info.ms = 0; finish(images); }, 0);
     return function () { finish(null, 'cancelled', 'cancelled'); };
@@ -2460,7 +2473,7 @@
   function framesText(L) {
     if (!L || L.of === undefined) return '';
     var s = L.name + ' ' + L.got + '/' + L.of + ' frames';
-    if (L.ms !== null) return s + ' in ' + ms(L.ms) + (L.timedOut ? overLimit() : '');
+    if (L.ms !== null) return s + ' in ' + ms(L.ms) + (L.timedOut ? overLimit() : '') + (L.retried ? ' (' + L.retried + ' asked for again)' : '');
     if (L.failed) return s + ', then one failed';
     return s + (L.timedOut ? ' after ' : ' so far, ') + ms(now() - L.t0);
   }
