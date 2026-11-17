@@ -663,7 +663,7 @@ module.exports = {
   fields: {
     isObj: isObj, has: has, field: field, bad: bad, wrong: wrong, bytesOf: bytesOf, commas: commas, words: words,
     textOf: textOf, wholeOf: wholeOf, boolOf: boolOf, choiceOf: choiceOf, shapedOf: shapedOf, dateOf: dateOf,
-    timeOf: timeOf, listOf: listOf, objectOf: objectOf, put: put, eachWithId: eachWithId, eachEntry: eachEntry,
+    timeOf: timeOf, monthOf: monthOf, listOf: listOf, objectOf: objectOf, put: put, eachWithId: eachWithId, eachEntry: eachEntry,
     A_TIME: A_TIME, A_DATE: A_DATE
   }
 };

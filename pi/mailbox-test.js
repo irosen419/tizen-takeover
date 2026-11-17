@@ -427,7 +427,7 @@ async function main() {
     snap.sentAt = new Date(Date.now() - 60000).toISOString();
     r = await run(fake, h, 'budget.set', { snapshot: snap });
     assert.strictEqual(r.ok, true, r.message);
-    assert.ok(/^Stored room, cardDay, goals and alerts \(.* of 48 KB\)\. Screens that are on change now\.$/.test(r.message), r.message);
+    assert.ok(/^Stored room, cardDay, goals, alerts, lab, merchants, pace and runway \(.* of 48 KB\)\. Screens that are on change now\.$/.test(r.message), r.message);
     assert.strictEqual(r.message, budget.setText(Object.assign({}, r.data)));
     const stored = (await h.api('GET', '/api/budget')).body;
     r = await run(fake, h, 'budget.show');
@@ -435,11 +435,17 @@ async function main() {
     assert.strictEqual(r.data.sections.cardDay.transfers, 3);
     const shown = JSON.stringify(r);
     assert.ok(shown.indexOf('Bakery') < 0 && shown.indexOf('checking') < 0 && shown.indexOf('42.5') < 0, 'no labels or amounts');
+    // Budget lab: counts only, never a merchant name or a month-to-date total.
+    assert.strictEqual(r.data.sections.merchants.merchants, 5);
+    snap.merchants.items.forEach((m) => assert.ok(shown.indexOf(m.label) < 0 && shown.indexOf(String(m.mtd)) < 0, 'shows a merchant'));
+    ['186.4', '498.57', '766.9', '$'].forEach((w) => assert.ok(shown.indexOf(w) < 0, 'shows ' + w));
     r = await run(fake, h, 'budget.set', { snapshot: null });
-    assert.ok(/^Cleared the budget snapshot \(room, cardDay, goals and alerts\)\./.test(r.message), r.message);
+    assert.ok(/^Cleared the budget snapshot \(room, cardDay, goals, alerts, lab, merchants, pace and runway\)\./.test(r.message), r.message);
     r = await run(fake, h, 'budget.clear');
     assert.strictEqual(r.message, 'There is no budget snapshot to clear. Nothing changed.');
     r = await run(fake, h, 'show', { widget: 'budget-room' });
+    assert.strictEqual(r.ok, true, r.message);
+    r = await run(fake, h, 'show', { widget: 'budget-lab' });
     assert.strictEqual(r.ok, true, r.message);
   });
 

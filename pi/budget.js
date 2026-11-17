@@ -4,9 +4,12 @@
  * keeps it as the resource "budget" and pushes it to the TV's budget tiles.
  * The contract is docs/budget-snapshot.md.
  *
- * Only totals ever arrive here: daily room, card day, goals and alerts. No
- * balances, no transactions, no amounts on alerts. The budget app talks to
- * the server on the Pi itself, so none of it goes through the cloud.
+ * Only totals ever arrive here: daily room, card day, goals and alerts, and
+ * for Budget lab the room to card day (lab), the top 5 merchants with their
+ * month-to-date totals (merchants, which the owner asked for), one spending
+ * total per day (pace) and the runway as headroom (runway). No balances, no
+ * transactions, no amounts on alerts. The budget app talks to the server on
+ * the Pi itself, so none of it goes through the cloud.
  *
  * This file only checks, merges and describes snapshots, the same way
  * awws.js does for the A World Worth Saving snapshot (and with the same text
@@ -28,8 +31,16 @@ const MAX_BYTES = 48 * 1024; // 49,152 bytes of JSON
 const MAX_FUTURE_MS = 10 * 60 * 1000;
 const MAX_AMOUNT = 1000000;
 const MAX_DAYS = 366;
-const SECTIONS = ['room', 'cardDay', 'goals', 'alerts'];
+const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway'];
 const GOAL_STATES = ['clean', 'on-pace', 'over', 'under'];
+// Budget lab: where spare money on card day goes, and the runway's steps.
+const SPLIT_KEYS = ['savings', 'awws', 'buffer', 'extra'];
+const STEP_KINDS = ['pay', 'bill', 'reserve'];
+const MAX_MERCHANTS = 5;
+const MAX_PACE_DAYS = 31;
+const MAX_STEPS = 40;
+const MAX_SPLIT = 4;
+const MAX_COUNT = 999;
 // Sections that are lists; sent as a plain list or as { asOf, items }.
 const LISTS = { goals: 8, alerts: 5 };
 
@@ -130,6 +141,83 @@ const CHECK = {
     return {
       items: F.eachWithId(items, 'alert', (e, where, id) => ({ id: id, label: F.textOf(e, 'label', 30, where, true) }))
     };
+  },
+
+  // Budget lab's inputs: the room to card day as it stood this morning, and
+  // what the TV needs to work its equations. The TV does the arithmetic.
+  lab: (s) => {
+    const out = {};
+    out.room = amountOf(s, 'room', '', true, { signed: true });
+    out.spentToday = amountOf(s, 'spentToday', '', true);
+    out.daysLeft = F.wholeOf(s, 'daysLeft', '', true, { max: MAX_DAYS });
+    out.cardDate = F.dateOf(s, 'cardDate', '', true);
+    out.monthDay = F.wholeOf(s, 'monthDay', '', true, { min: 1, max: 31 });
+    const split = F.listOf(s, 'split', MAX_SPLIT, '');
+    if (split !== undefined) {
+      const seen = Object.create(null);
+      out.split = F.eachEntry(split, 'split entry', (e, where) => {
+        const key = F.choiceOf(e, 'key', SPLIT_KEYS, where);
+        if (seen[key]) throw wrong('the key "' + key + '" is used twice', where);
+        seen[key] = true;
+        return { key: key, amount: amountOf(e, 'amount', where, true) };
+      });
+    }
+    return out;
+  },
+
+  // The top 5 merchants this month. Names and month-to-date totals are
+  // allowed here because the owner asked for them; ./hub budget show still
+  // prints only how many there are. "combined" is the five counted once
+  // (one order can count for two merchants), so it is sent, never summed.
+  merchants: (s) => {
+    const out = {};
+    out.month = F.monthOf(s, 'month', '', true);
+    const items = F.listOf(s, 'items', MAX_MERCHANTS, '', true);
+    out.items = F.eachEntry(items, 'merchant', (e, where) => ({
+      label: F.textOf(e, 'label', 30, where, true),
+      mtd: amountOf(e, 'mtd', where, true),
+      count: F.wholeOf(e, 'count', where, true, { max: MAX_COUNT })
+    }));
+    out.combined = amountOf(s, 'combined', '', true);
+    return out;
+  },
+
+  // One spending total per day against the cap logged that morning. Never
+  // the charges themselves. Oldest first, each date once.
+  pace: (s) => {
+    const days = F.listOf(s, 'days', MAX_PACE_DAYS, '', true);
+    let last = '';
+    return {
+      days: F.eachEntry(days, 'day', (e, where) => {
+        const d = { date: F.dateOf(e, 'date', where, true), spent: amountOf(e, 'spent', where, true) };
+        if (d.date <= last) throw wrong('"date" must come after the day before it (oldest first, each date once)', where);
+        last = d.date;
+        F.put(d, 'cap', amountOf(e, 'cap', where, false, { above0: true }));
+        return d;
+      })
+    };
+  },
+
+  // Headroom from this morning to card day: never checking or a card
+  // balance by itself. Steps carry no names; a "label" sent is dropped.
+  runway: (s) => {
+    const out = {};
+    out.start = amountOf(s, 'start', '', true, { signed: true });
+    out.end = F.dateOf(s, 'end', '', true);
+    const steps = F.listOf(s, 'steps', MAX_STEPS, '', true);
+    let last = '';
+    out.steps = F.eachEntry(steps, 'step', (e, where) => {
+      const date = F.dateOf(e, 'date', where, true);
+      if (date < last) throw wrong('"date" must not come before the step before it (steps in date order)', where);
+      if (date > out.end) throw wrong('"date" must not come after "end" (card day)', where);
+      last = date;
+      const kind = F.choiceOf(e, 'kind', STEP_KINDS, where);
+      const delta = amountOf(e, 'delta', where, true, { signed: true });
+      if (kind === 'pay' && delta < 0) throw wrong('"delta" must be 0 or more for a pay step', where);
+      if (kind !== 'pay' && delta > 0) throw wrong('"delta" must be 0 or less for a ' + kind + ' step', where);
+      return { date: date, delta: delta, kind: kind };
+    });
+    return out;
   }
 };
 
@@ -253,7 +341,18 @@ function sectionCounts(name, s) {
     GOAL_STATES.forEach((st) => { c[st] = s.items.filter((g) => g.state === st).length; });
     return c;
   }
-  return { alerts: s.items.length };
+  if (name === 'alerts') return { alerts: s.items.length };
+  if (name === 'lab') {
+    return { cardDate: s.cardDate, daysLeft: s.daysLeft, monthDay: s.monthDay, state: s.room < 0 ? 'short' : s.room > 0 ? 'spare' : 'none', split: (s.split || []).length };
+  }
+  if (name === 'merchants') return { month: s.month, merchants: s.items.length };
+  if (name === 'pace') {
+    const n = s.days.length;
+    return { days: n, capped: s.days.filter((d) => d.cap !== undefined).length, from: n ? s.days[0].date : null, to: n ? s.days[n - 1].date : null };
+  }
+  const c = { end: s.end, steps: s.steps.length };
+  STEP_KINDS.forEach((k) => { c[k] = s.steps.filter((x) => x.kind === k).length; });
+  return c;
 }
 
 // A compact picture of what is stored, for the mailbox's budget.show.
@@ -280,7 +379,18 @@ function sectionLine(name, s) {
     const parts = GOAL_STATES.filter((st) => c[st]).map((st) => c[st] + ' ' + st.replace('-', ' '));
     return plural(c.goals, 'goal') + (parts.length ? ' (' + parts.join(', ') + ')' : '');
   }
-  return c.alerts ? plural(c.alerts, 'new charge') + ' at a merchant you cut' : 'no new charges';
+  if (name === 'alerts') return c.alerts ? plural(c.alerts, 'new charge') + ' at a merchant you cut' : 'no new charges';
+  if (name === 'lab') {
+    const st = c.state === 'short' ? 'room short' : c.state === 'spare' ? 'room to spare' : 'no room';
+    return c.cardDate + ' (' + plural(c.daysLeft, 'day') + ' left), day ' + c.monthDay + ' of the month, ' + st +
+      (c.split ? ', split in ' + c.split : '');
+  }
+  if (name === 'merchants') return plural(c.merchants, 'merchant') + ' in ' + c.month;
+  if (name === 'pace') {
+    return c.days ? plural(c.days, 'day') + ' (' + c.capped + ' with a cap), ' + c.from + ' to ' + c.to : 'no days yet';
+  }
+  return plural(c.steps, 'step') + ' to ' + c.end + ' (' + plural(c.pay, 'payday') + ', ' + plural(c.bill, 'bill') + ', ' +
+    plural(c.reserve, 'reserve') + ')';
 }
 
 function plainWhen(ms) {
@@ -340,6 +450,8 @@ module.exports = {
   MAX_BYTES: MAX_BYTES,
   SECTIONS: SECTIONS,
   GOAL_STATES: GOAL_STATES,
+  SPLIT_KEYS: SPLIT_KEYS,
+  STEP_KINDS: STEP_KINDS,
   normalizeSnapshot: normalizeSnapshot,
   merge: merge,
   emptyData: emptyData,

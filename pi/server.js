@@ -59,7 +59,7 @@ const budget = require('./budget');
 const mailbox = require('./mailbox');
 const spotify = require('./spotify');
 
-const SERVER_VERSION = '0.4.0';
+const SERVER_VERSION = '0.5.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;

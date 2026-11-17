@@ -1,6 +1,6 @@
 # The budget snapshot
 
-Written 2026-11-17. This is the contract between the budget app on the Pi, which works out the figures, and the hub server on the same Pi, which stores them and pushes them to the TV's budget tiles (Daily room, Card day, Goals) and the "New charge" banner.
+Written 2026-11-17. This is the contract between the budget app on the Pi, which works out the figures, and the hub server on the same Pi, which stores them and pushes them to the TV's budget tiles (Daily room, Card day, Goals, Budget lab) and the "New charge" banner.
 
 A sample with made-up figures is in [`pi/fixtures/budget-sample.json`](../pi/fixtures/budget-sample.json). This repository is public, so the sample must stay made up.
 
@@ -18,7 +18,7 @@ A sample with made-up figures is in [`pi/fixtures/budget-sample.json`](../pi/fix
  The budget tiles and the banner on the TV
 ```
 
-Only totals ever leave the budget app: room per day, the card day and how it is covered, goal states and the names of merchants with a new charge. **Never a balance, never a transaction list, never an amount on an alert.** The budget app talks to the hub server on the Pi directly; nothing goes through the cloud. (The Claude mailbox also has `budget.show`, `budget.set` and `budget.clear`, for setting things up by hand; `budget.show` only ever answers with dates, counts and states.)
+Only totals ever leave the budget app: room per day, the card day and how it is covered, goal states, the names of merchants with a new charge, and for Budget lab the room to card day, one spending total per day, the top 5 merchants with their month-to-date totals and the runway to card day as headroom. **Never a balance, never a transaction list, never an amount on an alert.** (The owner asked for the merchant names and their totals on 2026-11-17; see [Privacy for Budget lab](#privacy-for-budget-lab).) The budget app talks to the hub server on the Pi directly; nothing goes through the cloud. (The Claude mailbox also has `budget.show`, `budget.set` and `budget.clear`, for setting things up by hand; `budget.show` only ever answers with dates, counts and states.)
 
 By hand on the Pi: `./hub budget set file.json`.
 
@@ -44,7 +44,15 @@ One JSON object. `v` and `sentAt` are required. Every section is optional.
   "cardDay": { "asOf": "...", "date": "2026-11-19", "daysAway": 3, "covered": true,
                "transfers": [ { "label": "From checking", "amount": 310 } ], "paychecks": ["2026-11-20"] },
   "goals":   { "asOf": "...", "items": [ { "label": "Coffee out", "state": "over", "text": "$62 over", "pct": 100 } ] },
-  "alerts":  { "asOf": "...", "items": [ { "id": "a-1042", "label": "Corner Bakery Stand" } ] }
+  "alerts":  { "asOf": "...", "items": [ { "id": "a-1042", "label": "Corner Bakery Stand" } ] },
+  "lab":       { "asOf": "...", "room": 1334, "spentToday": 0, "daysLeft": 14, "cardDate": "2026-12-01", "monthDay": 17,
+                 "split": [ { "key": "savings", "amount": 500 }, { "key": "awws", "amount": 150 }, { "key": "buffer", "amount": 350 } ] },
+  "merchants": { "asOf": "...", "month": "2026-11", "combined": 702.4,
+                 "items": [ { "label": "Corner Bakery Stand", "mtd": 212.6, "count": 9 } ] },
+  "pace":      { "asOf": "...", "days": [ { "date": "2026-11-16", "spent": 71.2, "cap": 95.29 } ] },
+  "runway":    { "asOf": "...", "start": -731, "end": "2026-12-01",
+                 "steps": [ { "date": "2026-11-20", "delta": 2600, "kind": "pay" }, { "date": "2026-11-24", "delta": -120, "kind": "bill" },
+                            { "date": "2026-12-01", "delta": -415, "kind": "reserve" } ] }
 }
 ```
 
@@ -112,6 +120,54 @@ A list of at most 5.
 
 There is no amount field, and one sent is dropped. On the TV: a banner across the top of the screen, "New charge: Corner Bakery Stand", with "+1 more" when there are more. OK (or Back) on any screen (a panel, the layout switcher and About too) dismisses it and the next one shows; one nobody dismisses clears itself 5 minutes after this TV first shows it; a dismissed id never shows again on that TV (it keeps the last 50, in `homeHub.budget.seen.v1`). Send the list with only the alerts that still stand; an empty list (or `null`) clears them.
 
+### `lab`: Budget lab's room to card day
+
+The figures the Budget lab tile works its equations from (cap, what is kept on card day, the suggested move). The TV does the arithmetic; the budget app only sends the inputs. The budget app leaves `lab` out when card day cannot be worked out (no payday, no checking), as it already does for `room` and `cardDay`.
+
+| Field | Type | Notes |
+|---|---|---|
+| `room` | dollars, may be negative | required: the room to card day as it stood this morning, before today's spending (the allowance less pending refunds plus `spentToday`) |
+| `spentToday` | dollars | required: spent today so far, in the spend buckets, pending included |
+| `daysLeft` | whole number, 0 to 366 | required: today through the day before card day. 0 means card day is today |
+| `cardDate` | date | required: card day |
+| `monthDay` | whole number, 1 to 31 | required: the day of the month today, today included |
+| `split` | list, at most 4 | optional: `{ "key": "savings", "amount": 500 }`; `key` is `savings`, `awws`, `buffer` or `extra`, each at most once; `amount` is dollars. Where spare money on card day goes, in this order. Left out, the TV uses 500, 150 and 350 |
+
+### `merchants`: the top 5 merchants this month
+
+| Field | Type | Notes |
+|---|---|---|
+| `month` | month, `2026-11` | required |
+| `items` | list, at most 5 | required, biggest first: `{ "label": "Corner Bakery Stand", "mtd": 212.6, "count": 9 }`; `label` is text, 30, the merchant as the owner knows it; `mtd` is dollars, the month to date at that merchant; `count` is a whole number, 0 to 999, how many charges (so the TV can say what one run costs). Rent is never in the list |
+| `combined` | dollars | required: the five together, with each charge counted once. It can be less than the sum of the `mtd` figures, because one order can count for two merchants (a delivery app and the restaurant); never add the `mtd` figures up instead |
+
+### `pace`: spending against the cap, day by day
+
+| Field | Type | Notes |
+|---|---|---|
+| `days` | list, at most 31 | required, oldest first, one entry per date, each date once: `{ "date": "2026-11-16", "spent": 71.2, "cap": 95.29 }`; `spent` is dollars, that day's total in the spend buckets; `cap` is dollars, more than 0, the calculated daily cap the budget app logged that morning, left out on a day with no log (the Pi was off). One total per day, never the charges themselves |
+
+### `runway`: headroom from today to card day
+
+| Field | Type | Notes |
+|---|---|---|
+| `start` | dollars, may be negative | required: headroom this morning, checking less what the cards owe today, less the floor, less pending refunds, plus `spentToday`. Never checking or a card balance by itself |
+| `end` | date | required: card day |
+| `steps` | list, at most 40 | required, in date order, none after `end`: `{ "date": "2026-11-20", "delta": 2600, "kind": "pay" }`; `delta` is dollars, may be negative; `kind` is `pay` (`delta` 0 or more), `bill` or `reserve` (`delta` 0 or less). `reserve` is the bills from card day to the next payday, as one step on card day. No bill names: a `label` sent is dropped |
+
+The headroom on card day (`start` plus every `delta`) is the same figure as `lab.room`. The TV draws the runway without a dollar axis.
+
+### Privacy for Budget lab
+
+- **Merchant names and their month-to-date totals** for the top 5 merchants are allowed: the owner asked for them on 2026-11-17. Rent is left out by its category in the budget app, not by name.
+- **No transaction list.** `pace.days` is one total per day, the same grain as the room figures.
+- **No balance.** The runway is headroom (checking less the cards, the floor and pending refunds), never checking or a card balance on its own, and the TV draws it without figures on its axis; only the gap on card day carries a figure.
+- **No amount on an alert**, as before.
+- `./hub budget show` and the mailbox's `budget.show` print counts, dates and states for these sections, never a merchant name or an amount: `merchants  5 merchants in 2026-11`, `pace  14 days (13 with a cap), 2026-11-03 to 2026-11-16`, `runway  6 steps to 2026-12-01 (1 payday, 4 bills, 1 reserve)`.
+- The snapshot only travels on the Pi itself (127.0.0.1), never through the mailbox or the cloud.
+
+The four Budget lab sections are optional like the others and checked one by one; a snapshot with only `room`, `cardDay`, `goals` and `alerts` is stored as before. A hub server older than 0.5.0 drops the four sections and keeps the rest.
+
 ## What the Pi keeps
 
 The resource `budget` in `data/state.json`, sent to the TV with everything else:
@@ -126,7 +182,7 @@ Before any snapshot, and after `./hub budget clear`, it is `{ "v": 1, "sentAt": 
 
 On the Pi:
 
-- `./hub budget show`: when it was sent, its size, and one line per section with dates, counts and states only, never a label or an amount. For example `cardDay  2026-11-19 (in 3 days), covered, 3 transfers, 2 paychecks, as of 9:05 AM`.
+- `./hub budget show`: when it was sent, its size, and one line per section with dates, counts and states only, never a label or an amount. For example `cardDay  2026-11-19 (in 3 days), covered, 3 transfers, 2 paychecks, as of 9:05 AM` or `lab  2026-12-01 (14 days left), day 17 of the month, room to spare, split in 3, as of 9:05 AM`.
 - `./hub budget set file.json`: store a snapshot (`-` reads it from input). The file is the snapshot itself, or `{ "snapshot": { ... } }`.
 - `./hub budget clear`: remove everything.
 
@@ -141,7 +197,7 @@ Control API (token needed, see `docs/live-updates.md`):
 
 ## On the TV
 
-- `budget-room` (Daily room), `budget-card` (Card day) and `budget-goals` (Goals), with a wallet icon. Every size works; [tile-sizes.md](tile-sizes.md) says what each shows. The **Budget** layout in the switcher places them with Calendar, Today and Entertainment.
+- `budget-room` (Daily room), `budget-card` (Card day) and `budget-goals` (Goals), with a wallet icon. `budget-lab` (Budget lab) reads `lab`, `merchants`, `pace` and `runway`; it reaches the TV in a later hub update, and until then those sections are stored but not shown. Every size works; [tile-sizes.md](tile-sizes.md) says what each shows. The **Budget** layout in the switcher places them with Calendar, Today and Entertainment.
 - A section that is missing makes its tile say "Waiting for the budget app"; with no line to the Pi they say "Needs the Pi" or "Can’t reach the Pi".
 - The TV keeps its last copy (`homeHub.budget.v1`), so the tiles have something to show straight after the TV turns on.
 - `widgets.budget.show: false` in `app/config.js` hides it all on that TV: the tiles say "Budget is hidden" and the banner never shows.
