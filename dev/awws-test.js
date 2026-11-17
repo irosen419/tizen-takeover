@@ -13,7 +13,7 @@
  *   overdue in amber; partial data (calendar only, snapshot only, neither);
  *   an old Pi with no awws resource; a malformed snapshot; a repeated
  *   snapshot that doesn't redraw; the launcher, a view and Back; the owner
- *   filter with Left and Right; full screen; the layout switcher with seven
+ *   filter with Left and Right; full screen; the layout switcher with eight
  *   layouts, to AWWS desk and back.
  *   Reach at every size in both languages with its three shapes of data
  *   (subscribers alone, traffic alone, both), its panel and full screen,
@@ -534,7 +534,7 @@ async function main() {
     });
 
     /* ---------- the layout switcher ---------- */
-    await check('the switcher shows seven layouts; to AWWS desk and back', async () => {
+    await check('the switcher shows eight layouts; to AWWS desk and back', async () => {
       const page = await env.newPage({});
       try {
         const start = await page.evaluate(() => document.querySelectorAll('.cell').length);
@@ -563,7 +563,7 @@ async function main() {
           return { items: items, over: b.scrollWidth > b.clientWidth + 1, width: window.innerWidth,
             active: (document.querySelector('.switcher-item.is-active') || {}).textContent };
         });
-        assert(bar.items.length === 7, 'layouts: ' + bar.items.map((i) => i.name).join(', '));
+        assert(bar.items.length === 8, 'layouts: ' + bar.items.map((i) => i.name).join(', '));
         assert(!bar.over, 'the bar overflows');
         for (const it of bar.items) assert(it.left >= 0 && it.right <= bar.width && !it.cut, 'pill cut: ' + it.name);
         const was = bar.active;

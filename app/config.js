@@ -133,6 +133,10 @@ var HUB_CONFIG = {
       { widget: 'calendar',      x: 0, y: 3, w: 5, h: 3 },
       { widget: 'today',         x: 5, y: 3, w: 3, h: 1 },
       { widget: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
+    ] },
+    // Plant sun alone, to try it out (a new widget gets a layout of its own first).
+    { id: 'plant-wall', name: 'Plant wall', layout: [
+      { widget: 'sunpath',       x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
 
@@ -280,6 +284,34 @@ var HUB_CONFIG = {
      * ?viz=off|wash|glow|lite|classic|sharplite|sharp|native|radiant on the address
      * tries one for a visit.
      */
-    nowplaying: { visualizer: true }
+    nowplaying: { visualizer: true },
+
+    /*
+     * Plant sun: when direct sun reaches the plant wall (the "Plant wall"
+     * layout). The sun's position is worked out on the TV (NOAA formulas)
+     * for the weather location above, rounded; latitude and longitude here
+     * would take its place. The window itself (faces about 306 degrees
+     * true, 23 in wide, sill 28.5 in, 4.5 ft tall) is in sunpath.js.
+     *
+     * PLACEHOLDERS, not measured yet:
+     *   roofAngle  the balcony roof blocks the sun above this angle (degrees)
+     *   gapFeet    from the right window's right edge to the plant wall (ft)
+     * While placeholder is true the tile's badge says "Estimate" and the
+     * panel says which numbers are estimates. Put in the measured numbers
+     * and set placeholder to false.
+     *
+     * plantFromWindowFeet and plantHeightFeet: where the plants sit (56 in
+     * from the window wall, 3 ft up). plants: shown in the panel's note;
+     * keepOutOfSun: the one to keep out of the summer evening beam.
+     */
+    sunpath: {
+      roofAngle: 40,
+      gapFeet: 2.0,
+      placeholder: true,
+      plantFromWindowFeet: 4.67,
+      plantHeightFeet: 3,
+      plants: ['4in Birkin philodendron', 'Golden pothos', 'Maranta Gold Lines'],
+      keepOutOfSun: 'Maranta Gold Lines'
+    }
   }
 };
