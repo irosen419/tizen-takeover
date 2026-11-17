@@ -387,6 +387,8 @@ The last command should say `active (running)`.
 
 Your `.env` and your data are not touched by an update.
 
+The Docker log is kept to about 15 MB (three files of 5 MB; the oldest is dropped). A change to that setting in `docker-compose.yml` only takes effect after `docker compose up -d`, because a plain restart does not re-create the container. So after pulling the change that added it, run `docker compose up -d` once.
+
 ## Turning it off
 
 - With Docker: `docker compose down` (from this folder). It stays off until you run `docker compose up -d` again.
