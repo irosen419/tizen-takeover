@@ -212,6 +212,11 @@ var service = http.createServer(function (req, res) {
     log('launch ' + q.id);
     return send(res, 200, { ok: true });
   }
+  if (p === '/launch-control') {
+    // Only the app id and what was sent along, never the address or the data itself.
+    log('launch-control ' + q.id + (q.uri ? ' (with a uri)' : '') + (q.key ? ' (with data)' : ''));
+    return send(res, 200, { ok: true });
+  }
   if (p === '/key') {
     log('key ' + q.k);
     return send(res, 200, { ok: true });
