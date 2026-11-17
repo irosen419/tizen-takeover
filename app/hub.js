@@ -500,13 +500,18 @@
     }
   }
 
-  // The panel's resting rect in panel mode (46 x 26rem, centered).
-  function panelRect() {
+  // The panel's resting rect in panel mode: 46rem wide, centered, and as
+  // tall as the widget's content (measured the first time it opens, see
+  // fitPanel), at most 26rem and at least 10rem. Without a rec: 26rem.
+  var panelFit = {};             // widget id: content height in px at the rem it was measured at
+  function panelRect(rec) {
     var rem = remPx();
     var W = window.innerWidth;
     var H = window.innerHeight;
     var w = 46 * rem;
     var h = 26 * rem;
+    var fit = rec && rec.w && panelFit.hasOwnProperty(rec.w.id) ? panelFit[rec.w.id] : null;
+    if (fit) h = Math.max(10 * rem, Math.min(h, fit.px * rem / fit.rem));
     var left = (W - w) / 2;
     var top = (H - h) / 2;
     return { left: left, top: top, width: w, height: h, right: left + w, bottom: top + h };
@@ -604,13 +609,13 @@
     var rem = remPx();
     var rects = [];
     for (var i = 0; i < widgets.length; i++) rects.push(widgets[i] === opener ? null : widgets[i].home);
-    return ringLayout(rects, panelRect(), window.innerWidth, window.innerHeight, 1.2 * rem, 0.9 * rem);
+    return ringLayout(rects, panelRect(opener), window.innerWidth, window.innerHeight, 1.2 * rem, 0.9 * rem);
   }
 
   // For tests in a laptop browser. Not used by the hub itself.
   window.HUB_TEST = {
     ringLayout: ringLayout,
-    panelRect: panelRect,
+    panelRect: function () { return panelRect(open); },
     homeRects: function () {
       var out = {};
       for (var i = 0; i < widgets.length; i++) out[widgets[i].w.id] = widgets[i].home;
@@ -748,6 +753,59 @@
     ghostEl.style.transform = IDENTITY;
     ghostEl.className = 'ghost';
     if (wasFull) placeFloatingGlass(ghostEl);
+  }
+
+  // The panel and its frame at P's height (panel mode), or back to the
+  // style sheet's sizes (P null: full screen, or parked).
+  function sizeBoxes(P) {
+    var nodes = [panelEl, ghostEl];
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].style.height = P ? P.height + 'px' : '';
+      nodes[i].style.marginTop = P ? (-P.height / 2) + 'px' : '';
+    }
+    placeFloatingGlass(ghostEl);
+  }
+
+  // How tall the open panel's content wants to be, in px: the head, then
+  // the lowest child of the body (a child that stretches to fill reports
+  // the body's own height, so filling panels keep their full size).
+  // Offsets only, so it is right while the panel is scaled mid-grow.
+  function contentHeight() {
+    var body = panel.body;
+    var max = 0;
+    for (var c = body.firstElementChild; c; c = c.nextElementSibling) {
+      var cs = getComputedStyle(c);
+      if (cs.position === 'absolute' || cs.position === 'fixed') { max = Math.max(max, body.clientHeight); continue; }
+      if (cs.display === 'none') continue;
+      max = Math.max(max, c.offsetTop + c.offsetHeight + (parseFloat(cs.marginBottom) || 0));
+    }
+    var ps = getComputedStyle(panelEl);
+    return body.offsetTop + max + (parseFloat(ps.paddingBottom) || 0) + (parseFloat(ps.borderBottomWidth) || 0);
+  }
+
+  // The open panel's content changed (a redraw, another view): the box
+  // follows at once, measured with the box at its tallest so content that
+  // stretches shows its real need. Panel mode only, never mid-move.
+  function refitOpen() {
+    if (!open || mode !== 'panel' || busy) return;
+    var before = panelEl.offsetHeight;
+    sizeBoxes(panelRect(null));
+    var px = contentHeight();
+    if (px > 0) panelFit[open.w.id] = { px: Math.ceil(px), rem: remPx() };
+    var h = panelRect(open).height;
+    // Small shrinks are left alone, so the box doesn't twitch on each redraw.
+    if (h < before && before - h <= 24) h = before;
+    sizeBoxes({ height: h });
+    if (panelFocus) keepInView(panelFocus);
+  }
+
+  // Remembers the open widget's content height; true when it changed by
+  // more than 24px from what P (the rect it opened at) allowed.
+  function fitPanel(rec, P) {
+    var px = contentHeight();
+    if (!(px > 0)) return false;
+    panelFit[rec.w.id] = { px: Math.ceil(px), rem: remPx() };
+    return Math.abs(panelRect(rec).height - P.height) > 24;
   }
 
   function clearTile(rec) {
@@ -1491,7 +1549,7 @@
     panel.title.textContent = w.title;
     var full = mode === 'full';
     panel.btnIcon.innerHTML = iconHTML(full ? 'shrink' : 'expand');
-    panel.btnLabel.textContent = full ? 'Exit full screen' : 'Full screen';
+    panel.btnLabel.textContent = full ? hubWord('exitFull', 'Exit full screen') : hubWord('full', 'Full screen');
     drawPanelHint();
   }
 
@@ -1499,7 +1557,8 @@
   function drawPanelHint(typing) {
     if (!open) return;
     if (typing === undefined) typing = !!typingBox();
-    panel.hint.textContent = typing ? 'Back to stop typing' : mode === 'full' ? 'Back to shrink' : 'Back to close';
+    // A small chip like the Full screen button, but never focusable.
+    panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : mode === 'full' ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
   }
 
   function panelFocusables() {
@@ -1704,12 +1763,15 @@
       w.tile.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + ms + 'ms ' + EASE;
       w.tile.style.transform = 'translate(' + (t.left - w.home.left) + 'px,' + (t.top - w.home.top) + 'px) scale(' + t.scale + ')';
       w.tile.style.opacity = '0.6';
+      // Pushed aside, the body's words are too small to read: icon and title only.
+      w.tile.classList.add('is-pushed');
     }
   }
 
   function returnOthers(rec, ms) {
     for (var i = 0; i < widgets.length; i++) {
       var w = widgets[i];
+      w.tile.classList.remove('is-pushed');
       if (w === rec || !w.tile.style.transform) continue;
       w.tile.style.transition = 'transform ' + ms + 'ms ' + EASE + ', opacity ' + ms + 'ms ' + EASE;
       w.tile.style.transform = 'translate(0px,0px) scale(1)';
@@ -1723,6 +1785,7 @@
       s.transition = '';
       s.transform = '';
       s.opacity = '';
+      widgets[i].tile.classList.remove('is-pushed');
     }
   }
 
@@ -1745,15 +1808,32 @@
     var fade = motion.mode === 'fade';
     var push = motion.mode === 'push';
     var ms = fade ? 140 : push ? 320 : 260;
-    var P = panelRect();
     var T = rec.home || rectOf(rec.tile);
     var moved = false;
     var built = false;
     var skip = null;
-    var stop = fade ? function () {} : startSampling();
     var openedAt = now();
     fxCall('ringHide');
     fxCall('activityStop');
+    // Seen: the tile's accent edge goes (motion.js).
+    fxCall('accentClear', [rec.tile]);
+
+    // The panel is as tall as its content. The first time a widget opens,
+    // its content is built here, before anything moves, and measured; after
+    // that the height is known and the build waits for the first frame.
+    panelEl.className = 'panel is-shown';
+    panelEl.style.transition = 'none';
+    panelEl.style.opacity = '0';
+    panelEl.style.transform = IDENTITY;
+    var prebuilt = !panelFit.hasOwnProperty(rec.w.id);
+    if (prebuilt) {
+      sizeBoxes(panelRect(null));
+      fillPanel(rec);
+      fitPanel(rec, panelRect(null));
+    }
+    var P = panelRect(rec);
+    sizeBoxes(P);
+    var stop = fade ? function () {} : startSampling();
 
     function finish() {
       if (!moved || !built) return;
@@ -1764,12 +1844,11 @@
         rec.tile.style.visibility = 'hidden';
       }
       busy = false;
+      // The content may have changed height since last time: the box follows, at once.
+      refitOpen();
     }
 
     // Start state, then one style flush, then the transitions (FLIP).
-    panelEl.className = 'panel is-shown';
-    panelEl.style.transition = 'none';
-    panelEl.style.opacity = '0';
     panelEl.style.transform = fade ? IDENTITY : panelStart(T, P);
     ghostEl.style.transition = 'none';
     ghostEl.className = 'ghost';
@@ -1807,12 +1886,8 @@
 
     afterFrame(function () {
       var t0 = now();
-      try {
-        drawPanelHead();
-        setPanelSub(rec.ctx.config.sub || rec.w.sub || '');
-        drawPanelBody(false);
-      } catch (e) {
-        if (window.console && console.warn) console.warn('Panel build: ' + (e && e.message));
+      if (!prebuilt) {
+        fillPanel(rec);
       }
       skip = [t0, now()];
       panelEl.style.opacity = '1';
@@ -1821,6 +1896,17 @@
       built = true;
       finish();
     });
+  }
+
+  // The panel's head and content for rec (open is rec already).
+  function fillPanel(rec) {
+    try {
+      drawPanelHead();
+      setPanelSub(rec.ctx.config.sub || rec.w.sub || '');
+      drawPanelBody(false);
+    } catch (e) {
+      if (window.console && console.warn) console.warn('Panel build: ' + (e && e.message));
+    }
   }
 
   // The mirror of opening: the content fades out quickly while shrinking
@@ -1867,7 +1953,7 @@
     }
 
     var ms = 280;
-    var P = panelRect();
+    var P = panelRect(rec);
     var T = rec.home || rectOf(rec.tile);
     var stop = startSampling();
     rec.cell.classList.add('is-raised');
@@ -1907,7 +1993,7 @@
 
     function sizeGhost() {
       ghostEl.className = 'ghost' + (next === 'full' ? ' is-full' : '');
-      placeFloatingGlass(ghostEl);
+      sizeBoxes(next === 'full' ? null : panelRect(rec));
     }
 
     setOpacity(panelEl, 0, 80);
