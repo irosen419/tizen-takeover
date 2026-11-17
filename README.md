@@ -223,6 +223,8 @@ The words follow the hub's Language (Spanish in `app/i18n.js` under `todo.*`: Pa
 
 **Coming up lead:** a passive item shows under Coming up from 2 days before its due date, unless it has its own lead: a whole number of days from 0 to 30 (0 means only on the day it is due). Set it from the Pi with `./hub todo add "..." --level passive --due 2026-11-20 --lead 3`, `./hub todo lead "..." 3` (`--clear` goes back to 2), or the mailbox's `todo.add` with `lead` and `todo.lead` (server 0.7.0). For an older Pi server the lead rides in the notes as `[lead:3]`, which the TV reads and never shows; a `lead` field wins over the tag. Each Coming up line says when, in clean words: **Today**, **Tomorrow**, or the day and how far off it is, **Thu · in 3 days** (past a week, the date: **Nov 27 · in 10 days**; Spanish `jue · en 3 días`, key `todo.inDays`). The calendar converter sets the lead from a `TODO~:` event whose title ends in a number, such as `TODO~: School meeting 3`.
 
+**Calendar prefix:** a title may start with the calendar converter's prefix, `TODO!:` (must), `TODO:` (If you can) or `TODO~:` (passive), as in `TODO!: Take weekly shot`. The saved title keeps it, but the TV never shows it (any case, with or without a space after the colon; a title that is nothing but the prefix shows as it is). An item without a `level` field takes its level from the prefix, before any `[level:...]` tag.
+
 Done items stay under Done today until the end of the day, then they're cleared.
 
 A USB or Bluetooth keyboard plugged into the TV works too: with the box focused, just start typing, and Enter adds the item. Backspace deletes a letter while you type.

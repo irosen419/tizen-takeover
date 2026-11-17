@@ -31,6 +31,11 @@
  *     so does a lead set on the Pi
  *   - Spanish (the hub's language), and Spanish 25% longer: nothing cut
  *     sideways, room for accents (line height 1.3 or more)
+ *   - the calendar prefix ("TODO!:", "TODO:", "TODO~:", any case, spaces or
+ *     none after the colon) is never shown, in English or Spanish, but stays
+ *     in the saved title; it sets the level of an item with no level field
+ *     (before a notes tag); a title that is only a prefix shows as it is;
+ *     "Todo list for Friday" and a "TODO:" later in a title are left alone
  *
  * Prints one line per check and "N passed, M failed".
  *
@@ -451,6 +456,77 @@ async function rules(env) {
   }
 }
 
+/* ---------- the calendar prefix ---------- */
+
+async function prefixes(env) {
+  const list = [
+    { id: 'x1', title: 'TODO!: Take weekly shot', section: 'now', due: '2026-11-17', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'x2', title: 'TODO!:Take the bins out', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'x3', title: 'todo:Call the dentist', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'x4', title: 'TODO:   Buy the olive oil set', notes: 'Go back to the olive oil store.', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'x5', title: 'Todo list for Friday', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'x6', title: 'Ask about TODO: later', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'x7', title: 'TODO~: Concert tickets on sale Fri', section: 'now', due: '2026-11-19', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'x8', title: 'Todo~:Passive, no date', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'x9', title: 'TODO!:', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'xa', title: 'TODO~: Level field wins', level: 'must', section: 'now', done: false, doneAt: null, createdAt: CREATED },
+    { id: 'xb', title: 'TODO!: Prefix beats the tag', notes: 'Soon. [level:passive] [cal:abc@2026-11-17]', section: 'now', done: false, doneAt: null, createdAt: CREATED }
+  ];
+  // As saved (spaces tidied), in any order (Move puts an item last).
+  const before = JSON.stringify(list.map((i) => i.title.replace(/\s+/g, ' ')).sort());
+  for (const lang of ['en', 'es']) {
+    const page = await env.newPage({ layout: LAYOUT, live: 'off', at: TIMES['6pm'], motion: 'push', lang: lang === 'es' ? 'es' : undefined, storage: storage(list) });
+    try {
+      let s = await look(page);
+      const strip = lang === 'es' ? '5 tareas clave para hoy: Take weekly shot' : '5 must-dos today: Take weekly shot';
+      await check(lang + ' prefix: the tile strip and rows show titles without it', async () => {
+        assert(s.tile.alert === strip, 'strip: ' + s.tile.alert);
+        assert(s.tile.rows.length > 0 && s.tile.rows.every((r) => !/^todo[!~]?:./i.test(r.title)), JSON.stringify(s.tile.rows));
+        assert(s.tile.rows[0].title === 'Take weekly shot' && s.tile.rows[0].lv === 'must', JSON.stringify(s.tile.rows[0]));
+        assert(s.tile.foot[0].indexOf('Concert tickets on sale Fri') === 0, 'foot: ' + JSON.stringify(s.tile.foot));
+        assert(!s.bad.length, s.bad.join(' | '));
+      });
+      await H.openPanel(page, 'todo');
+      s = await look(page);
+      await check(lang + ' prefix: the panel hides it, and it sets the level', async () => {
+        const sec = (k) => s.panel.secs.find((x) => x.key === k).rows.map((r) => r.title).join('|');
+        assert(s.panel.alert === strip, 'strip: ' + s.panel.alert);
+        assert(sec('must') === 'Take weekly shot|Take the bins out|TODO!:|Level field wins|Prefix beats the tag', 'must: ' + sec('must'));
+        assert(sec('optional') === 'Call the dentist|Buy the olive oil set|Todo list for Friday|Ask about TODO: later', 'optional: ' + sec('optional'));
+        assert(s.panel.foot.map((f) => f.title).join('|') === 'Concert tickets on sale Fri|Passive, no date', 'foot: ' + JSON.stringify(s.panel.foot));
+        const must = s.panel.secs.find((x) => x.key === 'must').rows;
+        assert(must[4].notes === 'Soon.', 'notes ' + must[4].notes);
+        const opt = s.panel.secs.find((x) => x.key === 'optional').rows;
+        assert(opt[1].notes === 'Go back to the olive oil store.', 'notes ' + opt[1].notes);
+        assert(!s.bad.length, s.bad.join(' | '));
+      });
+      if (lang === 'en') {
+        await check('prefix: Move on a prefixed item sets its level field and keeps the title', async () => {
+          await page.evaluate(() => document.querySelector('#panel [data-key="move:x1"]').click());
+          await H.sleep(150);
+          const it = await page.evaluate(() => JSON.parse(localStorage.getItem('homeHub.todo.v1')).items.find((x) => x.id === 'x1'));
+          assert(it.level === 'optional' && it.title === 'TODO!: Take weekly shot', JSON.stringify(it));
+        });
+      }
+      await H.fullScreen(page);
+      s = await look(page);
+      await check(lang + ' prefix: full screen hides it too', async () => {
+        const all = s.panel.secs.reduce((a, x) => a.concat(x.rows.map((r) => r.title)), []).concat(s.panel.foot.map((f) => f.title));
+        assert(all.filter((t) => /^todo[!~]?:\s*\S/i.test(t)).length === 0, JSON.stringify(all));
+        assert(!s.bad.length, s.bad.join(' | '));
+      });
+      await check(lang + ' prefix: the saved titles still have it', async () => {
+        const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('homeHub.todo.v1')).items.map((i) => i.title.replace(/\s+/g, ' ')).sort());
+        assert(JSON.stringify(saved) === before, JSON.stringify(saved));
+      });
+      const errors = H.errorsOf(page, true);
+      await check(lang + ' prefix: no page errors', async () => { assert(!errors.length, errors.join(' | ')); });
+    } finally {
+      await page.ctx.close();
+    }
+  }
+}
+
 /* ---------- with the Pi ---------- */
 
 async function withPi(env) {
@@ -506,6 +582,7 @@ async function withPi(env) {
   const env = await H.start({ snapshot: false, calendars: false, at: TIMES['3pm'] });
   try {
     await rules(env);
+    await prefixes(env);
     await times(env, 'en');
     await times(env, 'es');
     await withPi(env);

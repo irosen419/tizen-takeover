@@ -29,6 +29,11 @@
  * "cal:" (the calendar converter's own marks) are never shown, in notes or
  * in titles.
  *
+ * The calendar converter keeps its prefix in the title: "TODO!:" (must),
+ * "TODO:" (optional), "TODO~:" (passive), as in "TODO!: Take weekly shot".
+ * The saved title keeps it; the TV never shows it (shownTitle), and an item
+ * without a "level" field takes its level from it (before any notes tag).
+ *
  * Notes come only from the Pi (./hub todo add --notes, the mailbox's
  * todo.add and todo.notes); the TV shows them under the title, quietly, and
  * shows nothing at all for an item without notes. The TV never edits them,
@@ -144,6 +149,9 @@
   var TAG_LEVEL = /\[level:(must|optional|passive)\]/;
   var TAG_LEAD = /\[lead:(\d{1,2})\]/;
   var TAGS = /\s*\[(?:level|lead|cal):[^\]]*\]/g;
+  // A leading "TODO!:", "TODO:" or "TODO~:" (any case, spaces after the colon).
+  var PREFIX = /^\s*todo([!~]?):\s*/i;
+  var PREFIX_LEVEL = { '!': 'must', '': 'optional', '~': 'passive' };
 
   // 24x24 line icons, same style as icons.js.
   function svg(body, width) {
@@ -246,10 +254,13 @@
     return dayOf(d);
   }
 
-  // An item's level: its level field, else a "[level:...]" tag in its
-  // notes (from a Pi too old to take the field), else optional.
+  // An item's level: its level field, else the calendar prefix of its
+  // title, else a "[level:...]" tag in its notes (from a Pi too old to take
+  // the field), else optional.
   function levelOf(item) {
     if (LEVELS.indexOf(item.level) >= 0) return item.level;
+    var p = typeof item.title === 'string' ? PREFIX.exec(item.title) : null;
+    if (p) return PREFIX_LEVEL[p[1]];
     var m = typeof item.notes === 'string' ? TAG_LEVEL.exec(item.notes) : null;
     return m ? m[1] : 'optional';
   }
@@ -265,14 +276,17 @@
     return isLead(n) ? n : COMING_UP_DAYS;
   }
 
+  // The title as shown: without a leading calendar prefix (the saved title
+  // keeps it). A title that is only a prefix shows as it is.
+  function shownTitle(item) {
+    var title = typeof item.title === 'string' ? item.title : '';
+    var rest = tidy(title.replace(PREFIX, '').replace(TAGS, ' '));
+    return rest || title;
+  }
+
   // Notes as shown: without the machine tags.
   function shownNotes(item) {
     return typeof item.notes === 'string' ? tidy(item.notes.replace(TAGS, ' ')) : '';
-  }
-
-  // A title as shown: a stray machine tag in it is left out too.
-  function shownTitle(item) {
-    return tidy(item.title.replace(TAGS, ' ')) || item.title;
   }
 
   /* ---------- store ---------- */
