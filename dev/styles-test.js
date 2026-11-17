@@ -18,13 +18,14 @@ var CSS = fs.readFileSync(path.join(__dirname, '..', 'app', 'widgets', 'weather.
 function assert(ok, text) { if (!ok) throw new Error(text); }
 
 // kind: fail | cut | empty; times: how many fetches of weather.css break (Infinity = all).
-async function open(browser, kind, times) {
+async function open(browser, kind, times, file) {
+  var which = new RegExp('widgets/' + (file || 'weather') + '\\.css');
   var page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   var seen = 0;
   await page.route('**/*', function (route) {
     var u = route.request().url();
     if (!/127\.0\.0\.1|localhost/.test(u)) return route.abort();
-    if (/widgets\/weather\.css/.test(u)) {
+    if (which.test(u)) {
       seen += 1;
       if (seen <= times) {
         if (kind === 'fail') return route.abort();
@@ -102,6 +103,14 @@ var CHECKS = [
     await o.page.waitForTimeout(6500);
     var s = await look(o.page);
     assert(o.fetches() === 2 && s.inside && s.links === 7, o.fetches() + ' ' + JSON.stringify(s));
+    await o.page.close();
+  }],
+  ['Any stylesheet is covered: Now Playing's fails twice and is fetched again', async function (browser) {
+    var o = await open(browser, 'fail', 2, 'nowplaying');
+    await o.page.waitForTimeout(6500);
+    var s = await look(o.page);
+    assert(o.fetches() === 3 && s.links === 7 && s.order === ORDER, o.fetches() + ' ' + JSON.stringify(s));
+    assert(s.status === 'widgets/nowplaying.css loaded on a later try', s.status);
     await o.page.close();
   }],
   ['A stylesheet that never arrives: four fetches, then the About panel says so', async function (browser) {
