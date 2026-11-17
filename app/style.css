@@ -1150,3 +1150,6 @@ body.has-picture {
   .fx-act-dot { opacity: 1; }
   .fx-edge { display: none; }
 }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }

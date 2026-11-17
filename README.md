@@ -110,16 +110,17 @@ Press OK on it to open the Clock page. At the top right of the page are the choi
 
 - **Face:** **Digital** (a big time with the full date under it, the default) or **Analog** (a round face with ticks and 12, 3, 6 and 9, the day and date in a small window in its lower half, and the date beside it, with no digital time). The second hand steps once a second; nothing sweeps.
 - **Clock:** **12-hour** (`9:41 PM`, the default) or **24-hour** (`21:41`), on the page and the tile. Only shown with the Digital face; on Analog it doesn't apply, and is kept for when you go back to Digital.
+- **Language:** **English** (the default) or **Español** (Latin American Spanish), the hub's language, on both faces. The label turns into **Idioma**; the two names always stay in their own language, so you can find your way back. Today it changes Word of the day (its title, labels and definitions) and the money tiles: Earned vs spent, Daily room, Card day, Goals and the "New charge" banner (their titles, words and dates; amounts stay `$1,265`, and goal names, transfer labels and merchants stay as the budget app sends them). The Clock itself, the other A World Worth Saving tiles and the hub's own buttons stay in English for now. Set it on the Clock page; `?lang=es` on the page's address tries it for one load without saving.
 
-The tile changes as soon as you pick, behind the page. Both choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
+The tile changes as soon as you pick, behind the page. All three choices are remembered on this TV. **Full screen** makes the clock as large as the screen allows. Back closes the page, as everywhere.
 
 ### About panel (the version and status)
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.29.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather).
+- **This hub:** **Version** (for example `v0.28.6 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), then **Weather picture** when the weather picture is still or off (see Weather).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
-- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, how long a frame takes to draw (`3.1 ms a frame`), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
+- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `sharp`, `sharp-lite`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, at the canvas levels how long a frame takes to draw (`14 ms a frame`; a 30 fps frame has 33 ms, so this shows the headroom), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
 
 Everything in it changes by itself, once a second, while it is open. It doesn't count as busy: the wanderers keep coming while it is open, behind it. `HUB_TEST.about` (`open()`, `close()`, `isOpen()`, `rows()`) reads it in a laptop browser and in the tests.
@@ -162,6 +163,12 @@ The tile shows the city, the temperature and the sky now, and today's high, low 
 If the TV can't draw it smoothly, the picture stays but stands still ("calm"). The hub decides by itself: it counts the frames a second the page really draws with the picture moving, 6 seconds after it starts, and goes still under 30 (the result is kept on the TV for 6 hours and for this build), or straight away when the hub has already fallen back to plain fades. The About panel's **Weather picture** row appears only when the picture is not moving, and says why: `Still, this TV drew 14 frames a second`, `Still, the hub is on plain fades`, `Still, set to calm (config)` or `Off (URL)`. A moving picture is plain to see, so it gets no row. To decide by hand, set `widgets.weather.scene` in `config.js` to `'calm'` (always still), `'full'` (always moving) or `'off'` (no picture), or add `?weatherscene=calm` (`full`, `off`) to the page's address. To preview a kind on a laptop, add `?wxscene=rain-3`, `snow-2-night`, `storm`, `clear-dusk`, `partly-day`, `cloudy-wind`... (kinds: clear, mostlyclear, partly, cloudy, fog, drizzle, rain, snow, storm; levels 1 to 3; then `day`, `night`, `dawn`, `dusk`, `wind`). `node dev/weather-scene-test.js` checks all of it.
 
 Forecasts come from [Open-Meteo](https://open-meteo.com/), which is free and needs no account. The panel credits it, as its licence asks. The TV asks Open-Meteo directly; if the TV's browser can't reach it, the hub's local helper (`service.js`) asks for it. The forecast updates every 20 minutes while the hub is on screen, and right away when you come back to the hub after a while. When it can't update, the tile keeps the last forecast and says "as of" and the time it was fetched. After 24 hours without an update the old forecast is dropped and the tile says "No forecast right now" with the time of the next try. **Update now** in the panel tries at once. If the TV's clock jumps back, the hub updates straight away instead of waiting.
+
+### Word of the day
+
+One Spanish word or phrase a day (Latin American Spanish), with its English, from `app/wotd-data.js`: 366 entries, picked by the TV's local day of the year (1 January is the first), so the word stays the same all day and changes just after midnight. They start easy (A1, January to March), then A2 (April to August) and reach B1 by December, with seasonal words near their days (Día de Muertos, Acción de Gracias, Nochebuena). Nouns carry their article (el, la, los, las).
+
+The Spanish word is always the big one and the English the smaller companion. A 1-column tile shows only the Spanish word; a strip shows "darse cuenta · to realize" on one line; two rows add the part of speech and the Spanish example; three rows add how to say it ([DAHR-seh KWEN-tah]), the definition and the example's English. OK opens everything: the date and level, both definitions and both examples; Full screen makes it bigger. With the hub in Spanish (Language on the Clock page) the title, labels, date and first definition are Spanish (Palabra del día). `node dev/wotd-test.js` checks it (see [Preview and test](#preview-and-test)).
 
 ## To-do
 
@@ -229,11 +236,13 @@ It plays six scenes, a phrase each (16 or 32 beats), in an order that belongs to
 
 It follows the song's **vibe**, which the Pi looks up once per song (see "Spotify" in [pi/README.md](pi/README.md)): the tempo sets the beat (a brief kick in width, brightness and zoom; never faster than 2.5 a second, so fast songs kick on every other beat), energy how many pens and sparks, how thick and bright and how fast the trails move, danceability against acousticness whether it leans to the sharp scenes (tunnel, kaleidoscope, starburst) or the flowing ones (spirograph, ribbons, lattice), and mood (valence) how far the colors swing round the album's hues. The intensity eases in at the start of the song, swells and settles at the end. Everything is timed from the song's position, so a seek lands in the right scene; paused, it settles into a still picture and stops drawing; the next song morphs out of the last one. There is no sound to react to (Spotify sends none): it moves at the song's speed and feel, not to its actual beats. A "124 BPM" chip shows when the tempo is the song's real one. A song with no vibe (a podcast, a song ReccoBeats doesn't know, the lookups turned off) gets a gentle 100 BPM; a song known only by its artist's genres gets a guess. When the picture can't be read for colors, the mood picks them.
 
-It draws on a canvas, stretched over the screen: each frame, the last one is drawn back a little zoomed and turned and faded into a deep tint of the album's main color, then a few new shapes go on top. At the top level (`radiant`, since v0.26.0) the canvas is 960 × 540, every line gets a soft wide halo under its sharp core, glowing sparks and drifting motes of light (three depths, brighter on the beat) are stamped on, a bloom (the picture shrunk and stretched back over itself) is added on a second canvas so it never feeds back into the trails, and a soft dark vignette rests the edges. It aims for 60 frames a second and drops to 30 when drawing a frame takes more than 11 ms. A frame that takes more than 24 ms steps it down at once; otherwise, after it starts it times its own frame rate twice, and two poor results step it down one level. The answer is remembered on this TV until the next version:
+It draws on a canvas, stretched over the screen: each frame, the last one is drawn back a little zoomed and turned and faded into a deep tint of the album's main color, then a few new shapes go on top. At the top level (`radiant`, since v0.26.0) the canvas is 960 × 540, every line gets a soft wide halo under its sharp core, glowing sparks and drifting motes of light (three depths, brighter on the beat) are stamped on, a bloom (the picture shrunk and stretched back over itself) is added on a second canvas so it never feeds back into the trails, and a soft dark vignette rests the edges. It aims for 60 frames a second and drops to 30 when drawing a frame takes more than 11 ms. A frame that takes more than 24 ms steps it down at once; otherwise, after it starts it times its own frame rate twice, and two poor results step it down one level. Below it, `sharp` and `sharp-lite` (since v0.28.3) keep the big canvas, or most of it, at 30 frames a second and shown as it is, without the bloom, halos and motes: the trails fade a little sooner and move a little less per frame and the new lines go on stronger, so lines stay crisp instead of going soft as at `classic`. Every canvas level keeps track of how long a frame takes; a step down from one skips a rung above `classic` whose frame, estimated from that (by its pixels, and about a quarter of the cost once radiant's extras are gone), would take over 28 ms. `classic` and below are always tried. The answer is remembered on this TV until the next version:
 
 | Level | What it shows |
 |---|---|
 | `radiant` | 960 × 540, 60 fps (30 when slower); halos, sparks, motes, bloom and vignette |
+| `sharp` | 960 × 540 at 30 fps, one canvas shown as it is; crisp lines over shorter trails, glowing sparks |
+| `sharplite` | 720 × 405 at 30 fps, the same with three quarters of the shapes and plain sparks (shown as `sharp-lite`) |
 | `classic` | 480 × 270 at 30 fps (the v0.21.0 look); where lines cross their colors add up toward white |
 | `lite` | 320 × 180 at 24 fps, fewer pens and sparks, plain colors |
 | `glow` | soft glows that drift, moved by the graphics chip alone; the card stays |
@@ -241,15 +250,15 @@ It draws on a canvas, stretched over the screen: each frame, the last one is dra
 
 The plainest motion setting (`fade`) starts at the still wash.
 
-- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'radiant'`, `'classic'`, `'lite'`, `'glow'` or `'wash'` to fix a level; `'full'` means `'radiant'`). Off, the page is the big picture layout as before.
-- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow`, `?viz=lite`, `?viz=classic` or `?viz=radiant` (`?viz=full` is the same as `radiant`) to the address.
+- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'radiant'`, `'sharp'`, `'sharplite'`, `'classic'`, `'lite'`, `'glow'` or `'wash'` to fix a level; `'full'` means `'radiant'` and `'sharp-lite'` means `'sharplite'`). Off, the page is the big picture layout as before.
+- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow`, `?viz=lite`, `?viz=classic`, `?viz=sharplite`, `?viz=sharp` or `?viz=radiant` (`?viz=full` is the same as `radiant`, `?viz=sharp-lite` as `sharplite`) to the address.
 - **See what it chose:** the About panel's **Visualizer** row.
 
 ![Now Playing full screen: the kaleidoscope scene on an upbeat song, with the song card in the upper left](docs/screenshots/nowplaying-viz-upbeat.jpg)
 
 ## A World Worth Saving
 
-Five tiles for the book project, all with a globe icon. They read two things from the hub server on the Raspberry Pi:
+Six tiles for the book project, all with a globe icon. They read two things from the hub server on the Raspberry Pi:
 
 - **Calendars, by name.** Visits come from the calendar named "School Visits"; project dates from "A World Worth Saving". Any other calendar on the Pi (the family one, say) never shows on these tiles. The names are in `app/config.js`, under `widgets.awws.calendars`.
 - **A snapshot of the project**, sent to the Pi by a Claude sync through the mailbox, or by hand with `./hub awws set` (the file is described in [docs/awws-snapshot.md](docs/awws-snapshot.md)): the to-do board, handoffs, librarians, books, the rewrite, money and reach. Each copy that arrives is checked and the tiles redraw only when what they show changes.
@@ -264,13 +273,17 @@ The tiles:
 - **To-do board** (`awws-todo`): how many Now items are yours, the overdue count in amber, then the items with their owner (Ian, Claude or Both), due date and what they wait on.
 - **Reach** (`awws-reach`): site visits this week as the big number, up or down from last week, and a line of the last 14 days; then buy clicks, flier scans by school, and newsletter subscribers with the day they were last counted. Subscribers are counted by hand for now, so today it shows "2 subscribers, at last check Nov 16"; the visits take over as the big number once the sync sends them. Its panel has each figure with a longer trend.
 
-Librarians, Books and Money (`awws-outreach`, `awws-pipeline`, `awws-money`) hold their spot with a "Soon" tag for now. [docs/tile-sizes.md](docs/tile-sizes.md) says what each tile shows at each size.
+- **Earned vs spent** (`awws-money`): the net so far this month, big, green when it is up and coral when it is down; "earned $1,265 · spent $1,841"; then a pair of bars per month (earned green, spent coral) and, on a tall tile, the next transfer. It never shows a balance. It is on the **AWWS money** layout.
+
+Librarians and Books (`awws-outreach`, `awws-pipeline`) hold their spot with a "Soon" tag for now. [docs/tile-sizes.md](docs/tile-sizes.md) says what each tile shows at each size.
 
 Reach is a real tile but is on no layout yet. To place it, on the Pi run `./hub layout show`, change one tile in the list to `{"widget": "awws-reach", "x": 9, "y": 3, "w": 3, "h": 3}` (any free spot and size), and send the list back with `./hub layout set layout.json`. The Glance's panel opens Reach as well.
 
 ![Reach at every size, with visits, buy clicks, scans and subscribers](docs/screenshots/awws-sizes-reach-a.jpg)
 
-Two layouts in the switcher use them: **AWWS desk** (above) and **AWWS one screen**, the Glance as a big dashboard with Today, Weather and Calendar beside it. **Main** keeps the Glance at 3 × 4.
+Three layouts in the switcher use them: **AWWS desk** (above), **AWWS one screen**, the Glance as a big dashboard with Today, Weather and Calendar beside it, and **AWWS money**, the Glance, Earned vs spent and the To-do board with Calendar and Entertainment.
+
+![AWWS money: the Glance, Earned vs spent with its month bars, the To-do board, Calendar and Entertainment](docs/screenshots/awws-layout-money.jpg) **Main** keeps the Glance at 3 × 4.
 
 ![AWWS one screen: the Glance as a dashboard of four parts](docs/screenshots/awws-layout-one-screen.jpg)
 
@@ -293,7 +306,7 @@ widgets: {
 }
 ```
 
-`showMoney: true` adds a money line ("Spent $1,841 · earned $1,265") to the Glance's list and dashboard. Ian said yes to money on the TV on 2026-11-16; set it to `false` to keep money figures off the TV (for guests, say). Every word on the tiles is in one `STRINGS` object at the top of `app/widgets/awws.js`; `window.HUB_AWWS_STRINGS` replaces any of them (the tests use it to try the tiles in Spanish, which runs about a quarter longer).
+`showMoney: true` adds a money line ("Spent $1,841 · earned $1,265") to the Glance's list and dashboard and fills Earned vs spent. Ian said yes to money on the TV on 2026-11-16; set it to `false` to keep money figures off the TV (for guests, say): the line goes and Earned vs spent says "Money is hidden". Every word on the tiles is in one `STRINGS` object at the top of `app/widgets/awws.js`; `window.HUB_AWWS_STRINGS` replaces any of them (the tests use it to try the tiles in Spanish, which runs about a quarter longer).
 
 To try it on a laptop, with `node dev/preview.js` running, send the sample snapshot to the preview's hub server:
 
@@ -306,6 +319,25 @@ Add `--reach subscribers` to `node dev/awws-sample.js` (only the hand-counted su
 The preview's sample calendars aren't named "School Visits", so Next visit says that calendar is missing; the tests and screenshots bring their own.
 
 `node dev/awws-test.js` runs the real hub and the real hub server from `pi/` in a headless browser (Playwright), with the clock fixed at Monday 16 November 2026, 10:40 AM in Chicago and the sample calendars and snapshot from `dev/awws-sample.js`. It checks every AWWS tile at 11 sizes in English and in Spanish (no console errors, never blank, nothing clipped, no type under 0.85rem on a tile or 1rem in a panel), that a Family event never shows, the countdown across midnight in Chicago (with the TV in Chicago and in Tokyo), overdue in amber, a calendar without a snapshot and the other way round, an old Pi with no snapshot, broken snapshots and a broken saved copy, the same snapshot sent twice, the Glance's list and Back, the owner filter, full screen, and the layout switcher with five layouts. For Reach it checks every size in both languages with subscribers alone, traffic alone and both, its panel and full screen, no reach section, and the Glance opening it; and that `showMoney` shows and hides the money line. It needs port 8095 free.
+
+`node dev/money-test.js` does the same for Earned vs spent and the budget tiles: every size in English and Spanish, the panels and full screen, the colors (green up, coral down; amber, coral and green for the room), old data dimmed with "as of", `showMoney: false` and `budget.show: false`, the "New charge" banner (OK and Back dismiss it, a dismissed one stays gone after a reload), the AWWS money and Budget layouts, and the empty states. It needs port 8095 free.
+
+`node dev/money-i18n-test.js` checks the same tiles with the hub in Spanish (`homeHub.lang`): the Spanish titles, words and dates from `app/i18n.js`, amounts and the budget app's own text left as sent, every tile at 11 sizes and each panel and full screen with the real Spanish and again with every Spanish money string 25% longer (with Á, É, ñ, ¿ and ¡), the empty states and the banner in Spanish, and a language change redrawing the tiles, their titles and an open panel. `--shots <folder>` also saves the `docs/screenshots/money-en-*` and `money-es-*` pictures. It needs port 8095 free.
+
+## Budget
+
+Three tiles with a wallet icon, filled by the budget app on the Pi. The app works out the totals and sends them to the hub server on the same Pi (`POST /api/budget` with the token); nothing goes through the cloud. The shape is in [docs/budget-snapshot.md](docs/budget-snapshot.md). Only totals ever reach the TV: never a balance, a transaction list or an amount on an alert.
+
+- **Daily room** (`budget-room`): what is left to spend per day, big; amber when it is under the daily cap, coral below zero, green at the cap. A bar of the cap, "of $60 a day · 9 days left", "through Tue, Nov 24", and what it will be once a pending refund posts.
+- **Card day** (`budget-card`): "Thu, Nov 19 · in 3 days", then "Covered" in green or "Short by $120" in coral, the transfers that cover it and the next paycheck.
+- **Goals** (`budget-goals`): one row per goal with a bar, green when clean or under, blue on pace, coral when over.
+- **New charge**: when the app reports a charge at a merchant that was cut, a banner across the top says "New charge: Corner Bakery Stand" (never the amount). OK or Back on the home screen dismisses it; the TV remembers which it has shown.
+
+![The New charge banner across the top of the screen](docs/screenshots/budget-banner.jpg)
+
+![The Budget layout: Daily room, Card day and Goals with Calendar, Today and Entertainment](docs/screenshots/budget-layout.jpg)
+
+The **Budget** layout in the switcher places the three tiles with Calendar, Today and Entertainment. Until the app sends anything the tiles say "Waiting for the budget app"; after 2 hours without a new snapshot they say "as of 9:10 AM" and dim. `widgets.budget.show: false` in `app/config.js` hides it all on that TV. On the Pi, `./hub budget show` says when the last snapshot came and what is in it (dates, counts and states only), and `./hub budget clear` removes it. To try it in the preview: `node dev/budget-sample.js | HUB_TOKEN=preview-token-not-a-secret-000000 node pi/hubctl.js budget set -`.
 
 `node dev/awws-shots.js` takes the `docs/screenshots/awws-*` pictures, each in English and in Spanish (`-es`): the layouts, the size sheets, the panels and the states. A layout holds each widget once, so the Reach size sheets are put together from one page per tile. `--out <folder>` saves them elsewhere, `--scale 2` doubles the pixels, `--only <text>` takes only the shots whose name holds the text, and `--clip <folder>` records a short walk through the tiles into that folder instead of the pictures (mp4 with ffmpeg, otherwise webm).
 
@@ -357,6 +389,8 @@ The preview's hub server also reads four sample calendars from a small local fee
 
 `node dev/clock-test.js` checks the Clock tile in a headless browser (Playwright): Digital 12-hour and 24-hour, Analog with no digital time, the tile changing at once when the face or clock is picked on the page, the page on Analog without a digital time or the 12/24 choice (and the arrows still fine), the second hand turning once a second from one timer that stops on Digital, and the date window fitting at 13 tile sizes, in English and in Spanish ("SÁB", "MIÉ"). `CLOCK_TEST_SHOTS=<folder>` also saves screenshots and a short clip (needs ffmpeg). It needs port 8095 free.
 
+`node dev/wotd-test.js` checks Word of the day and the hub's languages in a headless browser (Playwright): `app/i18n.js` (Spanish strings, the English fallback for a missing key, `{vars}`, the saved choice, `?lang=es`, a TV whose storage throws, its own Spanish day and month names), the 366 words (every field, an article on every noun), the pick by local day of the year (all day, both 2026 clock changes, a new word at midnight), and the tile at 12 sizes in English and Spanish with every word at the tight sizes: nothing outside the tile, nothing cut sideways, no type under 0.85rem, line heights with room for accents, ¿ and ¡. Then the panel and full screen for every word in both languages, and a language change redrawing the tile and the open panel. `--shots <folder>` also saves the `docs/screenshots/wotd-*` and `clock-language-*` pictures. It needs port 8095 free.
+
 `node dev/layout-test.js` checks the tile layout sent from the Pi (`./hub layout set`, see `pi/README.md`) the same way: a saved layout at start, tiles that move in place with focus and glass following, waiting while a panel is open, one reload for a new set of widgets, and no reload loop. It also needs port 8095 free.
 
 `node dev/motion-test.js` checks the [motion extras](#motion-extras) the same way: with the switches off nothing extra is added (no element, no class); in fade mode, with a slow frame rate and after auto stepped down, each one is off; the quiet waiting tiles in English and in Spanish (one line of at least 0.85rem, room for accents, nothing cut or sticking out) while tiles with real data stay as they are; the ring on the focused tile, its glide, a held key, a layout switch and a resize; the stagger; a new to-do from a sync showing its row at once; the cover's flight both ways; the bloom; and the activity chips (off with their switch, in fade mode and on a slow TV, never for the first data after a start or for unchanged data, one chip for a new to-do that goes by itself and leaves nothing, none while the wanderers are on screen, and the Spanish words on one line in 3-column tiles). It needs port 8095 free, and it can't prove the TV's frame rate.
@@ -400,6 +434,17 @@ A widget that throws an error shows a short message instead of stopping the hub.
 
 Keep to plain ES5 JavaScript (`var`, `function`, no arrow functions or `fetch`) and animate only `transform` and `opacity`. The TV's browser is old and its graphics chip is slow.
 
+### Adding text in both languages
+
+The hub speaks English and Latin American Spanish (Language on the Clock page; `app/i18n.js`). Every word a widget shows has one English text and, next to it, one Spanish text:
+
+- **English** lives in the widget, as the fallback: `HUB_I18N.t('wotd.title', 'Word of the day')`, or in a widget's `STRINGS` object turned into the hub's language with `HUB_I18N.localize(STRINGS, 'budget')` (each text at path `p` looks up `'budget.' + p`).
+- **Spanish** goes in the `ES` table in `app/i18n.js`, under one key, in **that widget's own commented section** (`wotd.`, `budget.`, `awws.`, ...). Start a new section for a new widget. `{n}`, `{d}` and the like are filled in the same way in both languages; keep them in the Spanish.
+- **A missing Spanish key falls back to the English**, so a widget never shows a key or nothing. Adding a word in English alone is safe; it just stays English in Spanish.
+- **User data is never translated**: names, labels and texts that come from the Pi, a calendar or the budget app, and amounts (`$1,265`), are shown as sent. Weekday and month names come from `HUB_I18N` (`dayName`, `monthName`, or the `days`/`daysShort`/`months`/`monthsShort` lists that `localize` fills in), never from the browser.
+- A widget redraws on `HUB_I18N.onChange`, including its title (the hub draws titles once; see `app/widgets/budget.js` `onLang`).
+- **Check the fit**: Spanish runs longer, so every text must fit at +25% with room for á, É, ñ, ¿ and ¡ above and below (line height 1.25 or more wherever text is cut). Run the widget's language checks, for example `node dev/wotd-test.js` and `node dev/money-i18n-test.js` (it grows every Spanish money string by 25% and checks every size, the panels and full screen); a new widget's test should do the same.
+
 ## Preview on a laptop
 
 ```
@@ -421,7 +466,7 @@ It can't leave you worse off:
 - If GitHub can't be reached, the hub opens the last commit that started on this TV. A TV that has never got that far opens the branch, as it always did.
 - If a new commit breaks while starting (its page finished loading but `hub.js` never said it had started), the hub goes back to the last one that did at once, and doesn't try the broken one again for 6 hours.
 - If a new commit is slow (after 15 seconds its page is still waiting for files), the hub gives it more time, looking again every 5 seconds, up to 60 seconds in all. If it still hasn't started, the hub goes back and tries the new one again after 20 minutes.
-- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.29.0 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.19.1 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
+- Either way, before going back a notice shows for 12 seconds over the page, in large text: "Version 0.24.0 didn't start", whether it broke or was still loading and after how long, how many of its files had loaded (and which one it was still waiting for), the first error if there was one, "Going back to version 0.19.1 in 12 s", and when it will be tried again. The reason is kept, so after going back the About panel's Version check row shows it in brackets.
 - Push a fix and the fix is tried straight away: a hold is only ever for the one commit.
 - If jsDelivr doesn't have the new commit yet, the hub stays where it is and tries again at the next check.
 
@@ -434,8 +479,8 @@ The [About panel](#about-panel-the-version-and-status) says how it's going:
 | `(newest)` after the version | GitHub confirmed this is the newest commit of the branch |
 | nothing extra, no Version check row | The hub isn't running under TizenBrew (the laptop preview), or hasn't heard from GitHub yet |
 | Version check: `can't reach GitHub` | GitHub didn't answer, or refused (too many lookups). This is the newest version the TV knows of. It asks again later |
-| Version check: `a newer version didn't start (0.29.0: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
-| Version check: `a newer version didn't start (0.29.0: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.1 shows no brackets |
+| Version check: `a newer version didn't start (0.24.0: error: ...)` | The newest commit broke while starting, so the TV went back to this one. The brackets say why (the first error, or `broke while starting`). It tries again after 6 hours, or straight away when an even newer commit comes |
+| Version check: `a newer version didn't start (0.24.0: still loading after 60 s, waiting for app/clay.js)` | The newest commit was too slow to load, so the TV went back to this one. It tries again after 20 minutes, or straight away when an even newer commit comes. A version from before 0.18.1 shows no brackets |
 | Version check: `a newer version isn't ready yet` | jsDelivr can't serve the newest commit yet. It asks again at the next check |
 | Version check: `a newer version is ready` | It reloads into it once nothing is open and the remote has been left alone for 2 minutes |
 
@@ -459,8 +504,9 @@ A few files still come through jsDelivr's 12-hour branch cache: `package.json`, 
 - `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
 - `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
 - `app/config.js` holds the settings.
+- `app/i18n.js` holds the hub's languages (`HUB_I18N`: English and Latin American Spanish, with its own Spanish day and month names); a missing Spanish string falls back to the English the widget gives. Its Spanish table has one commented section per widget (`wotd.`, `budget.`, `awws.` keys); `HUB_I18N.localize(STRINGS, 'budget')` turns a widget's English STRINGS into the hub's language, so translating more of a widget is adding its keys there.
 - `app/icons.js` holds the white line icons; `app/logos.js` the app logos.
-- `app/widgets/` holds one file per widget: `today.js` (the Clock, with its page's styles in `today.css`), `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) and `planned.js` (the "Soon" placeholders).
+- `app/widgets/` holds one file per widget: `today.js` (the Clock, with its page's styles in `today.css`), `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) `wotd.js` (Word of the day, with `wotd.css`; its words are in `app/wotd-data.js`) and `planned.js` (the "Soon" placeholders).
 - `app/hub.js` builds the home screen, moves focus, opens panels and runs the animations.
 - `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
 - `app/backgrounds/` holds the background picture.

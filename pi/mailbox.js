@@ -29,6 +29,7 @@ const https = require('https');
 const crypto = require('crypto');
 const hubctl = require('./hubctl');
 const awws = require('./awws');
+const budget = require('./budget');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -543,6 +544,33 @@ const COMMANDS = {
     run: async (a, ctx) => {
       const r = await ctx.call('POST', '/api/awws', { snapshot: null });
       return { message: awws.clearText(r), data: { changed: r.changed, cleared: r.cleared } };
+    }
+  },
+  'budget.show': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/budget');
+      // Counts, dates and states only: never labels or amounts.
+      return { message: lines(hubctl.budgetShowLines(r)), data: budget.summaryData(r.data) };
+    }
+  },
+  'budget.set': {
+    // Only the shape is checked here; the server's own snapshot check decides.
+    args: { snapshot: [V.object(), true, true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/budget', { snapshot: a.snapshot });
+      const text = a.snapshot === null ? budget.clearText(r) : budget.setText(r);
+      return {
+        message: text,
+        data: { changed: r.changed, bytes: r.bytes, accepted: r.accepted, cleared: r.cleared, rejected: r.rejected }
+      };
+    }
+  },
+  'budget.clear': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/budget', { snapshot: null });
+      return { message: budget.clearText(r), data: { changed: r.changed, cleared: r.cleared } };
     }
   },
   status: {

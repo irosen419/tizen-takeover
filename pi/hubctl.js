@@ -20,6 +20,9 @@
  *   ./hub awws show                  the A World Worth Saving snapshot: when sent, size, sections
  *   ./hub awws set <file.json|->     store one (the snapshot, or { snapshot: {...} })
  *   ./hub awws clear                 remove it; the TV tiles say "Not synced yet"
+ *   ./hub budget show                the budget snapshot: when sent, size, sections (no amounts)
+ *   ./hub budget set <file.json|->   store one (the snapshot, or { snapshot: {...} })
+ *   ./hub budget clear               remove it; the TV tiles say "Waiting for the budget app"
  *   ./hub spotify status             is Spotify connected, and what is playing
  *   ./hub spotify login              connect Spotify (once): a link to open, then paste the address back
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
@@ -42,10 +45,12 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const awws = require('./awws');
+const budget = require('./budget');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
-const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach'];
+const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach',
+  'awws-money', 'budget-room', 'budget-card', 'budget-goals'];
 
 /* ---------- settings ---------- */
 
@@ -447,7 +452,8 @@ function awwsShowLines(r) {
   return awws.summaryLines(r && r.data, { when: (ms) => when(ms, tz) });
 }
 
-function readAwwsFile(name) {
+// kind: 'snapshot' words for the errors; clearCmd: how to remove it instead.
+function readAwwsFile(name, clearCmd, example) {
   let text;
   try {
     text = name === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(name, 'utf8');
@@ -460,7 +466,8 @@ function readAwwsFile(name) {
   const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
   if (isObj(data) && own(data, 'snapshot') && !own(data, 'v')) data = data.snapshot;
   if (!isObj(data)) {
-    stop('The file must hold one snapshot, like {"v": 1, "sentAt": "2026-11-16T15:10:00Z", "todos": {...}}, or {"snapshot": {...}}. To remove it, use ./hub awws clear.');
+    stop('The file must hold one snapshot, like {"v": 1, "sentAt": "2026-11-16T15:10:00Z", ' + (example || '"todos": {...}') +
+      '}, or {"snapshot": {...}}. To remove it, use ./hub ' + (clearCmd || 'awws') + ' clear.');
   }
   return data;
 }
@@ -485,6 +492,36 @@ async function awwsCommand(args) {
     return;
   }
   stop('Use one of: awws show, awws set <file.json|->, awws clear. Run ./hub help for examples.');
+}
+
+/* ---------- budget snapshot ---------- */
+
+// The lines for ./hub budget show: times in the hub's time zone, no amounts.
+function budgetShowLines(r) {
+  const tz = r && zoneOk(r.tz) ? r.tz : 'America/Chicago';
+  return budget.summaryLines(r && r.data, { when: (ms) => when(ms, tz) });
+}
+
+async function budgetCommand(args) {
+  const sub = args[0];
+  if (sub === 'show') {
+    const r = await call('GET', '/api/budget');
+    budgetShowLines(r).forEach(say);
+    return;
+  }
+  if (sub === 'set') {
+    const name = args[1];
+    if (!name) stop('Say which file holds the snapshot, or - to read it from standard input. For example: ./hub budget set budget.json');
+    const r = await call('POST', '/api/budget', { snapshot: readAwwsFile(name, 'budget', '"room": {...}') });
+    say(budget.setText(r));
+    return;
+  }
+  if (sub === 'clear') {
+    const r = await call('POST', '/api/budget', { snapshot: null });
+    say(budget.clearText(r));
+    return;
+  }
+  stop('Use one of: budget show, budget set <file.json|->, budget clear. Run ./hub help for examples.');
 }
 
 /* ---------- Spotify ---------- */
@@ -714,8 +751,8 @@ async function mailbox(args) {
 const HELP = [
   'Home Hub commands (run from the pi folder):',
   '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying,',
-  '                              today (the clock), awws, awws-visits, awws-agenda, awws-todo',
-  '                              or awws-reach',
+  '                              today (the clock), awws, awws-visits, awws-agenda, awws-todo,',
+  '                              awws-reach, awws-money, budget-room, budget-card or budget-goals',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
@@ -734,6 +771,9 @@ const HELP = [
   '  ./hub awws show             the A World Worth Saving snapshot: when sent, size, sections',
   '  ./hub awws set file.json    store a snapshot (- reads it from input; see docs/awws-snapshot.md)',
   '  ./hub awws clear            remove it; the TV tiles say "Not synced yet"',
+  '  ./hub budget show           the budget snapshot: when sent, size, sections (no amounts)',
+  '  ./hub budget set file.json  store a budget snapshot (- reads it from input; see docs/budget-snapshot.md)',
+  '  ./hub budget clear          remove it; the TV tiles say "Waiting for the budget app"',
   '  ./hub spotify status        is Spotify connected, and what is playing',
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
@@ -772,6 +812,7 @@ async function main(argv) {
   if (cmd === 'calendar') return calendar(rest);
   if (cmd === 'layout') return layout(rest);
   if (cmd === 'awws') return awwsCommand(rest);
+  if (cmd === 'budget') return budgetCommand(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
@@ -796,6 +837,7 @@ module.exports = {
   layoutSetText: layoutSetText,
   layoutResetText: layoutResetText,
   awwsShowLines: awwsShowLines,
+  budgetShowLines: budgetShowLines,
   statusLines: statusLines,
   mailboxLines: mailboxLines,
   spotifyStatusLines: spotifyStatusLines,

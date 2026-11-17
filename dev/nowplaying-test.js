@@ -21,7 +21,8 @@
  * boundaries; the off switches and the still wash keep the big layout; the
  * glow level animates only transform and opacity; the mood colors when the
  * picture cannot be read; a new song morphs on the same canvas; the
- * frame-rate check and its steps down; the About row; every file in app/ is
+ * frame-rate check and its steps down (skipping rungs by frame cost); the
+ * sharp levels; the About row; every file in app/ is
  * plain ES5; and a rough frame rate with the CPU slowed 6x (a sanity check
  * only: a desktop says little about the TV). NP_VIZ_ONLY=1 runs only these;
  * NP_GREP=<text> only the checks whose name has it.
@@ -1012,7 +1013,7 @@ async function vizChecks() {
     await s.context.close();
   });
 
-  await check('visualizer: a frame-rate check after it starts, kept per build; poor results step it down radiant, classic, lite, glow, still wash (and the big layout); the About row says so', async () => {
+  await check('visualizer: a frame-rate check after it starts, kept per build; poor results step it down radiant, sharp, sharp-lite, classic, lite, glow, still wash (and the big layout); the About row says so', async () => {
     await playSong(pi, 0);
     const s = await open(pi, ONLY(3, 2), { motion: 'push' });
     await waitTitle(s.page, 'Golden Hour Drive');
@@ -1030,9 +1031,12 @@ async function vizChecks() {
     await closePage(s.page);
     const rows = await s.page.evaluate(() => { window.HUB_TEST.about.open(); const r = window.HUB_TEST.about.rows(); window.HUB_TEST.about.close(); return r; });
     const row = rows.filter((x) => x.label === 'Visualizer')[0];
-    const name = { radiant: 'radiant', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash' }[kept.d.level];
-    const tail = kept.d.level === 'radiant' || kept.d.level === 'classic' || kept.d.level === 'lite' ? '(, [0-9.]+ ms a frame)?, [a-z]+' : '';
-    assert(row && row.group === 'Now Playing' && new RegExp('^' + name + ', \\d+ fps, 124 BPM from features' + tail + '$').test(row.value), 'About: ' + JSON.stringify(row) + ' ' + scene);
+    const name = { radiant: 'radiant', sharp: 'sharp', sharplite: 'sharp-lite', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash' }[kept.d.level];
+    // Every canvas level says how long a frame takes, even after the page closed.
+    const canvasLevel = ['radiant', 'sharp', 'sharplite', 'classic', 'lite'].indexOf(kept.d.level) >= 0;
+    const ms = canvasLevel ? ', [0-9.]+ ms a frame' : '';
+    const tail = canvasLevel ? ', [a-z]+' : '';
+    assert(row && row.group === 'Now Playing' && new RegExp('^' + name + ', \\d+ fps' + ms + ', 124 BPM from features' + tail + '$').test(row.value), 'About: ' + JSON.stringify(row) + ' ' + scene);
     await s.context.close();
     // A fresh TV whose every check comes out poor (a test hook), with short
     // checks: one step at a time, down to the still wash and the big picture.
@@ -1041,14 +1045,14 @@ async function vizChecks() {
     await t.page.evaluate(() => { window.HUB_NP_VIZ.test.timing({ after: 300, ms: 500, again: 100 }); window.HUB_NP_VIZ.test.forcePoor(true); });
     await openFull(t.page);
     const levels = [];
-    const end = Date.now() + 15000;
+    const end = Date.now() + 20000;
     while (Date.now() < end) {
       const l = (await t.page.evaluate(VIZ)).level;
       if (levels[levels.length - 1] !== l) levels.push(l);
       if (l === 'wash') break;
       await sleep(50);
     }
-    assert(levels.join(' ') === 'radiant classic lite glow wash', 'steps: ' + levels.join(' '));
+    assert(levels.join(' ') === 'radiant sharp sharplite classic lite glow wash', 'steps: ' + levels.join(' '));
     await until(async () => { const L = await layout(t.page); return !L.card && L.art && L.art.w > 450; }, 4000, 'the big picture did not come back');
     const after = await t.page.evaluate(() => ({ d: window.HUB_NP_VIZ.debug(), ls: JSON.parse(localStorage.getItem('homeHub.npViz')) }));
     assert(after.ls.level === 'wash' && after.ls.settled && !after.d.canvas && !after.d.loop, JSON.stringify(after));
@@ -1077,16 +1081,92 @@ async function vizChecks() {
     const dom = await s.page.evaluate(() => ({ canvases: document.querySelectorAll('#panel > .npv > .npv-canvas').length, vignette: document.querySelectorAll('#panel > .npv > .npv-vignette').length }));
     assert(dom.canvases === 1 && dom.vignette === 1, JSON.stringify(dom));
     const text = await s.page.evaluate(() => window.HUB_NP_VIZ.status());
-    assert(/^radiant, 124 BPM from features, [0-9.]+ ms a frame, [a-z]+ \(URL\)$/.test(text), text);
+    assert(/^radiant, [0-9.]+ ms a frame, 124 BPM from features, [a-z]+ \(URL\)$/.test(text), text);
     await leaveFull(s.page);
     const gone = await s.page.evaluate(() => document.querySelectorAll('.npv-canvas, .npv-vignette').length);
     assert(gone === 0, 'left over after leaving: ' + gone);
     await s.context.close();
   });
 
-  await check('rough smoothness with the CPU slowed 6x, radiant, classic and lite (desktop Chromium: a sanity check, not the TV)', async () => {
+  await check('visualizer: sharp is 960 x 540 and sharp-lite 720 x 405, both at 30 fps on one canvas, no bloom or second canvas; ?viz=sharp, sharplite and sharp-lite; the About row says how long a frame takes', async () => {
+    await playSong(pi, 0);
+    for (const [q, level, size, sprites] of [['sharp', 'sharp', '960x540', true], ['sharplite', 'sharplite', '720x405', false], ['sharp-lite', 'sharplite', '720x405', false]]) {
+      const s = await open(pi, ONLY(3, 2), { query: '&viz=' + q });
+      await waitTitle(s.page, 'Golden Hour Drive');
+      await openFull(s.page);
+      await until(() => s.page.evaluate(() => window.HUB_NP_VIZ.debug().frames > 30), 8000, 'canvas');
+      const d = await s.page.evaluate(VIZ);
+      assert(d.level === level && d.source === 'URL' && d.size === size && d.fpsCap === 30 && !d.bloom && d.crisp && d.lighter && d.sprites === sprites && d.loop && d.ms > 0, q + ': ' + JSON.stringify(d));
+      const dom = await s.page.evaluate(() => ({ canvases: document.querySelectorAll('#panel > .npv > canvas').length, vignette: document.querySelectorAll('.npv-vignette').length, w: document.querySelector('#panel > .npv > .npv-canvas').getBoundingClientRect().width }));
+      assert(dom.canvases === 1 && dom.vignette === 0 && dom.w === 1920, q + ': the state canvas itself, stretched: ' + JSON.stringify(dom));
+      assert((await layout(s.page)).card, q + ': with the card');
+      const text = await s.page.evaluate(() => window.HUB_NP_VIZ.status());
+      const name = level === 'sharp' ? 'sharp' : 'sharp-lite';
+      assert(new RegExp('^' + name + ', [0-9.]+ ms a frame, 124 BPM from features, [a-z]+ \\(URL\\)$').test(text), text);
+      await leaveFull(s.page);
+      // Still there once the page has closed (the About panel is read then).
+      assert(new RegExp('^' + name + ', [0-9.]+ ms a frame, 124 BPM').test(await s.page.evaluate(() => window.HUB_NP_VIZ.status())), 'after leaving');
+      await s.context.close();
+    }
+    // The config takes them too.
+    const c = await open(pi, ONLY(3, 2), { config: 'HUB_CONFIG.widgets.nowplaying = { visualizer: "sharp-lite" };', motion: 'push' });
+    await waitTitle(c.page, 'Golden Hour Drive');
+    await openFull(c.page);
+    await until(() => c.page.evaluate(() => window.HUB_NP_VIZ.debug().canvas), 5000, 'no canvas');
+    const d = await c.page.evaluate(VIZ);
+    assert(d.level === 'sharplite' && d.source === 'config', JSON.stringify(d));
+    await c.context.close();
+  });
+
+  await check('visualizer: radiant\'s quick step lands on sharp; a step down skips rungs whose estimated frame cost cannot hold 30 fps, never past classic', async () => {
+    await playSong(pi, 0);
+    // Walks from a fresh start with every frame pretending to cost `ms`,
+    // and every frame-rate check poor when `poor`; returns the levels seen.
+    async function walk(ms, poor, stop, kept) {
+      const t = await open(pi, ONLY(3, 2), { motion: 'push' });
+      await waitTitle(t.page, 'Golden Hour Drive');
+      await t.page.evaluate((o) => {
+        window.HUB_NP_VIZ.test.timing(o.poor ? { after: 300, ms: 500, again: 100 } : { after: 60000 });
+        window.HUB_NP_VIZ.test.forcePoor(o.poor);
+        window.HUB_NP_VIZ.test.cost(o.ms);
+        if (o.kept) localStorage.setItem('homeHub.npViz', JSON.stringify({ build: window.HUB_BUILD, level: o.kept, fps: 0, settled: false }));
+      }, { ms: ms, poor: poor, kept: kept || '' });
+      await openFull(t.page);
+      const levels = [];
+      let skipped = [];
+      const end = Date.now() + 20000;
+      while (Date.now() < end) {
+        const d = await t.page.evaluate(VIZ);
+        if (levels[levels.length - 1] !== d.level) { levels.push(d.level); if (d.skipped.length) skipped = skipped.concat(d.skipped); }
+        if (d.level === stop) break;
+        await sleep(30);
+      }
+      const ls = await t.page.evaluate(() => JSON.parse(localStorage.getItem('homeHub.npViz') || 'null'));
+      await t.context.close();
+      return { levels: levels.join(' '), skipped: skipped.join(' '), ls: ls };
+    }
+    // 30 ms a frame at radiant: over the quick step's 24, and sharp's
+    // estimate (30 x 0.25 = 7.5 ms) holds: sharp, at once.
+    let w = await walk(30, false, 'sharp');
+    assert(w.levels === 'radiant sharp' && w.skipped === '' && w.ls.level === 'sharp' && !w.ls.settled, JSON.stringify(w));
+    // 160 ms: sharp's estimate 40 ms is over 28, sharp-lite's 22.5 ms is not.
+    w = await walk(160, false, 'sharplite');
+    assert(w.levels === 'radiant sharplite' && w.skipped === 'sharp' && w.ls.level === 'sharplite', JSON.stringify(w));
+    // 600 ms: both are skipped, but never past classic by estimate alone.
+    w = await walk(600, false, 'classic');
+    assert(w.levels === 'radiant classic' && w.skipped === 'sharp sharplite' && w.ls.level === 'classic', JSON.stringify(w));
+    // From sharp (kept from an earlier check), 60 ms a frame and a poor
+    // frame rate: sharp-lite's estimate (60 x 0.5625 = 34 ms) is skipped;
+    // below classic every rung is tried, however slow.
+    w = await walk(60, true, 'wash', 'sharp');
+    assert(w.levels === 'sharp classic lite glow wash' && w.skipped === 'sharplite', JSON.stringify(w));
+  });
+
+  await check('rough smoothness with the CPU slowed 6x, radiant, sharp, sharp-lite, classic and lite (desktop Chromium: a sanity check, not the TV)', async () => {
     const out = [];
-    for (const [n, name, level] of [[4, 'calm', 'radiant'], [3, 'hard', 'radiant'], [4, 'calm', 'classic'], [3, 'hard', 'classic'], [4, 'calm', 'lite'], [3, 'hard', 'lite']]) {
+    const runs = [];
+    for (const level of ['radiant', 'sharp', 'sharplite', 'classic', 'lite']) runs.push([4, 'calm', level], [3, 'hard', level]);
+    for (const [n, name, level] of runs) {
       await playSong(pi, n);
       const s = await open(pi, ONLY(3, 2), { query: '&viz=' + level });
       await waitTitle(s.page, mockSpotify.SONGS[n].name);
@@ -1100,8 +1180,9 @@ async function vizChecks() {
       await sleep(3000);
       const f1 = (await s.page.evaluate(VIZ)).frames;
       const fps = Math.round((f1 - f0) * 1000 / (Date.now() - t0));
+      const ms = (await s.page.evaluate(VIZ)).ms;
       await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-      out.push(level + ' ' + name + ' ' + fps + ' fps drawn');
+      out.push(level + ' ' + name + ' ' + fps + ' fps drawn, ' + ms + ' ms a frame');
       await s.context.close();
     }
     console.log('     6x slower CPU: ' + out.join(', '));

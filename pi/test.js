@@ -211,7 +211,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.3.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.4.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -232,7 +232,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.3.0');
+    assert.strictEqual(r.json.server, '0.4.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -454,7 +454,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.3.0');
+    assert.strictEqual(r.json.server, '0.4.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
@@ -960,6 +960,63 @@ async function main() {
     assert.deepStrictEqual(s5.resources.awws, { rev: 5, data: { v: 1, sentAt: snap.sentAt, receivedAt: null, reach: { asOf: snap.sentAt, visits: { week: 1, prev: 2 } } } });
     assert.ok(!fs.readdirSync(d).some((f) => /^state\.bad-/.test(f)), 'not moved aside');
     await stop(h5);
+  });
+
+  /* ---------- personal budget snapshot ---------- */
+
+  const BUDGET_TEXT = fs.readFileSync(path.join(__dirname, 'fixtures', 'budget-sample.json'), 'utf8');
+  const budgetSample = () => {
+    const s = JSON.parse(BUDGET_TEXT);
+    s.sentAt = new Date(Date.now() - 60000).toISOString();
+    return s;
+  };
+
+  await check('budget API: needs the token; starts empty; a snapshot is stored, pushed and survives a restart', async () => {
+    assert.strictEqual((await request(P, 'GET', '/api/budget')).status, 401);
+    assert.strictEqual((await request(P, 'POST', '/api/budget', { body: { snapshot: null } })).status, 401);
+    const g0 = await request(P, 'GET', '/api/budget', { token: TOKEN });
+    assert.deepStrictEqual(g0.json, { ok: true, rev: 0, data: AWWS_EMPTY, tz: 'America/Chicago' });
+    assert.deepStrictEqual((await request(P, 'GET', '/live/state')).json.resources.budget, { rev: 0, data: AWWS_EMPTY });
+    const es = await openEvents(P);
+    await es.waitFor((e) => e.event === 'hello');
+    const snap = budgetSample();
+    snap.alerts.items[0].amount = 6.5; // never stored
+    const r = await request(P, 'POST', '/api/budget', { token: TOKEN, body: { snapshot: snap } });
+    assert.strictEqual(r.status, 200, r.text);
+    assert.deepStrictEqual(r.json.accepted, ['room', 'cardDay', 'goals', 'alerts']);
+    const ch = await es.waitFor((e) => e.event === 'change' && e.data.resource === 'budget');
+    assert.strictEqual(ch.data.data.room.cap, 60);
+    assert.deepStrictEqual(ch.data.data.alerts.items[0], { id: 'a-1042', label: 'Corner Bakery Stand' });
+    es.close();
+    await waitUntil(() => h._debug().sse === 0);
+    // A bad section is refused by name; a snapshot with no good section is a 400.
+    const part = await request(P, 'POST', '/api/budget', { token: TOKEN, body: { snapshot: { v: 1, sentAt: new Date().toISOString(), goals: [], room: { cap: 0 } } } });
+    assert.strictEqual(part.status, 200);
+    assert.deepStrictEqual(part.json.rejected.map((x) => x.section), ['room']);
+    const no = await request(P, 'POST', '/api/budget', { token: TOKEN, body: { snapshot: { v: 1, sentAt: new Date().toISOString(), room: { cap: 0 } } } });
+    assert.strictEqual(no.status, 400);
+    const m = await request(P, 'PUT', '/api/budget', { token: TOKEN, body: { snapshot: null } });
+    assert.strictEqual(m.status, 405);
+    const g = (await request(P, 'GET', '/api/budget', { token: TOKEN })).json;
+    assert.strictEqual(g.data.room.roomPerDay, 42.5);
+    assert.deepStrictEqual(g.data.goals.items, []);
+    const c = await request(P, 'POST', '/api/budget', { token: TOKEN, body: { snapshot: null } });
+    assert.deepStrictEqual(c.json.cleared, ['room', 'cardDay', 'goals', 'alerts']);
+    assert.deepStrictEqual((await request(P, 'GET', '/api/budget', { token: TOKEN })).json.data, AWWS_EMPTY);
+    // Kept in data/state.json, and a file from before budget existed still loads.
+    const d = tmpDir();
+    const h2 = await start({ dataDir: d });
+    await request(h2.port, 'POST', '/api/budget', { token: TOKEN, body: { snapshot: budgetSample() } });
+    await stop(h2);
+    const h3 = await start({ dataDir: d });
+    assert.strictEqual((await request(h3.port, 'GET', '/api/budget', { token: TOKEN })).json.data.cardDay.daysAway, 3);
+    await stop(h3);
+    const old = JSON.parse(fs.readFileSync(path.join(d, 'state.json'), 'utf8'));
+    delete old.resources.budget;
+    fs.writeFileSync(path.join(d, 'state.json'), JSON.stringify(old));
+    const h4 = await start({ dataDir: d });
+    assert.deepStrictEqual((await request(h4.port, 'GET', '/live/state')).json.resources.budget, { rev: 0, data: AWWS_EMPTY });
+    await stop(h4);
   });
 
   await stop(h);
