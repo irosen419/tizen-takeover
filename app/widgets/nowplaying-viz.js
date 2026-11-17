@@ -23,6 +23,15 @@
  * song's start at its tempo, and the "waves" are sums of sines. It moves at
  * the song's speed and feel, not to its actual sound.
  *
+ * Radiant (the top level, v0.26.0): the same scenes on a 960 x 540 canvas
+ * with a wide faint halo under every line, soft light sprites on the
+ * sparks, drifting motes of light at three depths, a bloom (the picture
+ * shrunk to 1/4 and 1/16 and stretched back over itself, added on) and a
+ * vignette. The trails live on a hidden state canvas; the shown canvas is a
+ * copy plus motes plus bloom, so the bloom never feeds back. It draws at 60
+ * frames a second, or 30 when a frame costs over 11 ms, and steps down to
+ * classic at once when a frame costs over 24 ms.
+ *
  * Built for a slow TV: no getImageData, shadows, filters or gradients per
  * frame, no new arrays or objects per frame. A frame-rate check after it
  * starts steps down: classic (480 x 270 at 30 fps, colors that add up to
@@ -53,11 +62,12 @@
   'use strict';
 
   var STORE_KEY = 'homeHub.npViz';
-  var LEVELS = ['off', 'wash', 'glow', 'lite', 'classic'];
-  var ALIAS = { full: 'classic' };
-  var NAMES = { classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash', off: 'off' };
-  var LADDER = { classic: 'lite', lite: 'glow', glow: 'wash' };
+  var LEVELS = ['off', 'wash', 'glow', 'lite', 'classic', 'radiant'];
+  var ALIAS = { full: 'radiant' };
+  var NAMES = { radiant: 'radiant', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash', off: 'off' };
+  var LADDER = { radiant: 'classic', classic: 'lite', lite: 'glow', glow: 'wash' };
   var CANVAS = {
+    radiant: { w: 960, h: 540, fps: 60, lighter: true, amount: 1, bloom: true },
     classic: { w: 480, h: 270, fps: 30, lighter: true, amount: 1 },
     lite: { w: 320, h: 180, fps: 24, lighter: false, amount: 0.55 }
   };
@@ -68,13 +78,15 @@
   var REST_MS = 1300;          // glow level: pausing fades, then holds still
   var SETTLE_MS = 350;         // canvas: pausing settles over this long, then the loop stops
   var TIMING = { after: 3500, ms: 2000, again: 800 };   // the frame-rate check: start, length, retry
+  var QUICK_MS = 24;           // radiant: drawing a frame takes longer than this on average: step down at once
+  var HALF_MS = 11;            // radiant: over this a frame, 30 a second instead of 60
   var MIN_FPS = 24;            // glow level
   var MAX_GAP_MS = 250;
   var SAMPLE_WAIT_MS = 700;    // wait this long for the album colors before using a fallback
 
   var st = {
     host: null, root: null, scene: null, leaving: [],
-    level: 'classic', source: 'auto', fps: 0, measured: false,
+    level: 'radiant', source: 'auto', fps: 0, measured: false,
     info: null, anchorAt: 0, anchorPos: 0, playing: false,
     palettes: {}, sampling: {}, problem: '',
     timers: [], measureRaf: 0, restTimer: null,
@@ -89,8 +101,8 @@
   function lerp(a, b, t) { return a + (b - a) * t; }
   function smooth(a, b, x) { var t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
   function num(v, d) { return typeof v === 'number' && isFinite(v) ? v : d; }
-  function isCanvas(level) { return level === 'classic' || level === 'lite'; }
-  function compact(level) { return level === 'classic' || level === 'lite' || level === 'glow'; }
+  function isCanvas(level) { return level === 'radiant' || level === 'classic' || level === 'lite'; }
+  function compact(level) { return isCanvas(level) || level === 'glow'; }
   function levelName(q) { q = ALIAS[q] || q; return LEVELS.indexOf(q) >= 0 ? q : null; }
 
   function later(fn, ms) {
@@ -453,10 +465,11 @@
   var F = {
     W: 480, H: 270, s: 1, t: 0, b: 0, kick: 0, e: 0.5, k: 1, amt: 1, sp: 1, dt: 1,
     onBeat: false, flash: 0, h0: 0, h1: 0, h2: 0, hr: 40, sat: 85, lum: 58, alpha: 1,
-    tz: 1, tr: 0, tdx: 0, tdy: 0, tdecay: 0.92, tox: 240, toy: 135
+    tz: 1, tr: 0, tdx: 0, tdy: 0, tdecay: 0.92, tox: 240, toy: 135, glow: false
   };
   var PARTS = 200;   // starburst particles: x, y, vx, vy, life
   var LATTICE = 96;
+  var MOTES = 64;    // radiant: drifting motes of light: x, y, depth, phase
 
   function hsla(h, l, a) {
     h = ((h % 360) + 360) % 360;
@@ -476,12 +489,97 @@
     return C.lcg / 4294967296;
   }
 
+  // Strokes the current path. At the radiant level each line is first drawn
+  // wide and faint (a halo) and then sharp on top: the halos add up where
+  // lines cross, which is where the glow comes from.
+  function ink(g) {
+    if (F.glow) {
+      var lw = g.lineWidth;
+      g.globalAlpha = 0.07;
+      g.lineWidth = lw * 3 + F.s * 2.5;
+      g.stroke();
+      g.globalAlpha = 1;
+      g.lineWidth = lw;
+    }
+    g.stroke();
+  }
+
+  // A soft round light (white hot in the middle, the color around it, then
+  // nothing), drawn once per color and stamped with drawImage.
+  function makeSprite(hsl) {
+    var c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 64;
+    var g = c.getContext('2d');
+    var gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)');
+    gr.addColorStop(0.14, rgba([hsl[0], hsl[1], 0.85], 0.95));
+    gr.addColorStop(0.45, rgba([hsl[0], hsl[1], 0.58], 0.38));
+    gr.addColorStop(1, rgba([hsl[0], hsl[1], 0.5], 0));
+    g.fillStyle = gr;
+    g.fillRect(0, 0, 64, 64);
+    return c;
+  }
+
+  function stamp(g, spr, x, y, r, a) {
+    g.globalAlpha = a;
+    g.drawImage(spr, x - r, y - r, r * 2, r * 2);
+  }
+
+  // The final picture: the state canvas, plus drifting motes of light at
+  // three depths, plus a soft bloom (the picture shrunk and stretched back
+  // over itself, added on). Done on a second canvas so the bloom never feeds
+  // back into the trails.
+  function present(C, pos) {
+    var d = C.dg;
+    if (!d) return;
+    var W = C.W;
+    var H = C.H;
+    d.globalCompositeOperation = 'copy';
+    d.globalAlpha = 1;
+    d.drawImage(C.el, 0, 0);
+    d.globalCompositeOperation = 'lighter';
+    var t = pos / 1000;
+    var M = C.motes;
+    var P = C.P;
+    var sp = C.sprites;
+    if (sp && P) {
+      var n = MOTES;
+      var kick = F.kick;
+      for (var i = 0; i < n; i++) {
+        var b = i * 4;
+        var z = M[b + 2];                               // 0.2 far .. 1 near
+        var x = (M[b] + t * 0.012 * z * (P.valence >= 0.5 ? 1 : -1) + 0.02 * Math.sin(t * 0.3 + M[b + 3] * 6)) % 1;
+        if (x < 0) x += 1;
+        var y = (M[b + 1] - t * (P.drift === 'sink' ? -0.01 : 0.014) * z) % 1;
+        if (y < 0) y += 1;
+        var tw = 0.5 + 0.5 * Math.sin(t * (0.8 + z) + M[b + 3] * 40);
+        var r = (2.5 + 8 * z * z) * C.W / 960 * (1 + 0.7 * kick * z);
+        stamp(d, sp[i % 3], x * W, y * H, r * 2, (0.12 + 0.5 * z) * (0.35 + 0.65 * tw) * (0.55 + 0.45 * F.k));
+      }
+    }
+    d.globalAlpha = 0.15;
+    d.drawImage(C.mid, 0, 0, W, H);
+    d.globalAlpha = 0.18;
+    d.drawImage(C.low, 0, 0, W, H);
+    d.globalAlpha = 1;
+    d.globalCompositeOperation = 'source-over';
+  }
+
+  // The shrunk copies the bloom is made of.
+  function shrink(C) {
+    C.mg.globalCompositeOperation = 'copy';
+    C.mg.drawImage(C.el, 0, 0, C.mid.width, C.mid.height);
+    C.lg.globalCompositeOperation = 'copy';
+    C.lg.drawImage(C.mid, 0, 0, C.low.width, C.low.height);
+  }
+
   function startCanvas() {
     var cfg = CANVAS[st.level];
     var C = st.cv;
-    if (C && C.cfg === cfg && C.el.parentNode === st.root) return C;
+    if (C && C.cfg === cfg && C.view.parentNode === st.root) return C;
     stopCanvas();
-    var cv = el('canvas', 'npv-canvas');
+    var cv = el('canvas', cfg.bloom ? '' : 'npv-canvas', cfg.bloom ? null : null);
     cv.width = cfg.w;
     cv.height = cfg.h;
     var g = cv.getContext && cv.getContext('2d');
@@ -489,9 +587,26 @@
     var buf = document.createElement('canvas');
     buf.width = cfg.w;
     buf.height = cfg.h;
-    st.root.appendChild(cv);
+    var disp = null;
+    if (cfg.bloom) {
+      // The state canvas stays off the page; this one is what shows.
+      disp = el('canvas', 'npv-canvas');
+      disp.width = cfg.w;
+      disp.height = cfg.h;
+      st.root.appendChild(disp);
+      el('div', 'npv-vignette', st.root);
+    } else {
+      st.root.appendChild(cv);
+    }
+    var mid = null, low = null;
+    if (cfg.bloom) {
+      mid = document.createElement('canvas'); mid.width = Math.round(cfg.w / 4); mid.height = Math.round(cfg.h / 4);
+      low = document.createElement('canvas'); low.width = Math.round(cfg.w / 16); low.height = Math.round(cfg.h / 16);
+    }
     C = st.cv = {
-      el: cv, g: g, buf: buf, bg: buf.getContext('2d'), cfg: cfg, W: cfg.w, H: cfg.h,
+      el: cv, g: g, view: disp || cv, dg: disp ? disp.getContext('2d') : null,
+      mid: mid, low: low, mg: mid ? mid.getContext('2d') : null, lg: low ? low.getContext('2d') : null,
+      motes: floats(MOTES * 4), sprites: null, cost: 0, costN: 0, avg: 0, buf: buf, bg: buf.getContext('2d'), cfg: cfg, W: cfg.w, H: cfg.h,
       raf: 0, last: 0, interval: 1000 / cfg.fps, frames: 0, restAt: 0, still: false,
       lastBeat: -1, scene: -1, fz: 1, fr: 0, fdx: 0, fdy: 0, fdecay: 0.92, fox: cfg.w / 2, foy: cfg.h / 2,
       base: '#120a1a', palFrom: '', P: null, order: null, id: '', vkey: '', lcg: 1,
@@ -501,6 +616,10 @@
     };
     g.fillStyle = C.base;
     g.fillRect(0, 0, C.W, C.H);
+    if (cfg.bloom) {
+      var mr = seeded('motes');
+      for (var m = 0; m < MOTES; m++) { C.motes[m * 4] = mr(); C.motes[m * 4 + 1] = mr(); C.motes[m * 4 + 2] = 0.2 + 0.8 * mr(); C.motes[m * 4 + 3] = mr(); }
+    }
     return C;
   }
 
@@ -509,7 +628,9 @@
     if (!C) return;
     if (C.raf && window.cancelAnimationFrame) cancelAnimationFrame(C.raf);
     C.raf = 0;
-    if (C.el.parentNode) C.el.parentNode.removeChild(C.el);
+    if (C.view.parentNode) C.view.parentNode.removeChild(C.view);
+    var vg = st.root && st.root.querySelector('.npv-vignette');
+    if (vg) vg.parentNode.removeChild(vg);
     st.cv = null;
   }
 
@@ -533,6 +654,7 @@
     C.palFrom = pal.from;
     // The base the trails fade into: a deep tint of the main color, never black.
     C.base = rgba(deep(pal.dom, 0.075), 1);
+    if (C.cfg.bloom) C.sprites = [makeSprite(pal.dom), makeSprite(pal.acc), makeSprite(pal.light)];
   }
 
   function run() {
@@ -552,8 +674,19 @@
     if (!C.last || ts - C.last >= C.interval - 3) {
       var dt = C.last ? ts - C.last : C.interval;
       C.last = !C.last || ts - C.last > C.interval * 2 ? ts : C.last + C.interval;
+      var t0 = window.performance && performance.now ? performance.now() : 0;
       try {
         keep = draw(C, dt, position(), st.playing);
+        if (t0) {
+          var cost = performance.now() - t0;
+          C.avg = C.avg ? C.avg * 0.96 + cost * 0.04 : cost;
+          if (st.playing && C.cfg.bloom && C.costN < 30) {
+            C.costN += 1;
+            C.cost += cost;
+            if (C.costN === 30 && C.cost / 30 > HALF_MS && C.interval < 40) C.interval = 1000 / 30;
+            if (C.costN === 30 && C.cost / 30 > QUICK_MS && st.source === 'auto' && !st.measured) later(function () { quickStep(C); }, 0);
+          }
+        }
       } catch (e) {
         warn(e);
         keep = false;
@@ -581,6 +714,7 @@
       C.restAt = 0;
     }
 
+    F.glow = !!cfg.bloom;
     F.W = W; F.H = H; F.s = W / 480; F.amt = cfg.amount; F.dt = f;
     F.t = pos / 1000;
     F.b = pos / P.beat;
@@ -604,6 +738,7 @@
     F.sat = Math.round(72 + 22 * clamp(pal.dom[1] * 1.4, 0, 1));
     F.lum = cfg.lighter ? 56 : 62;
     F.alpha = clamp((0.55 + 0.45 * P.energy) * (0.55 + 0.45 * F.k) + 0.3 * F.kick, 0.3, 1);
+    if (cfg.bloom) F.alpha = clamp(F.alpha * Math.min(1, f * 0.72), 0.1, 1);   // more frames a second: each one fainter
 
     var si = st.forceScene >= 0 ? st.forceScene : sceneIndex(C.order, P, pos);
     if (si !== C.scene) {
@@ -640,8 +775,8 @@
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.globalAlpha = 1;
     C.frames += 1;
-    if (rest >= 1) return false;
-    if (!playing) return true;            // settling: no new shapes
+    if (rest >= 1) { if (C.dg) { shrink(C); present(C, pos); } return false; }
+    if (!playing) { if (C.dg) { shrink(C); present(C, pos); } return true; }          // settling: no new shapes
 
     // 2. New shapes. Where they cross, 'lighter' adds them up toward white.
     if (cfg.lighter) g.globalCompositeOperation = 'lighter';
@@ -649,6 +784,8 @@
     g.lineJoin = 'round';
     DRAW[si](g, C, si * 10);
     g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    if (C.dg) { shrink(C); present(C, pos); }
 
     // The feedback eases toward what the scene asks for, so scenes blend.
     var a = clamp(0.06 * f, 0, 1);
@@ -714,7 +851,7 @@
       }
       g.strokeStyle = color(j, 0, F.alpha);
       g.lineWidth = F.s * (1.3 + 1.6 * F.e + 2.5 * F.kick);
-      g.stroke();
+      ink(g);
     }
   }
 
@@ -756,9 +893,9 @@
       var r = r0 * Math.exp(span * u * u);
       var n = Math.floor(travel + i / rings);  // which ring this is, for its turn and color
       poly(g, cx, cy, r, sides, star, dir * (t * 0.5 + n * twist));
-      g.strokeStyle = color(n, 6 * F.kick, F.alpha * Math.min(1, u * 4) * (1 - u * 0.5));
+      g.strokeStyle = color(n, 6 * F.kick, F.alpha * Math.min(1, u * (F.glow ? 8 : 4)) * (1 - u * 0.5) * (F.glow ? 0.85 : 1));
       g.lineWidth = F.s * (0.8 + 4 * u * u * (0.6 + 0.6 * F.e) + 1.5 * F.kick);
-      g.stroke();
+      ink(g);
     }
   }
 
@@ -805,14 +942,14 @@
       }
       g.strokeStyle = color(j, 0, F.alpha);
       g.lineWidth = F.s * (1.4 + 1.6 * F.e + 2.5 * F.kick);
-      g.stroke();
+      ink(g);
     }
     if (F.onBeat) {
       g.beginPath();
       poly(g, cx, cy, R * (0.1 + 0.5 * rand(C)), n, true, t);
       g.strokeStyle = color(2, 12, 0.9);
       g.lineWidth = F.s * (1.5 + 2 * F.e);
-      g.stroke();
+      ink(g);
     }
   }
 
@@ -843,7 +980,7 @@
       }
       g.strokeStyle = color(j, 0, F.alpha);
       g.lineWidth = F.s * (1.5 + 1.5 * F.e + 2 * F.kick);
-      g.stroke();
+      ink(g);
     }
   }
 
@@ -860,7 +997,7 @@
     var cy = H * (0.5 + 0.33 * Math.sin(t * 0.13 * F.sp + p[o + 1] * 6.28));
     var dir = p[o + 2] > 0.5 ? 1 : -1;
     F.tox = cx; F.toy = cy; F.tz = 1.02; F.tr = 0.03 * dir; F.tdx = 0; F.tdy = 0; F.tdecay = 0.9;
-    var emit = F.onBeat ? Math.round((14 + 34 * F.e) * F.amt) : (rand(C) < 0.6 ? 2 : 0);
+    var emit = F.onBeat ? Math.round((14 + 34 * F.e) * F.amt) : (rand(C) < (F.glow ? 1.2 : 0.6) * Math.min(1, F.dt) ? (F.glow ? 4 : 2) : 0);
     var i;
     var b;
     for (i = 0; i < N && emit > 0; i++) {
@@ -881,7 +1018,7 @@
       }
       g.strokeStyle = color(c, 8, F.alpha);
       g.lineWidth = F.s * (1.3 + 1.5 * F.e);
-      g.stroke();
+      ink(g);
     }
     if (F.onBeat) {
       var rays = 6 + Math.round(6 * F.e);
@@ -894,11 +1031,12 @@
       }
       g.strokeStyle = color(2, 14, 0.85);
       g.lineWidth = F.s * (1.5 + 1.5 * F.e);
-      g.stroke();
+      ink(g);
     }
     for (i = 0; i < N; i++) {
       b = i * 5;
       if (w[b + 4] <= 0) continue;
+      if (C.sprites) stamp(g, C.sprites[i % 3], w[b], w[b + 1], F.s * (2.5 + 4 * w[b + 4]), (0.1 + 0.25 * w[b + 4]) * F.dt);
       w[b] += w[b + 2] * F.dt;
       w[b + 1] += w[b + 3] * F.dt;
       w[b + 2] *= 0.975;
@@ -932,6 +1070,8 @@
       X[i] = cx + r * Math.cos(th + turn) * 1.3;
       Y[i] = cy + r * Math.sin(th + turn);
     }
+    var gl = F.glow;
+    F.glow = false;       // many chords: a halo on each would only wash out
     for (var c = 0; c < 2; c++) {
       g.beginPath();
       for (i = c; i < M; i += 2) {
@@ -939,17 +1079,18 @@
         g.moveTo(X[i], Y[i]);
         g.lineTo(X[q], Y[q]);
       }
-      g.strokeStyle = color(c * 2, 0, F.alpha * 0.6);
+      g.strokeStyle = color(c * 2, 0, F.alpha * (gl ? 0.2 : 0.6));
       g.lineWidth = F.s * (0.8 + F.e);
-      g.stroke();
+      ink(g);
     }
+    F.glow = gl;
     g.beginPath();
     for (i = 0; i <= M; i++) {
       if (i) g.lineTo(X[i % M], Y[i % M]); else g.moveTo(X[0], Y[0]);
     }
     g.strokeStyle = color(1, 10, F.alpha);
     g.lineWidth = F.s * (1.4 + 1.5 * F.e + 2 * F.kick);
-    g.stroke();
+    ink(g);
   }
 
   var DRAW = [spirograph, tunnel, kaleidoscope, ribbons, starburst, lattice];
@@ -1144,7 +1285,7 @@
       st.measured = !!kept.settled;
       return { level: kept.level, source: 'auto' };
     }
-    return { level: 'classic', source: 'auto' };
+    return { level: 'radiant', source: 'auto' };
   }
 
   // The level sync() would show for info (the page lays itself out by it).
@@ -1172,7 +1313,7 @@
         later(function () {
           C.measuring = false;
           if (st.cv !== C || !st.playing || document.hidden) { st.measureStarted = false; return; }
-          judge(C.mt, C.mn, again, CANVAS[level].fps * 0.8);
+          judge(C.mt, C.mn, again, (1000 / C.interval) * 0.8);
         }, TIMING.ms);
         return;
       }
@@ -1189,6 +1330,20 @@
       }
       st.measureRaf = requestAnimationFrame(tock);
     }, again ? TIMING.again : TIMING.after);
+  }
+
+  // Drawing a radiant frame is plainly too slow: down one step now, without
+  // waiting for the frame-rate check.
+  function quickStep(C) {
+    if (st.cv !== C || st.level !== 'radiant' || st.measured || st.source !== 'auto') return;
+    var next = LADDER.radiant;
+    st.fps = 0;
+    lsSet({ build: window.HUB_BUILD, level: next, fps: 0, settled: false });
+    st.level = next;
+    applyLevel();
+    st.measureStarted = false;
+    if (st.playing) { st.measureStarted = true; measure(); }
+    mark();
   }
 
   function judge(times, n, again, minFps) {
@@ -1362,6 +1517,7 @@
         var bpm = v && v.tempo ? Math.round(v.tempo) + ' BPM' : '100 BPM';
         parts.push(bpm + (v ? (v.source === 'features' ? ' from features' : ' guessed from genres') : ' (no vibe)'));
       }
+      if (st.cv && st.cv.avg) parts.push(Math.round(st.cv.avg * 10) / 10 + ' ms a frame');
       if (isCanvas(st.level) && st.lastScene) parts.push(st.lastScene);
     }
     var text = parts.join(', ');
@@ -1377,7 +1533,7 @@
       level: st.level, source: st.source, fps: st.fps, shown: !!st.root, playing: st.playing,
       timers: st.timers.length + (st.restTimer ? 1 : 0) + (st.measureRaf ? 1 : 0) + (C && C.raf ? 1 : 0),
       canvas: !!C, loop: !!(C && C.raf), frames: C ? C.frames : 0, still: !!(C && C.still),
-      size: C ? C.W + 'x' + C.H : '', lighter: !!(C && C.cfg.lighter),
+      size: C ? C.W + 'x' + C.H : '', bloom: !!(C && C.dg), ms: C ? Math.round(C.avg * 10) / 10 : 0, lighter: !!(C && C.cfg.lighter),
       scene: C && C.scene >= 0 ? SCENES[C.scene] : '',
       scenes: st.root ? st.root.querySelectorAll('.npv-scene').length : 0,
       layers: st.root ? st.root.querySelectorAll('.npv-scene > *, .npv-orb, .npv-canvas').length : 0,

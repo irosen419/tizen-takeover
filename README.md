@@ -104,9 +104,9 @@ The tile changes as soon as you pick, behind the page. Both choices are remember
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.25.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand), then **Weather picture** when the weather picture is still or off (see Weather).
+- **This hub:** **Version** (for example `v0.26.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps)`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand), then **Weather picture** when the weather picture is still or off (see Weather).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
-- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
+- **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, how long a frame takes to draw (`3.1 ms a frame`), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
 
 Everything in it changes by itself, once a second, while it is open. It doesn't count as busy: the wanderers keep coming while it is open, behind it. `HUB_TEST.about` (`open()`, `close()`, `isOpen()`, `rows()`) reads it in a laptop browser and in the tests.
@@ -216,19 +216,20 @@ It plays six scenes, a phrase each (16 or 32 beats), in an order that belongs to
 
 It follows the song's **vibe**, which the Pi looks up once per song (see "Spotify" in [pi/README.md](pi/README.md)): the tempo sets the beat (a brief kick in width, brightness and zoom; never faster than 2.5 a second, so fast songs kick on every other beat), energy how many pens and sparks, how thick and bright and how fast the trails move, danceability against acousticness whether it leans to the sharp scenes (tunnel, kaleidoscope, starburst) or the flowing ones (spirograph, ribbons, lattice), and mood (valence) how far the colors swing round the album's hues. The intensity eases in at the start of the song, swells and settles at the end. Everything is timed from the song's position, so a seek lands in the right scene; paused, it settles into a still picture and stops drawing; the next song morphs out of the last one. There is no sound to react to (Spotify sends none): it moves at the song's speed and feel, not to its actual beats. A "124 BPM" chip shows when the tempo is the song's real one. A song with no vibe (a podcast, a song ReccoBeats doesn't know, the lookups turned off) gets a gentle 100 BPM; a song known only by its artist's genres gets a guess. When the picture can't be read for colors, the mood picks them.
 
-It draws on one small canvas (480 × 270), stretched over the screen, at up to 30 frames a second: each frame, the last one is drawn back a little zoomed and turned and faded into a deep tint of the album's main color, then a few new shapes go on top. After it starts it times its own frame rate twice; two poor results step it down one level, and the answer is remembered on this TV until the next version:
+It draws on a canvas, stretched over the screen: each frame, the last one is drawn back a little zoomed and turned and faded into a deep tint of the album's main color, then a few new shapes go on top. At the top level (`radiant`, since v0.26.0) the canvas is 960 × 540, every line gets a soft wide halo under its sharp core, glowing sparks and drifting motes of light (three depths, brighter on the beat) are stamped on, a bloom (the picture shrunk and stretched back over itself) is added on a second canvas so it never feeds back into the trails, and a soft dark vignette rests the edges. It aims for 60 frames a second and drops to 30 when drawing a frame takes more than 11 ms. A frame that takes more than 24 ms steps it down at once; otherwise, after it starts it times its own frame rate twice, and two poor results step it down one level. The answer is remembered on this TV until the next version:
 
 | Level | What it shows |
 |---|---|
-| `classic` | 480 × 270 at 30 fps; where lines cross their colors add up toward white |
+| `radiant` | 960 × 540, 60 fps (30 when slower); halos, sparks, motes, bloom and vignette |
+| `classic` | 480 × 270 at 30 fps (the v0.21.0 look); where lines cross their colors add up toward white |
 | `lite` | 320 × 180 at 24 fps, fewer pens and sparks, plain colors |
 | `glow` | soft glows that drift, moved by the graphics chip alone; the card stays |
 | `wash` | a still wash of the album's colors, and the big picture layout back |
 
 The plainest motion setting (`fade`) starts at the still wash.
 
-- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'classic'`, `'lite'`, `'glow'` or `'wash'` to fix a level; `'full'` still means `'classic'`). Off, the page is the big picture layout as before.
-- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow`, `?viz=lite` or `?viz=classic` (`?viz=full` is the same as `classic`) to the address.
+- **Turn it off:** `widgets.nowplaying.visualizer: false` in `app/config.js` (or `'radiant'`, `'classic'`, `'lite'`, `'glow'` or `'wash'` to fix a level; `'full'` means `'radiant'`). Off, the page is the big picture layout as before.
+- **Try a level:** add `?viz=off`, `?viz=wash`, `?viz=glow`, `?viz=lite`, `?viz=classic` or `?viz=radiant` (`?viz=full` is the same as `radiant`) to the address.
 - **See what it chose:** the About panel's **Visualizer** row.
 
 ![Now Playing full screen: the kaleidoscope scene on an upbeat song, with the song card in the upper left](docs/screenshots/nowplaying-viz-upbeat.jpg)

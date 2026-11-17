@@ -859,12 +859,12 @@ async function vizChecks() {
     assert((await anims(c.page)).length === 0, 'nothing moves in the still wash');
     await big(c.page, 'still wash');
     await c.context.close();
-    // Config can pick a level; "full" is the old name of classic.
+    // Config can pick a level; "full" is the old name of the top level, radiant.
     const e = await open(pi, ONLY(3, 2), { config: 'HUB_CONFIG.widgets.nowplaying = { visualizer: "full" };', motion: 'push' });
     await waitTitle(e.page, 'Golden Hour Drive');
     await openFull(e.page);
     await until(() => e.page.evaluate(() => window.HUB_NP_VIZ.debug().canvas), 5000, 'no canvas');
-    assert((await e.page.evaluate(VIZ)).level === 'classic' && (await layout(e.page)).card, 'full = classic, with the card');
+    assert((await e.page.evaluate(VIZ)).level === 'radiant' && (await layout(e.page)).card, 'full = radiant, with the card');
     await e.context.close();
   });
 
@@ -1010,7 +1010,7 @@ async function vizChecks() {
     await s.context.close();
   });
 
-  await check('visualizer: a frame-rate check after it starts, kept per build; poor results step it down classic, lite, glow, still wash (and the big layout); the About row says so', async () => {
+  await check('visualizer: a frame-rate check after it starts, kept per build; poor results step it down radiant, classic, lite, glow, still wash (and the big layout); the About row says so', async () => {
     await playSong(pi, 0);
     const s = await open(pi, ONLY(3, 2), { motion: 'push' });
     await waitTitle(s.page, 'Golden Hour Drive');
@@ -1018,7 +1018,7 @@ async function vizChecks() {
     // Kept once it has settled (one poor window measures again before deciding).
     await until(() => s.page.evaluate(() => { const k = JSON.parse(localStorage.getItem('homeHub.npViz') || 'null'); return !!k && k.settled; }), 30000, 'never settled');
     // Headless Chromium draws without a graphics chip, so whether this
-    // machine keeps "classic" says nothing about the TV; what is kept must match.
+    // machine keeps "radiant" says nothing about the TV; what is kept must match.
     const kept = await s.page.evaluate(() => ({ d: window.HUB_NP_VIZ.debug(), ls: JSON.parse(localStorage.getItem('homeHub.npViz')), build: window.HUB_BUILD, attr: document.querySelector('.npv').getAttribute('data-viz') }));
     assert(kept.ls.build === kept.build && kept.ls.level === kept.d.level && kept.ls.fps === kept.d.fps, JSON.stringify(kept));
     assert(kept.attr === kept.d.level + ' ' + kept.d.fps + 'fps', kept.attr);
@@ -1028,8 +1028,8 @@ async function vizChecks() {
     await closePage(s.page);
     const rows = await s.page.evaluate(() => { window.HUB_TEST.about.open(); const r = window.HUB_TEST.about.rows(); window.HUB_TEST.about.close(); return r; });
     const row = rows.filter((x) => x.label === 'Visualizer')[0];
-    const name = { classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash' }[kept.d.level];
-    const tail = kept.d.level === 'classic' || kept.d.level === 'lite' ? ', [a-z]+' : '';
+    const name = { radiant: 'radiant', classic: 'classic', lite: 'classic-lite', glow: 'glows', wash: 'still wash' }[kept.d.level];
+    const tail = kept.d.level === 'radiant' || kept.d.level === 'classic' || kept.d.level === 'lite' ? '(, [0-9.]+ ms a frame)?, [a-z]+' : '';
     assert(row && row.group === 'Now Playing' && new RegExp('^' + name + ', \\d+ fps, 124 BPM from features' + tail + '$').test(row.value), 'About: ' + JSON.stringify(row) + ' ' + scene);
     await s.context.close();
     // A fresh TV whose every check comes out poor (a test hook), with short
@@ -1046,7 +1046,7 @@ async function vizChecks() {
       if (l === 'wash') break;
       await sleep(50);
     }
-    assert(levels.join(' ') === 'classic lite glow wash', 'steps: ' + levels.join(' '));
+    assert(levels.join(' ') === 'radiant classic lite glow wash', 'steps: ' + levels.join(' '));
     await until(async () => { const L = await layout(t.page); return !L.card && L.art && L.art.w > 450; }, 4000, 'the big picture did not come back');
     const after = await t.page.evaluate(() => ({ d: window.HUB_NP_VIZ.debug(), ls: JSON.parse(localStorage.getItem('homeHub.npViz')) }));
     assert(after.ls.level === 'wash' && after.ls.settled && !after.d.canvas && !after.d.loop, JSON.stringify(after));
@@ -1060,13 +1060,31 @@ async function vizChecks() {
     await leaveFull(t.page);
     await t.page.keyboard.press('Enter');
     await until(() => t.page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() && window.HUB_NP_VIZ.debug().shown), 4000, 'full again');
-    assert((await t.page.evaluate(VIZ)).level === 'classic', 'an old build\'s answer is not used');
+    assert((await t.page.evaluate(VIZ)).level === 'radiant', 'an old build\'s answer is not used');
     await t.context.close();
   });
 
-  await check('rough smoothness with the CPU slowed 6x, classic and lite (desktop Chromium: a sanity check, not the TV)', async () => {
+  await check('visualizer: radiant draws 960 x 540 on a second canvas with halos, motes and bloom; the About row says how long a frame takes', async () => {
+    await playSong(pi, 0);
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=radiant' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => window.HUB_NP_VIZ.debug().frames > 30), 8000, 'canvas');
+    const d = await s.page.evaluate(VIZ);
+    assert(d.level === 'radiant' && d.size === '960x540' && d.bloom && d.loop && d.tempo === 124 && d.ms > 0, JSON.stringify(d));
+    const dom = await s.page.evaluate(() => ({ canvases: document.querySelectorAll('#panel > .npv > .npv-canvas').length, vignette: document.querySelectorAll('#panel > .npv > .npv-vignette').length }));
+    assert(dom.canvases === 1 && dom.vignette === 1, JSON.stringify(dom));
+    const text = await s.page.evaluate(() => window.HUB_NP_VIZ.status());
+    assert(/^radiant, 124 BPM from features, [0-9.]+ ms a frame, [a-z]+ \(URL\)$/.test(text), text);
+    await leaveFull(s.page);
+    const gone = await s.page.evaluate(() => document.querySelectorAll('.npv-canvas, .npv-vignette').length);
+    assert(gone === 0, 'left over after leaving: ' + gone);
+    await s.context.close();
+  });
+
+  await check('rough smoothness with the CPU slowed 6x, radiant, classic and lite (desktop Chromium: a sanity check, not the TV)', async () => {
     const out = [];
-    for (const [n, name, level] of [[4, 'calm', 'classic'], [3, 'hard', 'classic'], [4, 'calm', 'lite'], [3, 'hard', 'lite']]) {
+    for (const [n, name, level] of [[4, 'calm', 'radiant'], [3, 'hard', 'radiant'], [4, 'calm', 'classic'], [3, 'hard', 'classic'], [4, 'calm', 'lite'], [3, 'hard', 'lite']]) {
       await playSong(pi, n);
       const s = await open(pi, ONLY(3, 2), { query: '&viz=' + level });
       await waitTitle(s.page, mockSpotify.SONGS[n].name);

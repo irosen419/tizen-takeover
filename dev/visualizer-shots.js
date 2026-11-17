@@ -120,7 +120,7 @@ async function main() {
     const o = opts || {};
     mock.set('playing');
     await song(n);
-    const s = await open(o.query === undefined ? '&viz=classic' : o.query);
+    const s = await open(o.query === undefined ? '&viz=radiant' : o.query);
     if (o.scene) await s.page.evaluate((n) => window.HUB_NP_VIZ.test.scene(n), o.scene);
     const want = mockSpotify.SONGS[n].name;
     await until(() => s.page.evaluate((t) => { const e = document.querySelector('.np-tile .np-title'); return e && e.textContent === t; }, want), 8000, 'no ' + want);
@@ -156,6 +156,7 @@ async function main() {
       });
     }
   });
+  await shot('viz-level-classic', 0, { query: '&viz=classic', wait: 6000 });
   await shot('viz-level-lite', 0, { query: '&viz=lite', wait: 6000 });
   await shot('viz-level-glow', 0, { query: '&viz=glow' });
   await shot('viz-level-wash', 0, { query: '&viz=wash' });
@@ -166,7 +167,7 @@ async function main() {
     mock.set('playing');
     await song(0);
     const vdir = fs.mkdtempSync(path.join(os.tmpdir(), 'viz-clip-'));
-    const s = await open('&viz=classic', { context: { viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1, recordVideo: { dir: vdir, size: { width: 1280, height: 720 } } } });
+    const s = await open('&viz=radiant', { context: { viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1, recordVideo: { dir: vdir, size: { width: 1280, height: 720 } } } });
     // Phrases of 8 beats (a test hook) instead of 32, so the clip shows
     // two scene changes before the song changes.
     await s.page.evaluate(() => window.HUB_NP_VIZ.test.phraseBeats(8));
