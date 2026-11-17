@@ -33,6 +33,9 @@
  *                                          // Full screen button). Return the element to focus,
  *                                          // true to stay put, or nothing to move by position.
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
+ *     openView: function (name, ctx) {},   // asked to show one of its own views before its
+ *                                          // panel opens (the About panel's watch link test
+ *                                          // asks entertainment for 'linktests'); false = no
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
  *     onStatus: function (ctx) {},         // the motion, live updates or updates status
@@ -1256,9 +1259,10 @@
   //
   // Each row is { group, label, value }: value() returns the text, or '' to
   // leave the row out. To show something new, add a row to ABOUT_ROWS (a new
-  // group name starts a new group); nothing else needs to change.
+  // group name starts a new group); nothing else needs to change. A row with
+  // action() is the strip's one button: OK runs it (the first shown wins).
   var aboutEl = document.getElementById('about');
-  var ab = { on: false, box: null, sig: '', rows: [], drawn: [], timer: null, hideTimer: null };
+  var ab = { on: false, box: null, sig: '', rows: [], drawn: [], dropped: {}, timer: null, hideTimer: null };
 
   function noPrefix(text, prefix) {
     text = text ? String(text) : '';
@@ -1296,6 +1300,14 @@
       var S = window.HUB_SCRIPTS;
       try { return S && typeof S.status === 'function' ? S.status() || '' : ''; } catch (e) { return ''; }
     } },
+    // The watch link test (app/widgets/linktest.js): OK opens it in the
+    // Entertainment panel. spare: it gives way when the strip would be taller
+    // than the screen (a long Wanderers problem), and comes back with the
+    // next change of rows.
+    { group: 'This hub', label: 'Watch link test', spare: true, value: function () {
+      var T = window.HUB_LINKTEST;
+      try { return T && typeof T.aboutText === 'function' ? T.aboutText() || '' : ''; } catch (e) { return ''; }
+    }, action: function () { openWidgetView('entertainment', 'linktests'); } },
     { group: 'Updates', label: 'Live updates', value: function () {
       var L = liveFacade();
       var t = L ? (L.status() || {}).text || '' : '';
@@ -1350,7 +1362,7 @@
         group = r.group;
         el('div', 'about-group', ab.box).textContent = group;
       }
-      var row = el('div', 'about-row', ab.box);
+      var row = el('div', 'about-row' + (r.action ? ' is-action' : ''), ab.box);
       el('div', 'about-label', row).textContent = r.label;
       var value = el('div', 'about-value', row);
       value.textContent = list[i].text;
@@ -1359,6 +1371,27 @@
       sig.push(r.label);
     }
     ab.sig = sig.join('|');
+    ab.dropped = {};
+  }
+
+  // Spare rows (the watch link test) leave when the strip is taller than its
+  // room, so the rows that report problems never need scrolling for them.
+  // Only while it is shown (a hidden strip has no height).
+  function trimAbout() {
+    var box = ab.box;
+    if (!box || box.scrollHeight <= box.clientHeight + 1) return;
+    for (var i = ab.drawn.length - 1; i >= 0; i--) {
+      if (!ab.drawn[i].spare) continue;
+      var row = ab.rows[i].parentNode;
+      var prev = row.previousSibling;
+      var next = row.nextSibling;
+      row.parentNode.removeChild(row);
+      // A group header left with no rows goes too.
+      if (prev && prev.className === 'about-group' && (!next || next.className === 'about-group')) prev.parentNode.removeChild(prev);
+      ab.dropped[ab.drawn[i].label] = true;
+      ab.drawn.splice(i, 1);
+      ab.rows.splice(i, 1);
+    }
   }
 
   // Once a second while open: only text that changed is touched; a row
@@ -1373,12 +1406,16 @@
       if (sig.join('|') !== ab.sig) {
         var top = ab.box ? ab.box.scrollTop : 0;
         drawAbout(list);
+        trimAbout();
         ab.box.scrollTop = top;
         placeAboutGlass();
       } else {
-        for (var j = 0; j < list.length; j++) {
-          if (ab.rows[j].textContent !== list[j].text) ab.rows[j].textContent = list[j].text;
+        var shown = [];
+        for (var k = 0; k < list.length; k++) if (!ab.dropped[list[k].row.label]) shown.push(list[k]);
+        for (var j = 0; j < shown.length && j < ab.rows.length; j++) {
+          if (ab.rows[j].textContent !== shown[j].text) ab.rows[j].textContent = shown[j].text;
         }
+        trimAbout();
       }
     } catch (e) { /* the strip just stays as it is */ }
     ab.timer = setTimeout(refreshAbout, 1010 - (new Date().getTime() % 1000));
@@ -1397,6 +1434,7 @@
     drawAbout(aboutValues());
     ab.on = true;
     aboutEl.classList.add('is-on');
+    trimAbout();
     placeAboutGlass();
     void aboutEl.offsetWidth;              // so the slide starts from off screen
     aboutEl.classList.add('is-shown');
@@ -1412,6 +1450,33 @@
     aboutEl.classList.remove('is-shown');
     clearTimeout(ab.hideTimer);
     ab.hideTimer = setTimeout(function () { if (!ab.on) { aboutEl.classList.remove('is-on'); aboutEl.innerHTML = ''; } }, 260);
+  }
+
+  // OK in the strip: the first row shown that has an action.
+  function aboutAction() {
+    for (var i = 0; i < ab.drawn.length; i++) {
+      if (typeof ab.drawn[i].action === 'function') {
+        try { ab.drawn[i].action(); } catch (e) { toast('That didn’t work (' + (e && e.message) + ').', 4000); }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Opens a widget's panel on one of its own views (widget hook openView).
+  function openWidgetView(id, name) {
+    for (var i = 0; i < widgets.length; i++) {
+      var rec = widgets[i];
+      if (rec.w.id !== id || !rec.expandable) continue;
+      closeAbout();
+      if (typeof rec.w.openView !== 'function') return toast('This hub can’t open that yet.', 4000);
+      if (call(rec, 'openView', [name, rec.ctx]) === false) return undefined;
+      focusHome(i);
+      openPanel(rec);
+      return undefined;
+    }
+    toast('Entertainment isn’t on this layout. Pick one with it (Up on a top tile), then try again.', 6000);
+    return undefined;
   }
 
   // Up and Down: a step at a time, only when it is taller than its room.
@@ -2216,6 +2281,7 @@
     if (ab.on) {
       if (dir === 'right' || isBack(code)) closeAbout();
       else if (dir === 'up' || dir === 'down') scrollAbout(dir);
+      else if (code === KEY.ENTER) aboutAction();
       return;
     }
 

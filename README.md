@@ -144,6 +144,23 @@ Everything in it changes by itself, once a second, while it is open. It doesn't 
 
 The home tile shows the first six logos. The panel shows them all; full screen groups them by section.
 
+#### Schedule: your shows
+
+The **Schedule** item (in More) opens a view of the shows on the Pi's list: Today, This week, This month and Coming soon tabs, rows by day with the episode, the time and the app. Today, and an episode on within the hour, get the accent edge. OK on a row opens its app and says what to search for; a show that is also on another app has an "Also on Hulu" chip beside it (Right, then OK, opens that one). The home tile puts first the apps with something airing today or new this week, with a small count on the logo, and the tile's line says "Tonight: Stick 8 PM". Times follow the TV's time zone and the Clock's 12/24 hour choice; the words follow the hub's language.
+
+- The list lives on the Pi: `./hub shows list|add|remove|refresh` ([pi/README.md](pi/README.md#tv-shows-the-schedule)). The data comes from TVmaze; its shape is in [docs/shows-snapshot.md](docs/shows-snapshot.md).
+- `watchAliases` sends a whole service to another app: `{ 'Hulu': 'Disney+' }` (the default) shows and opens Hulu titles as Disney+, with "Also on Hulu" offered. `alsoOn` on a show (`./hub shows add "X" --also Hulu`) adds more "Also on" choices.
+- `watchVia` (an example, commented out) is for services billed through another app (Prime Video Channels): `{ 'HBO Max': 'Prime Video' }` keeps the HBO Max badge, adds a small "via Prime Video", and opens Prime Video. One show alone: `./hub shows add "X" --service "HBO Max" --via "Prime Video"`.
+- Without the Pi, the view says so. A made-up sample shows a SAMPLE chip; real data never does.
+
+#### Watch link test
+
+The About panel (Left from a tile at the left edge) has a **Watch link test** row: OK opens a list of recipes under `widgets.entertainment.linkTests` in `app/config.js`, each one way of opening a title straight in an app (an app control: an operation, an optional URI, an optional data item such as `PAYLOAD`). OK on a recipe fires it through the TV service's `/launch-control`; come back to the hub and answer "Opened the title", "Only opened the app" or "Nothing". The answers are kept on the TV (`homeHub.linkTests`) and sent to the Pi (`./hub linktests`).
+
+- `linkTests.ids` fills `{name}` in the recipes. A recipe still holding a `<placeholder>` says "needs id" and never fires.
+- The ids in `linkTests.editable` (the Prime title id) also get a text box at the top of the list, so they can be changed with the remote.
+- The Apple TV ids in the stock recipes are unverified. Disney+, Hulu and Peacock are placeholders.
+
 #### Adding a dashboard
 
 Uncomment the Dashboards example and point `url` at the page. Some sites refuse to load inside another page. If yours shows blank, that site blocks framing and needs its own setting changed.
@@ -410,6 +427,17 @@ The preview's hub server also reads four sample calendars from a small local fee
 `node dev/clock-test.js` checks the Clock tile in a headless browser (Playwright): Digital 12-hour and 24-hour, Analog with no digital time, the tile changing at once when the face or clock is picked on the page, the page on Analog without a digital time or the 12/24 choice (and the arrows still fine), the second hand turning once a second from one timer that stops on Digital, and the date window fitting at 13 tile sizes, in English and in Spanish ("SÁB", "MIÉ"). `CLOCK_TEST_SHOTS=<folder>` also saves screenshots and a short clip (needs ffmpeg). It needs port 8095 free.
 
 `node dev/wotd-test.js` checks Word of the day and the hub's languages in a headless browser (Playwright): `app/i18n.js` (Spanish strings, the English fallback for a missing key, `{vars}`, the saved choice, `?lang=es`, a TV whose storage throws, its own Spanish day and month names), the 366 words (every field, an article on every noun), the pick by local day of the year (all day, both 2026 clock changes, a new word at midnight), and the tile at 12 sizes in English and Spanish with every word at the tight sizes: nothing outside the tile, nothing cut sideways, no type under 0.85rem, line heights with room for accents, ¿ and ¡. Then the panel and full screen for every word in both languages, and a language change redrawing the tile and the open panel. `--shots <folder>` also saves the `docs/screenshots/wotd-*` and `clock-language-*` pictures. It needs port 8095 free.
+
+`node dev/shows-test.js` checks the Schedule, the Entertainment tile's counts and the watch link test in a headless browser (Playwright), against the Pi's server with the made-up show sample (never TVmaze), at 1920x1080 in Chicago on Tuesday 17 November 2026, 7:25 PM:
+- episodes grouped by local day; 12 and 24 hour times; Spanish;
+- the empty, error and no-Pi states, with SAMPLE only on the sample;
+- OK opening Disney+ for a Hulu title and "Also on Hulu" opening Hulu;
+- the counts staying inside the tile at six sizes;
+- placeholders never firing, an answer reaching the Pi, and the Prime id box;
+- `service.js`'s `/launch-control` checks;
+- the new files being plain ES5.
+
+`node dev/shows-shots.js <folder>` takes the matching pictures. `node pi/shows-test.js` checks the Pi's side against a stand-in TVmaze: lookups, the rate limit, the last good copy, `./hub shows`, the mailbox commands, and logs that name no show.
 
 `node dev/layout-test.js` checks the tile layout sent from the Pi (`./hub layout set`, see `pi/README.md`) the same way: a saved layout at start, tiles that move in place with focus and glass following, waiting while a panel is open, one reload for a new set of widgets, and no reload loop. It also needs port 8095 free.
 

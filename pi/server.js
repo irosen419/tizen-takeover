@@ -9,6 +9,7 @@
  *   GET  /live/events    the push line (Server-Sent Events)
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
+ *   POST /linktests      one watch link test answer from the About panel
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
  *
  * Control API (needs "Authorization: Bearer <token>"):
@@ -22,6 +23,10 @@
  *   POST /api/awws       store one, { snapshot: {...} }, or { snapshot: null } to clear
  *   GET  /api/budget     the personal budget snapshot (budget.js)
  *   POST /api/budget     store one (sent by the budget app on the Pi), or null to clear
+ *   GET  /api/shows      the show list and the schedule from TVmaze (shows.js)
+ *   POST /api/shows      { add: {name, service, ...} }, { remove: "name" } or { set: [...] }
+ *   POST /api/shows/refresh   ask TVmaze about every show now and wait for it
+ *   GET  /api/linktests  the TV's watch link test answers (linktests.js)
  *   GET  /api/status     version, rev, connected screens, calendar summary
  *   GET  /api/log        the last log lines kept in memory (?lines=1-200,
  *                        ?errors=1 for problems only, ?scrub=1 hides addresses
@@ -61,6 +66,8 @@ const awws = require('./awws');
 const budget = require('./budget');
 const mailbox = require('./mailbox');
 const spotify = require('./spotify');
+const shows = require('./shows');
+const linktests = require('./linktests');
 const logscrub = require('./logscrub');
 
 const SERVER_VERSION = '0.7.0';
@@ -467,7 +474,9 @@ function freshState() {
       layout: { rev: 0, data: { layout: null } },
       awws: { rev: 0, data: awws.emptyData() },
       budget: { rev: 0, data: budget.emptyData() },
-      nowplaying: { rev: 0, data: spotify.offData() }
+      nowplaying: { rev: 0, data: spotify.offData() },
+      shows: { rev: 0, data: shows.emptyData() },
+      linktests: { rev: 0, data: linktests.emptyData() }
     }
   };
 }
@@ -515,6 +524,10 @@ function loadState(dir, log) {
     st.resources.budget = budget.cleanResource(st.resources.budget);
     // And no "now playing"; picture addresses are checked again on the way in.
     st.resources.nowplaying = spotify.cleanResource(st.resources.nowplaying, true);
+    // The TV show schedule (shows.js) and the watch link test answers: empty
+    // in older files.
+    st.resources.shows = shows.cleanResource(st.resources.shows);
+    st.resources.linktests = linktests.cleanResource(st.resources.linktests);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -646,6 +659,34 @@ function start(options) {
     }
   }));
   player.start();
+
+  /* --- the TV show schedule (shows.js) --- */
+
+  // opt.shows: { api, sampleFile, refreshMs, rate, ... } turns the TVmaze
+  // lookups on (the real server always passes it; tests and the preview pass
+  // a stand-in or the sample). Without it nothing is fetched by itself.
+  const showsOpt = isObj(opt.shows) ? opt.shows : null;
+  const showsWaitMs = opt.showsWait || 25000;
+  const tracker = shows.createTracker(Object.assign({}, showsOpt || {}, {
+    dataDir: dataDir,
+    enabled: !!showsOpt && showsOpt.enabled !== false,
+    autoRefresh: !!showsOpt && showsOpt.enabled !== false,
+    now: typeof opt.now === 'function' ? opt.now : () => new Date(),
+    log: log,
+    current: () => state.resources.shows.data,
+    publish: (data, changed) => {
+      if (!changed) {
+        // Only the "checked at" times moved: in memory, no push, no write.
+        state.resources.shows = { rev: state.resources.shows.rev, data: data };
+        return;
+      }
+      try {
+        changeResource('shows', data);
+        log('shows changed: ' + data.shows.length + ' shows (rev ' + state.rev + ')');
+      } catch (e) { /* changeResource already logged it */ }
+    }
+  }));
+  tracker.start();
 
   /* --- replies --- */
 
@@ -1025,7 +1066,10 @@ function start(options) {
     '/api/spotify/login': ['POST'],
     '/api/spotify/code': ['POST'],
     '/api/spotify/logout': ['POST'],
-    '/api/spotify/refresh': ['POST']
+    '/api/spotify/refresh': ['POST'],
+    '/api/shows': ['GET', 'POST'],
+    '/api/shows/refresh': ['POST'],
+    '/api/linktests': ['GET']
   };
 
   function statusBody() {
@@ -1034,7 +1078,8 @@ function start(options) {
       uptime: Math.round((Date.now() - startedAt) / 1000), screens: screenList(),
       calendar: { configured: calReader.configured, calendars: calList.length, lastRefresh: calReader.lastRefresh() },
       mailbox: mbox ? mbox.info() : { configured: false, problem: mailboxCfg.problem || '' },
-      spotify: player.status()
+      spotify: player.status(),
+      shows: { shows: tracker.list().length, lastRefresh: tracker.lastRefresh(), sample: !!state.resources.shows.data.sample }
     };
   }
 
@@ -1159,6 +1204,44 @@ function start(options) {
           const answer = postSnapshot('budget', budget, body);
           return reply(200, answer[0], answer[1]);
         }
+        if (route === '/api/shows' && method === 'GET') {
+          const r = state.resources.shows;
+          return reply(200, { ok: true, rev: r.rev, data: r.data, list: tracker.list(), tz: calTz });
+        }
+        if (route === '/api/shows') {
+          if (!isObj(body)) throw bad('send { "add": {...} }, { "remove": "name" } or { "set": [...] }');
+          const ops = ['add', 'remove', 'set'].filter((k) => Object.prototype.hasOwnProperty.call(body, k));
+          if (ops.length !== 1) throw bad('send exactly one of { "add": {...} }, { "remove": "name" } or { "set": [...] }');
+          if (ops[0] === 'add') {
+            const a = tracker.add(body.add);
+            return reply(200, { ok: true, entry: a.entry, replaced: a.replaced, list: tracker.list() }, (a.replaced ? 'updated ' : 'added ') + 'a show');
+          }
+          if (ops[0] === 'remove') {
+            if (typeof body.remove !== 'string' || !body.remove.trim()) throw bad('"remove" must be the show\'s name');
+            const e = tracker.remove(body.remove);
+            return reply(200, { ok: true, removed: e, list: tracker.list() }, 'removed a show');
+          }
+          const list = tracker.set(body.set);
+          return reply(200, { ok: true, list: list }, plural(list.length, 'show') + ' on the list');
+        }
+        if (route === '/api/shows/refresh') {
+          let waitTimer = null;
+          const late = new Promise((r) => { waitTimer = setTimeout(() => r(null), showsWaitMs); });
+          Promise.race([tracker.refresh().then((r) => ({ r: r })), late]).then((w) => {
+            clearTimeout(waitTimer);
+            const finished = !!(w && w.r);
+            reply(200, {
+              ok: true, done: finished, changed: finished ? w.r.changed : false,
+              problems: finished ? w.r.problems || [] : [], count: tracker.list().length,
+              data: state.resources.shows.data, list: tracker.list()
+            }, finished ? (w.r.changed ? 'changed' : 'no change') : 'still reading');
+          }).catch(failed);
+          return undefined;
+        }
+        if (route === '/api/linktests') {
+          const l = state.resources.linktests;
+          return reply(200, { ok: true, rev: l.rev, data: l.data });
+        }
         if (route === '/api/todo' && method === 'GET') {
           return reply(200, { ok: true, rev: state.rev, items: todoItems() });
         }
@@ -1214,7 +1297,7 @@ function start(options) {
     if (!checkToken(req)) return done(401, { ok: false, error: 'wrong token' });
     if (ROUTES[route] && ROUTES[route].indexOf(req.method) < 0) res.setHeader('Allow', ROUTES[route].join(', '));
     const run = (body) => api(req.method, route, body, query).then((r) => done(r.status, r.body, r.note));
-    if (req.method !== 'POST' || route === '/api/calendar/refresh' || !ROUTES[route]) {
+    if (req.method !== 'POST' || route === '/api/calendar/refresh' || route === '/api/shows/refresh' || !ROUTES[route]) {
       req.resume(); // no body is needed
       return run(undefined);
     }
@@ -1239,7 +1322,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/linktests' ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1255,6 +1338,19 @@ function start(options) {
     const origin = req.headers.origin;
     if (origin && origins.indexOf(origin) < 0) {
       return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    }
+    if (route === '/linktests') {
+      return readBody(req, res, (body) => {
+        try {
+          if (!isObj(body)) throw bad('send { "result": { ... } }');
+          const r = linktests.normalizeResult(body.result, Date.now());
+          changeResource('linktests', linktests.addResult(state.resources.linktests.data, r));
+          sendJson(res, 200, { ok: true, rev: state.rev }, cors);
+          log('screen sent a watch link test answer (' + r.outcome + ')');
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
     }
     readBody(req, res, (body) => {
       try {
@@ -1291,7 +1387,7 @@ function start(options) {
     });
   }
 
-  const SCREEN_ROUTES = { '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/spotify/callback': 1 };
+  const SCREEN_ROUTES = { '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/spotify/callback': 1 };
 
   function handler(door) {
     return (req, res) => {
@@ -1386,6 +1482,7 @@ function start(options) {
     spotify: player,
     // Keeps a line that was already printed some other way (process events).
     note: (s) => { try { remember(String(s)); } catch (e) { /* never throws */ } },
+    shows: tracker,
     _debug: () => {
       forgetOld();
       return {
@@ -1416,6 +1513,7 @@ function start(options) {
     closing = true;
     calReader.close();
     player.close();
+    tracker.close();
     if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));
@@ -1468,6 +1566,12 @@ if (require.main === module) {
     refreshMinutes: env.CALENDAR_REFRESH_MINUTES || '',
     mailboxEnv: env,
     spotifyEnv: env,
+    // TVmaze for the show schedule. HUB_SHOWS=off stops the lookups;
+    // HUB_SHOWS=sample shows the made-up sample instead (for trying the TV).
+    shows: {
+      enabled: env.HUB_SHOWS !== 'off',
+      sampleFile: env.HUB_SHOWS === 'sample' ? path.join(__dirname, 'fixtures', 'shows-sample.json') : undefined
+    },
     // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
     // or systemd (Restart=always) starts the server again, with any new code.
     onRestart: () => {
