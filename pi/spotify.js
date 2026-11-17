@@ -651,7 +651,7 @@ function createPlayer(o) {
         .then((r) => { user = r.status === 200 ? cleanText((parseJson(r.text) || {}).display_name, 80) : ''; }, () => {})
         .then(() => {
           saveToken();
-          log('Spotify: signed in' + (user ? ' as ' + user : ''));
+          log('Spotify: signed in'); // the name stays out of the log; status() still has it
           return poll().then(() => { schedule(); return { user: user }; });
         });
     }, (e) => {
@@ -712,7 +712,7 @@ function createPlayer(o) {
       putOff();
       return;
     }
-    log('Spotify: signed in' + (user ? ' as ' + user : '') + ', watching what plays');
+    log('Spotify: signed in, watching what plays');
     if (!o.manual) poll().then(schedule);
   }
 

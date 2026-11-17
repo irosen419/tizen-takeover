@@ -287,6 +287,7 @@ async function main() {
     mock.next();
     const h = await start({ dataDir: dirSigned });
     assert.strictEqual(h._debug().spotify.signedIn, true);
+    assert.ok(logs.some((l) => / Spotify: signed in, watching what plays$/.test(l)), 'logged without the account name');
     await h.spotify.poll();
     assert.strictEqual((await now(h)).data.track.title, 'Paper Moons');
     await stop(h);
@@ -628,7 +629,8 @@ async function main() {
     const status = await api(h, 'GET', '/api/status');
     await stop(h);
     const all = logs.join('\n') + state.text + status.text;
-    assert.ok(logs.some((l) => /Spotify: signed in as Mock Listener/.test(l)));
+    assert.ok(logs.some((l) => / Spotify: signed in$/.test(l)), 'the sign-in is logged');
+    assert.ok(logs.every((l) => l.indexOf('Mock Listener') < 0), 'the account name is never logged');
     [CLIENT_SECRET, 'mock-refresh-', 'mock-access-', code, 'mock-code-'].forEach((bad) => {
       assert.ok(all.indexOf(bad) < 0, 'found ' + bad.slice(0, 12));
     });

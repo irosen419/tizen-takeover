@@ -22,11 +22,11 @@
  * app/i18n.js) on one line in 3-column
  * tiles at 22px+; a repeated start keeps the element and extends the time;
  * a layout switch (in place, and one that reloads the page) puts the chip on
- * the new layout's tile; on the focused tile the focus highlight leaves the
- * top edge while the light sweeps (the ring's top clipped, or without the
- * ring the tile's own top border transparent, same size) and comes back when
- * the sweep ends, the focus moves or a panel opens, never on an unfocused
- * tile, and nothing is left behind.
+ * the new layout's tile; on the focused tile the whole focus highlight is
+ * off while the light laps the border (the ring hidden, or without the ring
+ * the tile's whole border in the plain line colour, same size) and comes
+ * back when the lap ends, the focus moves or a panel opens, never on an
+ * unfocused tile, and nothing is left behind.
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  * WORKING_GREP=<text> runs only the checks whose name contains it.
@@ -282,13 +282,14 @@ async function check2(pi) {
     const c = tile.querySelector('.fx-chip');
     const e = tile.querySelector('.fx-edge');
     return { same: c === window.__w, cls: c.className, n: document.querySelectorAll('.fx-chip').length, edge: !!e,
-      sweep: e ? getComputedStyle(e.firstChild).animationName : '', log: window.__log, ico: getComputedStyle(c.querySelector('.fx-act-ico')).animationName,
+      sweep: e ? Array.prototype.map.call(e.querySelectorAll('i'), (n) => getComputedStyle(n).animationName).join(', ').split(', ').filter((v, i, a) => a.indexOf(v) === i).sort().join() : '', log: window.__log, ico: getComputedStyle(c.querySelector('.fx-act-ico')).animationName,
       pen: c.querySelector('.fx-act-pen') ? getComputedStyle(c.querySelector('.fx-act-pen')).animationName : '' };
   });
   assert(mid.same, 'not the same element');
   assert(!/fx-chip-working/.test(mid.cls) && /is-in/.test(mid.cls) && !/is-out/.test(mid.cls), 'class: ' + mid.cls);
   assert(mid.log.every((c) => !/is-out/.test(c)), 'it faded on the way: ' + JSON.stringify(mid.log));
-  assert(mid.n === 1 && mid.edge && mid.sweep === 'fx-act-sweep', 'edge: ' + JSON.stringify(mid));
+  // The light laps the whole border: the four sides and the four corners.
+  assert(mid.n === 1 && mid.edge && mid.sweep === 'fx-lap-bl-in,fx-lap-bl-out,fx-lap-br-in,fx-lap-br-out,fx-lap-off,fx-lap-tl-in,fx-lap-tl-out,fx-lap-tr-in,fx-lap-tr-out,fx-lap-x,fx-lap-y', 'edge: ' + JSON.stringify(mid));
   assert(mid.ico === 'none' && mid.pen === 'fx-act-pen', 'the icon loops do not run: ' + JSON.stringify(mid));
   assert(!(await workingOf(page, 'todo')), 'the working state stayed');
   await sleep(1500);
@@ -659,7 +660,7 @@ async function focusOn(page, widget) {
   throw new Error('could not focus the ' + widget + ' tile');
 }
 
-// The focus highlight around the edge sweep, now: the ring's class and clip,
+// The focus highlight around the lap, now: the ring's class and opacity,
 // which tiles carry the tile class, the To-do tile's border colours and size.
 const edgeState = (page) => page.evaluate(() => {
   const ring = document.querySelector('.fx-ring');
@@ -668,19 +669,19 @@ const edgeState = (page) => page.evaluate(() => {
   const r = tile.getBoundingClientRect();
   const chip = tile.querySelector('.fx-chip');
   return {
-    ring: !!ring, ringCls: !!(ring && ring.classList.contains('fx-ring-edge')),
-    ringClip: ring ? getComputedStyle(ring).clipPath : null,
-    tiles: Array.prototype.map.call(document.querySelectorAll('.fx-edge-focus'), (t) => { const c = t.closest('.cell'); return c && c.getAttribute('data-widget'); }),
-    left: document.querySelectorAll('.fx-edge-focus, .fx-ring-edge').length,
+    ring: !!ring, ringCls: !!(ring && ring.classList.contains('fx-ring-lap')),
+    ringOp: ring ? getComputedStyle(ring).opacity : null,
+    tiles: Array.prototype.map.call(document.querySelectorAll('.fx-lap-focus'), (t) => { const c = t.closest('.cell'); return c && c.getAttribute('data-widget'); }),
+    left: document.querySelectorAll('.fx-lap-focus, .fx-ring-lap').length,
     edge: !!tile.querySelector('.fx-edge'), out: !!(chip && chip.classList.contains('is-out')),
     focused: tile.classList.contains('is-focused'),
-    top: cs.borderTopColor, side: cs.borderLeftColor, topW: cs.borderTopWidth,
+    top: cs.borderTopColor, side: cs.borderLeftColor, right: cs.borderRightColor, bottom: cs.borderBottomColor, topW: cs.borderTopWidth,
     box: [r.left, r.top, r.width, r.height].map((x) => Math.round(x * 100) / 100).join(',')
   };
 });
 
-// Samples every frame: is the sweep playing (edge there, chip not fading),
-// and is the highlight off the top (ring class, or the To-do tile's class)?
+// Samples every frame: is the lap running (its overlay there), and is the
+// highlight off (ring class, or the To-do tile's class)?
 async function edgeWatch(page) {
   await page.evaluate(() => {
     window.__edge = [];
@@ -690,8 +691,8 @@ async function edgeWatch(page) {
       const chip = tile.querySelector('.fx-chip');
       window.__edge.push({ edge: !!tile.querySelector('.fx-edge'), out: !!(chip && chip.classList.contains('is-out')),
         focused: tile.classList.contains('is-focused'),
-        hidden: !!(ring && ring.classList.contains('fx-ring-edge')) || tile.classList.contains('fx-edge-focus'),
-        others: document.querySelectorAll('.fx-edge-focus').length - (tile.classList.contains('fx-edge-focus') ? 1 : 0) });
+        hidden: !!(ring && ring.classList.contains('fx-ring-lap')) || tile.classList.contains('fx-lap-focus'),
+        others: document.querySelectorAll('.fx-lap-focus').length - (tile.classList.contains('fx-lap-focus') ? 1 : 0) });
       if (window.__edge.length < 400) requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
@@ -699,59 +700,58 @@ async function edgeWatch(page) {
 }
 
 const WHITE = 'rgb(255, 255, 255)';
-const CLEAR = 'rgba(0, 0, 0, 0)';
 const NO_RING = 'motion=push&fx=quietTiles,stagger,cover,bloom,activity';
 
 async function arrival(pi, page) {
   await postTodo(pi, 'Arrived ' + Date.now());
-  await until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="todo"] .tile .fx-edge')), 4000, 'no edge sweep');
+  await until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="todo"] .tile .fx-edge')), 4000, 'no lap');
 }
 
 async function check14(pi) {
-  // With the ring: its top is clipped while the sweep plays, then not.
+  // With the ring: it is invisible (the whole highlight off) while the lap runs, then back.
   let page = await open({ pi: pi });
   await focusOn(page, 'todo');
   let before = await edgeState(page);
-  assert(before.ring && !before.ringCls && before.ringClip === 'none' && !before.left, 'before: ' + JSON.stringify(before));
+  assert(before.ring && !before.ringCls && before.ringOp === '1' && !before.left, 'before: ' + JSON.stringify(before));
   await edgeWatch(page);
   await arrival(pi, page);
   let mid = await edgeState(page);
-  assert(mid.ringCls && /^inset\(/.test(mid.ringClip) && !mid.tiles.length, 'ring not clipped during the sweep: ' + JSON.stringify(mid));
+  assert(mid.ringCls && mid.ringOp === '0' && !mid.tiles.length, 'ring still showing during the lap: ' + JSON.stringify(mid));
   assert(mid.box === before.box && mid.top === before.top, 'the tile itself changed under the ring: ' + JSON.stringify([before, mid]));
   await sleep(1200);
-  assert((await edgeState(page)).ringCls, 'the clip went before the sweep ended');
+  assert((await edgeState(page)).ringCls, 'the ring came back before the lap ended');
   await noneLeft(page, 3000, 'the chip stayed');
   let after = await edgeState(page);
-  assert(!after.ringCls && after.ringClip === 'none' && !after.left, 'left behind with the ring: ' + JSON.stringify(after));
+  assert(!after.ringCls && after.ringOp === '1' && !after.left, 'left behind with the ring: ' + JSON.stringify(after));
   let log = await page.evaluate(() => window.__edge);
-  let bad = log.filter((s) => s.hidden !== (s.edge && !s.out && s.focused) || s.others);
-  assert(log.some((s) => s.hidden) && !bad.length, 'the clip did not follow the sweep: ' + JSON.stringify(bad.slice(0, 3)));
+  let bad = log.filter((s) => s.hidden !== (s.edge && s.focused) || s.others);
+  assert(log.some((s) => s.hidden) && !bad.length, 'the ring did not follow the lap: ' + JSON.stringify(bad.slice(0, 3)));
   noErrors(page);
 
-  // Focus moving to another tile mid-sweep: everything back at once, the new tile not clipped.
+  // Focus moving to another tile mid-lap: everything back at once, the ring showing on the new tile.
   await arrival(pi, page);
-  assert((await edgeState(page)).ringCls, 'second sweep: no clip');
+  assert((await edgeState(page)).ringCls, 'second lap: the ring showed');
   await page.keyboard.press('ArrowUp');
   let moved = await edgeState(page);
   assert(!moved.focused && moved.edge, 'the focus did not move off the To-do tile mid-sweep: ' + JSON.stringify(moved));
-  assert(!moved.ringCls && moved.ringClip === 'none' && !moved.left, 'not restored at once on the move: ' + JSON.stringify(moved));
+  assert(!moved.ringCls && moved.ringOp === '1' && !moved.left, 'not restored at once on the move: ' + JSON.stringify(moved));
   await sleep(400);
-  assert(!(await edgeState(page)).left, 'clipped after the glide');
+  assert(!(await edgeState(page)).left, 'hidden after the glide');
   await noneLeft(page, 3500, 'the chip stayed (moved)');
 
   // An unfocused tile's arrival changes nothing about the ring.
   await edgeWatch(page);
   await arrival(pi, page);
   const other = await edgeState(page);
-  assert(!other.focused && !other.ringCls && other.ringClip === 'none' && !other.left, 'an unfocused tile changed the ring: ' + JSON.stringify(other));
+  assert(!other.focused && !other.ringCls && other.ringOp === '1' && !other.left, 'an unfocused tile changed the ring: ' + JSON.stringify(other));
   await noneLeft(page, 3500, 'the chip stayed (unfocused)');
   log = await page.evaluate(() => window.__edge);
   assert(log.some((s) => s.edge) && log.every((s) => !s.hidden && !s.others), 'hidden on an unfocused tile');
 
-  // A panel opening mid-sweep: everything back.
+  // A panel opening mid-lap: everything back.
   await focusOn(page, 'todo');
   await arrival(pi, page);
-  assert((await edgeState(page)).ringCls, 'third sweep: no clip');
+  assert((await edgeState(page)).ringCls, 'third lap: the ring showed');
   await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
   const panel = await edgeState(page);
   assert(!panel.edge && !panel.ringCls && !panel.left, 'not restored on a panel: ' + JSON.stringify(panel));
@@ -763,7 +763,7 @@ async function check14(pi) {
   noErrors(page);
   await page.context().close();
 
-  // Without the ring: the tile's own top border goes transparent (same size), then back.
+  // Without the ring: the tile's whole border takes the plain line colour (same size), then back.
   page = await open({ pi: pi, query: NO_RING });
   await focusOn(page, 'todo');
   before = await edgeState(page);
@@ -771,23 +771,23 @@ async function check14(pi) {
   await edgeWatch(page);
   await arrival(pi, page);
   mid = await edgeState(page);
-  assert(mid.tiles.join() === 'todo' && mid.top === CLEAR && mid.side === WHITE, 'top border not cleared: ' + JSON.stringify(mid));
+  assert(mid.tiles.join() === 'todo' && [mid.right, mid.bottom, mid.side].every((c) => c === mid.top) && mid.top !== WHITE && /^rgba\(255, 255, 255, 0\.1/.test(mid.top), 'highlight not off the whole border: ' + JSON.stringify(mid));
   assert(mid.box === before.box && mid.topW === before.topW, 'the tile moved or resized: ' + JSON.stringify([before, mid]));
   await noneLeft(page, 3500, 'the chip stayed (no ring)');
   after = await edgeState(page);
-  assert(!after.left && after.top === WHITE, 'not restored (no ring): ' + JSON.stringify(after));
+  assert(!after.left && [after.top, after.right, after.bottom, after.side].every((c) => c === WHITE), 'not restored (no ring): ' + JSON.stringify(after));
   log = await page.evaluate(() => window.__edge);
-  bad = log.filter((s) => s.hidden !== (s.edge && !s.out && s.focused) || s.others);
-  assert(log.some((s) => s.hidden) && !bad.length, 'the tile class did not follow the sweep: ' + JSON.stringify(bad.slice(0, 3)));
+  bad = log.filter((s) => s.hidden !== (s.edge && s.focused) || s.others);
+  assert(log.some((s) => s.hidden) && !bad.length, 'the tile class did not follow the lap: ' + JSON.stringify(bad.slice(0, 3)));
   // Focus moving away mid-sweep, and a panel, without the ring.
   await arrival(pi, page);
   await page.keyboard.press('ArrowUp');
   moved = await edgeState(page);
-  assert(!moved.focused && moved.edge && !moved.left && moved.top !== CLEAR, 'not restored at once on the move (no ring): ' + JSON.stringify(moved));
+  assert(!moved.focused && moved.edge && !moved.left, 'not restored at once on the move (no ring): ' + JSON.stringify(moved));
   await noneLeft(page, 3500, 'the chip stayed (no ring, moved)');
   await focusOn(page, 'todo');
   await arrival(pi, page);
-  assert((await edgeState(page)).tiles.join() === 'todo', 'no ring, third sweep: not cleared');
+  assert((await edgeState(page)).tiles.join() === 'todo', 'no ring, third lap: not off');
   await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
   assert(!(await edgeState(page)).left, 'not restored on a panel (no ring)');
   await idle(page);
@@ -828,7 +828,7 @@ async function main() {
   await check('11. Spanish (app/i18n.js) and English on one line in 3-column tiles, 22px+, 4.5:1', () => check11(pi));
   await check('12. A repeated start extends the time and keeps the same element', () => check12(pi));
   await check('13. A layout switch (in place, and one that reloads) puts the chip on the new layout\'s tile', () => check13(pi));
-  await check('14. On the focused tile the highlight leaves the top edge while the light sweeps (ring clipped, or the tile\'s top border), and comes back on its end, a focus move or a panel', () => check14(pi));
+  await check('14. On the focused tile the whole highlight is off while the light laps the border (ring hidden, or the tile\'s whole border plain), and comes back on its end, a focus move or a panel', () => check14(pi));
 }
 
 main().catch((e) => {

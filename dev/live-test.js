@@ -278,7 +278,7 @@ async function check1() {
   const lines = await look.statusLines(page);
   // In the About panel: the version, the browser and motion; no live updates row.
   assert(lines.length === 3, 'expected 3 rows, got ' + JSON.stringify(lines));
-  assert(lines[0].indexOf('v0.28.17') === 0, 'first status line: ' + lines[0]);
+  assert(lines[0].indexOf('v0.29.4') === 0, 'first status line: ' + lines[0]);
   assert((await look.todoSub(page)) === 'On this TV', 'to-do sub line: ' + (await look.todoSub(page)));
   assert((await look.state(page)) === 'off', 'live state: ' + (await look.state(page)));
   await addOnScreen(page, 'Milk');
@@ -419,7 +419,7 @@ async function check5(poll) {
   await control('POST', '/api/todo', { title: other });
   await until(async () => (await page.$$eval('#panel .todo-title', (els) => els.map((e) => e.textContent))).indexOf(other) >= 0,
     4000, 'an add from the Pi did not show in the open panel');
-  const stillThere = await page.$$eval('#panel .todo-sec-now .todo-row.is-done .todo-title', (els) => els.map((e) => e.textContent));
+  const stillThere = await page.$$eval('#panel .todo-sec-optional .todo-row.is-done .todo-title', (els) => els.map((e) => e.textContent));
   assert(stillThere.indexOf(title) >= 0, 'the ticked row moved away while the panel was open');
   await until(async () => (await look.panelSub(page)) === 'In sync', 3000, 'panel sub line: ' + (await look.panelSub(page)));
   await closePanel(page);

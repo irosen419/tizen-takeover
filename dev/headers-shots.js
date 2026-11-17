@@ -12,8 +12,9 @@
  *     homeHub.lang, with the words in app/i18n.js), plus the stock layout.
  *   panel-entertainment-<tag>.png    the Entertainment panel, opened.
  *   --clip: edge-appears.mp4, a new to-do arriving on the stock layout and its
- *     accent edge sweeping in along the To-do tile's top (needs ffmpeg).
- *   --fps: the frame rate headless Chromium reached while an edge swept in,
+ *     accent edge coming in, its light lapping the To-do tile's border
+ *     (needs ffmpeg).
+ *   --fps: the frame rate headless Chromium reached while an edge came in,
  *     while one faded out, and while a panel opened, saved as fps.json. A
  *     desktop is not the TV: these say the motion is cheap, not that the TV
  *     is smooth.
@@ -180,7 +181,7 @@ async function rates(env) {
     console.log('  ' + name + ': ' + row.fps.join(', ') + ' fps (worst frame ' + row.worstFrameMs.join(', ') + ' ms)');
     await page.context().close();
   }
-  await measure('accent edge sweeping in (with the activity chip, 1.4 s)', 1400,
+  await measure('accent edge coming in (the activity chip and its lap, 1.4 s)', 1400,
     async () => { await newTodo(env); },
     async (page) => { await page.evaluate(() => window.HUB_FX.edgeClear && window.HUB_FX.edgeClear()); await H.sleep(2800); });
   await measure('accent edge fading out (600 ms)', 700,

@@ -280,7 +280,8 @@ function control(env, method, route, body) {
 
 /*
  * A page of the hub. o: { layout: [...] (kept as if picked in the switcher),
- * spanish, at, live ('off' | address; default the hub server), storage
+ * spanish, at, live ('off' | address; default the hub server), motion
+ * (default 'fade'), lang ('es' for the hub in Spanish), storage
  * { key: value }, route(context), scale, video { dir }, config (a function
  * run on HUB_CONFIG before the hub starts), waitLive (default true) }.
  */
@@ -316,7 +317,7 @@ async function openHub(env, o) {
   if (o.spanish) await page.addInitScript((s) => { window.HUB_AWWS_STRINGS = s[0]; window.HUB_BUDGET_STRINGS = s[1]; }, [SPANISH, budgetSample.SPANISH]);
   if (o.config) await page.addInitScript(o.config);
   const live = o.live === undefined ? env.LIVE : o.live;
-  await page.goto(env.PAGE + '/?motion=fade&live=' + encodeURIComponent(live));
+  await page.goto(env.PAGE + '/?motion=' + (o.motion || 'fade') + '&live=' + encodeURIComponent(live) + (o.lang ? '&lang=' + o.lang : ''));
   await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 15000 });
   if (o.waitLive !== false && live !== 'off') {
     await until(() => page.evaluate(() => window.HUB_LIVE && window.HUB_LIVE.status().state === 'live'), 10000, 'the hub did not go live');

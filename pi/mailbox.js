@@ -430,12 +430,14 @@ const COMMANDS = {
   },
   'todo.add': {
     args: {
-      title: [V.text(MAX_TITLE), true], section: [V.oneOf(Object.keys(hubctl.SECTION_NAMES)), false], due: [V.date(), false],
+      title: [V.text(MAX_TITLE), true], section: [V.oneOf(Object.keys(hubctl.SECTION_NAMES)), false],
+      level: [V.oneOf(Object.keys(hubctl.LEVEL_NAMES)), false], due: [V.date(), false],
       notes: [V.notes(MAX_NOTES), false]
     },
     run: async (a, ctx) => {
       const body = { title: a.title };
       if (a.section !== undefined) body.section = a.section;
+      if (a.level !== undefined) body.level = a.level;
       if (a.due !== undefined) body.due = a.due;
       if (a.notes) body.notes = a.notes;
       const r = await ctx.call('POST', '/api/todo', body);
@@ -447,7 +449,7 @@ const COMMANDS = {
     run: async (a, ctx) => {
       const r = await ctx.call('GET', '/api/todo');
       const items = (r.items || []).map((i) => {
-        const o = { id: i.id, title: i.title, section: i.section, done: i.done };
+        const o = { id: i.id, title: i.title, level: hubctl.levelOf(i), section: i.section, done: i.done };
         if (i.due) o.due = i.due;
         if (i.notes) o.notes = i.notes;
         return o;
@@ -474,6 +476,22 @@ const COMMANDS = {
       const data = { id: after.id, title: after.title };
       if (after.notes) data.notes = after.notes;
       return { message: hubctl.todoNotesText(after), data: data };
+    }
+  },
+  'todo.level': {
+    args: { id: [V.text(40), false], title: [V.text(MAX_TITLE), false], level: [V.oneOf(Object.keys(hubctl.LEVEL_NAMES)), true] },
+    check: oneOfIdOrTitle,
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/todo');
+      let item;
+      try {
+        item = hubctl.matchItem(r.items || [], a.id !== undefined ? a.id : a.title);
+      } catch (e) {
+        if (e instanceof hubctl.Stop) return { ok: false, message: e.message };
+        throw e;
+      }
+      const after = await hubctl.setLevel(ctx.call, item, a.level);
+      return { message: hubctl.todoLevelText(after), data: { id: after.id, title: after.title, level: hubctl.levelOf(after) } };
     }
   },
   'calendar.status': {
@@ -615,6 +633,21 @@ const COMMANDS = {
       return { message: hubctl.spotifyLogoutText(r), data: { changed: !!r.changed } };
     }
   },
+  // Recent log lines. Always scrubbed on the Pi (addresses and names
+  // replaced), so no raw log text reaches the bucket.
+  'log.tail': {
+    args: { lines: [V.number(1, 200), false], errors: [V.bool(), false] },
+    check: (a) => {
+      if (a.lines !== undefined && !Number.isInteger(a.lines)) throw argError('"lines" must be a whole number from 1 to 200');
+    },
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', hubctl.logQuery(a.lines, a.errors === true, true));
+      return {
+        message: hubctl.logSummaryText(r, a.errors === true),
+        data: { lines: r.lines || [], errors24h: r.errors24h || 0 }
+      };
+    }
+  },
   ping: {
     args: {},
     run: async (a, ctx) => ({ message: 'Pong. Home Hub live server ' + ctx.version + ' is running.', data: { version: ctx.version } })
@@ -739,8 +772,12 @@ function createMailbox(o) {
   async function heartbeat() {
     let st = {};
     let cal = {};
+    let lg = {};
     try { st = (await o.api('GET', '/api/status')).body || {}; } catch (e) { /* keep going */ }
     try { cal = ((await o.api('GET', '/api/calendar')).body || {}).data || {}; } catch (e) { /* keep going */ }
+    // Counts and a time only, never log text.
+    try { lg = (await o.api('GET', '/api/log?errors=1&lines=1')).body || {}; } catch (e) { /* keep going */ }
+    const lastError = Array.isArray(lg.lines) && lg.lines.length ? lg.lines[lg.lines.length - 1] : null;
     const body = {
       updated: now().toISOString(),
       version: o.version,
@@ -757,6 +794,10 @@ function createMailbox(o) {
         calendars: (cal.calendars || []).length,
         problems: (cal.calendars || []).filter((c) => !c.ok).length,
         lastRefresh: st.calendar ? st.calendar.lastRefresh || null : null
+      },
+      log: {
+        errors24h: typeof lg.errors24h === 'number' ? lg.errors24h : 0,
+        lastErrorAt: lastError && typeof lastError.t === 'string' ? lastError.t : null
       }
     };
     await s3.put('status.json', JSON.stringify(body, null, 1) + '\n');
