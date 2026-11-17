@@ -485,9 +485,21 @@
     });
   }
 
+  // The fields of an item that its row shows (not done: a tick is not news).
+  var SHOWN = ['title', 'notes', 'due', 'section'];
+
+  function shownChanged(a, b) {
+    for (var i = 0; i < SHOWN.length; i++) if (a[SHOWN[i]] !== b[SHOWN[i]]) return true;
+    return false;
+  }
+
   // Takes the server's list as the working copy. Open items it has that
-  // were nowhere here before are new from a sync: after the first list this
-  // run (never on it) the tile says so (ctx.activity). The rows just appear.
+  // were nowhere here before, or whose shown words (title, notes, due date,
+  // section) differ from the copy here, are news from a sync: after the
+  // first list this run (never on it) the tile says so (ctx.activity). A
+  // done flag alone is not news, and changes made on this TV are already in
+  // the copy here (the server's list is only taken once they are sent), so
+  // they never count. The rows just appear.
   function adopt(items) {
     if (!isArray(items)) return;
     var list = clean(copy(items));
@@ -496,9 +508,12 @@
     if (JSON.stringify(list) === JSON.stringify(store.items)) return;
     var had = {};
     var k;
-    for (k = 0; k < store.items.length; k++) had[store.items[k].id] = true;
+    for (k = 0; k < store.items.length; k++) had[store.items[k].id] = store.items[k];
     var fresh = 0;
-    for (k = 0; k < list.length; k++) if (!had[list[k].id] && !list[k].done) fresh += 1;
+    for (k = 0; k < list.length; k++) {
+      if (list[k].done) continue;
+      if (!had.hasOwnProperty(list[k].id) || shownChanged(had[list[k].id], list[k])) fresh += 1;
+    }
     store.items = list;
     purge();
     store.save();
