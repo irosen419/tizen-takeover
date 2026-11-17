@@ -35,8 +35,10 @@
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
- *     onStatus: function (ctx) {}          // the motion, live updates or updates status
+ *     onStatus: function (ctx) {},         // the motion, live updates or updates status
  *                                          // changed (ctx.live.status())
+ *     stagger: '.my-item'                  // panel items that arrive one by one when it
+ *                                          // opens (motion extras, app/motion.js)
  *   });
  *
  * Everything except id and title is optional. Every call into a widget is
@@ -83,6 +85,10 @@
  *   ctx.setSub(text)          the small line in the panel head
  *   ctx.setTileSub(text)      the small line under the tile's title ('' hides it)
  *   ctx.focus(el)             move panel focus to el
+ *   ctx.handoff(ids)          new items (data-id on their tile rows) arrived from
+ *                             a sync: the motion extras show where they came from
+ *   ctx.bloom(node)           an app is opening from node: { cancel() } or null
+ *   (A waiting tile marks itself quiet with an element of class hub-dormant.)
  *   ctx.live                  live updates from the hub server on the Pi (see
  *                             docs/live-updates.md), or undefined when live.js
  *                             isn't loaded. jsDelivr can serve a mix of old and
@@ -110,7 +116,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.27.0';
+  var BUILD = 'v0.28.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -442,6 +448,7 @@
       motion.measuring = next !== 'fade';
       store({ mode: next, build: BUILD, fps: motion.fps, measuring: motion.measuring });
       markMotion();
+      fxHook('motionChanged');
       announceStatus();
     } else if (motion.clean.length >= 3) {
       motion.measuring = false;
@@ -932,6 +939,7 @@
     clayHook('layout');
     // A tile of another size may want another layout: draw it again.
     for (var r = 0; r < resized.length; r++) drawTile(resized[r]);
+    fxCall('relayout', [focusRect()]);
   }
 
   // Other widgets: build afresh. A note in sessionStorage keyed by the layout
@@ -1107,7 +1115,10 @@
       return BUILD + (u && u.newest === true ? ' (newest)' : '');
     } },
     { group: 'This hub', label: 'Browser', value: function () { return browserText; } },
-    { group: 'This hub', label: 'Motion', value: function () { return noPrefix(motionStatus(), 'Motion: '); } },
+    { group: 'This hub', label: 'Motion', value: function () {
+      var extras = fxCall('statusText') || '';
+      return noPrefix(motionStatus(), 'Motion: ') + (extras ? ' · ' + extras : '');
+    } },
     // The Weather picture behind the tile and panel: moving, or standing still on a slow TV.
     { group: 'This hub', label: 'Weather picture', value: function () {
       var w = widgetById('weather');
@@ -1289,6 +1300,8 @@
       setTileSub: function (text) { setTileSub(rec, text); },
       live: liveFacade(),
       focus: function (node) { if (open === rec) focusPanel(node); },
+      handoff: function (ids) { fxHandoff(rec, ids); },
+      bloom: function (node) { return fxCall('bloom', [node]) || null; },
       _bind: function (r) { rec = r; }
     };
     return ctx;
@@ -1349,6 +1362,7 @@
   function drawTile(rec) {
     rec.body.innerHTML = '';
     call(rec, 'renderTile', [rec.body, rec.ctx]);
+    fxCall('markTile', [rec.tile, rec.body, !!rec.w.planned]);
   }
 
   function onTileClick(rec) {
@@ -1365,6 +1379,8 @@
     if (homeIndex >= 0 && widgets[homeIndex]) widgets[homeIndex].tile.classList.remove('is-focused');
     homeIndex = i;
     if (i >= 0 && widgets[i]) widgets[i].tile.classList.add('is-focused');
+    if (!open) fxCall('focus', [focusRect(), { repeat: keyRepeat }]);
+    keyRepeat = false;
   }
 
   function moveHome(dir) {
@@ -1691,6 +1707,8 @@
     var built = false;
     var skip = null;
     var stop = fade ? function () {} : startSampling();
+    var openedAt = now();
+    fxCall('ringHide');
 
     function finish() {
       if (!moved || !built) return;
@@ -1753,6 +1771,8 @@
       }
       skip = [t0, now()];
       panelEl.style.opacity = '1';
+      // Motion extras: the items arrive from the tile's side (not in fade mode).
+      if (!fade && rec.w.stagger) fxCall('stagger', [panel.body, rec.w.stagger, T, P, 140 - (now() - openedAt)]);
       built = true;
       finish();
     });
@@ -1790,6 +1810,8 @@
 
     if (motion.mode === 'fade' || mode === 'full') {
       // From full screen everything just fades; there is no tile-sized box to shrink to cleanly.
+      // (A shared picture, the Now Playing cover, flies back to the tile.)
+      if (mode === 'full') fxCall('shareTo', [fxCall('shareFrom', [panel.body]), rec.body, true]);
       setOpacity(panelEl, 0, 140);
       setOpacity(ghostEl, 0, 140);
       setOpacity(scrimEl, 0, 140);
@@ -1828,6 +1850,7 @@
     if (busy || !open || next === mode) return;
     busy = true;
     var rec = open;
+    var shared = fxCall('shareFrom', [panel.body]);
 
     function apply() {
       mode = next;
@@ -1850,6 +1873,7 @@
         sizeGhost();
         apply();
         void panelEl.offsetWidth;
+        fxCall('shareTo', [shared, panel.body, next !== 'full']);
         setOpacity(panelEl, 1, 120);
         setOpacity(ghostEl, 1, 120);
         after(panelEl, 120, function () { busy = false; });
@@ -1863,6 +1887,7 @@
       ghostEl.style.transform = flip(from, to);
       apply();
       void ghostEl.offsetWidth;
+      fxCall('shareTo', [shared, panel.body, next !== 'full']);
       var stop = startSampling();
       ghostEl.style.transition = 'transform 240ms ' + EASE;
       ghostEl.style.transform = IDENTITY;
@@ -1897,9 +1922,12 @@
 
   function isBack(code) { return code === KEY.BACK || code === KEY.ESC || code === KEY.BACKSPACE; }
 
+  var keyRepeat = false;     // the key being handled is a held one (no glide for it)
+
   document.addEventListener('keydown', function (e) {
     var code = e.keyCode;
     var dir = dirOf(code);
+    keyRepeat = !!e.repeat;
     var handled = dir || code === KEY.ENTER || isBack(code);
 
     if (frameOpen) {
@@ -1947,6 +1975,7 @@
     if (dir) moveHome(dir);
     else if (code === KEY.ENTER) { if (homeIndex >= 0) openPanel(widgets[homeIndex]); }
     // Back on the home stage does nothing: the hub is home.
+    keyRepeat = false;
   });
 
   /* ---------- tile sub line ---------- */
@@ -2308,10 +2337,83 @@
 
   window.HUB_TEST.clay = window.HUB_CLAY && window.HUB_CLAY.test ? window.HUB_CLAY.test : null;
 
+  /* ---------- motion extras ---------- */
+
+  // app/motion.js: the focus ring that glides, items that arrive in an
+  // opened panel, the to-do handoff, the Now Playing cover's flight, the
+  // launch bloom and quiet waiting tiles. They run only when the timing
+  // above says the screen keeps up (speed 'ok'), and every call is wrapped,
+  // so without motion.js, or with a broken one, nothing changes.
+
+  function fxCall(name, args) {
+    var F = window.HUB_FX;
+    if (!F || typeof F !== 'object' || typeof F[name] !== 'function') return undefined;
+    try { return F[name].apply(F, args || []); } catch (e) { return undefined; }
+  }
+  function fxHook(name) { fxCall(name); }
+
+  // 'fade' in fade mode; 'slow' when auto stepped down from push, a run is
+  // stuttering while auto still measures, or the measured rate is under 40;
+  // otherwise 'ok'.
+  function fxSpeed() {
+    if (motion.mode === 'fade') return 'fade';
+    if (motion.source === 'auto' && motion.mode !== LADDER[0]) return 'slow';
+    if (motion.fps && motion.fps < 40) return 'slow';
+    if (motion.measuring && motion.janky.length) return 'slow';
+    return 'ok';
+  }
+
+  // The focused tile's resting rect, or null.
+  function focusRect() {
+    var rec = homeIndex >= 0 ? widgets[homeIndex] : null;
+    return rec && rec.home ? rec.home : null;
+  }
+
+  // Where a handed-off to-do comes from: an A World Worth Saving tile on
+  // screen (the board first), else none (no dot; the rows and pulse still show).
+  function fxSource(to) {
+    var prefer = ['awws-todo', 'awws'];
+    for (var i = 0; i < prefer.length; i++) {
+      var r = widgetById(prefer[i]);
+      if (r && r !== to && r.home) return r;
+    }
+    for (var j = 0; j < widgets.length; j++) {
+      if (widgets[j] !== to && widgets[j].home && /^awws/.test(widgets[j].w.id)) return widgets[j];
+    }
+    return null;
+  }
+
+  function fxHandoff(rec, ids) {
+    if (!rec || !ids || !ids.length || !rec.home) return;
+    var rows = [];
+    for (var i = 0; i < ids.length; i++) {
+      var list = rec.body.querySelectorAll('[data-id]');
+      for (var k = 0; k < list.length; k++) if (list[k].getAttribute('data-id') === String(ids[i])) rows.push(list[k]);
+    }
+    var src = fxSource(rec);
+    fxCall('handoff', [rec.tile, rec.home, src ? src.home : null, rows]);
+  }
+
+  function startFx() {
+    fxCall('start', [{
+      config: cfg.motionFx,
+      speed: fxSpeed,
+      quiet: function () { return !busy && !open && !frameOpen && !sw.on && !typingBox() && !document.hidden; },
+      clayDrawing: function () {
+        var K = clayApi('drawing');
+        try { return K ? K.drawing() === true : false; } catch (e) { return false; }
+      }
+    }]);
+  }
+
+  window.HUB_TEST.fx = function () { return fxCall('state') || null; };
+  window.HUB_TEST.focusRect = function () { return focusRect(); };
+
   /* ---------- start ---------- */
 
   setupMotion();
   markMotion();
+  startFx();
   buildPanel();
   build();
   parkGhost();
@@ -2324,7 +2426,7 @@
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
     clayHook('layout');
-    resizeTimer = setTimeout(function () { measureHome(); placeGlass(); }, 150);
+    resizeTimer = setTimeout(function () { measureHome(); placeGlass(); fxCall('relayout', [focusRect()]); }, 150);
   });
 
   reportStarted();

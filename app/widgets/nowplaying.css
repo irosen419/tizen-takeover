@@ -531,3 +531,14 @@
   pointer-events: none;
   background-image: radial-gradient(ellipse at 50% 48%, rgba(0,0,0,0) 52%, rgba(4,2,10,0.5) 100%);
 }
+
+/* Waiting for the Pi with no song (motion extras, quietTiles): a small mark
+   and label, then one quiet line (the line's style is in style.css). */
+.np-tile.np-quiet { display: block; padding-top: 0.1rem; }
+.np-quiet-head { display: flex; align-items: center; }
+.np-quiet-mark { width: 1.3rem; height: 1.3rem; margin-right: 0.6rem; color: var(--text-2); }
+.np-quiet-label { font-size: 1rem; line-height: 1.4; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-strip.np-quiet { display: flex; align-items: center; padding-top: 0; }
+.np-strip.np-quiet .np-quiet-label { display: none; }
+.np-strip.np-quiet .np-quiet-head { flex: 0 0 auto; }
+.np-strip.np-quiet .hub-quiet-line { flex: 1 1 auto; min-width: 0; margin-top: 0; }

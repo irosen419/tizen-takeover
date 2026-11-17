@@ -420,6 +420,8 @@ async function main() {
       await shot(s.page, 'np-page-long-spanish' + (full ? '-full' : '') + '.jpg');
       if (full) await s.page.keyboard.press('Enter'); // back to the page: the button is still focused
       await sleep(300);
+      // The switch back is busy for 80 + 240 ms; a close sent before then is ignored.
+      await until(() => s.page.evaluate(() => window.HUB_TEST.mode() !== 'full' && !window.HUB_TEST.busy()), 4000, 'back to the page');
       await s.page.evaluate(() => window.HUB_TEST.closePanel());
       await until(() => s.page.evaluate(() => window.HUB_TEST.open() === null && !window.HUB_TEST.busy()), 4000, 'close');
     }

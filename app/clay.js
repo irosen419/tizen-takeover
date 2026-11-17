@@ -2674,6 +2674,8 @@
     input: safe(input),
     stop: safe(interrupt),
     layout: safe(interrupt),
+    // A scene is on screen now (the motion extras keep out of its way).
+    drawing: function () { return !!scene; },
     status: status,
     test: test
   };

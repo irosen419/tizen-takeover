@@ -91,6 +91,30 @@
     error: 'The calendar couldn’t be shown.'
   };
 
+  // window.HUB_CALENDAR_STRINGS, when set before this file loads, replaces
+  // words key by key (lists as a whole), like HUB_TODO_STRINGS.
+  function mergeStrings(dst, src) {
+    if (!src || typeof src !== 'object') return;
+    for (var k in src) {
+      if (!src.hasOwnProperty(k) || !dst.hasOwnProperty(k)) continue;
+      var v = src[k];
+      var d = dst[k];
+      var isList = Object.prototype.toString.call(d) === '[object Array]';
+      if (d && typeof d === 'object' && !isList) {
+        if (v && typeof v === 'object') mergeStrings(d, v);
+      } else if (isList) {
+        if (Object.prototype.toString.call(v) === '[object Array]' && v.length === d.length) dst[k] = v;
+      } else if (typeof v === 'string') {
+        dst[k] = v;
+      }
+    }
+  }
+  try { mergeStrings(STRINGS, window.HUB_CALENDAR_STRINGS); } catch (e) { /* keep English */ }
+
+  // States that only wait for the Pi: the hub may show these tiles quietly
+  // (motion extras, quietTiles), as one small line.
+  var WAITING = { off: true, quiet: true, lost: true, refused: true, loading: true };
+
   /* One color per calendar number (1 to 9), all readable on the dark glass. */
   var PALETTE = [
     [124, 196, 255],  // 1 sky
@@ -717,10 +741,11 @@
 
   function drawTileMessage(root, state) {
     var msg = message(state);
-    var box = el('div', 'cal-tile-msg', root);
-    el('div', 'cal-msg-head', box, msg.head);
-    if (msg.short) el('div', 'cal-msg-line', box, msg.short);
-    var mark = el('span', 'icon cal-mark', root);
+    var wait = WAITING[state] === true;
+    var box = el('div', 'cal-tile-msg' + (wait ? ' hub-dormant' : ''), root);
+    el('div', 'cal-msg-head' + (wait ? ' hub-quiet-line' : ''), box, msg.head);
+    if (msg.short) el('div', 'cal-msg-line' + (wait ? ' hub-quiet-hide' : ''), box, msg.short);
+    var mark = el('span', 'icon cal-mark' + (wait ? ' hub-quiet-hide' : ''), root);
     mark.innerHTML = (window.HUB_ICONS && window.HUB_ICONS.calendar) || '';
   }
 
@@ -730,7 +755,7 @@
     var root = el('div', 'cal-tile cal-strip', body);
     var state = stateNow();
     if (state !== 'data') {
-      el('div', 'cal-strip-title', root, message(state).head);
+      el('div', 'cal-strip-title' + (WAITING[state] === true ? ' hub-dormant hub-quiet-line' : ''), root, message(state).head);
       return;
     }
     var a = agenda(index, now());
