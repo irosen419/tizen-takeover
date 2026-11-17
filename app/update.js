@@ -529,6 +529,15 @@
     } catch (e) { return null; }
   }
 
+  // A script of the page failed to load and is being fetched again, or the
+  // page is about to load again for it (hub.html, HUB_SCRIPTS): no verdict yet.
+  function scriptsPending() {
+    try {
+      var S = window.HUB_SCRIPTS;
+      return !!S && typeof S.pending === 'function' && S.pending() === true;
+    } catch (e) { return false; }
+  }
+
   function secs(ms) { return Math.max(1, Math.round(ms / 1000)) + ' s'; }
 
   // The notice: a few lines of large text, drawn once, no animation, above
@@ -610,7 +619,7 @@
     try {
       if (startedCalled || leaving || givingUp) return;
       // Still waiting for files: a slow connection, not a broken build. Wait on, up to a limit.
-      if (stillParsing() && now() - armedAt < WATCHDOG_MAX_MS * SCALE) {
+      if ((stillParsing() || scriptsPending()) && now() - armedAt < WATCHDOG_MAX_MS * SCALE) {
         watchdog = setTimeout(watchdogFires, WATCHDOG_AGAIN_MS * SCALE);
         return;
       }
@@ -621,14 +630,22 @@
   }
 
   // Every script has run once parsing is done; hub.js reports at its end.
+  // Unless one of them failed to load and is being fetched again: then the
+  // page loads again when it comes, and this looks again until that is over.
   function onParsed() {
     try {
       if (startedCalled || givingUp || leaving) return;
-      setTimeout(function () {
+      var verdict = function () {
         try {
-          if (!startedCalled && !givingUp && !leaving) giveUp('crash');
+          if (startedCalled || givingUp || leaving) return;
+          if (scriptsPending() && now() - armedAt < WATCHDOG_MAX_MS * SCALE) {
+            setTimeout(verdict, CRASH_GRACE_MS * SCALE);
+            return;
+          }
+          giveUp('crash');
         } catch (e) { warn('watchdog failed: ' + (e && e.message)); }
-      }, CRASH_GRACE_MS * SCALE);
+      };
+      setTimeout(verdict, CRASH_GRACE_MS * SCALE);
     } catch (e) { /* ignore */ }
   }
 

@@ -45,6 +45,9 @@
       awws: 'A World Worth Saving', visits: 'Next visit', agenda: 'This week', todo: 'To-do board',
       outreach: 'Librarians', pipeline: 'Books', money: 'Earned vs spent', reach: 'Reach'
     },
+    // Each title's short form, only when the full one doesn't fit its tile on
+    // one line (the hub decides, by measuring). Never half a name: "AWWS".
+    titlesShort: { awws: 'AWWS', visits: 'Visit', agenda: 'Week', todo: 'To-dos', money: 'Money' },
     days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
@@ -112,6 +115,7 @@
     nextTransferAmt: 'Next transfer {d} · {n}',
     moneyStates: {
       hidden: { head: 'Money is hidden', line: 'showMoney is off in config.js, so no money figures show on this TV.', short: 'showMoney is off in config.js.' },
+      guest: { head: 'Hidden for guests', line: 'Guest mode is on, so no money figures show. Turn it off on the Clock page.', short: 'Guest mode is on.' },
       nodata: { head: 'No money data yet', line: 'The figures arrive with the next sync that sends a money section. docs/awws-snapshot.md says how.', short: 'Waiting for the next sync.' }
     },
     reachLine: '{n} visits this week',
@@ -339,7 +343,15 @@
     return out;
   }
 
-  function showMoney() { return family().showMoney === true; }
+  // Guest mode (guest.js) hides money even when config.js allows it.
+  function guestOn() {
+    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
+  }
+
+  function showMoney() { return family().showMoney === true && !guestOn(); }
+
+  // Why money is not shown: Guest mode, or config.js.
+  function moneyHidden() { return guestOn() ? STRINGS.moneyStates.guest : STRINGS.moneyStates.hidden; }
 
   /* ---------- measuring ---------- */
 
@@ -2211,7 +2223,7 @@
     var root = el('div', 'aw-tile aw-money', body);
     if (!showMoney()) {
       ctx.setTileSub('');
-      return tileMessage(root, size, STRINGS.moneyStates.hidden, true);
+      return tileMessage(root, size, moneyHidden(), true);
     }
     var d = moneyData();
     var st = snapState();
@@ -2261,7 +2273,7 @@
       return;
     }
     var line = el('div', 'aw-strip-line', root);
-    el('span', 'aw-strip-num' + netClass(d.net), line, net);
+    var num = el('span', 'aw-strip-num' + netClass(d.net), line, net);
     var text = el('span', 'aw-rstrip', line);
     var forms = earnedSpentForms(d);
     var withNet = [];
@@ -2272,10 +2284,14 @@
       var more = el('span', 'aw-strip-extra', line, STRINGS.sep + nextText(d));
       if (overW(line)) line.removeChild(more);
     }
+    // Still too wide (a long tile title beside it): the number gets smaller.
+    for (var k = 0; k < 6 && line.clientWidth && overW(line); k++) {
+      num.style.fontSize = ((parseFloat(window.getComputedStyle(num).fontSize) || 40) * 0.9).toFixed(1) + 'px';
+    }
   }
 
   function moneyPanel(root, ctx, opts) {
-    if (!showMoney()) return panelMessage(root, STRINGS.moneyStates.hidden);
+    if (!showMoney()) return panelMessage(root, moneyHidden());
     var d = moneyData();
     var st = snapState();
     if (!d) return panelMessage(root, st === 'data' ? STRINGS.moneyStates.nodata : message(st === 'notsetup' ? 'notsetup' : st));
@@ -2766,8 +2782,11 @@
         });
       }
     };
-    // Read when the hub draws the tile head, so a local tile follows the language.
-    Object.defineProperty(w, 'title', { get: function () { return run(function () { return STRINGS.titles[titleKey]; }); },
+    // Read when the hub draws the tile head: every tile's title follows the
+    // language (app/i18n.js 'awws.titles.*'), its body only when local.
+    Object.defineProperty(w, 'title', { get: function () { return inLang(function () { return STRINGS.titles[titleKey]; }); },
+      enumerable: true, configurable: true });
+    Object.defineProperty(w, 'shortTitle', { get: function () { return inLang(function () { return (STRINGS.titlesShort || {})[titleKey] || ''; }); },
       enumerable: true, configurable: true });
     if (SNAP_TILES[id] || id === 'awws-money') w.activity = 'awws';   // the working chip goes on the first of these
     var hooks = panelHooks(id);
@@ -2783,8 +2802,12 @@
     x.onChange(function () {
       try {
         var t = inLang(function () { return STRINGS.titles[titleKey]; });
-        var heads = document.querySelectorAll('.cell[data-widget="' + ctx.id + '"] .tile-title');
-        for (var i = 0; i < heads.length; i++) heads[i].textContent = t;
+        // The hub fits the title (or its short form) to the tile.
+        if (typeof ctx.retitle === 'function') ctx.retitle();
+        else {
+          var heads = document.querySelectorAll('.cell[data-widget="' + ctx.id + '"] .tile-title');
+          for (var i = 0; i < heads.length; i++) heads[i].textContent = t;
+        }
         ctx.redrawTile();
         if (ctx.isOpen()) {
           ctx.redrawPanel();
@@ -2823,9 +2846,8 @@
 
   function placeholder(key) {
     var words = STRINGS.planned[key];
-    return {
+    var w = {
       id: 'awws-' + key,
-      title: STRINGS.titles[key],
       icon: 'globe',
       expandable: true,
       planned: true,
@@ -2846,6 +2868,9 @@
         m.innerHTML = (window.HUB_ICONS && window.HUB_ICONS.globe) || '';
       }
     };
+    Object.defineProperty(w, 'title', { get: function () { return inLang(function () { return STRINGS.titles[key]; }); },
+      enumerable: true, configurable: true });
+    return w;
   }
 
   /* ---------- test hook ---------- */
@@ -2865,6 +2890,16 @@
     redraws: function () { return S.redraws || 0; },
     store: S
   };
+
+  // Guest mode on or off: draw everything again (the Glance's money line too).
+  try {
+    if (window.HUB_GUEST) {
+      window.HUB_GUEST.onChange(function () {
+        S.sig = '';
+        try { refreshAll(); } catch (e) { warn('guest: ' + (e && e.message)); }
+      });
+    }
+  } catch (e) { /* no Guest mode on this page */ }
 
   var list = (window.HUB_WIDGETS = window.HUB_WIDGETS || []);
   list.push(real('awws', 'awws', glanceTile));

@@ -52,6 +52,9 @@
 
   function title() { return T('wotd.title', 'Word of the day'); }
 
+  // Only when the title doesn't fit its tile on one line (the hub measures).
+  function shortTitle() { return T('wotd.titleShort', 'Word'); }
+
   function posText(pos) { return T('wotd.pos.' + pos, POS_EN[pos] || pos || ''); }
 
   /* ---------- the day's word ---------- */
@@ -136,7 +139,8 @@
   }
 
   // The tile's own title follows the language (the hub draws it once).
-  function setTileTitle(body) {
+  function setTileTitle(body, ctx) {
+    if (ctx && typeof ctx.retitle === 'function') { ctx.retitle(); return; }
     var tile = body && body.parentNode;
     var t = tile && tile.querySelector ? tile.querySelector('.tile-title') : null;
     if (t && t.textContent !== title()) t.textContent = title();
@@ -228,7 +232,7 @@
   }
 
   function renderTile(body, ctx) {
-    setTileTitle(body);
+    setTileTitle(body, ctx);
     var now = new Date();
     shownDay = dayKey(now);
     var pick = wordFor(now);
@@ -331,6 +335,7 @@
   // tile and each time the panel opens.
   try {
     Object.defineProperty(widget, 'title', { get: title, enumerable: true, configurable: true });
+    Object.defineProperty(widget, 'shortTitle', { get: shortTitle, enumerable: true, configurable: true });
   } catch (e) {
     widget.title = 'Word of the day';
   }

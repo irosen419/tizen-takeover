@@ -290,8 +290,10 @@ async function main() {
             await H.openPanel(page, id);
             let p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
             assert(!p.length, id + ' panel: ' + p.slice(0, 5).join('; '));
-            const title = await text(page, '#panel .panel-title');
-            assert(title === await text(page, titleOf(id)), id + ' panel title: ' + title);
+            // The full name, or its short form when it doesn't fit (data-full holds the name then).
+            const full = (sel) => page.evaluate((s) => { const n = document.querySelector(s); return n ? (n.getAttribute('data-full') || n.textContent) : null; }, sel);
+            const title = await full('#panel .panel-title');
+            assert(title === await full(titleOf(id)), id + ' panel title: ' + title);
             await H.fullScreen(page);
             p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
             assert(!p.length, id + ' full screen: ' + p.slice(0, 5).join('; '));

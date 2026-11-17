@@ -742,8 +742,23 @@
 
   // A one-row strip: temperature, icon and condition on one line; a wide
   // strip adds the high, low and rain on the right.
+  // The hub's header: the place is the title, and the badge says when the
+  // forecast is old ("as of 7:10 AM") or made up ("Sample").
+  function drawHead(m) {
+    if (!C || typeof C.setTitle !== 'function') return;
+    C.setTitle(m && place ? place.name : '');
+    C.setBadge(m && m.stale ? T('weather.asOf', 'as of {t}', { t: m.asOf }) : m && m.sample ? T('weather.sample', 'Sample') : '');
+  }
+
+  function T(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') { try { return String(L.t(key, english, vars)); } catch (e) { /* English */ } }
+    return english.replace('{t}', vars && vars.t ? vars.t : '');
+  }
+
   function drawStrip(body, size) {
     var m = model();
+    drawHead(m);
     var root = el('div', 'wx-tile wx-strip', body);
     if (!m) {
       el('div', 'wx-strip-cond', root, message(stateNow()).head);
@@ -785,10 +800,7 @@
     var state = stateNow();
     var m = model();
     var root = el('div', 'wx-tile', body);
-    var top = el('div', 'wx-tile-top', root);
-    el('div', 'wx-label', top, m && place ? place.name : 'Weather');
-    if (m && m.stale) el('div', 'wx-asof', top, 'as of ' + m.asOf);
-    else if (m && m.sample) el('div', 'wx-tag', top, 'Sample');
+    drawHead(m);
 
     if (!m) {
       var msg = message(state);
@@ -1624,11 +1636,14 @@
     title: 'Weather',
     icon: 'sun-cloud',
     expandable: true,
-    head: false,
 
     init: function (ctx) {
       C = ctx;
       sceneChoice();
+      // The header's badge ("Sample", "as of ...") follows the language.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') window.HUB_I18N.onChange(safe(function () { ctx.redrawTile(); }));
+      } catch (e) { /* stays in the language it started in */ }
       units = ctx.config.units === 'celsius' ? 'celsius' : 'fahrenheit';
       // Draw from the cache at once if there is one, then update in the background.
       if (placeFromSaved()) rec = loadCache();
