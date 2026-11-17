@@ -129,10 +129,11 @@ var HUB_CONFIG = {
     { id: 'budget', name: 'Budget', layout: [
       { widget: 'budget-room',   x: 0, y: 0, w: 4, h: 3 },
       { widget: 'budget-card',   x: 4, y: 0, w: 4, h: 3 },
-      { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 6 },
+      { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 3 },
       { widget: 'budget-lab',    x: 0, y: 3, w: 4, h: 3 },
-      { widget: 'today',         x: 4, y: 3, w: 4, h: 1 },
-      { widget: 'entertainment', x: 4, y: 4, w: 4, h: 2 }
+      { widget: 'calendar',      x: 4, y: 3, w: 4, h: 3 },
+      { widget: 'today',         x: 8, y: 3, w: 4, h: 1 },
+      { widget: 'entertainment', x: 8, y: 4, w: 4, h: 2 }
     ] }
   ],
 

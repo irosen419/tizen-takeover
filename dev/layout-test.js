@@ -401,8 +401,9 @@ async function checkNoLoop() {
 }
 
 async function checkBudgetLayout() {
-  // config.js's "Budget" layout: Budget lab at 4 x 3 under Daily room, the
-  // whole grid covered, every tile drawn, and Down from Daily room reaches it.
+  // config.js's "Budget" layout: Budget lab at 4 x 3 under Daily room, Goals
+  // at 4 x 3, Calendar on it, the whole grid covered, every tile drawn, and
+  // Down from Daily room reaches the lab.
   await setLayout(null);
   const box = { window: {} };
   require('vm').runInNewContext(fs.readFileSync(path.join(ROOT, 'app', 'config.js'), 'utf8') + ';this.C = HUB_CONFIG;', box);
@@ -417,6 +418,9 @@ async function checkBudgetLayout() {
   assert(Object.keys(cells).length === 72, 'gaps: ' + Object.keys(cells).length + ' of 72 cells');
   const lab = budget.filter((t) => t.widget === 'budget-lab')[0];
   assert(lab && lab.x === 0 && lab.y === 3 && lab.w === 4 && lab.h === 3, 'budget-lab: ' + JSON.stringify(lab));
+  const goals = budget.filter((t) => t.widget === 'budget-goals')[0];
+  assert(goals && goals.w === 4 && goals.h === 3, 'budget-goals: ' + JSON.stringify(goals));
+  assert(budget.some((t) => t.widget === 'calendar'), 'no Calendar on the Budget layout');
   const context = await newContext();
   const page = await openHub(context, liveQuery());
   await until(async () => (await look.live(page)) === 'live', 8000, 'the hub did not go live');
@@ -426,6 +430,7 @@ async function checkBudgetLayout() {
   await ready(page);
   await until(async () => JSON.stringify(await look.ids(page)) === JSON.stringify(budget.map((t) => t.widget).sort()), 4000, 'tiles on the Budget layout');
   assert(await cellAt(page, 'budget-lab', 0, 3, 4, 3), 'budget-lab cell: ' + JSON.stringify(await look.cell(page, 'budget-lab')));
+  assert(await cellAt(page, 'budget-goals', goals.x, goals.y, 4, 3), 'budget-goals cell: ' + JSON.stringify(await look.cell(page, 'budget-goals')));
   await waitIdle(page);
   await page.evaluate(() => { const t = document.querySelector('.cell[data-widget="budget-room"] .tile'); if (t) t.click(); });
   await until(async () => (await look.open(page)) === 'budget-room', 4000, 'Daily room did not open');
@@ -463,7 +468,7 @@ async function main() {
   await check('4. A layout waits while a panel is open, then applies', checkWaitsForPanel);
   await check('5. A new set of widgets reloads once; the reset reloads once more', checkReload);
   await check('6. A layout that cannot be saved does not reload in a loop', checkNoLoop);
-  await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, no gaps', checkBudgetLayout);
+  await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, Goals 4 x 3, Calendar, no gaps', checkBudgetLayout);
 }
 
 main().catch((e) => {

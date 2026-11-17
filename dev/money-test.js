@@ -699,6 +699,12 @@ async function main() {
         }
         assert(Object.keys(cells).length === 72, 'gaps: ' + Object.keys(cells).length + ' of 72 cells');
         assert(preset.layout.some((t) => t.widget === 'entertainment'), 'no Entertainment on it');
+        if (id === 'budget') {
+          // Ian's call: Goals at 4 x 3 (one or two goals at a time) so Calendar stays on the Budget layout.
+          const goals = preset.layout.filter((t) => t.widget === 'budget-goals')[0];
+          assert(goals && goals.w === 4 && goals.h === 3, 'budget-goals: ' + JSON.stringify(goals));
+          assert(preset.layout.some((t) => t.widget === 'calendar'), 'no Calendar on the Budget layout');
+        }
         for (const es of [false, true]) {
           const page = await env.newPage({ layout: preset.layout, spanish: es, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
           try {
