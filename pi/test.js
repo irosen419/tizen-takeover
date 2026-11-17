@@ -211,7 +211,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.4.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.5.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -232,7 +232,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.4.0');
+    assert.strictEqual(r.json.server, '0.5.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -454,7 +454,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.4.0');
+    assert.strictEqual(r.json.server, '0.5.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
@@ -983,10 +983,12 @@ async function main() {
     snap.alerts.items[0].amount = 6.5; // never stored
     const r = await request(P, 'POST', '/api/budget', { token: TOKEN, body: { snapshot: snap } });
     assert.strictEqual(r.status, 200, r.text);
-    assert.deepStrictEqual(r.json.accepted, ['room', 'cardDay', 'goals', 'alerts']);
+    assert.deepStrictEqual(r.json.accepted, ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway']);
     const ch = await es.waitFor((e) => e.event === 'change' && e.data.resource === 'budget');
     assert.strictEqual(ch.data.data.room.cap, 60);
     assert.deepStrictEqual(ch.data.data.alerts.items[0], { id: 'a-1042', label: 'Corner Bakery Stand' });
+    assert.strictEqual(ch.data.data.merchants.items.length, 5);
+    assert.strictEqual(ch.data.data.runway.steps.length, 3);
     es.close();
     await waitUntil(() => h._debug().sse === 0);
     // A bad section is refused by name; a snapshot with no good section is a 400.
@@ -1001,7 +1003,7 @@ async function main() {
     assert.strictEqual(g.data.room.roomPerDay, 42.5);
     assert.deepStrictEqual(g.data.goals.items, []);
     const c = await request(P, 'POST', '/api/budget', { token: TOKEN, body: { snapshot: null } });
-    assert.deepStrictEqual(c.json.cleared, ['room', 'cardDay', 'goals', 'alerts']);
+    assert.deepStrictEqual(c.json.cleared, ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway']);
     assert.deepStrictEqual((await request(P, 'GET', '/api/budget', { token: TOKEN })).json.data, AWWS_EMPTY);
     // Kept in data/state.json, and a file from before budget existed still loads.
     const d = tmpDir();

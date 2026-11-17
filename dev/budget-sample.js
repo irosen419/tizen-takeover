@@ -15,6 +15,9 @@ const fs = require('fs');
 const path = require('path');
 
 const FIXTURE = path.join(__dirname, '..', 'pi', 'fixtures', 'budget-sample.json');
+// Every section the Pi keeps, the Budget lab ones (lab, merchants, pace,
+// runway) included.
+const SECTIONS = require('../pi/budget').SECTIONS;
 
 /*
  * opts: { sentAt, short (card day not covered, short by $120), negative
@@ -38,9 +41,9 @@ function snapshot(opts) {
   if (opts.noRefund) delete s.room.roomIfRefund;
   if (opts.goals) s.goals.items = opts.goals;
   if (opts.alerts) s.alerts.items = opts.alerts;
-  if (opts.only) for (const k of ['room', 'cardDay', 'goals', 'alerts']) if (opts.only.indexOf(k) < 0) delete s[k];
+  if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
-  for (const k of ['room', 'cardDay', 'goals', 'alerts']) if (s[k]) s[k].asOf = s.sentAt;
+  for (const k of SECTIONS) if (s[k]) s[k].asOf = s.sentAt;
   return s;
 }
 

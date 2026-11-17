@@ -4,9 +4,11 @@
  *
  *   node pi/budget-test.js
  *
- * It checks the made-up sample in pi/fixtures, every section's rules, list
- * sections sent as a plain list, merging, the size cap, a damaged state file
- * and the texts ./hub prints (never a label or an amount). The HTTP side is
+ * It checks the made-up sample in pi/fixtures, every section's rules (the
+ * Budget lab sections lab, merchants, pace and runway too), list sections
+ * sent as a plain list, merging, the size cap, a damaged state file, a
+ * snapshot with only the first four sections, and the texts ./hub prints
+ * (never a label or an amount). The HTTP side is
  * in pi/test.js and the mailbox side in pi/mailbox-test.js. It prints one
  * line per check, then "N passed, 0 failed". Only what ships with Node is used.
  */
@@ -59,16 +61,50 @@ function one(name, section) {
 
 const ROOM = { cap: 60, roomPerDay: 42.5, daysLeft: 9, throughDate: '2026-11-24' };
 const CARD = { date: '2026-11-19', daysAway: 3, covered: true };
+const OLD4 = ['room', 'cardDay', 'goals', 'alerts'];
+const ALL8 = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway'];
+const LAB = { room: 186.4, spentToday: 23.75, daysLeft: 3, cardDate: '2026-11-19', monthDay: 16 };
+const MERCH = { month: '2026-11', combined: 120, items: [{ label: 'Hilltop Grocer', mtd: 80, count: 2 }, { label: 'Riverside Fuel', mtd: 50, count: 1 }] };
+const RUNWAY = { start: 300, end: '2026-11-19', steps: [{ date: '2026-11-17', delta: 1200, kind: 'pay' }, { date: '2026-11-17', delta: -80, kind: 'bill' }, { date: '2026-11-19', delta: -415, kind: 'reserve' }] };
+const withField = (o, k, v) => { const c = Object.assign({}, o); c[k] = v; return c; };
 
 async function main() {
   await check('the made-up sample passes as it is, every section accepted', () => {
     const n = budget.normalizeSnapshot(sample(), NOW);
     assert.deepStrictEqual(n.rejected, []);
-    assert.deepStrictEqual(Object.keys(n.sections), ['room', 'cardDay', 'goals', 'alerts']);
+    assert.deepStrictEqual(Object.keys(n.sections), ALL8);
     assert.strictEqual(n.sections.room.roomPerDay, 42.5);
     assert.strictEqual(n.sections.cardDay.transfers.length, 3);
     assert.strictEqual(n.sections.goals.items.length, 5);
     assert.deepStrictEqual(n.sections.alerts.items, [{ id: 'a-1042', label: 'Corner Bakery Stand' }]);
+    assert.strictEqual(n.sections.lab.room, 186.4);
+    assert.strictEqual(n.sections.merchants.items.length, 5);
+    assert.strictEqual(n.sections.pace.days.length, 14);
+    // The sample's runway ends on card day at exactly the lab's room.
+    const rw = n.sections.runway;
+    const end = rw.steps.reduce((t, x) => t + x.delta, rw.start);
+    assert.strictEqual(Math.round(end * 100) / 100, n.sections.lab.room);
+    // combined counts a shared order once, so it is below the sum.
+    const sum = n.sections.merchants.items.reduce((t, x) => t + x.mtd, 0);
+    assert.ok(n.sections.merchants.combined < sum);
+  });
+
+  await check('a snapshot with only the first four sections is stored and shown exactly as before', () => {
+    const s = sample();
+    ['lab', 'merchants', 'pace', 'runway'].forEach((k) => delete s[k]);
+    const n = budget.normalizeSnapshot(s, NOW);
+    assert.deepStrictEqual(n.rejected, []);
+    assert.deepStrictEqual(Object.keys(n.sections), OLD4);
+    const m = budget.merge(null, n, NOW);
+    assert.deepStrictEqual(m.accepted, OLD4);
+    const lines = budget.summaryLines(m.data);
+    assert.strictEqual(lines.length, 5);
+    assert.strictEqual(lines[1], '  room     9 days left through 2026-11-24, under the daily cap, a refund pending, as of 2026-11-16 15:05 UTC');
+    assert.strictEqual(lines[4], '  alerts   1 new charge at a merchant you cut, as of 2026-11-16 15:05 UTC');
+    // A later snapshot with the lab sections keeps the old four as they were.
+    const m2 = budget.merge(m.data, budget.normalizeSnapshot(snap({ lab: LAB }), NOW), NOW);
+    assert.deepStrictEqual(m2.accepted, ['lab']);
+    OLD4.forEach((k) => assert.deepStrictEqual(m2.data[k], m.data[k]));
   });
 
   await check('the whole snapshot: v, sentAt, no sections, too far ahead, not an object, over 48 KB', () => {
@@ -134,6 +170,86 @@ async function main() {
     assert.deepStrictEqual(one('alerts', []).clean.items, []);
   });
 
+  await check('lab: required fields, signed room, days, month day, the split', () => {
+    assert.deepStrictEqual(one('lab', LAB).clean, Object.assign({ asOf: SENT }, LAB));
+    const neg = one('lab', withField(LAB, 'room', -9.544)).clean;
+    assert.strictEqual(neg.room, -9.54);
+    assert.strictEqual(one('lab', withField(LAB, 'daysLeft', 0)).clean.daysLeft, 0);
+    ['room', 'spentToday', 'daysLeft', 'cardDate', 'monthDay'].forEach((k) => {
+      const l = Object.assign({}, LAB);
+      delete l[k];
+      assert.ok(new RegExp('"' + k + '" is missing').test(one('lab', l).error), k);
+    });
+    assert.ok(/"spentToday" must be a number from 0 to 1,000,000/.test(one('lab', withField(LAB, 'spentToday', -1)).error));
+    assert.ok(/"daysLeft" must be a whole number from 0 to 366/.test(one('lab', withField(LAB, 'daysLeft', 367)).error));
+    assert.ok(/"monthDay" must be a whole number from 1 to 31/.test(one('lab', withField(LAB, 'monthDay', 0)).error));
+    assert.ok(/"monthDay" must be a whole number from 1 to 31/.test(one('lab', withField(LAB, 'monthDay', 32)).error));
+    assert.ok(/"cardDate" must be a real date/.test(one('lab', withField(LAB, 'cardDate', '2026-12')).error));
+    const split = [{ key: 'savings', amount: 500 }, { key: 'awws', amount: 150 }, { key: 'buffer', amount: 350 }, { key: 'extra', amount: 0, note: 'x' }];
+    assert.deepStrictEqual(one('lab', withField(LAB, 'split', split)).clean.split, split.map((e) => ({ key: e.key, amount: e.amount })));
+    assert.ok(/"split" has 5 entries; at most 4/.test(one('lab', withField(LAB, 'split', split.concat([split[0]]))).error));
+    assert.ok(/"key" must be savings, awws, buffer or extra \(split entry 1\)/.test(one('lab', withField(LAB, 'split', [{ key: 'rent', amount: 1 }])).error));
+    assert.ok(/the key "awws" is used twice \(split entry 2\)/.test(one('lab', withField(LAB, 'split', [split[1], split[1]])).error));
+    assert.ok(/"amount" is missing \(split entry 1\)/.test(one('lab', withField(LAB, 'split', [{ key: 'savings' }])).error));
+    // A balance sent alongside is dropped, never stored.
+    assert.ok(!('checking' in one('lab', withField(LAB, 'checking', 2400)).clean));
+  });
+
+  await check('merchants: month, at most 5, label text 30, mtd, count 0 to 999, combined required', () => {
+    assert.deepStrictEqual(one('merchants', MERCH).clean, Object.assign({ asOf: SENT }, MERCH));
+    assert.ok(/"month" must be a month like 2026-11/.test(one('merchants', withField(MERCH, 'month', '2026-13')).error));
+    assert.ok(/"combined" is missing/.test(one('merchants', { month: '2026-11', items: [] }).error));
+    assert.ok(/"items" is missing/.test(one('merchants', { month: '2026-11', combined: 0 }).error));
+    const six = [1, 2, 3, 4, 5, 6].map((n) => ({ label: 'M' + n, mtd: n, count: 1 }));
+    assert.ok(/"items" has 6 entries; at most 5/.test(one('merchants', withField(MERCH, 'items', six)).error));
+    assert.ok(/"count" must be a whole number from 0 to 999 \(merchant 1\)/.test(one('merchants', withField(MERCH, 'items', [{ label: 'A', mtd: 1, count: 1000 }])).error));
+    assert.ok(/"mtd" must be a number from 0 to 1,000,000 \(merchant 1\)/.test(one('merchants', withField(MERCH, 'items', [{ label: 'A', mtd: -1, count: 1 }])).error));
+    assert.ok(/"label" is missing \(merchant 1\)/.test(one('merchants', withField(MERCH, 'items', [{ mtd: 1, count: 1 }])).error));
+    assert.ok(/holds a link/.test(one('merchants', withField(MERCH, 'items', [{ label: 'See www.example.com', mtd: 1, count: 1 }])).error));
+    const long = one('merchants', withField(MERCH, 'items', [{ label: 'A very long merchant name that runs on', mtd: 1, count: 1, transactions: [1, 2] }])).clean.items[0];
+    assert.strictEqual(Array.from(long.label).length, 30);
+    assert.ok(!('transactions' in long));
+    assert.ok(/must be an object/.test(one('merchants', [MERCH.items[0]]).error), 'not a list section');
+  });
+
+  await check('pace: one total per day, oldest first, each date once, cap above 0 or left out, at most 31', () => {
+    const days = [{ date: '2026-11-14', spent: 71.204, cap: 95.29 }, { date: '2026-11-15', spent: 0 }];
+    assert.deepStrictEqual(one('pace', { days: days }).clean, { asOf: SENT, days: [{ date: '2026-11-14', spent: 71.2, cap: 95.29 }, { date: '2026-11-15', spent: 0 }] });
+    assert.deepStrictEqual(one('pace', { days: [] }).clean.days, []);
+    assert.ok(/"days" is missing/.test(one('pace', {}).error));
+    assert.ok(/"cap" must be a number more than 0 and up to 1,000,000 \(day 1\)/.test(one('pace', { days: [{ date: '2026-11-14', spent: 1, cap: 0 }] }).error));
+    assert.ok(/"spent" is missing \(day 1\)/.test(one('pace', { days: [{ date: '2026-11-14' }] }).error));
+    assert.ok(/oldest first, each date once\) \(day 2\)/.test(one('pace', { days: [days[1], days[0]] }).error));
+    assert.ok(/oldest first, each date once/.test(one('pace', { days: [days[0], days[0]] }).error));
+    const many = [];
+    for (let d = 1; d <= 32; d++) many.push({ date: new Date(Date.UTC(2026, 9, d)).toISOString().slice(0, 10), spent: 1 });
+    assert.ok(/"days" has 32 entries; at most 31/.test(one('pace', { days: many }).error));
+    assert.strictEqual(one('pace', { days: many.slice(1) }).clean.days.length, 31);
+    // Charges inside a day are dropped, never stored.
+    assert.ok(!('charges' in one('pace', { days: [{ date: '2026-11-14', spent: 5, charges: [{ label: 'x', amount: 5 }] }] }).clean.days[0]));
+  });
+
+  await check('runway: signed start, end, steps in date order up to card day, pay up, bill and reserve down, no names', () => {
+    assert.deepStrictEqual(one('runway', RUNWAY).clean, Object.assign({ asOf: SENT }, RUNWAY));
+    assert.strictEqual(one('runway', withField(RUNWAY, 'start', -731.004)).clean.start, -731);
+    assert.ok(/"start" is missing/.test(one('runway', { end: '2026-11-19', steps: [] }).error));
+    assert.ok(/"end" must be a real date/.test(one('runway', withField(RUNWAY, 'end', 'Dec 1')).error));
+    assert.ok(/"steps" is missing/.test(one('runway', { start: 1, end: '2026-11-19' }).error));
+    const step = { date: '2026-11-17', delta: -1, kind: 'bill' };
+    assert.ok(/"steps" has 41 entries; at most 40/.test(one('runway', withField(RUNWAY, 'steps', new Array(41).fill(step))).error));
+    assert.strictEqual(one('runway', withField(RUNWAY, 'steps', new Array(40).fill(step))).clean.steps.length, 40);
+    assert.ok(/"kind" must be pay, bill or reserve \(step 1\)/.test(one('runway', withField(RUNWAY, 'steps', [withField(step, 'kind', 'transfer')])).error));
+    assert.ok(/"delta" must be 0 or more for a pay step/.test(one('runway', withField(RUNWAY, 'steps', [{ date: '2026-11-17', delta: -5, kind: 'pay' }])).error));
+    assert.ok(/"delta" must be 0 or less for a bill step/.test(one('runway', withField(RUNWAY, 'steps', [withField(step, 'delta', 5)])).error));
+    assert.ok(/"delta" must be 0 or less for a reserve step/.test(one('runway', withField(RUNWAY, 'steps', [{ date: '2026-11-19', delta: 5, kind: 'reserve' }])).error));
+    assert.ok(/steps in date order\) \(step 2\)/.test(one('runway', withField(RUNWAY, 'steps', [withField(step, 'date', '2026-11-18'), step])).error));
+    assert.ok(/must not come after "end"/.test(one('runway', withField(RUNWAY, 'steps', [withField(step, 'date', '2026-11-20')])).error));
+    // A bill's name, or a checking balance, is dropped.
+    const named = one('runway', Object.assign({ checking: 2400 }, withField(RUNWAY, 'steps', [withField(step, 'label', 'Phone bill')]))).clean;
+    assert.deepStrictEqual(named.steps[0], step);
+    assert.ok(!('checking' in named));
+  });
+
   await check('text rules: no email addresses, no links (the text itself is never echoed)', () => {
     const e = one('alerts', [{ id: 'x1', label: 'pay me at someone@example.com' }]).error;
     assert.ok(/holds an email address/.test(e) && e.indexOf('example.com') < 0, e);
@@ -144,14 +260,18 @@ async function main() {
   await check('merge: a section left out is kept, null clears one, a bad one keeps its last good copy', () => {
     const first = budget.merge(null, budget.normalizeSnapshot(sample(), NOW), NOW);
     assert.strictEqual(first.changed, true);
-    assert.deepStrictEqual(first.accepted, ['room', 'cardDay', 'goals', 'alerts']);
-    const next = budget.normalizeSnapshot(snap({ alerts: null, room: Object.assign({}, ROOM, { cap: -1 }), goals: [] }), NOW);
+    assert.deepStrictEqual(first.accepted, ALL8);
+    const next = budget.normalizeSnapshot(snap({ alerts: null, room: Object.assign({}, ROOM, { cap: -1 }), goals: [], pace: null,
+      merchants: withField(MERCH, 'month', 'Nov'), runway: RUNWAY }), NOW);
     const m = budget.merge(first.data, next, NOW);
-    assert.deepStrictEqual(m.accepted, ['goals']);
-    assert.deepStrictEqual(m.cleared, ['alerts']);
-    assert.strictEqual(m.rejected[0].section, 'room');
+    assert.deepStrictEqual(m.accepted, ['goals', 'runway']);
+    assert.deepStrictEqual(m.cleared, ['alerts', 'pace']);
+    assert.deepStrictEqual(m.rejected.map((r) => r.section), ['room', 'merchants']);
     assert.deepStrictEqual(m.data.room, first.data.room);
-    assert.ok(!('alerts' in m.data));
+    assert.deepStrictEqual(m.data.merchants, first.data.merchants);
+    assert.deepStrictEqual(m.data.lab, first.data.lab);
+    assert.deepStrictEqual(m.data.runway, Object.assign({ asOf: SENT }, RUNWAY));
+    assert.ok(!('alerts' in m.data) && !('pace' in m.data));
     assert.deepStrictEqual(m.data.goals.items, []);
     let err = null;
     try { budget.merge(m.data, budget.normalizeSnapshot(snap({ room: { cap: 1 } }), NOW), NOW); } catch (e) { err = e; }
@@ -163,11 +283,13 @@ async function main() {
   await check('cleanResource: damaged or old state files give an empty resource or drop a bad section', () => {
     assert.deepStrictEqual(budget.cleanResource(undefined), { rev: 0, data: budget.emptyData() });
     assert.deepStrictEqual(budget.cleanResource({ rev: 3, data: { v: 2 } }), { rev: 3, data: budget.emptyData() });
-    const r = budget.cleanResource({ rev: 4, data: { v: 1, sentAt: SENT, receivedAt: 'later', room: ROOM, cardDay: { date: 'x' } } });
+    const r = budget.cleanResource({ rev: 4, data: { v: 1, sentAt: SENT, receivedAt: 'later', room: ROOM, cardDay: { date: 'x' }, lab: LAB, pace: { days: 'x' } } });
     assert.strictEqual(r.rev, 4);
     assert.strictEqual(r.data.receivedAt, null);
     assert.strictEqual(r.data.room.cap, 60);
+    assert.strictEqual(r.data.lab.room, 186.4);
     assert.ok(!('cardDay' in r.data));
+    assert.ok(!('pace' in r.data));
   });
 
   await check('./hub budget show: times, counts and states, never a label or an amount', () => {
@@ -175,13 +297,41 @@ async function main() {
     const m = budget.merge(null, budget.normalizeSnapshot(sample(), NOW), NOW);
     const lines = budget.summaryLines(m.data);
     assert.ok(/^Budget snapshot sent 2026-11-16 15:10 UTC, received 2026-11-16 15:12 UTC\. [\d.]+ (KB|bytes) of 48 KB\.$/.test(lines[0]), lines[0]);
-    assert.strictEqual(lines[1], '  room     9 days left through 2026-11-24, under the daily cap, a refund pending, as of 2026-11-16 15:05 UTC');
-    assert.strictEqual(lines[2], '  cardDay  2026-11-19 (in 3 days), covered, 3 transfers, 2 paychecks, as of 2026-11-16 15:05 UTC');
-    assert.strictEqual(lines[3], '  goals    5 goals (2 clean, 1 on pace, 1 over, 1 under), as of 2026-11-16 15:05 UTC');
-    assert.strictEqual(lines[4], '  alerts   1 new charge at a merchant you cut, as of 2026-11-16 15:05 UTC');
+    assert.deepStrictEqual(lines.slice(1), [
+      '  room       9 days left through 2026-11-24, under the daily cap, a refund pending, as of 2026-11-16 15:05 UTC',
+      '  cardDay    2026-11-19 (in 3 days), covered, 3 transfers, 2 paychecks, as of 2026-11-16 15:05 UTC',
+      '  goals      5 goals (2 clean, 1 on pace, 1 over, 1 under), as of 2026-11-16 15:05 UTC',
+      '  alerts     1 new charge at a merchant you cut, as of 2026-11-16 15:05 UTC',
+      '  lab        2026-11-19 (3 days left), day 16 of the month, room to spare, split in 3, as of 2026-11-16 15:05 UTC',
+      '  merchants  5 merchants in 2026-11, as of 2026-11-16 15:05 UTC',
+      '  pace       14 days (13 with a cap), 2026-11-02 to 2026-11-15, as of 2026-11-16 15:05 UTC',
+      '  runway     3 steps to 2026-11-19 (0 paydays, 2 bills, 1 reserve), as of 2026-11-16 15:05 UTC'
+    ]);
     const all = JSON.stringify(lines) + JSON.stringify(budget.summaryData(m.data));
-    ['Bakery', 'Groceries', 'checking', '42.5', '310', '$'].forEach((w) => assert.ok(all.indexOf(w) < 0, 'shows ' + w));
-    assert.deepStrictEqual(budget.summaryData(m.data).sections.goals, { asOf: '2026-11-16T15:05:00Z', goals: 5, clean: 2, 'on-pace': 1, over: 1, under: 1 });
+    // No label, merchant name or amount from any section, Budget lab's included.
+    const s = sample();
+    const words = ['Bakery', 'Groceries', 'checking', '42.5', '310', '$', '186.4', '23.75', '498.57', '766.9', '415', '71.2'];
+    s.merchants.items.forEach((x) => words.push(x.label, String(x.mtd)));
+    words.forEach((w) => assert.ok(all.indexOf(w) < 0, 'shows ' + w));
+    const sum = budget.summaryData(m.data).sections;
+    assert.deepStrictEqual(sum.goals, { asOf: '2026-11-16T15:05:00Z', goals: 5, clean: 2, 'on-pace': 1, over: 1, under: 1 });
+    assert.deepStrictEqual(sum.lab, { asOf: '2026-11-16T15:05:00Z', cardDate: '2026-11-19', daysLeft: 3, monthDay: 16, state: 'spare', split: 3 });
+    assert.deepStrictEqual(sum.merchants, { asOf: '2026-11-16T15:05:00Z', month: '2026-11', merchants: 5 });
+    assert.deepStrictEqual(sum.pace, { asOf: '2026-11-16T15:05:00Z', days: 14, capped: 13, from: '2026-11-02', to: '2026-11-15' });
+    assert.deepStrictEqual(sum.runway, { asOf: '2026-11-16T15:05:00Z', end: '2026-11-19', steps: 3, pay: 0, bill: 2, reserve: 1 });
+  });
+
+  await check('./hub budget show for the lab sections: short, no room, no days yet, paydays', () => {
+    const n = budget.normalizeSnapshot(snap({ lab: withField(withField(LAB, 'room', -9.54), 'daysLeft', 1), pace: { days: [] }, runway: RUNWAY, merchants: withField(MERCH, 'items', [MERCH.items[0]]) }), NOW);
+    const lines = budget.summaryLines(budget.merge(null, n, NOW).data);
+    assert.deepStrictEqual(lines.slice(1), [
+      '  lab        2026-11-19 (1 day left), day 16 of the month, room short, as of 2026-11-16 15:10 UTC',
+      '  merchants  1 merchant in 2026-11, as of 2026-11-16 15:10 UTC',
+      '  pace       no days yet, as of 2026-11-16 15:10 UTC',
+      '  runway     3 steps to 2026-11-19 (1 payday, 1 bill, 1 reserve), as of 2026-11-16 15:10 UTC'
+    ]);
+    const zero = budget.normalizeSnapshot(snap({ lab: withField(LAB, 'room', 0) }), NOW);
+    assert.ok(/, no room, as of/.test(budget.summaryLines(budget.merge(null, zero, NOW).data)[1]));
   });
 
   await check('set and clear texts', () => {

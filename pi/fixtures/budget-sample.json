@@ -36,5 +36,59 @@
     "items": [
       { "id": "a-1042", "label": "Corner Bakery Stand" }
     ]
+  },
+  "lab": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "room": 186.4,
+    "spentToday": 23.75,
+    "daysLeft": 3,
+    "cardDate": "2026-11-19",
+    "monthDay": 16,
+    "split": [
+      { "key": "savings", "amount": 500 },
+      { "key": "awws", "amount": 150 },
+      { "key": "buffer", "amount": 350 }
+    ]
+  },
+  "merchants": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "month": "2026-11",
+    "combined": 498.57,
+    "items": [
+      { "label": "Hilltop Grocer", "mtd": 184.32, "count": 6 },
+      { "label": "Quick Bites Delivery", "mtd": 126.5, "count": 7 },
+      { "label": "Corner Bakery Stand", "mtd": 88.15, "count": 11 },
+      { "label": "Maple Street Books", "mtd": 61.2, "count": 3 },
+      { "label": "Riverside Fuel", "mtd": 54.9, "count": 2 }
+    ]
+  },
+  "pace": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "days": [
+      { "date": "2026-11-02", "spent": 48.1, "cap": 64.2 },
+      { "date": "2026-11-03", "spent": 62.75, "cap": 63.8 },
+      { "date": "2026-11-04", "spent": 0, "cap": 64.9 },
+      { "date": "2026-11-05", "spent": 55.4, "cap": 64.5 },
+      { "date": "2026-11-06", "spent": 71.2, "cap": 64.1 },
+      { "date": "2026-11-07", "spent": 38.9, "cap": 63.2 },
+      { "date": "2026-11-08", "spent": 44.0 },
+      { "date": "2026-11-09", "spent": 90.15, "cap": 64.7 },
+      { "date": "2026-11-10", "spent": 57.3, "cap": 63.9 },
+      { "date": "2026-11-11", "spent": 12.6, "cap": 65.6 },
+      { "date": "2026-11-12", "spent": 66.8, "cap": 66.1 },
+      { "date": "2026-11-13", "spent": 59.95, "cap": 65.4 },
+      { "date": "2026-11-14", "spent": 73.4, "cap": 64.8 },
+      { "date": "2026-11-15", "spent": 41.25, "cap": 65.3 }
+    ]
+  },
+  "runway": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "start": 766.9,
+    "end": "2026-11-19",
+    "steps": [
+      { "date": "2026-11-17", "delta": -45.5, "kind": "bill" },
+      { "date": "2026-11-18", "delta": -120, "kind": "bill" },
+      { "date": "2026-11-19", "delta": -415, "kind": "reserve" }
+    ]
   }
 }

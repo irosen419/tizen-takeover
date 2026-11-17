@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.4.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.5.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -119,7 +119,7 @@ From the cloud, a mailbox `ping` answers `Home Hub live server 0.2.0 is running.
 
 ## Budget snapshot
 
-The budget tiles on the TV (Daily room, Card day, Goals) and the "New charge" banner show one small file of totals, the **budget snapshot**. Your budget app, running on this Pi, works the figures out and sends them to the hub server here with the token (`POST http://127.0.0.1:8097/api/budget`); they never go through the cloud. Only totals: the room per day, the card day and how it is covered, goal states, and the names of merchants with a new charge. Never a balance, and never an amount on an alert.
+The budget tiles on the TV (Daily room, Card day, Goals, Budget lab) and the "New charge" banner show one small file of totals, the **budget snapshot**. Your budget app, running on this Pi, works the figures out and sends them to the hub server here with the token (`POST http://127.0.0.1:8097/api/budget`); they never go through the cloud. Only totals: the room per day, the card day and how it is covered, goal states, and the names of merchants with a new charge. Never a balance, and never an amount on an alert.
 
 The full description, field by field, with a `curl` example, is in [`docs/budget-snapshot.md`](../docs/budget-snapshot.md). A made-up example is `fixtures/budget-sample.json` in this folder.
 
@@ -135,7 +135,11 @@ It adds `budget.js` next to `server.js` and makes the server version 0.4.0. A re
 
 1. `cd tizen-takeover && git pull && cd pi`
 2. With Docker: `docker compose restart hub`. With systemd: `sudo systemctl restart home-hub`.
-3. `./hub status` should say `version 0.4.0`, and `./hub budget show` should say `No budget snapshot yet.` If it says `The server said no: no such call.`, the server is still running the old code: do step 2 again.
+3. `./hub status` should say `version 0.4.0` or later, and `./hub budget show` should say `No budget snapshot yet.` If it says `The server said no: no such call.`, the server is still running the old code: do step 2 again.
+
+### Budget lab sections (server 0.5.0)
+
+Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0`.
 
 ## Calendars
 
@@ -344,7 +348,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.4.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.5.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

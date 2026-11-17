@@ -25,7 +25,7 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Is the Claude mailbox (Cloudflare R2) connected: `./hub mailbox status`
 - All commands: `./hub help`
 
-Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day) and `budget-goals` (Goals). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
+Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals) and `budget-lab` (Budget lab: the pace streak, the cap slider and the runway to card day; it reaches the TV with a later hub update; until then the TV ignores the id). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
 
 ## From the cloud: the Claude mailbox
 
@@ -51,7 +51,7 @@ Write `cmd.json` in your scratchpad folder. The reply is `{"id", "cmd", "ok", "s
 
 Commands and args (`args` may be left out when empty; unknown args are refused):
 
-- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals), `home`, `reload`
+- `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals, budget-lab), `home`, `reload`
 - `say {"text": "Dinner in 10", "seconds": 8}` (text up to 140 characters, seconds 1-60)
 - `todo.add {"title": "Buy milk", "section": "next", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
 - `todo.notes {"title": "Buy milk", "notes": "Oat, not dairy"}` or `{"id": "...", "notes": "..."}` (exactly one of id and title) sets an item's notes; `"notes": ""` or `null` removes them
@@ -79,5 +79,5 @@ Other calls: list replies `curl -sS "$B?prefix=outbox/"` (an array of `{key, ...
 - To put an event on the TV, add it through the Google Calendar connector, then run `./hub calendar refresh`. Google may take a while to include it; if it is not there yet, say so and try again in a few minutes.
 - Do not edit `data/state.json` by hand while the server runs; use `./hub todo ...`.
 - The A World Worth Saving snapshot must never contain email addresses, links, notes text or librarians' last names. The Pi refuses a section with an email address or a link, but it cannot spot notes or names, so leave them out yourself. The owner said yes to money figures on the TV on 2026-11-16, so the `money` section may be sent. To keep money off the TV (for guests, say), set `showMoney: false` under `widgets.awws` in `app/config.js`; the Pi still stores the section.
-- The budget snapshot carries totals only: never a balance, a transaction list or an amount on an alert, and never email addresses or links. Do not read budget figures out of `data/state.json` or send them anywhere; `./hub budget show` is enough to say whether it is up to date. To hide the budget on the TV, set `show: false` under `widgets.budget` in `app/config.js`.
+- The budget snapshot carries totals only: never a balance, a transaction list or an amount on an alert, and never email addresses or links. The owner said yes on 2026-11-17 to the names of his top 5 merchants with their month-to-date totals (the `merchants` section) and to the runway sent as headroom (checking minus what the cards owe minus the floor), never checking or a card balance by itself. Do not read budget figures out of `data/state.json` or send them anywhere; `./hub budget show` is enough to say whether it is up to date. To hide the budget on the TV, set `show: false` under `widgets.budget` in `app/config.js`.
 - Setup and troubleshooting are in `README.md` in this folder.
