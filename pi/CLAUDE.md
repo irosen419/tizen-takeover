@@ -10,7 +10,8 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Close whatever is open: `./hub home`
 - Short message on the TV: `./hub say "Dinner in 10" --seconds 8`
 - Load the hub afresh: `./hub reload`
-- Add a to-do: `./hub todo add "Buy milk" --section now --due 2026-12-24 --notes "Oat, not dairy"` (section, due and notes are optional; sections are `now`, `next`, `waiting`; notes are plain text up to 300 characters)
+- Add a to-do: `./hub todo add "Buy milk" --level must --due 2026-12-24 --notes "Oat, not dairy"` (level, due and notes are optional; levels are `must`, `optional` (the default) and `passive` (a reminder shown on the TV under "Coming up" from 2 days before its due date); notes are plain text up to 300 characters; `--section` is still taken but no longer shown)
+- Change a to-do's level: `./hub todo level "Buy milk" passive` (id or exact title)
 - See the to-do list with ids and notes: `./hub todo list`
 - Set or change a to-do's notes: `./hub todo notes "Buy milk" "Oat, not dairy"` (id or exact title); `--clear` removes them
 - Tick a to-do: `./hub todo done "Buy milk"` (id or exact title)
@@ -23,9 +24,10 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - What is playing on Spotify, and sign-in: `./hub spotify status`; one-time sign-in `./hub spotify login` (prints a link, then asks for the pasted address) or `./hub spotify code "<address>"`; `./hub spotify logout`
 - Is the server up, which screens are on: `./hub status`
 - Is the Claude mailbox (Cloudflare R2) connected: `./hub mailbox status`
+- The server's recent log lines: `./hub log` (last 50); only problems: `./hub log --errors`; more: `./hub log --lines 120` (1 to 200)
 - All commands: `./hub help`
 
-Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals) and `budget-lab` (Budget lab: the pace streak and the cap slider from hub v0.28.16, the merchants' cuts and Put it somewhere from v0.28.17; the runway chart to card day at full screen from v0.28.18; an older hub ignores the id). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
+Widget ids for `./hub show` are `weather`, `todo`, `calendar`, `entertainment`, `nowplaying`, `today` (the clock), `awws`, `awws-visits`, `awws-agenda`, `awws-todo`, `awws-reach`, `awws-money` (Earned vs spent), `budget-room` (Daily room), `budget-card` (Card day), `budget-goals` (Goals) and `budget-lab` (Budget lab: the pace streak and the cap slider from hub v0.29.3, the merchants' cuts and Put it somewhere from v0.29.4; the runway chart to card day at full screen from v0.29.5; an older hub ignores the id). The layout switcher on the TV has an "AWWS money" and a "Budget" layout with these. A layout may also place the other tiles in `HUB_CONFIG.layout` (`app/config.js`), such as `today`; run `./hub layout show` first and change only what was asked.
 
 ## From the cloud: the Claude mailbox
 
@@ -53,7 +55,8 @@ Commands and args (`args` may be left out when empty; unknown args are refused):
 
 - `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals, budget-lab), `home`, `reload`
 - `say {"text": "Dinner in 10", "seconds": 8}` (text up to 140 characters, seconds 1-60)
-- `todo.add {"title": "Buy milk", "section": "next", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
+- `todo.add {"title": "Buy milk", "level": "must", "due": "2026-12-24", "notes": "Oat, not dairy"}` (only `title` is needed; `level` is `must`, `optional` or `passive`, optional when left out, and needs server 0.6.0: an older server refuses it, so there put `[level:must]` or `[level:passive]` at the end of `notes` instead, which the TV reads and hides; `notes` is plain text up to 300 characters and shows under the title on the TV; leave it out when there is nothing to say), `todo.list` (its `data.items` carry `notes` when an item has them)
+- `todo.level {"title": "Buy milk", "level": "passive"}` or `{"id": "...", "level": "must"}` (server 0.6.0) changes an item's level
 - `todo.notes {"title": "Buy milk", "notes": "Oat, not dairy"}` or `{"id": "...", "notes": "..."}` (exactly one of id and title) sets an item's notes; `"notes": ""` or `null` removes them
 - `todo.done {"title": "Buy milk"}` or `{"id": "..."}` (exactly one), `todo.remove` the same
 - `calendar.status`, `calendar.refresh`
@@ -61,6 +64,7 @@ Commands and args (`args` may be left out when empty; unknown args are refused):
 - `awws.set {"snapshot": {"v": 1, "sentAt": "2026-11-16T15:10:00Z", "todos": {...}}}` (`{"snapshot": null}` removes it all, a section sent as `null` removes that section), `awws.show` (counts and times only, never the titles), `awws.clear`. The whole command file must stay under 64 KB and the snapshot under 48 KB. `data` of `awws.set` lists `accepted`, `cleared` and `rejected` (with the reason for each); a rejected section keeps its last good copy on the Pi
 - `budget.show` (dates, counts and states only), `budget.set {"snapshot": {...}}` (`null` removes it), `budget.clear`. The budget app on the Pi normally sends this itself with the local token, so it never travels through the mailbox; use these only when the owner asks
 - `spotify.status`, `spotify.login` (the sign-in link to give the owner), `spotify.code {"address": "<the pasted address>"}`, `spotify.logout`. Signing in: run `spotify.login`, give the owner the `url` from its `message` to open and agree to, ask them to paste back the address of the error page they land on (it contains `?code=`), then run `spotify.code` with it and report `message`. The pasted code is single-use and useless without the secret on the Pi, so it is fine in chat; never ask for or print the client secret.
+- `log.tail {"lines": 50, "errors": false}` (both optional; lines 1-200, default 50; `errors: true` for problems only): the server's recent log lines. The text is scrubbed on the Pi before it reaches the bucket (IP addresses become `[address]`; calendar names, the Spotify name, the bucket name and the R2 host become `[name]`). `message` is one line such as `50 lines, 3 problems in the last 24 hours.`; `data` is `{"lines": [{"t", "text", "level"}], "errors24h"}`. `status.json` also carries `log.errors24h` and `log.lastErrorAt` (a count and a time, no text), so check that first
 - `status`, `ping` (answers with the server version)
 - `restart`: the server stops after replying and Docker starts it again with the code already on the Pi. It does not `git pull`; the owner does that on the Pi.
 

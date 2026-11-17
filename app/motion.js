@@ -17,9 +17,10 @@
  *   activity    When a live sync brings real new data for a tile (a new
  *               to-do, changed events, a changed snapshot), that tile shows a
  *               small chip in its lower left corner ("Incoming to-do") for
- *               about 2.4 s, with a light that sweeps its top edge twice.
- *               On the focused tile, the focus highlight leaves its top
- *               edge while the light sweeps (see edgeFocusSync).
+ *               about 2.4 s, with a light that travels twice around the
+ *               tile's whole border (a lap, see lapRun). On the focused
+ *               tile, the white focus highlight is off along the whole
+ *               border while a light laps it (see edgeFocusSync).
  *               Never on the first data after the hub starts, while the
  *               wanderers are on screen, or while the home screen is covered.
  *               Widgets call ctx.activity(kind). Every kind (todo,
@@ -39,18 +40,24 @@
  *               10 to 900 s), on "hub:working <kind> done", or when the
  *               data lands: real news turns that same chip into the
  *               arrival chip, unchanged data lets it fade.
- *   edge        The accent edge: a thin 4px light along the top of a tile
- *               that has something new to see (every arrival chip above,
- *               not a working chip, and ctx.accent(), e.g. an event
- *               starting within the hour). It
- *               fades in, stays about 60 s and fades out; opening the tile
- *               clears it. Static (no sweep, no fades) in 'fade' mode or
- *               on a slow screen. Never on focus.
+ *   edge        The accent edge: a faint blue border around the whole of
+ *               a tile that has something new to see (every arrival chip
+ *               above, not a working chip, and ctx.accent(), e.g. an event
+ *               starting within the hour). It fades in, stays about 60 s
+ *               and fades out; opening the tile clears it. On arrival a
+ *               white light laps the border once (unless the chip's own
+ *               does). Static (no lap, no fades) in 'fade' mode or on a
+ *               slow screen. Never on focus.
  *
  * Every moving part animates only transform and opacity, and runs only when
  * the hub's own timing (motion 'auto', see hub.js) says the screen keeps up:
  * in 'fade' mode, after auto stepped down from push, or below 40 frames a
- * second, focus is the plain border swap and the rest happens at once.
+ * second, focus is the plain border swap and the rest happens at once. The
+ * light extras (activity and working chips, the accent edge and its border
+ * light) are the exception: after auto stepped down they still run while
+ * the screen measures 60 frames a second or more without stuttering
+ * (host.lightSpeed, canLight); the About row then says
+ * "extras: chips and light only (slow screen)".
  * With every switch off this file adds no element and no class.
  *
  * Every entry point is wrapped, so if anything here breaks, the hub carries
@@ -67,6 +74,7 @@
   var STRINGS = {
     extrasOn: 'extras on',
     extrasOff: 'extras off ({why})',
+    extrasLight: 'extras: chips and light only ({why})',
     why: { fade: 'fade mode', slow: 'slow screen' }
   };
 
@@ -92,7 +100,7 @@
   var COVER_OUT_MS = 420;
   var BLOOM_MS = 480;
   var BLOOM_HOLD_MS = 2600;      // the app normally covers the hub long before this
-  var ACT_HOLD_MS = 2400;        // the chip shows this long (the edge sweeps twice in it)
+  var ACT_HOLD_MS = 2400;        // the chip shows this long (its light laps the border twice in it)
   var ACT_OUT_MS = 150;          // then fades out (the entrance, 220 ms, is in style.css)
   var EDGE_HOLD_MS = 60000;      // the accent edge stays this long (edgeHold() changes it, for tests)
   var EDGE_IN_MS = 400;
@@ -151,6 +159,16 @@
   }
 
   function can(name) { return on(name) && speed() === 'ok'; }
+
+  // The light extras (activity and working chips, the accent edge and its
+  // border light) have their own speed from the hub: they keep running
+  // after auto stepped down from push while the screen still measures 60
+  // fps or more without stuttering (hub.js, fxLightSpeed). Without it, as speed().
+  function lightSpeed() {
+    try { return host && typeof host.lightSpeed === 'function' ? host.lightSpeed() : speed(); } catch (e) { return 'fade'; }
+  }
+
+  function canLight(name) { return on(name) && lightSpeed() === 'ok'; }
 
   function anyMotion() {
     for (var i = 1; i < FLAGS.length; i++) if (flags[FLAGS[i]]) return true;
@@ -264,40 +282,182 @@
     ring.node.style.opacity = '0';
   }
 
-  /* ---------- the edge sweep on the focused tile ---------- */
+  /* ---------- the light around a tile's border (laps) ---------- */
 
-  // While an arrival chip's light sweeps the top edge of the tile that has
-  // focus, the focus highlight leaves that edge so the light shows: the ring
-  // gets EDGE_RING (style.css clips its top border away, statically), or,
-  // without the ring, the tile gets EDGE_TILE (its own top border goes
-  // transparent, same width, so nothing moves). Worked out again from what
-  // is there now (which tiles have a sweep playing, which tile has focus,
-  // whether the ring shows) every time any of that changes, so nothing is
-  // ever left behind. On any failure both classes come off.
-  var EDGE_RING = 'fx-ring-edge';
-  var EDGE_TILE = 'fx-edge-focus';
+  // A lap: a light that travels clockwise around a tile's whole border,
+  // corners included, starting and ending at the top-left corner
+  // (style.css, .fx-lap). Its length is a share of the top edge's straight
+  // part (about 3/4 of the old top-edge sweep's), so it can span a corner
+  // at once. Only transform and opacity animate:
+  //   the four straight parts: a gradient slides along a clipped strip;
+  //   the four corners: two part-lit rings in a clipped square, each
+  //     turning a quarter. The first brings the light's head through the
+  //     corner and then holds the corner lit; the second takes over (a
+  //     little before the first goes out, so they overlap) as the tail
+  //     enters, and carries the tail through.
+  // Each piece gets its length, duration and delay from the tile's size, so
+  // the light keeps one speed and every piece starts as the light reaches
+  // it. n laps: n sets of pieces, the next set starting as the light
+  // finishes the one before.
+  var LAP_CHIP_MS = 1200;        // the activity chip's light: two laps of this
+  var LAP_CHIP_N = 2;
+  var LAP_CHIP_LEN = 0.30;       // its length: 30% of the top edge (the old sweep was 40%)
+  var LAP_ACCENT_MS = 1400;      // the accent edge's arrival light: one lap
+  var LAP_ACCENT_LEN = 0.2625;   // its length: 26% of the top edge (the old sweep was 35%)
+  var LAP_WIDER_PX = 1;          // the light is this much wider than the border (inward)
+  var LAP_OVERLAP_MS = 30;       // a corner's head ring stays this long into its tail ring
+  // In lap order, from the top-left corner: [piece, corner?, along x?]
+  var LAP_PIECES = [['tl', true], ['t', false, true], ['tr', true], ['r', false, false],
+    ['br', true], ['b', false, true], ['bl', true], ['l', false, false]];
+
+  var laps = [];                 // [{ tile, node, timer, until }]
+
+  function ms1(n) { return Math.round(n * 10) / 10 + 'ms'; }
+
+  // Starts a lap over tile's border. parent: where the overlay goes (the
+  // tile, or an element that sits on the tile's padding box like
+  // .fx-accent); cls: its extra class; n: how many laps; lapMs: one lap;
+  // share: the light's length, a share of the top edge's straight part.
+  // Returns the lap (lapEnd ends it early), or null.
+  function lapRun(tile, parent, cls, n, lapMs, share) {
+    var W = tile.offsetWidth;
+    var H = tile.offsetHeight;
+    if (!(W > 0 && H > 0)) return null;
+    var cs = window.getComputedStyle(tile);
+    var r = parseFloat(cs.borderTopLeftRadius) || 0;
+    var bw = parseFloat(cs.borderTopWidth) || 0;
+    var rm = Math.max(1, r - bw / 2);        // the border's middle, round a corner
+    var arc = Math.PI * rm / 2;              // one corner, along the border
+    var Lx = Math.max(0, W - 2 * r);
+    var Ly = Math.max(0, H - 2 * r);
+    // The light; never shorter than a corner (the two rings must meet).
+    var len = Math.max(share * Lx, arc);
+    var lw = px(bw + LAP_WIDER_PX);
+    var v = (4 * arc + 2 * Lx + 2 * Ly) / lapMs;   // px per ms
+    var node = document.createElement('div');
+    node.className = 'fx-lap ' + cls;
+    node.setAttribute('aria-hidden', 'true');
+    sitOnBorder(node, bw);
+    var holders = [];
+    var i;
+    for (i = 0; i < LAP_PIECES.length; i++) {
+      var hd = el('b', 'fx-lap-' + LAP_PIECES[i][0], node);
+      // The strips as thick as the border as drawn (a browser draws it in
+      // whole pixels), and a pixel more, inward.
+      if (!LAP_PIECES[i][1]) hd.style[LAP_PIECES[i][2] ? 'height' : 'width'] = lw;
+      holders.push(hd);
+    }
+    var last = null;
+    var at = 0;
+    for (var k = 0; k < n; k++) {
+      for (i = 0; i < LAP_PIECES.length; i++) {
+        var p = LAP_PIECES[i];
+        var L = p[1] ? arc : (p[2] ? Lx : Ly);
+        if (L > 0 && p[1]) {
+          // The head ring: a quarter turn as the head crosses, then it
+          // holds the corner lit (fill forwards) until it goes out just
+          // after the tail ring starts.
+          var a = el('i', 'fx-lap-in', holders[i]);
+          a.style.borderWidth = lw;
+          a.style.animation = 'fx-lap-' + p[0] + '-in ' + ms1(arc / v) + ' linear ' + ms1(at / v) + ' 1 forwards, ' +
+            'fx-lap-off 1ms linear ' + ms1((at + len) / v + LAP_OVERLAP_MS) + ' 1 forwards';
+          // The tail ring: the corner fully lit as it starts, then a quarter
+          // turn as the tail crosses (no fill: it rests outside its clip).
+          var b = el('i', 'fx-lap-out', holders[i]);
+          b.style.borderWidth = lw;
+          b.style.animation = 'fx-lap-' + p[0] + '-out ' + ms1(arc / v) + ' linear ' + ms1((at + len) / v) + ' 1';
+          last = b;
+        } else if (L > 0) {
+          // A strip L long: the mover is L plus the light long, the light at
+          // its far end. No fill: before and after its run it rests outside its clip.
+          var m = el('i', '', holders[i]);
+          if (p[2]) { m.style.width = px(L + len); m.style.backgroundSize = px(len) + ' 100%'; }
+          else { m.style.height = px(L + len); m.style.backgroundSize = '100% ' + px(len); }
+          m.style.animation = (p[2] ? 'fx-lap-x ' : 'fx-lap-y ') + ms1((L + len) / v) + ' linear ' + ms1(at / v) + ' 1';
+          last = m;
+        }
+        at += L;
+      }
+    }
+    if (!last) return null;
+    parent.appendChild(node);
+    var total = (at + len) / v;
+    var lap = { tile: tile, node: node, timer: null, until: Date.now() + total };
+    laps.push(lap);
+    // Ends on its own: the last piece's animationend, and a timer behind it
+    // (a hidden page may never fire the event).
+    var done = safe(function (ev) { if (!ev || ev.target === last) lapEnd(lap); });
+    node.addEventListener('animationend', done);
+    node.addEventListener('webkitAnimationEnd', done);
+    lap.timer = later(total + 80, function () { lapEnd(lap); });
+    edgeFocusSync();
+    return lap;
+  }
+
+  // An overlay over a tile's whole border box, from inside the tile (or an
+  // element on its padding box): out by the border's width as drawn, which
+  // is whole pixels (0.16rem is 3.84 px at 1080p, drawn 3 px), so style.css's
+  // rem offsets are only the fallback.
+  function sitOnBorder(node, bw) {
+    var o = px(-bw);
+    node.style.top = o;
+    node.style.right = o;
+    node.style.bottom = o;
+    node.style.left = o;
+  }
+
+  function lapEnd(lap) {
+    if (!lap) return;
+    clearTimeout(lap.timer);
+    drop(lap.node);
+    var i = laps.indexOf(lap);
+    if (i >= 0) laps.splice(i, 1);
+    edgeFocusSync();
+  }
+
+  function lapStop() {
+    while (laps.length) lapEnd(laps[0]);
+  }
+
+  function lessMotion() {
+    try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
+  }
+
+  // While a lap runs on the tile that has focus, the white focus highlight
+  // is off along the whole border so the light shows all the way round: the
+  // ring gets LAP_RING (style.css makes it invisible, statically), or,
+  // without the ring, the tile gets LAP_TILE (its border takes the plain
+  // unfocused color, same width, so nothing moves). Worked out again from
+  // what is there now (which tiles have a lap running, which tile has
+  // focus, whether the ring shows) every time any of that changes, and
+  // every lap ends on its own (animationend, or its timer), so the
+  // highlight always comes back. With less motion asked for (no lap shows)
+  // the highlight stays. On any failure both classes come off.
+  var LAP_RING = 'fx-ring-lap';
+  var LAP_TILE = 'fx-lap-focus';
 
   function edgeFocusSync() {
     try {
       var lit = null;
-      var list = typeof acts !== 'undefined' && acts ? acts : [];
-      for (var i = 0; i < list.length; i++) {
-        var a = list[i];
-        if (a.edge && !a.retiring && a.edge.parentNode === a.tile && a.tile.classList.contains('is-focused')) { lit = a.tile; break; }
+      var list = typeof laps !== 'undefined' && laps ? laps : [];
+      var still = list.length ? lessMotion() : true;
+      for (var i = 0; i < list.length && !still; i++) {
+        var l = list[i];
+        if (l.tile.classList.contains('is-focused') && l.tile.contains(l.node)) { lit = l.tile; break; }
       }
       var ringShows = !!(ring.node && ring.shown);
       var want = lit && !ringShows ? lit : null;
-      var marked = document.querySelectorAll('.' + EDGE_TILE);
-      for (var j = 0; j < marked.length; j++) if (marked[j] !== want) marked[j].classList.remove(EDGE_TILE);
-      if (want) want.classList.add(EDGE_TILE);
+      var marked = document.querySelectorAll('.' + LAP_TILE);
+      for (var j = 0; j < marked.length; j++) if (marked[j] !== want) marked[j].classList.remove(LAP_TILE);
+      if (want) want.classList.add(LAP_TILE);
       if (ring.node) {
-        if (lit && ringShows) ring.node.classList.add(EDGE_RING);
-        else ring.node.classList.remove(EDGE_RING);
+        if (lit && ringShows) ring.node.classList.add(LAP_RING);
+        else ring.node.classList.remove(LAP_RING);
       }
     } catch (e) {
       try {
-        var left = document.querySelectorAll('.' + EDGE_TILE + ', .' + EDGE_RING);
-        for (var k = 0; k < left.length; k++) { left[k].classList.remove(EDGE_TILE); left[k].classList.remove(EDGE_RING); }
+        var left = document.querySelectorAll('.' + LAP_TILE + ', .' + LAP_RING);
+        for (var k = 0; k < left.length; k++) { left[k].classList.remove(LAP_TILE); left[k].classList.remove(LAP_RING); }
       } catch (e2) { /* nothing more to do */ }
     }
   }
@@ -557,7 +717,7 @@
     return def.key ? tr(def.key, def.label) : def.label;
   }
 
-  var acts = [];                 // [{ tile, kind, chip, edge, timer }]
+  var acts = [];                 // [{ tile, kind, chip, edge (its lap, or null), timer }]
 
   function actOf(tile) {
     for (var i = 0; i < acts.length; i++) if (acts[i].tile === tile) return acts[i];
@@ -567,7 +727,7 @@
   function actEnd(a) {
     clearTimeout(a.timer);
     drop(a.chip);
-    drop(a.edge);
+    lapEnd(a.edge);
     var i = acts.indexOf(a);
     if (i >= 0) acts.splice(i, 1);
     edgeFocusSync();
@@ -614,13 +774,9 @@
     return chip;
   }
 
+  // The chip's light: two laps around the tile's border (a lap, above).
   function makeEdge(tile) {
-    var edge = document.createElement('div');
-    edge.className = 'fx-edge';
-    edge.setAttribute('aria-hidden', 'true');
-    el('i', '', edge);
-    tile.appendChild(edge);
-    return edge;
+    return lapRun(tile, tile, 'fx-edge', LAP_CHIP_N, LAP_CHIP_MS, LAP_CHIP_LEN);
   }
 
   // Fades a chip out (150 ms), then takes it away.
@@ -640,7 +796,7 @@
   }
 
   // A working chip becomes the arrival chip, the same element: the arrival
-  // label, the icon's loops run, the edge sweeps, then the usual hold.
+  // label, the icon's loops run, the light laps the border, then the usual hold.
   function actUpgrade(a, kind) {
     clearTimeout(a.timer);
     a.workKind = null;
@@ -670,13 +826,13 @@
     if (w) {
       delete working[kind];
       workSave();
-      if (w.act && w.act.tile === tile && !w.act.retiring && can('activity') && homeQuiet()) {
+      if (w.act && w.act.tile === tile && !w.act.retiring && canLight('activity') && homeQuiet()) {
         actUpgrade(w.act, kind);
         return true;
       }
       if (w.act) actFade(w.act);
     }
-    if (!can('activity')) return false;
+    if (!canLight('activity')) return false;
     var cur = actOf(tile);
     // (A working chip of this kind that just began to fade, for another tile
     // of the same kind a moment ago: it becomes this tile's arrival chip.)
@@ -778,7 +934,7 @@
         continue;
       }
       left = true;
-      if (!can('activity')) {
+      if (!canLight('activity')) {
         if (w.act) actEnd(w.act);
         continue;
       }
@@ -825,9 +981,9 @@
 
   /* ---------- accent edge ---------- */
 
-  // One per tile: { tile, node, timer }. The node is a static gradient line
-  // (only its opacity changes) with an optional light that sweeps it once
-  // (transform only).
+  // One per tile: { tile, node, timer, lap }. The node is a still, faint
+  // blue border over the tile's own (only its opacity changes); lap: the
+  // white light that runs once around it on arrival (a lap, above), or null.
   var edges = [];
 
   function edgeOf(tile) {
@@ -837,6 +993,8 @@
 
   function edgeEnd(e) {
     clearTimeout(e.timer);
+    lapEnd(e.lap);
+    e.lap = null;
     drop(e.node);
     var i = edges.indexOf(e);
     if (i >= 0) edges.splice(i, 1);
@@ -844,7 +1002,7 @@
 
   function edgeFade(e) {
     clearTimeout(e.timer);
-    if (!can('edge')) { edgeEnd(e); return; }
+    if (!canLight('edge')) { edgeEnd(e); return; }
     e.node.style.transition = 'opacity ' + EDGE_OUT_MS + 'ms linear';
     e.node.style.opacity = '0';
     e.fading = true;
@@ -857,16 +1015,17 @@
   }
 
   // tile: the tile element; reason: what is new (for the tests); quiet:
-  // true when the activity chip's own light already sweeps the edge.
+  // true when the activity chip's own light already laps the border.
   function accent(tile, reason, quiet) {
     if (!tile || !on('edge')) return false;
-    var moving = can('edge');
+    var moving = canLight('edge');
     var e = edgeOf(tile);
     if (!e) {
       var node = document.createElement('div');
       node.className = 'fx-accent';
       node.setAttribute('aria-hidden', 'true');
-      e = { tile: tile, node: node, timer: null, reason: reason };
+      try { sitOnBorder(node, parseFloat(window.getComputedStyle(tile).borderTopWidth) || 0); } catch (err) { /* style.css's offsets */ }
+      e = { tile: tile, node: node, timer: null, reason: reason, lap: null };
       edges.push(e);
       tile.appendChild(node);
       if (moving) {
@@ -882,10 +1041,9 @@
       e.node.style.transition = moving ? 'opacity ' + EDGE_IN_MS + 'ms linear' : 'none';
       e.node.style.opacity = '1';
     }
-    // A light sweeps the line once, unless the chip's own already does.
-    var old = e.node.firstChild;
-    if (old) e.node.removeChild(old);
-    if (moving && !quiet) el('i', 'fx-accent-sweep', e.node);
+    // A light laps the border once, unless the chip's own already does.
+    lapEnd(e.lap);
+    e.lap = moving && !quiet ? lapRun(tile, e.node, 'fx-accent-sweep', 1, LAP_ACCENT_MS, LAP_ACCENT_LEN) : null;
     edgeArm(e, EDGE_HOLD_MS);
     return true;
   }
@@ -908,6 +1066,8 @@
     var sp = speed();
     if (sp === 'ok') return tr('motion.extrasOn', STRINGS.extrasOn);
     var why = STRINGS.why.hasOwnProperty(sp) ? tr('motion.why.' + sp, STRINGS.why[sp]) : sp;
+    // Stepped down, but the chips and the edge's light still run.
+    if (lightSpeed() === 'ok' && (on('activity') || on('edge'))) return tr('motion.extrasLight', STRINGS.extrasLight, { why: why });
     return tr('motion.extrasOff', STRINGS.extrasOff, { why: why });
   }
 
@@ -917,11 +1077,14 @@
       ringDrop();
       staggerClear();
       shareEnd();
+    }
+    if (lightSpeed() !== 'ok') {
       activityStop();
-      // Edges stay, but as still lines (no sweep, no fade).
+      // Edges stay, but as still borders (no lap, no fade).
       for (var i = 0; i < edges.length; i++) {
         var n = edges[i].node;
-        if (n.firstChild) n.removeChild(n.firstChild);
+        lapEnd(edges[i].lap);
+        edges[i].lap = null;
         n.style.transition = 'none';
         if (!edges[i].fading) n.style.opacity = '1';
       }
@@ -983,6 +1146,7 @@
       return {
         flags: JSON.parse(JSON.stringify(flags)),
         speed: speed(),
+        lightSpeed: lightSpeed(),
         ring: ring.node ? { at: ring.at, shown: ring.shown, gliding: ring.gliding && Date.now() < ring.glideEnd } : null,
         staggering: stag.items.length,
         flying: !!share.fly,

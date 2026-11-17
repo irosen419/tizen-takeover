@@ -41,7 +41,7 @@ var HUB_CONFIG = {
        cover       the Now Playing cover flies to the full-screen card
        bloom       an app's icon fills the screen while the app opens
        activity    a tile says what is updating when a sync brings new data
-       edge        a thin light along the top of a tile with something new
+       edge        a faint blue border around a tile with something new
                    (an update, an event within the hour) for about a minute
      motionFx: false turns them all off; so does ?fx=off on the address. */
   motionFx: { quietTiles: true, ring: true, stagger: true, cover: true, bloom: true, activity: true, edge: true },
@@ -274,11 +274,12 @@ var HUB_CONFIG = {
      * page only, with the song as a small card in the corner. true lets the
      * TV pick how much it can show (it checks its own frame rate); false
      * turns it off; 'radiant' (or 'full'; glow, bloom and motes), 'sharp'
-     * (the same size canvas, crisp lines, no bloom), 'sharplite' (or
+     * (a 960 x 540 canvas, crisp lines, no bloom), 'native' (the same, drawn at
+     * the screen's own 1920 x 1080 pixels, so nothing is stretched), 'sharplite' (or
      * 'sharp-lite'; a little smaller), 'classic' (the older flat look),
      * 'lite' (smaller and lighter), 'glow' (soft glows only) or 'wash' (a
      * still wash of color, with the big picture) fixes a level.
-     * ?viz=off|wash|glow|lite|classic|sharplite|sharp|radiant on the address
+     * ?viz=off|wash|glow|lite|classic|sharplite|sharp|native|radiant on the address
      * tries one for a visit.
      */
     nowplaying: { visualizer: true }

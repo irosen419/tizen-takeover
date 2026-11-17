@@ -1069,7 +1069,8 @@ body.has-picture {
 
 /* Activity chips: a tile that just got new data from a sync says so, in a
    small chip in its lower left corner, over its content (it never moves or
-   resizes anything), with a light that sweeps its top edge twice. Only
+   resizes anything), with a light that travels twice around the tile's
+   whole border (a lap, .fx-lap below). Only
    transform and opacity ever change. Sizes are the 1080p ones in rem
    (1rem = 24px there). */
 .fx-chip {
@@ -1176,65 +1177,141 @@ body.has-picture {
   100% { transform: translateY(0) rotate(0deg); }
 }
 
-/* The light along the tile's top edge: a gradient moved with transform,
-   twice, inside a strip on the straight part of the edge. */
-.fx-edge {
+/* The light around a tile's border (a lap; built by lapRun in app/motion.js):
+   a light about a quarter of the top edge long that travels once (or
+   twice) clockwise around the whole border, corners included, from the
+   top-left corner. The overlay sits exactly on the tile's border box
+   (motion.js sets its offsets, and the pieces' thickness to the border as
+   drawn plus a pixel inward; the rem values here are the fallback). The
+   light is twelve pieces, moved with transform only (and a ring's opacity
+   switched), one after another; motion.js sets each piece's size,
+   duration and delay from the tile's size, so the light keeps one speed and
+   the pieces join up:
+     .fx-lap-t .fx-lap-r .fx-lap-b .fx-lap-l   the straight parts, each a
+         clipped strip; a gradient slides along it (the bottom and the left
+         are the top and the right mirrored, so the light runs right to left
+         and bottom to top there).
+     .fx-lap-tl .fx-lap-tr .fx-lap-br .fx-lap-bl   the rounded corners, each
+         a clipped square the size of the radius over two rings of the same
+         radius, three quarters lit. .fx-lap-in turns a quarter as the
+         light's head crosses the corner, then holds it lit; .fx-lap-out
+         starts as the tail comes (the corner fully lit, overlapping the
+         first, which then goes out) and turns a quarter to carry the tail
+         through. So a light longer than a corner spans it whole.
+   Before its delay and after its run every piece rests outside its clip
+   or unseen, so nothing is left lit. .fx-edge is the activity chip's blue
+   light (two laps); .fx-accent-sweep the accent edge's white arrival light
+   (one lap, inside .fx-accent). */
+.fx-lap {
   position: absolute;
-  top: 0; left: 1.6rem; right: 1.6rem;
-  height: 0.1667rem;         /* 4px */
-  overflow: hidden;
+  top: -0.16rem; right: -0.16rem; bottom: -0.16rem; left: -0.16rem;
+  top: calc(0rem - var(--edge)); right: calc(0rem - var(--edge));
+  bottom: calc(0rem - var(--edge)); left: calc(0rem - var(--edge));
   pointer-events: none;
-  z-index: 3;
+  z-index: 4;                /* over the accent's faint border */
 }
-.fx-edge i {
+.fx-lap > b {
+  position: absolute;
+  overflow: hidden;
+}
+.fx-lap-t, .fx-lap-b { left: 1.6rem; right: 1.6rem; height: var(--edge); }
+.fx-lap-r, .fx-lap-l { top: 1.6rem; bottom: 1.6rem; width: var(--edge); }
+.fx-lap-t { top: 0; }
+.fx-lap-b { bottom: 0; transform: scaleX(-1); }
+.fx-lap-r { right: 0; }
+.fx-lap-l { left: 0; transform: scaleY(-1); }
+.fx-lap-t i, .fx-lap-b i,
+.fx-lap-r i, .fx-lap-l i {
   position: absolute;
   top: 0; left: 0;
-  width: 40%; height: 100%;
-  background: linear-gradient(90deg, rgba(127, 209, 255, 0), #7fd1ff, rgba(127, 209, 255, 0));
-  transform: translateX(-100%);
-  animation: fx-act-sweep 1200ms linear 2;
+  background-repeat: no-repeat;
 }
-@keyframes fx-act-sweep { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+.fx-lap-t i, .fx-lap-b i {
+  height: 100%;
+  background-position: 100% 0;
+  background-image: linear-gradient(90deg, rgba(127, 209, 255, 0), rgba(160, 222, 255, 0.95) 18%, #ffffff 50%, rgba(160, 222, 255, 0.95) 82%, rgba(127, 209, 255, 0));
+  transform: translateX(-100%);
+}
+.fx-lap-r i, .fx-lap-l i {
+  width: 100%;
+  background-position: 0 100%;
+  background-image: linear-gradient(180deg, rgba(127, 209, 255, 0), rgba(160, 222, 255, 0.95) 18%, #ffffff 50%, rgba(160, 222, 255, 0.95) 82%, rgba(127, 209, 255, 0));
+  transform: translateY(-100%);
+}
+.fx-lap-tl, .fx-lap-tr, .fx-lap-br, .fx-lap-bl { width: 1.6rem; height: 1.6rem; }
+.fx-lap-tl { top: 0; left: 0; }
+.fx-lap-tr { top: 0; right: 0; }
+.fx-lap-br { bottom: 0; right: 0; }
+.fx-lap-bl { bottom: 0; left: 0; }
+.fx-lap-tl i, .fx-lap-tr i, .fx-lap-br i, .fx-lap-bl i {
+  position: absolute;
+  width: 3.2rem; height: 3.2rem;
+  box-sizing: border-box;
+  border: var(--edge) solid transparent;
+  border-color: #d2efff #d2efff transparent;
+  border-radius: 50%;
+  opacity: 0;                /* at rest: unseen (the lit arc's ends touch the clip's edges) */
+}
+/* The rings rest with the lit arc's head at the corner's start. */
+.fx-lap-tl i { top: 0; left: 0; transform: rotate(135deg); }
+.fx-lap-tr i { top: 0; right: 0; transform: rotate(-135deg); }
+.fx-lap-br i { bottom: 0; right: 0; transform: rotate(-45deg); }
+.fx-lap-bl i { bottom: 0; left: 0; transform: rotate(45deg); }
+@keyframes fx-lap-x { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes fx-lap-y { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+/* -in: the head crosses (a quarter turn from rest); -out: the tail crosses
+   (the last quarter of a full turn). */
+@keyframes fx-lap-tl-in { from { transform: rotate(135deg); opacity: 1; } to { transform: rotate(225deg); opacity: 1; } }
+@keyframes fx-lap-tr-in { from { transform: rotate(-135deg); opacity: 1; } to { transform: rotate(-45deg); opacity: 1; } }
+@keyframes fx-lap-br-in { from { transform: rotate(-45deg); opacity: 1; } to { transform: rotate(45deg); opacity: 1; } }
+@keyframes fx-lap-bl-in { from { transform: rotate(45deg); opacity: 1; } to { transform: rotate(135deg); opacity: 1; } }
+@keyframes fx-lap-tl-out { from { transform: rotate(405deg); opacity: 1; } to { transform: rotate(495deg); opacity: 1; } }
+@keyframes fx-lap-tr-out { from { transform: rotate(135deg); opacity: 1; } to { transform: rotate(225deg); opacity: 1; } }
+@keyframes fx-lap-br-out { from { transform: rotate(225deg); opacity: 1; } to { transform: rotate(315deg); opacity: 1; } }
+@keyframes fx-lap-bl-out { from { transform: rotate(315deg); opacity: 1; } to { transform: rotate(405deg); opacity: 1; } }
+@keyframes fx-lap-off { from { opacity: 0; } to { opacity: 0; } }
+/* The accent edge's arrival light: white. */
+.fx-accent-sweep .fx-lap-t i, .fx-accent-sweep .fx-lap-b i {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.92) 18%, #ffffff 50%, rgba(255, 255, 255, 0.92) 82%, rgba(255, 255, 255, 0));
+}
+.fx-accent-sweep .fx-lap-r i, .fx-accent-sweep .fx-lap-l i {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.92) 18%, #ffffff 50%, rgba(255, 255, 255, 0.92) 82%, rgba(255, 255, 255, 0));
+}
+.fx-accent-sweep .fx-lap-tl i, .fx-accent-sweep .fx-lap-tr i,
+.fx-accent-sweep .fx-lap-br i, .fx-accent-sweep .fx-lap-bl i {
+  border-color: #ffffff #ffffff transparent;
+}
 
 /* The accent edge (motionFx.edge): a tile with something new to see gets a
-   thin light along the straight part of its top edge, in the chips' blue,
-   for about a minute. The line itself never moves (only its opacity fades
-   in and out, set in motion.js); a light may sweep it once on arrival
-   (transform only). Static in 'fade' mode and on a slow screen. */
+   faint blue border, in the chips' blue, over its whole border for about a
+   minute. The border itself never moves (only its opacity fades in and out,
+   set in motion.js); a white light may lap it once on arrival (a lap,
+   above). Static in 'fade' mode and on a slow screen. */
 .fx-accent {
   position: absolute;
-  top: 0; left: 1.6rem; right: 1.6rem;
-  height: 0.1667rem;         /* 4px */
-  overflow: hidden;
+  top: -0.16rem; right: -0.16rem; bottom: -0.16rem; left: -0.16rem;
+  top: calc(0rem - var(--edge)); right: calc(0rem - var(--edge));
+  bottom: calc(0rem - var(--edge)); left: calc(0rem - var(--edge));
+  box-sizing: border-box;
+  border: var(--edge) solid rgba(127, 209, 255, 0.5);
+  border-radius: 1.6rem;
   pointer-events: none;
   z-index: 3;
-  border-radius: 0.1rem;
-  background: linear-gradient(90deg, rgba(127, 209, 255, 0), rgba(127, 209, 255, 0.85) 18%, #7fd1ff 50%, rgba(127, 209, 255, 0.85) 82%, rgba(127, 209, 255, 0));
-  will-change: opacity;
-}
-.fx-accent-sweep {
-  position: absolute;
-  top: 0; left: 0;
-  width: 35%; height: 100%;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0), #ffffff, rgba(255, 255, 255, 0));
-  transform: translateX(-100%);
-  animation: fx-act-sweep 1100ms cubic-bezier(0.4, 0, 0.2, 1) 1 both;
 }
 
-/* Less motion asked for: the chip only fades in and out, still, with no loops and no sweep. */
+/* Less motion asked for: the chip only fades in and out, still, with no loops and no lap. */
 @media (prefers-reduced-motion: reduce) {
   .fx-chip, .fx-chip.is-in, .fx-chip.is-out { transform: none; }
   .fx-act-ico i { animation: none; }
   .fx-act-dot { opacity: 1; }
-  .fx-edge { display: none; }
-  .fx-accent-sweep { display: none; }
+  .fx-lap { display: none; }
 }
 
 /* Working chips: a sync is still on its way (app/motion.js). The same chip,
    a little quieter (a fainter border), the icon held still in a finished
    pose while the icon as a whole breathes: one opacity loop per chip, and
    nothing else moves. When the data lands, the class goes and the same chip
-   becomes the arrival chip (loops, edge sweep). */
+   becomes the arrival chip (loops, the lap). */
 .fx-chip-working { border-color: rgba(127, 209, 255, 0.28); }
 .fx-chip-working .fx-act-ico { animation: fx-act-breathe 1600ms ease-in-out infinite; }
 .fx-chip-working .fx-act-ico i { animation: none; }
@@ -1249,15 +1326,16 @@ body.has-picture {
   .fx-chip-working .fx-act-ico { animation: none; }
 }
 
-/* The edge sweep on the tile that has focus (edgeFocusSync in app/motion.js):
-   while the light runs along the top edge, the white focus highlight leaves
-   that edge so the light shows. The ring loses its top border to a static
-   clip (the border, 0.16rem, plus a little; nothing animates it); without
-   the ring, the tile's own top border turns transparent, the same width,
-   so nothing moves. */
-.fx-ring.fx-ring-edge { clip-path: inset(0.22rem 0 0 0); }
-.tile.is-focused.fx-edge-focus,
-.is-glass .tile.is-focused.fx-edge-focus { border-top-color: transparent; }
+/* A lap on the tile that has focus (edgeFocusSync in app/motion.js): while
+   the light travels around the border, the white focus highlight is off
+   along the whole border, so the light shows all the way round, and comes
+   back when the lap ends. The ring turns invisible (a static switch, over
+   its inline opacity; nothing animates it); without the ring, the tile's
+   own border takes the plain, unfocused color (same width, so nothing
+   moves). */
+.fx-ring.fx-ring-lap { opacity: 0 !important; }
+.tile.is-focused.fx-lap-focus:not(.is-lifted) { border-color: var(--line); }
+.is-glass .tile.is-focused.fx-lap-focus:not(.is-lifted) { border-color: rgba(255, 255, 255, 0.16); }
 
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }
