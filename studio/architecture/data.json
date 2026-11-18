@@ -496,15 +496,14 @@
        "id": "tv.motion.timing-fix",
        "title": "Motion timing fix",
        "kind": "task",
-       "status": "draft",
-       "pr": "PR 68",
+       "status": "unverified",
        "summary": "One stall no longer locks the extras off; step-downs need three janky runs and are forgotten after a day.",
        "details": [
         "A run counts as janky only under 40 fps, with three frames over 100 ms, or one over 400 ms. The About Motion row adds the longest stall."
        ],
        "files": [
-        "(PR 68) app/hub.js",
-        "(PR 68) dev/motion-test.js"
+        "app/hub.js",
+        "dev/motion-test.js"
        ]
       }
      ]
@@ -555,15 +554,14 @@
        "id": "tv.characters.scene-odds",
        "title": "Even scene odds",
        "kind": "task",
-       "status": "draft",
-       "pr": "PR 78",
+       "status": "unverified",
        "summary": "Fetch variants share one weight so the sock scene shows up again; same family never twice in a row.",
        "details": [
         "The three fetch scenes had 44% of daytime visits and sock heist 12.8%. Nothing was broken; this evens the weights."
        ],
        "files": [
-        "(PR 78) app/clay.js",
-        "(PR 78) dev/clay-test.js"
+        "app/clay.js",
+        "dev/clay-test.js"
        ]
       },
       {
@@ -671,15 +669,14 @@
          "id": "tv.widgets.entertainment.shows",
          "title": "Show schedule",
          "kind": "component",
-         "status": "draft",
-         "pr": "PR 72",
+         "status": "unverified",
          "summary": "Schedule tab (Today, This week, This month, Coming soon) and Watch buttons, from a Pi shows resource.",
          "details": [
           "The Pi refreshes Ian's show list from TVmaze every 6 hours. Apps with something airing come first on the tile. Watch opens the default app with a search hint; an About Watch link test tries deep links through a new service.js /launch-control."
          ],
          "files": [
-          "(PR 72) app/widgets/entertainment.js",
-          "(PR 72) service.js"
+          "app/widgets/entertainment.js",
+          "service.js"
          ],
          "talksTo": [
           {
@@ -729,22 +726,20 @@
          "id": "tv.widgets.todo.lead-times",
          "title": "Coming up lead times",
          "kind": "task",
-         "status": "draft",
-         "pr": "PR 74",
+         "status": "unverified",
          "summary": "A trailing number on a TODO~: title sets how many days ahead it shows (0 = day of; default 2). Pi server 0.7.0.",
          "files": [
-          "(PR 74) app/widgets/todo.js"
+          "app/widgets/todo.js"
          ]
         },
         {
          "id": "tv.widgets.todo.hide-prefix",
          "title": "Hide TODO prefix",
          "kind": "task",
-         "status": "draft",
-         "pr": "PR 75",
+         "status": "unverified",
          "summary": "Keeps the TODO!: / TODO: / TODO~: prefix in the stored title but hides it on screen.",
          "files": [
-          "(PR 75) app/widgets/todo.js"
+          "app/widgets/todo.js"
          ]
         }
        ]
@@ -883,7 +878,7 @@
        "status": "unverified",
        "summary": "Tiles for the picture book project: Glance, Next visit, This week, To-do board, Reach, Earned vs spent.",
        "details": [
-        "All registered from app/widgets/awws.js and fed by the Pi's awws snapshot, which a scheduled Claude task refreshes every 2 hours. The Glance also reads the calendar resource. Librarians and Books are Soon placeholders."
+        "All registered from app/widgets/awws.js and fed by the Pi's awws snapshot, which a scheduled Claude task refreshes twice a day. The Glance also reads the calendar resource. Librarians and Books are Soon placeholders."
        ],
        "files": [
         "app/widgets/awws.js",
@@ -1050,15 +1045,14 @@
          "id": "tv.widgets.budget.lab",
          "title": "Budget lab",
          "kind": "component",
-         "status": "draft",
-         "pr": "PR 60, 62, 66, 76",
+         "status": "unverified",
          "summary": "A stacked set of PRs adding budget math, a lab tile with a cap slider, merchant sliders and a runway chart.",
          "details": [
           "PR 62's tile shows a pace streak, yesterday against the cap and a suggested move; its panel has a cap slider and a saved cap kept on the TV for the cycle. PR 76 adds the runway chart. Guest mode hides it."
          ],
          "files": [
-          "(PR 62) app/widgets/budget-lab.js",
-          "(PR 62) app/widgets/budget-lab.css"
+          "app/widgets/budget-lab.js",
+          "app/widgets/budget-lab.css"
          ],
          "notes": [
           "To check on the TV: key-repeat timing for hold-to-speed on the slider."
@@ -1100,7 +1094,7 @@
          "title": "Ambience tile",
          "kind": "task",
          "status": "planned",
-         "summary": "A few big scenes, a room-lights dimmer and plant wall moods; the TV asks the Pi, which talks to Home Assistant and WLED.",
+         "summary": "Built as the Ambience widget (see Ambience). This placeholder is kept until the Soon tile is retired.",
          "details": [
           "First step agreed: a chill night scene, built in its own one-widget test layout. A voice button is parked."
          ],
@@ -1125,14 +1119,13 @@
        "id": "tv.widgets.allsounds",
        "title": "All sounds",
        "kind": "component",
-       "status": "draft",
-       "pr": "PR 69",
+       "status": "unverified",
        "summary": "Shows any audio playing at home, Spotify first, otherwise what an Echo reports through Home Assistant.",
        "details": [
         "The Pi reads Home Assistant's Alexa Media Player states and folds in Spotify into an allsounds resource. Tracks that may have ended get a may be out of date label. Tried in its own one-widget test layout."
        ],
        "files": [
-        "(PR 69) app/widgets/allsounds.js"
+        "app/widgets/allsounds.js"
        ],
        "talksTo": [
         {
@@ -1149,17 +1142,40 @@
        "id": "tv.widgets.sunpath",
        "title": "Plant sun",
        "kind": "component",
-       "status": "draft",
-       "pr": "PR 73",
+       "status": "unverified",
        "summary": "When the sun will next reach the plants by the window, from a rounded location and estimated roof angle.",
        "details": [
         "Computed on the TV from the sun's position for the rounded Deep Ellum point and the window's facing. The roof angle is an estimate, shown with an Estimate badge. Has its own Plant wall layout; Ian wants it merged last."
        ],
        "files": [
-        "(PR 73) app/widgets/sunpath.js",
-        "(PR 73) app/widgets/sunpath.css",
-        "(PR 73) dev/sunpath-test.js"
+        "app/widgets/sunpath.js",
+        "app/widgets/sunpath.css",
+        "dev/sunpath-test.js"
        ]
+      },
+      {
+       "id": "tv.widgets.ambience",
+       "title": "Ambience",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "Room-light scenes and per-light dimmers from the TV, in a one-widget Ambience test layout.",
+       "details": [
+        "Big scene cards (first: Chill night), a bar per light with Left/Right in 10% steps, optional plant wall mood chips. The TV never talks to Home Assistant or WLED; it asks the Pi."
+       ],
+       "files": [
+        "app/widgets/ambience.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.ambience",
+         "label": "scenes and light levels over the live line",
+         "dir": "both"
+        }
+       ],
+       "notes": [
+        "Nothing has run against real Home Assistant, WLED or the TV yet. Geeni bulbs must first appear in Home Assistant as lights."
+       ],
+       "children": []
       }
      ]
     },
@@ -1333,8 +1349,7 @@
            "id": "pi.server.resources.todo.leadtimes",
            "title": "To-do lead times",
            "kind": "component",
-           "status": "draft",
-           "pr": "PR 74",
+           "status": "unverified",
            "summary": "Per-item lead time for passive reminders, taken from a trailing number on TODO~: titles (0 = day of, default 2 days).",
            "details": [
             "Bumps the Pi server to 0.7.0, so it needs one git pull and restart on the Pi after merge. Ian agreed to that exception to his no-restart rule."
@@ -1899,7 +1914,7 @@
       }
      ],
      "notes": [
-      "pi/README.md says the routine runs 'usually every half hour'; memory says every 2 hours, 7 AM to 11 PM at :12. Memory is newer."
+      "The routine runs twice a day, 7:12 AM and 1:12 PM Central (changed 2026-11-17)."
      ]
     },
     {
@@ -1979,18 +1994,17 @@
      "id": "pi.shows",
      "title": "TV show schedule",
      "kind": "component",
-     "status": "draft",
-     "pr": "PR 72",
+     "status": "unverified",
      "summary": "A shows resource: Ian's show list looked up on TVmaze every 6 hours, for the Entertainment Schedule.",
      "details": [
       "The list lives in data/shows.json (started from a seed list). For each show the Pi asks TVmaze (public, no key) for next and past episodes, at most 20 calls per 10 s, and pushes the result. A show that fails keeps its last copy, marked stale.",
       "Adds ./hub shows and mailbox commands shows.list, add, remove, set and refresh, plus a Watch link test whose answers the TV sends back. Log lines carry no show names or addresses."
      ],
      "files": [
-      "(PR 72) pi/shows.js",
-      "(PR 72) pi/shows-seed.json",
-      "(PR 72) pi/linktests.js",
-      "(PR 72) docs/shows-snapshot.md"
+      "pi/shows.js",
+      "pi/shows-seed.json",
+      "pi/linktests.js",
+      "docs/shows-snapshot.md"
      ],
      "talksTo": [
       {
@@ -2012,17 +2026,16 @@
      "id": "pi.allsounds",
      "title": "All sounds reader",
      "kind": "component",
-     "status": "draft",
-     "pr": "PR 69",
+     "status": "unverified",
      "summary": "An allsounds resource: whatever plays in the house, from the Echo speakers via Home Assistant, with Spotify winning when both play.",
      "details": [
       "Reads Home Assistant's /api/states (every 5 s while playing, 20 s otherwise) for the Echo media players that the Alexa Media Player add-on exposes, filtered by ALLSOUNDS_ENTITIES. Picture addresses are only public https ones, never Home Assistant's.",
       "Feeds a one-widget 'All sounds test' layout, per Ian's rule that new widgets are tried alone first. Log lines are fixed words only: no titles, device names or anything from Amazon."
      ],
      "files": [
-      "(PR 69) pi/allsounds.js",
-      "(PR 69) pi/allsounds-test.js",
-      "(PR 69) dev/mock-ha.js"
+      "pi/allsounds.js",
+      "pi/allsounds-test.js",
+      "dev/mock-ha.js"
      ],
      "talksTo": [
       {
@@ -2246,6 +2259,36 @@
        "dir": "out"
       }
      ]
+    },
+    {
+     "id": "pi.ambience",
+     "title": "Ambience control",
+     "kind": "component",
+     "status": "unverified",
+     "summary": "Turns scenes and dimmer taps from the TV into Home Assistant light calls and WLED moods.",
+     "details": [
+      "Reads settings from data/ambience.json; talks to Home Assistant over its REST API and to the plant wall over WLED JSON. A light that does not answer never fails a scene. Also reachable by ./hub ambience and the mailbox."
+     ],
+     "files": [
+      "pi/ambience.js",
+      "pi/ambience.example.json"
+     ],
+     "talksTo": [
+      {
+       "to": "ext.ha",
+       "label": "sets lights with HA_TOKEN",
+       "dir": "out"
+      },
+      {
+       "to": "pi.server.screen",
+       "label": "pushes the lights state",
+       "dir": "out"
+      }
+     ],
+     "notes": [
+      "Untested on real hardware. Pi server 0.7.0 or later."
+     ],
+     "children": []
     }
    ],
    "id": "pi",
@@ -2409,11 +2452,12 @@
        "title": "Open pull requests",
        "kind": "task",
        "status": "draft",
-       "pr": "PRs 60-78",
-       "summary": "Drafts waiting to merge, several touching pi/: PR 72 (shows), 69 (All sounds), 74 (lead times, server 0.7.0).",
+       "summary": "Drafts waiting to merge: PR 77 (Lift pixel character).",
        "details": [
-        "Others: 60, 62, 66, 76 (budget lab), 68, 71, 73, 75, 77, 78. Ian gave a blanket go on 2026-11-17; a stack thread rebases and merges them in order."
-       ]
+        "Ian gave a blanket go on 2026-11-17 and the stack thread merged the rest (60, 62, 66, 68 to 76, 78) into main as v0.29.7, then Ambience (80) and this page (79) as v0.29.8. Those parts now show as Unverified until Ian checks them on the TV."
+       ],
+       "files": [],
+       "pr": "PR 77"
       }
      ]
     }
@@ -2497,15 +2541,14 @@
        "id": "ext.ha.states",
        "title": "States API",
        "kind": "component",
-       "status": "draft",
-       "pr": "PR 69",
+       "status": "unverified",
        "summary": "The Pi reads media player states from Home Assistant's API with HA_TOKEN, to learn what the Echo devices are playing.",
        "details": [
         "pi/allsounds.js (PR 69) asks Home Assistant for the state of the media players listed in ALLSOUNDS_ENTITIES in pi/.env. That list keeps it to Ian's own Echo Show and Echo Dot and leaves out other people's devices."
        ],
        "files": [
-        "(PR 69) pi/allsounds.js",
-        "(PR 69) pi/.env.example"
+        "pi/allsounds.js",
+        "pi/.env.example"
        ],
        "talksTo": [
         {
@@ -2529,8 +2572,8 @@
       "Works: Amazon Music, iHeart and TuneIn radio (e.g. \"90.1 KERA\" with \"iHeartRadio\") and Spotify on the Echo give title, artist, album and picture. Misses: Audible, NPR flash briefings and skills; Home Assistant then keeps the last details, so stale tracks get a \"may be out of date\" label."
      ],
      "files": [
-      "(PR 69) pi/allsounds.js",
-      "(PR 69) dev/mock-ha.js"
+      "pi/allsounds.js",
+      "dev/mock-ha.js"
      ],
      "talksTo": [
       {
@@ -2615,16 +2658,15 @@
      "id": "ext.tvmaze",
      "title": "TVmaze",
      "kind": "external",
-     "status": "draft",
-     "pr": "PR 72",
+     "status": "unverified",
      "summary": "Free TV schedule service the Pi reads every 6 hours for Ian's show list: next episodes and whether a show is still running.",
      "details": [
       "The draft Pi 'shows' resource refreshes from TVmaze, caches on disk and feeds the Schedule in Entertainment (Today, This week, This month, Coming soon). Seed shows came from Ian; he still owes the full list."
      ],
      "files": [
-      "(PR 72) pi/shows.js",
-      "(PR 72) pi/shows-seed.json",
-      "(PR 72) app/widgets/shows.js"
+      "pi/shows.js",
+      "pi/shows-seed.json",
+      "app/widgets/shows.js"
      ],
      "talksTo": [
       {
@@ -2784,8 +2826,7 @@
        "id": "ext.budget-app.lab",
        "title": "Budget lab sections",
        "kind": "data",
-       "status": "draft",
-       "pr": "PR 60, 62, 66, 76",
+       "status": "unverified",
        "summary": "Planned extra snapshot sections (lab, merchants, pace, runway) for the Budget lab tile, built as a stack of draft PRs.",
        "details": [
         "The Pi already accepts these sections (server 0.5.0). The TV half is in the open PRs 60, 62, 66 and 76; the budget app's side has its own PRs in the budget repo."
@@ -2819,7 +2860,7 @@
      "talksTo": [
       {
        "to": "sched.awws-sync",
-       "label": "read every 2 hours",
+       "label": "read twice a day",
        "dir": "out"
       }
      ],
@@ -3088,7 +3129,7 @@
      "title": "AWWS sync",
      "kind": "task",
      "status": "live",
-     "summary": "Every 2 hours at :12, 7 AM to 11 PM Central: reads the AWWS board and profit page and sends one snapshot to the Pi.",
+     "summary": "Twice a day, 7:12 AM and 1:12 PM Central: reads the AWWS board and profit page and sends one snapshot to the Pi.",
      "details": [
       "A fresh Claude session each run. It reads the board's todos and handoffs and the profit page's costs and royalties, builds the snapshot with a small script in its prompt, and sends awws.set through the mailbox. A normal run posts nothing.",
       "Writes: the 'awws' snapshot on the Pi (to-dos, handoffs, reach, monthly money totals). It skips a run when the Pi's status is over 3 minutes old."
@@ -3256,11 +3297,10 @@
        "id": "sched.timers.shows",
        "title": "Shows refresh",
        "kind": "task",
-       "status": "draft",
-       "pr": "PR 72",
+       "status": "unverified",
        "summary": "The Pi would reread the show list from TVmaze every 6 hours.",
        "files": [
-        "(PR 72) pi/shows.js"
+        "pi/shows.js"
        ],
        "talksTo": [
         {
@@ -3547,18 +3587,18 @@
      "id": "studio.arch-page",
      "title": "Architecture page",
      "kind": "doc",
-     "status": "draft",
+     "status": "unverified",
      "summary": "This page: an expandable map of the TV, Pi, cloud, outside services, tasks and tools, drawn from the repo and project memory.",
      "details": [
       "The map lives in studio/architecture/data.json. arch.js and arch.css draw it, and node studio/build-architecture.js copies all three into the Studio file, which is published as one page.",
       "dev/architecture-test.js fails when a link or a file path is wrong, or when a secret, address or email slips into the data."
      ],
      "files": [
-      "(PR 79) studio/architecture/data.json",
-      "(PR 79) studio/architecture/arch.js",
-      "(PR 79) studio/architecture/arch.css",
-      "(PR 79) studio/build-architecture.js",
-      "(PR 79) dev/architecture-test.js"
+      "studio/architecture/data.json",
+      "studio/architecture/arch.js",
+      "studio/architecture/arch.css",
+      "studio/build-architecture.js",
+      "dev/architecture-test.js"
      ],
      "talksTo": [
       {
@@ -3569,8 +3609,7 @@
      ],
      "notes": [
       "Statuses come from the repo and project memory. When something lands, ships or is checked on the TV, update its status in data.json."
-     ],
-     "pr": "PR 79"
+     ]
     }
    ],
    "id": "studio",
@@ -4241,11 +4280,11 @@
   {
    "id": "flow.pi-awws",
    "title": "The AWWS snapshot reaches the TV",
-   "summary": "A scheduled Claude routine builds the snapshot and sends it through the mailbox every 2 hours.",
+   "summary": "A scheduled Claude routine builds the snapshot and sends it through the mailbox twice a day.",
    "steps": [
     {
      "node": "sched.awws-sync",
-     "say": "At :12 every 2 hours from 7 AM a routine reads the AWWS board and profit page and builds the snapshot"
+     "say": "At 7:12 AM and 1:12 PM a routine reads the AWWS board and profit page and builds the snapshot"
     },
     {
      "node": "cloud.r2.status",
@@ -4508,7 +4547,7 @@
  ],
  "title": "Architecture",
  "intro": "Every part of Home Hub, grouped so you can open as much or as little as you want. Tap a part for what it is, its files and what it talks to.",
- "asOf": "As of Nov 17, 2026 \u00b7 main is v0.29.1 \u00b7 drafts are open PRs 60 to 78",
+ "asOf": "As of Nov 17, 2026 · main is v0.29.8 · open PR: 77",
  "overview": {
   "w": 1000,
   "h": 620,

@@ -277,7 +277,7 @@
   var HOUR = 60 * MIN;
   var DAY = 24 * HOUR;
   var CAL_STALE = 30 * MIN;
-  var SNAP_STALE = 2 * HOUR;
+  var SNAP_STALE = 19 * HOUR;   // the sync runs at 7:12 AM and 1:12 PM Central; the overnight gap is 18 hours
   var VISIT_DAYS = 60;
   var FALLBACK_TZ = 'America/Chicago';
   var OWNERS = ['ian', 'claude', 'both'];

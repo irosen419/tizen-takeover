@@ -865,12 +865,16 @@
     var i;
     for (i = 0; i < a.allDay.length; i++) rows.push(alldayRow(a.allDay[i]));
     for (i = 0; i < a.upcoming.length; i++) rows.push(eventRow(a.upcoming[i]));
+    // Where a character works when the events change (app/agents.js): the
+    // first row, or the Next block below when there is none.
+    if (rows.length) rows[0].setAttribute('data-agent-spot', '');
     var more = el('div', 'cal-more', root);
     more.style.display = 'none';
     if (!a.upcoming.length) {
       var empty = el('div', 'cal-tile-empty', root, a.had ? STRINGS.nothingElse : STRINGS.nothingToday);
       if (a.next) {
         var nx = el('div', 'cal-next', root);
+        nx.setAttribute('data-agent-spot', '');
         el('div', 'cal-next-label', nx, STRINGS.nextLabel);
         var line = el('div', 'cal-next-line', nx);
         bar(line, a.next.cal);

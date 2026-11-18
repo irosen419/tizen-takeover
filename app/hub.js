@@ -132,7 +132,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.29.8';
+  var BUILD = 'v0.29.9';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1054,6 +1054,7 @@
     measureHome();
     placeGlass();
     clayHook('layout');
+    agentsHook('stop');
     // A tile of another size may want another layout: draw it again.
     for (var r = 0; r < resized.length; r++) drawTile(resized[r]);
     retitleAll();
@@ -1258,8 +1259,10 @@
   // watched live (they walk behind it). Made like the layout bar.
   //
   // Each row is { group, label, value }: value() returns the text, or '' to
-  // leave the row out. To show something new, add a row to ABOUT_ROWS (a new
-  // group name starts a new group); nothing else needs to change. A row with
+  // leave the row out. groupKey and labelKey (app/i18n.js keys) show the
+  // group and label in the hub's language; without them they are English.
+  // To show something new, add a row to ABOUT_ROWS (a new group name
+  // starts a new group); nothing else needs to change. A row with
   // action() is the strip's one button: OK runs it (the first shown wins).
   var aboutEl = document.getElementById('about');
   var ab = { on: false, box: null, sig: '', rows: [], drawn: [], dropped: {}, timer: null, hideTimer: null };
@@ -1267,6 +1270,11 @@
   function noPrefix(text, prefix) {
     text = text ? String(text) : '';
     return text.indexOf(prefix) === 0 ? text.slice(prefix.length) : text;
+  }
+
+  function aboutWord(key, english) {
+    var L = window.HUB_I18N;
+    try { return L && typeof L.t === 'function' ? String(L.t(key, english)) : english; } catch (e) { return english; }
   }
 
   function clayPart(name) {
@@ -1326,6 +1334,10 @@
     { group: 'Wanderers', label: 'Drawing', value: function () { return clayPart('drawing'); } },
     { group: 'Wanderers', label: 'Loading', value: function () { return clayPart('loading'); } },
     { group: 'Wanderers', label: 'Last problem', value: function () { return clayPart('problem'); } },
+    // The character beside the chips (app/agents.js): in the hub's language (keys in app/i18n.js).
+    { group: 'Characters', groupKey: 'agents.about.group', label: 'Now', labelKey: 'agents.about.now', value: function () { return agentsPart('now'); } },
+    { group: 'Characters', groupKey: 'agents.about.group', label: 'Seen', labelKey: 'agents.about.seen', value: function () { return agentsPart('seen'); } },
+    { group: 'Characters', groupKey: 'agents.about.group', label: 'Drawing', labelKey: 'agents.about.drawing', value: function () { return agentsPart('drawing'); } },
     // The Now Playing visualizer, once it has shown: its level, frame rate and tempo.
     { group: 'Now Playing', label: 'Visualizer', value: function () {
       var V = window.HUB_NP_VIZ;
@@ -1360,10 +1372,10 @@
       var r = list[i].row;
       if (r.group !== group) {
         group = r.group;
-        el('div', 'about-group', ab.box).textContent = group;
+        el('div', 'about-group', ab.box).textContent = r.groupKey ? aboutWord(r.groupKey, group) : group;
       }
       var row = el('div', 'about-row' + (r.action ? ' is-action' : ''), ab.box);
-      el('div', 'about-label', row).textContent = r.label;
+      el('div', 'about-label', row).textContent = r.labelKey ? aboutWord(r.labelKey, r.label) : r.label;
       var value = el('div', 'about-value', row);
       value.textContent = list[i].text;
       ab.rows.push(value);
@@ -2791,6 +2803,42 @@
 
   window.HUB_TEST.clay = window.HUB_CLAY && window.HUB_CLAY.test ? window.HUB_CLAY.test : null;
 
+  /* ---------- characters ---------- */
+
+  // app/agents.js: a pixel-art character who swoops in beside a tile's
+  // working or arrival chip (docs/agents.md). motion.js tells it about the
+  // chips; the hub only starts it, ends it at once on a layout change or a
+  // resize, and shows its status in the About panel. Every call is wrapped,
+  // so without agents.js, or with a broken one, nothing changes.
+
+  function agentsApi(name) {
+    var A = window.HUB_AGENTS;
+    return A && typeof A === 'object' && typeof A[name] === 'function' ? A : null;
+  }
+
+  function agentsHook(name) {
+    var A = agentsApi(name);
+    if (!A) return;
+    try { A[name](); } catch (e) { /* the chips show alone */ }
+  }
+
+  // A part of HUB_AGENTS.status() ({ now, seen, drawing, asked }), or ''.
+  // The rows wait for the first chip (asked): before it there is nothing to say.
+  function agentsPart(name) {
+    var A = agentsApi('status');
+    var st = null;
+    try { st = A ? A.status() : null; } catch (e) { st = null; }
+    return st && st.asked > 0 && typeof st[name] === 'string' ? st[name] : '';
+  }
+
+  function startAgents() {
+    var A = agentsApi('start');
+    if (!A) return;
+    try { A.start({ config: cfg.agents }); } catch (e) { /* the chips show alone */ }
+  }
+
+  window.HUB_TEST.agents = window.HUB_AGENTS && window.HUB_AGENTS.test ? window.HUB_AGENTS.test : null;
+
   /* ---------- motion extras ---------- */
 
   // app/motion.js: the focus ring that glides, items that arrive in an
@@ -2892,11 +2940,13 @@
   startLive();
   startUpdates();
   startClay();
+  startAgents();
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {
     clearTimeout(resizeTimer);
     clayHook('layout');
+    agentsHook('stop');
     resizeTimer = setTimeout(function () { measureHome(); placeGlass(); retitleAll(); fxCall('relayout', [focusRect()]); }, 150);
   });
 

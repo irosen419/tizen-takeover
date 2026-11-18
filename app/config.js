@@ -64,6 +64,17 @@ var HUB_CONFIG = {
      clay: false (or on: false) turns them off; so does ?clay=off on the address. */
   clay: { on: true, idleAfter: 20, every: [90, 150], nightEvery: [300, 600] },
 
+  /* A pixel-art character (app/agents.js, docs/agents.md) swoops in beside
+     a tile's working or arrival chip ("Working on to-dos", "Incoming
+     to-do"), stays while the chip does, and glides out when it ends. The
+     chip itself is unchanged. Only when the screen keeps full speed; on a
+     slow screen or in fade mode the chip shows alone.
+       who   which character: 'lift' (Lift and Wyndle, from Stormlight);
+             a name not in the roster turns them off
+     agents: false (or on: false) turns them off; so does ?agent=off on the
+     address. Off, nothing of theirs loads. */
+  agents: { on: true, who: 'lift' },
+
   layout: [
     { widget: 'today',         x: 0, y: 0, w: 3, h: 1 },
     { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },

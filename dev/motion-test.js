@@ -210,7 +210,10 @@ async function open(o) {
   page.on('pageerror', (e) => page.errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|ERR_/.test(m.text())) page.errors.push(m.text()); });
   const live = o.pi ? 'live=' + encodeURIComponent(o.pi.url) : (o.live || 'live=off');
-  await page.goto(PAGE + '/hub.html?' + (o.clay ? '' : 'clay=off&') + live + (o.query ? '&' + o.query : ''));
+  // ?agent=off: these checks are about the chips themselves, which are now
+  // the fallback when the character (app/agents.js) cannot come; with her
+  // on she replaces the chip once her pictures load (dev/agents-test.js).
+  await page.goto(PAGE + '/hub.html?agent=off&' + (o.clay ? '' : 'clay=off&') + live + (o.query ? '&' + o.query : ''));
   await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0);
   if (o.pi) await until(() => page.evaluate(() => window.HUB_LIVE && window.HUB_LIVE.status().state === 'live'), 8000, 'the hub did not go live');
   await sleep(200);

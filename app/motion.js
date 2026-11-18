@@ -463,7 +463,10 @@
   }
 
   // Layout changed or the window resized: straight to the focused tile.
+  // (hub.js has ended the character by then: a tile she was working on
+  // gets its chip.)
   function relayout(rect) {
+    chipBack();
     if (!ring.node) return;
     ringTo(rect, false);
   }
@@ -649,8 +652,9 @@
        key      its app/i18n.js key, where the Spanish is
        working  the working chip's words, { en, key }; null: it says the
                 arrival words; false: this kind has no working chip
-       figure   room for a character or prop drawn with the chip later
-                (nothing reads it yet)
+       figure   room for a character or prop tied to one kind (nothing
+                reads it: the characters of app/agents.js come to any
+                tile with a chip, whatever its kind; see figure() below)
      How long a chip or a working state lasts is not here: those rules are
      the same for every kind (ACT_HOLD_MS, WORK_MS and the rest, above).
      The words are found when a chip shows, in the language then active. */
@@ -724,8 +728,11 @@
     return null;
   }
 
-  function actEnd(a) {
+  // natural: after its own fade (the character finishes on her own); else
+  // taken away at once (a panel, a layout change), and so is she.
+  function actEnd(a, natural) {
     clearTimeout(a.timer);
+    figure(natural ? 'gone' : 'cut', a);
     drop(a.chip);
     lapEnd(a.edge);
     var i = acts.indexOf(a);
@@ -746,7 +753,8 @@
     if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
       window.HUB_I18N.onChange(safe(function () {
         for (var i = 0; i < acts.length; i++) {
-          var t = acts[i].chip.querySelector('.fx-chip-text');
+          // (With the character instead of a chip there are no words to change.)
+          var t = acts[i].chip ? acts[i].chip.querySelector('.fx-chip-text') : null;
           if (t) t.textContent = acts[i].workKind ? workLabel(acts[i].workKind) : labelOf(acts[i].kind);
         }
       }));
@@ -759,6 +767,47 @@
       if (!host || !host.quiet || !host.quiet()) return false;
       return !(host.clayDrawing && host.clayDrawing());
     } catch (e) { return false; }
+  }
+
+  // The character (app/agents.js, docs/agents.md) comes instead of the
+  // chip when she can: asked as a chip would show ('in', with whether the
+  // screen keeps full speed and the home screen is quiet, and mode 'work'
+  // or 'arrive'); true means she comes and the act gets no chip (a.chip
+  // null), only the border light. Then told when the working state turns
+  // into news on the same tile ('reveal'; false: she is already leaving, so
+  // the arrival chip shows after all), ends without news or its hold ends
+  // ('done'), and goes ('gone' after the fade, 'cut' at once). The tile's
+  // border light and accent edge are the same either way.
+  function figure(phase, a, mode) {
+    var A = window.HUB_AGENTS;
+    if (!a || !A || typeof A.chip !== 'function') return false;
+    try { return A.chip(phase, a.tile, phase === 'in' ? (can('activity') && homeQuiet()) : true, mode) === true; } catch (e) { return false; }
+  }
+
+  // Was the character on this act's tile taken away at once (not by the
+  // act: the hub slowed down, a resize, a layout change)?
+  function figureLost(a) {
+    var A = window.HUB_AGENTS;
+    try { return !!(A && typeof A.lost === 'function' && A.lost(a.tile)); } catch (e) { return false; }
+  }
+
+  // An act without a chip (the character came instead) whose character was
+  // taken away gets its chip after all, so a working state never shows
+  // nothing. (Her own end, after her sequence, is not that.)
+  function chipBack() {
+    for (var i = 0; i < acts.length; i++) {
+      var a = acts[i];
+      if (a.chip || a.retiring || !figureLost(a) || !document.documentElement.contains(a.tile)) continue;
+      chipOn(a, a.workKind ? workLabel(a.workKind) : labelOf(a.kind), a.workKind ? 'fx-chip-working' : '');
+    }
+  }
+
+  // Puts a chip on an act that has none.
+  function chipOn(a, label, extra) {
+    a.chip = makeChip(a.kind, label, extra);
+    a.tile.appendChild(a.chip);
+    void a.chip.offsetWidth;
+    a.chip.className += ' is-in';
   }
 
   function kindClass(kind) { return 'fx-chip fx-chip-' + String(kind).replace(/[^a-z0-9-]/gi, ''); }
@@ -783,8 +832,9 @@
   function actFade(a) {
     clearTimeout(a.timer);
     a.retiring = true;
-    a.chip.className = a.chip.className.replace(/ is-in\b/g, '').replace(/ is-out\b/g, '') + ' is-out';
-    a.timer = later(ACT_OUT_MS + 60, function () { actEnd(a); });
+    if (a.chip) a.chip.className = a.chip.className.replace(/ is-in\b/g, '').replace(/ is-out\b/g, '') + ' is-out';
+    a.timer = later(ACT_OUT_MS + 60, function () { actEnd(a, true); });
+    figure('done', a);
     edgeFocusSync();
   }
 
@@ -797,14 +847,20 @@
 
   // A working chip becomes the arrival chip, the same element: the arrival
   // label, the icon's loops run, the light laps the border, then the usual hold.
+  // With the character instead of the chip: she springs up (the reveal),
+  // and only if she cannot (already leaving) does the arrival chip show.
   function actUpgrade(a, kind) {
     clearTimeout(a.timer);
     a.workKind = null;
     a.retiring = false;
     a.kind = kind;
-    a.chip.className = kindClass(kind) + ' is-in';
-    var text = a.chip.querySelector('.fx-chip-text');
-    if (text) text.textContent = labelOf(kind);
+    if (a.chip) {
+      a.chip.className = kindClass(kind) + ' is-in';
+      var text = a.chip.querySelector('.fx-chip-text');
+      if (text) text.textContent = labelOf(kind);
+    } else if (!figure('reveal', a)) {
+      chipOn(a, labelOf(kind), '');
+    }
     if (!a.edge) a.edge = makeEdge(a.tile);
     actHold(a);
   }
@@ -841,13 +897,11 @@
       return true;
     }
     if (cur || !homeQuiet()) return false;
-    var chip = makeChip(kind, labelOf(kind));
-    var edge = makeEdge(tile);
-    tile.appendChild(chip);
-    var a = { tile: tile, kind: kind, chip: chip, edge: edge, timer: null };
+    var a = { tile: tile, kind: kind, chip: null, edge: null, timer: null };
     acts.push(a);
-    void chip.offsetWidth;
-    chip.className += ' is-in';
+    // The character instead of the chip, when she can come.
+    if (!figure('in', a, 'arrive')) chipOn(a, labelOf(kind), '');
+    a.edge = makeEdge(tile);
     actHold(a);
     return true;
   }
@@ -907,13 +961,11 @@
   }
 
   function workShow(kind, w, tile) {
-    var chip = makeChip(kind, workLabel(kind), 'fx-chip-working');
-    tile.appendChild(chip);
-    var a = { tile: tile, kind: kind, chip: chip, edge: null, timer: null, workKind: kind, wasWork: kind, retiring: false };
+    var a = { tile: tile, kind: kind, chip: null, edge: null, timer: null, workKind: kind, wasWork: kind, retiring: false };
     acts.push(a);
     w.act = a;
-    void chip.offsetWidth;
-    chip.className += ' is-in';
+    // The character instead of the chip, when she can come.
+    if (!figure('in', a, 'work')) chipOn(a, workLabel(kind), 'fx-chip-working');
   }
 
   // Puts every working chip where it belongs now, ends the ones whose time
@@ -944,6 +996,7 @@
       if (!w.act && tile && !actOf(tile)) workShow(kind, w, tile);
     }
     if (changed) workSave();
+    chipBack();
     if (left) workTimer = later(WORK_TICK_MS, workReconcile);
   }
 
@@ -1077,7 +1130,11 @@
       ringDrop();
       staggerClear();
       shareEnd();
+      // The character needs full speed: she goes, the chips stay (and a
+      // tile she was working on gets its chip, below).
+      try { if (window.HUB_AGENTS && typeof window.HUB_AGENTS.stop === 'function') window.HUB_AGENTS.stop(); } catch (e) { /* nothing more */ }
     }
+    if (lightSpeed() === 'ok') chipBack();
     if (lightSpeed() !== 'ok') {
       activityStop();
       // Edges stay, but as still borders (no lap, no fade).
@@ -1151,7 +1208,9 @@
         staggering: stag.items.length,
         flying: !!share.fly,
         blooming: !!bloomState.node,
-        chips: acts.map(function (a) { return a.kind; }),
+        // Acts showing a chip, and acts the character came to instead.
+        chips: acts.filter(function (a) { return !!a.chip; }).map(function (a) { return a.kind; }),
+        figures: acts.filter(function (a) { return !a.chip; }).map(function (a) { return a.kind; }),
         edges: edges.map(function (e) { return { widget: (e.tile.parentNode && e.tile.parentNode.getAttribute('data-widget')) || '', reason: e.reason, fading: !!e.fading }; }),
         working: (function () {
           var out = [];

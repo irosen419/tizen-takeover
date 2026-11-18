@@ -1,0 +1,236 @@
+/* Characters (app/agents.js, docs/agents.md): a pixel-art character who
+   comes to work on a tile instead of its working or arrival chip: skates
+   in, skids to the spot, works, springs up when the news lands, skates out. One click-through layer over the tiles, under the panel, the
+   dashboard and toasts (like the clay wanderers' layer). Only transform
+   and opacity ever change; sizes are in rem (1rem = 24px at 1080p), so a
+   sprite's pixels are the screen's own at 1080p. */
+.ag-layer {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 9;
+}
+
+/* The character: placed by its transform (translate x and the bottom
+   edge's y), its size set inline. Inside: ride (her height above the
+   bottom edge, eased apart from x so the travel curves), lean (into the
+   carve, about her feet), flip (mirrored to face her way), bob. */
+.ag-fig {
+  position: absolute;
+  top: 0; left: 0;
+  will-change: transform, opacity;
+}
+.ag-ride, .ag-lean, .ag-flip, .ag-bob, .ag-pose {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+}
+.ag-lean { transform-origin: 50% 100%; }
+.ag-flip { transform: scaleX(1); }
+.ag-flip.is-mirrored { transform: scaleX(-1); }
+.ag-fig img {
+  position: absolute;
+  display: block;
+  image-rendering: -webkit-optimize-contrast;  /* older Chromium */
+  image-rendering: pixelated;
+}
+.ag-spren {
+  position: absolute;
+  transform-origin: 50% 100%;   /* Wyndle sways about where his neck meets the vine */
+}
+.ag-spren img { top: 0; left: 0; width: 100%; height: 100%; }
+
+/* The poses: all drawn, one shown (opacity only, switched at once). */
+.ag-pose { opacity: 0; }
+.ag-fig.is-pose-skate .ag-pose-skate,
+.ag-fig.is-pose-skid .ag-pose-skid,
+.ag-fig.is-pose-crouch .ag-pose-crouch,
+.ag-fig.is-pose-leap .ag-pose-leap,
+.ag-fig.is-pose-wave .ag-pose-wave { opacity: 1; }
+
+/* Skating: Wyndle's head sways as she glides. */
+.ag-fig.is-gliding .ag-spren { animation: ag-sway 900ms ease-in-out infinite alternate; }
+@keyframes ag-sway {
+  from { transform: rotate(-5deg); }
+  to { transform: rotate(5deg); }
+}
+
+/* The Stormlight trail under her feet: a few bright pixels that stream
+   back while she glides. */
+.ag-trail {
+  position: absolute;
+  height: 0.25rem;
+}
+.ag-trail i {
+  position: absolute;
+  top: 0; left: 0;
+  width: 0.5rem; height: 0.1667rem;
+  background-color: #dff8ff;
+  opacity: 0;
+}
+.ag-trail i:nth-child(2) { top: -0.1667rem; left: 1rem; width: 0.3333rem; background-color: #9be7ff; }
+.ag-trail i:nth-child(3) { top: 0.0833rem; left: 1.8333rem; width: 0.6667rem; }
+.ag-trail i:nth-child(4) { top: -0.25rem; left: 2.75rem; width: 0.25rem; background-color: #9be7ff; }
+.ag-trail i:nth-child(5) { top: 0; left: 3.5rem; width: 0.4167rem; }
+.ag-fig.is-gliding .ag-trail i { animation: ag-trail 420ms linear infinite; }
+.ag-fig.is-gliding .ag-trail i:nth-child(2) { animation-delay: -90ms; }
+.ag-fig.is-gliding .ag-trail i:nth-child(3) { animation-delay: -180ms; }
+.ag-fig.is-gliding .ag-trail i:nth-child(4) { animation-delay: -270ms; }
+.ag-fig.is-gliding .ag-trail i:nth-child(5) { animation-delay: -350ms; }
+@keyframes ag-trail {
+  from { transform: translateX(0); opacity: 0.95; }
+  to { transform: translateX(-2.5rem); opacity: 0; }
+}
+
+/* The skid: sparks fan up and forward from her front foot, once. Each
+   spark flies along its own (still) angle. */
+.ag-spray, .ag-work, .ag-spray b, .ag-burst b {
+  position: absolute;
+  width: 0; height: 0;
+}
+.ag-spray b { top: 0; left: 0; }
+.ag-spray b:nth-child(1) { transform: rotate(-12deg); }
+.ag-spray b:nth-child(2) { transform: rotate(-28deg); }
+.ag-spray b:nth-child(3) { transform: rotate(-44deg); }
+.ag-spray b:nth-child(4) { transform: rotate(-60deg); }
+.ag-spray b:nth-child(5) { transform: rotate(-76deg); }
+.ag-spray b:nth-child(6) { transform: rotate(-36deg); }
+.ag-spray b:nth-child(7) { transform: rotate(-52deg); }
+.ag-spray i, .ag-burst i {
+  position: absolute;
+  top: -0.0833rem; left: 0;
+  width: 0.25rem; height: 0.1667rem;
+  background-color: #dff8ff;
+  opacity: 0;
+}
+.ag-spray b:nth-child(even) i { background-color: #9be7ff; }
+.ag-fig.is-skid .ag-spray i { animation: ag-fly 460ms ease-out 1 forwards; }
+.ag-fig.is-skid .ag-spray b:nth-child(2) i { animation-delay: 40ms; }
+.ag-fig.is-skid .ag-spray b:nth-child(3) i { animation-delay: 20ms; }
+.ag-fig.is-skid .ag-spray b:nth-child(5) i { animation-delay: 60ms; }
+.ag-fig.is-skid .ag-spray b:nth-child(6) i { animation-delay: 90ms; }
+.ag-fig.is-skid .ag-spray b:nth-child(7) i { animation-delay: 120ms; }
+@keyframes ag-fly {
+  0% { transform: translateX(0.25rem) scale(1); opacity: 1; }
+  100% { transform: translateX(2rem) scale(0.5); opacity: 0; }
+}
+
+/* The work loop (about 3 s): Stormlight runs down her arm into the card
+   (three dots) and rings out from her hand; Wyndle's vine curl grows
+   toward it once and then sways; a small bob. Calm (after a while): the
+   bob stops and the light slows. */
+.ag-ring {
+  position: absolute;
+  left: -0.75rem; top: -0.25rem;
+  width: 1.5rem; height: 0.5rem;
+  border: 0.0833rem solid #bff3ff;
+  border-radius: 50%;
+  opacity: 0;
+}
+.ag-dot {
+  position: absolute;
+  left: -0.0833rem; top: -0.0833rem;
+  width: 0.1667rem; height: 0.1667rem;
+  background-color: #e8fbff;
+  opacity: 0;
+}
+.ag-vine {
+  position: absolute;
+  width: 0.75rem; height: 0.5rem;
+  margin-left: -0.75rem; margin-top: -0.5rem;
+  transform-origin: 100% 100%;
+  transform: scale(0);
+}
+.ag-curl {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  transform-origin: 100% 100%;
+}
+.ag-curl i {
+  position: absolute;
+  width: 0.125rem; height: 0.125rem;
+  background-color: #5aa83c;
+}
+.ag-curl i:nth-child(1) { left: 0.625rem; top: 0.375rem; background-color: #3f7f2c; }
+.ag-curl i:nth-child(2) { left: 0.5rem; top: 0.375rem; }
+.ag-curl i:nth-child(3) { left: 0.375rem; top: 0.3333rem; }
+.ag-curl i:nth-child(4) { left: 0.25rem; top: 0.25rem; }
+.ag-curl i:nth-child(5) { left: 0.1667rem; top: 0.125rem; background-color: #7cc95a; }
+.ag-curl i:nth-child(6) { left: 0.2917rem; top: 0.0417rem; background-color: #7cc95a; }
+.ag-fig.is-work .ag-bob { animation: ag-bob 1500ms ease-in-out infinite alternate; }
+.ag-fig.is-work .ag-ring { animation: ag-ring 1500ms ease-out infinite; }
+.ag-fig.is-work .ag-ring + .ag-ring { animation-delay: -750ms; }
+.ag-fig.is-work .ag-dot { animation: ag-flow 1500ms linear infinite; }
+.ag-fig.is-work .ag-dot:nth-of-type(2) { animation-delay: -500ms; }
+.ag-fig.is-work .ag-dot:nth-of-type(3) { animation-delay: -1000ms; }
+.ag-fig.is-work .ag-vine { animation: ag-grow 900ms ease-out 200ms 1 forwards; }
+.ag-fig.is-work .ag-curl { animation: ag-curl 1500ms ease-in-out 1100ms infinite alternate; }
+.ag-fig.is-calm .ag-bob { animation: none; }
+.ag-fig.is-calm .ag-ring { animation-duration: 3000ms; }
+.ag-fig.is-calm .ag-dot { animation-duration: 3000ms; }
+.ag-fig.is-calm .ag-curl { animation: none; }
+@keyframes ag-bob {
+  from { transform: translate(0, 0); }
+  to { transform: translate(0, -0.0833rem); }
+}
+@keyframes ag-ring {
+  0% { transform: scale(0.3); opacity: 0.95; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+@keyframes ag-flow {
+  0% { transform: translate(-0.3333rem, -1.75rem); opacity: 0; }
+  20% { opacity: 1; }
+  85% { transform: translate(0, 0); opacity: 1; }
+  100% { transform: translate(0, 0.0833rem); opacity: 0; }
+}
+@keyframes ag-grow {
+  from { transform: scale(0); }
+  to { transform: scale(1); }
+}
+@keyframes ag-curl {
+  from { transform: rotate(-6deg); }
+  to { transform: rotate(6deg); }
+}
+
+/* The reveal: a burst of Stormlight at the spot, once (a soft glow and
+   eight sparks flying out). Placed in the layer by its transform. */
+.ag-burst {
+  position: absolute;
+  top: 0; left: 0;
+  will-change: transform, opacity;
+}
+.ag-burst u {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  background-image: radial-gradient(ellipse at center, rgba(190, 240, 255, 0.6) 0%, rgba(127, 209, 255, 0.24) 40%, rgba(127, 209, 255, 0) 70%);
+  opacity: 0;
+  animation: ag-glow 760ms ease-out 1 forwards;
+}
+.ag-burst b { top: 50%; left: 50%; }
+.ag-burst b:nth-of-type(2) { transform: rotate(45deg); }
+.ag-burst b:nth-of-type(3) { transform: rotate(90deg); }
+.ag-burst b:nth-of-type(4) { transform: rotate(135deg); }
+.ag-burst b:nth-of-type(5) { transform: rotate(180deg); }
+.ag-burst b:nth-of-type(6) { transform: rotate(225deg); }
+.ag-burst b:nth-of-type(7) { transform: rotate(270deg); }
+.ag-burst b:nth-of-type(8) { transform: rotate(315deg); }
+.ag-burst b:nth-of-type(even) i { background-color: #9be7ff; }
+.ag-burst i { animation: ag-burst 700ms ease-out 1 forwards; }
+.ag-burst b:nth-of-type(odd) i { animation-delay: 50ms; }
+@keyframes ag-glow {
+  0% { opacity: 0; transform: scale(0.6); }
+  30% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.1); }
+}
+@keyframes ag-burst {
+  0% { transform: translateX(0.25rem) scale(1.2); opacity: 1; }
+  100% { transform: translateX(1.9rem) scale(0.5); opacity: 0; }
+}
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }
