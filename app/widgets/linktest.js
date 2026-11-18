@@ -33,7 +33,62 @@
   var ID_RE = /^[\x21\x23-\x3b\x3d\x3f-\x7e]{1,200}$/;
   var DEFAULT_EDITABLE = ['primeGti'];
 
-  var S = { C: null, host: null, pending: null, results: [], ids: {} };
+  var S = { C: null, host: null, pending: null, results: [], ids: {}, rowError: null, lastError: '' };
+
+  // English here; Spanish through the hub's table (app/i18n.js).
+  var WORDS = {
+    stale: 'The TV helper is out of date. Unplug the TV for 30 seconds, then try again.',
+    cantOpen: 'Couldn’t open: {error}',
+    lastError: 'Last error: {error}'
+  };
+
+  function word(key, vars) {
+    var english = WORDS[key];
+    var I = window.HUB_I18N;
+    if (I && typeof I.t === 'function') {
+      try { return String(I.t('linktest.' + key, english, vars)); } catch (e) { /* English below */ }
+    }
+    return english.replace(/\{(\w+)\}/g, function (all, k) { return vars && vars.hasOwnProperty(k) ? vars[k] : all; });
+  }
+
+  // "0.29.9" or "v0.29.10" as [0, 29, 10]; null when it isn't a version.
+  function parseVersion(v) {
+    var m = /^v?(\d+)\.(\d+)\.(\d+)/.exec(String(v || ''));
+    return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+  }
+
+  // True only when both are versions and the service's is the older.
+  function isOlder(service, build) {
+    var a = parseVersion(service);
+    var b = parseVersion(build);
+    if (!a || !b) return false;
+    for (var i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i];
+    return false;
+  }
+
+  // Shows what went wrong on the recipe's row until the next key, and keeps
+  // the last one at the top of the list.
+  function showError(rec, text) {
+    S.rowError = { id: rec.id, text: text };
+    S.lastError = text;
+    save();
+    if (S.C && S.C.isOpen()) S.C.redrawPanel();
+    function clear() {
+      document.removeEventListener('keydown', clear, true);
+      setTimeout(function () {
+        if (S.rowError && S.rowError.id === rec.id) {
+          S.rowError = null;
+          if (S.C && S.C.isOpen()) S.C.redrawPanel();
+        }
+      }, 0);
+    }
+    document.addEventListener('keydown', clear, true);
+  }
+
+  function failText(err) {
+    if (err === 'not found' || err === 'HTTP 404') return word('stale');
+    return word('cantOpen', { error: err });
+  }
 
   function el(tag, cls, parent, text) {
     var node = document.createElement(tag);
@@ -105,9 +160,9 @@
     var out = [];
     for (var i = 0; i < list.length; i++) {
       var r = list[i];
-      if (!r || typeof r.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(r.id) || typeof r.op !== 'string') continue;
+      if (!r || typeof r.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(r.id) || (!r.plain && typeof r.op !== 'string')) continue;
       var o = {
-        id: r.id, app: String(r.app || ''), name: String(r.name || r.id), op: r.op,
+        id: r.id, app: String(r.app || ''), name: String(r.name || r.id), op: r.plain ? '' : r.op, plain: !!r.plain,
         uri: r.uri ? fillIds(String(r.uri), ids) : '',
         key: r.key ? String(r.key) : '',
         val: r.key ? fillIds(String(r.val || ''), ids) : ''
@@ -127,6 +182,7 @@
         S.results = isArr(d.results) ? d.results.slice(0, MAX_KEPT) : [];
         S.pending = typeof d.pending === 'string' ? d.pending : null;
         S.ids = {};
+        S.lastError = typeof d.lastError === 'string' ? d.lastError.substring(0, 200) : '';
         if (d.ids && typeof d.ids === 'object') {
           for (var k in d.ids) if (d.ids.hasOwnProperty(k) && typeof d.ids[k] === 'string' && ID_RE.test(d.ids[k])) S.ids[k] = d.ids[k];
         }
@@ -136,7 +192,7 @@
 
   function save() {
     try {
-      if (window.localStorage) localStorage.setItem(KEY, JSON.stringify({ results: S.results.slice(0, MAX_KEPT), pending: S.pending, ids: S.ids }));
+      if (window.localStorage) localStorage.setItem(KEY, JSON.stringify({ results: S.results.slice(0, MAX_KEPT), pending: S.pending, ids: S.ids, lastError: S.lastError }));
     } catch (e) { /* kept for this visit only */ }
   }
 
@@ -172,7 +228,7 @@
 
   function record(rec, outcome, detail) {
     var r = {
-      id: rec.id, app: rec.app, name: rec.name, outcome: outcome, op: rec.op,
+      id: rec.id, app: rec.app, name: rec.name, outcome: outcome, op: rec.plain ? 'plain open' : rec.op,
       at: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), build: window.HUB_BUILD || '', sent: false
     };
     if (rec.uri) r.uri = rec.uri;
@@ -220,14 +276,31 @@
     var app = appFor(rec);
     if (app === undefined) { C.toast('Still looking for your apps. Try again in a second.', 3500); return 'waiting'; }
     if (!app) { C.toast(rec.app + ' isn’t on this TV.', 4500); return 'missing'; }
-    S.pending = rec.id;
-    save();
-    C.redrawPanel();
-    S.host.launchControl({ id: app.id, op: rec.op, uri: rec.uri || null, key: rec.key || null, val: rec.key ? rec.val : null }, function (err) {
-      if (err) {
-        record(rec, 'error', err);
-        C.toast(rec.app + ' couldn’t be opened that way (' + err + ').', 6000);
-      }
+    S.rowError = null;
+    // A plain open has no app control: the TV's own /launch, then the question.
+    if (rec.plain) {
+      S.pending = rec.id;
+      save();
+      C.redrawPanel();
+      S.host.launch(app.id, rec.app);
+      return 'fired';
+    }
+    function go() {
+      S.pending = rec.id;
+      save();
+      C.redrawPanel();
+      S.host.launchControl({ id: app.id, op: rec.op, uri: rec.uri || null, key: rec.key || null, val: rec.key ? rec.val : null }, function (err) {
+        if (err) {
+          record(rec, 'error', err);
+          showError(rec, failText(err));
+        }
+      });
+    }
+    // An old service.js can't do this: ask its version first (a service that
+    // doesn't answer is left for the launch itself to report).
+    C.service('/ping', 3000, function (err, data) {
+      if (!err && data && isOlder(data.version, window.HUB_BUILD)) { showError(rec, word('stale')); return; }
+      go();
     });
     return 'fired';
   }
@@ -241,6 +314,7 @@
 
   function renderPanel(body) {
     var root = el('div', 'lt', body);
+    if (S.lastError) el('div', 'lt-lasterr', root, word('lastError', { error: S.lastError }));
     el('div', 'lt-intro', root, 'Each test opens one app a different way. Come back to the hub, then say what happened. Answers go to the Pi (./hub linktests).');
     var list = recipes();
     if (!list.length) {
@@ -268,8 +342,9 @@
       row.setAttribute('data-key', 'lt:run:' + rec.id + (S.pending === rec.id ? ':asked' : ''));
       var main = el('div', 'lt-main', row);
       el('div', 'lt-name', main, rec.app + ' · ' + rec.name);
-      el('div', 'lt-detail', main, shortOp(rec.op) + (rec.uri ? ' · ' + rec.uri : '') + (rec.key ? ' · ' + rec.key + '=' + rec.val : ''));
+      el('div', 'lt-detail', main, (rec.plain ? 'plain open · no app control' : shortOp(rec.op)) + (rec.uri ? ' · ' + rec.uri : '') + (rec.key ? ' · ' + rec.key + '=' + rec.val : ''));
       el('span', 'lt-state' + (rec.needsId ? ' is-needs' : ''), row, st);
+      if (S.rowError && S.rowError.id === rec.id) el('div', 'lt-rowerr', main, S.rowError.text);
       if (S.pending === rec.id) {
         var ask = el('div', 'lt-ask', root);
         el('div', 'lt-q', ask, 'What happened with ' + rec.app + '?');
@@ -344,6 +419,6 @@
       // Short: one line in the About strip (the list says which need an id).
       return 'OK to open · ' + tried + ' of ' + ready + ' tried';
     },
-    _test: { recipes: recipes, fire: fire, record: record, setId: setId, editable: editable, state: function () { return S; }, stateText: stateText }
+    _test: { isOlder: isOlder, recipes: recipes, fire: fire, record: record, setId: setId, editable: editable, state: function () { return S; }, stateText: stateText }
   };
 })();

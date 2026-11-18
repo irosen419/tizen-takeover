@@ -298,7 +298,27 @@ var HUB_CONFIG = {
           { id: 'hulu-view', app: 'Hulu', name: 'Series page (view)',
             op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.hulu.com/series/{hulu}' },
           { id: 'peacock-view', app: 'Peacock', name: 'Series page (view)',
-            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.peacocktv.com/watch/asset/tv/{peacock}' }
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.peacocktv.com/watch/asset/tv/{peacock}' },
+          // Added after the first TV results: Netflix eden_resume and view only
+          // opened the app; Apple TV did nothing at all.
+          { id: 'netflix-watch-resume', app: 'Netflix', name: 'Watch url (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: 'm=https://www.netflix.com/watch/{netflixTitle}&source_type=4' },
+          { id: 'netflix-json-resume', app: 'Netflix', name: 'Title url in JSON (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: '{"values":"m=https://www.netflix.com/title/{netflixTitle}&source_type=4"}' },
+          { id: 'netflix-default-op', app: 'Netflix', name: 'Title by id (default)',
+            op: 'http://tizen.org/appcontrol/operation/default', key: 'PAYLOAD', val: 'm=https://www.netflix.com/title/{netflixTitle}&source_type=4' },
+          { id: 'appletv-resume-url', app: 'Apple TV', name: 'Foundation url in JSON (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: '{"values":"https://tv.apple.com/us/show/foundation/{appleFoundation}"}' },
+          { id: 'appletv-default-op', app: 'Apple TV', name: 'Foundation by id (default)',
+            op: 'http://tizen.org/appcontrol/operation/default', key: 'PAYLOAD', val: '{"values":"{appleFoundation}"}' },
+          // No app control at all: the TV's plain /launch, to see whether the
+          // matched app id itself opens.
+          { id: 'plain-netflix', app: 'Netflix', name: 'Plain open', plain: true },
+          { id: 'plain-appletv', app: 'Apple TV', name: 'Plain open', plain: true },
+          { id: 'plain-prime', app: 'Prime Video', name: 'Plain open', plain: true },
+          { id: 'plain-disney', app: 'Disney+', name: 'Plain open', plain: true },
+          { id: 'plain-hulu', app: 'Hulu', name: 'Plain open', plain: true },
+          { id: 'plain-peacock', app: 'Peacock', name: 'Plain open', plain: true }
         ]
       }
     },

@@ -117,6 +117,14 @@
     try { return window.HUB_SHOWS && typeof HUB_SHOWS.availability === 'function' ? HUB_SHOWS.availability() || {} : {}; } catch (e) { return {}; }
   }
 
+  // The one count badge, on a logo: how many shows have something to watch
+  // in this app. Used by the tile, the panel and full screen.
+  function putBadge(logo, n) {
+    var old = logo.querySelector('.ent-count');
+    if (old) logo.removeChild(old);
+    if (n) logo.appendChild(el('span', 'ent-count', String(n)));
+  }
+
   // The tile's order: apps with something to watch first (most first), the
   // rest as in config.js. Only app items count; a sort that keeps ties stable.
   function tileOrder(avail) {
@@ -456,6 +464,7 @@
         var node = el('div', 'ent-item f');
         node.setAttribute('data-key', item.key);
         var iconWrap = el('div', 'ent-icon');
+        node.icon = iconWrap;
         iconWrap.appendChild(logoEl(item.cfg));
         node.appendChild(iconWrap);
         node.appendChild(el('div', 'ent-name', item.cfg.label));
@@ -472,12 +481,15 @@
 
   function renderGrid(body) {
     var cache = buildGrid();
+    var avail = availability();
     for (var i = 0; i < cache.nodes.length; i++) {
       var n = cache.nodes[i];
       var st = stateOf(n.item);
       // Resetting the class also drops focus and press marks from last time.
       n.node.className = 'ent-item f' + (st.missing ? ' is-missing' : '');
       if (n.state.textContent !== st.text) n.state.textContent = st.text;
+      var cnt = n.item.cfg.kind === 'app' && avail.hasOwnProperty(n.item.cfg.label) ? avail[n.item.cfg.label] : 0;
+      putBadge(n.node.icon.firstChild, cnt);
       if (n.item.key === lastKey) n.node.setAttribute('data-autofocus', '');
       else n.node.removeAttribute('data-autofocus');
     }
@@ -510,8 +522,10 @@
           HUB_SHOWS.onChange(function () {
             // Redrawn only when its line or counts change (logos are slow to draw).
             var sig = HUB_SHOWS.tileLine() + '|' + JSON.stringify(availability());
-            if (sig !== tileSig) { tileSig = sig; C.redrawTile(); }
-            if (C.isOpen() && view === 'schedule') C.redrawPanel();
+            var changed = sig !== tileSig;
+            if (changed) { tileSig = sig; C.redrawTile(); }
+            // The grid's badges follow the counts; redrawn only when they change.
+            if (C.isOpen() && (view === 'schedule' || (view === 'grid' && changed))) C.redrawPanel();
           });
         } catch (e) { /* the grid works without it */ }
       }
@@ -555,7 +569,7 @@
         var chip = el('span', 'ent-chip' + (stateOf(it).missing ? ' is-missing' : '') + (order[i].n ? ' has-count' : ''));
         chip.appendChild(logoEl(it.cfg));
         // Shows with something to watch in this app: a small count on its logo.
-        if (order[i].n) chip.firstChild.appendChild(el('span', 'ent-count', String(order[i].n)));
+        putBadge(chip.firstChild, order[i].n);
         nextChip(chip);
       }
       if (items.length > shown) {

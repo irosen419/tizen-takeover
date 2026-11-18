@@ -7,13 +7,14 @@
 
 /* ---------- the Entertainment tile: what's on ---------- */
 
-.ent-chip .logo { position: relative; }
+.ent-chip .logo, .ent-icon .logo { position: relative; }
 .ent-count {
   position: absolute;
-  top: -0.35rem; right: -0.35rem;
+  top: 0.15rem; right: 0.15rem;
   min-width: 1.35rem;
   padding: 0 0.3rem;
   border-radius: 0.7rem;
+  box-sizing: border-box;
   background: #7fd1ff;
   color: #050506;
   font-size: 0.85rem;
@@ -23,10 +24,37 @@
   box-shadow: 0 0 0 0.12rem var(--card);
   z-index: 2;
 }
-.tile-h1 .ent-count { top: -0.25rem; right: -0.25rem; }
+.tile-h1 .ent-count { top: 0.1rem; right: 0.1rem; }
+/* The expanded panel and full screen: bigger, for couch distance, inside the
+   icon's corner so the item's padding never clips it. */
+.ent-icon .ent-count { top: 0.25rem; right: 0.25rem; min-width: 1.6rem; font-size: 1.05rem; line-height: 1.6rem; border-radius: 0.8rem; }
+.panel.is-full .ent-icon .ent-count { top: 0.4rem; right: 0.4rem; min-width: 2.2rem; font-size: 1.5rem; line-height: 2.2rem; border-radius: 1.1rem; }
 /* Narrow tiles: logos can sit at the tile's edge, so the count sits inside
    the logo's corner rather than over the edge. */
 .tile-wn .ent-count { top: 0.1rem; right: 0.1rem; min-width: 1.2rem; font-size: 0.75rem; line-height: 1.2rem; }
+
+/* ---------- the card before an app opens (no deep link) ---------- */
+
+.sh-go-card {
+  position: fixed; left: 50%; top: 50%;
+  margin: 0;
+  width: 44rem; max-width: 86%;
+  box-sizing: border-box;
+  padding: 2rem 2.4rem;
+  text-align: center;
+  background: #1f232c;
+  border: 0.1rem solid rgba(255, 255, 255, 0.28);
+  border-radius: 1.2rem;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.55);
+  color: var(--text);
+  z-index: 60;
+  opacity: 0;
+  transform: translate(-50%, -46%);
+  transition: opacity 160ms ease-out, transform 160ms ease-out;
+}
+.sh-go-card.is-shown { opacity: 1; transform: translate(-50%, -50%); }
+.sh-go-card-title { font-size: 2rem; font-weight: 700; line-height: 1.3; }
+.sh-go-card-line { margin-top: 0.8rem; font-size: 1.4rem; line-height: 1.35; color: var(--text-2); }
 
 /* ---------- Schedule ---------- */
 
@@ -362,6 +390,9 @@
 .lt-name { font-size: 1.05rem; line-height: 1.35; }
 .lt-detail { font-size: 0.85rem; line-height: 1.35; color: var(--text-3); word-break: break-all; }
 .lt-state { flex: 0 0 auto; margin-left: 1rem; font-size: 0.85rem; line-height: 1.35; color: var(--text-2); white-space: nowrap; }
+.lt-lasterr, .lt-rowerr { color: #ff9d8f; font-size: 1rem; line-height: 1.4; font-weight: 600; }
+.lt-lasterr { margin-bottom: 0.7rem; }
+.lt-rowerr { margin-top: 0.3rem; white-space: normal; }
 .lt-state.is-needs { color: #f5b25a; }
 .lt-ask {
   margin: 0.25rem 0 0.6rem 0.9rem;

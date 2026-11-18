@@ -161,7 +161,7 @@ async function fullScreen(page) {
 async function focusKey(page, want) {
   const at = () => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') || '' : ''; });
   for (const dir of ['ArrowDown', 'ArrowUp']) {
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 30; i++) {
       const k = await at();
       if (k.indexOf(want) === 0) return true;
       // On the row's "Also on" chip: Left is the row itself.
@@ -179,4 +179,11 @@ async function key(page, k, n) {
   for (let i = 0; i < (n || 1); i++) { await page.keyboard.press(k); await sleep(120); }
 }
 
-module.exports = { start, openView, fullScreen, focusKey, openSchedule, key, sleep, until, TUESDAY, TZ, TOKEN, SAMPLE };
+// Opens Entertainment's panel on its app grid.
+async function openGrid(page) {
+  if (!(await page.evaluate(() => window.HUB_TEST.openPanel('entertainment')))) throw new Error('could not open the grid');
+  await until(() => page.evaluate(() => window.HUB_TEST.open() === 'entertainment' && !window.HUB_TEST.busy()), 6000, 'the panel did not open');
+  await sleep(400);
+}
+
+module.exports = { start, openView, openGrid, fullScreen, focusKey, openSchedule, key, sleep, until, TUESDAY, TZ, TOKEN, SAMPLE };

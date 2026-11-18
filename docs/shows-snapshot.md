@@ -80,7 +80,7 @@ At most 40 shows. Episode names are cut at 80 characters, service names at 24.
 - The Schedule lives in Entertainment. Its tabs are Today, This week, This month and Coming soon, with rows grouped by day.
   - Today has a lit edge, and so does an episode airing within the hour ("in 35 min").
   - Each row has a tiny lettered poster, the title, "S3 E4 · 9:00 PM" and the service badge.
-  - The focused row shows "Watch on X"; OK opens that app with the toast "Opened X. Search: <show>".
+  - The focused row shows "Watch on X"; OK opens that app (no deep link) after a centered card for about 1.8 s: "X opens on its home screen" over "Search for: <show>"; OK or Back launches at once.
   - A show that is also on another app gets an "Also on Hulu" chip beside its row. Right reaches the chip, and OK on it opens that app instead.
 - `widgets.entertainment.watchAliases` in `app/config.js` sends a whole service to another app. The default is `{ Hulu: 'Disney+' }`, so titles tagged Hulu show and open as Disney+, with "Also on Hulu" offered.
 - `widgets.entertainment.watchVia` (commented out by default, for example `{ 'HBO Max': 'Prime Video' }`) does the same as `via` for every show of a service. The badge keeps the service, the row adds "via Prime Video", Watch opens Prime Video, and the tile counts the show under Prime Video.
