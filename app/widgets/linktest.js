@@ -172,7 +172,32 @@
       o.needsId = PLACEHOLDER.test(o.uri) || PLACEHOLDER.test(o.val);
       out.push(o);
     }
-    return out;
+    // One app's tests together (apps in the order they first appear), so a
+    // person scrolling finds all of Apple TV in one place.
+    var apps = [];
+    for (var a = 0; a < out.length; a++) if (apps.indexOf(out[a].app) < 0) apps.push(out[a].app);
+    var grouped = [];
+    for (var g = 0; g < apps.length; g++) for (var b = 0; b < out.length; b++) if (out[b].app === apps[g]) grouped.push(out[b]);
+    return grouped;
+  }
+
+  // Which app a test opened, for the answer sent to the Pi: its name and id
+  // on this TV, and the other apps whose name shares the first word, so a
+  // wrong match shows up in ./hub linktests.
+  function appDetail(rec) {
+    var app = appFor(rec);
+    if (!app) return '';
+    var t = 'opened ' + app.name + ' ' + app.id + (app.hidden ? ' (hidden)' : '');
+    var host = S.host;
+    var first = String(rec.app || '').split(' ')[0].toLowerCase();
+    var all = host && typeof host.apps === 'function' ? host.apps() || [] : [];
+    var others = [];
+    for (var i = 0; i < all.length; i++) {
+      if (!all[i] || all[i].id === app.id || !first) continue;
+      if (String(all[i].name || '').toLowerCase().indexOf(first) >= 0) others.push(all[i].name + ' ' + all[i].id + (all[i].hidden ? ' (hidden)' : ''));
+    }
+    if (others.length) t += '; also ' + others.join(', ');
+    return t;
   }
 
   /* ---------- kept answers ---------- */
@@ -235,6 +260,7 @@
     };
     if (rec.uri) r.uri = rec.uri;
     if (rec.key) r.data = rec.key + '=' + rec.val;
+    if (!detail) { try { detail = appDetail(rec); } catch (e) { detail = ''; } }
     if (detail) r.detail = String(detail).substring(0, 140);
     S.results.unshift(r);
     S.results = S.results.slice(0, MAX_KEPT);
@@ -337,6 +363,7 @@
       box.setAttribute('data-key', 'lt:id:' + ed[e].name);
       box.value = ed[e].value;
     }
+    el('div', 'lt-total', root, list.length + ' tests, numbered on the left. Same app’s tests are together.');
     for (var i = 0; i < list.length; i++) {
       var rec = list[i];
       var st = stateText(rec);
@@ -344,6 +371,7 @@
       // While its question is up the row's key changes, so the redraw puts
       // focus on the first answer rather than back on the row.
       row.setAttribute('data-key', 'lt:run:' + rec.id + (S.pending === rec.id ? ':asked' : ''));
+      el('span', 'lt-num', row, String(i + 1));
       var main = el('div', 'lt-main', row);
       el('div', 'lt-name', main, rec.app + ' · ' + rec.name);
       el('div', 'lt-detail', main, (rec.plain ? 'plain open · no app control' : shortOp(rec.op)) + (rec.uri ? ' · ' + rec.uri : '') + (rec.key ? ' · ' + rec.key + '=' + rec.val : ''));
