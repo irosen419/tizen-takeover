@@ -1,0 +1,10 @@
+{
+ "about": "The first show list, used when the Pi has no data/shows.json yet. Change the list with ./hub shows add|remove (it is then kept in data/shows.json). service is the badge on the TV and the app Watch opens. A show billed through another app (Prime Video Channels) can add \"via\": see exampleVia, an example only (not on the list).",
+ "exampleVia": { "name": "An HBO show", "service": "HBO Max", "via": "Prime Video" },
+ "shows": [
+  { "name": "Hell's Kitchen", "service": "Disney+" },
+  { "name": "Shark Tank", "service": "Disney+" },
+  { "name": "The Great British Baking Show", "service": "Netflix" },
+  { "name": "Stick", "service": "Apple TV" }
+ ]
+}

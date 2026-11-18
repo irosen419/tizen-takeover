@@ -1301,33 +1301,46 @@
     return true;
   }
 
-  // The scenes that may come at hour h, with their weights.
+  // Scenes that are variants of one another, by family; any other scene is
+  // its own family. A family's weight is split among its usable variants, and
+  // no family comes twice in a row.
+  var FAMILY = { 'fetch': 'fetch', 'fetch-bolt': 'fetch', 'fetch-snub': 'fetch' };
+  function familyOf(name) { return FAMILY.hasOwnProperty(name) ? FAMILY[name] : name; }
+
+  // The scenes that may come at hour h, with their weights: by day each
+  // family 2 (fetch's 2 split among its variants), morning and evening 3 in
+  // their hours, weather 2; at night only night.
   function bagFor(h) {
     var bag = [];
     var t = now();
     function put(name, weight) { if (usable(name, t)) bag.push({ name: name, weight: weight }); }
+    function putFamily(names, weight) {
+      var ok = [];
+      for (var i = 0; i < names.length; i++) if (usable(names[i], t)) ok.push(names[i]);
+      for (var j = 0; j < ok.length; j++) bag.push({ name: ok[j], weight: weight / ok.length });
+    }
     if (isNight(h)) {
       put('night', 1);
     } else {
-      put('stroll', 3);
-      put('fetch', 3);
-      put('fetch-bolt', 2);
-      put('fetch-snub', 2);
+      put('stroll', 2);
+      putFamily(['fetch', 'fetch-bolt', 'fetch-snub'], 2);
       put('sock-heist', 2);
       put('zoomies', 2);
       put('perch', 2);
-      if (h >= 6 && h < 10) put('morning', 4);
-      if (h >= 19 && h < 22) put('evening', 4);
+      if (h >= 6 && h < 10) put('morning', 3);
+      if (h >= 19 && h < 22) put('evening', 3);
       if (outfit()) put('weather', 2);
     }
     return bag;
   }
 
-  // At random by weight, without repeating the last scene.
+  // At random by weight, never from the last scene's family (unless nothing
+  // else is left).
   function pick(bag) {
-    if (bag.length > 1) {
-      for (var i = 0; i < bag.length; i++) if (bag[i].name === lastName) { bag.splice(i, 1); break; }
-    }
+    var fam = lastName ? familyOf(lastName) : '';
+    var rest = [];
+    for (var i = 0; i < bag.length; i++) if (familyOf(bag[i].name) !== fam) rest.push(bag[i]);
+    if (rest.length) bag = rest;
     if (!bag.length) return null;
     var total = 0;
     for (var j = 0; j < bag.length; j++) total += bag[j].weight;
@@ -1340,7 +1353,7 @@
   }
 
   // The next scene's name, by context, else `prefer` (chosen ahead) when it
-  // may still come now, else at random without repeating the last.
+  // may still come now, else at random, not from the last scene's family.
   function choose(prefer) {
     var h = hourNow();
     var night = isNight(h);
@@ -2586,6 +2599,8 @@
     // What the scheduler would pick now (it may also take a waiting reaction).
     choose: function () { return settings ? choose() : null; },
     setHour: function (h) { hourOverride = typeof h === 'number' && h >= 0 && h < 24 ? Math.floor(h) : null; },
+    // The scene that played last, as choose() sees it ('' for none).
+    setLast: function (name) { lastName = typeof name === 'string' ? name : ''; },
     // ms per tick; 0 = only when step() or advance() is called (frame-exact
     // screenshots); null = the real 140, drawn smooth. Any other speed is
     // drawn stepped.

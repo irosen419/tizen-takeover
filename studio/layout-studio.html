@@ -430,6 +430,12 @@ pre.sum { max-height: 220px; overflow: auto; margin: 0; padding: 10px; backgroun
 .pp-hint { position: absolute; right: 3.8cqw; bottom: 1.6cqw; font-size: 0.66em; color: var(--tile-mute); max-width: 50%; }
 .sm { font-size: 0.72em; }
 .xs { font-size: 0.64em; }
+/* Plant sun previews (app/widgets/sunpath.css). */
+.sp-dot { display: inline-block; width: 0.6em; height: 0.6em; margin-right: 0.35em; border-radius: 50%; background: #ffd166; }
+.sp-sbar { position: relative; height: 0.4em; border-radius: 0.2em; background: rgba(255,255,255,0.12); margin: 0.3em 0; flex: none; }
+.sp-sbar i { position: absolute; left: 36%; width: 52%; top: 0; bottom: 0; border-radius: 0.2em; background: rgba(255,209,102,0.32); }
+.sp-sbar b { position: absolute; left: 40%; width: 13%; top: 0; bottom: 0; border-radius: 0.2em; background: #ffd166; }
+.sp-mini { display: flex; flex-direction: column; gap: 0.1em; margin-top: 0.3em; }
 /* Word of the day previews (app/widgets/wotd.css). */
 .wd-es { font-size: calc(var(--r) * 1.9); font-weight: 600; line-height: 1.3; letter-spacing: 0; }
 .t-strip .wd-line { font-size: calc(var(--r) * 1.1); line-height: 1.35; flex: 1 1 auto; }
@@ -782,13 +788,18 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     ambiance:      { title: 'Ambiance',              sub: 'Pick the light vibe from the TV', soon: true },
     mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true },
     // app/widgets/wotd.js (v0.28.5): one Latin American Spanish word a day, easy in January, B1 by December.
-    // The budget tiles (app/widgets/budget.js, v0.28.4): the "Budget" layout. The last two are proposals for the budget tab v2 (not built).
+    // The budget tiles (app/widgets/budget.js, v0.28.4; budget-lab.js, v0.29.3, merchants and Put it somewhere v0.29.4, runway chart at full screen v0.29.5): the "Budget" layout. The Runway tile stays a proposal (the chart lives in Budget lab's full screen).
     'budget-room':  { title: 'Daily room',           sub: 'What is left to spend each day until card day' },
     'budget-card':  { title: 'Card day',             sub: 'When the card is due and whether it is covered' },
     'budget-goals': { title: 'Goals',                sub: 'Each spending goal: clean, on pace, over or under' },
     'budget-runway': { title: 'Runway',              sub: 'Proposed (budget tab v2): cash ready for card day against what the cards owe, today to Dec 1', soon: true },
-    'budget-pace':  { title: 'Pace streak',          sub: 'Proposed (budget tab v2): yesterday against the cap, days under, one move for today', soon: true },
-    wotd:          { title: 'Word of the day',       sub: 'One Spanish word a day with its English, from A1 in January to B1 in December' }
+    'budget-lab':   { title: 'Budget lab',           sub: 'The pace streak, yesterday against its cap, one move for today, and a daily cap to try out' },
+    wotd:          { title: 'Word of the day',       sub: 'One Spanish word a day with its English, from A1 in January to B1 in December' },
+
+    // app/widgets/allsounds.js (v0.28.16): a test widget, only on the "All sounds test" layout. Drawn here as a placeholder.
+    allsounds:     { title: 'All sounds',            sub: 'Test: what plays on any speaker (Echo through Home Assistant, or Spotify)' },
+    // app/widgets/sunpath.js (v0.29.2): when direct sun reaches the plant wall; alone on the "Plant wall" layout.
+    sunpath:       { title: 'Plant sun',             sub: 'When direct sun reaches the plant wall, with the room from above and the seasons' }
   };
   var BASE = [
     { id: 'today', x: 0, y: 0, w: 3, h: 2 }, { id: 'entertainment', x: 3, y: 0, w: 6, h: 2 }, { id: 'weather', x: 9, y: 0, w: 3, h: 2 },
@@ -802,7 +813,7 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     { id: 'wotd', x: 9, y: 4, w: 3, h: 2 },
     { id: 'ambiance', x: 3, y: 4, w: 6, h: 1 }, { id: 'nowplaying', x: 0, y: 5, w: 3, h: 1 }, { id: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
   ];
-  // Every layout the TV ships with (HUB_CONFIG.layouts in app/config.js, v0.28.12; dev/studio-sync-test.js checks this list), offered under "From the TV".
+  // Every layout the TV ships with (HUB_CONFIG.layouts in app/config.js, v0.29.2 adds Plant wall; dev/studio-sync-test.js checks this list), offered under "From the TV".
   // Same ids as on the TV; a saved layout with the same id or name takes the preset's place.
   var TV_LAYOUTS = [
     { id: 'main', name: 'Main', layout: [
@@ -829,8 +840,15 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
       { id: 'awws-todo', x: 0, y: 3, w: 6, h: 3 }, { id: 'entertainment', x: 6, y: 3, w: 3, h: 3 }
     ] },
     { id: 'budget', name: 'Budget', layout: [
-      { id: 'budget-room', x: 0, y: 0, w: 4, h: 3 }, { id: 'budget-card', x: 4, y: 0, w: 4, h: 3 }, { id: 'budget-goals', x: 8, y: 0, w: 4, h: 6 },
-      { id: 'calendar', x: 0, y: 3, w: 5, h: 3 }, { id: 'today', x: 5, y: 3, w: 3, h: 1 }, { id: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
+      { id: 'budget-room', x: 0, y: 0, w: 4, h: 3 }, { id: 'budget-card', x: 4, y: 0, w: 4, h: 3 }, { id: 'budget-goals', x: 8, y: 0, w: 4, h: 3 },
+      { id: 'budget-lab', x: 0, y: 3, w: 4, h: 3 }, { id: 'calendar', x: 4, y: 3, w: 4, h: 3 }, { id: 'today', x: 8, y: 3, w: 4, h: 1 }, { id: 'entertainment', x: 8, y: 4, w: 4, h: 2 }
+    ] },
+    // v0.28.16: one test widget filling the screen.
+    { id: 'allsounds-test', name: 'All sounds test', layout: [
+      { id: 'allsounds', x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    { id: 'plant-wall', name: 'Plant wall', layout: [
+      { id: 'sunpath', x: 0, y: 0, w: 12, h: 6 }
     ] }
   ];
   // A preset hides the Stock tiles it leaves out, as the TV does.
@@ -1226,13 +1244,67 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     'budget-runway': budgetPlanned({ en: 'Runway', es: 'Pista de caja' },
       { en: 'Proposed for the budget tab v2: a line of cash ready for card day from today to Dec 1, stepping up on payday and down for bills, against a line of what the cards owe; the gap on Dec 1 says short or covered and moves with the slider pace.',
         es: 'Propuesta para la pestaña de presupuesto v2: una línea del efectivo listo para el pago de tarjeta desde hoy hasta el 1 de dic., que sube con el sueldo y baja con las facturas, frente a una línea de lo que deben las tarjetas; la brecha del 1 de dic. dice si falta o está cubierto y se mueve con el ritmo del control deslizante.' }),
-    'budget-pace': budgetPlanned({ en: 'Pace streak', es: 'Racha de ritmo' },
-      { en: 'Proposed for the budget tab v2, shown prominently: yesterday’s spend against the cap, a count of days under, and one suggested move for today.',
-        es: 'Propuesta para la pestaña de presupuesto v2, bien visible: el gasto de ayer frente al tope, una cuenta de días por debajo y un movimiento sugerido para hoy.' }),
+    'budget-lab': {
+      title: { en: 'Budget lab', es: 'Laboratorio' },
+      sample: {
+        en: { n: '1', unit: 'day under', y: 'Yesterday $41 of $65, $24 under', yTiny: '$41 of $65', move: 'Stay under $62 today for 2 days in a row', out: 'Nov 19: Covered, nothing to spare',
+              head: 'Nov 19 · in 3 days', ok: 'Covered', capLabel: 'Daily cap', cap: '$62', aDay: 'a day', ticks: 'calculated $62 · no saved cap', modes: ['Set the cap', 'Set what to keep'],
+              keep: 'Nothing to spare on Nov 19', monthly: 'Monthly remaining $186', gap: 'same as calculated', buttons: ['Save this cap', 'Back to calculated'], pace: 'Pace',
+              mHead: 'Merchants', cuts: [['Hilltop Grocer · $184 so far · cut $12', 0.34], ['Quick Bites Delivery · $127 so far · cut $0', 0]],
+              dHead: 'Put it somewhere', dest: [['Card day', 'Covered', 1], ['Savings', '$12 of $500', 0.03], ['AWWS', '$0 of $150', 0], ['Buffer', '$0 of $350', 0]] },
+        es: { n: '1', unit: 'día bajo el tope', y: 'Ayer $41 de $65, $24 por debajo', yTiny: '$41 de $65', move: 'Quédate bajo $62 hoy y van 2 días seguidos', out: '19 nov: cubierto, sin sobrante',
+              head: '19 nov · en 3 días', ok: 'Cubierto', capLabel: 'Tope diario', cap: '$62', aDay: 'al día', ticks: 'calculado $62 · sin tope guardado', modes: ['Fijar el tope', 'Fijar cuánto guardar'],
+              keep: 'Nada de sobra el 19 nov', monthly: 'Te queda para gastar $186', gap: 'igual que el calculado', buttons: ['Guardar este tope', 'Volver al calculado'], pace: 'Ritmo',
+              mHead: 'Comercios', cuts: [['Hilltop Grocer · $184 en lo que va de mes · recortas $12', 0.34], ['Quick Bites Delivery · $127 en lo que va de mes · recortas $0', 0]],
+              dHead: 'A dónde va', dest: [['Pago de tarjeta', 'Cubierto', 1], ['Ahorro', '$12 de $500', 0.03], ['AWWS', '$0 de $150', 0], ['Colchón', '$0 de $350', 0]] }
+      },
+      strip: { en: '“1 day under · $41 of $65” (from 4 columns; narrower, the streak alone). Green while under, coral “Over yesterday”. 1 column: the count.',
+               es: '«1 día bajo el tope · $41 de $65» (desde 4 columnas; más estrecho, solo la racha). Verde mientras va bajo el tope, coral «Ayer te pasaste». 1 columna: la cuenta.' },
+      standard: { en: 'The streak big (“1 day under”), “Yesterday $41 of $65, $24 under”, then the one suggested move on up to two lines.',
+                  es: 'La racha en grande («1 día bajo el tope»), «Ayer $41 de $65, $24 por debajo» y el movimiento sugerido en hasta dos líneas.' },
+      tall: { en: 'Standard plus the card day outcome: “Nov 19: Covered, nothing to spare” (or “Short by $10” in coral).',
+              es: 'Estándar más el resultado del pago de tarjeta: «19 nov: cubierto, sin sobrante» (o «Faltan $10» en coral).' },
+      panel: { en: 'The head line, the cap slider ($1 a press, faster when held, the calculated and saved marks), Set the cap / Set what to keep, the outcome with monthly remaining and its gap, Save this cap and Back to calculated, Merchants (a cut slider for each of the top five, the label above its track), Put it somewhere (card day, savings, AWWS, buffer, funded of planned), then Pace.',
+               es: 'La línea de cabecera, el control del tope ($1 por pulsación, más rápido al mantener, con las marcas del calculado y del guardado), Fijar el tope / Fijar cuánto guardar, el resultado con lo que queda para gastar y su diferencia, Guardar este tope y Volver al calculado, Comercios (un control de recorte para cada uno de los cinco primeros, con la etiqueta sobre su barra), A dónde va (pago de tarjeta, ahorro, AWWS, colchón, cubierto de lo previsto) y Ritmo.' },
+      full: { en: 'Two columns, bigger: the rows down to Merchants on the left; on the right the runway to card day (headroom stepping up on payday and down for bills against the spending line at the cap being tried, no dollar axis, the gap on card day the one figure), then Put it somewhere and Pace.',
+              es: 'Dos columnas, más grandes: las filas hasta Comercios a la izquierda; a la derecha el recorrido hasta el pago de tarjeta (el margen libre, que sube con el sueldo y baja con las facturas, frente a la línea de gasto con el tope que pruebas, sin eje de dólares, y la diferencia del día de pago como única cifra), y luego A dónde va y Ritmo.' },
+    },
+    // app/widgets/sunpath.js (v0.29.2). The sample is Jun 21 at 6:10 PM with the default (placeholder) roof angle and plant spots (2 to 6 ft along the wall); the room preview draws the plants near, middle and far.
+    sunpath: {
+      title: { en: 'Plant sun', es: 'Sol en las plantas' },
+      sample: {
+        en: { kicker: 'Sun on the plants now', until: 'until', t: '7:07 PM', strip: 'Sun on the plants now · until 7:07 PM', warn: 'Keep the Maranta Gold Lines out of the beam.',
+              todayL: 'Today', today: '5:15 to 7:07 PM', badge: 'Estimate', heads: ['Day', 'On the plants'],
+              rows: [['Dec 21', 'None'], ['Mar 20', '6:45 to 7:35 PM'], ['Jun 21', '5:15 to 7:07 PM'], ['Sep 22', '6:31 to 7:20 PM']],
+              views: ['Room', 'Sun arc', 'Seasons'], when: '6:15 PM · Today', say: 'Direct sun on the wall. Keep the Maranta Gold Lines out of the beam.',
+              time: 'Time', day: 'Today, Jun 21', tag: 'Placeholder', place: 'Roof angle 40° and plant spots 2 to 6 ft are estimates.',
+              grow: 'No direct sun reaches the wall from November to February: the 11W full-spectrum bulbs do the work in those months.' },
+        es: { kicker: 'Sol en las plantas ahora', until: 'hasta las', t: '7:07 p. m.', strip: 'Sol en las plantas ahora · hasta las 7:07 p. m.', warn: 'Aparta Maranta Gold Lines del rayo de sol.',
+              todayL: 'Hoy', today: '5:15 a 7:07 p. m.', badge: 'Estimado', heads: ['Día', 'En las plantas'],
+              rows: [['21 dic', 'Nada'], ['20 mar', '6:45 a 7:35 p. m.'], ['21 jun', '5:15 a 7:07 p. m.'], ['22 sept', '6:31 a 7:20 p. m.']],
+              views: ['Sala', 'Arco del sol', 'Estaciones'], when: '6:15 p. m. · Hoy', say: 'Sol directo en la pared. Aparta Maranta Gold Lines del rayo de sol.',
+              time: 'Hora', day: 'Hoy, 21 jun', tag: 'Provisional', place: 'Ángulo del techo (40°) y lugar de las plantas (2 a 6 pies): estimados.',
+              grow: 'De noviembre a febrero no llega sol directo a la pared: los focos de espectro completo de 11 W hacen el trabajo esos meses.' }
+      },
+      strip: { en: 'One line, the answer: “Sun on the plants now · until 7:07 PM”, “Next sun at 5:15 PM”, “Next sun tomorrow 5:15 PM” or “Next sun Mar 9, 6:15 PM”; shorter forms when it doesn’t fit. 1 column: only “Now”, the time or the date.',
+               es: 'Una línea, la respuesta: «Sol en las plantas ahora · hasta las 7:07 p. m.», «Próximo sol a las 5:15 p. m.», «Próximo sol mañana, 5:15 p. m.» o «Próximo sol el 9 mar, 6:15 p. m.»; formas más cortas si no cabe. 1 columna: solo «Ahora», la hora o la fecha.' },
+      standard: { en: 'The answer big under a small line, the Maranta warning while lit, then today’s sun window(s) on a bar from noon to 9 PM; November to February “Grow lights do the work until then”. The badge says Estimate while the roof angle and plant spots are placeholders.',
+                  es: 'La respuesta en grande bajo una línea pequeña, el aviso de la Maranta mientras hay sol, y la ventana de sol de hoy en una barra de mediodía a 9 p. m.; de noviembre a febrero «Las luces de cultivo hacen el trabajo hasta entonces». La etiqueta dice Estimado mientras el ángulo del techo y el lugar de las plantas sean provisionales.' },
+      tall: { en: 'Standard plus the season table (Dec 21, Mar 20, Jun 21, Sep 22: sun through the window and on the plants). 6 columns and wider: the room from above beside the words.',
+              es: 'Estándar más la tabla de estaciones (21 dic, 20 mar, 21 jun, 22 sept: sol por la ventana y en las plantas). Con 6 columnas o más: la sala vista desde arriba junto al texto.' },
+      panel: { en: 'Left: Room, Sun arc or Seasons. Right: the chosen moment and what the sun does then, a time slider (Left/Right: 15 minutes), a day chooser (today, Dec 21, Mar 20, Jun 21, Sep 22) and the Placeholder note.',
+               es: 'A la izquierda: Sala, Arco del sol o Estaciones. A la derecha: el momento elegido y lo que hace el sol, un control de hora (izquierda/derecha: 15 minutos), un selector de día (hoy, 21 dic, 20 mar, 21 jun, 22 sept) y la nota Provisional.' },
+      full: { en: 'Three columns at once: the room; the moment, slider, day, grow lights and Placeholder note; the sun arc, the season table and the plants.',
+              es: 'Tres columnas a la vez: la sala; el momento, la hora, el día, las luces de cultivo y la nota Provisional; el arco del sol, la tabla de estaciones y las plantas.' }
+    },
     ambiance: plannedEntry({ en: 'Ambiance', es: 'Ambiente' },
       { en: 'Pick the light vibe from the TV.', es: 'Elige el ambiente de iluminación desde la televisión del salón.' }),
     mirror: plannedEntry({ en: 'Mirror', es: 'Espejo' },
       { en: 'A camera mirror for mornings and nights out.', es: 'Un espejo con cámara para las mañanas y las noches de salida.' }),
+    // Built on the TV as a test widget (v0.28.16); drawn here with the placeholder look only.
+    allsounds: plannedEntry({ en: 'All sounds', es: 'Todo lo que suena' },
+      { en: 'Test widget: what plays on any speaker, an Echo through Home Assistant or Spotify, with the app’s name and the speaker. Only on the “All sounds test” layout.',
+        es: 'Widget de prueba: lo que suena en cualquier altavoz, un Echo a través de Home Assistant o Spotify, con el nombre de la app y del altavoz. Solo en el diseño «All sounds test».' }),
     wotd: {
       title: { en: 'Word of the day', es: 'Palabra del día' },
       sample: {
@@ -1256,7 +1328,7 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
   };
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-runway', 'budget-pace', 'ambiance', 'mirror'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'sunpath', 'ambiance', 'mirror', 'allsounds'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -1768,6 +1840,7 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     sparkle: '<path d="M10 3l1.8 5.2L17 10l-5.2 1.8L10 17l-1.8-5.2L3 10l5.2-1.8zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/>',
     camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     drop: '<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/>',
+    plantsun: '<circle cx="16.5" cy="7" r="2.6"/><path d="M16.5 2.2v.9M16.5 10.9v.9M21.3 7h-.9M12.6 7h-.9M19.9 3.6l-.6.6M13.7 9.8l-.6.6M19.9 10.4l-.6-.6M13.7 4.2l-.6-.6"/><path d="M3.5 20.5c0-6 3.6-9.2 9.4-9.2 0 5.8-3.4 9.2-9.4 9.2z"/><path d="M3.5 20.5l5.6-5.6"/>',
     expand: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     grid: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>',
@@ -1782,7 +1855,7 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
     'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
-    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', 'budget-pace': 'bolt' };
+    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', 'budget-lab': 'wallet', allsounds: 'music', sunpath: 'plantsun' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';
@@ -1933,6 +2006,14 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
   }
   function npBars() { return '<span class="np-bars" aria-hidden="true"><i></i><i></i><i></i></span>'; }
   var X_TILE = {
+    sunpath: function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1" style="color:#ffe1a1"><span class="sp-dot"></span>' + esc(S.strip) + '</div></div>';
+      var h = head(id, T, '', S.badge) + '<div class="l1" style="color:#ffd166;font-weight:600"><span class="sp-dot"></span>' + esc(S.kicker) + '</div>' +
+        '<div class="big l1" style="font-weight:300"><span class="mu sm">' + esc(S.until) + ' </span>' + esc(S.t) + '</div><div class="c2 sm" style="color:#ffcf8a">' + esc(S.warn) + '</div>';
+      if (tier === 'tall') h += '<div class="sp-mini">' + S.rows.map(function (r, j) { return '<div class="l1 xs"><span class="mu">' + esc(r[0]) + '</span> ' + '<span' + (j ? ' style="color:#ffd166"' : ' class="mu"') + '>' + esc(r[1]) + '</span></div>'; }).join('') + '</div>';
+      h += '<div class="push"><div class="l1 sm"><b class="mu">' + esc(S.todayL) + '</b> ' + esc(S.today) + '</div><div class="sp-sbar"><i></i><b></b></div></div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    },
     nowplaying: function (S, T, tier, cls) {
       var prog = '<div class="np-prog"><i></i></div>';
       if (tier === 'strip') return '<div class="' + cls + '"><div class="np-art" style="height:100%"></div><div class="np-col"><div class="l1">' + esc(S.song) + '</div><div class="l1 mu">' + esc(S.artist) + '</div></div></div>';
@@ -1958,6 +2039,13 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
       if (tier === 'tall') h += '<div class="aw-foot l1 push">' + esc(S.pay) + '</div>';
       return '<div class="' + cls + '">' + h + '</div>';
     },
+    'budget-lab': function (S, T, tier, cls, id) {
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b class="bu-ok">' + esc(S.n + ' ' + S.unit) + '</b><span class="mu"> · ' + esc(S.yTiny) + '</span></div></div>';
+      var h = head(id, T) + '<div class="td-hero"><span class="big td-num bu-ok">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.unit) + '</span></div>' +
+        '<div class="bu-pline l1 mu">' + esc(S.y) + '</div><div class="bu-pline wr">' + esc(S.move) + '</div>';
+      if (tier === 'tall') h += '<div class="aw-foot l1 push bu-ok">' + esc(S.out) + '</div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    },
     'budget-goals': function (S, T, tier, cls, id) {
       if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b class="bu-neg">' + esc(S.head) + '</b><span class="mu"> · ' + esc(S.goals[0][0] + ' ' + S.goals[0][1]) + '</span></div></div>';
       var tone = { over: 'bu-neg', 'on-pace': 'bu-blue', under: 'bu-ok', clean: 'bu-ok' };
@@ -1968,6 +2056,18 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     }
   };
   var X_PANEL = {
+    sunpath: function (S, full) {
+      var room = '<svg viewBox="0 0 100 90" style="width:100%;height:' + (full ? '9em' : '6.5em') + '" aria-hidden="true"><rect x="8" y="30" width="62" height="56" rx="2" fill="rgba(255,255,255,0.05)"/>' +
+        '<polygon points="34,30 50,30 70,74 70,86 62,86" fill="rgba(255,209,102,0.3)"/><path d="M8 30h62v56" stroke="#dfe3ea" stroke-width="1.4" fill="none"/><rect x="34" y="28.5" width="16" height="3" fill="#7cc4ff"/>' +
+        '<line x1="70" y1="52" x2="70" y2="86" stroke="#ffd166" stroke-width="2.4"/><line x1="64" y1="45" x2="64" y2="75" stroke="#4f9b6c" stroke-width="1.4" opacity="0.6"/><circle cx="64" cy="45" r="2.6" fill="#4f9b6c"/><circle cx="64" cy="60" r="3" fill="#7ed9a0" stroke="#ffd166" stroke-width="0.8"/><circle cx="64" cy="75" r="2.6" fill="#7ed9a0" stroke="#ffd166" stroke-width="0.8"/><circle cx="20" cy="8" r="3.4" fill="#ffd166"/><path d="M20 8L42 30" stroke="#ffd166" stroke-dasharray="2 2"/></svg>';
+      var chips = full ? '' : '<div class="pp-tabs">' + S.views.map(function (v, j) { return '<span class="chipb l1' + (j ? '' : ' on') + '">' + esc(v) + '</span>'; }).join('') + '</div>';
+      var moment = '<div class="l1" style="font-weight:600;font-size:1.1em">' + esc(S.when) + '</div><div class="c2 sm" style="color:#ffd166">' + esc(S.say) + '</div>' +
+        '<div class="xs mu l1">' + esc(S.time) + '</div><div class="sp-sbar"><i></i><b></b></div><div class="chipb l1" style="max-width:none;text-align:center">‹ ' + esc(S.day) + ' ›</div>' +
+        '<div class="xs c2"><span style="color:#ffd166">' + esc(S.tag) + '</span> <span class="mu">' + esc(S.place) + '</span></div>';
+      var table = '<div class="xs">' + S.rows.map(function (r) { return '<div class="l1"><span class="mu">' + esc(r[0]) + '</span> ' + esc(r[1]) + '</div>'; }).join('') + '</div>';
+      if (!full) return '<div class="cols2"><div style="flex:1 1 0">' + chips + room + '</div><div style="flex:1 1 0">' + moment + '</div></div>';
+      return '<div class="cols2"><div style="flex:1 1 0">' + room + '</div><div style="flex:1 1 0">' + moment + '<div class="xs mu c3">' + esc(S.grow) + '</div></div><div style="flex:1 1 0">' + table + '</div></div>';
+    },
     nowplaying: function (S, full) {
       return '<div class="np-row" style="gap:2em"><div class="np-art" style="width:' + (full ? '44%' : '38%') + ';align-self:center"></div><div class="np-col" style="gap:0.3em"><div class="xs mu cap l1">' + esc(S.label) + npBars() + '</div>' +
         '<div class="c2" style="font-size:1.4em;font-weight:600">' + esc(S.song) + '</div><div class="l1">' + esc(S.artist) + '</div><div class="l1 mu">' + esc(S.album) + '</div>' +
@@ -1990,6 +2090,20 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
       var left = '<div class="aw-school l1" style="font-size:1.2em">' + esc(S.date) + ' · ' + esc(S.away) + '</div><div class="big bu-ok" style="font-size:2.2em">' + esc(S.ok) + '</div>' +
         '<div class="secl"><span class="l1">' + esc(S.tHead) + '</span></div>' + S.transfers.map(function (t) { return '<div class="bu-trow"><span class="l1">' + esc(t[0]) + '</span><b>' + esc(t[1]) + '</b></div>'; }).join('');
       var right = '<div class="secl"><span class="l1">' + esc(S.pays) + '</span></div><div class="bu-trow"><span class="l1">' + esc(S.pay) + '</span></div>';
+      return full ? '<div class="cols2"><div style="flex:1 1 0">' + left + '</div><div style="flex:1 1 0">' + right + '</div></div>' : left + right;
+    },
+    'budget-lab': function (S, full) {
+      var left = '<div class="bu-pline l1">' + esc(S.head) + ' · <b class="bu-ok">' + esc(S.ok) + '</b></div>' +
+        '<div class="secl"><span class="l1">' + esc(S.capLabel) + '</span></div><div class="td-hero"><span class="big td-num" style="font-size:' + (full ? '3.4em' : '2.6em') + '">' + esc(S.cap) + '</span><span class="td-cap wr">' + esc(S.aDay) + '</span></div>' +
+        buMeter(0.38, 'bu-ok') + '<div class="bu-pline q l1">' + esc(S.ticks) + '</div>' +
+        '<div class="pp-tabs">' + S.modes.map(function (m, i) { return '<span class="chipb l1' + (i ? '' : ' on') + '">' + esc(m) + '</span>'; }).join('') + '</div>' +
+        '<div class="bu-pline bu-ok wr" style="font-size:1.3em">' + esc(S.keep) + '</div><div class="bu-pline l1">' + esc(S.monthly) + '</div><div class="bu-pline q l1">' + esc(S.gap) + '</div>' +
+        '<div class="pp-tabs">' + S.buttons.map(function (b) { return '<span class="chipb l1">' + esc(b) + '</span>'; }).join('') + '</div>' +
+        '<div class="secl"><span class="l1">' + esc(S.mHead) + '</span></div>' + S.cuts.map(function (c) { return '<div class="bu-pline wr">' + esc(c[0]) + '</div>' + buMeter(c[1], 'bu-ok'); }).join('');
+      var dest = '<div class="secl"><span class="l1">' + esc(S.dHead) + '</span></div>' +
+        S.dest.map(function (d) { return '<div class="bu-trow"><span class="l1">' + esc(d[0]) + '</span><b>' + esc(d[1]) + '</b></div>' + buMeter(d[2], 'bu-ok'); }).join('');
+      var right = dest + '<div class="secl"><span class="l1">' + esc(S.pace) + '</span></div><div class="td-hero"><span class="big td-num bu-ok">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.unit) + '</span></div>' +
+        '<div class="bu-pline l1">' + esc(S.y) + '</div><div class="bu-pline wr">' + esc(S.move) + '</div>';
       return full ? '<div class="cols2"><div style="flex:1 1 0">' + left + '</div><div style="flex:1 1 0">' + right + '</div></div>' : left + right;
     },
     'budget-goals': function (S, full) {

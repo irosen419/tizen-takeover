@@ -213,7 +213,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.6.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.7.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -234,7 +234,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.6.0');
+    assert.strictEqual(r.json.server, '0.7.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -338,6 +338,42 @@ async function main() {
     r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: a.json.item.id, fields: { level: null } }] } });
     assert.ok(!('level' in r.json.items.find((i) => i.id === a.json.item.id)));
     await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'remove', id: a.json.item.id }, { op: 'remove', id: b.json.item.id }] } });
+  });
+
+  await check('to-do lead: POST /api/todo takes 0 to 30, none stays none, a bad one is refused, set and clear it', async () => {
+    const a = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'School meeting', level: 'passive', due: '2026-11-20', lead: 3 } });
+    assert.strictEqual(a.status, 200);
+    assert.strictEqual(a.json.item.lead, 3);
+    const z = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Only on the day', level: 'passive', lead: 0 } });
+    assert.strictEqual(z.json.item.lead, 0);
+    const b = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'No lead', level: 'passive' } });
+    assert.ok(!('lead' in b.json.item));
+    for (const lead of [31, -1, 2.5, '3', true]) {
+      const bad = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'ok', lead: lead } });
+      assert.strictEqual(bad.status, 400, JSON.stringify(lead));
+      assert.ok(/lead must be a whole number of days from 0 to 30/.test(bad.json.error), bad.json.error);
+    }
+    let r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: b.json.item.id, fields: { lead: 30 } }] } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.items.find((i) => i.id === b.json.item.id).lead, 30);
+    r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: a.json.item.id, fields: { lead: null } }] } });
+    assert.ok(!('lead' in r.json.items.find((i) => i.id === a.json.item.id)));
+    await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [a, z, b].map((x) => ({ op: 'remove', id: x.json.item.id })) } });
+  });
+
+  await check('hubctl lead: a field wins over a "[lead:N]" tag, words for 0, 1 and N days, list shows it', () => {
+    assert.strictEqual(hubctl.leadOf({ title: 'A' }), null);
+    assert.strictEqual(hubctl.leadOf({ title: 'A', notes: 'x [lead:5] [level:passive]' }), 5);
+    assert.strictEqual(hubctl.leadOf({ title: 'A', lead: 0, notes: '[lead:5]' }), 0);
+    assert.strictEqual(hubctl.leadOf({ title: 'A', notes: '[lead:31]' }), null);
+    assert.strictEqual(hubctl.todoLeadText({ title: 'A', lead: 3 }), '"A" shows under Coming up from 3 days before it is due.');
+    assert.strictEqual(hubctl.todoLeadText({ title: 'A', lead: 1 }), '"A" shows under Coming up from 1 day before it is due.');
+    assert.strictEqual(hubctl.todoLeadText({ title: 'A', lead: 0 }), '"A" shows under Coming up only on the day it is due.');
+    assert.strictEqual(hubctl.todoLeadText({ title: 'A' }), '"A" shows under Coming up from 2 days before it is due (the default).');
+    assert.strictEqual(hubctl.todoAddText({ item: { title: 'A', level: 'passive', due: '2026-11-20', lead: 3 } }),
+      'Added "A" to Coming up, due 2026-11-20, shown from 3 days before it is due.');
+    assert.deepStrictEqual(hubctl.todoListLines([{ id: 'x1', title: 'A', level: 'passive', due: '2026-11-20', lead: 3, done: false }]),
+      ['Coming up:', '  [ ] A (due 2026-11-20, lead 3 days)   id x1']);
   });
 
   await check('to-do ops: add top/end, set, move to end, remove, last one wins', async () => {
@@ -473,7 +509,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.6.0');
+    assert.strictEqual(r.json.server, '0.7.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
@@ -1144,7 +1180,7 @@ async function main() {
 
   await check('scrub: cut to 300 characters; a line with nothing to hide is unchanged', () => {
     assert.strictEqual(logscrub.scrub('x'.repeat(500)).length, 300);
-    const plain = 'control GET /api/status -> 200 at 15:10:00, server 0.6.0, rev 12, 2026-11-17T15:10:00.000Z';
+    const plain = 'control GET /api/status -> 200 at 15:10:00, server 0.7.0, rev 12, 2026-11-17T15:10:00.000Z';
     assert.strictEqual(logscrub.scrub(plain, ['Rosen Family']), plain);
     assert.strictEqual(logscrub.scrub(''), '');
   });
@@ -1175,7 +1211,7 @@ async function main() {
       'calendars: Family, Work (busy only); time zone America/Chicago', 'calendar Work: can be read again',
       'Claude mailbox: todo.add (c123456) -> ok', 'Claude mailbox: connected to bucket home-hub-mailbox',
       'Claude mailbox: connected again after 3 failed tries', 'Claude mailbox: off (no HUB_MAILBOX_ settings in .env)',
-      'Home Hub live server 0.6.0 listening on port 8097', 'started a new data file /app/data/state.json',
+      'Home Hub live server 0.7.0 listening on port 8097', 'started a new data file /app/data/state.json',
       'Spotify: signed in, watching what plays', 'Spotify: set up, not signed in yet (run ./hub spotify login)',
       'Spotify: working again', 'SIGTERM received, stopping', 'side door (control API only) on 127.0.0.1:8098'
     ];

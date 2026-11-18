@@ -33,6 +33,9 @@
  *                                          // Full screen button). Return the element to focus,
  *                                          // true to stay put, or nothing to move by position.
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
+ *     openView: function (name, ctx) {},   // asked to show one of its own views before its
+ *                                          // panel opens (the About panel's watch link test
+ *                                          // asks entertainment for 'linktests'); false = no
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
  *     onStatus: function (ctx) {},         // the motion, live updates or updates status
@@ -129,7 +132,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.29.1';
+  var BUILD = 'v0.29.7';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -332,12 +335,18 @@
 
   // auto starts at the top rung and steps down when a rung stutters twice.
   var LADDER = ['push', 'expand', 'fade'];
+  var RETRY_MS = 24 * 60 * 60 * 1000;   // how long a step-down lasts
+  var HITCH_MS = 100;                   // a frame gap this long is a stall
+  var HITCH_MAX = 3;                    // stalls (or more) that make a run janky
+  var FREEZE_MS = 400;                  // one gap this long is a freeze by itself
+  var JANKY_RUNS = 3;                   // janky runs in a row that step down
 
   var motion = {
     mode: 'push',         // what runs now: 'push' | 'expand' | 'fade'
     source: 'auto',       // 'auto' | 'config' | 'URL'
     measuring: false,
     fps: 0,
+    worst: 0,             // the longest single frame gap (ms) of the run that stepped down
     clean: [],            // fps of clean runs at the current rung
     janky: []             // fps of janky runs at the current rung
   };
@@ -354,7 +363,11 @@
       var raw = window.localStorage && localStorage.getItem(MOTION_KEY);
       if (!raw) return null;
       var data = JSON.parse(raw);
-      return data && data.build === BUILD && isMode(data.mode) ? data : null;
+      if (!data || data.build !== BUILD || !isMode(data.mode)) return null;
+      // A step-down is only for a day: after that the top rung is timed
+      // again, so a few stalls can't lock extras off for good.
+      if (data.mode !== LADDER[0] && data.at && Date.now() - data.at > RETRY_MS) return null;
+      return data;
     } catch (e) { return null; }
   }
 
@@ -379,6 +392,7 @@
     if (stored) {
       motion.mode = stored.mode;
       motion.fps = stored.fps || 0;
+      motion.worst = stored.worst || 0;
       // A rung reached by stepping down is still being timed.
       motion.measuring = !!stored.measuring && stored.mode !== 'fade';
       return;
@@ -398,7 +412,8 @@
     var s = 'Motion: ' + motion.mode;
     if (motion.source !== 'auto') return s + ' (' + motion.source + ')';
     if (motion.measuring) return s + ' (auto, measuring)';
-    return s + ' (auto' + (motion.fps ? ', ' + motion.fps + ' fps' : '') + ')';
+    return s + ' (auto' + (motion.fps ? ', ' + motion.fps + ' fps' : '') +
+      (motion.worst ? ', stalled ' + motion.worst + ' ms' : '') + ')';
   }
 
   function announceStatus() {
@@ -445,27 +460,38 @@
     if (gaps.length < 2) return;
     var total = 0;
     var worst = 0;
-    for (var j = 0; j < gaps.length; j++) { total += gaps[j]; if (gaps[j] > worst) worst = gaps[j]; }
+    var stalls = 0;
+    for (var j = 0; j < gaps.length; j++) {
+      total += gaps[j];
+      if (gaps[j] > worst) worst = gaps[j];
+      if (gaps[j] > HITCH_MS) stalls++;
+    }
     var fps = gaps.length && total > 0 ? Math.round(gaps.length * 1000 / total) : 0;
-    var janky = fps < 40 || worst > 120;
-    if (janky) motion.janky.push(fps); else motion.clean.push(fps);
+    // Sustained speed decides, not one long frame: a single stall (a panel
+    // paint, a live update) is not the TV failing to keep up.
+    var janky = fps < 40 || stalls >= HITCH_MAX || worst > FREEZE_MS;
+    if (janky) { motion.janky.push(fps); motion.worstJanky = Math.max(motion.worstJanky || 0, Math.round(worst)); }
+    else motion.clean.push(fps);
 
-    if (motion.janky.length >= 2) {
+    if (motion.janky.length >= JANKY_RUNS) {
       // Step down one rung. Fade is the last one, so it ends the timing.
       var next = LADDER[LADDER.indexOf(motion.mode) + 1] || 'fade';
       motion.fps = average(motion.janky);
+      motion.worst = motion.worstJanky && motion.worstJanky > HITCH_MS ? motion.worstJanky : 0;
+      motion.worstJanky = 0;
       motion.mode = next;
       motion.clean = [];
       motion.janky = [];
       motion.measuring = next !== 'fade';
-      store({ mode: next, build: BUILD, fps: motion.fps, measuring: motion.measuring });
+      store({ mode: next, build: BUILD, fps: motion.fps, worst: motion.worst, measuring: motion.measuring, at: Date.now() });
       markMotion();
       fxHook('motionChanged');
       announceStatus();
     } else if (motion.clean.length >= 3) {
       motion.measuring = false;
       motion.fps = average(motion.clean);
-      store({ mode: motion.mode, build: BUILD, fps: motion.fps });
+      motion.worst = 0;
+      store({ mode: motion.mode, build: BUILD, fps: motion.fps, at: Date.now() });
       announceStatus();
     }
   }
@@ -623,6 +649,14 @@
   // For tests in a laptop browser. Not used by the hub itself.
   window.HUB_TEST = {
     ringLayout: ringLayout,
+    // Feeds frame times (ms, one list per run) to the motion timing from the
+    // top rung, as if opening panels had produced them; returns where it ended.
+    motionRuns: function (runs) {
+      motion.mode = LADDER[0]; motion.source = 'auto'; motion.measuring = true;
+      motion.fps = 0; motion.worst = 0; motion.worstJanky = 0; motion.clean = []; motion.janky = [];
+      for (var i = 0; i < runs.length; i++) { if (motion.measuring) recordRun(runs[i], null); }
+      return { mode: motion.mode, measuring: motion.measuring, fps: motion.fps, worst: motion.worst, status: motionStatus() };
+    },
     panelRect: function () { return panelRect(open); },
     homeRects: function () {
       var out = {};
@@ -1225,9 +1259,10 @@
   //
   // Each row is { group, label, value }: value() returns the text, or '' to
   // leave the row out. To show something new, add a row to ABOUT_ROWS (a new
-  // group name starts a new group); nothing else needs to change.
+  // group name starts a new group); nothing else needs to change. A row with
+  // action() is the strip's one button: OK runs it (the first shown wins).
   var aboutEl = document.getElementById('about');
-  var ab = { on: false, box: null, sig: '', rows: [], drawn: [], timer: null, hideTimer: null };
+  var ab = { on: false, box: null, sig: '', rows: [], drawn: [], dropped: {}, timer: null, hideTimer: null };
 
   function noPrefix(text, prefix) {
     text = text ? String(text) : '';
@@ -1265,6 +1300,14 @@
       var S = window.HUB_SCRIPTS;
       try { return S && typeof S.status === 'function' ? S.status() || '' : ''; } catch (e) { return ''; }
     } },
+    // The watch link test (app/widgets/linktest.js): OK opens it in the
+    // Entertainment panel. spare: it gives way when the strip would be taller
+    // than the screen (a long Wanderers problem), and comes back with the
+    // next change of rows.
+    { group: 'This hub', label: 'Watch link test', spare: true, value: function () {
+      var T = window.HUB_LINKTEST;
+      try { return T && typeof T.aboutText === 'function' ? T.aboutText() || '' : ''; } catch (e) { return ''; }
+    }, action: function () { openWidgetView('entertainment', 'linktests'); } },
     { group: 'Updates', label: 'Live updates', value: function () {
       var L = liveFacade();
       var t = L ? (L.status() || {}).text || '' : '';
@@ -1319,7 +1362,7 @@
         group = r.group;
         el('div', 'about-group', ab.box).textContent = group;
       }
-      var row = el('div', 'about-row', ab.box);
+      var row = el('div', 'about-row' + (r.action ? ' is-action' : ''), ab.box);
       el('div', 'about-label', row).textContent = r.label;
       var value = el('div', 'about-value', row);
       value.textContent = list[i].text;
@@ -1328,6 +1371,27 @@
       sig.push(r.label);
     }
     ab.sig = sig.join('|');
+    ab.dropped = {};
+  }
+
+  // Spare rows (the watch link test) leave when the strip is taller than its
+  // room, so the rows that report problems never need scrolling for them.
+  // Only while it is shown (a hidden strip has no height).
+  function trimAbout() {
+    var box = ab.box;
+    if (!box || box.scrollHeight <= box.clientHeight + 1) return;
+    for (var i = ab.drawn.length - 1; i >= 0; i--) {
+      if (!ab.drawn[i].spare) continue;
+      var row = ab.rows[i].parentNode;
+      var prev = row.previousSibling;
+      var next = row.nextSibling;
+      row.parentNode.removeChild(row);
+      // A group header left with no rows goes too.
+      if (prev && prev.className === 'about-group' && (!next || next.className === 'about-group')) prev.parentNode.removeChild(prev);
+      ab.dropped[ab.drawn[i].label] = true;
+      ab.drawn.splice(i, 1);
+      ab.rows.splice(i, 1);
+    }
   }
 
   // Once a second while open: only text that changed is touched; a row
@@ -1342,12 +1406,16 @@
       if (sig.join('|') !== ab.sig) {
         var top = ab.box ? ab.box.scrollTop : 0;
         drawAbout(list);
+        trimAbout();
         ab.box.scrollTop = top;
         placeAboutGlass();
       } else {
-        for (var j = 0; j < list.length; j++) {
-          if (ab.rows[j].textContent !== list[j].text) ab.rows[j].textContent = list[j].text;
+        var shown = [];
+        for (var k = 0; k < list.length; k++) if (!ab.dropped[list[k].row.label]) shown.push(list[k]);
+        for (var j = 0; j < shown.length && j < ab.rows.length; j++) {
+          if (ab.rows[j].textContent !== shown[j].text) ab.rows[j].textContent = shown[j].text;
         }
+        trimAbout();
       }
     } catch (e) { /* the strip just stays as it is */ }
     ab.timer = setTimeout(refreshAbout, 1010 - (new Date().getTime() % 1000));
@@ -1366,6 +1434,7 @@
     drawAbout(aboutValues());
     ab.on = true;
     aboutEl.classList.add('is-on');
+    trimAbout();
     placeAboutGlass();
     void aboutEl.offsetWidth;              // so the slide starts from off screen
     aboutEl.classList.add('is-shown');
@@ -1381,6 +1450,33 @@
     aboutEl.classList.remove('is-shown');
     clearTimeout(ab.hideTimer);
     ab.hideTimer = setTimeout(function () { if (!ab.on) { aboutEl.classList.remove('is-on'); aboutEl.innerHTML = ''; } }, 260);
+  }
+
+  // OK in the strip: the first row shown that has an action.
+  function aboutAction() {
+    for (var i = 0; i < ab.drawn.length; i++) {
+      if (typeof ab.drawn[i].action === 'function') {
+        try { ab.drawn[i].action(); } catch (e) { toast('That didn’t work (' + (e && e.message) + ').', 4000); }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Opens a widget's panel on one of its own views (widget hook openView).
+  function openWidgetView(id, name) {
+    for (var i = 0; i < widgets.length; i++) {
+      var rec = widgets[i];
+      if (rec.w.id !== id || !rec.expandable) continue;
+      closeAbout();
+      if (typeof rec.w.openView !== 'function') return toast('This hub can’t open that yet.', 4000);
+      if (call(rec, 'openView', [name, rec.ctx]) === false) return undefined;
+      focusHome(i);
+      openPanel(rec);
+      return undefined;
+    }
+    toast('Entertainment isn’t on this layout. Pick one with it (Up on a top tile), then try again.', 6000);
+    return undefined;
   }
 
   // Up and Down: a step at a time, only when it is taller than its room.
@@ -2185,6 +2281,7 @@
     if (ab.on) {
       if (dir === 'right' || isBack(code)) closeAbout();
       else if (dir === 'up' || dir === 'down') scrollAbout(dir);
+      else if (code === KEY.ENTER) aboutAction();
       return;
     }
 

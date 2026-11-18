@@ -1,0 +1,287 @@
+/* Budget lab: the pace streak tile and the panel (the cap, the merchants'
+   cuts, Put it somewhere, the pace, and at full screen the runway chart). Every class starts with bl-; the shared
+   budget look (bu-tile, bu-hero, bu-psec, the colors) comes from budget.css.
+
+   Same rules as style.css and budget.css: no grid, no flex gap, only opacity
+   and transform ever change, and nothing a slider touches has a transition
+   (a held key moves the fill by scaleX, set directly). Every line that can
+   be cut has a line-height of 1.25 or more, so accents never clip. Nothing
+   under 0.85rem on a tile or 1rem in a panel. */
+
+/* ---------- tile ---------- */
+
+.bl-move {
+  flex: 0 0 auto;
+  margin-top: 0.45rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  /* Two lines at most, cut at the end of the second. */
+  overflow: hidden;
+  max-height: 2.7em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-wrap: break-word;
+}
+.tile-h3 .bl-move { font-size: 1.1rem; }
+.bl-foot.is-ok { color: var(--bu-ok); }
+.bl-foot.is-neg { color: var(--bu-neg); }
+
+.bl-strip-head {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 1.6rem;
+  line-height: 1.3;
+  color: var(--text);
+}
+.bl-strip-head.is-ok { color: var(--bu-ok); }
+.bl-strip-head.is-neg { color: var(--bu-neg); }
+.bu-solo-num.is-ok { color: var(--bu-ok); }
+.bu-solo-num.is-neg { color: var(--bu-neg); }
+
+/* ---------- panel ---------- */
+
+.bl-head {
+  padding: 0.1rem 0.9rem 0.2rem;
+  font-size: 1.2rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.bl-head-state { color: var(--text); }
+.bl-head-state.is-ok { color: var(--bu-ok); }
+.bl-head-state.is-neg { color: var(--bu-neg); }
+.bl-note {
+  padding: 0 0.9rem 0.2rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+
+/* The cap slider: its label on its own line (a longer language wraps there
+   instead of pushing the figure), the figure, the track, the tick legend. */
+.bl-label {
+  font-size: 1rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+.bl-value { margin-top: 0.15rem; line-height: 1.25; }
+.bl-big {
+  font-size: 3rem;
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.bl-big.is-neg { color: var(--bu-neg); }
+.bl-unit { margin-left: 0.5rem; font-size: 1.2rem; line-height: 1.3; color: var(--text-2); }
+.bl-track {
+  position: relative;
+  height: 0.6rem;
+  margin: 0.75rem 0 0.7rem;
+  border-radius: 0.3rem;
+  background: rgba(255, 255, 255, 0.12);
+}
+.bl-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0.3rem;
+  background: var(--bu-ok);
+  -webkit-transform-origin: 0 50%;
+  transform-origin: 0 50%;
+  -webkit-transform: scaleX(0);
+  transform: scaleX(0);
+}
+.bl-fill.is-neg { background: var(--bu-neg); }
+/* Calculated (white) and saved (blue) marks across the track. */
+.bl-tick {
+  position: absolute;
+  top: -0.35rem;
+  bottom: -0.35rem;
+  width: 0.2rem;
+  margin-left: -0.1rem;
+  border-radius: 0.1rem;
+  background: var(--text);
+}
+.bl-tick.is-saved { background: var(--bu-pace); }
+.bl-ticks { font-size: 1rem; line-height: 1.4; color: var(--text-2); word-wrap: break-word; }
+
+/* The mode pills: one focusable row, OK switches. */
+.bl-modes { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+.bl-pill {
+  display: inline-block;
+  margin: 0.15rem 0.5rem 0.15rem 0;
+  padding: 0.25rem 0.9rem;
+  border-radius: 1.2rem;
+  border: 0.08rem solid var(--bu-hair);
+  font-size: 1.05rem;
+  line-height: 1.35;
+  color: var(--text-2);
+}
+.bl-pill.is-on { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.4); color: var(--text); }
+
+/* The outcome: not focusable. */
+.bl-oblock { padding: 0.4rem 0.9rem 0.3rem; }
+.bl-outcome { font-size: 1.6rem; line-height: 1.3; color: var(--text); word-wrap: break-word; }
+.bl-outcome.is-ok { color: var(--bu-ok); }
+.bl-outcome.is-neg { color: var(--bu-neg); }
+
+/* Save this cap, Back to calculated. */
+.bl-buttons { padding: 0.3rem 0.9rem 0.4rem 0.75rem; }
+.bl-btn {
+  display: inline-block;
+  margin: 0.2rem 0.6rem 0.2rem 0;
+  padding: 0.45rem 1.1rem;
+  border-radius: 0.7rem;
+  border: var(--edge) solid var(--bu-hair);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 1.1rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.bl-btn.is-focused { background: var(--card-2); border-color: var(--focus); }
+
+/* Row 6, the merchants: a head, then one slider row each, the label on its
+   own line above the track so a longer language wraps instead of pushing.
+   The fill is a scaleX set directly, like the cap's. */
+.bl-msec { padding: 0.7rem 0.9rem 0.2rem; }
+.bl-msec > .bu-label:first-child { margin-top: 0; }
+.bl-msub { margin-top: 0.2rem; font-size: 1rem; line-height: 1.4; color: var(--text-3); word-wrap: break-word; }
+.bl-mline { margin-top: 0.3rem; }
+.bl-clabel { font-size: 1.1rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+.bl-ctrack { height: 0.45rem; margin: 0.5rem 0 0.15rem; }
+.bl-cut.is-locked { opacity: 0.5; }
+.bl-mnote { padding: 0.1rem 0.9rem 0.3rem; font-size: 1rem; line-height: 1.4; color: var(--text-2); word-wrap: break-word; }
+.bl-mnote.is-neg { color: var(--bu-neg); }
+
+/* Row 7, Put it somewhere: not focusable. Name and figure on one line, the
+   bar under them. */
+.bl-dest { padding: 0.7rem 0.9rem 0.3rem; }
+.bl-dest > .bu-label:first-child { margin-top: 0; }
+.bl-drow { padding: 0.35rem 0 0.2rem; }
+.bl-drow-top { display: flex; align-items: baseline; }
+.bl-dname { flex: 1 1 auto; min-width: 0; font-size: 1.1rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+.bl-dval { flex: 0 0 auto; margin-left: 0.6rem; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); white-space: nowrap; }
+.bl-dval.is-neg { color: var(--bu-neg); }
+.bl-dtrack {
+  position: relative;
+  height: 0.45rem;
+  margin-top: 0.3rem;
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.bl-dfill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bu-ok);
+  -webkit-transform-origin: 0 50%;
+  transform-origin: 0 50%;
+  -webkit-transform: scaleX(0);
+  transform: scaleX(0);
+}
+.bl-dfill.is-neg { background: var(--bu-neg); }
+.bl-dextra { color: var(--bu-ok); }
+
+.bl-pace .bu-hero.is-panel .bu-hero-num { font-size: 2.8rem; }
+.bl-pmove { color: var(--text); }
+
+/* ---------- full screen: two columns, bigger ---------- */
+
+/* The right column (Put it somewhere, Pace) stays in view while the left
+   one scrolls down to the merchants: the panel body scrolls as one. */
+.bl-pwrap.is-full .bu-pcol + .bu-pcol { position: -webkit-sticky; position: sticky; top: 0; }
+.bl-panel.is-full .bl-head { font-size: 1.5rem; }
+.bl-panel.is-full .bl-big { font-size: 4.2rem; }
+.bl-panel.is-full .bl-unit { font-size: 1.5rem; }
+.bl-panel.is-full .bl-track { height: 0.8rem; }
+.bl-panel.is-full .bl-ticks,
+.bl-panel.is-full .bl-note { font-size: 1.2rem; }
+.bl-panel.is-full .bl-pill,
+.bl-panel.is-full .bl-btn { font-size: 1.3rem; }
+.bl-panel.is-full .bl-outcome { font-size: 2rem; }
+.bl-panel.is-full .bl-pace .bu-hero.is-panel .bu-hero-num { font-size: 3.6rem; }
+.bl-panel.is-full .bl-clabel,
+.bl-panel.is-full .bl-dname { font-size: 1.3rem; }
+.bl-panel.is-full .bl-dval { font-size: 1.25rem; }
+.bl-panel.is-full .bl-msub,
+.bl-panel.is-full .bl-mnote { font-size: 1.2rem; }
+.bl-panel.is-full .bl-ctrack,
+.bl-panel.is-full .bl-dtrack { height: 0.6rem; }
+
+/* ---------- the runway chart (full screen only) ----------
+   Inline SVG for the lines, HTML for the words: the weekdays, the card day
+   and payday dates, and the gap, the chart's one figure. Nothing here has a
+   transition; a key press rewrites the owed line's points and the gap's
+   text, nothing else. The labels are placed once, when the panel is drawn. */
+.bl-chart-sec { padding: 0 0.9rem 0.3rem; }
+.bl-chart-sec > .bu-label:first-child { margin-top: 0; }
+.bl-chart-empty { margin-top: 0.3rem; }
+.bl-legend { margin-top: 0.25rem; font-size: 1.1rem; line-height: 1.35; color: var(--text-2); }
+.bl-leg { display: inline-block; margin-right: 1.4rem; white-space: nowrap; }
+.bl-leg-swatch {
+  display: inline-block;
+  width: 1.6rem;
+  height: 0;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+  border-top: 0.22rem solid var(--bu-pace);
+}
+.bl-leg-swatch.is-owed { border-top-style: dashed; border-top-color: var(--bu-under); }
+.bl-chart { position: relative; height: 10rem; margin-top: 0.3rem; }
+.bl-ch-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.bl-ch-zero { stroke: rgba(255, 255, 255, 0.2); stroke-width: 1.5; }
+.bl-ch-axis { fill: none; stroke: rgba(255, 255, 255, 0.4); stroke-width: 2; }
+.bl-ch-rule { stroke: rgba(255, 255, 255, 0.55); stroke-width: 2; stroke-dasharray: 6 6; }
+.bl-ch-room { fill: none; stroke: var(--bu-pace); stroke-width: 4; stroke-linejoin: round; }
+.bl-ch-owed { fill: none; stroke: var(--bu-under); stroke-width: 4; stroke-dasharray: 12 8; stroke-linecap: round; }
+.bl-ch-end { fill: var(--bu-pace); }
+.bl-ch-pay { fill: var(--bu-ok); }
+.bl-ch-lab {
+  position: absolute;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  white-space: nowrap;
+  -webkit-transform: translateX(-50%);
+  transform: translateX(-50%);
+}
+.bl-ch-lab.is-card { color: var(--text); font-weight: 600; -webkit-transform: translateX(-100%); transform: translateX(-100%); }
+.bl-ch-lab.is-pay { color: var(--bu-ok); }
+.bl-ch-gap {
+  position: absolute;
+  right: 0;
+  top: 0;
+  max-width: 80%;
+  font-size: 1.5rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: var(--text);
+}
+.bl-ch-gap.is-ok { color: var(--bu-ok); }
+.bl-ch-gap.is-neg { color: var(--bu-neg); }
+
+/* With the chart above them, Put it somewhere and Pace pack tighter so the
+   right column fits the screen without scrolling. */
+.bl-panel.is-full .has-chart .bl-dest { padding-top: 0.3rem; padding-bottom: 0.1rem; }
+.bl-panel.is-full .has-chart .bl-drow { padding: 0.15rem 0 0.05rem; }
+.bl-panel.is-full .has-chart .bl-dname { font-size: 1.2rem; }
+.bl-panel.is-full .has-chart .bl-dval { font-size: 1.15rem; }
+.bl-panel.is-full .has-chart .bl-dtrack { height: 0.45rem; margin-top: 0.2rem; }
+.bl-panel.is-full .has-chart .bl-pace .bu-hero.is-panel .bu-hero-num { font-size: 2.5rem; }
+
+.css-end { top: 0; }

@@ -13,6 +13,8 @@
  *   budget.js   the budget tiles say "Hidden for guests", the "New charge"
  *               banner never shows, and the budget the Pi sends is dropped as
  *               it arrives. The copy this TV kept is deleted.
+ *   budget-lab.js  Budget lab says "Hidden for guests" and forgets its
+ *               session (the cap being tried); the saved cap stays, hidden.
  *   hub.js      the money layouts leave the layout bar; a money layout on
  *               screen gives way to the first layout without money.
  *   today.js    the Guest mode Off / On choice on the Clock page.
@@ -24,7 +26,7 @@
   'use strict';
 
   var KEY = 'homeHub.guest.v1';
-  var MONEY = ['awws-money', 'budget-room', 'budget-card', 'budget-goals'];
+  var MONEY = ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
   var state = false;
   var listeners = [];
 

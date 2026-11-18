@@ -28,7 +28,24 @@
  *   panel opens), it stays dismissed after a reload, a new charge shows again;
  *   the two layouts in the switcher ("AWWS money" and "Budget"), every pill
  *   whole, and each layout drawn with no gaps;
- *   app/ files touched here are plain ES5.
+ *   Budget lab (budget-lab): the streak, yesterday and the suggested move on
+ *   the tile, the card day outcome on a tall one; the panel's cap slider
+ *   (a press changes text and the fill's one transform, never the panel),
+ *   the mode pills, Save this cap and Back to calculated; a saved cap
+ *   survives a reload and is dropped at a new card day; holding Right for
+ *   3 s with the key repeat below lands on the value the math module's
+ *   holdStep gives; the merchants' cut rows at panel and full screen (label
+ *   above the track, a press changes text and one transform per changed bar,
+ *   a cut stops at its p_i and the five together at combined, locked at a
+ *   $0 cap); Put it somewhere filling card day first, then savings, AWWS and
+ *   buffer (example B); Guest mode hides it all and clears the session and
+ *   its cuts; the runway chart at full screen only (none at panel size): the
+ *   owed line ends at P and moves with the cap and with a cut, no figure in
+ *   it but the gap label ("Covered, $15 spare", "Short by $13"), and during
+ *   a held key the owed line's points are written at most every 120 ms (one
+ *   write a press at most, a trailing write after the last), nothing else in
+ *   the chart changes and the scale stays; no runway sent says "Waiting for
+ *   the budget app"; app/ files touched here are plain ES5.
  * Needs Playwright and port 8095 free. Prints one line per check and
  * "N passed, M failed"; exits 1 on a failure. Nothing reaches the internet.
  */
@@ -40,7 +57,23 @@ const vm = require('vm');
 const H = require('./awws-harness');
 
 const ROOT = path.join(__dirname, '..');
-const IDS = ['awws-money', 'budget-room', 'budget-card', 'budget-goals'];
+const IDS = ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
+const LABM = require(path.join(ROOT, 'app', 'budget-lab-math.js'));
+// The test's key repeat for a held Right: one press, then the repeat after
+// 500 ms, every 50 ms, until 3 s. Presses closer than 250 ms are one hold.
+const REPEAT = [0];
+for (let t = 500; t <= 3000; t += 50) REPEAT.push(t);
+function holdOnPaper(from, capMax) {
+  let v = from;
+  let start = 0;
+  let last = -Infinity;
+  for (const t of REPEAT) {
+    if (t - last >= 250) start = t;
+    last = t;
+    v = LABM.step(v, 1, LABM.holdStep(t - start, 'cap'), 0, capMax);
+  }
+  return v;
+}
 const SIZES = [[1, 1], [2, 1], [3, 1], [6, 1], [12, 1], [2, 2], [3, 2], [6, 2], [3, 4], [6, 4], [9, 6]];
 const SEL = '.cell[data-widget="awws-money"] .tile-body, .cell[data-widget^="budget"] .tile-body';
 const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
@@ -164,7 +197,8 @@ function subOf(id) { return '.cell[data-widget="' + id + '"] .tile-sub'; }
 const ROW = [
   { widget: 'awws-money', x: 0, y: 0, w: 3, h: 3 }, { widget: 'budget-room', x: 3, y: 0, w: 3, h: 3 },
   { widget: 'budget-card', x: 6, y: 0, w: 3, h: 3 }, { widget: 'budget-goals', x: 9, y: 0, w: 3, h: 3 },
-  { widget: 'awws', x: 0, y: 3, w: 6, h: 3 }, { widget: 'entertainment', x: 6, y: 3, w: 6, h: 3 }
+  { widget: 'awws', x: 0, y: 3, w: 6, h: 3 }, { widget: 'budget-lab', x: 6, y: 3, w: 3, h: 3 },
+  { widget: 'entertainment', x: 9, y: 3, w: 3, h: 3 }
 ];
 
 async function main() {
@@ -315,7 +349,7 @@ async function main() {
     });
 
     /* ---------- Guest mode ---------- */
-    const GUEST_ROW = ROW.slice(0, 5).concat([{ widget: 'today', x: 6, y: 3, w: 6, h: 3 }]);
+    const GUEST_ROW = ROW.slice(0, 6).concat([{ widget: 'today', x: 9, y: 3, w: 3, h: 3 }]);
     const GUEST_CACHE = JSON.stringify({ v: 1, at: H.MONDAY, data: Object.assign(H.budgetSample.snapshot({ sentAt: FRESH }), { receivedAt: FRESH }) });
 
     await check('Guest mode on: every money tile says "Hidden for guests", no figure, no banner, no budget kept', async () => {
@@ -391,7 +425,7 @@ async function main() {
         await H.key(page, 'ArrowUp');
         await H.until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
         const names = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.switcher-item'), (n) => n.textContent));
-        assert(names.length === 5 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
+        assert(names.length === 7 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -405,7 +439,7 @@ async function main() {
         await H.until(() => page.evaluate(() => !document.querySelector('.cell[data-widget="budget-goals"]') && !!window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0), 15000, 'still on Budget');
         await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 15000 });
         const ids = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#grid .cell'), (c) => c.getAttribute('data-widget')));
-        assert(!ids.some((id) => ['awws-money', 'budget-room', 'budget-card', 'budget-goals'].indexOf(id) >= 0), 'money tiles: ' + ids.join(', '));
+        assert(!ids.some((id) => ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'].indexOf(id) >= 0), 'money tiles: ' + ids.join(', '));
         assert(await page.evaluate(() => window.HUB_GUEST.on()), 'Guest mode is off after the reload');
       } finally { await page.ctx.close(); }
     });
@@ -485,6 +519,563 @@ async function main() {
       }
     });
 
+    /* ---------- Budget lab ---------- */
+    const LAB_TILE = tileOf('budget-lab');
+    const PREF = 'homeHub.budget.capPref.v1';
+    const labPanel = (page) => text(page, '#panel .panel-body');
+    const focusedKey = (page) => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
+    const session = (page) => page.evaluate(() => window.HUB_BUDGET_LAB_TEST.session());
+
+    await check('Budget lab tile: the streak, yesterday and the suggested move; a tall tile adds the card day outcome', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const t = await text(page, LAB_TILE);
+        assert(/^1\s*day under/.test(t.trim()) && /Yesterday \$41 of \$65, \$24 under/.test(t), 'tile: ' + t);
+        assert(/Stay under \$62 today/.test(t) && /Nov 19: Covered, nothing to spare/.test(t), 'tile: ' + t);
+        assert(await has(page, LAB_TILE + ' .bu-hero-num.is-ok'), 'the streak is not green');
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+      const strip = await env.newPage({ layout: [{ widget: 'budget-lab', x: 0, y: 0, w: 6, h: 1 }, { widget: 'today', x: 6, y: 0, w: 6, h: 1 }],
+        storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const t = await text(strip, LAB_TILE);
+        assert(/1 day under · \$41 of \$65/.test(t), 'strip: ' + t);
+        noErrors(strip);
+      } finally { await strip.ctx.close(); }
+    });
+
+    await check('Budget lab panel: a key press changes text and the fill only; mode, Save this cap and Back to calculated', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert((await focusedKey(page)) === 'cap', 'the cap slider does not have focus: ' + await focusedKey(page));
+        let p = await labPanel(page);
+        assert(/Nov 19 · in 3 days · Covered/.test(p) && /\$62\s*a day/.test(p) && /calculated \$62 · no saved cap/.test(p), 'panel: ' + p);
+        assert(/Monthly remaining \$186/.test(p) && /same as calculated/.test(p) && /The Daily room tile uses \$60 a day/.test(p), 'panel: ' + p);
+        assert(/PACE|Pace/.test(p) && /Stay under \$62 today for 2 days in a row/.test(p), 'pace: ' + p);
+        const before = await page.evaluate(() => {
+          window.__labRoot = document.querySelector('#panel .bl-panel');
+          window.__labBig = document.querySelector('#panel .bl-big').firstChild;
+          return document.querySelector('#panel .bl-fill').style.transform;
+        });
+        await H.key(page, 'ArrowRight');
+        const after = await page.evaluate(() => ({
+          same: window.__labRoot === document.querySelector('#panel .bl-panel') && window.__labBig === document.querySelector('#panel .bl-big').firstChild,
+          fill: document.querySelector('#panel .bl-fill').style.transform,
+          big: document.querySelector('#panel .bl-big').textContent,
+          trans: getComputedStyle(document.querySelector('#panel .bl-fill')).transitionDuration
+        }));
+        assert(after.same, 'the panel was drawn again for a key press');
+        assert(after.big === '$63' && after.fill !== before && /^scaleX\(/.test(after.fill), 'after Right: ' + JSON.stringify(after) + ' from ' + before);
+        assert(/^0s(, 0s)*$/.test(after.trans), 'the fill has a transition: ' + after.trans);
+        assert((await session(page)).cap === 63, 'session: ' + JSON.stringify(await session(page)));
+        p = await labPanel(page);
+        assert(/Short by \$3/.test(p) && /\$3 more than calculated/.test(p), 'at $63: ' + p);
+        await H.key(page, 'ArrowLeft', 2);
+        assert((await session(page)).cap === 61, 'after Left twice: ' + JSON.stringify(await session(page)));
+        assert((await focusedKey(page)) === 'cap', 'Left moved focus away');
+        // Mode: OK on the pills turns the slider into the keep goal.
+        await H.key(page, 'ArrowDown');
+        assert((await focusedKey(page)) === 'mode', 'Down from the slider: ' + await focusedKey(page));
+        await H.key(page, 'Enter');
+        p = await labPanel(page);
+        assert(/Keep on Nov 19/i.test(p) && /to keep/.test(p) && /cap \$61 a day/.test(p), 'keep mode: ' + p);
+        assert((await session(page)).mode === 'keep', 'mode: ' + JSON.stringify(await session(page)));
+        assert(after.same && await page.evaluate(() => window.__labRoot === document.querySelector('#panel .bl-panel')), 'the panel was drawn again for OK');
+        // Save this cap: stored as a keep amount for this card day, and a toast.
+        await H.key(page, 'ArrowDown');
+        assert((await focusedKey(page)) === 'save', 'Down from the pills: ' + await focusedKey(page));
+        await H.key(page, 'Enter');
+        await H.sleep(150);
+        const toast = await text(page, '#toast');
+        assert(/Cap saved: \$61 a day \(re-averaged each morning\)/.test(toast), 'toast: ' + toast);
+        const pref = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), PREF));
+        assert(pref.v === 1 && pref.cardDate === '2026-11-19' && Math.abs(pref.keep - 3.4) < 0.001 && typeof pref.at === 'string', 'stored: ' + JSON.stringify(pref));
+        p = await labPanel(page);
+        assert(/saved \$61/.test(p) && /saved cap: \$3 less than calculated/.test(p), 'after Save: ' + p);
+        assert(await page.evaluate(() => getComputedStyle(document.querySelector('#panel .bl-tick.is-saved')).display !== 'none'), 'no saved mark on the track');
+        // Back to calculated: the cap, the mode and the cuts go back; the saved cap stays.
+        await H.key(page, 'ArrowRight');
+        assert((await focusedKey(page)) === 'reset', 'Right from Save: ' + await focusedKey(page));
+        await H.key(page, 'Enter');
+        const s = await session(page);
+        assert(s.mode === 'cap' && s.cap === null && s.keep === null, 'after reset: ' + JSON.stringify(s));
+        p = await labPanel(page);
+        assert(/Daily cap/i.test(p) && /\$62\s*a day/.test(p) && /saved \$61/.test(p), 'after reset: ' + p);
+        assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'reset dropped the saved cap');
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Budget lab: a saved cap survives a reload; a new card day drops it', async () => {
+      const pref = JSON.stringify({ v: 1, cardDate: '2026-11-19', keep: 3.4, at: FRESH });
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]', [PREF]: pref } });
+      try {
+        await page.reload();
+        await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 15000 });
+        await H.until(() => page.evaluate(() => window.HUB_LIVE.status().state === 'live'), 10000, 'not live after the reload');
+        await H.idle(page);
+        await H.openPanel(page, 'budget-lab');
+        let p = await labPanel(page);
+        assert(/saved \$61/.test(p) && /\$62\s*a day/.test(p), 'after the reload: ' + p);
+        const next = H.budgetSample.snapshot({ sentAt: FRESH });
+        next.lab.cardDate = '2026-11-20';
+        next.lab.daysLeft = 4;
+        await env.setBudget(next);
+        await H.until(async () => /no saved cap/.test(await labPanel(page)), 5000, 'the old cycle\'s cap stayed: ' + await labPanel(page));
+        assert(await page.evaluate((k) => localStorage.getItem(k) === null, PREF), 'the old cycle\'s cap is still stored');
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Budget lab: holding Right for 3 s (repeat after 500 ms, every 50 ms) lands where holdStep says', async () => {
+      const big = H.budgetSample.snapshot({ sentAt: FRESH });
+      big.lab.room = 7000;      // $500 a day for 14 days: room to run without reaching the top
+      big.lab.daysLeft = 14;
+      big.lab.cardDate = '2026-11-30';
+      await env.setBudget(big);
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert(/\$500\s*a day/.test(await labPanel(page)), 'start: ' + await labPanel(page));
+        const capMax = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result().capMax);
+        const want = holdOnPaper(500, capMax);
+        assert(want === 900 && capMax === 1000, 'on paper: ' + want + ' of ' + capMax);
+        for (const t of REPEAT) {
+          await page.clock.setFixedTime(new Date(H.MONDAY + t));
+          await page.keyboard.press('ArrowRight');
+        }
+        const s = await session(page);
+        assert(s.cap === want, 'held 3 s: ' + JSON.stringify(s) + ', want ' + want);
+        assert((await text(page, '#panel .bl-big')) === '$900', 'shown: ' + await text(page, '#panel .bl-big'));
+        // A gap of 250 ms or more starts again at $1.
+        await page.clock.setFixedTime(new Date(H.MONDAY + 3400));
+        await page.keyboard.press('ArrowRight');
+        assert((await session(page)).cap === 901, 'after a pause: ' + JSON.stringify(await session(page)));
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Guest mode: Budget lab says "Hidden for guests", forgets the session, keeps the saved cap hidden', async () => {
+      const pref = JSON.stringify({ v: 1, cardDate: '2026-11-19', keep: 3.4, at: FRESH });
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]', [PREF]: pref } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await H.key(page, 'ArrowRight', 4);
+        assert((await session(page)).cap === 66, 'session: ' + JSON.stringify(await session(page)));
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        assert(/Stay under \$66 today/.test(await text(page, LAB_TILE)) || /Short by/.test(await text(page, LAB_TILE)) || /Skip/.test(await text(page, LAB_TILE)),
+          'the tile does not follow the session: ' + await text(page, LAB_TILE));
+        await page.evaluate(() => window.HUB_GUEST.set(true));
+        await H.sleep(300);
+        const t = await text(page, LAB_TILE);
+        assert(/Hidden for guests/.test(t) && !/\$/.test(t), 'tile: ' + t);
+        const s = await session(page);
+        assert(s.mode === 'cap' && s.cap === null && s.keep === null && !Object.keys(s.cuts).length, 'session kept: ' + JSON.stringify(s));
+        assert(await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result() === null && window.HUB_BUDGET.data() === null), 'figures still readable');
+        assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'Guest mode deleted the saved cap');
+        await H.openPanel(page, 'budget-lab');
+        const p = await labPanel(page);
+        assert(/Hidden for guests/.test(p) && !/\$/.test(p), 'panel: ' + p);
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await page.evaluate(() => window.HUB_GUEST.set(false));
+        await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back: ' + await text(page, LAB_TILE));
+        await H.openPanel(page, 'budget-lab');
+        const back = await labPanel(page);
+        assert(/\$62\s*a day/.test(back) && /saved \$61/.test(back), 'after Guest mode: ' + back);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    /* ---------- Budget lab: merchants (row 6) and Put it somewhere (row 7) ---------- */
+    // Presses with no pause: the page clock stands still, so each is $1 (one hold, held 0 ms).
+    const press = async (page, k, n) => { for (let i = 0; i < (n || 1); i++) await page.keyboard.press(k); };
+    // Moves focus with Up or Down until the row with that data-key has it.
+    const goTo = async (page, want, dir) => {
+      for (let i = 0; i < 16 && (await focusedKey(page)) !== want; i++) await press(page, dir || 'ArrowDown');
+      assert((await focusedKey(page)) === want, 'could not reach ' + want + ', at ' + await focusedKey(page));
+    };
+    const cutLabels = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-clabel'), (n) => n.textContent));
+    const destVals = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-drow'), (n) =>
+      n.querySelector('.bl-dname').textContent + ': ' + n.querySelector('.bl-dval').textContent));
+    const fills = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-fill, #panel .bl-dfill'), (n) => n.style.transform));
+    // The sample: room 186.40 over 3 days of a 16 day month. p_i is
+    // round(mtd / 16 * 3): 35, 24, 17, 11, 10; combined 498.57 gives 93.48.
+    const P_I = [35, 24, 17, 11, 10];
+
+    await check('Budget lab merchants: five slider rows, label above the track; a press changes text and one transform per changed bar; p_i stops it', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        let labels = await cutLabels(page);
+        assert(labels.length === 5 && labels[0] === 'Hilltop Grocer · $184 so far · cut $0' && labels[4] === 'Riverside Fuel · $55 so far · cut $0', 'rows: ' + labels.join(' | '));
+        const above = await page.evaluate(() => Array.prototype.every.call(document.querySelectorAll('#panel .bl-cut'), (row) =>
+          row.querySelector('.bl-clabel').getBoundingClientRect().bottom <= row.querySelector('.bl-ctrack').getBoundingClientRect().top + 0.5));
+        assert(above, 'a label is not on its own line above its track');
+        assert(/MERCHANTS|Merchants/.test(await labPanel(page)) && /Cut what you would skip before Nov 19/.test(await labPanel(page)), 'merchants head: ' + await labPanel(page));
+        assert(/PUT IT SOMEWHERE|Put it somewhere/.test(await labPanel(page)), 'no Put it somewhere');
+        let dest = await destVals(page);
+        assert(dest.join(' | ') === 'Card day: Covered | Savings: $0 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'destinations: ' + dest.join(' | '));
+        assert(!(await has(page, '#panel .bl-dest.f, #panel .bl-dest .f')), 'Put it somewhere takes focus');
+        // The panel is longer than its box at this size: it scrolls to the focused row.
+        await goTo(page, 'cut-0');
+        const view = await page.evaluate(() => {
+          const body = document.querySelector('#panel .panel-body');
+          const b = body.getBoundingClientRect();
+          const r = document.querySelector('#panel [data-key="cut-0"]').getBoundingClientRect();
+          return { scrolls: body.scrollHeight > body.clientHeight, top: body.scrollTop, inside: r.top >= b.top - 1 && r.bottom <= b.bottom + 1 };
+        });
+        assert(view.inside && (!view.scrolls || view.top > 0), 'the merchants are out of view: ' + JSON.stringify(view));
+        const before = await fills(page);
+        await page.evaluate(() => {
+          window.__labRoot = document.querySelector('#panel .bl-panel');
+          window.__cutText = document.querySelector('#panel .bl-clabel').firstChild;
+        });
+        await press(page, 'ArrowRight', 3);
+        const after = await page.evaluate(() => ({
+          same: window.__labRoot === document.querySelector('#panel .bl-panel') && window.__cutText === document.querySelector('#panel .bl-clabel').firstChild,
+          trans: Array.prototype.map.call(document.querySelectorAll('#panel .bl-cfill, #panel .bl-dfill'), (n) => getComputedStyle(n).transitionDuration)
+        }));
+        assert(after.same, 'the panel was drawn again for a key press');
+        assert(after.trans.every((t) => /^0s(, 0s)*$/.test(t)), 'a bar has a transition: ' + after.trans.join());
+        assert((await focusedKey(page)) === 'cut-0', 'Right moved focus away');
+        const s = await session(page);
+        assert(JSON.stringify(s.cuts) === '{"Hilltop Grocer":3}', 'session: ' + JSON.stringify(s));
+        labels = await cutLabels(page);
+        assert(labels[0] === 'Hilltop Grocer · $184 so far · cut $3', 'row: ' + labels[0]);
+        const now = await fills(page);
+        const changed = now.map((t, i) => t !== before[i] ? i : -1).filter((i) => i >= 0);
+        // Index 0 is the cap's fill, 1 to 5 the cuts, 6 card day, 7 savings.
+        assert(changed.join() === '1,7', 'changed bars: ' + changed.join() + ' ' + JSON.stringify(now));
+        assert(now[1] === 'scaleX(' + Math.round(3 / 35 * 10000) / 10000 + ')', 'cut fill: ' + now[1]);
+        dest = await destVals(page);
+        assert(dest[1] === 'Savings: $3 of $500', 'destinations: ' + dest.join(' | '));
+        assert(/Keep \$3 on Nov 19/.test(await labPanel(page)), 'outcome: ' + await labPanel(page));
+        // Held on and on: the cut stops at the merchant's projection, $35.
+        await press(page, 'ArrowRight', 45);
+        assert((await session(page)).cuts['Hilltop Grocer'] === P_I[0], 'at the top: ' + JSON.stringify(await session(page)));
+        assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'row: ' + (await cutLabels(page))[0]);
+        assert((await fills(page))[1] === 'scaleX(1)', 'full fill: ' + (await fills(page))[1]);
+        // Up and Down go through the rows in order; Up from the first is Save this cap.
+        await press(page, 'ArrowDown');
+        assert((await focusedKey(page)) === 'cut-1', 'Down: ' + await focusedKey(page));
+        await press(page, 'ArrowUp', 2);
+        assert((await focusedKey(page)) === 'save', 'Up from the first row: ' + await focusedKey(page));
+        // Full screen: the rows on the left, Put it somewhere on the right; the cut is still there.
+        await H.fullScreen(page);
+        const cols = await page.evaluate(() => {
+          const c = document.querySelectorAll('#panel .bl-pwrap > .bu-pcol');
+          return { n: c.length, cuts: c[0] && c[0].querySelectorAll('.bl-cut').length, dest: c[1] && !!c[1].querySelector('.bl-dest'), pace: c[1] && !!c[1].querySelector('.bl-pace') };
+        });
+        assert(cols.n === 2 && cols.cuts === 5 && cols.dest && cols.pace, 'full screen: ' + JSON.stringify(cols));
+        assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'full row: ' + (await cutLabels(page))[0]);
+        assert((await destVals(page))[1] === 'Savings: $35 of $500', 'full destinations: ' + (await destVals(page)).join(' | '));
+        await goTo(page, 'cut-0');
+        await press(page, 'ArrowLeft');
+        assert((await session(page)).cuts['Hilltop Grocer'] === 34, 'Left at full screen: ' + JSON.stringify(await session(page)));
+        const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+        assert(!p.length, 'full screen: ' + p.slice(0, 5).join('; '));
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Budget lab merchants: together the cuts stop at combined ($93.48 over 3 days), and lock at a $0 cap', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await goTo(page, 'cut-0');
+        for (let i = 0; i < 4; i++) {
+          await press(page, 'ArrowRight', P_I[i] + 5);
+          await press(page, 'ArrowDown');
+        }
+        assert((await focusedKey(page)) === 'cut-4', 'at ' + await focusedKey(page));
+        // 35 + 24 + 17 + 11 = 87 leaves $6 of the combined $93.48 for the fuel's $10.
+        await press(page, 'ArrowRight', 12);
+        const s = await session(page);
+        assert(JSON.stringify(s.cuts) === JSON.stringify({ 'Hilltop Grocer': 35, 'Quick Bites Delivery': 24, 'Corner Bakery Stand': 17, 'Maple Street Books': 11, 'Riverside Fuel': 6 }),
+          'cuts: ' + JSON.stringify(s.cuts));
+        const r = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result());
+        assert(r.cuts === 93 && r.cuts <= r.cutsLimit && r.cutsLimit === 93.48, 'together: ' + r.cuts + ' of ' + r.cutsLimit);
+        assert(/The five together cut at most \$93/.test(await labPanel(page)), 'note: ' + await labPanel(page));
+        assert((await destVals(page))[1] === 'Savings: $93 of $500', 'destinations: ' + (await destVals(page)).join(' | '));
+        // The cap down to $0: nothing left to cut from; the rows lock and dim.
+        await goTo(page, 'cap', 'ArrowUp');
+        await press(page, 'ArrowLeft', 70);
+        assert((await text(page, '#panel .bl-big')) === '$0', 'cap: ' + await text(page, '#panel .bl-big'));
+        const locked = await page.evaluate(() => ({
+          rows: document.querySelectorAll('#panel .bl-cut.is-locked').length,
+          r: window.HUB_BUDGET_LAB_TEST.result(),
+          fills: Array.prototype.map.call(document.querySelectorAll('#panel .bl-cfill'), (n) => n.style.transform)
+        }));
+        assert(locked.rows === 5 && locked.r.locked && locked.r.cuts === 0 && locked.r.merchants.every((m) => m.cut === 0 && m.max === 0), 'locked: ' + JSON.stringify(locked).slice(0, 300));
+        assert(locked.fills.every((f) => f === 'scaleX(0)'), 'locked fills: ' + locked.fills.join());
+        assert(/Nothing left to cut from/.test(await labPanel(page)), 'no locked note: ' + await labPanel(page));
+        assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $0', 'locked row: ' + (await cutLabels(page))[0]);
+        await goTo(page, 'cut-0');
+        await press(page, 'ArrowRight', 3);
+        const kept = await session(page);
+        assert(kept.cuts['Hilltop Grocer'] === 35 && kept.cap === 0, 'a locked press changed the session: ' + JSON.stringify(kept));
+        assert((await focusedKey(page)) === 'cut-0', 'a locked press moved focus');
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Budget lab Put it somewhere: example B fills card day first, then savings, AWWS, buffer', async () => {
+      // Example B (made-up figures): room 1,334 over 14 days of a 17 day month; Amazon 495 so far projects to 408, DoorDash 120 to 99.
+      const b = H.budgetSample.snapshot({ sentAt: FRESH });
+      Object.assign(b.lab, { room: 1334, spentToday: 0, daysLeft: 14, monthDay: 17, cardDate: '2026-11-30' });
+      b.merchants.combined = 640;
+      b.merchants.items = [{ label: 'Amazon', mtd: 495, count: 11 }, { label: 'DoorDash', mtd: 120, count: 4 }, { label: 'Corner Bakery Stand', mtd: 40, count: 8 }];
+      await env.setBudget(b);
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert(/\$95\s*a day/.test(await labPanel(page)), 'start: ' + await labPanel(page));
+        assert((await cutLabels(page))[0] === 'Amazon · $495 so far · cut $0', 'row: ' + (await cutLabels(page))[0]);
+        // Cap $80: K = 1,334 - 1,120 = 214, all of it to savings.
+        await press(page, 'ArrowLeft', 16);
+        assert((await session(page)).cap === 80, 'cap: ' + JSON.stringify(await session(page)));
+        let d = await destVals(page);
+        assert(d.join(' | ') === 'Card day: Covered | Savings: $214 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'cap $80: ' + d.join(' | '));
+        // Cut Amazon $40 and DoorDash $15: K = 269.
+        await goTo(page, 'cut-0');
+        await press(page, 'ArrowRight', 40);
+        await press(page, 'ArrowDown');
+        await press(page, 'ArrowRight', 15);
+        assert((await cutLabels(page))[0] === 'Amazon · $495 so far · cut $40', 'row: ' + (await cutLabels(page))[0]);
+        d = await destVals(page);
+        assert(d[1] === 'Savings: $269 of $500' && d[0] === 'Card day: Covered', 'with cuts: ' + d.join(' | '));
+        assert(/Keep \$269 on Nov 30/.test(await labPanel(page)), 'outcome: ' + await labPanel(page));
+        // Cap $100 is short 66 before any cut; the 55 of cuts go to card day first, 11 still short, nothing to savings.
+        await goTo(page, 'cap', 'ArrowUp');
+        await press(page, 'ArrowRight', 20);
+        d = await destVals(page);
+        assert(d.join(' | ') === 'Card day: $55 of $66 · short $11 | Savings: $0 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'cap $100: ' + d.join(' | '));
+        assert(await has(page, '#panel .bl-dfill.is-neg') && await has(page, '#panel .bl-dval.is-neg'), 'card day short is not coral');
+        // Cap $0: everything kept, the split filled in order and the rest is extra.
+        await press(page, 'ArrowLeft', 110);
+        d = await destVals(page);
+        assert(d.join(' | ') === 'Card day: Covered | Savings: $500 of $500 | AWWS: $150 of $150 | Buffer: $350 of $350', 'cap $0: ' + d.join(' | '));
+        assert(/\+\$334 more to savings/.test(await labPanel(page)), 'extra: ' + await labPanel(page));
+        const f = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-dfill'), (n) => n.style.transform));
+        assert(f.join() === 'scaleX(1),scaleX(1),scaleX(1),scaleX(1)', 'fills: ' + f.join());
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    /* ---------- Budget lab: the runway chart (full screen) ---------- */
+    // The sample's 14 day window with a payday (dev/budget-sample.js, payday):
+    // room 2,045.75 over 14 days, calculated cap 146.125, capMax 293.
+    const chartOf = (page) => page.evaluate(() => {
+      const box = document.querySelector('#panel .bl-chart');
+      if (!box) return null;
+      const owed = box.querySelector('.bl-ch-owed');
+      const pts = (owed.getAttribute('points') || '').trim().split(/\s+/).map((p) => p.split(',').map(Number));
+      const gap = box.querySelector('.bl-ch-gap');
+      let other = '';
+      Array.prototype.forEach.call(box.querySelectorAll('*'), (n) => {
+        if (n === gap || gap.contains(n)) return;
+        for (const c of n.childNodes) if (c.nodeType === 3) other += c.nodeValue + ' ';
+      });
+      const col = box.closest('.bu-pcol');
+      return { end: pts[pts.length - 1], start: pts[0], n: pts.length, gap: gap.textContent, gapCls: gap.className, other: other,
+        labels: Array.prototype.map.call(box.querySelectorAll('.bl-ch-lab'), (n) => n.textContent),
+        right: !!col && !!col.previousElementSibling, pay: box.querySelectorAll('.bl-ch-pay').length,
+        room: box.querySelector('.bl-ch-room').getAttribute('points'), view: box.querySelector('svg').getAttribute('viewBox') };
+    });
+    // From the full screen button: Down into the left column's rows, then Up to the cap (the first row).
+    const toCap = async (page) => {
+      for (let i = 0; i < 4 && !/^(cap|mode|save|reset|cut-\d+)$/.test(await focusedKey(page) || ''); i++) await H.key(page, 'ArrowDown');
+      for (let i = 0; i < 16 && (await focusedKey(page)) !== 'cap'; i++) await H.key(page, 'ArrowUp');
+      assert((await focusedKey(page)) === 'cap', 'could not reach the cap: ' + await focusedKey(page));
+    };
+
+    await check('Budget lab runway chart: full screen only; the owed line ends at P and moves with the cap and a cut; no $ but the gap', async () => {
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert(!(await has(page, '#panel .bl-chart, #panel .panel-body svg, #panel .bl-chart-sec')), 'a chart at panel size');
+        await H.fullScreen(page);
+        let c = await chartOf(page);
+        assert(c && c.right && c.n === 2 && c.pay === 1, 'full screen chart: ' + JSON.stringify(c));
+        assert(c.gap === 'Covered, nothing to spare' && /is-ok/.test(c.gapCls), 'gap at the calculated cap: ' + c.gap + ' ' + c.gapCls);
+        assert(!/\$/.test(c.other), 'a figure in the chart besides the gap: ' + c.other);
+        assert(c.labels.indexOf('Nov 20') >= 0 && c.labels.indexOf('Nov 30') >= 0 && c.labels.indexOf('Mon') >= 0, 'labels: ' + c.labels.join(' | '));
+        assert(/Runway to Nov 30/i.test(await text(page, '#panel .bl-chart-head')), 'head: ' + await text(page, '#panel .bl-chart-head'));
+        // At the calculated cap the owed line ends where the headroom line does (K = 0).
+        const roomEnd = c.room.trim().split(/\s+/).pop().split(',').map(Number);
+        assert(Math.abs(roomEnd[0] - c.end[0]) < 0.11 && Math.abs(roomEnd[1] - c.end[1]) < 1.5, 'ends: ' + roomEnd + ' vs ' + c.end);
+        const start = c.end;
+        await toCap(page);
+        await H.key(page, 'ArrowRight');
+        await H.sleep(200);
+        c = await chartOf(page);
+        assert(c.end[1] < start[1] && c.end[0] === start[0], 'the end did not rise with the cap: ' + start + ' to ' + c.end);
+        assert(c.gap === 'Short by $13' && /is-neg/.test(c.gapCls), '$147 a day: ' + c.gap + ' ' + c.gapCls);
+        await H.key(page, 'ArrowLeft', 2);
+        await H.sleep(200);
+        c = await chartOf(page);
+        assert(c.end[1] > start[1] && c.gap === 'Covered, $15 spare' && /is-ok/.test(c.gapCls), '$145 a day: ' + JSON.stringify(c.end) + ' ' + c.gap);
+        const at145 = c.end;
+        await goTo(page, 'cut-0');
+        await H.key(page, 'ArrowRight', 10);
+        await H.sleep(200);
+        c = await chartOf(page);
+        assert(c.end[1] > at145[1] && c.gap === 'Covered, $25 spare', 'a $10 cut: ' + JSON.stringify(c.end) + ' ' + c.gap);
+        assert(!/\$/.test(c.other), 'a figure in the chart besides the gap: ' + c.other);
+        // Back to the panel size: no chart.
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        assert(!(await has(page, '#panel .bl-chart')), 'a chart after leaving full screen');
+        const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+        assert(!p.length, 'panel: ' + p.slice(0, 5).join('; '));
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Budget lab runway chart: a held key writes the owed line at most every 120 ms, one points write a tick, the scale fixed', async () => {
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await H.fullScreen(page);
+        await toCap(page);
+        const before = await chartOf(page);
+        const every = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.CHART_EVERY);
+        assert(every === 120, 'CHART_EVERY ' + every);
+        await page.evaluate(() => {
+          const box = document.querySelector('#panel .bl-chart');
+          window.__chartBox = box;
+          window.__muts = [];
+          window.__writes = [];
+          window.__presses = 0;
+          window.addEventListener('keydown', () => { window.__presses++; }, true);
+          const owed = box.querySelector('.bl-ch-owed');
+          const set = owed.setAttribute;
+          owed.setAttribute = function (k, v) { window.__writes.push({ k: k, t: performance.now(), press: window.__presses }); return set.call(this, k, v); };
+          window.__obs = new MutationObserver((list) => list.forEach((m) => {
+            const n = m.target.nodeType === 3 ? m.target.parentNode : m.target;
+            window.__muts.push({ type: m.type, attr: m.attributeName, cls: String(n.getAttribute && n.getAttribute('class') || '') });
+          }));
+          window.__obs.observe(box, { attributes: true, characterData: true, childList: true, subtree: true });
+          window.__trans = Array.prototype.map.call(box.querySelectorAll('*'), (n) => getComputedStyle(n).transitionDuration).filter((d) => !/^0s(, 0s)*$/.test(d));
+        });
+        // A hold of 1.5 s: one press, the repeat after 500 ms, every 50 ms (real time too).
+        const t0 = Date.now();
+        for (const t of REPEAT.filter((x) => x <= 1500)) {
+          const wait = t0 + t - Date.now();
+          if (wait > 0) await H.sleep(wait);
+          await page.clock.setFixedTime(new Date(H.MONDAY + t));
+          await page.keyboard.press('ArrowRight');
+        }
+        await H.sleep(400);
+        const got = await page.evaluate(() => ({ writes: window.__writes, muts: window.__muts, presses: window.__presses, trans: window.__trans,
+          same: window.__chartBox === document.querySelector('#panel .bl-chart') }));
+        const s = await session(page);
+        assert(got.same, 'the chart was drawn again during the hold');
+        assert(!got.trans.length, 'a transition in the chart: ' + got.trans.join());
+        assert(got.presses === REPEAT.filter((x) => x <= 1500).length && s.cap > 160, 'presses ' + got.presses + ', cap ' + s.cap);
+        const pw = got.writes.filter((w) => w.k === 'points');
+        assert(pw.length === got.writes.length, 'another attribute written on the owed line: ' + JSON.stringify(got.writes.slice(0, 3)));
+        assert(pw.length >= 3 && pw.length < got.presses, got.presses + ' presses, ' + pw.length + ' points writes');
+        const per = {};
+        pw.forEach((w) => { per[w.press] = (per[w.press] || 0) + 1; });
+        const last = got.presses;
+        assert(Object.keys(per).every((k) => per[k] <= (Number(k) === last ? 2 : 1)), 'more than one write for a press: ' + JSON.stringify(per));
+        for (let i = 1; i < pw.length; i++) assert(pw[i].t - pw[i - 1].t >= every - 8, 'writes ' + Math.round(pw[i].t - pw[i - 1].t) + ' ms apart');
+        // Only the owed line's points and the gap label's words changed.
+        const bad = got.muts.filter((m) => !(m.type === 'attributes' && m.attr === 'points' && /bl-ch-owed/.test(m.cls)) &&
+          !(/bl-ch-gap/.test(m.cls) && (m.type !== 'attributes' || m.attr === 'class')));
+        assert(!bad.length, 'other changes in the chart: ' + JSON.stringify(bad.slice(0, 4)));
+        // The scale and every other mark stayed; the last press landed (the trailing write).
+        const after = await chartOf(page);
+        assert(after.room === before.room && after.view === before.view && after.labels.join() === before.labels.join() && after.start.join() === before.start.join(),
+          'the axes moved: ' + JSON.stringify([before.room, after.room]).slice(0, 200));
+        assert(after.end[1] < before.end[1] && after.end[1] >= 0, 'end: ' + before.end + ' to ' + after.end);
+        const r = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result());
+        assert(after.gap === 'Short by $' + Math.ceil(-r.keep - 1e-9), 'the gap after release: ' + after.gap + ', K ' + r.keep);
+        // Drawn again from nothing at the same session, the owed line ends in the same place.
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await H.fullScreen(page);
+        const again = await chartOf(page);
+        assert(again.end.join() === after.end.join() && again.gap === after.gap && again.room === before.room, 'redrawn: ' + again.end + ' vs ' + after.end);
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Budget lab runway chart: no runway sent shows the lab\'s waiting words; Guest mode draws none', async () => {
+      const b = H.budgetSample.snapshot({ sentAt: FRESH });
+      b.runway = null;     // the budget app's way to say the section is gone
+      await env.setBudget(b);
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await H.fullScreen(page);
+        assert(!(await has(page, '#panel .bl-chart')) && /Waiting for the budget app/.test(await text(page, '#panel .bl-chart-sec')), 'no runway: ' + await text(page, '#panel .bl-chart-sec'));
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
+        await page.evaluate(() => window.HUB_GUEST.set(true));
+        await H.sleep(300);
+        await H.openPanel(page, 'budget-lab');
+        await H.fullScreen(page);
+        const p = await labPanel(page);
+        assert(/Hidden for guests/.test(p) && !/\$/.test(p) && !(await has(page, '#panel .bl-chart, #panel .bl-chart-sec, #panel svg polyline')), 'guest full screen: ' + p);
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
+    await check('Guest mode: Budget lab hides the merchants and Put it somewhere, and clears the session cuts', async () => {
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        await goTo(page, 'cut-1');
+        await press(page, 'ArrowRight', 5);
+        assert((await session(page)).cuts['Quick Bites Delivery'] === 5, 'session: ' + JSON.stringify(await session(page)));
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await page.evaluate(() => window.HUB_GUEST.set(true));
+        await H.sleep(300);
+        const s = await session(page);
+        assert(!Object.keys(s.cuts).length && s.cap === null, 'cuts kept: ' + JSON.stringify(s));
+        await H.openPanel(page, 'budget-lab');
+        const p = await labPanel(page);
+        assert(/Hidden for guests/.test(p) && !/\$|Quick Bites|Hilltop|Savings|AWWS/.test(p), 'panel: ' + p);
+        assert(!(await has(page, '#panel .bl-cut, #panel .bl-dest')), 'rows drawn for a guest');
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        await page.evaluate(() => window.HUB_GUEST.set(false));
+        await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back');
+        await H.openPanel(page, 'budget-lab');
+        assert((await cutLabels(page))[1] === 'Quick Bites Delivery · $127 so far · cut $0', 'a cut came back: ' + (await cutLabels(page))[1]);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
     /* ---------- the layouts ---------- */
     for (const id of ['awws-money', 'budget']) {
       const preset = C.layouts.find((l) => l.id === id);
@@ -499,6 +1090,12 @@ async function main() {
         }
         assert(Object.keys(cells).length === 72, 'gaps: ' + Object.keys(cells).length + ' of 72 cells');
         assert(preset.layout.some((t) => t.widget === 'entertainment'), 'no Entertainment on it');
+        if (id === 'budget') {
+          // Ian's call: Goals at 4 x 3 (one or two goals at a time) so Calendar stays on the Budget layout.
+          const goals = preset.layout.filter((t) => t.widget === 'budget-goals')[0];
+          assert(goals && goals.w === 4 && goals.h === 3, 'budget-goals: ' + JSON.stringify(goals));
+          assert(preset.layout.some((t) => t.widget === 'calendar'), 'no Calendar on the Budget layout');
+        }
         for (const es of [false, true]) {
           const page = await env.newPage({ layout: preset.layout, spanish: es, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
           try {
@@ -512,7 +1109,7 @@ async function main() {
       });
     }
 
-    await check('the switcher: seven pills, all whole; "Budget" switches and back', async () => {
+    await check('the switcher: nine pills, all whole; "Budget" switches and back', async () => {
       const page = await env.newPage({ storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.focusTile(page, await page.evaluate(() => {
@@ -535,10 +1132,10 @@ async function main() {
           }) };
         });
         const names = bar.items.map((i) => i.name);
-        assert(names.length === 7 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
+        assert(names.length === 9 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
         assert(!bar.over, 'the bar overflows');
         for (const it of bar.items) assert(it.l >= 0 && it.r <= bar.w && !it.cut, 'pill cut: ' + it.name);
-        for (let i = 0; i < 8; i++) {
+        for (let i = 0; i < 9; i++) {
           if ((await page.evaluate(() => (document.querySelector('.switcher-item.is-focused') || {}).textContent)) === 'Budget') break;
           await H.key(page, 'ArrowRight');
         }
@@ -619,7 +1216,7 @@ async function main() {
       try { acorn = require(p); break; } catch (e) { /* next */ }
     }
     const bad = [];
-    for (const f of ['app/widgets/budget.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
+    for (const f of ['app/widgets/budget.js', 'app/widgets/budget-lab.js', 'app/budget-lab-math.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
       const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
       if (acorn) {
         try { acorn.parse(src, { ecmaVersion: 5 }); } catch (e) { bad.push(f + ': ' + e.message); }
