@@ -637,7 +637,11 @@
     T.busy = true;
     T.probed = true;
     try {
-      C.service('/watch-track/status', 5000, function (err, data) {
+      // On screen means the person is back from the app: tell the service to
+      // stop counting (the app may keep running behind the hub).
+      var settle = false;
+      try { settle = document.hidden === false; } catch (e) { settle = false; }
+      C.service('/watch-track/status' + (settle ? '?settle=1' : ''), 5000, function (err, data) {
         T.busy = false;
         if (err) {
           if (err === 'not found') { T.old = true; savePending([]); }

@@ -817,6 +817,15 @@ async function main() {
     // The same token again does not start a second track.
     await s.call('/watch-track?app=never.app&id=nnnnnn111111&need=5');
     assert((await s.call('/watch-track/status')).body.tracks.filter((t) => t.id === 'nnnnnn111111').length === 1, 'doubled');
+    // settle=1 (the hub is on screen again): an unfinished track stops counting even though its app still runs.
+    await s.call('/watch-track?app=other.app&id=ssssss111111&need=40');
+    s.setRunning([{ id: 'p2', appId: 'other.app' }]);
+    await s.tick();
+    st = (await s.call('/watch-track/status?settle=1')).body.tracks.filter((t) => t.id === 'ssssss111111')[0];
+    assert(st.minutes === 1 && st.active === false && st.done === false, 'settle: ' + JSON.stringify(st));
+    await s.tick();
+    st = (await s.call('/watch-track/status')).body.tracks.filter((t) => t.id === 'ssssss111111')[0];
+    assert(st.minutes === 1, 'counted after settle: ' + JSON.stringify(st));
   });
 
   await check('The new and changed app files are plain ES5', () => {

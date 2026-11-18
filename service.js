@@ -15,7 +15,8 @@
  *                        start counting the minutes that app stays running (checked
  *                        once a minute; the page itself sleeps while an app is open);
  *                        done once it has been running N minutes
- *   GET /watch-track/status   every track so far: [{ id, minutes, need, done, active }]
+ *   GET /watch-track/status   every track so far: [{ id, minutes, need, done, active }];
+ *                        &settle=1 (hub on screen again) stops the unfinished ones
  *   GET /key?k=KEY_...   press a remote key (used for HDMI inputs)
  *   GET /webhook?url=... send an empty POST, e.g. to a Home Assistant webhook
  *   GET /fetch?url=...   read JSON from one of four public weather/city addresses
@@ -164,6 +165,15 @@ function checkTrack(q) {
   if (!TOKEN_RE.test(id)) return 'bad id';
   if (!(need >= 1 && need <= 600 && Math.floor(need) === need)) return 'bad need';
   return { app: app, id: id, need: need };
+}
+
+/* settle: the hub is on screen again, so the person has left the app (it may
+   still run in the background). Unfinished tracks stop counting here. */
+function settleTracks() {
+  var now = Date.now();
+  for (var i = 0; i < tracks.length; i++) {
+    if (tracks[i].active && !tracks[i].done) { tracks[i].active = false; tracks[i].endedAt = now; }
+  }
 }
 
 function trackStatus() {
@@ -549,6 +559,7 @@ var server = http.createServer(function (req, res) {
   }
 
   if (parsed.pathname === '/watch-track/status') {
+    if (q.settle === '1') settleTracks();
     return send(res, 200, { ok: true, tracks: trackStatus() });
   }
 
