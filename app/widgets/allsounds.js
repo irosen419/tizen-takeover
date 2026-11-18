@@ -134,19 +134,25 @@
 
     v.source = str(d.source, 30);
     v.device = str(d.device, 60);
-    if ((d.state === 'playing' || d.state === 'paused') && (d.title || d.source)) {
+    if ((d.state === 'playing' || d.state === 'paused') && (d.title || d.source || d.device)) {
       v.kind = d.state;
       v.song = true;
       v.label = d.state === 'playing' ? T('playing', 'Now playing') : T('paused', 'Paused');
       var title = str(d.title, 200);
       var artist = str(d.artist, 120);
       var album = str(d.album, 120);
-      // A radio show: the show, then the station. No title at all: the app.
-      v.title = title || v.source;
+      // A radio show: the show, then the station. No title at all (TuneIn on
+      // an Echo says nothing about what plays): the app, or plain words; the
+      // speaker's name stays on the line below, and the music mark shows.
+      v.title = title || v.source || (d.state === 'playing' ? T('unknown', 'Something is playing') : T('unknownPaused', 'Something is paused'));
+      v.unknown = !title;
       v.sub = artist || album;
       v.album = artist && album ? album : '';
       if (!title) { v.sub = ''; v.album = ''; }
-      v.art = artUrl(d.art);
+      v.art = title ? artUrl(d.art) : '';
+      // An Echo still "playing" a song that should have ended a while ago
+      // (the Pi decides): a small quiet line under the title.
+      v.stale = d.state === 'playing' && d.from === 'echo' && d.stale === true && !!title;
       return v;
     }
     if (d.state === 'notset') {
@@ -266,6 +272,7 @@
       eq(card.head, v);
       el('span', 'as-label-text', card.head, v.label);
       card.title = el('div', 'as-title', text, v.title);
+      card.stale = v.stale ? el('div', 'as-stale', text, T('stale', 'May be out of date')) : null;
       card.sub = v.sub ? el('div', 'as-sub', text, v.sub) : null;
       card.meta = meta(text, v);
     } else {
@@ -312,13 +319,13 @@
       clamp(card.title, tries[i]);
       clamp(card.sub, 1);
       if (card.meta) card.meta.style.display = '';
-      var textH = outer(card.head) + outer(card.title) + outer(card.sub) + outer(card.meta);
+      var textH = outer(card.head) + outer(card.title) + outer(card.stale) + outer(card.sub) + outer(card.meta);
       px = Math.min(room.w, room.h - textH - 0.7 * r);
       if (px >= 4 * r || i === tries.length - 1) break;
     }
     if (px < 4 * r && card.meta) {
       card.meta.style.display = 'none';
-      px = Math.min(room.w, room.h - (outer(card.head) + outer(card.title) + outer(card.sub)) - 0.7 * r);
+      px = Math.min(room.w, room.h - (outer(card.head) + outer(card.title) + outer(card.stale) + outer(card.sub)) - 0.7 * r);
     }
     if (px < 3 * r) {
       card.text.style.display = 'none';
@@ -331,20 +338,22 @@
   // tall the speaker line goes first, then the second line, then the label.
   function fitRowText(card, roomH) {
     clamp(card.sub, 1);
-    var used = function () { return outer(card.head) + outer(card.title) + outer(card.sub) + outer(card.meta); };
+    var used = function () { return outer(card.head) + outer(card.title) + outer(card.stale) + outer(card.sub) + outer(card.meta); };
     if (card.strip) {
       if (card.head) card.head.style.display = 'none';
+      if (card.stale) card.stale.style.display = 'none';
       if (card.meta) card.meta.style.display = 'none';
       clamp(card.title, 1);
       card.text.style.maxHeight = roomH + 'px';
       return;
     }
-    var others = outer(card.head) + outer(card.sub) + outer(card.meta);
+    var others = outer(card.head) + outer(card.stale) + outer(card.sub) + outer(card.meta);
     var lines = Math.max(1, Math.floor((roomH - others) / lineHeight(card.title)));
     clamp(card.title, Math.min(lines, 3));
     if (used() > roomH + 1 && card.meta) card.meta.style.display = 'none';
     if (used() > roomH + 1) clamp(card.title, 1);
     if (used() > roomH + 1 && card.head) card.head.style.display = 'none';
+    if (used() > roomH + 1 && card.stale) card.stale.style.display = 'none';
     if (used() > roomH + 1) clamp(card.sub, 0);
     card.text.style.maxHeight = roomH + 'px';
   }
@@ -365,6 +374,7 @@
       eq(head, v);
       el('span', 'as-label-text', head, v.label);
       page.title = el('div', 'as-title', info, v.title);
+      page.stale = v.stale ? el('div', 'as-stale', info, T('stale', 'May be out of date')) : null;
       page.sub = v.sub ? el('div', 'as-sub', info, v.sub) : null;
       page.album = v.album ? el('div', 'as-album', info, v.album) : null;
       var foot = el('div', 'as-foot', info);
@@ -395,7 +405,7 @@
     clamp(page.title, page.full ? 3 : 2);
     clamp(page.sub, 2);
     clamp(page.album, 1);
-    var used = function () { return outer(page.head) + outer(page.title) + outer(page.sub) + outer(page.album) + outer(page.foot); };
+    var used = function () { return outer(page.head) + outer(page.title) + outer(page.stale) + outer(page.sub) + outer(page.album) + outer(page.foot); };
     if (used() > roomH && page.album) page.album.style.display = 'none';
     if (used() > roomH) clamp(page.sub, 1);
     if (used() > roomH) clamp(page.title, 1);
@@ -408,7 +418,7 @@
     var L = window.HUB_I18N;
     var lang = '';
     try { lang = L && L.lang ? L.lang() : ''; } catch (e) { lang = ''; }
-    return JSON.stringify([lang, v.kind, v.label, v.title, v.sub, v.album, v.source, v.device, v.art, v.msg, v.hint]);
+    return JSON.stringify([lang, v.kind, v.label, v.title, v.sub, v.album, v.source, v.device, v.art, v.msg, v.hint, !!v.stale]);
   }
 
   function refresh(force) {

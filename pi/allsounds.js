@@ -11,7 +11,7 @@
  *     server already keeps. Spotify wins when both are playing.
  *
  * Out of it comes one small resource, "allsounds", that the TV draws:
- *   { v, state, from, source, device, title, artist, album, art, problem }
+ *   { v, state, from, source, device, title, artist, album, art, problem, stale }
  *   state    playing | paused | idle | off | notset | error
  *   from     'echo', 'spotify' or ''
  *   source   the app or service ("TuneIn", "Spotify"), up to 30 characters
@@ -22,14 +22,20 @@
  *            only work with the token, which never leaves the Pi.
  *   problem  '' or a fixed word: 'auth' (Home Assistant refused the token),
  *            'unreachable', 'reply' (an answer that could not be read)
+ *   stale    true when an Echo says "playing" a song that should have ended
+ *            over a minute ago (staleEcho). Alexa Media Player keeps the last
+ *            title when an app it does not understand (Audible) takes over.
+ *            Only ever for an Echo that is playing, never for Spotify.
  *
  * Settings (pi/.env), all optional:
  *   HA_TOKEN            a long-lived access token from Home Assistant (your
  *                       profile, Security). Without it this is "not set up".
  *   HA_URL              Home Assistant's address; http://127.0.0.1:8123 when
  *                       left out (it runs on the same Pi).
- *   ALLSOUNDS_ENTITIES  a comma list of media_player ids to watch (all of
- *                       them when left out), e.g. media_player.living_room_echo
+ *   ALLSOUNDS_ENTITIES  a comma list of media_player ids to watch, e.g.
+ *                       media_player.ian_s_echo_show,media_player.ian_s_echo_dot.
+ *                       Left out: every Echo-style speaker (isAlexaSpeaker),
+ *                       which may include speakers on someone else's account.
  *
  * The log only ever gets fixed words (Ian's rule, 2026-11-17): never the
  * token, an address, a title, a device name or anything from Amazon.
@@ -51,6 +57,7 @@ const FAILS_BEFORE_ERROR = 2;        // a network hiccup keeps the last picture 
 const MAX_ENTITIES = 12;
 const STATES = ['playing', 'paused', 'idle', 'off', 'notset', 'error'];
 const PROBLEMS = ['', 'auth', 'unreachable', 'reply'];
+const STALE_AFTER_S = 60;            // past the end of the song by this much
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const str = (v) => (typeof v === 'string' ? v : '');
@@ -100,7 +107,7 @@ function configFromEnv(env) {
 /* ---------- the resource the TV gets ---------- */
 
 function notsetData() {
-  return { v: 1, state: 'notset', from: '', source: '', device: '', title: '', artist: '', album: '', art: '', problem: '' };
+  return { v: 1, state: 'notset', from: '', source: '', device: '', title: '', artist: '', album: '', art: '', problem: '', stale: false };
 }
 
 // Rebuilds data from known fields only, for the state file and the TV.
@@ -113,15 +120,19 @@ function cleanData(d, allowHttp) {
     source: cleanText(d.source, 30), device: cleanText(d.device, 60),
     title: cleanText(d.title, 200), artist: cleanText(d.artist, 120), album: cleanText(d.album, 120),
     art: cleanArt(d.art, allowHttp),
-    problem: PROBLEMS.indexOf(d.problem) >= 0 ? d.problem : ''
+    problem: PROBLEMS.indexOf(d.problem) >= 0 ? d.problem : '',
+    stale: d.stale === true
   };
-  if ((state === 'playing' || state === 'paused') && !out.title && !out.source) out.state = 'idle';
+  // Playing with nothing known (TuneIn on an Echo sends no title, artist,
+  // picture or app): still playing, as long as the speaker is known.
+  if ((state === 'playing' || state === 'paused') && !out.title && !out.source && !out.device) out.state = 'idle';
   if (out.state !== 'playing' && out.state !== 'paused') {
     out.from = ''; out.title = ''; out.artist = ''; out.album = ''; out.art = '';
     if (out.state !== 'idle' && out.state !== 'off') out.device = '';
     if (out.state === 'notset' || out.state === 'error') out.source = '';
   }
   if (out.state !== 'error') out.problem = '';
+  if (out.state !== 'playing' || out.from !== 'echo') out.stale = false;
   return out;
 }
 
@@ -156,11 +167,38 @@ function sourceLabel(attrs) {
     for (let k = 0; k < KNOWN_SOURCES.length; k++) if (KNOWN_SOURCES[k][0].test(t)) return KNOWN_SOURCES[k][1];
     return cleanText(t, 30);
   }
-  return 'Alexa';
+  // Alexa Media Player often names no app at all (Amazon Music, TuneIn): no
+  // chip then, rather than a guess.
+  return '';
+}
+
+// An Echo-style entity from the Alexa Media Player integration: it carries
+// last_called or bluetooth_list. TVs, game consoles, browser_mod panels and
+// car head units do not. media_player.everywhere is Alexa's "every speaker"
+// group, which only repeats the others.
+function isAlexaSpeaker(e) {
+  if (!isObj(e)) return false;
+  const id = str(e.entity_id);
+  if (!/^media_player\./.test(id) || id === 'media_player.everywhere' || /^media_player\.browser_mod/.test(id)) return false;
+  const a = isObj(e.attributes) ? e.attributes : {};
+  return Object.prototype.hasOwnProperty.call(a, 'last_called') || Object.prototype.hasOwnProperty.call(a, 'bluetooth_list');
+}
+
+// Is this playing entity's song over a minute past its end? Only with a
+// duration: a radio stream has none and may rightly stay the same for hours.
+// The position is where it was at media_position_updated_at.
+function staleEcho(a, now) {
+  const dur = Number(a.media_duration);
+  const pos = Number(a.media_position);
+  const at = Date.parse(str(a.media_position_updated_at));
+  if (a.media_duration == null || a.media_position == null || !isFinite(dur) || dur <= 0 || !isFinite(pos) || pos < 0 || !isFinite(at)) return false;
+  const est = pos + Math.max(0, (now - at) / 1000);
+  return est > dur + STALE_AFTER_S;
 }
 
 // What one media_player entity says, in our words, or null when it is not one.
-function readEntity(e, allowHttp) {
+// now: the time in ms (Date.now() when left out).
+function readEntity(e, allowHttp, now) {
   if (!isObj(e) || !/^media_player\.[a-z0-9_]{1,80}$/.test(str(e.entity_id))) return null;
   const a = isObj(e.attributes) ? e.attributes : {};
   const raw = str(e.state).toLowerCase();
@@ -177,7 +215,8 @@ function readEntity(e, allowHttp) {
     id: e.entity_id, state: state, changedAt: isFinite(changed) ? changed : 0,
     device: cleanText(a.friendly_name, 60) || cleanText(e.entity_id.slice(13).replace(/_/g, ' '), 60),
     source: sourceLabel(a), title: title, artist: artist, album: album === title ? '' : album,
-    art: cleanArt(a.entity_picture, allowHttp)
+    art: cleanArt(a.entity_picture, allowHttp),
+    stale: state === 'playing' && staleEcho(a, typeof now === 'number' ? now : Date.now())
   };
 }
 
@@ -189,7 +228,7 @@ function pickActive(list) {
   const hit = newest('playing') || newest('paused');
   if (hit) {
     return { v: 1, state: hit.state, from: 'echo', source: hit.source, device: hit.device, title: hit.title,
-      artist: hit.artist, album: hit.album, art: hit.art, problem: '' };
+      artist: hit.artist, album: hit.album, art: hit.art, problem: '', stale: hit.stale === true };
   }
   const d = notsetData();
   const idle = newest('idle');
@@ -206,7 +245,7 @@ function fromSpotify(np, allowHttp) {
   return cleanData({
     v: 1, state: np.state, from: 'spotify', source: 'Spotify',
     device: isObj(np.device) ? np.device.name : '',
-    title: t.title, artist: t.artist, album: t.album, art: t.artSmall || t.art, problem: ''
+    title: t.title, artist: t.artist, album: t.album, art: t.artSmall || t.art, problem: '', stale: false
   }, allowHttp);
 }
 
@@ -222,7 +261,7 @@ function merge(house, sp) {
 }
 
 function signature(d) {
-  return JSON.stringify([d.state, d.from, d.source, d.device, d.title, d.artist, d.album, d.art, d.problem]);
+  return JSON.stringify([d.state, d.from, d.source, d.device, d.title, d.artist, d.album, d.art, d.problem, d.stale === true]);
 }
 
 /* ---------- a small web request ---------- */
@@ -278,6 +317,7 @@ function createWatcher(o) {
   const idleMs = o.idleMs || IDLE_MS;
   const timeoutMs = o.timeoutMs || REQUEST_MS;
   const spotify = typeof o.spotify === 'function' ? o.spotify : () => null;
+  const now = typeof o.now === 'function' ? o.now : () => Date.now();
 
   let house = cfg.configured ? null : notsetData();   // the last picture from Home Assistant
   let fails = 0;
@@ -347,7 +387,8 @@ function createWatcher(o) {
         let j;
         try { j = JSON.parse(r.text); } catch (e) { return { bad: true }; }
         if (!Array.isArray(j)) return { bad: true };
-        return { list: j.filter((x) => isObj(x) && /^media_player\./.test(str(x.entity_id))) };
+        // No list in .env: Echo-style speakers only (see isAlexaSpeaker).
+        return { list: j.filter(isAlexaSpeaker) };
       });
     }
     // Only the listed ones: one small call each, in turn.
@@ -379,7 +420,7 @@ function createWatcher(o) {
       if (r.bad) return fail('reply');
       if (fails) log('allsounds: Home Assistant working again');
       fails = 0;
-      house = pickActive(r.list.map((e) => readEntity(e, allowHttp)));
+      house = pickActive(r.list.map((e) => readEntity(e, allowHttp, now())));
       return { ok: true, changed: put() };
     }, (e) => fail(e && e.kind === 'timeout' ? 'timeout' : e && e.kind === 'reply' ? 'reply' : 'network'));
   }
@@ -462,7 +503,9 @@ module.exports = {
   cleanText: cleanText,
   cleanArt: cleanArt,
   sourceLabel: sourceLabel,
+  isAlexaSpeaker: isAlexaSpeaker,
   readEntity: readEntity,
+  staleEcho: staleEcho,
   pickActive: pickActive,
   fromSpotify: fromSpotify,
   merge: merge,
