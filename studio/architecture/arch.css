@@ -347,10 +347,20 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 900px) {
   .ar-dgbar { gap: 6px 8px; }
   .ar-dcrumbs { order: 3; flex-basis: 100%; }
-  .ar-stage { border-radius: 12px; }
+  .ar-stage { border-radius: 12px; max-height: 72vh; overscroll-behavior: contain; }
 }
 #archView.is-diag .ar-top { position: static; }
 @media (prefers-reduced-motion: reduce) {
   .ar-node, .ar-e, .ar-elab, .ar-ghost, .ar-map .box > rect, #archView.is-diag .ar-detail { transition: none !important; }
   .ar-fpath, .ar-enter, .ar-fade, .ar-node.ar-pulse { animation: none !important; }
 }
+.ar-e.trunk { stroke-width: 2.2; stroke-linecap: round; }
+.ar-e.bun { stroke-width: 1.2; }
+.ar-hub circle { fill: var(--panel); stroke: var(--edge); stroke-width: 1.4; }
+.ar-hub text { font: 700 10.5px var(--font); fill: var(--mute); }
+.has-hot .ar-hub.hot circle { stroke: var(--accent); }
+.has-hot .ar-hub.hot text { fill: var(--accent); }
+.ar-elab.hov { opacity: 0; }
+.has-hot .ar-elab.hov.hot { opacity: 1; }
+.ar-elab.hov.hot { z-index: 7; }
+.ar-fanpt { fill: var(--edge); }

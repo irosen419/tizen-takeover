@@ -865,13 +865,23 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 900px) {
   .ar-dgbar { gap: 6px 8px; }
   .ar-dcrumbs { order: 3; flex-basis: 100%; }
-  .ar-stage { border-radius: 12px; }
+  .ar-stage { border-radius: 12px; max-height: 72vh; overscroll-behavior: contain; }
 }
 #archView.is-diag .ar-top { position: static; }
 @media (prefers-reduced-motion: reduce) {
   .ar-node, .ar-e, .ar-elab, .ar-ghost, .ar-map .box > rect, #archView.is-diag .ar-detail { transition: none !important; }
   .ar-fpath, .ar-enter, .ar-fade, .ar-node.ar-pulse { animation: none !important; }
 }
+.ar-e.trunk { stroke-width: 2.2; stroke-linecap: round; }
+.ar-e.bun { stroke-width: 1.2; }
+.ar-hub circle { fill: var(--panel); stroke: var(--edge); stroke-width: 1.4; }
+.ar-hub text { font: 700 10.5px var(--font); fill: var(--mute); }
+.has-hot .ar-hub.hot circle { stroke: var(--accent); }
+.has-hot .ar-hub.hot text { fill: var(--accent); }
+.ar-elab.hov { opacity: 0; }
+.has-hot .ar-elab.hov.hot { opacity: 1; }
+.ar-elab.hov.hot { z-index: 7; }
+.ar-fanpt { fill: var(--edge); }
 
 /*ARCH-CSS-END*/
 </style>
@@ -3034,6 +3044,36 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
           if (p.end === 'L') p.e.p0 = { x: x, y: y }; else p.e.p1 = { x: x, y: y };
         });
       });
+      // hub treatment: four or more arrows into one side of a box share a trunk (a bus) and one arrowhead
+      var into = {}; out.trunks = [];
+      plist.forEach(function (e) {
+        if (e.ghost) return;
+        if (e.arrowR && !e.arrowL && !out.pos[e.right].key) (into[e.right + '>L'] = into[e.right + '>L'] || []).push(e);
+        if (e.arrowL && !e.arrowR && !out.pos[e.left].key) (into[e.left + '>R'] = into[e.left + '>R'] || []).push(e);
+      });
+      var from = {};
+      plist.forEach(function (e) {
+        if (e.ghost) return;
+        if (e.arrowR && !e.arrowL && !out.pos[e.left].key) (from[e.left + '>R'] = from[e.left + '>R'] || []).push(e);
+        if (e.arrowL && !e.arrowR && !out.pos[e.right].key) (from[e.right + '>L'] = from[e.right + '>L'] || []).push(e);
+      });
+      Object.keys(from).forEach(function (k) { // three or more arrows out of one side fan out from one stem
+        var arr = from[k]; if (arr.length < 3) return;
+        var id = k.split('>')[0], side = k.split('>')[1], B = out.pos[id], busy = (into[k] || []).length >= 4;
+        var ty = (B.open ? B.y + C.HEAD / 2 : B.y + B.h / 2) + (busy ? 26 : 0), bx = side === 'L' ? B.x : B.x + B.w, tx = side === 'L' ? bx - 22 : bx + 22, ends = [id];
+        arr.forEach(function (e) { e.bundled = true; if (side === 'R') { e.p0 = { x: tx, y: ty }; ends.push(e.right); } else { e.p1 = { x: tx, y: ty }; ends.push(e.left); } });
+        out.trunks.push({ id: id, side: side, n: arr.length, ends: ends, x: tx, y: ty, fan: true, d: 'M' + r1(bx) + ' ' + r1(ty) + ' L' + r1(tx) + ' ' + r1(ty) });
+      });
+      Object.keys(into).forEach(function (k) {
+        var arr = into[k]; if (arr.length < 4) return;
+        var id = k.split('>')[0], side = k.split('>')[1], B = out.pos[id], ty = B.open ? B.y + C.HEAD / 2 : B.y + B.h / 2;
+        var bx = side === 'L' ? B.x : B.x + B.w, tx = side === 'L' ? bx - 30 : bx + 30, ends = [id];
+        arr.forEach(function (e) {
+          e.bundled = true;
+          if (side === 'L') { e.p1 = { x: tx, y: ty }; e.arrowR = false; ends.push(e.left); } else { e.p0 = { x: tx, y: ty }; e.arrowL = false; ends.push(e.right); }
+        });
+        out.trunks.push({ id: id, side: side, n: arr.length, ends: ends, x: tx, y: ty, d: 'M' + r1(tx) + ' ' + r1(ty) + ' L' + r1(bx) + ' ' + r1(ty) });
+      });
       // geometry
       plist.forEach(function (e) {
         var pts = [e.p0]; e.wps.forEach(function (w) { pts.push({ x: w.x1, y: w.y }); pts.push({ x: w.x2, y: w.y }); }); pts.push(e.p1);
@@ -3054,7 +3094,9 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
       out.chips.forEach(function (c) { obst.push(rect(c.x, c.y, c.w, c.h)); });
       out.grids.forEach(function (g) { obst.push(rect(g.x, g.y, 180, C.GRIDHEAD - 6)); });
       var placed = [];
-      plist.slice().sort(function (x, y) { return (x.ghost - y.ghost) || (x.p0.x - y.p0.x) || (x.p0.y - y.p0.y); }).forEach(function (e) {
+      var placedHov = [];
+      out.trunks.forEach(function (t) { obst.push(rect(t.x - 12, t.y - 12, 24, 24)); });
+      plist.slice().sort(function (x, y) { return (!!x.bundled - !!y.bundled) || (x.ghost - y.ghost) || (x.p0.x - y.p0.x) || (x.p0.y - y.p0.y); }).forEach(function (e) {
         if (!e.text) return;
         var sz = est(e.text), samples = [];
         e.segs.forEach(function (s, si) {
@@ -3066,14 +3108,16 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
         for (var i = 0; i < samples.length && !got; i++) {
           var r = rect(samples[i].x - sz.w / 2, samples[i].y - sz.h / 2, sz.w, sz.h), ok = r.x >= 0 && r.y >= -4 && r.x + r.w <= out.w;
           for (var j = 0; ok && j < obst.length; j++) if (hit(r, obst[j], 4)) ok = false;
-          for (var j2 = 0; ok && j2 < placed.length; j2++) if (hit(r, placed[j2], 3)) ok = false;
+          var pl = e.bundled ? placedHov : placed;
+          for (var j2 = 0; ok && j2 < pl.length; j2++) if (hit(r, pl[j2], 3)) ok = false;
+          for (var j3 = 0; ok && e.bundled && j3 < placed.length; j3++) if (hit(r, placed[j3], 3)) ok = false;
           if (ok) got = r;
         }
-        if (got) { placed.push(got); out.labels.push({ edge: e, x: got.x, y: got.y, w: got.w, h: got.h, lines: sz.lines, text: e.text }); e.label = got; }
+        if (got) { (e.bundled ? placedHov : placed).push(got); out.labels.push({ edge: e, x: got.x, y: got.y, w: got.w, h: got.h, lines: sz.lines, text: e.text, hov: !!e.bundled }); e.label = got; }
         else { var s0 = samples[0]; out.labels.push({ edge: e, x: s0.x - sz.w / 2, y: s0.y - sz.h / 2, w: sz.w, h: sz.h, lines: sz.lines, text: e.text, over: true }); }
       });
       out.edges = plist;
-      var minY = 0; out.labels.forEach(function (l) { if (!l.over) minY = Math.min(minY, l.y); });
+      var minY = 0; out.labels.forEach(function (l) { if (!l.over && !l.hov) minY = Math.min(minY, l.y); });
       out.top = Math.ceil(-minY);
       return out;
     }
@@ -3446,7 +3490,11 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     L.grids.forEach(function (g) { s += '<div class="ar-gridlab" style="left:' + g.x + 'px;top:' + g.y + 'px">Also in this part</div>'; });
     s += '<svg class="ar-edges" width="' + Math.ceil(L.w) + '" height="' + Math.ceil(L.h) + '" style="overflow:visible" aria-hidden="true"><defs>' + MARKERS + '</defs>';
     L.edges.forEach(function (e) {
-      s += '<path class="ar-e' + (e.ghost ? ' ghost' : '') + '" data-ends="' + esc(e.a + ' ' + e.b) + '" d="' + e.d + '"' + (e.arrowR ? ' marker-end="url(#arAh)"' : '') + (e.arrowL ? ' marker-start="url(#arAh)"' : '') + '/>';
+      s += '<path class="ar-e' + (e.ghost ? ' ghost' : '') + (e.bundled ? ' bun' : '') + '" data-ends="' + esc(e.a + ' ' + e.b) + '" d="' + e.d + '"' + (e.arrowR ? ' marker-end="url(#arAh)"' : '') + (e.arrowL ? ' marker-start="url(#arAh)"' : '') + '/>';
+    });
+    L.trunks.forEach(function (t) {
+      s += '<path class="ar-e trunk" data-ends="' + esc(t.ends.join(' ')) + '" d="' + t.d + '"' + (t.fan ? '' : (t.side === 'L' ? ' marker-end' : ' marker-start') + '="url(#arAh)"') + '/>' +
+        (t.fan ? '<circle class="ar-fanpt" cx="' + t.x + '" cy="' + t.y + '" r="3"/>' : '<g class="ar-hub" data-ends="' + esc(t.ends.join(' ')) + '"><circle cx="' + t.x + '" cy="' + t.y + '" r="9.5"/><text x="' + t.x + '" y="' + (t.y + 3.8) + '" text-anchor="middle">' + t.n + '</text></g>');
     });
     if (f) s += '<g class="ar-fl">' + flowPaths(f.steps, function (id) { var v = visOf(L, id); return v && L.pos[v]; }) + '</g>';
     s += '</svg>';
@@ -3456,7 +3504,7 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
       s += '<button type="button" class="ar-ghost side-' + c.side + '" data-zoom="' + esc(g.children.length ? g.id : (g._p || g.id)) + '" data-chip="' + esc(c.id) + '" data-g="' + esc(t.id) + '" style="left:' + c.x + 'px;top:' + c.y + 'px;width:' + c.w + 'px;height:' + c.h + 'px" aria-label="' + esc((c.side === 'in' ? 'From ' : 'To ') + g.title + '. Open its diagram') + '"><small>' + (c.side === 'in' ? 'From' : 'To') + ' · ' + plural(L.edges.filter(function (e) { return e.a === c.id || e.b === c.id; }).length, 'link') + '</small><b>' + esc(g.title) + '</b></button>';
     });
     L.labels.forEach(function (l) {
-      s += '<div class="ar-elab' + (l.edge.ghost ? ' ghost' : '') + (l.over ? ' over' : '') + '" data-ends="' + esc(l.edge.a + ' ' + l.edge.b) + '" title="' + esc(l.text) + '" style="left:' + Math.round(l.x) + 'px;top:' + Math.round(l.y) + 'px;width:' + Math.round(l.w) + 'px">' + esc(l.text) + '</div>';
+      s += '<div class="ar-elab' + (l.edge.ghost ? ' ghost' : '') + (l.over ? ' over' : '') + (l.hov ? ' hov' : '') + '" data-ends="' + esc(l.edge.a + ' ' + l.edge.b) + '" title="' + esc(l.text) + '" style="left:' + Math.round(l.x) + 'px;top:' + Math.round(l.y) + 'px;width:' + Math.round(l.w) + 'px">' + esc(l.text) + '</div>';
     });
     s += '</div></div></div></div>';
     s += '<p class="ar-mapnote">' + esc(root.summary || '') + ' Tap a part for its details, “+ parts” to open it in place. Dashed chips are other parts of the system; arrows show who sends what.' + (busy ? ' Busy view: point at a part (or a dashed chip) to see its links to the rest of the system.' : '') + '</p>';
@@ -3497,7 +3545,7 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     if (!st || !cv) return;
     var W = parseFloat(cv.style.width), H = parseFloat(cv.style.height), avail = st.clientWidth;
     if (!avail) return;
-    if (S.fit) S.z = Math.min(1, avail / W);
+    if (S.fit) { S.z = Math.min(1, avail / W); if (isNarrow() && S.z < 0.62) { S.z = 0.62; st.scrollLeft = 0; st.scrollTop = 0; } }
     var cx = keep ? (st.scrollLeft + st.clientWidth / 2) / (sz.offsetWidth || 1) : 0, cy = keep ? keep.y : 0;
     cv.style.transform = 'scale(' + S.z + ')';
     sz.style.width = Math.floor(W * S.z) + 'px'; sz.style.height = Math.ceil(H * S.z) + 'px';

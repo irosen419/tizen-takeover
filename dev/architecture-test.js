@@ -85,7 +85,7 @@ if (makeLayout) {
     L.chips.forEach((c) => { if (!byId[c.key]) missing.push(rid + ' chip ' + c.key); });
     L.edges.forEach((e) => [e.a, e.b].forEach((x) => { const id = x.replace(/^(in|out):/, ''); if (!byId[id] || !L.pos[x] || !e.d || /NaN|undefined/.test(e.d)) missing.push(rid + ' edge ' + x); }));
     const rects = L.boxes.map((b) => b.open ? { x: b.x, y: b.y, w: b.w, h: M.C.HEAD } : b).concat(L.chips);
-    L.labels.filter((l) => !l.over).forEach((l) => rects.forEach((r) => { if (M.hit(l, r, -0.5)) labelHits.push(rid + ': "' + l.text.slice(0, 24) + '" on ' + r.id); }));
+    L.labels.filter((l) => !l.over && !l.hov).forEach((l) => rects.forEach((r) => { if (M.hit(l, r, -0.5)) labelHits.push(rid + ': "' + l.text.slice(0, 24) + '" on ' + r.id); }));
   }));
   check('every part with parts lays out as a diagram without throwing (' + roots.length + ' diagrams, closed and all open)', thrown.length === 0, thrown.slice(0, 4).join('; '));
   check('no two boxes or chips overlap in any diagram', over.length === 0, over.slice(0, 4).join('; '));
