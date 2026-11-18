@@ -24,8 +24,10 @@
  *           same time, from motion.js)
  *   exit    a wave with the bread, then she skates out the way she came
  * The work spot is the first [data-agent-spot] element in the tile (a
- * widget puts it near where its new item shows; she works at its lower
- * edge, at its end on her side), else the middle of the tile, lower half; measured once as she starts, kept inside the tile. On a
+ * widget puts it on the row where its new item shows; she crouches on its
+ * top edge, at its end on her side, so she covers the end of the line above
+ * and not the row), else the middle of the tile, lower half; measured once
+ * as she starts, kept inside the tile. On a
  * tile too small for all that she enters, works at its bottom corner and
  * leaves (sparks, no leap). Anything that takes a chip away at once (a
  * panel, a layout change, a resize, the hub slowing down) takes her away at
@@ -311,10 +313,11 @@
   }
 
   // The work spot (screen px): the first visible [data-agent-spot] in the
-  // tile (at its lower edge, at its end on the side she comes from, so her
-  // body sits over the end of that row and not over its words), else the
-  // middle of the tile, lower half; kept inside the tile. Measured once, as
-  // she starts.
+  // tile (at its top edge, at its end on the side she comes from: she
+  // crouches on that row's top line with her hand on it, so her body is in
+  // the room at the end of the line above, not over the row's words), else
+  // the middle of the tile, lower half; kept inside the tile. Measured once,
+  // as she starts.
   function spotOf(tile, r, inset, fromLeft) {
     var x = r.left + r.width / 2;
     var y = r.top + r.height * 0.72;
@@ -324,7 +327,7 @@
       var m = list[i].getBoundingClientRect();
       if (m.width > 0 && m.height > 0) {
         x = fromLeft ? m.left + Math.min(inset, m.width / 2) : m.right - Math.min(inset, m.width / 2);
-        y = m.bottom;
+        y = m.top;
         marker = true;
         break;
       }

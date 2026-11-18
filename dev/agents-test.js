@@ -264,6 +264,8 @@ async function noneLeft(page, ms, text) {
     throw new Error(text + ': ' + JSON.stringify(s && s.figs.map((f) => [f.widget, f.state, f.phases, f.mode])));
   }
 }
+// None on widget's tile (another tile's arrival, a new song say, may come meanwhile).
+const noneOn = (page, widget, ms, text) => until(async () => { const s = await state(page); return !!s && !s.figs.some((f) => f.widget === widget); }, ms, text);
 const chipsIn = (page, widget) => page.evaluate((w) => document.querySelectorAll('.cell[data-widget="' + w + '"] .fx-chip').length, widget);
 // The phases she went through on widget (the last one seen there), polled while she lives.
 async function watchPhases(page, widget) {
@@ -668,25 +670,28 @@ async function check11(pi) {
   assert(f.spot.x >= t.left && f.spot.x <= t.right && f.spot.y >= t.top && f.spot.y <= t.bottom, 'spot outside the tile: ' + JSON.stringify(f));
   assert(f.at.x >= t.left && f.at.x <= t.right && f.at.y >= t.top && f.at.y <= t.bottom, 'her hand outside the tile: ' + JSON.stringify(f));
   await say(pi, 'hub:working todo done');
-  await noneLeft(page, 2500, 'she stayed (far marker)');
+  await noneOn(page, 'todo', 2500, 'she stayed (far marker)');
   // A real to-do list: the widget's own marker (the end of the list) is used, her hand on it.
   await page.evaluate(() => { const m = document.querySelector('.cell[data-widget="todo"] .tile > div[style*="3000px"]'); if (m) m.remove(); });
   await postTodo(pi, 'Spot one ' + Date.now());
   // (Wait for its arrival to come and go, so it cannot land while she works below.)
   await figOn(page, 'todo', null, 12000);
-  await noneLeft(page, 9000, 'she stayed (first to-do)');
+  await noneOn(page, 'todo', 9000, 'she stayed (first to-do)');
   await say(pi, 'hub:working todo');
   const g = await figOn(page, 'todo', 'work');
-  const row = await page.evaluate(() => { const n = document.querySelector('.cell[data-widget="todo"] [data-agent-spot]'); const r = n && n.getBoundingClientRect(); return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom, cls: n.className } : null; });
-  assert(row && /todo-tile-row/.test(row.cls) && g.spot.marker, 'the to-do marker: ' + JSON.stringify([row, g.spot]));
+  const row = await page.evaluate(() => { const n = document.querySelector('.cell[data-widget="todo"] [data-agent-spot]'); const r = n && n.getBoundingClientRect(); return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom, cls: n.className, text: n.textContent } : null; });
+  // The marker is the row where the new to-do showed (new ones go to the top of their level).
+  assert(row && /todo-tile-row/.test(row.cls) && /Spot one/.test(row.text) && g.spot.marker, 'the to-do marker: ' + JSON.stringify([row, g.spot]));
   assert(Math.abs(g.at.x - g.spot.x) < 40 && Math.abs(g.at.y - g.spot.y) < 40, 'her hand is not at the spot: ' + JSON.stringify([g.at, g.spot]));
+  // She crouches on the row's top edge (her feet on it), not over its words.
+  assert(Math.abs(g.spot.y - row.top) < 2 && g.at.y <= row.top + 6, 'she covers the row: ' + JSON.stringify([g.at, row]));
   // A language change while she works: still no chip, she carries on.
   await page.evaluate(() => window.HUB_I18N.setLang('es'));
   await sleep(1200);
   assert(await chipsIn(page, 'todo') === 0, 'a chip after the language change');
   assert((await state(page)).figs.filter((x) => x.widget === 'todo')[0].state === 'work', 'she stopped working');
   await say(pi, 'hub:working todo done');
-  await noneLeft(page, 2500, 'she stayed (after the language change)');
+  await noneOn(page, 'todo', 2500, 'she stayed (after the language change)');
   await page.evaluate(() => window.HUB_I18N.setLang('en'));
   noErrors(page);
 }

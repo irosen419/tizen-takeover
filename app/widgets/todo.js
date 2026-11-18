@@ -886,8 +886,10 @@
       list.style.display = 'none';
       more.style.display = 'none';
     } else {
-      // Where a character works when the list changes (app/agents.js): the end of the list.
-      list.lastChild.setAttribute('data-agent-spot', '');
+      // Where a character works when the list changes (app/agents.js): where
+      // a new to-do shows, the first optional row (new items go to the top of
+      // their level), else the first row.
+      (list.querySelector('.lv-optional') || list.firstChild).setAttribute('data-agent-spot', '');
     }
   }
 
