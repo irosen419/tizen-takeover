@@ -140,6 +140,50 @@ async function main() {
     assert.strictEqual(radio.device, 'l', 'the id stands in for a missing name');
   });
 
+  await check('platform from the picture host (an Echo names no app): every mapping, unknown hosts, the artist rule, no host leaks', () => {
+    const P = (pic, artist) => allsounds.inferPlatform({ entity_picture: pic, media_artist: artist });
+    const MAP = [
+      ['https://i.scdn.co/image/ab67616d0000b273', 'Spotify'],
+      ['https://mosaic.spotifycdn.com/x/y', 'Spotify'],
+      ['https://m.media-amazon.com/images/I/x.jpg', 'Amazon Music'],
+      ['https://images-na.ssl-images-amazon.com/images/I/x.jpg', 'Amazon Music'],
+      ['https://content-images.p-cdn.com/images/x.jpg', 'Pandora'],
+      ['https://content-images.p-cdn.us/images/x.jpg', 'Pandora'],
+      ['https://cdn-img.pandora.com/x.jpg', 'Pandora'],
+      ['https://cdn-profiles.tunein.com/s1/images/logo.png', 'TuneIn'],
+      ['https://d1.radiotime.com/x.png', 'TuneIn'],
+      ['https://i.iheart.com/v3/surl/x', 'iHeartRadio'],
+      ['https://iscale.iheart.com/x', 'iHeartRadio'],
+      ['https://n1.ihrhls.com/x.png', 'iHeartRadio'],
+      ['https://m.media.audible.com/images/x.jpg', 'Audible'],
+      ['https://is1-ssl.mzstatic.com/image/x.jpg', 'Apple Music'],
+      ['https://www.siriusxm.com/x.png', 'SiriusXM'],
+      ['HTTPS://I.SCDN.CO/x', 'Spotify']
+    ];
+    MAP.forEach((m) => assert.strictEqual(P(m[0], ''), m[1], m[0]));
+    // Unknown, look-alike and unusable pictures: nothing, not a guess.
+    ['https://example.com/x.jpg', 'https://evil-media-amazon.com/x', 'https://media-amazon.com.evil.net/x', 'https://scdn.co.example/x',
+      'https://notpandora.com/x', 'http://127.0.0.1:8123/art/album.svg', '/api/media_player_proxy/x?token=1', 'not a url', '', null, undefined, 5]
+      .forEach((u) => assert.strictEqual(P(u, ''), '', String(u)));
+    // An audiobook title on Amazon's host stays Amazon Music: no Audible guess.
+    assert.strictEqual(allsounds.inferPlatform({ entity_picture: 'https://m.media-amazon.com/x.jpg', media_title: 'Chapter 4', media_album_name: 'Project Hail Mary (Unabridged)' }), 'Amazon Music');
+    // The artist rule: exactly a service's name.
+    ['iHeartRadio', 'TuneIn', 'Pandora', 'SiriusXM'].forEach((n) => assert.strictEqual(P('', n), n));
+    ['iheartradio', 'Pandora Radio', 'The Pandora', 'Spotify', 'Amazon Music', ''].forEach((n) => assert.strictEqual(P('', n), '', n));
+    assert.strictEqual(P('https://example.com/x.jpg', 'iHeartRadio'), 'iHeartRadio');
+    assert.strictEqual(P('https://m.media-amazon.com/x.jpg', 'iHeartRadio'), 'iHeartRadio', 'a station naming itself beats Amazon\'s catch-all host');
+    assert.strictEqual(P('https://i.scdn.co/x', 'Pandora'), 'Spotify', 'a real artist called Pandora on Spotify art stays Spotify');
+    assert.strictEqual(allsounds.inferPlatform(null), '');
+    // A named app still wins over the inference (readEntity), and nothing keeps the host.
+    const named = allsounds.readEntity(entity('l', 'playing', { media_title: 'x', source: 'TuneIn', entity_picture: 'https://i.scdn.co/x' }));
+    assert.strictEqual(named.source, 'TuneIn');
+    const inferred = allsounds.cleanData(allsounds.pickActive([allsounds.readEntity(entity('l', 'playing', { media_title: 'x', entity_picture: 'https://content-images.p-cdn.com/secret-path/x.jpg' }))]));
+    assert.strictEqual(inferred.source, 'Pandora');
+    assert.ok(inferred.source.length <= 30);
+    assert.deepStrictEqual(Object.keys(inferred).sort(), ['album', 'art', 'artist', 'device', 'from', 'problem', 'source', 'stale', 'state', 'title', 'v']);
+    ['p-cdn', 'secret-path'].forEach((bad) => assert.ok(JSON.stringify(Object.assign({}, inferred, { art: '' })).indexOf(bad) < 0, bad + ' leaked beyond the picture address'));
+  });
+
   await check('selection without ALLSOUNDS_ENTITIES: Echo-style speakers only (not TVs, browser_mod, the "everywhere" group)', () => {
     const E = allsounds.isAlexaSpeaker;
     assert.strictEqual(E({ entity_id: 'media_player.ian_s_echo_show', attributes: { last_called: false } }), true);
@@ -155,12 +199,12 @@ async function main() {
     const r = (list) => allsounds.cleanData(allsounds.pickActive(list.map((e) => allsounds.readEntity(e))));
     const am = r([entity('ian_s_echo_show', 'playing', { friendly_name: 'Ian\'s Echo Show', last_called: false, media_title: 'Song', media_artist: 'Band',
       media_album_name: 'LP', media_content_type: 'music', entity_picture: 'https://m.media-amazon.com/images/I/x.jpg', entity_picture_local: '/api/media_player_proxy/x?token=1' })]);
-    assert.deepStrictEqual([am.state, am.source, am.title, am.art], ['playing', '', 'Song', 'https://m.media-amazon.com/images/I/x.jpg']);
+    assert.deepStrictEqual([am.state, am.source, am.title, am.art], ['playing', 'Amazon Music', 'Song', 'https://m.media-amazon.com/images/I/x.jpg']);
     const ti = r([entity('ian_s_echo_show', 'playing', { friendly_name: 'Ian\'s Echo Show', last_called: false, media_content_type: 'music' })]);
     assert.deepStrictEqual([ti.state, ti.from, ti.source, ti.device, ti.title, ti.art], ['playing', 'echo', '', 'Ian\'s Echo Show', '', ''], 'still playing, with the speaker');
     const st = r([entity('ian_s_echo_show', 'playing', { friendly_name: 'Ian\'s Echo Show', last_called: false, media_content_type: 'music', media_title: 'KERA',
       media_artist: null, media_album_name: null, entity_picture: 'https://cdn-profiles.tunein.com/s1/images/logo.png', entity_picture_local: '/api/media_player_proxy/x?token=1' })]);
-    assert.deepStrictEqual([st.state, st.source, st.device, st.title, st.artist, st.album, st.art], ['playing', '', 'Ian\'s Echo Show', 'KERA', '', '', 'https://cdn-profiles.tunein.com/s1/images/logo.png'], 'the station name, no artist');
+    assert.deepStrictEqual([st.state, st.source, st.device, st.title, st.artist, st.album, st.art], ['playing', 'TuneIn', 'Ian\'s Echo Show', 'KERA', '', '', 'https://cdn-profiles.tunein.com/s1/images/logo.png'], 'the station name, no artist');
     const npr = r([entity('ian_s_echo_show', 'idle', { friendly_name: 'Ian\'s Echo Show', last_called: false, media_content_type: 'idle' })]);
     assert.strictEqual(npr.state, 'idle');
   });
@@ -240,6 +284,13 @@ async function main() {
     assert.strictEqual(allsounds.merge(idle, fsPaused).state, 'paused');
     assert.strictEqual(allsounds.merge(idle, null).state, 'idle');
     assert.strictEqual(allsounds.merge(allsounds.notsetData(), fs1).state, 'playing', 'Spotify shows even without Home Assistant');
+    // Spotify still says "playing" on an Echo that has moved on to another app: the Echo wins.
+    const npOnEcho = allsounds.fromSpotify(Object.assign({}, npPlaying, { device: { name: 'Living room Echo' } }));
+    assert.strictEqual(allsounds.merge(house, npOnEcho).title, 'Show', 'the Echo playing something else beats a stale Spotify on that Echo');
+    const houseSame = Object.assign({}, house, { title: 'Song' });
+    assert.strictEqual(allsounds.merge(houseSame, npOnEcho).source, 'Spotify', 'same song on that Echo: Spotify (richer) wins');
+    const houseNoTitle = Object.assign({}, house, { title: '' });
+    assert.strictEqual(allsounds.merge(houseNoTitle, npOnEcho).source, 'Spotify', 'the Echo with no details yet does not beat Spotify');
     assert.strictEqual(allsounds.fromSpotify({ state: 'idle', track: { title: 'x' } }), null);
     assert.strictEqual(allsounds.fromSpotify(null), null);
   });
@@ -306,7 +357,11 @@ async function main() {
     ha.set('amazonmusic');
     await x.w.poll();
     d = x.cur();
-    assert.deepStrictEqual([d.state, d.source, d.device, d.title, d.artist, d.art], ['playing', '', 'Ian\'s Echo Show', 'Golden Hour Drive', 'The Lanterns', ha.url + '/art/album.svg']);
+    assert.deepStrictEqual([d.state, d.source, d.device, d.title, d.artist, d.art], ['playing', 'Amazon Music', 'Ian\'s Echo Show', 'Golden Hour Drive', 'The Lanterns', 'https://m.media-amazon.com/images/I/51GoldenHourDrive._SX300_.jpg']);
+    ha.set('pandora');
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual([d.state, d.source, d.title], ['playing', 'Pandora', 'Golden Hour Drive']);
     ha.set('tunein');
     await x.w.poll();
     d = x.cur();
@@ -477,7 +532,7 @@ async function main() {
 
   await check('the token, Home Assistant addresses and titles never reach a log; no token or HA address reaches a screen', async () => {
     const h = await start();
-    for (const m of ['radio', 'music', 'paused', 'long', 'amazonmusic', 'tunein', 'tuneinstart', 'stale', 'npr', 'idle', 'unauthorized', 'down', 'broken', 'radio']) {
+    for (const m of ['radio', 'music', 'paused', 'long', 'amazonmusic', 'pandora', 'tunein', 'tuneinstart', 'stale', 'npr', 'idle', 'unauthorized', 'down', 'broken', 'radio']) {
       ha.set(m);
       await h.allsounds.poll();
       await h.allsounds.poll();
@@ -487,7 +542,7 @@ async function main() {
     await stop(h);
     const text = logs.concat(allLogs).join('\n');
     [ha.token, ha.url, '127.0.0.1:' + ha.url.split(':').pop(), 'Morning Edition', 'Golden Hour Drive', 'Canción', 'Lanterns', 'KERA',
-      'Living room', 'Kitchen', 'Echo Show', 'Ian', 'Amazon', 'TuneIn', 'iHeart', 'Bearer'].forEach((bad) => {
+      'Living room', 'Kitchen', 'Echo Show', 'Ian', 'Amazon', 'TuneIn', 'iHeart', 'Pandora', 'p-cdn', 'Bearer'].forEach((bad) => {
       assert.ok(text.indexOf(bad) < 0, 'the log has "' + bad + '"');
     });
     // Every All sounds line is one of the fixed ones.

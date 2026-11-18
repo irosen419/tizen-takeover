@@ -14,7 +14,10 @@
  *   { v, state, from, source, device, title, artist, album, art, problem, stale }
  *   state    playing | paused | idle | off | notset | error
  *   from     'echo', 'spotify' or ''
- *   source   the app or service ("TuneIn", "Spotify"), up to 30 characters
+ *   source   the app or service ("TuneIn", "Spotify"), up to 30 characters.
+ *            An Echo names none, so it is inferred from the picture's host
+ *            or an artist that is a service's name (inferPlatform); '' when
+ *            unknown. Only the label, never the host, is kept.
  *   device   the speaker's name ("Living room Echo"), up to 60
  *   title, artist, album   up to 200 / 120 / 120 characters
  *   art      an absolute https picture address (Amazon's or Spotify's
@@ -167,9 +170,58 @@ function sourceLabel(attrs) {
     for (let k = 0; k < KNOWN_SOURCES.length; k++) if (KNOWN_SOURCES[k][0].test(t)) return KNOWN_SOURCES[k][1];
     return cleanText(t, 30);
   }
-  // Alexa Media Player often names no app at all (Amazon Music, TuneIn): no
-  // chip then, rather than a guess.
+  // Alexa Media Player often names no app at all (Amazon Music, TuneIn): ''
+  // here; readEntity then tries inferPlatform.
   return '';
+}
+
+// Echo entities from Alexa Media Player never carry source or app_name, but
+// the picture's host says who made it. Only the host is looked at, and only
+// the label below ever leaves this function: never the host or the address.
+// Amazon's own picture servers are Amazon Music (an audiobook cannot be told
+// apart from there, so it is not guessed to be Audible).
+const PLATFORM_HOSTS = [
+  [/(^|\.)i\.scdn\.co$/, 'Spotify'],
+  [/(^|\.)spotifycdn\.com$/, 'Spotify'],
+  [/(^|\.)audible\.com$/, 'Audible'],
+  [/(^|\.)media-amazon\.com$/, 'Amazon Music'],
+  [/(^|\.)ssl-images-amazon\.com$/, 'Amazon Music'],
+  [/(^|\.)pandora\.com$/, 'Pandora'],
+  [/(^|\.)p-cdn\.(us|com)$/, 'Pandora'],
+  [/^cdn-profiles\.tunein\.com$/, 'TuneIn'],
+  [/(^|\.)radiotime\.com$/, 'TuneIn'],
+  [/(^|\.)iheart\.com$/, 'iHeartRadio'],
+  [/(^|\.)ihrhls\.com$/, 'iHeartRadio'],
+  [/(^|\.)mzstatic\.com$/, 'Apple Music'],
+  [/(^|\.)siriusxm\.com$/, 'SiriusXM']
+];
+// A radio station that names itself as the artist.
+const ARTIST_PLATFORMS = ['iHeartRadio', 'TuneIn', 'Pandora', 'SiriusXM'];
+
+function platformFromPicture(pic) {
+  const s = str(pic).trim();
+  if (!s || s.length > 600) return '';
+  let host = '';
+  try { host = new URL(s).hostname.toLowerCase().replace(/\.$/, ''); } catch (e) { return ''; }
+  for (let i = 0; i < PLATFORM_HOSTS.length; i++) if (PLATFORM_HOSTS[i][0].test(host)) return PLATFORM_HOSTS[i][1];
+  return '';
+}
+
+function platformFromArtist(artist) {
+  const t = cleanText(artist, 120);
+  for (let i = 0; i < ARTIST_PLATFORMS.length; i++) if (t === ARTIST_PLATFORMS[i]) return ARTIST_PLATFORMS[i];
+  return '';
+}
+
+// The platform of an Echo entity's attributes, or '' when unknown. A picture
+// host wins, except that Amazon's (the catch-all) gives way to a station that
+// names itself as the artist.
+function inferPlatform(attrs) {
+  const a = isObj(attrs) ? attrs : {};
+  const fromPic = platformFromPicture(a.entity_picture);
+  const fromArtist = platformFromArtist(a.media_artist);
+  if (fromPic && (fromPic !== 'Amazon Music' || !fromArtist)) return fromPic;
+  return fromArtist || fromPic;
 }
 
 // An Echo-style entity from the Alexa Media Player integration: it carries
@@ -214,7 +266,7 @@ function readEntity(e, allowHttp, now) {
   return {
     id: e.entity_id, state: state, changedAt: isFinite(changed) ? changed : 0,
     device: cleanText(a.friendly_name, 60) || cleanText(e.entity_id.slice(13).replace(/_/g, ' '), 60),
-    source: sourceLabel(a), title: title, artist: artist, album: album === title ? '' : album,
+    source: sourceLabel(a) || inferPlatform(a), title: title, artist: artist, album: album === title ? '' : album,
     art: cleanArt(a.entity_picture, allowHttp),
     stale: state === 'playing' && staleEcho(a, typeof now === 'number' ? now : Date.now())
   };
@@ -251,9 +303,18 @@ function fromSpotify(np, allowHttp) {
 
 // The house (from Home Assistant, or its notset/error picture) and Spotify,
 // together: Spotify playing wins; then the house playing; then whichever is
-// paused (the house first).
+// paused (the house first). One exception: Spotify keeps saying "playing" on
+// an Echo for a while after that Echo has moved on to another app (seen
+// 2026-11-17: Spotify still "playing" while the Echo Show played iHeartRadio).
+// So when the house reports that same speaker playing something else, the
+// speaker wins.
+function sameName(a, b) {
+  return !!a && !!b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
 function merge(house, sp) {
   const h = house || notsetData();
+  if (sp && sp.state === 'playing' && h.state === 'playing' && sameName(sp.device, h.device) &&
+      h.title && !sameName(h.title, sp.title)) return h;
   if (sp && sp.state === 'playing') return sp;
   if (h.state === 'playing' || h.state === 'paused') return h;
   if (sp) return sp;
@@ -503,6 +564,7 @@ module.exports = {
   cleanText: cleanText,
   cleanArt: cleanArt,
   sourceLabel: sourceLabel,
+  inferPlatform: inferPlatform,
   isAlexaSpeaker: isAlexaSpeaker,
   readEntity: readEntity,
   staleEcho: staleEcho,

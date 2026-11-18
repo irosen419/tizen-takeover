@@ -12,7 +12,8 @@
  * Spotify; the TV never sees a Home Assistant token or address.
  *
  * Same tile layouts and sizing as Now Playing (art only, a row, a column),
- * plus a source chip and the speaker's name on one line under the words.
+ * plus the platform as a quiet "(Pandora)" after the "Now playing" label (only
+ * when the Pi knows it) and the speaker's name on one line under the words.
  * A radio show often has no artist: the show is the main line and the
  * station the second. No progress bar (Echo speakers do not say where they
  * are in a show) and no visualizer.
@@ -209,13 +210,23 @@
     return box;
   }
 
-  // The source chip and the speaker, on one line; each ends in "..." when
-  // there is not room.
+  // The platform as a quiet "(Pandora)" after the label, in the same line, so
+  // nothing moves when it comes or goes. Only the name gives way ("...") when
+  // there is not room; the brackets stay. Nothing at all when it is unknown.
+  function platform(parent, v) {
+    if (!v.source) return null;
+    var box = el('span', 'as-plat', parent);
+    el('span', 'as-plat-b', box, '(');
+    el('span', 'as-plat-name', box, v.source);
+    el('span', 'as-plat-b', box, ')');
+    return box;
+  }
+
+  // The speaker's name on a line of its own, ending in "..." when it is long.
   function meta(parent, v) {
-    if (!v.source && !v.device) return null;
+    if (!v.device) return null;
     var row = el('div', 'as-meta', parent);
-    if (v.source) el('span', 'as-chip', row, v.source);
-    if (v.device) el('span', 'as-device', row, v.device);
+    el('span', 'as-device', row, v.device);
     return row;
   }
 
@@ -271,6 +282,7 @@
       card.head = el('div', 'as-label', text);
       eq(card.head, v);
       el('span', 'as-label-text', card.head, v.label);
+      platform(card.head, v);
       card.title = el('div', 'as-title', text, v.title);
       card.stale = v.stale ? el('div', 'as-stale', text, T('stale', 'May be out of date')) : null;
       card.sub = v.sub ? el('div', 'as-sub', text, v.sub) : null;
@@ -373,6 +385,7 @@
     if (v.song) {
       eq(head, v);
       el('span', 'as-label-text', head, v.label);
+      platform(head, v);
       page.title = el('div', 'as-title', info, v.title);
       page.stale = v.stale ? el('div', 'as-stale', info, T('stale', 'May be out of date')) : null;
       page.sub = v.sub ? el('div', 'as-sub', info, v.sub) : null;
@@ -380,7 +393,6 @@
       var foot = el('div', 'as-foot', info);
       page.foot = foot;
       var chips = el('div', 'as-chips', foot);
-      if (v.source) el('span', 'as-chip', chips, v.source);
       if (v.device) el('span', 'as-chip as-chip-device', chips, T('on', 'On {device}', { device: v.device }));
     } else {
       el('span', 'as-label-text', head, T('title', 'All sounds'));
