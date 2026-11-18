@@ -15,7 +15,7 @@
  *   ha.url                 'http://127.0.0.1:PORT'
  *   ha.token               the token it wants
  *   ha.set('radio')        radio | music | paused | idle | off | long |
- *                          amazonmusic, tunein, tuneinstart, npr (shapes seen
+ *                          amazonmusic, pandora, tunein, tuneinstart, npr (shapes seen
  *                          on a real Echo Show, 2026-11-17: Amazon Music with
  *                          title and picture but no source or app name; TuneIn
  *                          with the station name as the title and a picture,
@@ -34,7 +34,13 @@
 
 const http = require('http');
 
-const MODES = ['radio', 'music', 'paused', 'idle', 'off', 'long', 'amazonmusic', 'tunein', 'tuneinstart', 'npr', 'stale', 'unauthorized', 'down', 'slow', 'broken'];
+const MODES = ['radio', 'music', 'paused', 'idle', 'off', 'long', 'amazonmusic', 'pandora', 'tunein', 'tuneinstart', 'npr', 'stale', 'unauthorized', 'down', 'slow', 'broken'];
+// The real picture hosts of the two samples. They do not resolve here: a test
+// browser answers them itself (see dev/allsounds-test.js), keyed by the cover
+// name in /art/<name>.svg.
+const AMAZON_ART = 'https://m.media-amazon.com/images/I/51GoldenHourDrive._SX300_.jpg';
+const PANDORA_ART = 'https://content-images.p-cdn.com/images/public/int/5/1/2/golden-hour-drive_500W_500H.jpg';
+const ART_HOSTS = { 'm.media-amazon.com': 'album', 'content-images.p-cdn.com': 'album' };
 const TOKEN = 'mock-ha-token-not-a-secret-0123456789abcdef';
 
 // Two made-up covers: a radio show's square logo and an album.
@@ -80,14 +86,14 @@ function entities(mode, base) {
     { entity_id: 'media_player.browser_mod_kitchen', state: 'playing', attributes: { friendly_name: 'Kitchen panel', media_title: 'Panel sound' }, last_changed: stamp(1) },
     { entity_id: 'media_player.everywhere', state: 'playing', attributes: { friendly_name: 'Everywhere', media_title: 'Group copy', last_called: false }, last_changed: stamp(0) }
   ];
-  if (mode === 'amazonmusic' || mode === 'tunein' || mode === 'tuneinstart' || mode === 'npr' || mode === 'stale') {
+  if (mode === 'amazonmusic' || mode === 'pandora' || mode === 'tunein' || mode === 'tuneinstart' || mode === 'npr' || mode === 'stale') {
     const dot = speaker('ian_s_echo_dot', 'Ian\'s Echo Dot', 'idle', {}, 200);
     let show;
-    if (mode === 'amazonmusic') {
+    if (mode === 'amazonmusic' || mode === 'pandora') {
       show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'playing', {
         media_title: 'Golden Hour Drive', media_artist: 'The Lanterns', media_album_name: 'Slow Coast',
         media_duration: 214, media_position: 62, media_position_updated_at: stamp(0),
-        entity_picture: base + '/art/album.svg', entity_picture_local: '/api/media_player_proxy/media_player.ian_s_echo_show?token=abc123'
+        entity_picture: mode === 'pandora' ? PANDORA_ART : AMAZON_ART, entity_picture_local: '/api/media_player_proxy/media_player.ian_s_echo_show?token=abc123'
       }, 2);
     } else if (mode === 'tunein') {
       show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'playing', {
@@ -205,7 +211,7 @@ function start(opts) {
   });
 }
 
-module.exports = { start: start, MODES: MODES, TOKEN: TOKEN, entities: entities };
+module.exports = { start: start, MODES: MODES, TOKEN: TOKEN, entities: entities, svg: svg, ART_HOSTS: ART_HOSTS };
 
 if (require.main === module) {
   start({ port: Number(process.env.PORT) || 8123, mode: process.argv[2] }).then((ha) => {

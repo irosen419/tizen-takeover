@@ -128,6 +128,8 @@ async function open(pi, layout, opts) {
   await context.route('**/*', (route) => {
     const u = new URL(route.request().url());
     if (BLOCKED.indexOf(u.hostname) >= 0) return route.abort();
+    // The real picture hosts of the samples answer with a made-up cover.
+    if (mockHa.ART_HOSTS[u.hostname]) return route.fulfill({ status: 200, contentType: 'image/svg+xml', body: mockHa.svg(mockHa.ART_HOSTS[u.hostname]) });
     return route.continue();
   });
   const page = await context.newPage();
@@ -152,7 +154,7 @@ const tileText = (page) => page.evaluate(() => {
   return {
     kind: ((document.querySelector('.as-tile') || {}).className || '').replace(/.*as-k-(\w+).*/, '$1'),
     head: t('.tile-title'), badge: t('.tile-badge'), label: t('.as-label-text'),
-    title: t('.as-title') || t('.as-msg'), sub: t('.as-sub'), hint: t('.as-hint'), chip: t('.as-chip'), device: t('.as-device'), stale: t('.as-stale')
+    title: t('.as-title') || t('.as-msg'), sub: t('.as-sub'), hint: t('.as-hint'), plat: t('.as-plat'), device: t('.as-device'), stale: t('.as-stale')
   };
 });
 
@@ -175,11 +177,11 @@ function problems(page, rootSel) {
       if (r.left < box.left - 2 || r.right > box.right + 2 || r.top < box.top - 2 || r.bottom > box.bottom + 2) {
         out.push(e.className + ' sticks out: ' + [r.left - box.left, box.right - r.right, r.top - box.top, box.bottom - r.bottom].map(Math.round).join(','));
       }
-      if (/^as-(title|sub|album|label-text|chip|device|msg|hint)$/.test(String(e.className).split(' ')[0])) {
+      if (/^as-(title|sub|album|label-text|plat-name|chip|device|msg|hint)$/.test(String(e.className).split(' ')[0])) {
         const cs = getComputedStyle(e);
         const lh = parseFloat(cs.lineHeight);
         if (lh && lh < parseFloat(cs.fontSize) * 1.24) out.push(e.className + ' line height too tight: ' + lh + '/' + cs.fontSize);
-        if (parseFloat(cs.fontSize) < 0.8 * 16 - 0.5) out.push(e.className + ' type too small: ' + cs.fontSize);
+        if (parseFloat(cs.fontSize) < (e.className === 'as-plat-name' ? 0.7 : 0.8) * 16 - 0.5) out.push(e.className + ' type too small: ' + cs.fontSize);
         // Cut sideways without "...": only the one-line pieces may end in "...".
         if (e.scrollWidth > e.clientWidth + 1 && cs.textOverflow !== 'ellipsis') out.push(e.className + ' cut sideways');
       }
@@ -300,22 +302,25 @@ async function main() {
 
   // Every state, full screen tile, both languages: the words and the fit.
   const STATES = [
-    { name: 'radio', mode: 'radio', kind: 'playing', en: { title: 'Morning Edition', sub: 'KERA 90.1 Dallas', chip: 'TuneIn', device: 'Living room Echo', label: 'Now playing' }, es: { label: 'Sonando ahora' }, art: true },
-    { name: 'music', mode: 'music', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', chip: 'Amazon Music', device: 'Living room Echo', stale: null }, art: true },
+    { name: 'radio', mode: 'radio', kind: 'playing', en: { title: 'Morning Edition', sub: 'KERA 90.1 Dallas', plat: '(TuneIn)', device: 'Living room Echo', label: 'Now playing' }, es: { label: 'Sonando ahora' }, art: true },
+    { name: 'music', mode: 'music', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', plat: '(Amazon Music)', device: 'Living room Echo', stale: null }, art: true },
     { name: 'paused', mode: 'paused', kind: 'paused', en: { title: 'Golden Hour Drive', label: 'Paused' }, es: { label: 'En pausa' }, art: true },
-    // Real shapes from an Echo Show: Amazon Music names no app (no chip);
+    // Real shapes from an Echo Show: Amazon Music names no app (its platform
+    // comes from the picture's host);
     // TuneIn sends the station name and a picture, no artist (the title, then
     // the speaker); in its first seconds it sends nothing at all (plain
     // words, the speaker, the music mark).
-    { name: 'amazonmusic', mode: 'amazonmusic', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', chip: null, device: "Ian's Echo Show", stale: null }, es: { chip: null, stale: null }, art: true },
+    { name: 'amazonmusic', mode: 'amazonmusic', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', plat: '(Amazon Music)', device: "Ian's Echo Show", stale: null }, es: { stale: null }, art: true },
+    // The same shape from Pandora's picture host: "(Pandora)" after the label.
+    { name: 'pandora', mode: 'pandora', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', plat: '(Pandora)', device: "Ian's Echo Show", label: 'Now playing' }, es: { label: 'Sonando ahora' }, art: true },
     // Audible took over and the Echo still says it plays a song that ended
     // minutes ago: the song, with a small quiet line under the title.
     { name: 'stale', mode: 'stale', kind: 'playing', en: { title: 'Golden Hour Drive', sub: 'The Lanterns', device: "Ian's Echo Show", stale: 'May be out of date' },
       es: { stale: 'Puede que no esté al día' }, art: true },
-    { name: 'tunein', mode: 'tunein', kind: 'playing', en: { title: 'KERA', sub: null, chip: null, device: "Ian's Echo Show", label: 'Now playing' },
-      es: { sub: null, chip: null, label: 'Sonando ahora' }, art: true },
-    { name: 'tunein-start', mode: 'tuneinstart', kind: 'playing', en: { title: 'Something is playing', sub: null, chip: null, device: "Ian's Echo Show", label: 'Now playing' },
-      es: { title: 'Algo está sonando', sub: null, chip: null, device: "Ian's Echo Show", label: 'Sonando ahora' }, noArt: true },
+    { name: 'tunein', mode: 'tunein', kind: 'playing', en: { title: 'KERA', sub: null, plat: null, device: "Ian's Echo Show", label: 'Now playing' },
+      es: { sub: null, plat: null, label: 'Sonando ahora' }, art: true },
+    { name: 'tunein-start', mode: 'tuneinstart', kind: 'playing', en: { title: 'Something is playing', sub: null, plat: null, device: "Ian's Echo Show", label: 'Now playing' },
+      es: { title: 'Algo está sonando', sub: null, plat: null, device: "Ian's Echo Show", label: 'Sonando ahora' }, noArt: true },
     { name: 'nothing', mode: 'npr', kind: 'idle', en: { title: 'Nothing playing', badge: 'Quiet', head: 'All sounds' }, es: { title: 'Nada sonando', badge: 'En silencio', head: 'Todo lo que suena' } },
     { name: 'notset', pi: 'noHa', kind: 'notset', en: { title: 'Not set up yet' }, es: { title: 'Aún sin configurar' } },
     { name: 'cant-reach', mode: 'down', kind: 'error', en: { title: 'Can’t reach Home Assistant', hint: 'It keeps trying by itself.' }, es: { title: 'No se puede conectar con Home Assistant' } },
@@ -328,7 +333,7 @@ async function main() {
         if (st.mode) await house(p, st.mode);
         const s = await open(p, TEST_LAYOUT, { lang: lang });
         const want = Object.assign({}, lang === 'en' ? st.en : {}, lang === 'es' ? (st.es || {}) : {});
-        if (lang === 'es') ['chip', 'device', 'sub'].forEach((k) => { if (st.en[k]) want[k] = st.en[k]; });
+        if (lang === 'es') ['plat', 'device', 'sub'].forEach((k) => { if (st.en[k]) want[k] = st.en[k]; });
         if (lang === 'es' && st.en.title && !(st.es && st.es.title) && st.kind !== 'idle' && st.kind !== 'notset' && st.kind !== 'error') want.title = st.en.title;
         const t = await waitKind(s.page, st.kind, want.title);
         Object.keys(want).forEach((k) => assert(t[k] === want[k], k + ': ' + JSON.stringify(t[k]) + ', wanted ' + JSON.stringify(want[k])));
@@ -350,7 +355,7 @@ async function main() {
     }
   }
 
-  await check('Spotify playing wins over the Echo and shows with its own chip; Now Playing still has its own data', async () => {
+  await check('Spotify playing wins over the Echo and shows with its own platform; Now Playing still has its own data', async () => {
     const sp = await require('./mock-spotify').start({});
     const port = await spare();
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-as-test-'));
@@ -370,7 +375,7 @@ async function main() {
     const l = h.spotify.loginUrl();
     await new Promise((resolve, reject) => http.get(l.url, (res) => { res.resume(); h.spotify.finishLogin(res.headers.location || '').then(resolve, reject); }).on('error', reject));
     const t = await waitKind(s.page, 'playing', 'Golden Hour Drive');
-    assert(t.chip === 'Spotify', 'chip: ' + t.chip);
+    assert(t.plat === '(Spotify)', 'platform: ' + t.plat);
     assert(t.sub === 'The Lanterns', 'sub: ' + t.sub);
     await until(() => s.page.evaluate(() => { const i = document.querySelector('.as-tile .as-img'); return !!i && /is-loaded/.test(i.className); }), 4000, 'the picture did not load');
     const np = await s.page.evaluate(() => window.HUB_LIVE.get('nowplaying'));
@@ -416,7 +421,7 @@ async function main() {
     assert(!bad.length, bad.join(' | '));
   });
 
-  await check('the page and full screen: the words, the source and the speaker chips, nothing outside the panel', async () => {
+  await check('the page and full screen: the words, the platform after the label, the speaker chip, nothing outside the panel', async () => {
     const p3 = await startPi(true);
     await house(p3, 'radio');
     for (const lang of ['en', 'es']) {
@@ -425,7 +430,9 @@ async function main() {
       await s.page.evaluate(() => window.HUB_TEST.openPanel('allsounds'));
       await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'allsounds' && !window.HUB_TEST.busy() && !!document.querySelector('.as-page .as-title')), 5000, 'the page did not open');
       const chips = await s.page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.as-page .as-chip'), (c) => c.textContent));
-      assert(chips.join('|') === (lang === 'en' ? 'TuneIn|On Living room Echo' : 'TuneIn|En Living room Echo'), 'chips: ' + chips.join(', '));
+      assert(chips.join('|') === (lang === 'en' ? 'On Living room Echo' : 'En Living room Echo'), 'chips: ' + chips.join(', '));
+      const plat = await s.page.evaluate(() => (document.querySelector('.as-page .as-label .as-plat') || {}).textContent);
+      assert(plat === '(TuneIn)', 'platform on the page: ' + plat);
       const head = await s.page.evaluate(() => (document.querySelector('#panel .panel-title') || {}).textContent);
       assert(head === (lang === 'en' ? 'All sounds' : 'Todo lo que suena'), 'panel title: ' + head);
       let bad = await problems(s.page, '.as-page');
