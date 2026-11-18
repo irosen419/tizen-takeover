@@ -500,6 +500,7 @@
     'shows.am': 'a. m.',
     'shows.pm': 'p. m.',
     'shows.aired': 'Emitido',
+    'shows.watched': 'Visto',
     'shows.inMin': 'en {n} min',
     'shows.now': 'Ahora',
     'shows.premiere': 'Estreno',

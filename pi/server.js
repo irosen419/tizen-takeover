@@ -10,6 +10,7 @@
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
  *   POST /linktests      one watch link test answer from the About panel
+ *   POST /shows/watched  the TV marks an episode watched: { id, season, number }
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
  *                        from the TV (ambience.js): saved ids only, rate limited
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
@@ -28,6 +29,8 @@
  *   GET  /api/shows      the show list and the schedule from TVmaze (shows.js)
  *   POST /api/shows      { add: {name, service, ...} }, { remove: "name" } or { set: [...] }
  *   POST /api/shows/refresh   ask TVmaze about every show now and wait for it
+ *   POST /api/shows/watched   { show, episode? }: mark an episode watched (none named = the earliest out and unmarked)
+ *   POST /api/shows/unwatch   { show, episode }: take a watched mark off
  *   GET  /api/linktests  the TV's watch link test answers (linktests.js)
  *   GET  /api/status     version, rev, connected screens, calendar summary
  *   GET  /api/log        the last log lines kept in memory (?lines=1-200,
@@ -85,7 +88,7 @@ const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 
-const SERVER_VERSION = '0.7.0';
+const SERVER_VERSION = '0.8.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1171,6 +1174,8 @@ function start(options) {
     '/api/spotify/refresh': ['POST'],
     '/api/shows': ['GET', 'POST'],
     '/api/shows/refresh': ['POST'],
+    '/api/shows/watched': ['POST'],
+    '/api/shows/unwatch': ['POST'],
     '/api/linktests': ['GET'],
     '/api/allsounds': ['GET'],
     '/api/ambience': ['GET'],
@@ -1338,6 +1343,18 @@ function start(options) {
           const list = tracker.set(body.set);
           return reply(200, { ok: true, list: list }, plural(list.length, 'show') + ' on the list');
         }
+        if (route === '/api/shows/watched' || route === '/api/shows/unwatch') {
+          if (!isObj(body) || typeof body.show !== 'string' || !body.show.trim()) throw bad('send { "show": "name", "episode": "S3E4" }');
+          let ep = null;
+          if (body.episode !== undefined && body.episode !== null && body.episode !== '') {
+            ep = shows.parseEpisode(body.episode);
+            if (!ep) throw bad('"episode" must look like S3E4');
+          }
+          const up = route === '/api/shows/unwatch';
+          const r = up ? tracker.unwatch(body.show, ep) : tracker.markWatched(body.show, ep);
+          return reply(200, { ok: true, season: r.season, number: r.number, changed: r.changed, entry: r.entry, list: tracker.list() },
+            (up ? 'took a watched mark off' : 'marked') + ' an episode' + (up ? '' : ' watched'));
+        }
         if (route === '/api/shows/refresh') {
           let waitTimer = null;
           const late = new Promise((r) => { waitTimer = setTimeout(() => r(null), showsWaitMs); });
@@ -1436,7 +1453,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/linktests' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/linktests' || route === '/shows/watched' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1462,6 +1479,20 @@ function start(options) {
           changeResource('linktests', linktests.addResult(state.resources.linktests.data, r));
           sendJson(res, 200, { ok: true, rev: state.rev }, cors);
           log('screen sent a watch link test answer (' + r.outcome + ')');
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
+    }
+    if (route === '/shows/watched') {
+      // The TV marks an episode after the show's app stayed open long enough.
+      // It names the show by its id and the episode by numbers; nothing else.
+      return readBody(req, res, (body) => {
+        try {
+          if (!isObj(body) || typeof body.id !== 'string' || !body.id) throw bad('send { "id": "show-id", "season": 3, "number": 4 }');
+          const r = tracker.markWatched(body.id, { season: body.season, number: body.number });
+          sendJson(res, 200, { ok: true, changed: r.changed }, cors);
+          log('screen marked an episode watched' + (r.changed ? '' : ' (already marked)'));
         } catch (e) {
           fail(res, e, cors);
         }
@@ -1516,7 +1547,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/shows/watched': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
   };
 

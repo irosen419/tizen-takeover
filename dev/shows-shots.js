@@ -71,6 +71,36 @@ const OUT = process.argv[2] || path.join(__dirname, 'shots');
     await H.openView(page, 'linktests');
     await shot(page, 'watch-link-test-list.png');
     await page.ctx.close();
+    // Watched: Slow Horses S5 E4 and the Baking Show S16 E9 are marked.
+    const mark = await H.start({ watched: [['slow-horses', 5, 4], ['the-great-british-baking-show', 16, 9]] });
+    try {
+      for (const lang of ['en', 'es']) {
+        const page = await mark.newPage(lang === 'es' ? { lang: 'es' } : {});
+        await H.openSchedule(page, 'week');
+        await shot(page, 'schedule-watched-' + lang + '.png');
+        await H.fullScreen(page);
+        await shot(page, 'schedule-watched-full-' + lang + '.png');
+        await page.ctx.close();
+      }
+      const p = await mark.newPage({});
+      await H.openGrid(p);
+      await shot(p, 'counts-watched-panel-en.png');
+      await p.ctx.close();
+      const t = await mark.newPage({ layout: [{ widget: 'entertainment', x: 0, y: 0, w: 2, h: 2 }, { widget: 'today', x: 4, y: 0, w: 3, h: 2 }] });
+      await H.sleep(600);
+      await shot(t, 'counts-watched-tile-2x2.png');
+      await t.ctx.close();
+      // The service has no /watch-track yet: the About row says so.
+      const o = await mark.newPage({});
+      await o.route(/:8095\/watch-track/, (r) => r.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' }, body: '{"ok":false,"error":"not found"}' }));
+      await H.sleep(4800);
+      await o.evaluate(() => window.HUB_TEST.about.open());
+      await H.sleep(500);
+      await shot(o, 'about-watch-tracking.png');
+      await o.ctx.close();
+    } finally {
+      await mark.stop();
+    }
   } finally {
     await env.stop();
   }

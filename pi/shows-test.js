@@ -54,7 +54,7 @@ function catalog() {
     "hell's kitchen": { id: 101, name: "Hell's Kitchen", status: 'Running', network: { name: 'FOX' }, webChannel: null,
       episodes: [
         { season: 24, number: 6, name: 'Old', airstamp: at(-14, 1) },
-        { season: 24, number: 7, name: 'Last week', airstamp: at(-5, 1) },
+        { season: 24, number: 7, name: 'Last week', airstamp: at(-5, 1), runtime: 44 },
         { season: 24, number: 8, name: 'Surf &amp; Turf', airstamp: at(2, 2) },
         { season: 24, number: 9, name: 'Later', airstamp: at(9, 2) },
         { season: 24, number: 10, name: 'Far', airstamp: at(90, 2) }
@@ -488,6 +488,150 @@ async function main() {
       assert.throws(() => mailbox.checkEnvelope('c123456', Buffer.from(JSON.stringify({ id: 'c123456', created: new Date().toISOString(), cmd: 'shows.add', args: { name: 'X', link: 'y' } })), Date.now()), /does not take "link"/);
       r = await mail(h, 'linktests.show');
       assert.ok(/No watch link tests yet/.test(r.message));
+    } finally {
+      await new Promise((r) => h.close(r));
+    }
+  });
+
+
+  /* ---------- watched episodes ---------- */
+
+  await check('watched: stored per show in the list file, in the snapshot (shows[].watched, watched: true, runtime), kept over a refresh', async () => {
+    const b = tracker(tv, { seedFile: writeSeed(tmpDir(), LIST) });
+    await b.t.refresh();
+    let hk = b.data.shows[0];
+    assert.strictEqual(hk.upcoming[0].runtime, 44, 'the runtime reaches the TV');
+    assert.deepStrictEqual(hk.watched, []);
+    // No episode named: the earliest one out and not marked (S24 E7).
+    let r = b.t.markWatched("Hell's Kitchen");
+    assert.deepStrictEqual([r.season, r.number, r.changed], [24, 7, true]);
+    hk = b.data.shows[0];
+    assert.deepStrictEqual(hk.watched, [{ season: 24, number: 7, at: '2026-11-17T18:00:00Z' }]);
+    assert.strictEqual(hk.upcoming[0].watched, true);
+    assert.strictEqual(hk.upcoming[1].watched, undefined, 'a later episode is not marked');
+    const saved = JSON.parse(fs.readFileSync(path.join(b.dir, 'shows.json'), 'utf8')).shows;
+    assert.deepStrictEqual(saved[0].watched, [{ s: 24, e: 7, at: '2026-11-17T18:00:00Z' }]);
+    assert.strictEqual(saved[1].watched, undefined);
+    // Again: no change, no push. Nothing left to pick without naming one.
+    const pushes = b.pushes;
+    assert.strictEqual(b.t.markWatched("hell's kitchen", { season: 24, number: 7 }).changed, false);
+    assert.strictEqual(b.pushes, pushes);
+    assert.throws(() => b.t.markWatched('Stick'), /no episode out in the last week/);
+    assert.throws(() => b.t.markWatched('Hell\'s Kitchen'), /no episode out in the last week/);
+    assert.throws(() => b.t.markWatched('Nope', { season: 1, number: 1 }), /not on the show list/);
+    assert.throws(() => b.t.markWatched('Stick', { season: -1, number: 1 }), /season and a number/);
+    // A future episode may be marked by hand (a mistake can be fixed either way).
+    b.t.markWatched('Stick', { season: 2, number: 1 });
+    assert.strictEqual(b.data.shows[1].watched.length, 1);
+    // A refresh keeps the marks; so does adding the same show again and setting the list again.
+    await b.t.refresh();
+    assert.strictEqual(b.data.shows[0].upcoming[0].watched, true);
+    b.t.add({ name: "hell's kitchen", service: 'Hulu' });
+    assert.strictEqual(b.t.list()[0].watched.length, 1);
+    b.t.set([{ name: 'Stick' }, { name: "Hell's Kitchen" }]);
+    assert.strictEqual(b.t.list()[1].watched.length, 1, 'set keeps the marks of a show that stays');
+    // Unwatch takes it off again; unmarked says so.
+    r = b.t.unwatch("Hell's Kitchen", { season: 24, number: 7 });
+    assert.strictEqual(r.changed, true);
+    assert.strictEqual(b.data.shows.find((x) => x.id === 'hells-kitchen').upcoming[0].watched, undefined);
+    assert.strictEqual(b.t.unwatch("Hell's Kitchen", { season: 24, number: 7 }).changed, false);
+    assert.throws(() => b.t.unwatch("Hell's Kitchen"), /which episode/);
+    // The list file may carry marks by hand; bad ones are refused, doubles dropped, the oldest go past 400.
+    assert.deepStrictEqual(shows.normalizeEntry({ name: 'X', watched: [{ s: 1, e: 2, at: '2026-01-01T00:00:00Z' }, { s: 1, e: 2, at: '2026-02-01T00:00:00Z' }] }).watched, [{ s: 1, e: 2, at: '2026-01-01T00:00:00Z' }]);
+    assert.throws(() => shows.normalizeEntry({ name: 'X', watched: [{ s: 'a', e: 1 }] }), /"watched" must be a list/);
+    assert.throws(() => shows.normalizeEntry({ name: 'X', watched: 3 }), /"watched" must be a list/);
+    const many = [];
+    for (let i = 0; i < 450; i++) many.push({ s: 1, e: i, at: new Date(Date.parse('2026-01-01T00:00:00Z') + i * 60000).toISOString() });
+    const w = shows.normalizeEntry({ name: 'X', watched: many }).watched;
+    assert.deepStrictEqual([w.length, w[0].e, w[399].e], [400, 50, 449]);
+    assert.deepStrictEqual([shows.parseEpisode('S3E4'), shows.parseEpisode('3x4'), shows.parseEpisode(' s03 e12 '), shows.parseEpisode('S3'), shows.parseEpisode('x')],
+      [{ season: 3, number: 4 }, { season: 3, number: 4 }, { season: 3, number: 12 }, null, null]);
+    noNames(b.logs, ["Hell's Kitchen", 'Stick', 'Andor', 'Last week']);
+  });
+
+  await check('server: the TV marks watched on POST /shows/watched (no token, origin checked); the control API corrects it; logs carry no names', async () => {
+    const h = await startHub({ shows: { api: tv.url, seedFile: writeSeed(tmpDir(), LIST) } });
+    try {
+      await sleep(300);
+      h.lines.length = 0;
+      let r = await request(h, 'POST', '/shows/watched', { id: 'hells-kitchen', season: 24, number: 7 });
+      assert.deepStrictEqual([r.status, r.json.ok, r.json.changed], [200, true, true]);
+      r = await request(h, 'POST', '/shows/watched', { id: 'hells-kitchen', season: 24, number: 7 });
+      assert.strictEqual(r.json.changed, false);
+      for (const bad of [{ id: 'nope', season: 1, number: 1 }, { id: 'stick', season: 'x', number: 1 }, {}, { id: 'stick', season: 1 }]) {
+        r = await request(h, 'POST', '/shows/watched', bad);
+        assert.strictEqual(r.status, 400, JSON.stringify(bad));
+      }
+      r = await request(h, 'POST', '/shows/watched', { id: 'stick', season: 2, number: 1 }, { Origin: 'http://evil.example' });
+      assert.strictEqual(r.status, 403);
+      r = await request(h, 'GET', '/shows/watched');
+      assert.strictEqual(r.status, 405);
+      r = await request(h, 'GET', '/api/shows', undefined, authed);
+      assert.strictEqual(r.json.data.shows[0].upcoming[0].watched, true);
+      assert.strictEqual(r.json.data.shows[0].watched.length, 1);
+      const live = await request(h, 'GET', '/live/state');
+      assert.strictEqual(live.json.resources.shows.data.shows[0].upcoming[0].watched, true, 'the TV gets it');
+      // The control API: needs the token; a name or id; marks, corrects.
+      r = await request(h, 'POST', '/api/shows/watched', { show: 'Stick', episode: 'S2E1' });
+      assert.strictEqual(r.status, 401);
+      r = await request(h, 'POST', '/api/shows/watched', { show: "Hell's Kitchen" }, authed);
+      assert.strictEqual(r.status, 400, 'nothing left to pick');
+      r = await request(h, 'POST', '/api/shows/watched', { show: 'Stick', episode: 'two' }, authed);
+      assert.strictEqual(r.status, 400);
+      r = await request(h, 'POST', '/api/shows/watched', { show: 'stick', episode: 'S2E1' }, authed);
+      assert.deepStrictEqual([r.status, r.json.changed, r.json.season, r.json.number], [200, true, 2, 1]);
+      r = await request(h, 'POST', '/api/shows/unwatch', { show: 'Stick' }, authed);
+      assert.strictEqual(r.status, 400, 'unwatch needs the episode');
+      r = await request(h, 'POST', '/api/shows/unwatch', { show: 'Stick', episode: 'S2E1' }, authed);
+      assert.deepStrictEqual([r.status, r.json.changed], [200, true]);
+      r = await request(h, 'GET', '/api/shows', undefined, authed);
+      assert.strictEqual(r.json.data.shows[1].watched.length, 0);
+      const bare = h.lines.map((l) => l.replace(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d /, ''));
+      assert.ok(bare.indexOf('screen marked an episode watched') >= 0, bare.join(' | '));
+      assert.ok(bare.indexOf('screen marked an episode watched (already marked)') >= 0);
+      assert.ok(bare.indexOf('control POST /api/shows/watched -> 200 marked an episode watched') >= 0, bare.join(' | '));
+      assert.ok(bare.indexOf('control POST /api/shows/unwatch -> 200 took a watched mark off an episode') >= 0);
+      noNames(h.lines, ["Hell's Kitchen", 'hells-kitchen', 'Stick', 'Andor', 'S24', 'S2E1']);
+    } finally {
+      await new Promise((r) => h.close(r));
+    }
+  });
+
+  await check('./hub shows watched | unwatch and the mailbox shows.watched | shows.unwatch', async () => {
+    const h = await startHub({ shows: { api: tv.url, seedFile: writeSeed(tmpDir(), LIST) } });
+    try {
+      await sleep(300);
+      let out = await hubctl(h, ['shows', 'watched', "Hell's", 'Kitchen']);
+      assert.strictEqual(out.stdout.trim(), "Marked S24E7 of Hell's Kitchen as watched. The TV counts and dims it now.", out.stdout + out.stderr);
+      out = await hubctl(h, ['shows', 'watched', "Hell's Kitchen", 'S24E7']);
+      assert.strictEqual(out.stdout.trim(), "S24E7 of Hell's Kitchen was already marked watched.");
+      out = await hubctl(h, ['shows', 'list']);
+      assert.ok(/Hell's Kitchen \(Disney\+\): .*\[TVmaze 101\] \[watched S24E7\]/.test(out.stdout), out.stdout);
+      out = await hubctl(h, ['shows', 'unwatch', "Hell's Kitchen", 'S24E7']);
+      assert.strictEqual(out.stdout.trim(), "Took the watched mark off S24E7 of Hell's Kitchen. The TV counts it again.");
+      out = await hubctl(h, ['shows', 'unwatch', "Hell's Kitchen", 'S24E7']);
+      assert.strictEqual(out.stdout.trim(), "S24E7 of Hell's Kitchen was not marked watched.");
+      out = await hubctl(h, ['shows', 'unwatch', "Hell's Kitchen"]);
+      assert.strictEqual(out.status, 1);
+      assert.ok(/Say which episode/.test(out.stderr + out.stdout), out.stderr + out.stdout);
+      out = await hubctl(h, ['shows', 'watched', 'Nope']);
+      assert.strictEqual(out.status, 1);
+      out = await hubctl(h, ['shows', 'watched']);
+      assert.strictEqual(out.status, 1);
+      out = await hubctl(h, ['help']);
+      assert.ok(/\.\/hub shows watched "Stick" S3E4/.test(out.stdout) && /shows unwatch/.test(out.stdout));
+      // The mailbox.
+      let r = await mail(h, 'shows.watched', { name: "Hell's Kitchen" });
+      assert.deepStrictEqual([r.data.season, r.data.number, r.data.changed], [24, 7, true]);
+      r = await mail(h, 'shows.list');
+      assert.deepStrictEqual(r.data.shows[0].watched.map((w) => w.season + 'x' + w.number), ['24x7']);
+      r = await mail(h, 'shows.watched', { name: 'Stick', episode: 'S2E1' });
+      assert.strictEqual(r.data.changed, true);
+      r = await mail(h, 'shows.unwatch', { name: 'Stick', episode: 'S2E1' });
+      assert.strictEqual(r.message, 'Took the watched mark off S2E1 of Stick. The TV counts it again.');
+      assert.throws(() => mailbox.checkEnvelope('c123456', Buffer.from(JSON.stringify({ id: 'c123456', created: new Date().toISOString(), cmd: 'shows.unwatch', args: { name: 'X' } })), Date.now()), /episode/);
+      await assert.rejects(() => mail(h, 'shows.watched', { name: 'Nope' }), /not on the show list/);
+      noNames(h.lines, ["Hell's Kitchen", 'Stick', 'Andor']);
     } finally {
       await new Promise((r) => h.close(r));
     }

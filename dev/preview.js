@@ -229,6 +229,10 @@ var service = http.createServer(function (req, res) {
     log('launch-control ' + q.id + (q.uri ? ' (with a uri)' : '') + (q.key ? ' (with data)' : ''));
     return send(res, 200, { ok: true });
   }
+  // Watch tracking: the preview counts nothing; tests answer these themselves when they need to.
+  if (p === '/running') return send(res, 200, { ok: true, apps: [] });
+  if (p === '/watch-track') return send(res, 200, { ok: true });
+  if (p === '/watch-track/status') return send(res, 200, { ok: true, tracks: [] });
   if (p === '/key') {
     log('key ' + q.k);
     return send(res, 200, { ok: true });

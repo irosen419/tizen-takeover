@@ -62,7 +62,7 @@ const pageErrors = (page) => page.ctx.errors.filter((e) => !/net::ERR_FAILED|ERR
 // records the app controls it is asked for.
 function loadService() {
   const src = fs.readFileSync(path.join(ROOT, 'service.js'), 'utf8');
-  const out = { handler: null, launched: [], fail: null };
+  const out = { handler: null, launched: [], fail: null, timers: [], cleared: 0, running: [], runningFail: null };
   const fakeHttp = {
     createServer: (fn) => { out.handler = fn; return { on: () => {}, listen: () => {}, close: () => {} }; },
     get: () => ({ on: () => {} })
@@ -71,6 +71,9 @@ function loadService() {
     ApplicationControlData: function (key, value) { this.key = key; this.value = value; },
     ApplicationControl: function (op, uri, mime, category, data) { this.operation = op; this.uri = uri; this.data = data; },
     application: {
+      getAppsContext: (ok, err) => {
+        if (out.runningFail) err({ message: out.runningFail }); else ok(out.running.map((a) => ({ id: a.id, appId: a.appId })));
+      },
       launchAppControl: (control, id, ok, err) => {
         out.launched.push({ id: id, op: control.operation, uri: control.uri, data: control.data });
         if (out.fail) err({ message: out.fail }); else ok();
@@ -80,7 +83,10 @@ function loadService() {
   const sandbox = {
     require: (m) => (m === 'http' ? fakeHttp : require(m)),
     Buffer: { from: Buffer.from, alloc: Buffer.alloc, isBuffer: Buffer.isBuffer, concat: Buffer.concat },
-    console: { log: () => {} }, setTimeout, clearTimeout, setInterval, clearInterval, process, tizen,
+    console: { log: () => {} }, setTimeout, clearTimeout, tizen,
+    // The once-a-minute check is run by hand (tick), not waited for.
+    setInterval: (fn) => { out.timers.push(fn); return out.timers.length; },
+    clearInterval: () => { out.timers = []; out.cleared++; }, process,
     module: {}, exports: {}, __dirname: ROOT
   };
   // new Buffer(...) in the old service: the same as Buffer.from here.
@@ -91,6 +97,10 @@ function loadService() {
     const res = { status: 0, writeHead: (s) => { res.status = s; }, end: (b) => resolve({ status: res.status, body: JSON.parse(b) }) };
     out.handler({ url: url, method: 'GET', headers: {} }, res);
   });
+  out.setRunning = (list) => { out.running = list; };
+  out.failRunning = (msg) => { out.runningFail = msg; };
+  // One minute of the watch count: the timer's function, then wait for the answer.
+  out.tick = async () => { const fns = out.timers.slice(); fns.forEach((f) => f()); await new Promise((r) => setTimeout(r, 5)); };
   return out;
 }
 
@@ -571,6 +581,115 @@ async function main() {
       assert(seen.length === 10, seen.join(' '));
     });
 
+
+    // ---------- watched ----------
+    const CORS_W = { 'access-control-allow-origin': '*', 'content-type': 'application/json' };
+    const NETFLIX = '3201907018807';
+    const pendingOf = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('homeHub.watch.v1') || '[]'));
+    const piShow = async (id) => (await getJson(env.LIVE + '/live/state')).resources.shows.data.shows.filter((x) => x.id === id)[0];
+    let wp = null;
+    let tracks = [];
+    const calls = [];
+
+    await check('Watch on an aired episode records a pending watch and asks the service to count; a future episode records nothing', async () => {
+      wp = await env.newPage({});
+      await wp.route(/:8095\/watch-track/, (r) => {
+        const u = r.request().url();
+        calls.push(u);
+        r.fulfill({ status: 200, headers: CORS_W, body: JSON.stringify({ ok: true, tracks: /status/.test(u) ? tracks : undefined }) });
+      });
+      await H.openSchedule(wp, 'week');
+      // Paradise has not aired yet (35 minutes to go): nothing is tracked.
+      await H.focusKey(wp, 'sh:row:paradise:');
+      let before = env.launches.length;
+      await H.key(wp, 'Enter');
+      await H.until(() => env.launches.length > before, 3500, 'no launch');
+      assert((await pendingOf(wp)).length === 0, 'tracked an episode that has not aired');
+      // The Great British Baking Show S16 E9 is out (Netflix, 30 minutes by default).
+      await H.focusKey(wp, 'sh:row:the-great-british-baking-show:');
+      before = env.launches.length;
+      await H.key(wp, 'Enter');
+      await H.until(() => env.launches.length > before, 3500, 'no launch');
+      assert(env.launches[env.launches.length - 1] === 'launch ' + NETFLIX, env.launches.join(' | '));
+      const p = await pendingOf(wp);
+      assert(p.length === 1 && p[0].showId === 'the-great-british-baking-show' && p[0].season === 16 && p[0].number === 9, JSON.stringify(p));
+      assert(p[0].appId === NETFLIX && p[0].runtimeMin === 30 && /^[a-z0-9]{12}$/.test(p[0].token) && Math.abs(p[0].startedAt - H.TUESDAY) < 60000, JSON.stringify(p));
+      await H.until(() => calls.some((u) => /watch-track\?/.test(u)), 3000, 'the service was not asked to count');
+      const start = calls.filter((u) => /watch-track\?/.test(u))[0];
+      assert(/\/watch-track\?app=3201907018807&id=[a-z0-9]{12}&need=21$/.test(start) && start.indexOf(p[0].token) > 0, start + ' (70% of 30 minutes is 21)');
+      assert(await wp.evaluate(() => document.getElementById('toast').textContent === '' || !/is-shown/.test(document.getElementById('toast').className)), 'a toast appeared');
+    });
+
+    await check('A show row with no episode tracks the earliest episode out and not watched (Coming soon: Slow Horses S5 E4 on Apple TV)', async () => {
+      const r = await wp.evaluate(() => {
+        const T = window.HUB_SHOWS._test;
+        const d = JSON.parse(localStorage.getItem('homeHub.shows.v1'));
+        const show = d.shows.filter((s) => s.id === 'slow-horses')[0];
+        const rec = T.track(show, [], '3201807016597');
+        // Pretend the first episode is watched: the next unwatched one that is out is picked (none: the sample has one out).
+        show.upcoming[0].watched = true;
+        return { rec: rec, again: T.track(show, [], '3201807016597') };
+      });
+      assert(r.rec && r.rec.season === 5 && r.rec.number === 4 && r.rec.appId === '3201807016597', JSON.stringify(r.rec));
+      assert(r.again === null, 'a watched episode was tracked again: ' + JSON.stringify(r.again));
+      assert((await pendingOf(wp)).length === 2, 'pending: ' + JSON.stringify(await pendingOf(wp)));
+    });
+
+    await check('Status: an unfinished count forwards nothing; a finished one reaches the Pi, the pending watch goes, and the TV marks the row watched', async () => {
+      const tok = (await pendingOf(wp)).filter((x) => x.showId === 'the-great-british-baking-show')[0].token;
+      tracks = [{ id: tok, minutes: 9, need: 21, done: false, active: true }];
+      await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.sleep(600);
+      assert((await pendingOf(wp)).length === 2, 'dropped early');
+      assert(!((await piShow('the-great-british-baking-show')).upcoming.some((e) => e.watched)), 'the Pi marked it early');
+      tracks = [{ id: tok, minutes: 21, need: 21, done: true, active: false }];
+      await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.until(async () => (await piShow('the-great-british-baking-show')).upcoming.some((e) => e.watched && e.number === 9), 4000, 'the Pi never marked it');
+      await H.until(async () => (await pendingOf(wp)).length === 1, 3000, 'the pending watch stayed');
+      await H.until(() => wp.evaluate(() => !!document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"].is-watched')), 4000, 'the row is not marked watched');
+      const row = await wp.evaluate(() => { const r = document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"]'); return { note: r.querySelector('.sh-note.is-watched').textContent, check: !!r.querySelector('.sh-check') }; });
+      assert(row.note === 'Watched' && row.check, JSON.stringify(row));
+      const logs = env.logs.join('\n');
+      assert(/screen marked an episode watched/.test(logs) && !/netflix|baking|S16|3201907018807/i.test(logs), logs);
+    });
+
+    await check('A service without /watch-track (404): no toast, nothing kept, About says it needs a TV restart', async () => {
+      const q = await env.newPage({});
+      try {
+        await q.route(/:8095\/watch-track/, (r) => r.fulfill({ status: 404, headers: CORS_W, body: JSON.stringify({ ok: false, error: 'not found' }) }));
+        await H.sleep(4800);   // the first look, a few seconds after start
+        assert(await q.evaluate(() => window.HUB_SHOWS._test.trackOld()), 'did not notice');
+        await q.evaluate(() => window.HUB_TEST.about.open());
+        await H.sleep(500);
+        let row = await q.evaluate(() => window.HUB_TEST.about.rows().filter((r) => r.label === 'Watch tracking').map((r) => r.value));
+        assert(row.length === 1 && row[0] === 'needs a TV restart', JSON.stringify(row));
+        await q.evaluate(() => window.HUB_TEST.about.close());
+        await H.sleep(300);
+        await H.openSchedule(q, 'week');
+        await H.focusKey(q, 'sh:row:the-great-british-baking-show:');
+        const before = env.launches.length;
+        await H.key(q, 'Enter');
+        await H.until(() => env.launches.length > before, 3500, 'the app did not open');
+        assert((await pendingOf(q)).length === 0, 'kept a pending watch');
+        assert(await q.evaluate(() => !/is-shown/.test(document.getElementById('toast').className)), 'a toast appeared');
+        assert(pageErrors(q).length === 0, pageErrors(q).join(' | '));
+      } finally { await q.ctx.close(); }
+      // A service that has it says nothing in About.
+      assert(await wp.evaluate(() => window.HUB_SHOWS.trackText() === ''), 'says something when tracking works');
+    });
+
+    await check('Pending watches the service never finished are dropped after 12 hours; a Pi that refuses the show drops it too', async () => {
+      await wp.evaluate((t) => localStorage.setItem('homeHub.watch.v1', JSON.stringify([{ token: 'oldoldold123', showId: 'x', season: 1, number: 1, appId: '1', startedAt: t - 13 * 3600 * 1000, runtimeMin: 30 }])), H.TUESDAY);
+      await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.sleep(300);
+      assert((await pendingOf(wp)).length === 0, 'old pending watch kept');
+      tracks = [{ id: 'gonegone1234', minutes: 21, need: 21, done: true, active: false }];
+      await wp.evaluate((t) => localStorage.setItem('homeHub.watch.v1', JSON.stringify([{ token: 'gonegone1234', showId: 'not-on-the-list', season: 1, number: 1, appId: '1', startedAt: t, runtimeMin: 30 }])), Date.now());
+      await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.until(async () => (await pendingOf(wp)).length === 0, 3000, 'a refused watch was kept');
+      await wp.ctx.close();
+    });
+
   } finally {
     await env.stop();
   }
@@ -598,6 +717,106 @@ async function main() {
     s.fail = 'NotFoundError';
     r = await s.call('/launch-control?id=1&op=http://a.b/c');
     assert(r.status === 500 && r.body.ok === false && r.body.error === 'NotFoundError', JSON.stringify(r));
+  });
+
+
+  {
+    // Counts and the Schedule with a watched episode: Slow Horses S5 E4 (the
+    // only one of its out) and Baking Show S16 E9 are marked.
+    const base = await H.start();
+    const mark = await H.start({ watched: [['slow-horses', 5, 4], ['the-great-british-baking-show', 16, 9]] });
+    try {
+      const a = await base.newPage({});
+      const b = await mark.newPage({});
+      await check('Counts skip watched episodes: a show whose aired episodes are all watched leaves the badge', async () => {
+        const ca = await a.evaluate(() => window.HUB_SHOWS.availability());
+        const cb = await b.evaluate(() => window.HUB_SHOWS.availability());
+        assert(ca['Apple TV'] === 1 && ca.Netflix === 1, 'before: ' + JSON.stringify(ca));
+        assert(cb['Apple TV'] === undefined && cb.Netflix === undefined, 'after: ' + JSON.stringify(cb));
+        const rest = (o) => JSON.stringify(Object.keys(o).filter((k) => k !== 'Apple TV' && k !== 'Netflix').sort().map((k) => k + o[k]));
+        assert(rest(ca) === rest(cb), 'other apps changed: ' + rest(ca) + ' vs ' + rest(cb));
+        // The badge on the tile follows.
+        const n = (p) => p.evaluate(() => document.querySelectorAll('.ent-count').length);
+        const na = await n(a);
+        const nb = await n(b);
+        assert(na > 0 && nb === na - 2, 'count badges on the tile: ' + na + ' before, ' + nb + ' after');
+      });
+      await check('The Schedule dims watched rows with a check and "Watched" (EN, ES); watched rows are not the first focus; a row of several episodes counts only when all are watched', async () => {
+        await H.openSchedule(b, 'week');
+        const r = await b.evaluate(() => {
+          const q = (k) => document.querySelector('[data-key^="sh:row:' + k + ':"]');
+          const w = q('the-great-british-baking-show');
+          const u = q('paradise');
+          return { watched: /is-watched/.test(w.className), note: w.querySelector('.sh-note.is-watched').textContent, check: !!w.querySelector('.sh-check'),
+            other: /is-watched/.test(u.className), aired: q('slow-horses').querySelector('.sh-note.is-watched').textContent };
+        });
+        assert(r.watched && r.note === 'Watched' && r.check && !r.other && r.aired === 'Watched', JSON.stringify(r));
+        assert((await focusedKey(b)).indexOf('sh:row:paradise:') === 0, 'focus: ' + await focusedKey(b));
+        const row = await b.evaluate(() => window.HUB_SHOWS._test.rowWatched({ eps: [{ watched: true }, {}] }) + '/' + window.HUB_SHOWS._test.rowWatched({ eps: [{ watched: true }, { watched: true }] }));
+        assert(row === 'false/true', row);
+        await b.ctx.close();
+        const es = await mark.newPage({ lang: 'es' });
+        await H.openSchedule(es, 'week');
+        const t = await es.evaluate(() => document.querySelector('[data-key^="sh:row:slow-horses:"] .sh-note.is-watched').textContent);
+        assert(t === 'Visto', t);
+        await es.ctx.close();
+      });
+      await a.ctx.close();
+    } finally {
+      await base.stop();
+      await mark.stop();
+    }
+  }
+
+  await check('service.js /running and /watch-track: strict checks, a minute count from getAppsContext, done at the need, ended when the app goes', async () => {
+    const s = loadService({ running: [] });
+    let r = await s.call('/running');
+    assert(r.status === 200 && r.body.ok === true && Array.isArray(r.body.apps) && r.body.apps.length === 0, JSON.stringify(r));
+    s.setRunning([{ id: 'p1', appId: '3201907018807' }, { id: 'p2', appId: 'other.app' }]);
+    r = await s.call('/running');
+    assert(JSON.stringify(r.body.apps) === JSON.stringify([{ id: 'p1', appId: '3201907018807' }, { id: 'p2', appId: 'other.app' }]), JSON.stringify(r));
+    s.failRunning('boom');
+    r = await s.call('/running');
+    assert(r.status === 500 && r.body.ok === false && r.body.error === 'boom', JSON.stringify(r));
+    s.failRunning(null);
+    for (const [q, err] of [['app=../x&id=abcdef123456&need=21', 'bad app'], ['app=1&id=ABC&need=21', 'bad id'], ['app=1&id=abcdef123456&need=0', 'bad need'], ['app=1&id=abcdef123456&need=2.5', 'bad need'], ['app=1&id=abcdef123456&need=9999', 'bad need'], ['id=abcdef123456', 'bad app']]) {
+      r = await s.call('/watch-track?' + q);
+      assert(r.status === 400 && r.body.error === err, q + ' -> ' + JSON.stringify(r));
+    }
+    assert((await s.call('/watch-track/status')).body.tracks.length === 0, 'a bad query started a track');
+    r = await s.call('/watch-track?app=3201907018807&id=abcdef123456&need=3');
+    assert(r.status === 200 && r.body.ok === true && s.timers.length === 1, JSON.stringify(r));
+    // Minute 1 and 2: running. The app goes in minute 3 (once): not ended yet, not counted.
+    await s.tick(); await s.tick();
+    let st = (await s.call('/watch-track/status')).body.tracks[0];
+    assert(st.minutes === 2 && st.done === false && st.active === true && st.need === 3, JSON.stringify(st));
+    s.setRunning([]);
+    await s.tick();
+    st = (await s.call('/watch-track/status')).body.tracks[0];
+    assert(st.minutes === 2 && st.active === true, 'one missed check ended it: ' + JSON.stringify(st));
+    s.setRunning([{ id: 'p1', appId: '3201907018807' }]);
+    await s.tick();
+    st = (await s.call('/watch-track/status')).body.tracks[0];
+    assert(st.minutes === 3 && st.done === true && st.active === false, JSON.stringify(st));
+    await s.tick();   // nothing active: the timer stops
+    assert(s.timers.length === 0 || s.cleared > 0, 'the timer kept running');
+    // A second track: the app is gone for two checks in a row, so it ends, not done. No answer from the TV counts nothing.
+    await s.call('/watch-track?app=other.app&id=zzzzzz111111&need=50');
+    s.setRunning([{ id: 'p2', appId: 'other.app' }]);
+    await s.tick();
+    s.failRunning('boom'); await s.tick(); s.failRunning(null);
+    s.setRunning([]);
+    await s.tick(); await s.tick();
+    st = (await s.call('/watch-track/status')).body.tracks.filter((t) => t.id === 'zzzzzz111111')[0];
+    assert(st.minutes === 1 && st.done === false && st.active === false, JSON.stringify(st));
+    // An app never seen: ends after 5 checks.
+    await s.call('/watch-track?app=never.app&id=nnnnnn111111&need=5');
+    for (let i = 0; i < 5; i++) await s.tick();
+    st = (await s.call('/watch-track/status')).body.tracks.filter((t) => t.id === 'nnnnnn111111')[0];
+    assert(st.minutes === 0 && st.active === false && st.done === false, JSON.stringify(st));
+    // The same token again does not start a second track.
+    await s.call('/watch-track?app=never.app&id=nnnnnn111111&need=5');
+    assert((await s.call('/watch-track/status')).body.tracks.filter((t) => t.id === 'nnnnnn111111').length === 1, 'doubled');
   });
 
   await check('The new and changed app files are plain ES5', () => {

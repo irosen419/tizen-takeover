@@ -23,6 +23,17 @@
  * an episode out in the last week or airing later today, to put those apps
  * first with a small count.
  *
+ * Watched: after OK opens an app for an episode (or, from a show row with no
+ * episode, the earliest episode out and not yet watched), the hub keeps a
+ * pending watch on this TV (homeHub.watch.v1) and asks the TV service to count
+ * the minutes the app stays running (/watch-track; the page sleeps while the
+ * app is open, the service doesn't). Back in the hub, /watch-track/status says
+ * which are done (70% of the runtime) and the hub tells the Pi (POST
+ * /shows/watched), which sends back the episode as watched: true. Watched
+ * rows are dimmed with a check, and a watched episode no longer counts on the
+ * Entertainment tile. A service without /watch-track (not restarted since the
+ * update) is skipped quietly; the About panel says "needs a TV restart".
+ *
  * Not a widget by itself: entertainment.js loads it (HUB_SHOWS.attach) and
  * hands it the panel body. Plain ES5. Every word is in STRINGS; Spanish is
  * 'shows.<key>' in app/i18n.js.
@@ -39,6 +50,12 @@
   var TABS = ['today', 'week', 'month', 'soon'];
   var SOON_STRIP = 3;                        // Coming soon cards under the other views
   var DEFAULT_ALIASES = { 'Hulu': 'Disney+' };
+  var WATCH_KEY = 'homeHub.watch.v1';        // pending watches: [{ token, showId, season, number, appId, startedAt, runtimeMin }]
+  var WATCH_SHARE = 0.7;                     // of the runtime the app must stay open
+  var DEFAULT_RUNTIME = 30;                  // minutes, when TVmaze has none
+  var WATCH_KEEP = 12 * HOUR;                // a pending watch the service never finished is dropped after this
+  var WATCH_MAX = 6;                         // pending watches kept
+  var TRACK_OLD = 'needs a TV restart';      // the About row, English only like the other About rows
 
   var STRINGS = {
     title: 'Schedule',
@@ -57,6 +74,7 @@
     am: 'AM',
     pm: 'PM',
     aired: 'Aired',
+    watched: 'Watched',
     inMin: 'in {n} min',
     now: 'On now',
     premiere: 'Premiere',
@@ -323,6 +341,15 @@
     return out;
   }
 
+  function epWatched(ep) { return !!ep && ep.watched === true; }
+
+  // True when every episode of a row is marked watched.
+  function rowWatched(a) {
+    if (!a || !isArr(a.eps) || !a.eps.length) return false;
+    for (var i = 0; i < a.eps.length; i++) if (!epWatched(a.eps[i])) return false;
+    return true;
+  }
+
   // The rows of a view, grouped by local day: [{ ms, today, past, rows }].
   function groupByDay(list, t) {
     var groups = [];
@@ -443,6 +470,8 @@
     var list = airings(d, t - 7 * DAY, addDays(dayStart(t), 1));
     var seen = {};
     for (var i = 0; i < list.length; i++) {
+      // A row whose episodes are all marked watched is not something to watch.
+      if (rowWatched(list[i])) continue;
       // Counted under the app OK opens: Prime Video for a show watched via it.
       var main = watchApp(list[i].show);
       var app = viaApp(list[i].show, main) || main;
@@ -491,7 +520,7 @@
       var link = null;
       try { link = lad.tryDeepLink(show, eps); } catch (e) { link = null; }
       if (link && host && typeof host.launchControl === 'function') {
-        host.launchControl(link, function (err) { if (err) openApp(); });
+        host.launchControl(link, function (err) { if (err) openApp(); else track(show, eps, link.id); });
         return 'deeplink';
       }
     }
@@ -502,9 +531,128 @@
       var app = host.findApp(lad.fallbackOpenApp.match);
       if (!app) { toast(word('notInstalled', { service: service }), 4500); return 'missing'; }
       // No deep link: say first what will happen, then open the app.
-      showCard(word('opensHome', { service: service }), word('searchFor', { name: show.name }), function () { host.launch(app.id, service); });
+      showCard(word('opensHome', { service: service }), word('searchFor', { name: show.name }), function () {
+        host.launch(app.id, service);
+        track(show, eps, app.id);
+      });
       return 'app';
     }
+  }
+
+  /* ---------- watched: pending watches and the service's count ---------- */
+
+  var T = { old: false, busy: false, probed: false };
+
+  function loadPending() {
+    var list = null;
+    try { list = JSON.parse(load(WATCH_KEY) || '[]'); } catch (e) { list = null; }
+    return isArr(list) ? list : [];
+  }
+
+  function savePending(list) {
+    store(WATCH_KEY, JSON.stringify(list.slice(-WATCH_MAX)));
+  }
+
+  function dropPending(token) {
+    var list = loadPending();
+    var out = [];
+    for (var i = 0; i < list.length; i++) if (list[i] && list[i].token !== token) out.push(list[i]);
+    savePending(out);
+  }
+
+  function makeToken() {
+    var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    var t = '';
+    for (var i = 0; i < 12; i++) t += chars.charAt(Math.floor(Math.random() * chars.length));
+    return t;
+  }
+
+  // The episode a Watch press is for: the row's first episode that is out and
+  // not watched, or, with no row (a show), the show's earliest one. null when
+  // there is none (an episode still to air is not watched yet).
+  function pickEpisode(show, eps, t) {
+    var list = eps && eps.length ? eps : (show && isArr(show.upcoming) ? show.upcoming : []);
+    var best = null;
+    var bestMs = 0;
+    for (var i = 0; i < list.length; i++) {
+      var ep = list[i];
+      var ms = parseIso(ep && ep.airstamp);
+      if (ms === null || ms > t + 5 * MIN || epWatched(ep)) continue;
+      if (typeof ep.season !== 'number' || typeof ep.number !== 'number') continue;
+      if (best === null || ms < bestMs) { best = ep; bestMs = ms; }
+    }
+    return best;
+  }
+
+  // OK opened an app for this show: keep a pending watch and ask the service
+  // to count. Returns the pending watch, or null (nothing to track).
+  function track(show, eps, appId) {
+    var C = S.C;
+    if (!C || !show || !appId || T.old) return null;
+    var t = now();
+    var ep = pickEpisode(show, eps, t);
+    if (!ep) return null;
+    var runtime = typeof ep.runtime === 'number' && ep.runtime > 0 ? ep.runtime : DEFAULT_RUNTIME;
+    var rec = { token: makeToken(), showId: show.id, season: ep.season, number: ep.number, appId: String(appId), startedAt: t, runtimeMin: runtime };
+    var list = loadPending();
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && !(list[i].showId === rec.showId && list[i].season === rec.season && list[i].number === rec.number)) out.push(list[i]);
+    }
+    out.push(rec);
+    savePending(out);
+    var need = Math.max(1, Math.ceil(runtime * WATCH_SHARE));
+    try {
+      C.service('/watch-track?app=' + encodeURIComponent(rec.appId) + '&id=' + rec.token + '&need=' + need, 6000, function (err) {
+        // An old service (not restarted since the update) has no /watch-track:
+        // no toast, nothing kept; the About panel says so.
+        if (err === 'not found') { T.old = true; dropPending(rec.token); }
+      });
+    } catch (e) { warn('starting the count', e); }
+    return rec;
+  }
+
+  // Tells the Pi an episode is watched. Kept for the next try while the Pi
+  // can't be reached; dropped when it refuses (the show is gone).
+  function forward(rec) {
+    var Lv = S.C && S.C.live;
+    if (!Lv || typeof Lv.post !== 'function') return;
+    try {
+      Lv.post('/shows/watched', { id: rec.showId, season: rec.season, number: rec.number }, function (err, data, code) {
+        if (!err || code === 400 || code === 404) dropPending(rec.token);
+      });
+    } catch (e) { warn('telling the Pi', e); }
+  }
+
+  // Asks the service which counts are done and forwards those. Quiet always.
+  function checkTracked(force) {
+    var C = S.C;
+    if (!C || T.busy) return;
+    var t = now();
+    var list = loadPending();
+    var keep = [];
+    for (var i = 0; i < list.length; i++) if (list[i] && t - list[i].startedAt < WATCH_KEEP) keep.push(list[i]);
+    if (keep.length !== list.length) savePending(keep);
+    if (!keep.length && (T.probed && !force)) return;
+    T.busy = true;
+    T.probed = true;
+    try {
+      C.service('/watch-track/status', 5000, function (err, data) {
+        T.busy = false;
+        if (err) {
+          if (err === 'not found') { T.old = true; savePending([]); }
+          return;
+        }
+        T.old = false;
+        var tracks = data && isArr(data.tracks) ? data.tracks : [];
+        var pend = loadPending();
+        for (var a = 0; a < pend.length; a++) {
+          for (var b = 0; b < tracks.length; b++) {
+            if (tracks[b] && tracks[b].id === pend[a].token && tracks[b].done === true) forward(pend[a]);
+          }
+        }
+      });
+    } catch (e) { T.busy = false; warn('asking the service', e); }
   }
 
   // The card before an app opens without a deep link: centered, about 1.8 s;
@@ -605,6 +753,7 @@
     clearTimeout(S.timer);
     S.timer = setTimeout(function () {
       try { changed(); } catch (e) { warn('the minute update', e); }
+      try { checkTracked(false); } catch (e) { warn('the watch check', e); }
       schedule();
     }, MIN - (now() % MIN) + 300);
   }
@@ -675,7 +824,8 @@
     var app = watchApp(a.show);
     var alts = alternatives(a.show);
     var line = el('div', 'sh-line' + (alts.length ? ' has-alt' : ''), parent);
-    var row = el('div', 'sh-row f' + (past ? ' is-past' : '') + (soon || on ? ' is-soon' : ''), line);
+    var seen = rowWatched(a);
+    var row = el('div', 'sh-row f' + (past ? ' is-past' : '') + (seen ? ' is-watched' : '') + (soon || on ? ' is-soon' : ''), line);
     row.setAttribute('data-key', rowKey(a));
     poster(row, a.show);
     var info = el('div', 'sh-info', row);
@@ -683,7 +833,11 @@
     var meta = el('div', 'sh-meta', info);
     var bits = epCode(a.eps) + ' · ' + timeText(a.ms);
     el('span', 'sh-meta-text', meta, bits);
-    if (past) el('span', 'sh-note', meta, word('aired'));
+    if (seen) {
+      var wn = el('span', 'sh-note is-watched', meta);
+      el('span', 'sh-check', wn);
+      el('span', 'sh-note-text', wn, word('watched'));
+    } else if (past) el('span', 'sh-note', meta, word('aired'));
     else if (on) el('span', 'sh-note is-live', meta, word('now'));
     else if (soon) el('span', 'sh-note is-live', meta, word('inMin', { n: Math.max(1, Math.round((a.ms - t) / MIN)) }));
     if (a.eps[0].number === 1 && !past) el('span', 'sh-chip', meta, word('premiere'));
@@ -843,7 +997,7 @@
     var rows = root.querySelectorAll('.sh-row');
     var pick = null;
     for (var r = 0; r < rows.length; r++) {
-      if (!/\bis-past\b/.test(rows[r].className)) { pick = rows[r]; break; }
+      if (!/\bis-(past|watched)\b/.test(rows[r].className)) { pick = rows[r]; break; }
     }
     if (!pick) pick = root.querySelector('.sh-tab.is-on');
     if (pick) pick.setAttribute('data-autofocus', '');
@@ -905,6 +1059,10 @@
     } catch (e) { /* stays in its language */ }
     schedule();
     checkSoon();
+    // Back in front after an app: see which watches finished. The first look
+    // (a few seconds after start) also finds out whether the service has /watch-track.
+    try { document.addEventListener('visibilitychange', function () { if (!document.hidden) checkTracked(false); }, false); } catch (e) { /* the minute tick still looks */ }
+    setTimeout(function () { try { checkTracked(true); } catch (e) { warn('the watch check', e); } }, 4000);
   }
 
   window.HUB_SHOWS = {
@@ -915,6 +1073,7 @@
     title: function () { return word('title'); },
     entry: function () { return { label: word('entry'), sub: word('entrySub') }; },
     tileLine: function () { return S.data && state() === 'data' ? tileLine(S.data, now()) : ''; },
+    trackText: function () { return T.old ? TRACK_OLD : ''; },
     availability: function () { return S.data && state() === 'data' ? availability(S.data, now()) : {}; },
     renderPanel: renderPanel,
     onSelect: onSelect,
@@ -922,6 +1081,7 @@
     // For the tests (dev/shows-test.js): the pure parts and the state.
     _test: {
       view: view, airings: airings, groupByDay: groupByDay, returning: returning, tileLine: tileLine,
+      track: track, checkTracked: checkTracked, pending: loadPending, rowWatched: rowWatched, trackOld: function () { return T.old; },
       ladder: ladder, watch: watch, watchApp: watchApp, viaApp: viaApp, alternatives: alternatives, availability: availability, timeText: timeText, epCode: epCode, rangeText: rangeText, word: word,
       weekStart: weekStart, monthEnd: monthEnd, setData: function (d) { S.data = d; S.fromCache = false; changed(); },
       tab: function (t) { if (t) S.tab = t; return S.tab; }

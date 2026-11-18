@@ -213,7 +213,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.7.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.8.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -234,7 +234,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.7.0');
+    assert.strictEqual(r.json.server, '0.8.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -509,7 +509,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.7.0');
+    assert.strictEqual(r.json.server, '0.8.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
@@ -1180,7 +1180,7 @@ async function main() {
 
   await check('scrub: cut to 300 characters; a line with nothing to hide is unchanged', () => {
     assert.strictEqual(logscrub.scrub('x'.repeat(500)).length, 300);
-    const plain = 'control GET /api/status -> 200 at 15:10:00, server 0.7.0, rev 12, 2026-11-17T15:10:00.000Z';
+    const plain = 'control GET /api/status -> 200 at 15:10:00, server 0.8.0, rev 12, 2026-11-17T15:10:00.000Z';
     assert.strictEqual(logscrub.scrub(plain, ['Rosen Family']), plain);
     assert.strictEqual(logscrub.scrub(''), '');
   });
@@ -1211,7 +1211,7 @@ async function main() {
       'calendars: Family, Work (busy only); time zone America/Chicago', 'calendar Work: can be read again',
       'Claude mailbox: todo.add (c123456) -> ok', 'Claude mailbox: connected to bucket home-hub-mailbox',
       'Claude mailbox: connected again after 3 failed tries', 'Claude mailbox: off (no HUB_MAILBOX_ settings in .env)',
-      'Home Hub live server 0.7.0 listening on port 8097', 'started a new data file /app/data/state.json',
+      'Home Hub live server 0.8.0 listening on port 8097', 'started a new data file /app/data/state.json',
       'Spotify: signed in, watching what plays', 'Spotify: set up, not signed in yet (run ./hub spotify login)',
       'Spotify: working again', 'SIGTERM received, stopping', 'side door (control API only) on 127.0.0.1:8098'
     ];

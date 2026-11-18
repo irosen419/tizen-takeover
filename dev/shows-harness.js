@@ -46,8 +46,23 @@ function getOk(url) {
   });
 }
 
+// The sample, with some episodes marked watched: watched is [[show id, season, number], ...].
+function sampleWith(dir, watched) {
+  if (!watched || !watched.length) return SAMPLE;
+  const raw = JSON.parse(fs.readFileSync(SAMPLE, 'utf8'));
+  watched.forEach((w) => {
+    const s = raw.shows.find((x) => x.id === w[0]);
+    if (!s) throw new Error('no such sample show: ' + w[0]);
+    s.watched = (s.watched || []).concat([{ season: w[1], number: w[2], at: '2026-11-17T20:00:00Z' }]);
+    (s.upcoming || []).concat(s.nextEpisode ? [s.nextEpisode] : []).forEach((e) => { if (e.season === w[1] && e.number === w[2]) e.watched = true; });
+  });
+  const file = path.join(dir, 'sample-watched.json');
+  fs.writeFileSync(file, JSON.stringify(raw));
+  return file;
+}
+
 /*
- * opts: { at (UTC ms), shows: 'sample' | 'none' (a Pi that sends no shows) }.
+ * opts: { at (UTC ms), shows: 'sample' | 'none' (a Pi that sends no shows), watched: [[id, season, number], ...] }.
  * Returns { PAGE, LIVE, pi, logs, newPage(o), stop(), launches }.
  */
 async function start(opts) {
@@ -70,7 +85,7 @@ async function start(opts) {
   env.pi = server.start({
     port: env.LIVE_PORT, host: '127.0.0.1', token: TOKEN, origins: [env.PAGE], dataDir: env.dataDir,
     log: (s) => env.logs.push(s), now: () => new Date(env.at),
-    shows: opts.shows === 'none' ? undefined : { sampleFile: SAMPLE }
+    shows: opts.shows === 'none' ? undefined : { sampleFile: sampleWith(env.dataDir, opts.watched) }
   });
   await env.pi.ready;
   await until(() => getOk(env.PAGE + '/'), 10000, 'the preview did not start');

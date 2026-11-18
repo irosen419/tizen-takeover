@@ -10,6 +10,12 @@
  *                        open an app with an app control (an operation, an
  *                        optional URI and one optional data key and value):
  *                        how the watch link test tries deep links
+ *   GET /running         the apps running now, as [{ id, appId }] (Tizen getAppsContext)
+ *   GET /watch-track?app=...&id=...&need=N
+ *                        start counting the minutes that app stays running (checked
+ *                        once a minute; the page itself sleeps while an app is open);
+ *                        done once it has been running N minutes
+ *   GET /watch-track/status   every track so far: [{ id, minutes, need, done, active }]
  *   GET /key?k=KEY_...   press a remote key (used for HDMI inputs)
  *   GET /webhook?url=... send an empty POST, e.g. to a Home Assistant webhook
  *   GET /fetch?url=...   read JSON from one of four public weather/city addresses
@@ -28,7 +34,7 @@ var urlLib = require('url');
 var os = require('os');
 
 var PORT = 8095;
-var VERSION = '0.29.12';
+var VERSION = '0.29.13';
 var TOKEN_FILE = '/home/owner/share/tizen-takeover-remote-token.txt';
 var REMOTE_NAME = new Buffer('Home Hub').toString('base64');
 
@@ -108,6 +114,116 @@ function launchControl(c, cb) {
   } catch (e) {
     cb(e.message);
   }
+}
+
+/* ---------- Which apps are running, and watch tracking ---------- */
+
+/* Calls cb(err, [{ id, appId }]) with the apps running now. */
+function runningApps(cb) {
+  try {
+    tizen.application.getAppsContext(function (ctxs) {
+      var out = [];
+      for (var i = 0; i < ctxs.length; i++) out.push({ id: ctxs[i].id, appId: ctxs[i].appId });
+      cb(null, out);
+    }, function (e) {
+      cb(e && e.message ? e.message : 'getAppsContext failed');
+    });
+  } catch (e) {
+    cb(e.message);
+  }
+}
+
+/*
+ * Watch tracking. The hub page sleeps while another app is in front, but this
+ * service keeps running, so it does the counting: every minute it asks which
+ * apps are running and adds a minute to each track whose app is. A track is
+ * done once it has had `need` minutes. The hub asks /watch-track/status when
+ * it is back in front and passes what is done to the Pi (the page holds the
+ * Pi address and the show; this service knows neither, only a token).
+ * A track ends, not done, when its app was never seen after 5 checks or has
+ * been gone for 2 checks in a row; every track ends after 8 hours. Finished
+ * tracks are kept for a day (20 at most), in memory only.
+ */
+var TOKEN_RE = /^[a-z0-9]{6,32}$/;
+var TRACK_TICK_MS = 60000;
+var TRACK_NEVER_SEEN = 5;
+var TRACK_GONE = 2;
+var TRACK_MAX_MIN = 480;
+var TRACK_KEEP_MS = 24 * 60 * 60 * 1000;
+var TRACK_MAX = 20;
+var tracks = [];
+var trackTimer = null;
+var trackBusy = false;
+
+/* Checks the query. Returns { app, id, need } or a string saying what is wrong. */
+function checkTrack(q) {
+  var app = String(q.app || '');
+  var id = String(q.id || '');
+  var need = q.need === undefined || q.need === '' ? 21 : Number(q.need);
+  if (!APP_ID_RE.test(app)) return 'bad app';
+  if (!TOKEN_RE.test(id)) return 'bad id';
+  if (!(need >= 1 && need <= 600 && Math.floor(need) === need)) return 'bad need';
+  return { app: app, id: id, need: need };
+}
+
+function trackStatus() {
+  var out = [];
+  for (var i = 0; i < tracks.length; i++) {
+    var t = tracks[i];
+    out.push({ id: t.id, minutes: t.minutes, need: t.need, done: t.done, active: t.active });
+  }
+  return out;
+}
+
+function trackTick() {
+  if (trackBusy) return;
+  var live = false;
+  for (var i = 0; i < tracks.length; i++) if (tracks[i].active) live = true;
+  if (!live) { clearInterval(trackTimer); trackTimer = null; return; }
+  trackBusy = true;
+  runningApps(function (err, apps) {
+    trackBusy = false;
+    if (err) return;   // no answer this minute: nothing counted, nothing lost
+    var now = new Date().getTime();
+    for (var i = 0; i < tracks.length; i++) {
+      var t = tracks[i];
+      if (!t.active) continue;
+      var up = false;
+      for (var j = 0; j < apps.length; j++) if (apps[j].appId === t.app) up = true;
+      t.checks++;
+      if (up) {
+        t.seen = true;
+        t.gone = 0;
+        t.minutes++;
+        if (t.minutes >= t.need) { t.done = true; t.active = false; t.endedAt = now; }
+      } else if (t.seen) {
+        t.gone++;
+        if (t.gone >= TRACK_GONE) { t.active = false; t.endedAt = now; }
+      } else if (t.checks >= TRACK_NEVER_SEEN) {
+        t.active = false;
+        t.endedAt = now;
+      }
+      if (t.active && t.checks >= TRACK_MAX_MIN) { t.active = false; t.endedAt = now; }
+    }
+    // Forget old finished tracks.
+    var kept = [];
+    for (var k = 0; k < tracks.length; k++) {
+      if (tracks[k].active || now - tracks[k].endedAt < TRACK_KEEP_MS) kept.push(tracks[k]);
+    }
+    tracks = kept;
+  });
+}
+
+function startTrack(c) {
+  var now = new Date().getTime();
+  var t = null;
+  for (var i = 0; i < tracks.length; i++) if (tracks[i].id === c.id) t = tracks[i];
+  if (!t) {
+    t = { id: c.id, app: c.app, need: c.need, minutes: 0, checks: 0, seen: false, gone: 0, done: false, active: true, endedAt: 0, startedAt: now };
+    tracks.push(t);
+    while (tracks.length > TRACK_MAX) tracks.shift();
+  }
+  if (!trackTimer) trackTimer = setInterval(trackTick, TRACK_TICK_MS);
 }
 
 /* ---------- Minimal WebSocket client for the TV's own remote control channel ---------- */
@@ -416,6 +532,24 @@ var server = http.createServer(function (req, res) {
       if (err) return send(res, 500, { ok: false, error: String(err) });
       send(res, 200, { ok: true });
     });
+  }
+
+  if (parsed.pathname === '/running') {
+    return runningApps(function (err, apps) {
+      if (err) return send(res, 500, { ok: false, error: String(err) });
+      send(res, 200, { ok: true, apps: apps });
+    });
+  }
+
+  if (parsed.pathname === '/watch-track') {
+    var tc = checkTrack(q);
+    if (typeof tc === 'string') return send(res, 400, { ok: false, error: tc });
+    startTrack(tc);
+    return send(res, 200, { ok: true });
+  }
+
+  if (parsed.pathname === '/watch-track/status') {
+    return send(res, 200, { ok: true, tracks: trackStatus() });
   }
 
   if (parsed.pathname === '/key') {
