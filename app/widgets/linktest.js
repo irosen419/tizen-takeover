@@ -58,6 +58,8 @@
   }
 
   // True only when both are versions and the service's is the older.
+  var LAUNCH_CONTROL_SINCE = 'v0.28.16';
+
   function isOlder(service, build) {
     var a = parseVersion(service);
     var b = parseVersion(build);
@@ -296,10 +298,12 @@
         }
       });
     }
-    // An old service.js can't do this: ask its version first (a service that
-    // doesn't answer is left for the launch itself to report).
+    // A service.js from before /launch-control (0.28.16) can't do this: ask
+    // its version first. Only that matters: every release bumps the version,
+    // and a helper one release behind still has /launch-control. (A service
+    // that doesn't answer is left for the launch itself to report.)
     C.service('/ping', 3000, function (err, data) {
-      if (!err && data && isOlder(data.version, window.HUB_BUILD)) { showError(rec, word('stale')); return; }
+      if (!err && data && isOlder(data.version, LAUNCH_CONTROL_SINCE)) { showError(rec, word('stale')); return; }
       go();
     });
     return 'fired';
