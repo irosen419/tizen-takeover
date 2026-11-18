@@ -446,7 +446,7 @@ async function main() {
       }
     });
 
-    await check('Watch link test: the added recipes are listed after the first ten, and a plain open uses /launch and still asks what happened', async () => {
+    await check('Watch link test: tests are grouped by app and numbered with a total, an answer names the app it opened, and a plain open uses /launch and still asks what happened', async () => {
       const lt = await env.newPage({});
       try {
         const v = await lt.evaluate(() => {
@@ -454,12 +454,13 @@ async function main() {
           const r = t.recipes();
           return { ids: r.map((x) => x.id), about: window.HUB_LINKTEST.aboutText(), netflixWatch: r.filter((x) => x.id === 'netflix-watch-resume')[0].val, def: r.filter((x) => x.id === 'appletv-default-op')[0].op, plain: r.filter((x) => x.plain).map((x) => x.id + ':' + x.op + ':' + x.key) };
         });
-        assert(v.ids.slice(0, 10).join() === 'prime-resume,netflix-resume,netflix-view,appletv-view,appletv-resume,appletv-fam,disney-view,disney-resume,hulu-view,peacock-view', v.ids.join());
-        assert(v.ids.slice(10, 15).join() === 'netflix-watch-resume,netflix-json-resume,netflix-default-op,appletv-resume-url,appletv-default-op', v.ids.join());
+        assert(v.ids.join() === 'prime-resume,plain-prime,netflix-resume,netflix-view,netflix-watch-resume,netflix-json-resume,netflix-default-op,plain-netflix,appletv-view,appletv-resume,appletv-fam,appletv-resume-url,appletv-default-op,plain-appletv,disney-view,disney-resume,plain-disney,hulu-view,plain-hulu,peacock-view,plain-peacock', v.ids.join());
         assert(v.ids.length === 21 && /^OK to open · 0 of \d+ tried$/.test(v.about), v.about);
         assert(v.netflixWatch === 'm=https://www.netflix.com/watch/81505776&source_type=4' && v.def === 'http://tizen.org/appcontrol/operation/default', JSON.stringify(v));
         assert(v.plain.length === 6 && v.plain.every((x) => /::undefined$/.test(x) || /:$/.test(x) || /::$/.test(x) || x.split(':')[1] === ''), v.plain.join());
         await H.openView(lt, 'linktests');
+        const nums = await lt.evaluate(() => ({ total: document.querySelector('.lt-total').textContent, nums: [].map.call(document.querySelectorAll('.lt-row .lt-num'), (n) => n.textContent) }));
+        assert(/^21 tests/.test(nums.total) && nums.nums.join() === Array.from({ length: 21 }, (_, i) => String(i + 1)).join(), JSON.stringify(nums));
         await H.focusKey(lt, 'lt:run:plain-netflix');
         const nc = env.launches.filter((x) => /launch-control/.test(x)).length;
         const nl = env.launches.length;
@@ -469,6 +470,12 @@ async function main() {
         assert(env.launches.filter((x) => /launch-control/.test(x)).length === nc, 'a plain open used an app control');
         await H.sleep(300);
         assert((await focusedKey(lt)) === 'lt:ans:plain-netflix:title', await focusedKey(lt));
+        // The answer names the app it opened (name and id on this TV).
+        await H.key(lt, 'ArrowRight');
+        await H.key(lt, 'Enter');
+        await H.until(() => lt.evaluate(() => { const d = JSON.parse(localStorage.getItem('homeHub.linkTests') || 'null'); return !!(d && d.results && d.results[0] && d.results[0].id === 'plain-netflix'); }), 3000, 'no answer kept');
+        const det = await lt.evaluate(() => JSON.parse(localStorage.getItem('homeHub.linkTests')).results[0].detail || '');
+        assert(/^opened Netflix \d+/.test(det), det);
       } finally { await lt.ctx.close(); }
     });
 

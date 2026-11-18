@@ -307,6 +307,7 @@
   var host = {
     findApp: function (match) { return findApp(match); },
     appsReady: function () { return !!apps; },
+    apps: function () { return apps ? apps.slice() : null; },
     launch: function (id, label) { launchById(id, label); },
     launchControl: function (c, cb) { launchControl(c, cb); },
     matchFor: matchFor
