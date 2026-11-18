@@ -885,6 +885,9 @@
     if (!shown) {
       list.style.display = 'none';
       more.style.display = 'none';
+    } else {
+      // Where a character works when the list changes (app/agents.js): the end of the list.
+      list.lastChild.setAttribute('data-agent-spot', '');
     }
   }
 

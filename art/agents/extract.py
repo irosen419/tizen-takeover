@@ -29,6 +29,30 @@ What it does, needing only Pillow:
      (the numbers go into the roster in app/agents.js).
   With a preview folder, also writes the two joined at 4x on a dark and a
   light backdrop (preview-dark.png, preview-light.png) to check the fringe.
+
+The other poses (the sequence in docs/agents.md: skid, crouch, leap, wave):
+
+    python3 art/agents/extract.py --poses <raw-folder> [out-folder] [preview-folder]
+
+<raw-folder> holds the sheets art/agents/gen.py asked Gemini for (kept in
+the project files, home-hub-agents/lift-v2/raw/, never in this repo). Each
+of those sheets has the old skating pose on its left (for scale) and the
+new pose on its right (POSES below: which sheet, which box). For each:
+  1. The background is cut as above, with two more kinds of pixel taken as
+     background when they touch it: the faint blue-grey ground shadow and
+     the pale glow Gemini paints round Stormlight (both greyish and no
+     warmer than neutral, so skin, shirt, hair and Wyndle never match).
+     Bits not joined to the figure go, except bright sparkles near it.
+  2. The scale: the skating figure on the same sheet is measured and the
+     whole sheet is brought down so that figure would be exactly as tall
+     as lift.webp (112 art pixels), so every pose has the same art-pixel
+     size and Lift and Wyndle look the same size in every pose. Each art
+     pixel is the median of its block's opaque source pixels, kept when
+     over half the block is opaque (as above, with a fractional block).
+  3. Writes <out>/<pose>.webp (lossless, transparent) and prints each size
+     and where its feet are (for the roster in app/agents.js). With a
+     preview folder: every pose (and the skate) at 4x on dark and light
+     (poses-dark.png, poses-light.png), to check the fringe.
 """
 import sys
 import os
@@ -158,7 +182,191 @@ def to_art_pixels(im, ox, oy):
     return out, spread
 
 
+# The new poses: (name, sheet, the skating figure's box, the pose's box),
+# boxes in sheet pixels (left, top, right, bottom), found by eye.
+POSES = [
+    ('skid', 'skid-2.png', (0, 0, 650, 768), (690, 0, 1344, 768)),
+    ('crouch', 'crouch-1.png', (0, 0, 660, 768), (700, 0, 1344, 768)),
+    ('leap', 'poses-b-1.png', (0, 0, 505, 768), (515, 0, 955, 768)),
+    ('wave', 'poses-b-1.png', (0, 0, 505, 768), (960, 0, 1344, 768)),
+]
+SKATE_H = 112                   # lift.webp's height, art pixels
+
+
+def shadowish(p, bgv):
+    """The ground shadow and the pale Stormlight haze: greyish, near the
+    grey's brightness, and blue or neutral (never warm like skin)."""
+    r, g, b = p[:3]
+    if max(r, g, b) - min(r, g, b) > 45 or b < r - 4:
+        return False
+    return abs((r + g + b) / 3.0 - bgv) <= 45
+
+
+def cut_pose(im):
+    """cut_background, then the shadow and haze touching the background,
+    then the bits not joined to the biggest piece (bright sparkles near it stay)."""
+    out = cut_background(im)
+    w, h = im.size
+    src = im.load()
+    op = out.load()
+    c = src[2, 2]
+    bgv = sum(c[:3]) / 3.0
+    q = deque()
+    for y in range(h):
+        for x in range(w):
+            if op[x, y][3] == 0:
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < w and 0 <= ny < h and op[nx, ny][3] and shadowish(src[nx, ny], bgv):
+                        q.append((nx, ny))
+    while q:
+        x, y = q.popleft()
+        if not op[x, y][3] or not shadowish(src[x, y], bgv):
+            continue
+        op[x, y] = (0, 0, 0, 0)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h and op[nx, ny][3]:
+                q.append((nx, ny))
+    # Pieces (8-connected): keep the biggest, and small bright ones within
+    # 40 px of its box (Stormlight sparkles); drop the rest.
+    lab = [[0] * w for _ in range(h)]
+    pieces = []
+    for y0 in range(h):
+        for x0 in range(w):
+            if not op[x0, y0][3] or lab[y0][x0]:
+                continue
+            n = len(pieces) + 1
+            pts = []
+            q = deque([(x0, y0)])
+            lab[y0][x0] = n
+            while q:
+                x, y = q.popleft()
+                pts.append((x, y))
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        nx, ny = x + dx, y + dy
+                        if 0 <= nx < w and 0 <= ny < h and op[nx, ny][3] and not lab[ny][nx]:
+                            lab[ny][nx] = n
+                            q.append((nx, ny))
+            pieces.append(pts)
+    if not pieces:
+        return out
+    big = max(pieces, key=len)
+    bx0 = min(p[0] for p in big) - 40
+    bx1 = max(p[0] for p in big) + 40
+    by0 = min(p[1] for p in big) - 40
+    by1 = max(p[1] for p in big) + 40
+    for pts in pieces:
+        if pts is big:
+            continue
+        bright = sum(sum(src[x, y][:3]) for x, y in pts) / float(len(pts)) > 600
+        near = all(bx0 <= x <= bx1 and by0 <= y <= by1 for x, y in pts)
+        if len(pts) > 400 and not bright:
+            continue          # a big piece of the figure (Wyndle apart from her): keep
+        if not (bright and near) and len(pts) < 400:
+            for x, y in pts:
+                op[x, y] = (0, 0, 0, 0)
+    return out
+
+
+def shrink(im, f):
+    """Down by a (fractional) factor f: each art pixel the median of its
+    block's opaque pixels, kept when over half the block is opaque."""
+    w, h = im.size
+    W = int(w / f)
+    H = int(h / f)
+    px = im.load()
+    out = Image.new('RGBA', (W, H))
+    op = out.load()
+    for j in range(H):
+        y0, y1 = int(round(j * f)), max(int(round(j * f)) + 1, int(round((j + 1) * f)))
+        for i in range(W):
+            x0, x1 = int(round(i * f)), max(int(round(i * f)) + 1, int(round((i + 1) * f)))
+            cols = []
+            for y in range(y0, min(h, y1)):
+                for x in range(x0, min(w, x1)):
+                    p = px[x, y]
+                    if p[3]:
+                        cols.append(p)
+            if len(cols) * 2 <= (y1 - y0) * (x1 - x0):
+                op[i, j] = (0, 0, 0, 0)
+                continue
+            op[i, j] = tuple(median([c[k] for c in cols]) for k in range(3)) + (255,)
+    return out
+
+
+def despeck(art):
+    ap = art.load()
+    W, H = art.size
+    for y in range(H):
+        for x in range(W):
+            if not ap[x, y][3]:
+                continue
+            n = 0
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < W and 0 <= ny < H and ap[nx, ny][3]:
+                    n += 1
+            if n == 0 and sum(ap[x, y][:3]) < 600:
+                ap[x, y] = (0, 0, 0, 0)
+    return art
+
+
+def poses_main(args):
+    raw = args[0]
+    out_dir = args[1] if len(args) > 1 else 'app/agents/lift'
+    prev_dir = args[2] if len(args) > 2 else ''
+    os.makedirs(out_dir, exist_ok=True)
+    done = [('skate', Image.open(os.path.join(out_dir, 'lift.webp')).convert('RGBA'))]
+    w0 = Image.open(os.path.join(out_dir, 'wyndle.webp')).convert('RGBA')
+    done[0][1].alpha_composite(w0, (109, 57))
+    scale = {}
+    for name, sheet, ref_box, box in POSES:
+        im = Image.open(os.path.join(raw, sheet)).convert('RGB')
+        if sheet not in scale:
+            ref = cut_pose(im.crop(ref_box))
+            bb = ref.getbbox()
+            scale[sheet] = (bb[3] - bb[1]) / float(SKATE_H)
+        f = scale[sheet]
+        cut = cut_pose(im.crop(box))
+        cut = cut.crop(cut.getbbox())
+        best = None
+        # The grid phase with the least spread, as for the skate.
+        for o in range(4):
+            shifted = Image.new('RGBA', (cut.size[0] + 4, cut.size[1] + 4))
+            shifted.alpha_composite(cut, (o, o))
+            art = despeck(shrink(shifted, f))
+            a = art.crop(art.getbbox())
+            n = sum(1 for p in a.getdata() if p[3])
+            if best is None or n > best[1]:
+                best = (a, n)
+        art = best[0]
+        art.save(os.path.join(out_dir, name + '.webp'), 'WEBP', lossless=True, quality=100, method=6)
+        done.append((name, art))
+        # The feet: the lowest opaque row's middle.
+        W, H = art.size
+        ap = art.load()
+        xs = [x for x in range(W) if ap[x, H - 1][3]]
+        print('%s.webp %dx%d (scale 1/%.2f), feet at x %d' % (name, W, H, f, (min(xs) + max(xs)) // 2 if xs else -1))
+    if prev_dir:
+        os.makedirs(prev_dir, exist_ok=True)
+        tw = sum(a.size[0] * 4 + 32 for _, a in done) + 32
+        th = max(a.size[1] for _, a in done) * 4 + 64
+        for bname, colour in (('dark', (14, 26, 42)), ('light', (236, 236, 230))):
+            bgim = Image.new('RGBA', (tw, th), colour + (255,))
+            x = 32
+            for _, a in done:
+                big = a.resize((a.size[0] * 4, a.size[1] * 4), Image.NEAREST)
+                bgim.alpha_composite(big, (x, th - 32 - big.size[1]))
+                x += big.size[0] + 32
+            bgim.convert('RGB').save(os.path.join(prev_dir, 'poses-' + bname + '.png'))
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == '--poses':
+        poses_main(sys.argv[2:])
+        return
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)

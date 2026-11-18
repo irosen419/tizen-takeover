@@ -5,20 +5,24 @@
  * the hub server from pi/ and a stand-in for Spotify (dev/mock-spotify.js),
  * all on spare ports with a fresh data folder, like dev/working-test.js.
  * Signals go the real way: a say command to the hub server ("hub:working
- * todo"), a new to-do, a calendar change, a changed snapshot.
+ * todo"), a new to-do, a calendar change, a changed snapshot. Each page
+ * loads her pictures at once (HUB_AGENTS.test.load) unless a check is about
+ * the pictures.
  *
- * Checks: Lift glides in beside a working chip, idles at the tile's bottom
- * right clear of the chip, and pulses and glides out when it ends, leaving
- * nothing; she comes with an arrival chip (to-do, calendar) and leaves as it
- * fades; a working chip turning into the arrival chip sends her out; never
- * in fade mode, on a slow screen (where the chips still show) or with
- * agents off (config, on: false, ?agent=off: nothing loads), and an unknown
- * `who` is off without an error; at most two on screen and one per tile
- * (three arrival chips at once); only transform and opacity animate; a
- * picture that fails (three tries) means no swoop and no broken picture;
- * a panel ends her at once; a tile at the right screen edge has her come
- * from the left, one at the left from the right; three layouts; the About
- * panel's Characters rows, in English and Spanish.
+ * Checks: with her in use the tile gets no chip, only her and the border
+ * light; a working state plays enter, travel (with the skid), work, and on
+ * done the exit, leaving nothing; an arrival alone plays enter, travel,
+ * work, reveal, exit in about 5 to 7 s while the border light laps; a
+ * working state that turns into news plays the reveal, never a chip; the
+ * chip comes back as the fallback (fade mode, a slow screen, agents off, an
+ * unknown who, pictures not loaded yet or failed, the caps full); at most
+ * two on screen and one per tile; only transform and opacity animate and
+ * the work loop is CSS only (nothing in her changes while she works); the
+ * work spot is the widget's [data-agent-spot], kept inside the tile; a
+ * small tile plays the short sequence; a language change while she works
+ * changes nothing; a panel ends her at once and a resize gives the working
+ * chip back; a tile at the right screen edge has her come from the left;
+ * three layouts; the About panel's Characters rows, in English and Spanish.
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  * AGENTS_GREP=<text> runs only the checks whose name contains it. It cannot
@@ -160,15 +164,20 @@ async function calendarChange(pi) {
 
 /* ---------- pages ---------- */
 
-// Notes every character the page adds (window.__figs) and every request for her pictures.
-const WATCH = '(function () { window.__figs = []; function watch() {' +
+// Notes every character, chip, border light and burst the page adds (window.__figs, __chips, __laps,
+// __bursts); open() counts every request for her pictures.
+const WATCH = '(function () { window.__figs = []; window.__chips = []; window.__laps = []; window.__bursts = []; function watch() {' +
   ' new MutationObserver(function (ms) { ms.forEach(function (m) {' +
   '  Array.prototype.forEach.call(m.addedNodes, function (n) {' +
-  '   if (n.nodeType === 1 && n.classList && n.classList.contains("ag-fig")) window.__figs.push({ t: Date.now() }); }); }); })' +
+  '   if (n.nodeType === 1 && n.classList && n.classList.contains("ag-fig")) window.__figs.push({ t: Date.now() });' +
+  '   if (n.nodeType === 1 && n.classList && n.classList.contains("fx-chip")) window.__chips.push({ t: Date.now(), text: n.textContent });' +
+  '   if (n.nodeType === 1 && n.classList && n.classList.contains("fx-lap")) window.__laps.push({ t: Date.now() });' +
+  '   if (n.nodeType === 1 && n.classList && n.classList.contains("ag-burst")) window.__bursts.push({ t: Date.now() }); }); }); })' +
   '.observe(document.documentElement, { childList: true, subtree: true });' +
   ' } if (document.documentElement) watch(); else document.addEventListener("DOMContentLoaded", watch); })();';
 
-// o: { pi, query, config (JS appended to config.js), init, slow ({ mode, fps }), failPics (n: abort the first n fetches of each picture; Infinity), size }
+// o: { pi, query, config (JS appended to config.js), init, slow ({ mode, fps }), failPics (n: abort the first n fetches
+// of each picture; Infinity), failOnly (only that file fails), noLoad (do not load her pictures at once), size }
 async function open(o) {
   o = o || {};
   const size = o.size || { width: 1920, height: 1080 };
@@ -182,7 +191,7 @@ async function open(o) {
     const m = /\/agents\/[a-z]+\/([a-z-]+\.webp)$/.exec(u.pathname);
     if (m) {
       picHits[m[1]] = (picHits[m[1]] || 0) + 1;
-      if (o.failPics && picHits[m[1]] <= o.failPics) return route.abort();
+      if (o.failPics && picHits[m[1]] <= o.failPics && (!o.failOnly || o.failOnly === m[1])) return route.abort();
     }
     return route.continue();
   });
@@ -205,6 +214,7 @@ async function open(o) {
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|ERR_/.test(m.text())) page.errors.push(m.text()); });
   await page.goto(PAGE + '/hub.html?clay=off&live=' + encodeURIComponent(o.pi.url) + '&' + (o.query || 'motion=push'));
   await ready(page);
+  if (!o.noLoad && !o.failPics) await picsReady(page);
   return page;
 }
 
@@ -215,16 +225,25 @@ async function ready(page) {
   await sleep(400);
 }
 
+// Her pictures, loaded now (they would load 6 s after start).
+async function picsReady(page) {
+  const st = await page.evaluate(() => window.HUB_AGENTS && window.HUB_AGENTS.test.state());
+  if (!st || !st.on) return;
+  await page.evaluate(() => window.HUB_AGENTS.test.load());
+  await until(() => page.evaluate(() => window.HUB_AGENTS.test.state().pictures === 'ready'), 6000, 'her pictures did not load');
+}
+
 const idle = (page) => until(() => page.evaluate(() => !window.HUB_TEST.busy()), 4000, 'the hub stayed busy');
 function noErrors(page) { assert(!page.errors.length, 'page errors: ' + page.errors.join(' | ')); }
 const state = (page) => page.evaluate(() => window.HUB_AGENTS ? window.HUB_AGENTS.test.state() : null);
 const figLog = (page) => page.evaluate(() => window.__figs.slice());
 
 // Every character on screen now: its tile, rect, the tile's and the chip's rects, its pictures.
+// (The rect is her ride's: the box as drawn, raised to where she works.)
 const figsNow = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.ag-fig'), (n) => {
-  const r = n.getBoundingClientRect();
+  const r = n.querySelector('.ag-ride').getBoundingClientRect();
   const st = window.HUB_AGENTS.test.state();
-  const f = st.figs.filter((x) => Math.abs(x.y - r.top) < 40)[0] || null;
+  const f = st.figs.filter((x) => Math.abs(x.x - r.left) < 40 && Math.abs(x.y - r.top) < 40)[0] || null;
   const imgs = Array.prototype.map.call(n.querySelectorAll('img'), (i) => ({ ok: i.complete && i.naturalWidth > 0, src: i.getAttribute('src') }));
   return { rect: [r.left, r.top, r.width, r.height].map(Math.round), imgs: imgs, cls: n.className, widget: f ? f.widget : '', state: f ? f.state : '' };
 }));
@@ -237,7 +256,21 @@ async function figOn(page, widget, wantState) {
   }, 4000, 'no character on ' + widget);
 }
 
-const noneLeft = (page, ms, text) => until(() => page.evaluate(() => !document.querySelector('.ag-layer, .ag-fig, .ag-pulse')), ms, text);
+const noneLeft = (page, ms, text) => until(() => page.evaluate(() => !document.querySelector('.ag-layer, .ag-fig, .ag-burst')), ms, text);
+const chipsIn = (page, widget) => page.evaluate((w) => document.querySelectorAll('.cell[data-widget="' + w + '"] .fx-chip').length, widget);
+// The phases she went through on widget (the last one seen there), polled while she lives.
+async function watchPhases(page, widget) {
+  await page.evaluate((w) => {
+    window.__ph = window.__ph || {};
+    window.__ph[w] = [];
+    const t = setInterval(() => {
+      const f = window.HUB_AGENTS.test.state().figs.filter((x) => x.widget === w)[0];
+      if (f) window.__ph[w] = f.phases;
+    }, 30);
+    window.__phT = (window.__phT || []).concat([t]);
+  }, widget);
+}
+const phasesOf = (page, widget) => page.evaluate((w) => (window.__ph && window.__ph[w]) || [], widget);
 
 // The tile's rect and its chip's, for where she stands.
 const rects = (page, widget) => page.evaluate((w) => {
@@ -254,19 +287,23 @@ function overlaps(a, b) { return a.left < b.right - 1 && b.left < a.right - 1 &&
 async function check1(pi) {
   const page = await open({ pi: pi });
   const before = await page.evaluate(() => document.querySelectorAll('*').length);
+  await watchPhases(page, 'todo');
   await say(pi, 'hub:working todo');
   await figOn(page, 'todo');
-  // Mid-glide: still moving in.
-  const f1 = await figOn(page, 'todo', 'idle');
+  // She works; the tile has no chip, the act is hers.
+  const f1 = await figOn(page, 'todo', 'work');
   await sleep(300);
+  assert(await chipsIn(page, 'todo') === 0, 'a chip beside her');
+  const fx = await page.evaluate(() => window.HUB_FX.state());
+  assert(fx.figures.indexOf('todo') >= 0 && fx.chips.indexOf('todo') < 0, 'motion state: ' + JSON.stringify([fx.chips, fx.figures]));
   const list = await figsNow(page);
-  assert(list.length === 1 && list[0].imgs.length === 2 && list[0].imgs.every((i) => i.ok), 'the character: ' + JSON.stringify(list));
+  assert(list.length === 1 && list[0].imgs.length === 6 && list[0].imgs.every((i) => i.ok), 'the character: ' + JSON.stringify(list));
+  assert(/is-pose-crouch/.test(list[0].cls) && /is-work/.test(list[0].cls), 'not crouching at work: ' + list[0].cls);
   const rc = await rects(page, 'todo');
   const r = { left: list[0].rect[0], top: list[0].rect[1], right: list[0].rect[0] + list[0].rect[2], bottom: list[0].rect[1] + list[0].rect[3] };
-  // At the tile's bottom right, inside it, and clear of the chip.
-  assert(r.right <= rc.tile.right + 1 && r.left >= rc.tile.left - 1 && r.bottom <= rc.tile.bottom + 1 && r.right > rc.tile.right - 30, 'not at the bottom right: ' + JSON.stringify([r, rc]));
-  assert(!overlaps(r, rc.chip), 'she covers the chip: ' + JSON.stringify([r, rc]));
-  // About 112 px tall at 1080p.
+  // Inside the tile (her box may rise a quarter above its top, never out of its sides or bottom).
+  assert(r.right <= rc.tile.right + 1 && r.left >= rc.tile.left - 1 && r.bottom <= rc.tile.bottom + 1, 'not in the tile: ' + JSON.stringify([r, rc]));
+  // About 112 to 126 px tall at 1080p.
   assert(list[0].rect[3] >= 108 && list[0].rect[3] <= 140, 'height: ' + list[0].rect[3]);
   // The todo tile is on the left half: she came from its right.
   assert(f1.fromLeft === false, 'came from the left on a left tile');
@@ -276,47 +313,84 @@ async function check1(pi) {
   const z = await page.evaluate(() => getComputedStyle(document.querySelector('.ag-layer')).zIndex + ' ' + getComputedStyle(document.querySelector('.ag-layer')).pointerEvents);
   assert(z === '9 none', 'layer: ' + z);
   await say(pi, 'hub:working todo done');
-  await until(() => page.evaluate(() => !!document.querySelector('.ag-pulse')), 1500, 'no pulse');
-  const out = await figOn(page, 'todo', 'out');
-  assert(out, 'not leaving');
+  await figOn(page, 'todo', 'exit');
   await noneLeft(page, 2500, 'she stayed');
+  const ph = (await phasesOf(page, 'todo')).join();
+  assert(ph === 'enter,travel,skid,work,exit', 'phases: ' + ph);
   await sleep(300);
   const after = await page.evaluate(() => document.querySelectorAll('*').length);
-  assert(after <= before + 2, 'elements left: ' + before + ' -> ' + after);   // (the accent edge is not shown for a working chip)
+  assert(after <= before + 2, 'elements left: ' + before + ' -> ' + after);   // (the accent edge is not shown for a working state)
   assert((await figLog(page)).length === 1, 'added: ' + JSON.stringify(await figLog(page)));
+  assert(!(await page.evaluate(() => window.__chips.length)), 'a chip showed: ' + JSON.stringify(await page.evaluate(() => window.__chips)));
+  assert(!(await page.evaluate(() => window.__bursts.length)), 'a reveal without news');
   const s = await state(page);
   assert(s.seen === 1, 'seen: ' + s.seen);
   noErrors(page);
 }
 
+async function arrival(page, widget, signal) {
+  await watchPhases(page, widget);
+  const t0 = Date.now();
+  await signal();
+  await figOn(page, widget);
+  // The border light laps the tile, with no chip.
+  await until(() => page.evaluate((w) => !!document.querySelector('.cell[data-widget="' + w + '"] .tile .fx-lap'), widget), 2000, widget + ': no border light');
+  assert(await chipsIn(page, widget) === 0, widget + ': a chip beside her');
+  await figOn(page, widget, 'reveal');
+  assert(await chipsIn(page, widget) === 0, widget + ': a chip at the reveal');
+  await noneLeft(page, 6000, widget + ': she stayed');
+  const ms = Date.now() - t0;
+  const ph = (await phasesOf(page, widget)).join();
+  assert(ph === 'enter,travel,skid,work,reveal,exit', widget + ': phases: ' + ph);
+  assert(ms > 4000 && ms < 8500, widget + ': the sequence took ' + ms + ' ms');
+  assert(!(await page.evaluate(() => window.__chips.length)), widget + ': a chip showed');
+}
+
 async function check2(pi) {
   const page = await open({ pi: pi });
-  await postTodo(pi, 'Agents arrival ' + Date.now());
-  await until(() => page.evaluate(() => /Incoming to-do/.test((document.querySelector('.cell[data-widget="todo"] .fx-chip') || {}).textContent || '')), 4000, 'no arrival chip');
-  await figOn(page, 'todo');
-  // She leaves as the chip fades (about 2.4 s), and is gone soon after it.
-  await until(() => page.evaluate(() => !!document.querySelector('.fx-chip.is-out')), 4000, 'the chip did not fade');
-  await figOn(page, 'todo', 'out');
-  await noneLeft(page, 2000, 'she stayed after the chip');
-  // The calendar's arrival chip.
+  await arrival(page, 'todo', () => postTodo(pi, 'Agents arrival ' + Date.now()));
+  assert((await page.evaluate(() => window.__bursts.length)) === 1, 'bursts: ' + (await page.evaluate(() => window.__bursts.length)));
+  // The accent edge stays after her (as with a chip).
+  assert(await page.evaluate(() => !!document.querySelector('.cell[data-widget="todo"] .fx-accent')), 'no accent edge');
+  // The calendar's, twice: to no events (her default spot), then back to
+  // the sample, where she works at its first event row (its data-agent-spot).
   await calendarChange(pi);
-  await until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="calendar"] .fx-chip')), 6000, 'no calendar chip');
-  await figOn(page, 'calendar');
-  await noneLeft(page, 5000, 'she stayed on the calendar');
+  await arrival(page, 'calendar', async () => { /* already sent */ });
+  await calendarChange(pi);
+  await page.evaluate(() => { window.__calSpot = null; const t = setInterval(() => {
+    const f = window.HUB_AGENTS.test.state().figs.filter((x) => x.widget === 'calendar')[0];
+    if (f) { window.__calSpot = f; clearInterval(t); } }, 30); });
+  await arrival(page, 'calendar', async () => { /* already sent */ });
+  const f = await page.evaluate(() => window.__calSpot);
+  assert(f && f.spot.marker, 'calendar: no spot marker: ' + JSON.stringify(f));
   noErrors(page);
 }
 
 async function check3(pi) {
   const page = await open({ pi: pi });
+  await watchPhases(page, 'todo');
   await say(pi, 'hub:working todo 300');
-  await figOn(page, 'todo', 'idle');
+  await figOn(page, 'todo', 'work');
+  await sleep(500);
   await postTodo(pi, 'Handed over ' + Date.now());
-  await until(() => page.evaluate(() => /Incoming to-do/.test((document.querySelector('.cell[data-widget="todo"] .fx-chip') || {}).textContent || '')), 4000, 'no hand-off');
-  // The chip became the arrival chip: she pulses and goes, while it stays.
-  await figOn(page, 'todo', 'out');
-  await noneLeft(page, 1500, 'she stayed after the hand-off');
-  assert(await page.evaluate(() => !!document.querySelector('.fx-chip.is-in')), 'the arrival chip went with her');
+  // The news: she springs up, sparks, the border light; never a chip.
+  await figOn(page, 'todo', 'reveal');
+  await until(() => page.evaluate(() => window.__laps.length > 0 && window.__bursts.length === 1), 2000, 'no border light or burst');
+  await noneLeft(page, 4000, 'she stayed after the reveal');
+  const ph = (await phasesOf(page, 'todo')).join();
+  assert(ph === 'enter,travel,skid,work,reveal,exit', 'phases: ' + ph);
+  assert(!(await page.evaluate(() => window.__chips.length)), 'a chip showed: ' + JSON.stringify(await page.evaluate(() => window.__chips)));
   assert((await figLog(page)).length === 1, 'she came again: ' + JSON.stringify(await figLog(page)));
+  // News while she is still on her way in: she works a moment, then the reveal.
+  await watchPhases(page, 'todo');
+  await say(pi, 'hub:working todo 300');
+  await figOn(page, 'todo', 'enter');
+  await postTodo(pi, 'Early news ' + Date.now());
+  await figOn(page, 'todo', 'reveal');
+  await noneLeft(page, 4000, 'she stayed (early news)');
+  const ph2 = (await phasesOf(page, 'todo')).join();
+  assert(ph2 === 'enter,travel,skid,work,reveal,exit', 'phases (early news): ' + ph2);
+  assert(!(await page.evaluate(() => window.__chips.length)), 'a chip showed (early news)');
   noErrors(page);
 }
 
@@ -329,7 +403,9 @@ async function check4(pi) {
     { name: 'on: false', o: { config: 'HUB_CONFIG.agents = { on: false, who: "lift" };' }, chips: true, row: 'off (config)', nothing: true },
     { name: '?agent=off', o: { query: 'motion=push&agent=off' }, chips: true, row: 'off (?agent=off)', nothing: true },
     { name: 'unknown who', o: { config: 'HUB_CONFIG.agents = { on: true, who: "hoid" };' }, chips: true, row: 'off (no character called hoid)', nothing: true },
-    { name: '?agent=nobody', o: { query: 'motion=push&agent=nobody' }, chips: true, row: 'off (no character called nobody)', nothing: true }
+    { name: '?agent=nobody', o: { query: 'motion=push&agent=nobody' }, chips: true, row: 'off (no character called nobody)', nothing: true },
+    // Before her pictures are in (they load 6 s after start), the chip: it never waits for her.
+    { name: 'pictures not loaded yet', o: { noLoad: true }, chips: true, row: 'on' }
   ];
   for (const c of cases) {
     const page = await open(Object.assign({ pi: pi }, c.o));
@@ -346,6 +422,12 @@ async function check4(pi) {
       await sleep(6500);    // past the time the pictures would load
       assert(!Object.keys(page.picHits).length, c.name + ': pictures loaded: ' + JSON.stringify(page.picHits));
     }
+    if (c.name === 'pictures not loaded yet') {
+      // The pictures came while the chip shows: she does not join it (no chip beside her, ever).
+      await until(() => page.evaluate(() => window.HUB_AGENTS.test.state().pictures === 'ready'), 9000, 'the pictures did not load by themselves');
+      await sleep(1500);
+      assert(!(await figLog(page)).length && (await chipsIn(page, 'todo')) === 1, 'she joined the chip');
+    }
     await say(pi, 'hub:working todo done');
     noErrors(page);
     await page.context().close();
@@ -353,30 +435,37 @@ async function check4(pi) {
 }
 
 async function check5(pi) {
-  // Three arrival chips at once (the snapshot tiles): at most two characters, one per tile.
+  // Three arrival chips at once (the snapshot tiles): at most two characters, one per tile; the third tile gets its chip.
   await setLayout(pi, AWWS_LAYOUT);
   try {
     const page = await open({ pi: pi });
     await until(() => page.evaluate(() => !!document.querySelector('.cell[data-widget="awws-todo"]')), 6000, 'the layout did not arrive');
     await ready(page);
     await page.evaluate(() => {
-      window.__max = 0; window.__perTile = 0;
+      window.__max = 0; window.__perTile = 0; window.__both = 0;
       setInterval(() => {
         const st = window.HUB_AGENTS.test.state();
         window.__max = Math.max(window.__max, document.querySelectorAll('.ag-fig').length);
         const seen = {};
-        st.figs.forEach((f) => { seen[f.widget] = (seen[f.widget] || 0) + 1; window.__perTile = Math.max(window.__perTile, seen[f.widget]); });
+        st.figs.forEach((f) => {
+          seen[f.widget] = (seen[f.widget] || 0) + 1;
+          window.__perTile = Math.max(window.__perTile, seen[f.widget]);
+          // Never a chip on a tile she is on.
+          if (f.state !== 'exit' && document.querySelector('.cell[data-widget="' + f.widget + '"] .fx-chip:not(.is-out)')) window.__both += 1;
+        });
       }, 30);
     });
     await postSnapshot(pi, snapshotNow({ reach: Math.random() < 0.5 ? 'subscribers' : 'traffic' }));
-    await until(() => page.evaluate(() => document.querySelectorAll('.fx-chip').length >= 3), 5000, 'no three chips');
+    await until(() => page.evaluate(() => { const s = window.HUB_FX.state(); return s.chips.length + s.figures.length >= 3; }), 5000, 'no three arrivals');
+    const s1 = await page.evaluate(() => window.HUB_FX.state());
+    assert(s1.figures.length === 2 && s1.chips.length >= 1, 'two with her, the rest chips: ' + JSON.stringify([s1.chips, s1.figures]));
     await sleep(600);
-    // A to-do too while they are out: still no more than two.
+    // A to-do too while they are out: still no more than two (it gets a chip).
     await postTodo(pi, 'Fourth ' + Date.now());
     await sleep(900);
-    const m = await page.evaluate(() => ({ max: window.__max, per: window.__perTile }));
-    assert(m.max === 2 && m.per === 1, 'on screen: ' + JSON.stringify(m));
-    await noneLeft(page, 6000, 'they stayed');
+    const m = await page.evaluate(() => ({ max: window.__max, per: window.__perTile, both: window.__both }));
+    assert(m.max === 2 && m.per === 1 && m.both === 0, 'on screen: ' + JSON.stringify(m));
+    await noneLeft(page, 8000, 'they stayed');
     noErrors(page);
   } finally {
     await setLayout(pi, null);
@@ -400,60 +489,86 @@ async function check6(pi) {
     }, 20);
   });
   await say(pi, 'hub:working todo');
-  await figOn(page, 'todo', 'idle');
-  const idleAnims = await page.evaluate(() => document.querySelector('.ag-layer').getAnimations({ subtree: true }).map((a) => a.animationName || a.transitionProperty).sort().join());
-  assert(idleAnims === 'ag-bob,ag-sway', 'idle animations: ' + idleAnims);
+  await figOn(page, 'todo', 'work');
+  await sleep(1300);   // the vine has grown
+  // The work loop: CSS only, nothing faster than 1.5 s a cycle, and nothing in her changes while she works.
+  const loop = await page.evaluate(() => document.querySelector('.ag-layer').getAnimations({ subtree: true })
+    .filter((a) => a.effect && a.effect.getTiming && a.effect.getTiming().iterations === Infinity)
+    .map((a) => a.animationName + ':' + a.effect.getTiming().duration));
+  const names = loop.map((x) => x.split(':')[0]).sort().join();
+  assert(names === 'ag-bob,ag-curl,ag-flow,ag-flow,ag-flow,ag-ring,ag-ring', 'work loop: ' + names);
+  assert(loop.every((x) => Number(x.split(':')[1]) >= 1500), 'a fast loop: ' + loop.join());
+  const changes = await page.evaluate(() => new Promise((resolve) => {
+    let n = 0;
+    const mo = new MutationObserver((ms) => { n += ms.length; });
+    mo.observe(document.querySelector('.ag-layer'), { subtree: true, attributes: true, childList: true });
+    setTimeout(() => { mo.disconnect(); resolve(n); }, 3200);
+  }));
+  assert(changes === 0, 'her elements changed ' + changes + ' times in one work loop');
   await say(pi, 'hub:working todo done');
   await noneLeft(page, 2500, 'she stayed');
   await postTodo(pi, 'Animated ' + Date.now());
   await figOn(page, 'todo');
-  await noneLeft(page, 5000, 'she stayed (arrival)');
+  await noneLeft(page, 8000, 'she stayed (arrival)');
   const bad = await page.evaluate(() => window.__bad);
   assert(!bad.length, 'other properties animate: ' + JSON.stringify(bad.slice(0, 5)));
+  // No timer of hers runs faster than needed: agents.js has no setInterval or requestAnimationFrame.
+  const src = fs.readFileSync(path.join(ROOT, 'app', 'agents.js'), 'utf8');
+  assert(!/setInterval|requestAnimationFrame/.test(src), 'agents.js polls');
   noErrors(page);
 }
 
 async function check7(pi) {
-  // Every try fails: no swoop, no picture element, the row says so.
-  let page = await open({ pi: pi, failPics: Infinity });
-  await say(pi, 'hub:working todo');
+  // One pose picture fails every try: no character at all (never half of one), the chip, the row says so.
+  let page = await open({ pi: pi, failPics: Infinity, failOnly: 'crouch.webp' });
+  await page.evaluate(() => window.HUB_AGENTS.test.load());
   await until(() => page.evaluate(() => window.HUB_AGENTS.test.state().pictures === 'failed'), 8000, 'the pictures did not fail');
-  await sleep(500);
+  await say(pi, 'hub:working todo');
+  await sleep(1200);
   assert(!(await figLog(page)).length && !(await page.evaluate(() => document.querySelectorAll('.ag-layer, .ag-fig, img[src*="agents/"]').length)), 'a character or picture showed');
   const hits = page.picHits;
-  assert(hits['lift.webp'] === 3, 'tries: ' + JSON.stringify(hits));
-  assert(await page.evaluate(() => !!document.querySelector('.fx-chip')), 'the chip did not stay');
+  assert(hits['crouch.webp'] === 3, 'tries: ' + JSON.stringify(hits));
+  assert(await page.evaluate(() => !!document.querySelector('.fx-chip')), 'no chip');
   const row = await page.evaluate(() => window.HUB_AGENTS.status().drawing);
   assert(/^off \(pictures did not load/.test(row), 'row: ' + row);
   await say(pi, 'hub:working todo done');
   noErrors(page);
   await page.context().close();
-  // The first try fails: the second comes and she swoops.
+  // The first try of each fails: the second comes and she works, with no chip.
   page = await open({ pi: pi, failPics: 1 });
+  await picsReadyAfterRetry(page);
   await say(pi, 'hub:working todo');
-  await figOn(page, 'todo', 'idle');
+  await figOn(page, 'todo', 'work');
   const list = await figsNow(page);
-  assert(list.length === 1 && list[0].imgs.every((i) => i.ok), 'pictures: ' + JSON.stringify(list));
+  assert(list.length === 1 && list[0].imgs.length === 6 && list[0].imgs.every((i) => i.ok), 'pictures: ' + JSON.stringify(list));
+  assert(await chipsIn(page, 'todo') === 0, 'a chip beside her');
   await say(pi, 'hub:working todo done');
   noErrors(page);
+}
+
+async function picsReadyAfterRetry(page) {
+  await page.evaluate(() => window.HUB_AGENTS.test.load());
+  await until(() => page.evaluate(() => window.HUB_AGENTS.test.state().pictures === 'ready'), 8000, 'the pictures did not load on the second try');
 }
 
 async function check8(pi) {
   const page = await open({ pi: pi });
   await say(pi, 'hub:working todo 120');
-  await figOn(page, 'todo', 'idle');
+  await figOn(page, 'todo', 'work');
   await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
   // At once: no glide out behind the panel.
   await noneLeft(page, 300, 'she stayed when the panel opened');
   await idle(page);
   await page.evaluate(() => window.HUB_TEST.closePanel());
   await idle(page);
-  // The working chip comes back, and so does she.
-  await figOn(page, 'todo', 'idle');
+  // The working state comes back, and so does she (no chip).
+  await figOn(page, 'todo', 'work');
   assert((await state(page)).seen === 2, 'seen: ' + (await state(page)).seen);
-  // A resize ends her at once too.
+  assert(await chipsIn(page, 'todo') === 0, 'a chip beside her');
+  // A resize ends her at once; the working state then shows its chip.
   await page.setViewportSize({ width: 1600, height: 900 });
   await noneLeft(page, 300, 'she stayed on a resize');
+  await until(() => page.evaluate(() => /Working on to-dos/.test((document.querySelector('.cell[data-widget="todo"] .fx-chip') || {}).textContent || '')), 2500, 'no chip after the resize');
   await say(pi, 'hub:working todo done');
   noErrors(page);
 }
@@ -481,24 +596,34 @@ const NARROW = [
   { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
 ];
 
-async function onLayout(pi, layout, widget, kind, wantFromLeft) {
+// A 2x1 to-do tile, far too small for the whole sequence.
+const TINY = NARROW.map((e) => e.widget === 'todo' ? { widget: 'todo', x: 0, y: 1, w: 2, h: 1 } : e);
+
+async function onLayout(pi, layout, widget, kind, wantFromLeft, wantSmall) {
   await setLayout(pi, layout);
   try {
     const page = await open({ pi: pi });
     if (layout) await until(() => page.evaluate((w) => !!document.querySelector('.cell[data-widget="' + w + '"]'), widget), 6000, 'the layout did not arrive');
     await ready(page);
+    await picsReady(page);
+    await watchPhases(page, widget);
     await say(pi, 'hub:working ' + kind);
-    const f = await figOn(page, widget, 'idle');
+    const f = await figOn(page, widget, 'work');
     await sleep(200);
     const list = await figsNow(page);
     const rc = await rects(page, widget);
     const r = { left: list[0].rect[0], top: list[0].rect[1], right: list[0].rect[0] + list[0].rect[2], bottom: list[0].rect[1] + list[0].rect[3] };
     const W = await page.evaluate(() => window.innerWidth);
     assert(f.fromLeft === wantFromLeft, widget + ': fromLeft ' + f.fromLeft);
-    assert(r.left >= 0 && r.right <= W && r.right <= rc.tile.right + 1 && r.left >= rc.tile.left - 1, widget + ': off the tile or screen: ' + JSON.stringify([r, rc, W]));
-    assert(!overlaps(r, rc.chip), widget + ': covers the chip: ' + JSON.stringify([r, rc]));
+    assert(f.small === wantSmall, widget + ': small ' + f.small + ' ' + JSON.stringify(f.tile));
+    assert(r.left >= 0 && r.right <= W && r.right <= rc.tile.right + 1 && r.left >= rc.tile.left - 1 && r.bottom <= rc.tile.bottom + 1, widget + ': off the tile or screen: ' + JSON.stringify([r, rc, W]));
+    assert(!rc.chip, widget + ': a chip beside her');
+    // Facing her way: mirrored when she came from the right.
+    assert(/is-mirrored/.test(await page.evaluate(() => document.querySelector('.ag-flip').className)) === !wantFromLeft, widget + ': facing the wrong way');
     await say(pi, 'hub:working ' + kind + ' done');
     await noneLeft(page, 2500, 'she stayed');
+    const ph = (await phasesOf(page, widget)).join();
+    assert(ph === (wantSmall ? 'enter,work,exit' : 'enter,travel,skid,work,exit'), widget + ': phases ' + ph);
     noErrors(page);
     await page.context().close();
   } finally {
@@ -508,11 +633,53 @@ async function onLayout(pi, layout, widget, kind, wantFromLeft) {
 
 async function check9(pi) {
   // Right edge: from the left. Built-in layout's calendar (left of middle): from the right.
-  await onLayout(pi, AWWS_LAYOUT, 'todo', 'todo', true);
-  await onLayout(pi, null, 'calendar', 'calendar', false);
-  // Narrow tiles: To-do 3x1 (she stands beside or above the chip, inside the tile), Calendar 3x2.
-  await onLayout(pi, NARROW, 'calendar', 'calendar', false);
-  await onLayout(pi, AWWS_LAYOUT, 'awws-todo', 'awws', false);
+  await onLayout(pi, AWWS_LAYOUT, 'todo', 'todo', true, false);
+  await onLayout(pi, null, 'calendar', 'calendar', false, false);
+  // Narrow tiles: To-do 3x1, Calendar 3x2 (room for the whole sequence);
+  // To-do 2x1 (too small: enter, work, exit).
+  await onLayout(pi, NARROW, 'todo', 'todo', false, false);
+  await onLayout(pi, NARROW, 'calendar', 'calendar', false, false);
+  await onLayout(pi, TINY, 'todo', 'todo', false, true);
+  await onLayout(pi, AWWS_LAYOUT, 'awws-todo', 'awws', false, false);
+}
+
+async function check11(pi) {
+  // A marker far outside the tile: used, but the spot (and her hand) stays inside the tile.
+  const page = await open({ pi: pi });
+  await page.evaluate(() => {
+    const tile = document.querySelector('.cell[data-widget="todo"] .tile');
+    tile.querySelectorAll('[data-agent-spot]').forEach((n) => n.removeAttribute('data-agent-spot'));
+    const m = document.createElement('div');
+    m.setAttribute('data-agent-spot', '');
+    m.style.cssText = 'position:absolute;left:3000px;top:2000px;width:20px;height:20px;';
+    tile.appendChild(m);
+  });
+  await say(pi, 'hub:working todo');
+  const f = await figOn(page, 'todo', 'work');
+  assert(f.spot.marker === true, 'the marker was not used');
+  const t = f.tile;
+  assert(f.spot.x >= t.left && f.spot.x <= t.right && f.spot.y >= t.top && f.spot.y <= t.bottom, 'spot outside the tile: ' + JSON.stringify(f));
+  assert(f.at.x >= t.left && f.at.x <= t.right && f.at.y >= t.top && f.at.y <= t.bottom, 'her hand outside the tile: ' + JSON.stringify(f));
+  await say(pi, 'hub:working todo done');
+  await noneLeft(page, 2500, 'she stayed');
+  // A real to-do list: the widget's own marker (the end of the list) is used, her hand on it.
+  await page.evaluate(() => { const m = document.querySelector('.cell[data-widget="todo"] .tile > div[style*="3000px"]'); if (m) m.remove(); });
+  await postTodo(pi, 'Spot one ' + Date.now());
+  await noneLeft(page, 9000, 'she stayed (first to-do)');
+  await say(pi, 'hub:working todo');
+  const g = await figOn(page, 'todo', 'work');
+  const row = await page.evaluate(() => { const n = document.querySelector('.cell[data-widget="todo"] [data-agent-spot]'); const r = n && n.getBoundingClientRect(); return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom, cls: n.className } : null; });
+  assert(row && /todo-tile-row/.test(row.cls) && g.spot.marker, 'the to-do marker: ' + JSON.stringify([row, g.spot]));
+  assert(Math.abs(g.at.x - g.spot.x) < 40 && Math.abs(g.at.y - g.spot.y) < 40, 'her hand is not at the spot: ' + JSON.stringify([g.at, g.spot]));
+  // A language change while she works: still no chip, she carries on.
+  await page.evaluate(() => window.HUB_I18N.setLang('es'));
+  await sleep(1200);
+  assert(await chipsIn(page, 'todo') === 0, 'a chip after the language change');
+  assert((await state(page)).figs.filter((x) => x.widget === 'todo')[0].state === 'work', 'she stopped working');
+  await say(pi, 'hub:working todo done');
+  await noneLeft(page, 2500, 'she stayed');
+  await page.evaluate(() => window.HUB_I18N.setLang('en'));
+  noErrors(page);
 }
 
 async function check10(pi) {
@@ -525,7 +692,7 @@ async function check10(pi) {
   await page.evaluate(() => window.HUB_TEST.about.close());
   await sleep(400);
   await say(pi, 'hub:working todo');
-  await figOn(page, 'todo', 'idle');
+  await figOn(page, 'todo', 'work');
   const rows = (p) => p.evaluate(() => {
     const out = {};
     let group = '';
@@ -548,7 +715,7 @@ async function check10(pi) {
   await page.context().close();
   page = await open({ pi: pi, init: 'try { localStorage.setItem("homeHub.lang", "es"); } catch (e) {}' });
   await say(pi, 'hub:working todo');
-  await figOn(page, 'todo', 'idle');
+  await figOn(page, 'todo', 'work');
   await openAbout(page);
   r = await rows(page);
   const now = r['Personajes/Ahora'] || '';
@@ -580,16 +747,17 @@ async function main() {
   const pi = await startPi();
   await postSnapshot(pi, snapshotNow({ reach: 'both' }));
 
-  await check('1. A working chip: Lift glides in from the side, idles at the bottom right clear of the chip, pulses and glides out on done, nothing left', () => check1(pi));
-  await check('2. Arrival chips (a new to-do, changed calendar events): she comes and leaves as the chip fades', () => check2(pi));
-  await check('3. A working chip turning into the arrival chip sends her out; the chip stays', () => check3(pi));
-  await check('4. Never in fade mode, on a slow screen, with agents off (config, on: false, ?agent=off) or an unknown who; off loads nothing', () => check4(pi));
-  await check('5. Three arrival chips at once: at most two on screen, one per tile', () => check5(pi));
-  await check('6. Only transform and opacity animate (glide, idle, pulse, out)', () => check6(pi));
-  await check('7. A picture that fails three times: no swoop, no broken picture, the chip alone; one failed try is asked for again', () => check7(pi));
-  await check('8. A panel and a resize end her at once; the working chip coming back brings her back', () => check8(pi));
-  await check('9. Layouts: a tile at the right edge has her come from the left, others from the right, always on the tile and clear of the chip', () => check9(pi));
+  await check('1. A working state: no chip, she enters, travels, skids and works in the tile; on done she exits, nothing left', () => check1(pi));
+  await check('2. An arrival alone (a new to-do, changed calendar events): no chip, the border light laps, enter, travel, work, reveal, exit in 4 to 8.5 s; the calendar\'s spot marker', () => check2(pi));
+  await check('3. A working state turning into news: the reveal (burst, border light), never a chip; news while she is still coming in too', () => check3(pi));
+  await check('4. The chip as the fallback: fade mode, a slow screen, agents off (config, on: false, ?agent=off), an unknown who, pictures not loaded yet; off loads nothing', () => check4(pi));
+  await check('5. Three arrivals at once: at most two characters, one per tile, the third tile gets its chip; never a chip beside her', () => check5(pi));
+  await check('6. Only transform and opacity animate; the work loop is CSS only (nothing changes in 3 s, no loop under 1.5 s)', () => check6(pi));
+  await check('7. One pose picture failing three times: no character, no picture, the chip; one failed try is asked for again', () => check7(pi));
+  await check('8. A panel ends her at once and she comes back with the working state; a resize ends her and gives the chip back', () => check8(pi));
+  await check('9. Layouts: a tile at the right edge has her come from the left, others from the right, facing her way, always on the tile; a 2x1 tile plays the short sequence', () => check9(pi));
   await check('10. The About panel\'s Characters rows (none before the first chip), in English and Spanish, nothing clipped', () => check10(pi));
+  await check('11. The work spot: a [data-agent-spot] marker is used and kept inside the tile; the to-do list\'s own marker; a language change while she works', () => check11(pi));
 }
 
 main().catch((e) => {
