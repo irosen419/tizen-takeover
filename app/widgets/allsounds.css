@@ -1,6 +1,7 @@
 /* All sounds (test widget, app/widgets/allsounds.js). Every class starts
    with as-. The look of Now Playing (nowplaying.css) without the progress
-   bar and the visualizer, plus the source chip and the speaker's name.
+   bar and the visualizer, plus the platform in brackets after the label and the
+   speaker's name.
 
    Only the three little equalizer bars move (a transform, off on the
    plainest motion setting). Every text keeps a line-height of 1.3 or more
@@ -54,6 +55,7 @@
   min-width: 0;
 }
 .as-label-text {
+  flex: 0 1 auto;
   min-width: 0;
   font-size: 0.8rem;
   line-height: 1.4;
@@ -93,7 +95,33 @@
 }
 .as-hint-line { color: var(--text-2); }
 
-/* The source chip and the speaker's name: one line, each cut with "...". */
+/* The platform, "(Pandora)", after the label: smaller and quieter, on the
+   label's own line. It shrinks first (only the name gets "..."), the label
+   keeps its room. */
+.as-plat {
+  display: flex;
+  align-items: center;
+  flex: 0 100 auto;
+  min-width: 0;
+  margin-left: 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.as-plat-b { flex: 0 0 auto; }
+.as-plat-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The speaker's name: one line, cut with "...". */
 .as-meta {
   display: flex;
   align-items: center;
@@ -101,22 +129,6 @@
   min-width: 0;
   margin-top: 0.45rem;
   white-space: nowrap;
-}
-.as-chip {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 60%;
-  margin-right: 0.6rem;
-  padding: 0.05rem 0.6rem;
-  border: 0.08rem solid rgba(255, 255, 255, 0.22);
-  border-radius: 1rem;
-  font-size: 0.8rem;
-  line-height: 1.4;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .as-device {
   flex: 1 1 auto;
@@ -195,7 +207,7 @@
 .tile-h3.tile-ww .as-row .as-label-text { font-size: 0.95rem; }
 .tile-h3.tile-ww .as-row .as-label { margin-bottom: 0.35rem; }
 .tile-h3.tile-ww .as-row .as-meta { margin-top: 1rem; }
-.tile-h3.tile-ww .as-row .as-chip { font-size: 1.05rem; padding: 0.15rem 0.85rem; }
+.tile-h3.tile-ww .as-row .as-plat { margin-left: 0.6rem; font-size: 0.85rem; }
 .tile-h3.tile-ww .as-row .as-device { font-size: 1.1rem; }
 .tile-h3.tile-ww .as-row .as-stale { margin-top: 0.25rem; font-size: 1.1rem; }
 .tile-h3.tile-ww .as-row .as-art { margin-right: 2rem; }
@@ -249,8 +261,21 @@
 .as-page .as-album { margin-top: 0.2rem; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); word-wrap: break-word; }
 .as-foot { margin-top: auto; flex: 0 0 auto; }
 .as-chips { display: flex; flex-wrap: wrap; margin-top: 0.7rem; }
-.as-chips .as-chip { max-width: 100%; margin: 0 0.5rem 0.3rem 0; padding: 0.1rem 0.7rem; }
-.as-chip-device { font-weight: 400; color: var(--text-2); border-color: rgba(255, 255, 255, 0.16); }
+.as-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 0.5rem 0.3rem 0;
+  padding: 0.1rem 0.7rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.16);
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .as-fallback { font-size: 1.1rem; color: var(--text-2); }
 
 .panel.is-full .as-page .as-art { margin-right: 3.4rem; }
@@ -261,6 +286,7 @@
 .panel.is-full .as-page .as-stale { margin-top: 0.5rem; font-size: 1.4rem; }
 .panel.is-full .as-label-text { font-size: 1rem; }
 .panel.is-full .as-chips .as-chip { font-size: 1rem; padding: 0.15rem 0.9rem; }
+.panel.is-full .as-plat { margin-left: 0.6rem; font-size: 0.9rem; }
 .panel.is-full .as-eq { width: 1.2rem; height: 1rem; }
 .panel.is-full .as-eq i { width: 0.3rem; }
 
