@@ -527,10 +527,12 @@
     work.style.top = rem(hand.y);
     el('b', 'ag-ring', work);
     el('b', 'ag-ring', work);
-    // One steady stream: glow, core, and the surges sliding inside the core.
+    // One steady stream: glow, core with the surges sliding inside it, and
+    // two light strands twisting around it.
     var stream = el('div', 'ag-stream', work);
     el('b', '', stream);
     el('i', '', el('s', '', stream));
+    el('i', '', el('span', 'ag-helix', stream));
     var vp = role.vine || hand;
     var vine = el('div', 'ag-vine', bob);
     vine.style.left = rem(vp.x);
