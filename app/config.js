@@ -144,6 +144,12 @@ var HUB_CONFIG = {
     // Plant sun alone, to try it out (a new widget gets a layout of its own first).
     { id: 'plant-wall', name: 'Plant wall', layout: [
       { widget: 'sunpath',       x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    /* A test layout: Ambience (app/widgets/ambience.js, the room's lights)
+       on its own, filling the screen, to try it before it joins a real
+       layout. New widgets are tried the same way: one layout, one widget. */
+    { id: 'ambience-test', name: 'Ambience test', layout: [
+      { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
 

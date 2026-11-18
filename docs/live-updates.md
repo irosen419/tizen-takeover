@@ -175,6 +175,7 @@ Everything below is the contract between the hub (`app/`) and the Pi server (`pi
 - `pi/hubctl.js`: command line for the control API. Reads the token from `pi/.env`.
 - `pi/awws.js`: checks, merges and describes the A World Worth Saving snapshot (the resource `awws`, see below). No network, no files; `server.js` stores what it returns.
 - `pi/budget.js`: the same for the personal budget snapshot (the resource `budget`, see below), with the same text rules.
+- `pi/ambience.js`: the room's lights through Home Assistant and the plant wall's WLED (the resource `ambience`, see below).
 - `app/live.js`: the hub's client. Plain ES5. Loads before `hub.js`, touches no DOM, does nothing until `HUB_LIVE.start()`.
 - `HUB_CONFIG.live.server`: the server address. `''` = off. `?live=<address>` or `?live=off` in the page address overrides it (for the preview).
 
@@ -202,6 +203,9 @@ Control API: `GET /api/spotify` (`{ ok, spotify: { configured, signedIn, user, s
 | `HUB_DATA_DIR` | `./data` | Where `state.json` (and the Spotify sign-in) is kept |
 | `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET` | empty | The Spotify app's ID and secret. Both, or Now Playing says "Not set up" |
 | `SPOTIFY_REDIRECT_URI` | `http://127.0.0.1:<HUB_PORT>/spotify/callback` | Must match a Redirect URI in the Spotify app; `http://127.0.0.1...` or `https://...` only |
+| `HA_TOKEN` | empty | A Home Assistant long-lived access token. Without it Ambience is "not set up" |
+| `HA_URL` | `http://127.0.0.1:8123` | Home Assistant's address (`http://` or `https://`, no user or password in it) |
+| `WLED_URL` | empty | The plant wall's WLED controller. Without it there are no plant wall moods |
 | `SPOTIFY_VIBE` | on | `off` stops the song lookups at ReccoBeats for the visualizer (genres from Spotify are still used) |
 
 ### State
@@ -214,7 +218,7 @@ Control API: `GET /api/spotify` (`{ ok, spotify: { configured, signedIn, user, s
 
 - `rev` is one counter for the whole server. Every change adds 1 and stamps the changed resource.
 - `epoch` is made once with the file. A new epoch means "forget what you knew, take everything".
-- The resources are `todo`, `calendar`, `layout`, `awws`, `budget`, `nowplaying`, `allsounds` (the All sounds test widget), `shows` (the TV show schedule, [`docs/shows-snapshot.md`](shows-snapshot.md)) and `linktests` (the watch link test answers). A state file from before a resource existed loads fine: the missing one starts empty.
+- The resources are `todo`, `calendar`, `layout`, `awws`, `budget`, `nowplaying`, `allsounds` (the All sounds test widget), `shows` (the TV show schedule, [`docs/shows-snapshot.md`](shows-snapshot.md)), `linktests` (the watch link test answers) and `ambience` (the room's lights). A state file from before a resource existed loads fine: the missing one starts empty.
 - A to-do item: `{ id, title, section: 'now'|'next'|'waiting', level?, done, doneAt, createdAt, due?, notes?, lead? }`, the same shape the TV already saves. Order in `items` is display order. At most 200 items; title 1 to 80 characters; `notes` plain text of 1 to 300 characters (control characters and runs of spaces become one space; empty or `null` removes the field, so an item never holds empty notes); id up to 40 of `A-Z a-z 0-9 _ -`; `lead` (server 0.7.0) a whole number of days from 0 to 30, how long before its due date a passive item shows under Coming up (`null` removes it; none means 2); one item at most 2000 bytes as JSON. Done items ticked more than 48 hours ago are dropped on the next write.
 
 ### Screen API (no token; private addresses only, or `HUB_TV_IPS`)
@@ -249,6 +253,8 @@ Refusals are `403 { ok: false, error: 'screen not allowed' }`.
 - `{ "op": "set", "id": "...", "fields": { ... }, "to": "end" }`. `to` is optional and moves the item to the end. An unknown id is ignored.
 - `{ "op": "remove", "id": "..." }`.
 
+`POST /ambience/scene` `{ "id": "chill" }`, `POST /ambience/light` `{ "id": "geeni", "on"?: true|false, "pct"?: 1-100 }` and `POST /ambience/mood` `{ "id": "dim" }` are the TV's choices for the room's lights: saved ids only (an unknown id, an entity id or a bad level is `400`; `409` when Home Assistant or the plant wall is not set up). A request with an `Origin` not in `HUB_ORIGINS` is `403`. Each screen may send one every 400 ms with a burst of 3; past that it gets `429 { ok: false, error: 'slow down' }` (the log says so once, not per request). The answers are under "Ambience" below.
+
 Ops are applied in order and the last one to arrive wins. `set` merges `fields` into the item, so a change from the TV (`done`, `section`) keeps fields it did not send, `notes` among them; `{ "notes": null }` or `""` removes the notes.
 
 `POST /linktests` with `{ "result": { id, app, name, outcome, op?, uri?, data?, detail?, at, build? } }` stores one watch link test answer from the About panel (`outcome`: `title`, `app`, `nothing` or `error`), answered with `{ ok, rev }`. Like `POST /todo/ops` it refuses an `Origin` not on the allowed list. The Pi keeps the last 100 as the resource `linktests`; its log says only `screen sent a watch link test answer (app)`.
@@ -269,6 +275,12 @@ Ops are applied in order and the last one to arrive wins. `set` merges `fields` 
 | `POST /api/awws` | `{ snapshot: {...} \| null }` | `{ ok, rev, changed, bytes, accepted, cleared, rejected }`; see below |
 | `GET /api/budget` | | `{ ok, rev, data, tz }`: the stored budget snapshot |
 | `POST /api/budget` | `{ snapshot: {...} \| null }` | the same answer as `POST /api/awws`; see below |
+| `GET /api/ambience` | | `{ ok, ambience: { configured, state, haProblem, lights, scenes, active, moods, wledState, lastResult, ... } }` (no token, address or entity id) |
+| `POST /api/ambience/scene` | `{ id }` | `{ ok, result: 'ok'\|'partial'\|'failed', answered, total, missing, lights, mood }` |
+| `POST /api/ambience/light` | `{ id, on?, pct? }` | `{ ok, result: 'ok'\|'no-answer'\|'refused', on, pct }` |
+| `POST /api/ambience/mood` | `{ id }` | `{ ok, result: 'ok'\|'no-answer'\|'refused' }` |
+| `GET /api/ambience/config` | | `{ ok, config }`: the saved lights (with their entity ids), scenes and moods |
+| `POST /api/ambience/config` | `{ config: {...} \| null }` | `{ ok, config, ambience }`; `null` goes back to the defaults |
 | `GET /api/shows` | | `{ ok, rev, data, list, tz }`: the schedule (`docs/shows-snapshot.md`) and the owner's list |
 | `POST /api/shows` | exactly one of `{ add: { name, service?, tvmazeId?, serviceOverride?, alsoOn? } }`, `{ remove: "name" }`, `{ set: [...] }` | `{ ok, entry?, replaced?, removed?, list }`; TVmaze is asked again at once |
 | `POST /api/shows/refresh` | `{}` | `{ ok, done, changed, problems, count, data, list }`, after at most 25 s (`done: false` while it still reads) |
@@ -292,6 +304,29 @@ The full contract, field by field, is [`docs/awws-snapshot.md`](awws-snapshot.md
 ### The budget snapshot (`budget`)
 
 The contract is [`docs/budget-snapshot.md`](budget-snapshot.md). The resource is `budget`: `{ v: 1, sentAt, receivedAt, room?, cardDay?, goals?, alerts? }`, empty as `{ v: 1, sentAt: null, receivedAt: null }`. `POST /api/budget` follows exactly the rules of `POST /api/awws` above (each section checked by itself, `null` clears, 48 KB, stored and pushed even when unchanged). It is sent by the budget app on the Pi itself, with the token; the TV keeps its last copy as `homeHub.budget.v1`.
+
+### Ambience (`ambience`)
+
+The resource the Ambience tile draws, from `pi/ambience.js`:
+
+```json
+{ "v": 1, "state": "ok", "problem": "",
+  "lights": [{ "id": "geeni", "name": "Geeni lamp", "kind": "light", "on": true, "pct": 20, "reachable": true, "flaky": false, "tone": "#ffa057" }],
+  "scenes": [{ "id": "chill", "name": "Chill night", "icon": "moon", "tone": "#ffa057" }],
+  "active": "chill",
+  "moods": [{ "id": "dim", "name": "Dim" }],
+  "wled": { "reachable": true, "on": true, "bri": 40, "mood": "dim" },
+  "lastResult": { "scene": "chill", "result": "partial", "missing": ["Sengled lamp"], "at": "2026-11-17T03:10:00Z" } }
+```
+
+- `state` is `notset` (with `problem` `noha`: no usable `HA_TOKEN`, or `nolights`: no lights saved and no plant wall; nothing else is sent then), `ok`, or `error` (`problem` `auth`: the token was refused, `unreachable`, or `reply`: an answer that could not be read). On `error` the lights are the last known ones; the TV shows them dimmed with a plain note. One failed poll is not an error: it takes two in a row.
+- `lights` (at most 12): `kind` is `light` or `switch`; `pct` is 0 to 100; `reachable: false` is a light Home Assistant reports `unavailable` (the Sengled case). `tone` (only while the light is on) is a colour for the TV (`#rrggbb`) worked out from its colour or white temperature. Names are at most 24 characters.
+- `scenes` (at most 10) carry no light settings, only what the TV draws. `active` is the scene last applied while every light in it is still within 5 points of the scene's level, else `null`. A scene no light took leaves the one before.
+- `moods` and `wled` are empty and `null` without `WLED_URL`.
+- `lastResult` is the last scene: `missing` names (the hub's own names, never entity ids) the lights that didn't answer. A scene is `partial` when some answered, `failed` when none did; a light that doesn't answer never stops the others.
+- Nothing in it is a token, an address or an entity id. The entity ids stay in `data/ambience.json` (shape: `pi/ambience.example.json`).
+
+The server reads each light with `GET /api/states/<entity>` and sets it with `POST /api/services/light/turn_on|turn_off` (`brightness_pct`, `color_temp_kelvin` or `rgb_color`) or `switch/turn_on|turn_off`, 4 seconds a call; WLED with `GET`/`POST /json/state`. It polls every 10 s while a screen is on and every 60 s with none, backing off to 5 minutes while Home Assistant is away, and pushes only when something changed. Log lines all start with `ambience:` and carry counts and result words only.
 
 ### The hub's client
 

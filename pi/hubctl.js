@@ -35,6 +35,13 @@
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
  *   ./hub spotify logout             forget the Spotify sign-in
  *   ./hub allsounds status           what plays anywhere (Echo speakers through Home Assistant, Spotify)
+ *   ./hub ambience status            the room's lights: how many answer, the scene
+ *   ./hub ambience scenes            the saved scenes, lights and plant wall moods, with ids
+ *   ./hub ambience scene <id>        apply a scene
+ *   ./hub ambience light <id> on|off|<1-100>   one light
+ *   ./hub ambience mood <id>         a plant wall mood (WLED)
+ *   ./hub ambience set <file.json|->   new lights, scenes and moods (see ambience.example.json)
+ *   ./hub ambience reset             back to the defaults (no lights)
  *   ./hub status                     is the server up, which screens are on
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub log [--errors] [--lines 120]   the server's recent log lines (50 unless --lines says)
@@ -936,6 +943,164 @@ async function mailbox(args) {
   mailboxLines(r.mailbox).forEach(say);
 }
 
+/* ---------- Ambience (ambience.js) ---------- */
+
+const AMBIENCE_UPDATE = 'This server does not know Ambience yet (it needs an update): run git pull, then docker compose restart hub.';
+
+function plain(n, word) {
+  return n + ' ' + word + (n === 1 ? '' : 's');
+}
+
+// The one line that sums the room up, for ./hub ambience status and the
+// mailbox's ambience.status. Example: "3 lights, 2 answering, scene Chill night."
+function ambienceLine(a) {
+  if (!a || typeof a !== 'object') return AMBIENCE_UPDATE;
+  if (!a.configured) {
+    return a.problem ? 'Ambience: not set up (' + a.problem + '). Fix it in pi/.env, then docker compose restart hub.'
+      : 'Ambience: not set up (add HA_TOKEN to pi/.env, then docker compose restart hub).';
+  }
+  const lights = Array.isArray(a.lights) ? a.lights : [];
+  if (a.state === 'notset') return 'Ambience: no lights added yet (./hub ambience set <file.json>; see pi/ambience.example.json).';
+  if (a.state === 'error' && a.haProblem === 'auth') return 'Ambience: Home Assistant refused the token (make a new one, put it in pi/.env as HA_TOKEN).';
+  const scene = (Array.isArray(a.scenes) ? a.scenes : []).filter((s) => s.id === a.active)[0];
+  let line = plain(lights.length, 'light') + ', ' + lights.filter((l) => l.reachable).length + ' answering, ' +
+    lights.filter((l) => l.on).length + ' on, ' + (scene ? 'scene ' + scene.name : 'no scene') + '.';
+  if (a.state === 'error') line = 'Home Assistant is not answering (it keeps trying). Last known: ' + line;
+  if (a.wled && a.wledState) {
+    const mood = (Array.isArray(a.moods) ? a.moods : []).filter((m) => m.id === a.wledState.mood)[0];
+    line += a.wledState.reachable ? ' Plant wall: ' + (mood ? mood.name : a.wledState.on ? 'on' : 'off') + '.' : ' Plant wall: not answering.';
+  }
+  return line;
+}
+
+// ./hub ambience status: the line above, then one line per light.
+function ambienceStatusLines(a) {
+  const out = [ambienceLine(a)];
+  if (!a || !a.configured || a.state === 'notset') return out;
+  (a.lights || []).forEach((l) => {
+    const st = !l.reachable ? 'not answering' : !l.on ? 'off' : l.kind === 'switch' ? 'on' : 'on at ' + l.pct + '%';
+    out.push('  ' + l.name + ' (' + l.id + '): ' + st + (l.flaky ? ' (flaky)' : ''));
+  });
+  if (a.lastResult && a.lastResult.result === 'partial' && a.lastResult.missing.length) {
+    out.push('Last scene: ' + a.lastResult.missing.join(', ') + ' didn\'t answer.');
+  }
+  return out;
+}
+
+// ./hub ambience scenes: the ids to use with the other commands.
+function ambienceScenesLines(a) {
+  if (!a || typeof a !== 'object') return [AMBIENCE_UPDATE];
+  const out = [];
+  const scenes = a.scenes || [];
+  out.push(scenes.length ? 'Scenes:' : 'No scenes yet.');
+  scenes.forEach((s) => out.push('  ' + s.id + '  ' + s.name + (s.id === a.active ? '  (now)' : '')));
+  const lights = a.lights || [];
+  if (lights.length) {
+    out.push('Lights:');
+    lights.forEach((l) => out.push('  ' + l.id + '  ' + l.name + (l.kind === 'switch' ? '  (switch)' : '')));
+  }
+  if (a.wled) {
+    out.push('Plant wall moods:');
+    (a.moods || []).forEach((m) => out.push('  ' + m.id + '  ' + m.name));
+  }
+  return out;
+}
+
+// After ./hub ambience scene: "Chill night: applied (2 of 2 lights answered)."
+function ambienceSceneText(r, name) {
+  const n = name || 'The scene';
+  const count = ' (' + r.answered + ' of ' + plain(r.total, 'light') + ' answered)';
+  const miss = (r.missing || []).length ? '; ' + r.missing.join(', ') + ' didn\'t answer' : '';
+  if (r.result === 'ok') return n + ': applied' + count + '.';
+  if (r.result === 'partial') return n + ': partly applied' + count.slice(0, -1) + miss + ').';
+  return n + ': did not apply' + count.slice(0, -1) + miss + ').';
+}
+
+function ambienceLightText(r, name) {
+  const n = name || 'The light';
+  if (r.result === 'no-answer') return n + ' didn\'t answer. Nothing changed.';
+  if (r.result === 'refused') return 'Home Assistant refused the change to ' + n + '.';
+  return n + ' is ' + (r.on ? 'on' + (r.pct && r.pct < 100 ? ' at ' + r.pct + '%' : '') : 'off') + '.';
+}
+
+function ambienceMoodText(r, name) {
+  const n = name || 'The mood';
+  if (r.result === 'no-answer') return 'The plant wall didn\'t answer. Nothing changed.';
+  if (r.result === 'refused') return 'The plant wall refused ' + n + '.';
+  return 'Plant wall: ' + n + '.';
+}
+
+function ambienceSetText(r, reset) {
+  const c = (r && r.config) || { lights: [], scenes: [], moods: [] };
+  const what = plain(c.lights.length, 'light') + ', ' + plain(c.scenes.length, 'scene') + ', ' + plain(c.moods.length, 'mood');
+  return (reset ? 'Back to the defaults: ' : 'Saved: ') + what + '. Screens that are on change now.';
+}
+
+function readAmbienceFile(name) {
+  let text;
+  try {
+    text = name === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(name, 'utf8');
+  } catch (e) {
+    stop(name === '-' ? 'Could not read the settings from standard input.' : 'Could not read ' + name + ' (' + (e.code || e.message) + ').');
+  }
+  let data;
+  try { data = JSON.parse(text); } catch (e) { stop((name === '-' ? 'The input' : name) + ' is not valid JSON.'); }
+  if (data && typeof data === 'object' && !Array.isArray(data) && 'config' in data) data = data.config;
+  return data;
+}
+
+const nameOf = (list, id) => ((list || []).filter((x) => x.id === id)[0] || {}).name || '';
+
+async function ambienceCommand(args) {
+  const sub = args[0];
+  const use = 'Use one of: ambience status, ambience scenes, ambience scene <id>, ambience light <id> on|off|<1-100>, ' +
+    'ambience mood <id>, ambience set <file.json|->, ambience reset. Run ./hub help for examples.';
+  const st = async () => (await call('GET', '/api/ambience')).ambience;
+  if (sub === 'status') { ambienceStatusLines(await st()).forEach(say); return; }
+  if (sub === 'scenes') { ambienceScenesLines(await st()).forEach(say); return; }
+  if (sub === 'scene') {
+    if (!args[1]) stop('Say which scene, for example: ./hub ambience scene chill (./hub ambience scenes lists them).');
+    const a = await st();
+    const r = await call('POST', '/api/ambience/scene', { id: args[1] });
+    say(ambienceSceneText(r, nameOf(a && a.scenes, args[1])));
+    return;
+  }
+  if (sub === 'light') {
+    const id = args[1];
+    const v = String(args[2] || '').toLowerCase();
+    if (!id || !v) stop('Say which light and what, for example: ./hub ambience light geeni on, off or 40.');
+    const body = { id: id };
+    if (v === 'on') body.on = true;
+    else if (v === 'off') body.on = false;
+    else if (/^\d{1,3}%?$/.test(v) && Number(v.replace('%', '')) >= 1 && Number(v.replace('%', '')) <= 100) body.pct = Number(v.replace('%', ''));
+    else stop('Use on, off or a number from 1 to 100.');
+    const a = await st();
+    const r = await call('POST', '/api/ambience/light', body);
+    say(ambienceLightText(r, nameOf(a && a.lights, id)));
+    return;
+  }
+  if (sub === 'mood') {
+    if (!args[1]) stop('Say which mood, for example: ./hub ambience mood dim (./hub ambience scenes lists them).');
+    const a = await st();
+    const r = await call('POST', '/api/ambience/mood', { id: args[1] });
+    say(ambienceMoodText(r, nameOf(a && a.moods, args[1])));
+    return;
+  }
+  if (sub === 'set') {
+    const name = args[1];
+    if (!name) stop('Say which file holds the settings, or - to read them from standard input. For example: ./hub ambience set ambience.json');
+    const r = await call('POST', '/api/ambience/config', { config: readAmbienceFile(name) });
+    say(ambienceSetText(r, false));
+    return;
+  }
+  if (sub === 'reset') {
+    const r = await call('POST', '/api/ambience/config', { config: null });
+    say(ambienceSetText(r, true));
+    return;
+  }
+  stop(use);
+}
+
 /* ---------- recent log lines ---------- */
 
 function problemsText(n) {
@@ -1032,6 +1197,13 @@ const HELP = [
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
   '  ./hub allsounds status      what plays anywhere: Echo speakers (Home Assistant) and Spotify',
+  '  ./hub ambience status       the room\'s lights: how many answer, which scene is on',
+  '  ./hub ambience scenes       the scenes, lights and plant wall moods, with their ids',
+  '  ./hub ambience scene chill  apply a scene (a light that doesn\'t answer never stops the others)',
+  '  ./hub ambience light geeni 40   one light: on, off or a level from 1 to 100',
+  '  ./hub ambience mood dim     a plant wall mood (needs WLED_URL in pi/.env)',
+  '  ./hub ambience set file.json   new lights, scenes and moods (see pi/ambience.example.json)',
+  '  ./hub ambience reset        back to the defaults (no lights)',
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
@@ -1076,6 +1248,7 @@ async function main(argv) {
   if (cmd === 'log') return logCommand(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
   if (cmd === 'allsounds') return allsoundsCmd(rest);
+  if (cmd === 'ambience') return ambienceCommand(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
 }
@@ -1117,7 +1290,14 @@ module.exports = {
   spotifyLoginLines: spotifyLoginLines,
   spotifyCodeText: spotifyCodeText,
   spotifyLogoutText: spotifyLogoutText,
-  allsoundsStatusLines: allsoundsStatusLines
+  allsoundsStatusLines: allsoundsStatusLines,
+  ambienceLine: ambienceLine,
+  ambienceStatusLines: ambienceStatusLines,
+  ambienceScenesLines: ambienceScenesLines,
+  ambienceSceneText: ambienceSceneText,
+  ambienceLightText: ambienceLightText,
+  ambienceMoodText: ambienceMoodText,
+  ambienceSetText: ambienceSetText
 };
 
 if (require.main === module) {

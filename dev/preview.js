@@ -38,6 +38,14 @@
  * calm again, one known only by its genres, one with nothing known); the
  * same stand-in plays ReccoBeats and answers 1.2 s late, as the real one
  * may. VIBE_MODE=MODE or ?vibe=MODE: ok, empty, garbage, slow, ratelimit, down.
+ *
+ * Ambience: the hub server also gets a made-up Home Assistant and plant wall
+ * (dev/mock-lights.js) with the lights, scenes and moods of
+ * pi/ambience.example.json. LIGHTS_MODE=MODE at start: sample (the default),
+ * nolights (Home Assistant set up, no lights saved) or off (not set up).
+ * While it runs, GET http://127.0.0.1:8095/preview?lights=MODE changes the
+ * room: ok, sengled (the Sengled bulb unavailable), slow, down, unauthorized,
+ * wall-down. HUB_LIGHTS=off leaves it out.
  */
 var http = require('http');
 var fs = require('fs');
@@ -59,6 +67,8 @@ var calendarFeeds = null;
 var spotifyMode = process.env.SPOTIFY_MODE || 'playing';
 var mockSpotify = null;
 var vibeMode = process.env.VIBE_MODE || 'ok';
+var lightsMode = process.env.LIGHTS_MODE || 'sample';
+var mockLights = null;
 
 // Same four addresses as service.js, each with the sample file that stands in for it.
 var FETCH_ALLOWED = [
@@ -236,6 +246,17 @@ var service = http.createServer(function (req, res) {
       weatherMode = String(q.weather);
       log('weather mode: ' + weatherMode);
     }
+    if (q.lights !== undefined) {
+      var lm = String(q.lights);
+      if (!mockLights || !liveServer) return send(res, 400, { ok: false, error: 'no sample lights running' });
+      var LM = ['ok', 'sengled', 'slow', 'down', 'unauthorized', 'wall-down'];
+      if (LM.indexOf(lm) < 0) return send(res, 400, { ok: false, error: 'unknown lights mode', modes: LM });
+      mockLights.light('light.example_sengled_1', lm === 'sengled' ? 'unavailable' : 'ok');
+      mockLights.mode(lm === 'slow' || lm === 'down' || lm === 'unauthorized' ? lm : 'ok');
+      mockLights.wled(lm === 'wall-down' ? 'down' : 'ok');
+      liveServer.ambience.poll();
+      return send(res, 200, { ok: true, lights: lm });
+    }
     if (q.spotify !== undefined) {
       var sp = String(q.spotify);
       if (!mockSpotify || !liveServer) return send(res, 400, { ok: false, error: 'no sample Spotify running' });
@@ -291,9 +312,20 @@ var liveServer = null;
   try { fs.unlinkSync(path.join(LIVE_DATA_DIR, 'vibes.json')); } catch (e) { /* none */ }
   var spotifyUp = process.env.HUB_SPOTIFY === 'off' || spotifyMode === 'off' ? Promise.resolve(null) :
     require('./mock-spotify').start({ mode: spotifyMode === 'signin' ? 'playing' : spotifyMode, vibeMode: vibeMode, vibeDelayMs: 1200 }).catch(function () { return null; });
-  Promise.all([feeds, spotifyUp]).then(function (both) {
+  var lightsUp = process.env.HUB_LIGHTS === 'off' || lightsMode === 'off' ? Promise.resolve(null) :
+    require('./mock-lights').start({}).catch(function () { return null; });
+  Promise.all([feeds, spotifyUp, lightsUp]).then(function (both) {
     calendarFeeds = both[0];
     mockSpotify = both[1];
+    mockLights = both[2];
+    // The sample room (or no lights) for Ambience, written before the server reads it.
+    try {
+      fs.mkdirSync(LIVE_DATA_DIR, { recursive: true });
+      var amb = require('../pi/ambience');
+      amb.saveConfig(LIVE_DATA_DIR, lightsMode === 'sample'
+        ? amb.validateConfig(JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'pi', 'ambience.example.json'), 'utf8')))
+        : amb.defaultConfig());
+    } catch (e) { /* an older pi/ without Ambience */ }
     start(both[0]);
   });
   function start(f) {
@@ -313,10 +345,13 @@ var liveServer = null;
       } : {},
       spotify: { accounts: mockSpotify && mockSpotify.url, api: mockSpotify && mockSpotify.url, vibe: mockSpotify && mockSpotify.url, allowHttp: true,
         playMs: 1500, idleMs: 1500, awayMs: 1500 },
+      ambienceEnv: mockLights ? { HA_URL: mockLights.url, HA_TOKEN: mockLights.token, WLED_URL: mockLights.wledUrl } : {},
+      ambience: { timeoutMs: 1500, screenMs: 3000, idleMs: 3000 },
       // The Schedule: the made-up sample, never TVmaze (HUB_SHOWS=off: none).
       shows: process.env.HUB_SHOWS === 'off' ? undefined :
         { sampleFile: path.join(__dirname, '..', 'pi', 'fixtures', 'shows-sample.json') }
     });
+    if (mockLights) log('Lights:   sample Home Assistant and plant wall, mode "' + lightsMode + '"; switch with /preview?lights=ok|sengled|slow|down|unauthorized|wall-down');
     signInToMock();
     log('Calendar: ' + (f ? 'sample calendars, mode "' + calendarMode + '"; switch with /preview?calendar=' + sample.MODES.join('|') :
       'none set up (CALENDAR_MODE=off)'));

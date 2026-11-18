@@ -58,6 +58,7 @@ const MAX_TITLE = 80;
 const MAX_NOTES = 300;
 const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAX_DEPTH = 8;
+const MAX_AMBIENCE_CONFIG = 8 * 1024;
 
 function isObj(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -424,6 +425,13 @@ function todoChange(sub) {
   };
 }
 
+// Counts only: the saved settings hold Home Assistant entity ids, which stay
+// on the Pi.
+function ambienceCounts(c) {
+  const n = (k) => (c && Array.isArray(c[k]) ? c[k].length : 0);
+  return { lights: n('lights'), scenes: n('scenes'), moods: n('moods') };
+}
+
 const COMMANDS = {
   show: {
     args: { widget: [V.oneOf(hubctl.WIDGETS), true], full: [V.bool(), false] },
@@ -705,6 +713,72 @@ const COMMANDS = {
     run: async (a, ctx) => {
       const r = await ctx.call('POST', '/api/spotify/logout', {});
       return { message: hubctl.spotifyLogoutText(r), data: { changed: !!r.changed } };
+    }
+  },
+  // The room's lights (ambience.js). Names of lights and scenes are fine
+  // here; the Home Assistant token and the addresses never reach the Pi's
+  // answers at all.
+  'ambience.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/ambience');
+      const s = r.ambience || null;
+      return { message: hubctl.ambienceLine(s), data: { ambience: s } };
+    }
+  },
+  'ambience.scene': {
+    args: { id: [V.text(32), true] },
+    run: async (a, ctx) => {
+      const st = (await ctx.call('GET', '/api/ambience')).ambience || {};
+      const r = await ctx.call('POST', '/api/ambience/scene', { id: a.id });
+      const name = ((st.scenes || []).filter((x) => x.id === a.id)[0] || {}).name;
+      return {
+        message: hubctl.ambienceSceneText(r, name),
+        data: { result: r.result, answered: r.answered, total: r.total, missing: r.missing || [] }
+      };
+    }
+  },
+  'ambience.light': {
+    args: { id: [V.text(32), true], on: [V.bool(), false], pct: [V.number(1, 100), false] },
+    check: (a) => {
+      if (a.pct !== undefined && !Number.isInteger(a.pct)) throw argError('"pct" must be a whole number from 1 to 100');
+      if (a.pct !== undefined && a.on === false) throw argError('"pct" goes with a light that is on (leave "on" out, or make it true)');
+    },
+    run: async (a, ctx) => {
+      const st = (await ctx.call('GET', '/api/ambience')).ambience || {};
+      const body = { id: a.id };
+      if (a.on !== undefined) body.on = a.on;
+      if (a.pct !== undefined) body.pct = a.pct;
+      const r = await ctx.call('POST', '/api/ambience/light', body);
+      const name = ((st.lights || []).filter((x) => x.id === a.id)[0] || {}).name;
+      return { message: hubctl.ambienceLightText(r, name), data: { result: r.result, on: r.on, pct: r.pct } };
+    }
+  },
+  'ambience.mood': {
+    args: { id: [V.text(32), true] },
+    run: async (a, ctx) => {
+      const st = (await ctx.call('GET', '/api/ambience')).ambience || {};
+      const r = await ctx.call('POST', '/api/ambience/mood', { id: a.id });
+      const name = ((st.moods || []).filter((x) => x.id === a.id)[0] || {}).name;
+      return { message: hubctl.ambienceMoodText(r, name), data: { result: r.result } };
+    }
+  },
+  'ambience.set': {
+    // The shape is checked by the server (ambience.js validateConfig).
+    args: { config: [V.object(), true] },
+    check: (a) => {
+      if (Buffer.byteLength(JSON.stringify(a.config)) > MAX_AMBIENCE_CONFIG) throw argError('"config" is larger than 8 KB');
+    },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/ambience/config', { config: a.config });
+      return { message: hubctl.ambienceSetText(r, false), data: ambienceCounts(r.config) };
+    }
+  },
+  'ambience.reset': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/ambience/config', { config: null });
+      return { message: hubctl.ambienceSetText(r, true), data: ambienceCounts(r.config) };
     }
   },
   // Recent log lines. Always scrubbed on the Pi (addresses and names

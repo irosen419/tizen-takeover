@@ -10,6 +10,8 @@
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
  *   POST /linktests      one watch link test answer from the About panel
+ *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
+ *                        from the TV (ambience.js): saved ids only, rate limited
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
  *
  * Control API (needs "Authorization: Bearer <token>"):
@@ -40,6 +42,12 @@
  *   POST /api/spotify/refresh  ask Spotify what is playing right now
  *   GET  /api/allsounds  what plays anywhere in the house (allsounds.js): state,
  *                        source, speaker, title and artist
+ *   GET  /api/ambience   the room's lights, scenes and plant wall (ambience.js)
+ *   POST /api/ambience/scene   apply a scene, { id }
+ *   POST /api/ambience/light   one light, { id, on?, pct? }
+ *   POST /api/ambience/mood    a plant wall mood, { id }
+ *   GET  /api/ambience/config  the saved lights, scenes and moods
+ *   POST /api/ambience/config  replace them, { config }, or { config: null } for the defaults
  *   GET  /health         no token, just "is it running"
  *
  * The Claude mailbox (mailbox.js, off unless HUB_MAILBOX_ settings are in
@@ -55,6 +63,8 @@
  * in awws.js and budget.js,
  * what plays on Spotify comes from spotify.js, and what plays on any speaker
  * (Home Assistant's Echo speakers plus Spotify) from allsounds.js.
+ * what plays on Spotify comes from spotify.js, and the room's lights
+ * (Home Assistant, and the plant wall's WLED) from ambience.js.
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -71,6 +81,7 @@ const mailbox = require('./mailbox');
 const spotify = require('./spotify');
 const shows = require('./shows');
 const linktests = require('./linktests');
+const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 
@@ -188,7 +199,7 @@ function loadSettings(file) {
   const fromFile = readEnvFile(file);
   const out = Object.assign({}, fromFile);
   Object.keys(process.env).forEach((k) => {
-    if (/^(HUB_|CALENDAR_|SPOTIFY_|HA_|ALLSOUNDS_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
+    if (/^(HUB_|CALENDAR_|SPOTIFY_|HA_|ALLSOUNDS_|WLED_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
   });
   return out;
 }
@@ -481,7 +492,8 @@ function freshState() {
       nowplaying: { rev: 0, data: spotify.offData() },
       shows: { rev: 0, data: shows.emptyData() },
       linktests: { rev: 0, data: linktests.emptyData() },
-      allsounds: { rev: 0, data: allsounds.notsetData() }
+      allsounds: { rev: 0, data: allsounds.notsetData() },
+      ambience: { rev: 0, data: ambience.notsetData('noha') }
     }
   };
 }
@@ -535,6 +547,8 @@ function loadState(dir, log) {
     st.resources.linktests = linktests.cleanResource(st.resources.linktests);
     // Nor "all sounds" (allsounds.js), cleaned the same way.
     st.resources.allsounds = allsounds.cleanResource(st.resources.allsounds, true);
+    // Nor the room's lights (ambience.js), rebuilt from known fields.
+    st.resources.ambience = ambience.cleanResource(st.resources.ambience);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -716,6 +730,23 @@ function start(options) {
   }));
   tracker.start();
 
+  /* --- Ambience (ambience.js): the room's lights through Home Assistant --- */
+
+  // opt.ambienceEnv is the .env settings (HA_URL, HA_TOKEN, WLED_URL).
+  // opt.ambience may hold { manual, timeoutMs, ... } for tests and the preview.
+  const amOpt = isObj(opt.ambience) ? opt.ambience : {};
+  const lights = ambience.createController(Object.assign({}, amOpt, {
+    env: ambience.configFromEnv(opt.ambienceEnv || {}),
+    dataDir: dataDir,
+    log: log,
+    screens: () => sse.size + pollSeen.size,
+    current: () => state.resources.ambience.data,
+    publish: (data) => {
+      try { changeResource('ambience', data); } catch (e) { /* changeResource already logged it */ }
+    }
+  }));
+  lights.start();
+
   /* --- replies --- */
 
   function sendJson(res, status, body, extra) {
@@ -864,6 +895,43 @@ function start(options) {
     sendJson(res, 200, { ok: true, rev: state.rev, items: todoItems() }, extra);
   }
 
+  /* --- Ambience commands (ambience.js) --- */
+
+  // The control API and the screen's door share this. sub is
+  // '/ambience', '/ambience/scene', ... Resolves { status, body, note }; it
+  // never rejects. The note (for the control log line) is a result word,
+  // never a name.
+  function ambienceCall(method, sub, body) {
+    const b = isObj(body) ? body : {};
+    const idOf = () => {
+      if (typeof b.id !== 'string' || !b.id) throw bad('send { "id": "..." }');
+      return b.id;
+    };
+    const done = (p) => p.then((r) => ({ status: 200, body: Object.assign({ ok: true }, r), note: r.result }));
+    return Promise.resolve().then(() => {
+      if (sub === '/ambience' && method === 'GET') return { status: 200, body: { ok: true, ambience: lights.status() } };
+      if (sub === '/ambience/config' && method === 'GET') return { status: 200, body: { ok: true, config: lights.getConfig() } };
+      if (sub === '/ambience/config') {
+        if (!isObj(body) || body.config === undefined) throw bad('send { "config": { "lights": [...], "scenes": [...], "moods": [...] } }, or { "config": null } for the defaults');
+        const c = body.config === null ? lights.resetConfig() : lights.setConfig(body.config);
+        return { status: 200, body: { ok: true, config: c, ambience: lights.status() }, note: body.config === null ? 'defaults' : 'saved' };
+      }
+      if (sub === '/ambience/scene') return done(lights.applyScene(idOf()));
+      if (sub === '/ambience/light') {
+        const want = {};
+        if (b.on !== undefined) want.on = b.on;
+        if (b.pct !== undefined) want.pct = b.pct;
+        return done(lights.setLight(idOf(), want));
+      }
+      if (sub === '/ambience/mood') return done(lights.applyMood(idOf()));
+      throw bad('no such call');
+    }).catch((e) => {
+      const status = e && e.status ? e.status : 500;
+      if (status === 500) log('ambience: unexpected problem with a command');
+      return { status: status, body: { ok: false, error: e && e.status ? e.message : 'the server had a problem' } };
+    });
+  }
+
   /* --- push line --- */
 
   function sseWrite(client, event, data) {
@@ -910,6 +978,7 @@ function start(options) {
     sse.add(client);
     log('screen connected (live line) ' + address);
     player.wake();
+    lights.screensChanged();
     res.on('close', () => dropSse(client));
     res.on('error', () => dropSse(client, 'write error'));
     try {
@@ -1003,6 +1072,7 @@ function start(options) {
         pollSeen.set(address, { since: Date.now(), last: Date.now() });
         log('screen connected (poll) ' + address);
         player.wake();
+        lights.screensChanged();
       }
     }
     ensureForgetTimer();
@@ -1102,7 +1172,12 @@ function start(options) {
     '/api/shows': ['GET', 'POST'],
     '/api/shows/refresh': ['POST'],
     '/api/linktests': ['GET'],
-    '/api/allsounds': ['GET']
+    '/api/allsounds': ['GET'],
+    '/api/ambience': ['GET'],
+    '/api/ambience/scene': ['POST'],
+    '/api/ambience/light': ['POST'],
+    '/api/ambience/mood': ['POST'],
+    '/api/ambience/config': ['GET', 'POST']
   };
 
   function statusBody() {
@@ -1112,7 +1187,8 @@ function start(options) {
       calendar: { configured: calReader.configured, calendars: calList.length, lastRefresh: calReader.lastRefresh() },
       mailbox: mbox ? mbox.info() : { configured: false, problem: mailboxCfg.problem || '' },
       spotify: player.status(),
-      shows: { shows: tracker.list().length, lastRefresh: tracker.lastRefresh(), sample: !!state.resources.shows.data.sample }
+      shows: { shows: tracker.list().length, lastRefresh: tracker.lastRefresh(), sample: !!state.resources.shows.data.sample },
+      ambience: lights.summary()
     };
   }
 
@@ -1216,6 +1292,10 @@ function start(options) {
         }
         if (route === '/api/spotify/refresh') {
           player.poll().then(() => reply(200, { ok: true, spotify: player.status() })).catch(failed);
+          return undefined;
+        }
+        if (route.indexOf('/api/ambience') === 0) {
+          ambienceCall(method, route.slice(4), body).then((a) => reply(a.status, a.body, a.note));
           return undefined;
         }
         if (route === '/api/layout' && method === 'GET') {
@@ -1356,7 +1436,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/linktests' ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/linktests' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1367,8 +1447,9 @@ function start(options) {
     }
     if (route === '/live/events') return openSse(req, res, address);
     if (route === '/live/poll') return openPoll(req, res, query, address);
-    // POST /todo/ops. A web page on another site must not be able to change
-    // the list through a browser at home, so a foreign Origin is refused.
+    // POST /todo/ops and /ambience/*. A web page on another site must not be
+    // able to change the list or the lights through a browser at home, so a
+    // foreign Origin is refused.
     const origin = req.headers.origin;
     if (origin && origins.indexOf(origin) < 0) {
       return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
@@ -1385,6 +1466,19 @@ function start(options) {
           fail(res, e, cors);
         }
       });
+    }
+    if (route.indexOf('/ambience/') === 0) {
+      // The TV holds no secret: it may only name ids from the saved
+      // settings, and not too fast. Nothing about it is logged here (the
+      // address included); ambience.js logs counts and results.
+      if (!lights.screenAllowed()) {
+        req.resume();
+        return sendJson(res, 429, { ok: false, error: 'slow down' }, cors);
+      }
+      readBody(req, res, (body) => {
+        ambienceCall('POST', route, body).then((a) => sendJson(res, a.status, a.body, cors));
+      });
+      return undefined;
     }
     readBody(req, res, (body) => {
       try {
@@ -1421,7 +1515,10 @@ function start(options) {
     });
   }
 
-  const SCREEN_ROUTES = { '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/spotify/callback': 1 };
+  const SCREEN_ROUTES = {
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/spotify/callback': 1,
+    '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
+  };
 
   function handler(door) {
     return (req, res) => {
@@ -1514,6 +1611,7 @@ function start(options) {
     api: api,
     mailbox: mbox,
     spotify: player,
+    ambience: lights,
     // Keeps a line that was already printed some other way (process events).
     note: (s) => { try { remember(String(s)); } catch (e) { /* never throws */ } },
     shows: tracker,
@@ -1550,6 +1648,7 @@ function start(options) {
     player.close();
     tracker.close();
     sounds.close();
+    lights.close();
     if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));
@@ -1609,6 +1708,7 @@ if (require.main === module) {
       sampleFile: env.HUB_SHOWS === 'sample' ? path.join(__dirname, 'fixtures', 'shows-sample.json') : undefined
     },
     allsoundsEnv: env,
+    ambienceEnv: env,
     // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
     // or systemd (Restart=always) starts the server again, with any new code.
     onRestart: () => {
