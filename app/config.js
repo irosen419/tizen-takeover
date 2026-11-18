@@ -24,6 +24,16 @@ var HUB_CONFIG = {
      false = solid dark cards, even with a picture. */
   glass: true,
 
+  /* The look of the glass tiles (app/theme.css), when glass is on and there
+     is a picture:
+       'auto'   day (light glass, dark text) between sunrise and sunset, night
+                (dark glass) otherwise. Sunrise and sunset come from the
+                Weather widget; without them, day is 7:00 AM to 6:00 PM (the default)
+       'day'    always light
+       'night'  always dark
+     ?theme=day or ?theme=night on the address tries one without editing this. */
+  theme: 'auto',
+
   /* How opening a widget looks:
        'auto'    start with 'push', time it on the TV, and step down to
                  'expand', then 'fade', if the TV can't keep up, and tries push again after a day (the default)

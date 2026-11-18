@@ -201,10 +201,13 @@ async function contrast(p, selectors) {
       const ls = [];
       for (let i = 0; i < d.length; i += 4) ls.push(lum(d[i], d[i + 1], d[i + 2]));
       ls.sort((a, b) => a - b);
-      const fg = ls[Math.floor(ls.length * 0.995)];
+      // Light words on dark glass (night) or dark words on light glass (day): whichever end is further from the middle.
       const bg = ls[Math.floor(ls.length * 0.5)];
+      const hi = ls[Math.floor(ls.length * 0.995)];
+      const lo = ls[Math.floor(ls.length * 0.005)];
+      const fg = (hi + 0.05) / (bg + 0.05) >= (bg + 0.05) / (lo + 0.05) ? hi : lo;
       out.push({ what: e.closest('.cell').getAttribute('data-widget') + ' ' + e.className.split(' ')[0] + ' "' + e.textContent.trim().slice(0, 30) + '"',
-        ratio: Math.round((fg + 0.05) / (bg + 0.05) * 100) / 100 });
+        ratio: Math.round(Math.max(fg + 0.05, bg + 0.05) / Math.min(fg + 0.05, bg + 0.05) * 100) / 100 });
     });
     return out;
   }, { shot, selectors });
@@ -323,8 +326,12 @@ function edgeOn(p, id) {
     await check('Secondary words on the tiles reach 4.5:1 on the glass (sub lines, badges, hints, quiet lines)', async () => {
       const low = [];
       let n = 0;
-      for (const name of ['main', 'stock', 'budget', 'awws-money']) {
-        const p = await page(env, { layout: LAYOUTS[name], lang: 'en' });
+      for (const name of ['main', 'stock', 'budget', 'awws-money', 'main-day']) {
+        // main-day: the day look (dark words on light glass); the others are the night look.
+        const p = await page(env, { layout: LAYOUTS[name.replace('-day', '')], lang: 'en' });
+        await p.goto(p.url() + '&theme=' + (/-day$/.test(name) ? 'day' : 'night'));
+        await p.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0);
+        await H.sleep(800);
         const list = await contrast(p, '.tile-sub, .tile-badge, .todo-empty-hint, .hub-quiet-line, .np-hint, .planned-text, .aw-sub, .bu-sub, .cal-tile-sub');
         n += list.length;
         list.forEach((x) => { if (x.ratio < 4.5) low.push(name + ': ' + x.what + ' ' + x.ratio + ':1'); });

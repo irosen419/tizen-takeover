@@ -132,7 +132,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.29.12';
+  var BUILD = 'v0.30.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -153,6 +153,7 @@
   var frameWrap = document.getElementById('frameWrap');
   var frameEl = document.getElementById('frame');
   var backdropEl = document.getElementById('backdrop');
+  var stageEl = document.getElementById('stage');
 
   var widgets = [];       // [{ w, ctx, cell, tile, body, subEl, expandable }]
   var homeIndex = -1;     // focused tile
@@ -696,6 +697,80 @@
     }
   }
 
+  // A softer copy of the picture (384 px wide, one canvas, made once): the
+  // clear window of each tile shows it, so a busy picture is calmed without
+  // a blur filter. '' if the canvas can't be read.
+  function softCopy(img) {
+    try {
+      var W = window.innerWidth;
+      var H = window.innerHeight;
+      var k = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+      var sw = W / k;
+      var sh = H / k;
+      var a = document.createElement('canvas');
+      a.width = 384;
+      a.height = Math.round(384 * H / W);
+      a.getContext('2d').drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, 0, 0, a.width, a.height);
+      return a.toDataURL('image/jpeg', 0.85);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // The picture's brightness on a 160-pixel-wide grid, kept once for placeGlass
+  // (the veil of each tile). null if the canvas can't be read: the tiles keep
+  // the veil the stylesheet gives them.
+  var veil = null;
+
+  function readVeil(img) {
+    try {
+      var W = window.innerWidth;
+      var H = window.innerHeight;
+      var k = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+      var sw = W / k;
+      var sh = H / k;
+      var c = document.createElement('canvas');
+      c.width = 160;
+      c.height = Math.max(1, Math.round(160 * H / W));
+      var cx = c.getContext('2d');
+      cx.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, 0, 0, c.width, c.height);
+      var px = cx.getImageData(0, 0, c.width, c.height).data;
+      var lum = [];
+      for (var i = 0; i < px.length; i += 4) lum.push((0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255);
+      return { w: c.width, h: c.height, lum: lum };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // How strong the veil over a tile's window is: the brighter or busier the
+  // picture behind the tile, the stronger. Night: a dark veil (--veil-a), day:
+  // a milky one (--veil-l); the stylesheet picks by theme.
+  function placeVeil(tile, r) {
+    if (!veil) return;
+    var kx = veil.w / window.innerWidth;
+    var ky = veil.h / window.innerHeight;
+    var n = 0;
+    var s = 0;
+    var s2 = 0;
+    for (var y = Math.floor(r.top * ky); y < Math.min(veil.h, r.bottom * ky); y++) {
+      for (var x = Math.floor(r.left * kx); x < Math.min(veil.w, r.right * kx); x++) {
+        if (x < 0 || y < 0) continue;
+        var l = veil.lum[y * veil.w + x];
+        n++;
+        s += l;
+        s2 += l * l;
+      }
+    }
+    if (!n) return;
+    var m = s / n;
+    var sd = Math.sqrt(Math.max(0, s2 / n - m * m));
+    tile.style.setProperty('--veil-a', clamp(0.18 + 0.62 * m + 1.4 * sd, 0.28, 0.82).toFixed(2));
+    tile.style.setProperty('--veil-l', clamp(0.36 + 0.55 * (1 - m) + 1.2 * sd, 0.40, 0.86).toFixed(2));
+  }
+
   function setupBackground() {
     var src = cfg.background;
     if (!src) return;
@@ -707,6 +782,9 @@
       if (cfg.glass === false) return;
       var data = blurredCopy(img);
       if (data) document.documentElement.style.setProperty('--glass-img', 'url("' + data + '")');
+      var soft = softCopy(img);
+      if (soft) document.documentElement.style.setProperty('--soft-img', 'url("' + soft + '")');
+      veil = readVeil(img);
       document.body.classList.add('is-glass');
       // An old engine may not take url() through a custom property, or may
       // drop the whole background. Then fall back to the plain tint.
@@ -715,6 +793,8 @@
         if (bg.indexOf('url(') === -1) document.body.classList.add('glass-tint-only');
       }
       placeGlass();
+      // The glass look has its own border and padding (theme.css): the room the titles have changes a little.
+      retitleAll();
     };
     img.onerror = function () { /* keep the plain dark look */ };
     img.src = src;
@@ -732,6 +812,7 @@
       var rec = widgets[i];
       if (!rec.home) continue;
       setGlassOrigin(rec.tile, rec.home.left + rec.tile.clientLeft, rec.home.top + rec.tile.clientTop);
+      placeVeil(rec.tile, rec.home);
     }
     placeFloatingGlass(ghostEl);
   }
@@ -742,6 +823,82 @@
   function placeFloatingGlass(node) {
     if (!hasPicture) return;
     setGlassOrigin(node, node.offsetLeft + node.clientLeft, node.offsetTop + node.clientTop);
+  }
+
+  /* ---------- day and night ---------- */
+
+  // The look: day (light glass, dark text) between sunrise and sunset, night
+  // (dark glass) otherwise. Sunrise and sunset come from the Weather widget's
+  // forecast; without one, day is 7:00 AM to 6:00 PM on the TV's clock.
+  // HUB_CONFIG.theme ('auto' | 'day' | 'night') or ?theme=day|night on the
+  // address sets it by hand. Checked once a minute. The stylesheet is
+  // app/theme.css (body.theme-day, body.theme-night).
+  var DAY_FROM = 7;
+  var DAY_TO = 18;
+  var theme = { look: '', source: 'auto', sunrise: '', sunset: '', timer: null, fading: false };
+
+  function sunTimes() {
+    try {
+      var rec = widgetById('weather');
+      var fn = rec && rec.w ? rec.w.sunNow : null;
+      return typeof fn === 'function' ? fn() : null;
+    } catch (e) { return null; }
+  }
+
+  function wantedTheme() {
+    var q = readQuery('theme');
+    var source = 'URL';
+    if (q !== 'day' && q !== 'night') {
+      q = cfg.theme;
+      source = 'config';
+    }
+    if (q === 'day' || q === 'night') return { look: q, source: source, sunrise: '', sunset: '' };
+    var sun = sunTimes();
+    if (sun) return { look: sun.day ? 'day' : 'night', source: 'auto', sunrise: sun.sunrise, sunset: sun.sunset };
+    var h = new Date().getHours();
+    return { look: h >= DAY_FROM && h < DAY_TO ? 'day' : 'night', source: 'auto', sunrise: '', sunset: '' };
+  }
+
+  function paintTheme(look) {
+    theme.look = look;
+    document.body.classList.remove('theme-day');
+    document.body.classList.remove('theme-night');
+    document.body.classList.add('theme-' + look);
+  }
+
+  // One quick fade of the stage (out 140 ms, in 220 ms) over the change; at
+  // once when the hub is on plain fades or something is open or moving.
+  function switchTheme(look) {
+    if (!theme.look || motion.mode === 'fade' || open || busy || frameOpen || theme.fading) return paintTheme(look);
+    theme.fading = true;
+    setOpacity(stageEl, 0, 140);
+    setTimeout(function () {
+      paintTheme(look);
+      setOpacity(stageEl, 1, 220);
+      setTimeout(function () {
+        stageEl.style.transition = '';
+        stageEl.style.opacity = '';
+        theme.fading = false;
+      }, 240);
+    }, 150);
+  }
+
+  function checkTheme() {
+    clearTimeout(theme.timer);
+    var want = wantedTheme();
+    theme.source = want.source;
+    theme.sunrise = want.sunrise;
+    theme.sunset = want.sunset;
+    if (want.look !== theme.look) switchTheme(want.look);
+    theme.timer = setTimeout(checkTheme, 60000);
+  }
+
+  // For the About panel: "night (auto, until 7:04 AM)", the next change.
+  function themeStatus() {
+    if (!theme.look) return '';
+    if (theme.source !== 'auto') return theme.look + ' (' + theme.source + ')';
+    var next = theme.look === 'day' ? theme.sunset || '6:00 PM' : theme.sunrise || '7:00 AM';
+    return theme.look + ' (auto, until ' + next + ')';
   }
 
   function scrimLevel() { return hasPicture ? 0.6 : 0.72; }
@@ -1298,6 +1455,8 @@
       var fn = w && w.w ? w.w.sceneStatus : null;
       try { return typeof fn === 'function' ? fn() || '' : ''; } catch (e) { return ''; }
     } },
+    // Day or night, and why (see Day and night, above).
+    { group: 'This hub', label: 'Look', spare: true, value: function () { return themeStatus(); } },
     // A stylesheet that had to be fetched again, or never arrived (see hub.html).
     { group: 'This hub', label: 'Styles', value: function () {
       var S = window.HUB_STYLES;
@@ -2962,6 +3121,7 @@
   buildPanel();
   build();
   parkGhost();
+  checkTheme();
   setupBackground();
   startLive();
   startUpdates();

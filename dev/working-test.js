@@ -703,7 +703,8 @@ async function edgeWatch(page) {
 }
 
 const WHITE = 'rgb(255, 255, 255)';
-const NO_RING = 'motion=push&fx=quietTiles,stagger,cover,bloom,activity';
+// theme=night: the focused tile's own border is white at night and dark ink by day (the test's clock is 10:40 AM).
+const NO_RING = 'motion=push&theme=night&fx=quietTiles,stagger,cover,bloom,activity';
 
 async function arrival(pi, page) {
   await postTodo(pi, 'Arrived ' + Date.now());

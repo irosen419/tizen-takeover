@@ -363,7 +363,8 @@ async function checkDisabled(pi) {
     const loud = await page.evaluate(() => document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge').length);
     assert(!loud, c.name + ': a ring: ' + JSON.stringify(x));
     const border = await page.evaluate(() => getComputedStyle(document.querySelector('#grid .tile.is-focused')).borderTopColor);
-    assert(/255, 255, 255(, 1)?\)/.test(border), c.name + ': the focused tile lost its border: ' + border);
+    // White at night; the day look (the test's clock is 10:40 AM) draws it in dark ink, #151b24.
+    assert(/(255, 255, 255|21, 27, 36)(, 1)?\)/.test(border), c.name + ': the focused tile lost its border: ' + border);
     await page.keyboard.press('ArrowRight');
     // Stagger: items just show.
     const items = await openEntertainment(page);
