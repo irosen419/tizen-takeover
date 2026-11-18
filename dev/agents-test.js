@@ -248,15 +248,22 @@ const figsNow = (page) => page.evaluate(() => Array.prototype.map.call(document.
   return { rect: [r.left, r.top, r.width, r.height].map(Math.round), imgs: imgs, cls: n.className, widget: f ? f.widget : '', state: f ? f.state : '' };
 }));
 
-async function figOn(page, widget, wantState) {
+async function figOn(page, widget, wantState, ms) {
   return until(async () => {
     const s = await state(page);
     const f = s && s.figs.filter((x) => x.widget === widget)[0];
     return f && (!wantState || f.state === wantState) ? f : false;
-  }, 4000, 'no character on ' + widget);
+  }, ms || 4000, 'no character on ' + widget);
 }
 
-const noneLeft = (page, ms, text) => until(() => page.evaluate(() => !document.querySelector('.ag-layer, .ag-fig, .ag-burst')), ms, text);
+async function noneLeft(page, ms, text) {
+  try {
+    await until(() => page.evaluate(() => !document.querySelector('.ag-layer, .ag-fig, .ag-burst')), ms, text);
+  } catch (e) {
+    const s = await state(page).catch(() => null);
+    throw new Error(text + ': ' + JSON.stringify(s && s.figs.map((f) => [f.widget, f.state, f.phases, f.mode])));
+  }
+}
 const chipsIn = (page, widget) => page.evaluate((w) => document.querySelectorAll('.cell[data-widget="' + w + '"] .fx-chip').length, widget);
 // The phases she went through on widget (the last one seen there), polled while she lives.
 async function watchPhases(page, widget) {
@@ -661,10 +668,12 @@ async function check11(pi) {
   assert(f.spot.x >= t.left && f.spot.x <= t.right && f.spot.y >= t.top && f.spot.y <= t.bottom, 'spot outside the tile: ' + JSON.stringify(f));
   assert(f.at.x >= t.left && f.at.x <= t.right && f.at.y >= t.top && f.at.y <= t.bottom, 'her hand outside the tile: ' + JSON.stringify(f));
   await say(pi, 'hub:working todo done');
-  await noneLeft(page, 2500, 'she stayed');
+  await noneLeft(page, 2500, 'she stayed (far marker)');
   // A real to-do list: the widget's own marker (the end of the list) is used, her hand on it.
   await page.evaluate(() => { const m = document.querySelector('.cell[data-widget="todo"] .tile > div[style*="3000px"]'); if (m) m.remove(); });
   await postTodo(pi, 'Spot one ' + Date.now());
+  // (Wait for its arrival to come and go, so it cannot land while she works below.)
+  await figOn(page, 'todo', null, 12000);
   await noneLeft(page, 9000, 'she stayed (first to-do)');
   await say(pi, 'hub:working todo');
   const g = await figOn(page, 'todo', 'work');
@@ -677,7 +686,7 @@ async function check11(pi) {
   assert(await chipsIn(page, 'todo') === 0, 'a chip after the language change');
   assert((await state(page)).figs.filter((x) => x.widget === 'todo')[0].state === 'work', 'she stopped working');
   await say(pi, 'hub:working todo done');
-  await noneLeft(page, 2500, 'she stayed');
+  await noneLeft(page, 2500, 'she stayed (after the language change)');
   await page.evaluate(() => window.HUB_I18N.setLang('en'));
   noErrors(page);
 }
