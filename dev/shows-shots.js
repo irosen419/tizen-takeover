@@ -38,6 +38,30 @@ const OUT = process.argv[2] || path.join(__dirname, 'shots');
       if (page.ctx.errors.length) console.log(lang + ' page errors: ' + page.ctx.errors.join(' | '));
       await page.ctx.close();
     }
+    // The count badges: the expanded panel, full screen and four tile sizes.
+    {
+      const p = await env.newPage({});
+      await H.openGrid(p);
+      await shot(p, 'counts-panel-en.png');
+      await H.fullScreen(p);
+      await shot(p, 'counts-full-en.png');
+      await p.ctx.close();
+      for (const [w, h] of [[1, 1], [2, 1], [3, 1], [2, 2]]) {
+        const t = await env.newPage({ layout: [{ widget: 'entertainment', x: 0, y: 0, w: w, h: h }, { widget: 'today', x: 4, y: 0, w: 3, h: 2 }] });
+        await H.sleep(600);
+        await shot(t, 'counts-tile-' + w + 'x' + h + '.png');
+        await t.ctx.close();
+      }
+    }
+    {
+      const p = await env.newPage({});
+      await H.openSchedule(p, 'week');
+      await H.focusKey(p, 'sh:row:paradise:');
+      await H.key(p, 'Enter');
+      await H.sleep(500);
+      await shot(p, 'watch-card-en.png');
+      await p.ctx.close();
+    }
     const page = await env.newPage({});
     await page.evaluate(() => window.HUB_TEST.about.open());
     await H.sleep(500);

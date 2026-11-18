@@ -10,6 +10,8 @@
  *   - Spanish words; the empty, error and no-Pi states; SAMPLE only on samples;
  *   - Watch: the ladder per service, Hulu titles opening Disney+ (the alias
  *     map) and the "Also on Hulu" chip opening Hulu;
+ *   - the card shown before an app opens without a deep link (EN and ES;
+ *     OK or Back launches at once);
  *   - the watch link test: placeholders never fire, a recipe fires through
  *     /launch-control, the answer reaches the Pi, the typed id is kept;
  *   - service.js's /launch-control checks (run in a sandbox with a stand-in
@@ -51,6 +53,7 @@ function getJson(url, token) {
   });
 }
 
+const cardText = (page) => page.evaluate(() => { const c = document.querySelector('.sh-go-card'); return c ? c.firstChild.textContent + ' | ' + c.lastChild.textContent : ''; });
 const toastText = (page) => page.evaluate(() => document.getElementById('toast').textContent);
 const focusedKey = (page) => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') || '' : ''; });
 const pageErrors = (page) => page.ctx.errors.filter((e) => !/net::ERR_FAILED|ERR_CONNECTION_REFUSED|Failed to load resource/.test(e));
@@ -155,9 +158,13 @@ async function main() {
       assert((await focusedKey(page)).indexOf('sh:row:paradise:') === 0, 'focus: ' + await focusedKey(page));
       const before = env.launches.length;
       await H.key(page, 'Enter');
-      await H.until(() => env.launches.length > before, 3000, 'nothing was launched');
+      // The card says what will happen first; the app opens after it (about 1.8 s).
+      await H.until(() => page.evaluate(() => !!document.querySelector('.sh-go-card')), 1500, 'no card');
+      assert(env.launches.length === before, 'launched before the card went');
+      assert(await cardText(page) === 'Disney+ opens on its home screen | Search for: Paradise', await cardText(page));
+      await H.until(() => env.launches.length > before, 3500, 'nothing was launched');
       assert(env.launches[env.launches.length - 1] === 'launch 3201901017640', env.launches.join(' | '));
-      assert(await toastText(page) === 'Opened Disney+. Search: Paradise', await toastText(page));
+      assert(await page.evaluate(() => !document.querySelector('.sh-go-card')), 'the card stayed');
     });
 
     await check('Right then OK on "Also on Hulu" opens Hulu instead', async () => {
@@ -165,9 +172,15 @@ async function main() {
       assert((await focusedKey(page)).indexOf('sh:alt:paradise:') === 0, 'focus: ' + await focusedKey(page));
       const before = env.launches.length;
       await H.key(page, 'Enter');
-      await H.until(() => env.launches.length > before, 3000, 'nothing was launched');
+      await H.until(() => page.evaluate(() => !!document.querySelector('.sh-go-card')), 1500, 'no card');
+      assert(await cardText(page) === 'Hulu opens on its home screen | Search for: Paradise', await cardText(page));
+      // OK dismisses the card and launches at once.
+      const t0 = Date.now();
+      await H.key(page, 'Enter');
+      await H.until(() => env.launches.length > before, 1000, 'OK did not launch at once');
+      assert(Date.now() - t0 < 1000, 'slow');
       assert(env.launches[env.launches.length - 1] === 'launch 3201601007625', env.launches.join(' | '));
-      assert(await toastText(page) === 'Opened Hulu. Search: Paradise', await toastText(page));
+      assert(await page.evaluate(() => !document.querySelector('.sh-go-card')), 'the card stayed');
     });
 
     await check('The ladder: every service has a fallback app and a search hint; unknown names open by name', async () => {
@@ -279,9 +292,11 @@ async function main() {
         await H.focusKey(p, 'sh:row:the-pitt:');
         const before = env.launches.length;
         await H.key(p, 'Enter');
-        await H.until(() => env.launches.length > before, 3000, 'nothing was launched');
+        await H.until(() => p.evaluate(() => !!document.querySelector('.sh-go-card')), 1500, 'no card');
+        assert(await cardText(p) === 'Prime Video opens on its home screen | Search for: The Pitt', await cardText(p));
+        await H.key(p, 'Escape');
+        await H.until(() => env.launches.length > before, 1000, 'Back did not launch at once');
         assert(env.launches[env.launches.length - 1] === 'launch 3201910019365', env.launches.join(' | '));
-        assert(await toastText(p) === 'Opened Prime Video. Search: The Pitt', await toastText(p));
         // Without the setting, HBO Max opens HBO Max (Max on this TV) and no hint shows.
         await p.evaluate(() => { delete window.HUB_CONFIG.widgets.entertainment.watchVia; window.HUB_TEST.closePanel(); });
         await H.sleep(500);
@@ -309,6 +324,11 @@ async function main() {
         assert(s.meta === 'T2 E6 · 20:00en 35 min', s.meta);
         assert(s.watch === 'Ver en Disney+' && s.alt === 'También en Hulu' && s.sub, JSON.stringify(s));
         assert(s.line === 'Esta noche: Paradise 20:00', s.line);
+        await H.focusKey(es, 'sh:row:paradise:');
+        await H.key(es, 'Enter');
+        await H.until(() => es.evaluate(() => !!document.querySelector('.sh-go-card')), 1500, 'no card');
+        assert(await cardText(es) === 'Disney+ se abre en su pantalla de inicio | Busca: Paradise', await cardText(es));
+        await H.key(es, 'Enter');
       } finally { await es.ctx.close(); }
     });
 
@@ -334,7 +354,7 @@ async function main() {
           const fired = needs.map((id) => T.fire(list.filter((r) => r.id === id)[0]));
           return { n: list.length, needs: needs, fired: fired, prime: list[0].val, states: Array.prototype.map.call(document.querySelectorAll('#panel .lt-state.is-needs'), (s) => s.textContent) };
         });
-        assert(v.n === 10, 'recipes: ' + v.n);
+        assert(v.n === 21, 'recipes: ' + v.n);
         assert(v.needs.join(',') === 'disney-view,disney-resume,hulu-view,peacock-view', v.needs.join(','));
         assert(v.fired.every((f) => f === 'needsid'), v.fired.join(','));
         assert(v.states.length === 4 && v.states.every((s) => s === 'needs id'), v.states.join(','));
@@ -369,6 +389,83 @@ async function main() {
       } finally { await lt.ctx.close(); }
     });
 
+    await check('Watch link test: a failed or out-of-date TV helper is said on the row until a key, and kept at the top (EN and ES)', async () => {
+      const CORS = { 'access-control-allow-origin': '*', 'content-type': 'application/json' };
+      const rowErr = (p) => p.evaluate(() => { const e = document.querySelector('[data-key="lt:run:netflix-view"] .lt-rowerr'); return e ? e.textContent : ''; });
+      const top = (p) => p.evaluate(() => { const e = document.querySelector('#panel .lt-lasterr'); return e ? e.textContent : ''; });
+      const unit = await env.newPage({});
+      try {
+        const u = await unit.evaluate(() => { const o = window.HUB_LINKTEST._test.isOlder; return [o('0.29.9', 'v0.29.10'), o('0.29.10', 'v0.29.10'), o('0.30.0', 'v0.29.10'), o('preview', 'v0.29.10'), o('0.28.12', 'v0.29.0')]; });
+        assert(JSON.stringify(u) === '[true,false,false,false,true]', JSON.stringify(u));
+      } finally { await unit.ctx.close(); }
+      for (const lang of ['en', 'es']) {
+        const lt = await env.newPage(lang === 'es' ? { lang: 'es' } : {});
+        try {
+          // An old service: /ping says an older version, nothing is launched.
+          await lt.route(/:8095\/ping/, (r) => r.fulfill({ status: 200, headers: CORS, body: JSON.stringify({ ok: true, version: '0.1.0' }) }));
+          await H.openView(lt, 'linktests');
+          await H.focusKey(lt, 'lt:run:netflix-view');
+          const before = env.launches.filter((x) => /launch-control/.test(x)).length;
+          await H.key(lt, 'Enter');
+          await H.until(async () => (await rowErr(lt)) !== '', 3000, 'no message on the row');
+          const stale = lang === 'es' ? 'El ayudante de la TV está desactualizado. Desconecta la TV 30 segundos y vuelve a intentarlo.' : 'The TV helper is out of date. Unplug the TV for 30 seconds, then try again.';
+          assert((await rowErr(lt)) === stale, await rowErr(lt));
+          assert((await top(lt)).indexOf(stale) > 0, 'top line: ' + await top(lt));
+          assert(env.launches.filter((x) => /launch-control/.test(x)).length === before, 'fired against an old helper');
+          // Stays until a key; then the row clears and the top line stays.
+          await H.sleep(1200);
+          assert((await rowErr(lt)) === stale, 'row message went by itself');
+          await H.key(lt, 'ArrowDown');
+          await H.sleep(300);
+          assert((await rowErr(lt)) === '' && (await top(lt)) !== '', 'row: ' + await rowErr(lt) + ' top: ' + await top(lt));
+          if (lang === 'en') {
+            // A service with no /launch-control (404) says the same; another error is quoted.
+            await lt.unroute(/:8095\/ping/);
+            await lt.route(/:8095\/launch-control/, (r) => r.fulfill({ status: 404, headers: CORS, body: JSON.stringify({ ok: false, error: 'not found' }) }));
+            await H.focusKey(lt, 'lt:run:netflix-view');
+            await H.key(lt, 'Enter');
+            await H.until(async () => (await rowErr(lt)) !== '', 3000, 'no message for a 404');
+            assert((await rowErr(lt)) === stale, await rowErr(lt));
+            await H.key(lt, 'ArrowDown');
+            await H.sleep(300);
+            await lt.unroute(/:8095\/launch-control/);
+            await lt.route(/:8095\/launch-control/, (r) => r.fulfill({ status: 500, headers: CORS, body: JSON.stringify({ ok: false, error: 'boom' }) }));
+            await H.focusKey(lt, 'lt:run:netflix-view');
+            await H.key(lt, 'Enter');
+            await H.until(async () => (await rowErr(lt)) !== '', 3000, 'no message for an error');
+            assert((await rowErr(lt)) === 'Couldn’t open: boom', await rowErr(lt));
+            assert((await top(lt)) === 'Last error: Couldn’t open: boom', await top(lt));
+          }
+        } finally { await lt.ctx.close(); }
+      }
+    });
+
+    await check('Watch link test: the added recipes are listed after the first ten, and a plain open uses /launch and still asks what happened', async () => {
+      const lt = await env.newPage({});
+      try {
+        const v = await lt.evaluate(() => {
+          const t = window.HUB_LINKTEST._test;
+          const r = t.recipes();
+          return { ids: r.map((x) => x.id), about: window.HUB_LINKTEST.aboutText(), netflixWatch: r.filter((x) => x.id === 'netflix-watch-resume')[0].val, def: r.filter((x) => x.id === 'appletv-default-op')[0].op, plain: r.filter((x) => x.plain).map((x) => x.id + ':' + x.op + ':' + x.key) };
+        });
+        assert(v.ids.slice(0, 10).join() === 'prime-resume,netflix-resume,netflix-view,appletv-view,appletv-resume,appletv-fam,disney-view,disney-resume,hulu-view,peacock-view', v.ids.join());
+        assert(v.ids.slice(10, 15).join() === 'netflix-watch-resume,netflix-json-resume,netflix-default-op,appletv-resume-url,appletv-default-op', v.ids.join());
+        assert(v.ids.length === 21 && /^OK to open · 0 of \d+ tried$/.test(v.about), v.about);
+        assert(v.netflixWatch === 'm=https://www.netflix.com/watch/81505776&source_type=4' && v.def === 'http://tizen.org/appcontrol/operation/default', JSON.stringify(v));
+        assert(v.plain.length === 6 && v.plain.every((x) => /::undefined$/.test(x) || /:$/.test(x) || /::$/.test(x) || x.split(':')[1] === ''), v.plain.join());
+        await H.openView(lt, 'linktests');
+        await H.focusKey(lt, 'lt:run:plain-netflix');
+        const nc = env.launches.filter((x) => /launch-control/.test(x)).length;
+        const nl = env.launches.length;
+        await H.key(lt, 'Enter');
+        await H.until(() => env.launches.length > nl, 3000, 'no /launch');
+        assert(/^launch /.test(env.launches[env.launches.length - 1]), env.launches.join(' | '));
+        assert(env.launches.filter((x) => /launch-control/.test(x)).length === nc, 'a plain open used an app control');
+        await H.sleep(300);
+        assert((await focusedKey(lt)) === 'lt:ans:plain-netflix:title', await focusedKey(lt));
+      } finally { await lt.ctx.close(); }
+    });
+
     await check('Watch link test: the Prime id box keeps a typed id and refuses a bad one', async () => {
       const lt = await env.newPage({});
       try {
@@ -390,6 +487,90 @@ async function main() {
         assert(v.val === '{"values":"amzn1.dv.gti.00000000-0000-0000-0000-000000000000"}' && /50f41028/.test(v.back), JSON.stringify(v));
       } finally { await lt.ctx.close(); }
     });
+    await check('Count badges: in the panel, full screen and every tile size, matching availability(), inside the icon, live', async () => {
+      const BADGES = () => {
+        const avail = window.HUB_SHOWS.availability();
+        const labels = {};
+        (window.HUB_CONFIG.widgets.entertainment.sections || []).forEach((s) => s.items.forEach((i) => { if (i.kind === 'app') labels[i.label] = true; }));
+        const nodes = document.querySelectorAll('#panel .ent-item');
+        const got = {};
+        let outside = 0;
+        let hidden = 0;
+        Array.prototype.forEach.call(nodes, (n) => {
+          const b = n.querySelectorAll('.ent-count');
+          const name = n.querySelector('.ent-name').textContent;
+          if (b.length > 1) hidden++;
+          if (b.length) {
+            got[name] = Number(b[0].textContent);
+            const f = n.querySelector('.logo').getBoundingClientRect();
+            const q = b[0].getBoundingClientRect();
+            if (q.right > f.right + 0.5 || q.left < f.left - 0.5 || q.top < f.top - 0.5 || q.bottom > f.bottom + 0.5) outside++;
+            if (q.height < 20) hidden++;
+          }
+        });
+        return { avail: avail, labels: labels, got: got, outside: outside, hidden: hidden };
+      };
+      const p = await env.newPage({});
+      try {
+        await H.openGrid(p);
+        let v = await p.evaluate(BADGES);
+        let want = {};
+        Object.keys(v.avail).forEach((k) => { if (v.avail[k] && v.labels[k]) want[k] = v.avail[k]; });
+        assert(Object.keys(want).length === 3 && JSON.stringify(v.got, Object.keys(v.got).sort()) === JSON.stringify(want, Object.keys(want).sort()), 'panel: ' + JSON.stringify(v.got) + ' vs ' + JSON.stringify(want));
+        assert(v.outside === 0 && v.hidden === 0, 'panel badges outside the icon or doubled: ' + JSON.stringify(v));
+        // New data while the panel is open: the badges follow.
+        await p.evaluate(() => window.HUB_SHOWS._test.setData({ v: 1, updatedAt: '2026-11-17T12:00:00Z', shows: [{ id: 'x', name: 'X', service: 'Netflix', checkedAt: '2026-11-17T12:00:00Z', upcoming: [{ season: 1, number: 2, airstamp: '2026-11-18T03:30:00Z' }] }] }));
+        await H.sleep(500);
+        v = await p.evaluate(BADGES);
+        assert(JSON.stringify(v.got) === '{"Netflix":1}', 'live update: ' + JSON.stringify(v.got));
+        await p.evaluate(() => window.HUB_SHOWS._test.setData({ v: 1, updatedAt: '2026-11-17T12:00:00Z', shows: [] }));
+        await H.sleep(500);
+        v = await p.evaluate(BADGES);
+        assert(Object.keys(v.got).length === 0, 'cleared: ' + JSON.stringify(v.got));
+      } finally { await p.ctx.close(); }
+      const f = await env.newPage({});
+      try {
+        await H.openGrid(f);
+        await H.fullScreen(f);
+        const v = await f.evaluate(BADGES);
+        const want = {};
+        Object.keys(v.avail).forEach((k) => { if (v.avail[k] && v.labels[k]) want[k] = v.avail[k]; });
+        assert(Object.keys(want).length === 3 && JSON.stringify(v.got, Object.keys(v.got).sort()) === JSON.stringify(want, Object.keys(want).sort()), 'full: ' + JSON.stringify(v.got));
+        assert(v.outside === 0 && v.hidden === 0, 'full screen badges outside the icon: ' + JSON.stringify(v));
+      } finally { await f.ctx.close(); }
+      // Tile sizes: every logo shown for an app with shows has its count, inside the logo.
+      const seen = [];
+      for (const [w, h] of [[2, 1], [3, 1], [6, 1], [12, 1], [2, 2], [3, 2], [6, 2], [3, 3], [3, 4], [6, 4]]) {
+        const layout = [{ widget: 'entertainment', x: 0, y: 0, w: w, h: h }, { widget: 'today', x: w === 12 ? 0 : w, y: w === 12 ? 1 : 0, w: 3, h: 2 }];
+        const t = await env.newPage({ layout: layout });
+        try {
+          await H.sleep(500);
+          const v = await t.evaluate(() => {
+            const avail = window.HUB_SHOWS.availability();
+            const chips = document.querySelectorAll('.cell[data-widget="entertainment"] .ent-chip:not(.is-blank) .logo:not(.ent-more)');
+            let n = 0; let bad = 0; let shownWithShows = 0;
+            Array.prototype.forEach.call(chips, (l) => {
+              const b = l.querySelector('.ent-count');
+              const c = l.parentNode;
+              if (b) {
+                n++;
+                const f = l.getBoundingClientRect(); const q = b.getBoundingClientRect();
+                if (q.right > f.right + 0.5 || q.left < f.left - 0.5 || q.top < f.top - 0.5 || q.bottom > f.bottom + 0.5) bad++;
+              }
+            });
+            const total = Object.keys(avail).filter((k) => avail[k] && /^(Apple TV|Netflix|Disney\+)$/.test(k)).length;
+            return { n: n, bad: bad, chips: chips.length, total: total, sum: Array.prototype.reduce.call(document.querySelectorAll('.cell[data-widget="entertainment"] .ent-count'), (a, b) => a + Number(b.textContent), 0) };
+          });
+          seen.push(w + 'x' + h + ':' + v.n);
+          assert(v.bad === 0, w + 'x' + h + ': badge outside its logo');
+          // Counted apps come first, so each one that fits has its badge.
+          assert(v.n === Math.min(v.total, v.chips), w + 'x' + h + ': ' + v.n + ' badges, ' + v.total + ' apps with shows, ' + v.chips + ' logos');
+          assert(v.sum === v.n, w + 'x' + h + ': a badge count differs from availability()');
+        } finally { await t.ctx.close(); }
+      }
+      assert(seen.length === 10, seen.join(' '));
+    });
+
   } finally {
     await env.stop();
   }

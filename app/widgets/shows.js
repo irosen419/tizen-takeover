@@ -83,7 +83,8 @@
     nextAiring: 'Next up: {name} · {when}',
     tonight: 'Tonight: {name} {time}',
     todayLine: 'Today: {name} {time}',
-    opened: 'Opened {service}. Search: {name}',
+    opensHome: '{service} opens on its home screen',
+    searchFor: 'Search for: {name}',
     notInstalled: '{service} isn’t on this TV.',
     noApp: 'No app is set for {name}. Give it one on the Pi: ./hub shows add "{name}" --service Netflix',
     stillLooking: 'Still looking for your apps. Try again in a second.',
@@ -500,10 +501,54 @@
       if (!host || !host.appsReady()) { toast(word('stillLooking'), 3500); return 'waiting'; }
       var app = host.findApp(lad.fallbackOpenApp.match);
       if (!app) { toast(word('notInstalled', { service: service }), 4500); return 'missing'; }
-      host.launch(app.id, service);
-      toast(word('opened', { service: service, name: show.name }), 6000);
+      // No deep link: say first what will happen, then open the app.
+      showCard(word('opensHome', { service: service }), word('searchFor', { name: show.name }), function () { host.launch(app.id, service); });
       return 'app';
     }
+  }
+
+  // The card before an app opens without a deep link: centered, about 1.8 s;
+  // OK or Back (any key is swallowed meanwhile) launches at once. Only
+  // opacity and transform animate.
+  var CARD_MS = 1800;
+  var card = null;
+
+  function showCard(title, line, go) {
+    if (card) return;
+    var node = document.createElement('div');
+    node.className = 'sh-go-card';
+    node.setAttribute('role', 'alert');
+    var t = document.createElement('div');
+    t.className = 'sh-go-card-title';
+    t.textContent = title;
+    var l = document.createElement('div');
+    l.className = 'sh-go-card-line';
+    l.textContent = line;
+    node.appendChild(t);
+    node.appendChild(l);
+    document.body.appendChild(node);
+    var finished = false;
+    var timer = null;
+    function done() {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      document.removeEventListener('keydown', onKey, true);
+      if (node.parentNode) node.parentNode.removeChild(node);
+      card = null;
+      go();
+    }
+    function onKey(e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      var c = e.keyCode;
+      if (c === 13 || c === 10009 || c === 27 || c === 8) done();
+    }
+    card = { done: done, node: node };
+    document.addEventListener('keydown', onKey, true);
+    timer = setTimeout(done, CARD_MS);
+    // One frame later, so the fade in has something to start from.
+    setTimeout(function () { if (!finished) node.className = 'sh-go-card is-shown'; }, 20);
   }
 
   /* ---------- live data ---------- */
