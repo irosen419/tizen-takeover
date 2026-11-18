@@ -101,10 +101,10 @@ async function start(opts) {
 }
 
 /*
- * o: { lang: 'es', hours: '24', live ('off' or an address), storage {}, layout [...] }.
+ * o: { lang: 'es', hours: '24', live ('off' or an address), storage {}, layout [...], scale (deviceScaleFactor, 1), started [[show id, season, number, hours ago], ...] }.
  */
 async function openHub(env, o) {
-  const context = await env.browser.newContext({ viewport: { width: 1920, height: 1080 }, timezoneId: TZ });
+  const context = await env.browser.newContext({ viewport: { width: 1920, height: 1080 }, timezoneId: TZ, deviceScaleFactor: o.scale || 1 });
   context.errors = [];
   await context.route(/.*/, (route) => {
     const u = route.request().url();
@@ -120,6 +120,8 @@ async function openHub(env, o) {
   const storage = Object.assign({}, o.storage || {});
   if (o.lang) storage['homeHub.lang'] = o.lang;
   if (o.hours) storage['homeHub.clock.hours'] = o.hours;
+  // started: [[show id, season, number, hours ago], ...] -> the hub's started list ("Did you finish?").
+  if (o.started) storage['homeHub.watch.v1'] = JSON.stringify(o.started.map((r) => ({ showId: r[0], season: r[1], number: r[2], startedAt: new Date(o.at || env.at).getTime() - r[3] * 3600000 })));
   if (o.layout) {
     storage['homeHub.layout'] = JSON.stringify(o.layout);
     storage['homeHub.layoutChoice'] = JSON.stringify({ id: 'test', piSig: '' });
@@ -180,7 +182,8 @@ async function focusKey(page, want) {
       const k = await at();
       if (k.indexOf(want) === 0) return true;
       // On the row's "Also on" chip: Left is the row itself.
-      if (k.indexOf('sh:alt:') === 0 && want.indexOf('sh:row:') === 0 && k.slice(7).indexOf(want.slice(7)) === 0) await key(page, 'ArrowLeft');
+      if ((k.indexOf('sh:alt:') === 0 || k.indexOf('sh:mark:') === 0) && want.indexOf('sh:row:') === 0 && k.slice(k.indexOf(':', 3) + 1).indexOf(want.slice(7)) === 0) await key(page, 'ArrowLeft');
+      else if (k.indexOf('sh:mark:') === 0 && want.indexOf('sh:row:') === 0) await key(page, 'ArrowLeft', 2);
       else await key(page, dir);
     }
   }

@@ -379,6 +379,14 @@ async function main() {
     assert.strictEqual(tv.seen.length, 0);
     const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'shows-sample.json'), 'utf8'));
     assert.deepStrictEqual(shows.cleanData(raw).shows.length, raw.shows.length, 'the fixture passes the resource checks');
+    // A mark made on the sample can be taken off again (the preview and the TV tests do both).
+    const hk = () => b.data.shows.find((s) => s.id === 'hells-kitchen');
+    b.t.markWatched("Hell's Kitchen", { season: 24, number: 8 });
+    assert.strictEqual(hk().upcoming.filter((e) => e.watched).length, 1);
+    assert.strictEqual(hk().watched.length, 1);
+    b.t.unwatch("Hell's Kitchen", { season: 24, number: 8 });
+    assert.strictEqual(hk().upcoming.filter((e) => e.watched).length, 0, 'the sample kept the flag');
+    assert.deepStrictEqual(hk().watched, []);
   });
 
   /* ---------- through the server, ./hub and the mailbox ---------- */
@@ -566,6 +574,24 @@ async function main() {
       assert.strictEqual(r.status, 403);
       r = await request(h, 'GET', '/shows/watched');
       assert.strictEqual(r.status, 405);
+      // The TV takes a mark off again: POST /shows/unwatch, the same door (no token, origin checked).
+      r = await request(h, 'POST', '/shows/unwatch', { id: 'hells-kitchen', season: 24, number: 7 });
+      assert.deepStrictEqual([r.status, r.json.ok, r.json.changed], [200, true, true]);
+      r = await request(h, 'GET', '/api/shows', undefined, authed);
+      assert.strictEqual(r.json.data.shows[0].upcoming[0].watched, undefined, 'the mark is off');
+      assert.strictEqual(r.json.data.shows[0].watched.length, 0);
+      r = await request(h, 'POST', '/shows/unwatch', { id: 'hells-kitchen', season: 24, number: 7 });
+      assert.deepStrictEqual([r.status, r.json.changed], [200, false], 'taking off a mark that is not there changes nothing');
+      for (const bad of [{ id: 'nope', season: 1, number: 1 }, { id: 'stick', season: 'x', number: 1 }, {}, { id: 'stick', season: 1 }]) {
+        r = await request(h, 'POST', '/shows/unwatch', bad);
+        assert.strictEqual(r.status, 400, 'unwatch ' + JSON.stringify(bad));
+      }
+      r = await request(h, 'POST', '/shows/unwatch', { id: 'stick', season: 2, number: 1 }, { Origin: 'http://evil.example' });
+      assert.strictEqual(r.status, 403);
+      r = await request(h, 'GET', '/shows/unwatch');
+      assert.strictEqual(r.status, 405);
+      r = await request(h, 'POST', '/shows/watched', { id: 'hells-kitchen', season: 24, number: 7 });
+      assert.strictEqual(r.json.changed, true, 'marked again for the rest of the test');
       r = await request(h, 'GET', '/api/shows', undefined, authed);
       assert.strictEqual(r.json.data.shows[0].upcoming[0].watched, true);
       assert.strictEqual(r.json.data.shows[0].watched.length, 1);
@@ -589,6 +615,8 @@ async function main() {
       const bare = h.lines.map((l) => l.replace(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d /, ''));
       assert.ok(bare.indexOf('screen marked an episode watched') >= 0, bare.join(' | '));
       assert.ok(bare.indexOf('screen marked an episode watched (already marked)') >= 0);
+      assert.ok(bare.indexOf('screen took a watched mark off an episode') >= 0, bare.join(' | '));
+      assert.ok(bare.filter((l) => /took a watched mark off/.test(l) && l !== 'screen took a watched mark off an episode' && l.indexOf('control ') !== 0).length === 0, 'an unwatch line with extras: ' + bare.join(' | '));
       assert.ok(bare.indexOf('control POST /api/shows/watched -> 200 marked an episode watched') >= 0, bare.join(' | '));
       assert.ok(bare.indexOf('control POST /api/shows/unwatch -> 200 took a watched mark off an episode') >= 0);
       noNames(h.lines, ["Hell's Kitchen", 'hells-kitchen', 'Stick', 'Andor', 'S24', 'S2E1']);

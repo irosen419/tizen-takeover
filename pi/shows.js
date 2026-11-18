@@ -20,8 +20,9 @@
  *                app/config.js, Hulu -> Disney+ by default).
  *
  * Watched episodes: each list entry may carry watched: [{ s, e, at }] (season,
- * episode, when it was marked). The TV marks one by itself after a show's app
- * stayed in the foreground long enough (POST /shows/watched from the screen);
+ * episode, when it was marked). The TV marks one when the person answers
+ * "Did you finish?" or taps the check on a row (POST /shows/watched and
+ * POST /shows/unwatch from the screen);
  * ./hub shows watched / unwatch and the mailbox (shows.watched, shows.unwatch)
  * correct mistakes. The snapshot gets shows[].watched and watched: true on
  * the matching upcoming / next episodes (docs/shows-snapshot.md).
@@ -791,6 +792,20 @@ function createTracker(o) {
     return data;
   }
 
+  // The sample after a mark came off: the flags of the episodes that left the
+  // list's watched go from the sample's copy too (it keeps its own marks otherwise).
+  function sampleAfter(before, entry) {
+    const data = cleanData(o.current());
+    const sh = data.shows.find((x) => x.id === slug(entry.name));
+    if (sh) {
+      (before.watched || []).filter((w) => !isWatched(entry, w.s, w.e)).forEach((w) => {
+        (sh.upcoming || []).concat(sh.nextEpisode ? [sh.nextEpisode] : []).forEach((ep) => { if (ep.season === w.s && ep.number === w.e) delete ep.watched; });
+        sh.watched = (sh.watched || []).filter((x) => !(x.season === w.s && x.number === w.e));
+      });
+    }
+    return sampleWatched(data);
+  }
+
   // Saves a changed watched list and tells the TV at once. No TVmaze call.
   function saveWatched(e, watched) {
     const at = list.indexOf(e);
@@ -804,7 +819,7 @@ function createTracker(o) {
       throw x;
     }
     list = next;
-    publishNow(o.sampleFile ? sampleWatched(cleanData(o.current())) : assemble(null, null, now()));
+    publishNow(o.sampleFile ? sampleAfter(e, entry) : assemble(null, null, now()));
     return entry;
   }
 

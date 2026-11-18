@@ -11,6 +11,7 @@
  *   POST /todo/ops       to-do changes made on the TV
  *   POST /linktests      one watch link test answer from the About panel
  *   POST /shows/watched  the TV marks an episode watched: { id, season, number }
+ *   POST /shows/unwatch  the TV takes a watched mark off an episode: { id, season, number }
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
  *                        from the TV (ambience.js): saved ids only, rate limited
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
@@ -1453,7 +1454,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/linktests' || route === '/shows/watched' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/linktests' || route === '/shows/watched' || route === '/shows/unwatch' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1484,15 +1485,18 @@ function start(options) {
         }
       });
     }
-    if (route === '/shows/watched') {
-      // The TV marks an episode after the show's app stayed open long enough.
-      // It names the show by its id and the episode by numbers; nothing else.
+    if (route === '/shows/watched' || route === '/shows/unwatch') {
+      // The TV marks an episode (after the person said they watched it) or takes
+      // the mark off again. It names the show by its id and the episode by
+      // numbers; nothing else, and no name, number or id reaches the log.
+      const off = route === '/shows/unwatch';
       return readBody(req, res, (body) => {
         try {
           if (!isObj(body) || typeof body.id !== 'string' || !body.id) throw bad('send { "id": "show-id", "season": 3, "number": 4 }');
-          const r = tracker.markWatched(body.id, { season: body.season, number: body.number });
+          const ep = { season: body.season, number: body.number };
+          const r = off ? tracker.unwatch(body.id, ep) : tracker.markWatched(body.id, ep);
           sendJson(res, 200, { ok: true, changed: r.changed }, cors);
-          log('screen marked an episode watched' + (r.changed ? '' : ' (already marked)'));
+          log(off ? 'screen took a watched mark off an episode' : 'screen marked an episode watched' + (r.changed ? '' : ' (already marked)'));
         } catch (e) {
           fail(res, e, cors);
         }
@@ -1547,7 +1551,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/shows/watched': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
   };
 

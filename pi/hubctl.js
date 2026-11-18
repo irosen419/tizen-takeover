@@ -1209,7 +1209,7 @@ const HELP = [
   '  ./hub shows remove "Stick"  take a show off the list',
   '  ./hub shows refresh         ask TVmaze about every show now (it also does so every 6 hours)',
   '  ./hub shows watched "Stick" S3E4   mark an episode watched by hand (S3E4 left out: the earliest out and unmarked);',
-  '                              the TV marks them itself after an app stays open; ./hub shows unwatch "Stick" S3E4 takes one off',
+  '                              the TV marks them when you answer "Did you finish?"; ./hub shows unwatch "Stick" S3E4 takes one off',
   '  ./hub linktests             what the TV\'s watch link test found (About panel on the TV)',
   '  ./hub spotify status        is Spotify connected, and what is playing',
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',

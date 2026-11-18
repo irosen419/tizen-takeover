@@ -23,19 +23,26 @@
  * an episode out in the last week or airing later today, to put those apps
  * first with a small count.
  *
- * Watched: after OK opens an app for an episode (or, from a show row with no
- * episode, the earliest episode out and not yet watched), the hub keeps a
- * pending watch on this TV (homeHub.watch.v1) and asks the TV service to count
- * the minutes the app stays running (/watch-track; the page sleeps while the
- * app is open, the service doesn't). Back in the hub, /watch-track/status says
- * which are done (70% of the runtime). The app being open is not proof of
- * watching (another title, or nobody there), so the hub then asks "Did you
- * watch it?" with Yes / No. Only Yes tells the Pi (POST /shows/watched), which
- * sends back the episode as watched: true; No, Back or no answer in a minute
- * leaves it unwatched. Watched
- * rows are dimmed with a check, and a watched episode no longer counts on the
- * Entertainment tile. A service without /watch-track (not restarted since the
- * update) is skipped quietly; the About panel says "needs a TV restart".
+ * Watched, without any timing: every OK that opens an app for an episode that
+ * has aired (or, from a show row with no episode, the show's earliest one out
+ * and not yet watched) adds that episode to a "started" list on this TV
+ * (homeHub.watch.v1: show, season, episode, when; the same episode twice is
+ * one entry, at most 20). Nothing else happens: no timer, no question, no call
+ * to the TV service, because being in an app is not proof of watching. Back in
+ * the hub, whenever, the Entertainment tile (and the Schedule item in its
+ * panel) says "N to check" and the top of the Schedule panel lists the started
+ * episodes as "Did you finish?", sorted by show title (a leading "The "
+ * ignored), then season and episode: show, S16 E9, when it was started, and
+ * two buttons, Watched and Not yet. Watched tells the Pi (POST /shows/watched,
+ * kept in homeHub.watch.out.v1 and tried again until the Pi answers); Not yet
+ * sends nothing; either way the line goes and focus moves to the next line's
+ * Watched (the first Schedule row when none is left). An unanswered line waits
+ * 7 days and then goes quietly, as unwatched; one whose episode the Pi already
+ * has as watched goes by itself. Any aired row also ends in a small check
+ * toggle (Right from the row, after "Also on"): it marks the episode watched
+ * (POST /shows/watched) or takes the mark off again (POST /shows/unwatch).
+ * Watched rows are dimmed with a check, and a watched episode no longer counts
+ * on the Entertainment tile.
  *
  * Not a widget by itself: entertainment.js loads it (HUB_SHOWS.attach) and
  * hands it the panel body. Plain ES5. Every word is in STRINGS; Spanish is
@@ -53,12 +60,10 @@
   var TABS = ['today', 'week', 'month', 'soon'];
   var SOON_STRIP = 3;                        // Coming soon cards under the other views
   var DEFAULT_ALIASES = { 'Hulu': 'Disney+' };
-  var WATCH_KEY = 'homeHub.watch.v1';        // pending watches: [{ token, showId, season, number, appId, startedAt, runtimeMin }]
-  var WATCH_SHARE = 0.7;                     // of the runtime the app must stay open
-  var DEFAULT_RUNTIME = 30;                  // minutes, when TVmaze has none
-  var WATCH_KEEP = 12 * HOUR;                // a pending watch the service never finished is dropped after this
-  var WATCH_MAX = 6;                         // pending watches kept
-  var TRACK_OLD = 'needs a TV restart';      // the About row, English only like the other About rows
+  var WATCH_KEY = 'homeHub.watch.v1';        // started episodes: [{ showId, season, number, startedAt }]
+  var OUT_KEY = 'homeHub.watch.out.v1';      // marks on their way to the Pi: [{ op, showId, season, number }]
+  var FINISH_KEEP = 7 * DAY;                 // an unanswered "Did you finish?" line goes after this
+  var FINISH_MAX = 20;                       // started episodes kept
 
   var STRINGS = {
     title: 'Schedule',
@@ -106,10 +111,18 @@
     todayLine: 'Today: {name} {time}',
     opensHome: '{service} opens on its home screen',
     searchFor: 'Search for: {name}',
-    askTitle: 'Did you watch it?',
-    askLine: '{name} · {code}',
-    askYes: 'Yes, mark watched',
-    askNo: 'No',
+    finishTitle: 'Did you finish?',
+    finishWatched: 'Watched',
+    finishNotYet: 'Not yet',
+    toCheck: '{n} to check',
+    started: 'started {when}',
+    startedOn: 'started {day}',
+    startedLastNight: 'last night',
+    startedTonight: 'tonight',
+    startedToday: 'earlier today',
+    startedYesterday: 'yesterday',
+    markWatched: 'Mark as watched',
+    unmark: 'Mark as not watched',
     notInstalled: '{service} isn’t on this TV.',
     noApp: 'No app is set for {name}. Give it one on the Pi: ./hub shows add "{name}" --service Netflix',
     stillLooking: 'Still looking for your apps. Try again in a second.',
@@ -151,6 +164,7 @@
     fromCache: false,
     tab: 'week',
     soonSeen: {},
+    focusKey: null,   // where focus goes on the next drawing (after a "Did you finish?" answer)
     timer: null,
     listeners: []
   };
@@ -348,12 +362,32 @@
     return out;
   }
 
-  function epWatched(ep) { return !!ep && ep.watched === true; }
+  // Watched as the Pi says, unless a mark from this TV is still on its way
+  // (then that wins, so a row answers at once). show may be left out.
+  function epWatched(show, ep) {
+    if (!ep) return false;
+    if (show && typeof ep.season === 'number' && typeof ep.number === 'number') {
+      var p = pendingMark(show.id, ep.season, ep.number);
+      if (p) return p === 'watched';
+    }
+    return ep.watched === true;
+  }
+
+  // The same for an episode named by numbers (it may be gone from upcoming: then the Pi's watched list says).
+  function isWatchedEp(show, season, number) {
+    var p = pendingMark(show.id, season, number);
+    if (p) return p === 'watched';
+    var eps = (isArr(show.upcoming) ? show.upcoming : []).concat(show.nextEpisode ? [show.nextEpisode] : []);
+    for (var i = 0; i < eps.length; i++) if (eps[i] && eps[i].season === season && eps[i].number === number && eps[i].watched === true) return true;
+    var w = isArr(show.watched) ? show.watched : [];
+    for (var j = 0; j < w.length; j++) if (w[j] && w[j].season === season && w[j].number === number) return true;
+    return false;
+  }
 
   // True when every episode of a row is marked watched.
   function rowWatched(a) {
     if (!a || !isArr(a.eps) || !a.eps.length) return false;
-    for (var i = 0; i < a.eps.length; i++) if (!epWatched(a.eps[i])) return false;
+    for (var i = 0; i < a.eps.length; i++) if (!epWatched(a.show, a.eps[i])) return false;
     return true;
   }
 
@@ -527,7 +561,7 @@
       var link = null;
       try { link = lad.tryDeepLink(show, eps); } catch (e) { link = null; }
       if (link && host && typeof host.launchControl === 'function') {
-        host.launchControl(link, function (err) { if (err) openApp(); else track(show, eps, link.id); });
+        host.launchControl(link, function (err) { if (err) openApp(); else noteStarted(show, eps); });
         return 'deeplink';
       }
     }
@@ -540,39 +574,13 @@
       // No deep link: say first what will happen, then open the app.
       showCard(word('opensHome', { service: service }), word('searchFor', { name: show.name }), function () {
         host.launch(app.id, service);
-        track(show, eps, app.id);
+        noteStarted(show, eps);
       });
       return 'app';
     }
   }
 
-  /* ---------- watched: pending watches and the service's count ---------- */
-
-  var T = { old: false, busy: false, probed: false };
-
-  function loadPending() {
-    var list = null;
-    try { list = JSON.parse(load(WATCH_KEY) || '[]'); } catch (e) { list = null; }
-    return isArr(list) ? list : [];
-  }
-
-  function savePending(list) {
-    store(WATCH_KEY, JSON.stringify(list.slice(-WATCH_MAX)));
-  }
-
-  function dropPending(token) {
-    var list = loadPending();
-    var out = [];
-    for (var i = 0; i < list.length; i++) if (list[i] && list[i].token !== token) out.push(list[i]);
-    savePending(out);
-  }
-
-  function makeToken() {
-    var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    var t = '';
-    for (var i = 0; i < 12; i++) t += chars.charAt(Math.floor(Math.random() * chars.length));
-    return t;
-  }
+  /* ---------- watched: the started list, "Did you finish?" and the marks ---------- */
 
   // The episode a Watch press is for: the row's first episode that is out and
   // not watched, or, with no row (a show), the show's earliest one. null when
@@ -584,170 +592,239 @@
     for (var i = 0; i < list.length; i++) {
       var ep = list[i];
       var ms = parseIso(ep && ep.airstamp);
-      if (ms === null || ms > t + 5 * MIN || epWatched(ep)) continue;
+      if (ms === null || ms > t + 5 * MIN || epWatched(show, ep)) continue;
       if (typeof ep.season !== 'number' || typeof ep.number !== 'number') continue;
       if (best === null || ms < bestMs) { best = ep; bestMs = ms; }
     }
     return best;
   }
 
-  // OK opened an app for this show: keep a pending watch and ask the service
-  // to count. Returns the pending watch, or null (nothing to track).
-  function track(show, eps, appId) {
-    var C = S.C;
-    if (!C || !show || !appId || T.old) return null;
+  // The started list (homeHub.watch.v1): [{ showId, season, number, startedAt }].
+  function loadStarted() {
+    var list = null;
+    try { list = JSON.parse(load(WATCH_KEY) || '[]'); } catch (e) { list = null; }
+    var out = [];
+    if (!isArr(list)) return out;
+    for (var i = 0; i < list.length; i++) {
+      var r = list[i];
+      if (r && typeof r.showId === 'string' && typeof r.season === 'number' && typeof r.number === 'number' && typeof r.startedAt === 'number') {
+        out.push({ showId: r.showId, season: r.season, number: r.number, startedAt: r.startedAt });
+      }
+    }
+    return out;
+  }
+
+  function saveStarted(list) {
+    store(WATCH_KEY, JSON.stringify(list));
+  }
+
+  function sameEp(a, b) { return a.showId === b.showId && a.season === b.season && a.number === b.number; }
+
+  // OK opened an app for this show: remember the episode as started. Nothing
+  // else happens: no timer, no question. The same episode twice is one entry
+  // (the newest press); at most FINISH_MAX are kept, the oldest go first.
+  // Returns the entry, or null (nothing to remember).
+  function noteStarted(show, eps) {
+    if (!show) return null;
     var t = now();
     var ep = pickEpisode(show, eps, t);
     if (!ep) return null;
-    var runtime = typeof ep.runtime === 'number' && ep.runtime > 0 ? ep.runtime : DEFAULT_RUNTIME;
-    var rec = { token: makeToken(), showId: show.id, season: ep.season, number: ep.number, appId: String(appId), startedAt: t, runtimeMin: runtime };
-    var list = loadPending();
+    var rec = { showId: show.id, season: ep.season, number: ep.number, startedAt: t };
+    var list = loadStarted();
     var out = [];
-    for (var i = 0; i < list.length; i++) {
-      if (list[i] && !(list[i].showId === rec.showId && list[i].season === rec.season && list[i].number === rec.number)) out.push(list[i]);
-    }
+    for (var i = 0; i < list.length; i++) if (!sameEp(list[i], rec) && t - list[i].startedAt < FINISH_KEEP) out.push(list[i]);
     out.push(rec);
-    savePending(out);
-    var need = Math.max(1, Math.ceil(runtime * WATCH_SHARE));
-    try {
-      C.service('/watch-track?app=' + encodeURIComponent(rec.appId) + '&id=' + rec.token + '&need=' + need, 6000, function (err) {
-        // An old service (not restarted since the update) has no /watch-track:
-        // no toast, nothing kept; the About panel says so.
-        if (err === 'not found') { T.old = true; dropPending(rec.token); }
-      });
-    } catch (e) { warn('starting the count', e); }
+    out.sort(function (a, b) { return a.startedAt - b.startedAt; });
+    saveStarted(out.slice(-FINISH_MAX));
+    changed();
     return rec;
   }
 
-  // Tells the Pi an episode is watched. Kept for the next try while the Pi
-  // can't be reached; dropped when it refuses (the show is gone).
-  function forward(rec) {
-    var Lv = S.C && S.C.live;
-    if (!Lv || typeof Lv.post !== 'function') return;
-    try {
-      Lv.post('/shows/watched', { id: rec.showId, season: rec.season, number: rec.number }, function (err, data, code) {
-        if (!err || code === 400 || code === 404) dropPending(rec.token);
-      });
-    } catch (e) { warn('telling the Pi', e); }
+  function nameKey(name) {
+    return String(name || '').toLowerCase().replace(/^\s*the\s+/, '');
   }
 
-  // Asks the service which counts are done and forwards those. Quiet always.
-  function checkTracked(force) {
-    var C = S.C;
-    if (!C || T.busy) return;
-    var t = now();
-    var list = loadPending();
+  // The lines of "Did you finish?": started episodes waiting for an answer,
+  // newest 7 days only, minus the ones the Pi already has as watched, sorted
+  // by show title (case-insensitive, a leading "The " ignored), then season
+  // and episode. [{ rec, show }]. Dropped ones are forgotten for good.
+  function finishLines(t) {
+    var all = loadStarted();
     var keep = [];
-    for (var i = 0; i < list.length; i++) if (list[i] && t - list[i].startedAt < WATCH_KEEP) keep.push(list[i]);
-    if (keep.length !== list.length) savePending(keep);
-    if (!keep.length && (T.probed && !force)) return;
-    T.busy = true;
-    T.probed = true;
-    try {
-      // On screen means the person is back from the app: tell the service to
-      // stop counting (the app may keep running behind the hub).
-      var settle = false;
-      try { settle = document.hidden === false; } catch (e) { settle = false; }
-      C.service('/watch-track/status' + (settle ? '?settle=1' : ''), 5000, function (err, data) {
-        T.busy = false;
-        if (err) {
-          if (err === 'not found') { T.old = true; savePending([]); }
-          return;
-        }
-        T.old = false;
-        var tracks = data && isArr(data.tracks) ? data.tracks : [];
-        var pend = loadPending();
-        for (var a = 0; a < pend.length; a++) {
-          for (var b = 0; b < tracks.length; b++) {
-            // Asked only while the hub is on screen; until then it waits.
-            if (settle && tracks[b] && tracks[b].id === pend[a].token && tracks[b].done === true) askWatched(pend[a]);
-          }
-        }
-      });
-    } catch (e) { T.busy = false; warn('asking the service', e); }
+    var lines = [];
+    var valid = validData(S.data);
+    for (var i = 0; i < all.length; i++) {
+      var r = all[i];
+      if (t - r.startedAt >= FINISH_KEEP) continue;
+      var show = valid ? findShow(r.showId) : null;
+      if (show && isWatchedEp(show, r.season, r.number)) continue;
+      keep.push(r);
+      if (show) lines.push({ rec: r, show: show });
+    }
+    keep.sort(function (a, b) { return a.startedAt - b.startedAt; });
+    keep = keep.slice(-FINISH_MAX);
+    if (keep.length !== all.length) saveStarted(keep);
+    lines.sort(function (a, b) {
+      var x = nameKey(a.show.name);
+      var y = nameKey(b.show.name);
+      if (x !== y) return x < y ? -1 : 1;
+      return (a.rec.season - b.rec.season) || (a.rec.number - b.rec.number) || (a.rec.startedAt - b.rec.startedAt);
+    });
+    return lines.slice(0, FINISH_MAX);
   }
 
-  // "Did you watch it?" after a count is done. Nothing is marked on its own:
-  // Yes tells the Pi; No, Back or no answer in ASK_MS leaves it unwatched.
-  // One card at a time; others wait in the queue. Keys in the first
-  // ASK_GUARD_MS are ignored so a press left over from the app can't answer.
-  var ASK_MS = 60000;
-  var ASK_GUARD_MS = 700;
-  var askQueue = [];
-  var asking = null;
+  function toCheck() {
+    return S.data && state() === 'data' ? finishLines(now()).length : 0;
+  }
 
-  function showName(id) {
-    var list = S.data ? showsOf(S.data) : [];
-    for (var i = 0; i < list.length; i++) if (list[i] && list[i].id === id) return list[i].name || '';
+  // "started last night", "started Tue": when an episode was started, as a person says it.
+  function startedText(ms, t) {
+    var diff = Math.round((dayStart(t) - dayStart(ms)) / DAY);
+    var h = new Date(ms).getHours();
+    var when = '';
+    if (diff <= 0) when = word(h < 5 ? 'startedLastNight' : h >= 17 ? 'startedTonight' : 'startedToday');
+    else if (diff === 1) when = word(h >= 17 ? 'startedLastNight' : 'startedYesterday');
+    else return word('startedOn', { day: lang() === 'es' ? dayName(ms, false).toLowerCase() : dayName(ms, true) });   // "started Tue", "empezó el martes"
+    return word('started', { when: when });
+  }
+
+  /* The marks waiting for the Pi (homeHub.watch.out.v1): [{ op, showId,
+     season, number }], op 'watched' or 'unwatch'. Kept until the Pi has
+     them, tried again on every minute, when the hub is back on screen and
+     when the Pi answers again; dropped when the Pi refuses (the show is
+     gone). Until then the Schedule shows them as already done. */
+  var O = { list: null, sending: {} };
+
+  function loadOut() {
+    if (O.list) return O.list;
+    var list = null;
+    try { list = JSON.parse(load(OUT_KEY) || '[]'); } catch (e) { list = null; }
+    O.list = [];
+    if (isArr(list)) {
+      for (var i = 0; i < list.length; i++) {
+        var r = list[i];
+        if (r && (r.op === 'watched' || r.op === 'unwatch') && typeof r.showId === 'string' && typeof r.season === 'number' && typeof r.number === 'number') {
+          O.list.push({ op: r.op, showId: r.showId, season: r.season, number: r.number });
+        }
+      }
+    }
+    return O.list;
+  }
+
+  function saveOut(list) {
+    O.list = list;
+    store(OUT_KEY, JSON.stringify(list));
+  }
+
+  function outKey(r) { return r.showId + '|' + r.season + '|' + r.number; }
+
+  // 'watched', 'unwatch' or '' for an episode with a mark still on its way.
+  function pendingMark(showId, season, number) {
+    var list = loadOut();
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].showId === showId && list[i].season === season && list[i].number === number) return list[i].op;
+    }
     return '';
   }
 
-  function askWatched(rec) {
-    if (asking && asking.token === rec.token) return;
-    for (var i = 0; i < askQueue.length; i++) if (askQueue[i].token === rec.token) return;
-    askQueue.push(rec);
-    if (!asking && !card) nextAsk();
+  function queueMark(op, showId, season, number) {
+    var rec = { op: op, showId: showId, season: season, number: number };
+    var out = [];
+    var list = loadOut();
+    for (var i = 0; i < list.length; i++) if (outKey(list[i]) !== outKey(rec)) out.push(list[i]);
+    out.push(rec);
+    saveOut(out.slice(-60));
+    flushOut();
   }
 
-  function nextAsk() {
-    var rec = askQueue.shift();
-    if (!rec) return;
-    asking = rec;
-    var node = document.createElement('div');
-    node.className = 'sh-go-card sh-ask';
-    node.setAttribute('role', 'dialog');
-    var t = document.createElement('div');
-    t.className = 'sh-go-card-title';
-    t.textContent = word('askTitle');
-    var l = document.createElement('div');
-    l.className = 'sh-go-card-line';
-    l.textContent = word('askLine', { name: showName(rec.showId), code: word('code', { s: rec.season, e: rec.number }) });
-    var row = document.createElement('div');
-    row.className = 'sh-ask-row';
-    var yes = document.createElement('div');
-    yes.className = 'sh-ask-btn is-focus';
-    yes.textContent = word('askYes');
-    var no = document.createElement('div');
-    no.className = 'sh-ask-btn';
-    no.textContent = word('askNo');
-    row.appendChild(yes);
-    row.appendChild(no);
-    node.appendChild(t);
-    node.appendChild(l);
-    node.appendChild(row);
-    document.body.appendChild(node);
-    var focusYes = true;
-    var armed = false;
-    var finished = false;
-    var timer = null;
-    function paint() {
-      yes.className = 'sh-ask-btn' + (focusYes ? ' is-focus' : '');
-      no.className = 'sh-ask-btn' + (focusYes ? '' : ' is-focus');
-    }
-    function done(watched) {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      document.removeEventListener('keydown', onKey, true);
-      if (node.parentNode) node.parentNode.removeChild(node);
-      asking = null;
-      if (watched) forward(rec); else dropPending(rec.token);
-      setTimeout(nextAsk, 300);
-    }
-    function onKey(e) {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (!armed) return;
-      var c = e.keyCode;
-      if (c === 37 || c === 39) { focusYes = !focusYes; paint(); }
-      else if (c === 13) done(focusYes);
-      else if (c === 10009 || c === 27 || c === 8) done(false);
-    }
-    document.addEventListener('keydown', onKey, true);
-    timer = setTimeout(function () { done(false); }, ASK_MS);
-    setTimeout(function () { armed = true; }, ASK_GUARD_MS);
-    setTimeout(function () { if (!finished) node.className = 'sh-go-card sh-ask is-shown'; }, 20);
+  function removeOut(rec) {
+    var out = [];
+    var list = loadOut();
+    for (var i = 0; i < list.length; i++) if (!(outKey(list[i]) === outKey(rec) && list[i].op === rec.op)) out.push(list[i]);
+    saveOut(out);
   }
+
+  // Puts a mark into the copy of the Pi's data this TV holds, so the row
+  // shows it before the Pi's own update arrives.
+  function applyMark(rec) {
+    var show = validData(S.data) ? findShow(rec.showId) : null;
+    if (!show) return;
+    var on = rec.op === 'watched';
+    var eps = (isArr(show.upcoming) ? show.upcoming : []).concat(show.nextEpisode ? [show.nextEpisode] : []);
+    for (var i = 0; i < eps.length; i++) {
+      if (eps[i] && eps[i].season === rec.season && eps[i].number === rec.number) { if (on) eps[i].watched = true; else delete eps[i].watched; }
+    }
+    var w = isArr(show.watched) ? show.watched : [];
+    var out = [];
+    for (var j = 0; j < w.length; j++) if (!(w[j].season === rec.season && w[j].number === rec.number)) out.push(w[j]);
+    if (on) out.push({ season: rec.season, number: rec.number, at: new Date(now()).toISOString() });
+    show.watched = out;
+    saveCache();
+  }
+
+  // Tells the Pi about every mark waiting: POST /shows/watched or
+  // /shows/unwatch (the screen's own doors, no token). Quiet always.
+  function flushOut() {
+    var Lv = S.C && S.C.live;
+    if (!Lv || typeof Lv.post !== 'function') return;
+    var list = loadOut().slice();
+    for (var i = 0; i < list.length; i++) sendMark(Lv, list[i]);
+  }
+
+  function sendMark(Lv, rec) {
+    var k = outKey(rec) + rec.op;
+    if (O.sending[k]) return;
+    O.sending[k] = true;
+    try {
+      Lv.post(rec.op === 'watched' ? '/shows/watched' : '/shows/unwatch', { id: rec.showId, season: rec.season, number: rec.number }, function (err, data, code) {
+        O.sending[k] = false;
+        // Kept for the next try while the Pi can't be reached; dropped when it refuses.
+        if (!err || code === 400 || code === 404) {
+          removeOut(rec);
+          if (!err) applyMark(rec);
+          changed();
+        }
+      });
+    } catch (e) { O.sending[k] = false; warn('telling the Pi', e); }
+  }
+
+  // The marks for the episodes of a row: all not watched yet when any is
+  // not, else all watched ones come off. Returns the marks queued.
+  function toggleRow(show, eps, t) {
+    var numbered = [];
+    for (var i = 0; i < eps.length; i++) {
+      var ms = parseIso(eps[i].airstamp);
+      if (ms !== null && ms <= t + 5 * MIN && typeof eps[i].season === 'number' && typeof eps[i].number === 'number') numbered.push(eps[i]);
+    }
+    var allSeen = numbered.length > 0;
+    for (var j = 0; j < numbered.length; j++) if (!epWatched(show, numbered[j])) allSeen = false;
+    var n = 0;
+    for (var k = 0; k < numbered.length; k++) {
+      if (allSeen === epWatched(show, numbered[k])) { queueMark(allSeen ? 'unwatch' : 'watched', show.id, numbered[k].season, numbered[k].number); n++; }
+    }
+    return allSeen ? -n : n;
+  }
+
+  // Answers one line of "Did you finish?". key: showId:season:number.
+  function answerFinish(yes, showId, season, number) {
+    var t = now();
+    var lines = finishLines(t);
+    var at = -1;
+    for (var i = 0; i < lines.length; i++) if (lines[i].rec.showId === showId && lines[i].rec.season === season && lines[i].rec.number === number) at = i;
+    if (at < 0) return;
+    // Focus goes to the next line's Watched, or the one before when this was the last.
+    var to = lines[at + 1] || lines[at - 1] || null;
+    S.focusKey = to ? finKey('yes', to.rec) : null;
+    var rec = lines[at].rec;
+    var left = [];
+    var all = loadStarted();
+    for (var j = 0; j < all.length; j++) if (!sameEp(all[j], rec)) left.push(all[j]);
+    saveStarted(left);
+    if (yes) queueMark('watched', rec.showId, rec.season, rec.number);
+    changed();
+  }
+
+  function finKey(which, rec) { return 'sh:fin:' + which + ':' + rec.showId + ':' + rec.season + ':' + rec.number; }
 
   // The card before an app opens without a deep link: centered, about 1.8 s;
   // OK or Back (any key is swallowed meanwhile) launches at once. Only
@@ -818,6 +895,7 @@
     S.fromCache = false;
     saveCache();
     changed(before !== null && before !== JSON.stringify(d.shows));
+    flushOut();
   }
 
   function changed() {
@@ -847,7 +925,7 @@
     clearTimeout(S.timer);
     S.timer = setTimeout(function () {
       try { changed(); } catch (e) { warn('the minute update', e); }
-      try { checkTracked(false); } catch (e) { warn('the watch check', e); }
+      try { flushOut(); } catch (e) { warn('telling the Pi', e); }
       schedule();
     }, MIN - (now() % MIN) + 300);
   }
@@ -947,7 +1025,45 @@
       var alt = el('div', 'sh-alt f' + (past ? ' is-past' : ''), line, word('alsoOn', { service: alts[0] }));
       alt.setAttribute('data-key', 'sh:alt:' + a.show.id + ':' + a.ms + ':0');
     }
+    if (markable(a, t)) {
+      // A small check toggle at the end of an aired row, after "Also on": OK marks the episode
+      // watched, or takes the mark off.
+      var mk = el('div', 'sh-mark f' + (seen ? ' is-on' : '') + (past ? ' is-past' : ''), line);
+      mk.setAttribute('data-key', 'sh:mark:' + a.show.id + ':' + a.ms);
+      mk.setAttribute('role', 'checkbox');
+      mk.setAttribute('aria-checked', seen ? 'true' : 'false');
+      var box = el('span', 'sh-mark-box', mk);
+      el('span', 'sh-check', box);
+      el('span', 'sh-mark-text', mk, word(seen ? 'unmark' : 'markWatched'));
+    }
     return row;
+  }
+
+  // An aired row with episode numbers can be marked (a special has none).
+  function markable(a, t) {
+    for (var i = 0; i < a.eps.length; i++) {
+      var ms = parseIso(a.eps[i].airstamp);
+      if (ms !== null && ms <= t + 5 * MIN && typeof a.eps[i].season === 'number' && typeof a.eps[i].number === 'number') return true;
+    }
+    return false;
+  }
+
+  // "Did you finish?": the episodes started from here and not answered yet.
+  function drawFinish(parent, lines, t) {
+    var box = el('div', 'sh-fin', parent);
+    el('div', 'sh-fin-head', box, word('finishTitle'));
+    for (var i = 0; i < lines.length; i++) {
+      var r = lines[i].rec;
+      var line = el('div', 'sh-fin-line', box);
+      var text = el('div', 'sh-fin-text', line);
+      el('span', 'sh-fin-name', text, lines[i].show.name);
+      el('span', 'sh-fin-meta', text, ' · ' + word('code', { s: r.season, e: r.number }) + ' · ' + startedText(r.startedAt, t));
+      var btns = el('div', 'sh-fin-btns', line);
+      var yes = el('div', 'sh-fin-btn f', btns, word('finishWatched'));
+      yes.setAttribute('data-key', finKey('yes', r));
+      var no = el('div', 'sh-fin-btn f', btns, word('finishNotYet'));
+      no.setAttribute('data-key', finKey('no', r));
+    }
   }
 
   function drawDays(parent, groups, t) {
@@ -1076,6 +1192,8 @@
       var when = parseIso(S.data.updatedAt);
       el('div', 'sh-stale', root, stale ? word('stale') : (when ? word('asOf', { when: whenText(when, t) }) : ''));
     }
+    var lines = finishLines(t);
+    if (lines.length) drawFinish(root, lines, t);
     if (v.tab === 'soon') {
       drawSoonView(root, v, t);
     } else if (!v.groups.length) {
@@ -1094,6 +1212,16 @@
       if (!/\bis-(past|watched)\b/.test(rows[r].className)) { pick = rows[r]; break; }
     }
     if (!pick) pick = root.querySelector('.sh-tab.is-on');
+    // After an answer in "Did you finish?": the next line's Watched. Opening
+    // the Schedule with lines waiting: the first line's Watched.
+    var fins = root.querySelectorAll('.sh-fin-btn');
+    var want = null;
+    for (var f = 0; f < fins.length; f++) {
+      if (S.focusKey && fins[f].getAttribute('data-key') === S.focusKey) want = fins[f];
+    }
+    S.focusKey = null;
+    if (!want && fins.length) want = fins[0];
+    if (want) pick = want;
     if (pick) pick.setAttribute('data-autofocus', '');
   }
 
@@ -1116,13 +1244,22 @@
       }
       return true;
     }
+    if (p[1] === 'fin') {
+      answerFinish(p[2] === 'yes', p[3], Number(p[4]), Number(p[5]));
+      return true;
+    }
     var show = findShow(p[2]);
     if (!show) return true;
     var eps = [];
-    if (p[1] === 'row' || p[1] === 'alt') {
+    if (p[1] === 'row' || p[1] === 'alt' || p[1] === 'mark') {
       var ms = Number(p[3]);
       var ups = isArr(show.upcoming) ? show.upcoming : [];
       for (var i = 0; i < ups.length; i++) if (parseIso(ups[i].airstamp) === ms) eps.push(ups[i]);
+    }
+    if (p[1] === 'mark') {
+      toggleRow(show, eps, now());
+      changed();
+      return true;
     }
     var other = null;
     if (p[1] === 'alt') other = alternatives(show)[Number(p[4]) || 0] || null;
@@ -1153,10 +1290,9 @@
     } catch (e) { /* stays in its language */ }
     schedule();
     checkSoon();
-    // Back in front after an app: see which watches finished. The first look
-    // (a few seconds after start) also finds out whether the service has /watch-track.
-    try { document.addEventListener('visibilitychange', function () { if (!document.hidden) checkTracked(false); }, false); } catch (e) { /* the minute tick still looks */ }
-    setTimeout(function () { try { checkTracked(true); } catch (e) { warn('the watch check', e); } }, 4000);
+    // Back in front after an app, and shortly after start: marks the Pi has not heard yet.
+    try { document.addEventListener('visibilitychange', function () { if (!document.hidden) flushOut(); }, false); } catch (e) { /* the minute tick still looks */ }
+    setTimeout(function () { try { flushOut(); } catch (e) { warn('telling the Pi', e); } }, 4000);
   }
 
   window.HUB_SHOWS = {
@@ -1165,9 +1301,10 @@
     attach: attach,
     onChange: function (fn) { if (typeof fn === 'function') S.listeners.push(fn); },
     title: function () { return word('title'); },
-    entry: function () { return { label: word('entry'), sub: word('entrySub') }; },
+    entry: function () { var n = toCheck(); return { label: word('entry'), sub: n ? word('toCheck', { n: n }) : word('entrySub') }; },
+    toCheck: toCheck,
+    checkText: function () { var n = toCheck(); return n ? word('toCheck', { n: n }) : ''; },
     tileLine: function () { return S.data && state() === 'data' ? tileLine(S.data, now()) : ''; },
-    trackText: function () { return T.old ? TRACK_OLD : ''; },
     availability: function () { return S.data && state() === 'data' ? availability(S.data, now()) : {}; },
     renderPanel: renderPanel,
     onSelect: onSelect,
@@ -1175,7 +1312,7 @@
     // For the tests (dev/shows-test.js): the pure parts and the state.
     _test: {
       view: view, airings: airings, groupByDay: groupByDay, returning: returning, tileLine: tileLine,
-      track: track, checkTracked: checkTracked, asking: function () { return asking; }, pending: loadPending, rowWatched: rowWatched, trackOld: function () { return T.old; },
+      noteStarted: noteStarted, started: loadStarted, finishLines: finishLines, startedText: startedText, rowWatched: rowWatched, pendingOut: function () { return loadOut().slice(); }, flushOut: flushOut,
       ladder: ladder, watch: watch, watchApp: watchApp, viaApp: viaApp, alternatives: alternatives, availability: availability, timeText: timeText, epCode: epCode, rangeText: rangeText, word: word,
       weekStart: weekStart, monthEnd: monthEnd, setData: function (d) { S.data = d; S.fromCache = false; changed(); },
       tab: function (t) { if (t) S.tab = t; return S.tab; }

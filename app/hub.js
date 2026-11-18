@@ -1316,12 +1316,6 @@
       var T = window.HUB_LINKTEST;
       try { return T && typeof T.aboutText === 'function' ? T.aboutText() || '' : ''; } catch (e) { return ''; }
     }, action: function () { openWidgetView('entertainment', 'linktests'); } },
-    // Whether the TV service can count the minutes a show's app stays open
-    // (/watch-track, service.js 0.29.13). Only says anything when it can't yet.
-    { group: 'This hub', label: 'Watch tracking', spare: true, value: function () {
-      var T = window.HUB_SHOWS;
-      try { return T && typeof T.trackText === 'function' ? T.trackText() || '' : ''; } catch (e) { return ''; }
-    } },
     { group: 'Updates', label: 'Live updates', value: function () {
       var L = liveFacade();
       var t = L ? (L.status() || {}).text || '' : '';
