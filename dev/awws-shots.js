@@ -269,9 +269,9 @@ const STATE_LAYOUT = [
 
 async function states() {
   const sample = H.sample;
-  // Stale: the snapshot was sent at 7:10 AM, three and a half hours ago.
+  // Stale: the snapshot was sent at 7:10 AM the day before, over 19 hours ago.
   await both('state-stale', async (full, es) => {
-    await env.setSnapshot(sample.snapshot({ sentAt: '2026-11-16T13:10:00Z' }));
+    await env.setSnapshot(sample.snapshot({ sentAt: '2026-11-15T13:10:00Z' }));
     const page = await env.newPage({ layout: STATE_LAYOUT, spanish: es, scale: SCALE });
     await shot(page, full);
     await done(page, full);

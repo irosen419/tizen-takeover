@@ -632,7 +632,32 @@
     'motion.extrasOff': 'extras desactivados ({why})',
     'motion.extrasLight': 'extras: solo avisos y luz ({why})',
     'motion.why.fade': 'modo fundido',
-    'motion.why.slow': 'pantalla lenta'
+    'motion.why.slow': 'pantalla lenta',
+
+    /* ---- Characters: the About panel's Characters group (app/agents.js) ----
+     * 'agents.<path in STRINGS>'; {who} is a character's name (never
+     * translated), {where} a tile's title as shown. */
+    'agents.about.group': 'Personajes',
+    'agents.about.now': 'Ahora',
+    'agents.about.seen': 'Pasadas',
+    'agents.about.drawing': 'Dibujo',
+    'agents.now': '{who}, en {where}',
+    'agents.none': 'ninguno',
+    'agents.loading': 'cargando imágenes',
+    'agents.seenOne': '1 pasada',
+    'agents.seenMany': '{n} pasadas',
+    'agents.drawOn': 'activado',
+    'agents.drawLight': 'solo avisos ({why})',
+    'agents.why.fade': 'modo fundido',
+    'agents.why.slow': 'pantalla lenta',
+    'agents.why.calm': 'se pidió menos movimiento',
+    'agents.offWhy': 'desactivado ({why})',
+    'agents.offConfig': 'desactivado (configuración)',
+    'agents.offQuery': 'desactivado (?agent=off)',
+    'agents.offUnknown': 'desactivado (no hay un personaje llamado {who})',
+    'agents.offChips': 'desactivado (los avisos están apagados)',
+    'agents.offFailed': 'desactivado (no cargaron las imágenes; se reintenta en 10 min)',
+    'agents.tile': 'un mosaico'
   };
 
   var DAYS = {
