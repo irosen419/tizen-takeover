@@ -635,15 +635,47 @@ async function main() {
       assert((await pendingOf(wp)).length === 2, 'pending: ' + JSON.stringify(await pendingOf(wp)));
     });
 
-    await check('Status: an unfinished count forwards nothing; a finished one reaches the Pi, the pending watch goes, and the TV marks the row watched', async () => {
+    await check('Status: an unfinished count asks nothing; a finished one asks "Did you watch it?"; No leaves it unwatched, Yes reaches the Pi and the TV marks the row watched', async () => {
       const tok = (await pendingOf(wp)).filter((x) => x.showId === 'the-great-british-baking-show')[0].token;
       tracks = [{ id: tok, minutes: 9, need: 21, done: false, active: true }];
       await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
       await H.sleep(600);
       assert((await pendingOf(wp)).length === 2, 'dropped early');
       assert(!((await piShow('the-great-british-baking-show')).upcoming.some((e) => e.watched)), 'the Pi marked it early');
+      assert(await wp.evaluate(() => !document.querySelector('.sh-ask')), 'asked before the count was done');
+      const saved = (await pendingOf(wp)).filter((x) => x.token === tok)[0];
       tracks = [{ id: tok, minutes: 21, need: 21, done: true, active: false }];
       await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.until(() => wp.evaluate(() => !!document.querySelector('.sh-ask.is-shown')), 3000, 'no question');
+      const askText = await wp.evaluate(() => { const n = document.querySelector('.sh-ask'); return { t: n.querySelector('.sh-go-card-title').textContent, l: n.querySelector('.sh-go-card-line').textContent, b: [].map.call(n.querySelectorAll('.sh-ask-btn'), (x) => x.textContent + (/is-focus/.test(x.className) ? '*' : '')) }; });
+      assert(askText.t === 'Did you watch it?' && askText.l === 'The Great British Baking Show · S16 E9' && askText.b.join('|') === 'Yes, mark watched*|No', JSON.stringify(askText));
+      // A second check while the card is up does not stack another card.
+      await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.sleep(600);
+      assert(await wp.evaluate(() => document.querySelectorAll('.sh-ask').length === 1), 'two cards');
+      // Nothing is marked while it waits; No (Right, then OK) leaves it unwatched and drops the pending watch.
+      assert(!((await piShow('the-great-british-baking-show')).upcoming.some((e) => e.watched)), 'marked before an answer');
+      await H.key(wp, 'ArrowRight');
+      await H.key(wp, 'Enter');
+      await H.until(() => wp.evaluate(() => !document.querySelector('.sh-ask')), 2000, 'the card stayed');
+      await H.until(async () => (await pendingOf(wp)).length === 1, 3000, 'No kept the pending watch');
+      await H.sleep(800);
+      assert(!((await piShow('the-great-british-baking-show')).upcoming.some((e) => e.watched)), 'No marked it watched');
+      // Back answers No too.
+      await wp.evaluate((r) => { const l = JSON.parse(localStorage.getItem('homeHub.watch.v1')); l.push(r); localStorage.setItem('homeHub.watch.v1', JSON.stringify(l)); }, saved);
+      await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.until(() => wp.evaluate(() => !!document.querySelector('.sh-ask.is-shown')), 3000, 'no question the second time');
+      await H.sleep(800);
+      await H.key(wp, 'Escape');
+      await H.until(async () => (await pendingOf(wp)).length === 1, 3000, 'Back kept the pending watch');
+      assert(!((await piShow('the-great-british-baking-show')).upcoming.some((e) => e.watched)), 'Back marked it watched');
+      // Yes (OK on the focused Yes) tells the Pi.
+      await wp.evaluate((r) => { const l = JSON.parse(localStorage.getItem('homeHub.watch.v1')); l.push(r); localStorage.setItem('homeHub.watch.v1', JSON.stringify(l)); }, saved);
+      await H.sleep(400);
+      await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.until(() => wp.evaluate(() => !!document.querySelector('.sh-ask.is-shown')), 3000, 'no question the third time');
+      await H.sleep(800);
+      await H.key(wp, 'Enter');
       await H.until(async () => (await piShow('the-great-british-baking-show')).upcoming.some((e) => e.watched && e.number === 9), 4000, 'the Pi never marked it');
       await H.until(async () => (await pendingOf(wp)).length === 1, 3000, 'the pending watch stayed');
       await H.until(() => wp.evaluate(() => !!document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"].is-watched')), 4000, 'the row is not marked watched');
@@ -686,7 +718,18 @@ async function main() {
       tracks = [{ id: 'gonegone1234', minutes: 21, need: 21, done: true, active: false }];
       await wp.evaluate((t) => localStorage.setItem('homeHub.watch.v1', JSON.stringify([{ token: 'gonegone1234', showId: 'not-on-the-list', season: 1, number: 1, appId: '1', startedAt: t, runtimeMin: 30 }])), Date.now());
       await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.until(() => wp.evaluate(() => !!document.querySelector('.sh-ask.is-shown')), 3000, 'no question');
+      await H.sleep(800);
+      await H.key(wp, 'Enter');
       await H.until(async () => (await pendingOf(wp)).length === 0, 3000, 'a refused watch was kept');
+      // No answer in a minute leaves it unwatched (the card goes, the pending watch goes).
+      tracks = [{ id: 'quietquiet12', minutes: 21, need: 21, done: true, active: false }];
+      await wp.evaluate((t) => localStorage.setItem('homeHub.watch.v1', JSON.stringify([{ token: 'quietquiet12', showId: 'the-great-british-baking-show', season: 16, number: 8, appId: '1', startedAt: t, runtimeMin: 30 }])), Date.now());
+      await wp.evaluate(() => window.HUB_SHOWS._test.checkTracked(true));
+      await H.until(() => wp.evaluate(() => !!document.querySelector('.sh-ask.is-shown')), 3000, 'no question (quiet)');
+      await H.until(() => wp.evaluate(() => !document.querySelector('.sh-ask')), 63000, 'the card never timed out');
+      assert((await pendingOf(wp)).length === 0, 'no answer kept the pending watch');
+      assert(!((await piShow('the-great-british-baking-show')).upcoming.some((e) => e.watched && e.number === 8)), 'no answer marked it watched');
       await wp.ctx.close();
     });
 

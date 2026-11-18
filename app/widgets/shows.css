@@ -55,6 +55,23 @@
 .sh-go-card.is-shown { opacity: 1; transform: translate(-50%, -50%); }
 .sh-go-card-title { font-size: 2rem; font-weight: 700; line-height: 1.3; }
 .sh-go-card-line { margin-top: 0.8rem; font-size: 1.4rem; line-height: 1.35; color: var(--text-2); }
+.sh-ask-row { margin-top: 1.6rem; text-align: center; }
+.sh-ask-btn {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0 0.5rem;
+  padding: 0.7rem 1.6rem;
+  min-width: 8rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  border-radius: 0.8rem;
+  border: 0.15rem solid rgba(255, 255, 255, 0.22);
+  font-size: 1.4rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: normal;
+}
+.sh-ask-btn.is-focus { background: #f2f3f5; border-color: #f2f3f5; color: #14161b; font-weight: 700; }
 
 /* ---------- Schedule ---------- */
 

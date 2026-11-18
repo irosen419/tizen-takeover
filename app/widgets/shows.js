@@ -28,8 +28,11 @@
  * pending watch on this TV (homeHub.watch.v1) and asks the TV service to count
  * the minutes the app stays running (/watch-track; the page sleeps while the
  * app is open, the service doesn't). Back in the hub, /watch-track/status says
- * which are done (70% of the runtime) and the hub tells the Pi (POST
- * /shows/watched), which sends back the episode as watched: true. Watched
+ * which are done (70% of the runtime). The app being open is not proof of
+ * watching (another title, or nobody there), so the hub then asks "Did you
+ * watch it?" with Yes / No. Only Yes tells the Pi (POST /shows/watched), which
+ * sends back the episode as watched: true; No, Back or no answer in a minute
+ * leaves it unwatched. Watched
  * rows are dimmed with a check, and a watched episode no longer counts on the
  * Entertainment tile. A service without /watch-track (not restarted since the
  * update) is skipped quietly; the About panel says "needs a TV restart".
@@ -103,6 +106,10 @@
     todayLine: 'Today: {name} {time}',
     opensHome: '{service} opens on its home screen',
     searchFor: 'Search for: {name}',
+    askTitle: 'Did you watch it?',
+    askLine: '{name} · {code}',
+    askYes: 'Yes, mark watched',
+    askNo: 'No',
     notInstalled: '{service} isn’t on this TV.',
     noApp: 'No app is set for {name}. Give it one on the Pi: ./hub shows add "{name}" --service Netflix',
     stillLooking: 'Still looking for your apps. Try again in a second.',
@@ -652,11 +659,94 @@
         var pend = loadPending();
         for (var a = 0; a < pend.length; a++) {
           for (var b = 0; b < tracks.length; b++) {
-            if (tracks[b] && tracks[b].id === pend[a].token && tracks[b].done === true) forward(pend[a]);
+            // Asked only while the hub is on screen; until then it waits.
+            if (settle && tracks[b] && tracks[b].id === pend[a].token && tracks[b].done === true) askWatched(pend[a]);
           }
         }
       });
     } catch (e) { T.busy = false; warn('asking the service', e); }
+  }
+
+  // "Did you watch it?" after a count is done. Nothing is marked on its own:
+  // Yes tells the Pi; No, Back or no answer in ASK_MS leaves it unwatched.
+  // One card at a time; others wait in the queue. Keys in the first
+  // ASK_GUARD_MS are ignored so a press left over from the app can't answer.
+  var ASK_MS = 60000;
+  var ASK_GUARD_MS = 700;
+  var askQueue = [];
+  var asking = null;
+
+  function showName(id) {
+    var list = S.data ? showsOf(S.data) : [];
+    for (var i = 0; i < list.length; i++) if (list[i] && list[i].id === id) return list[i].name || '';
+    return '';
+  }
+
+  function askWatched(rec) {
+    if (asking && asking.token === rec.token) return;
+    for (var i = 0; i < askQueue.length; i++) if (askQueue[i].token === rec.token) return;
+    askQueue.push(rec);
+    if (!asking && !card) nextAsk();
+  }
+
+  function nextAsk() {
+    var rec = askQueue.shift();
+    if (!rec) return;
+    asking = rec;
+    var node = document.createElement('div');
+    node.className = 'sh-go-card sh-ask';
+    node.setAttribute('role', 'dialog');
+    var t = document.createElement('div');
+    t.className = 'sh-go-card-title';
+    t.textContent = word('askTitle');
+    var l = document.createElement('div');
+    l.className = 'sh-go-card-line';
+    l.textContent = word('askLine', { name: showName(rec.showId), code: word('code', { s: rec.season, e: rec.number }) });
+    var row = document.createElement('div');
+    row.className = 'sh-ask-row';
+    var yes = document.createElement('div');
+    yes.className = 'sh-ask-btn is-focus';
+    yes.textContent = word('askYes');
+    var no = document.createElement('div');
+    no.className = 'sh-ask-btn';
+    no.textContent = word('askNo');
+    row.appendChild(yes);
+    row.appendChild(no);
+    node.appendChild(t);
+    node.appendChild(l);
+    node.appendChild(row);
+    document.body.appendChild(node);
+    var focusYes = true;
+    var armed = false;
+    var finished = false;
+    var timer = null;
+    function paint() {
+      yes.className = 'sh-ask-btn' + (focusYes ? ' is-focus' : '');
+      no.className = 'sh-ask-btn' + (focusYes ? '' : ' is-focus');
+    }
+    function done(watched) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      document.removeEventListener('keydown', onKey, true);
+      if (node.parentNode) node.parentNode.removeChild(node);
+      asking = null;
+      if (watched) forward(rec); else dropPending(rec.token);
+      setTimeout(nextAsk, 300);
+    }
+    function onKey(e) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!armed) return;
+      var c = e.keyCode;
+      if (c === 37 || c === 39) { focusYes = !focusYes; paint(); }
+      else if (c === 13) done(focusYes);
+      else if (c === 10009 || c === 27 || c === 8) done(false);
+    }
+    document.addEventListener('keydown', onKey, true);
+    timer = setTimeout(function () { done(false); }, ASK_MS);
+    setTimeout(function () { armed = true; }, ASK_GUARD_MS);
+    setTimeout(function () { if (!finished) node.className = 'sh-go-card sh-ask is-shown'; }, 20);
   }
 
   // The card before an app opens without a deep link: centered, about 1.8 s;
@@ -1085,7 +1175,7 @@
     // For the tests (dev/shows-test.js): the pure parts and the state.
     _test: {
       view: view, airings: airings, groupByDay: groupByDay, returning: returning, tileLine: tileLine,
-      track: track, checkTracked: checkTracked, pending: loadPending, rowWatched: rowWatched, trackOld: function () { return T.old; },
+      track: track, checkTracked: checkTracked, asking: function () { return asking; }, pending: loadPending, rowWatched: rowWatched, trackOld: function () { return T.old; },
       ladder: ladder, watch: watch, watchApp: watchApp, viaApp: viaApp, alternatives: alternatives, availability: availability, timeText: timeText, epCode: epCode, rangeText: rangeText, word: word,
       weekStart: weekStart, monthEnd: monthEnd, setData: function (d) { S.data = d; S.fromCache = false; changed(); },
       tab: function (t) { if (t) S.tab = t; return S.tab; }
