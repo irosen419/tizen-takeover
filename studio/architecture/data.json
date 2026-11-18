@@ -883,7 +883,7 @@
        "status": "unverified",
        "summary": "Tiles for the picture book project: Glance, Next visit, This week, To-do board, Reach, Earned vs spent.",
        "details": [
-        "All registered from app/widgets/awws.js and fed by the Pi's awws snapshot, which a scheduled Claude task refreshes every 2 hours. The Glance also reads the calendar resource. Librarians and Books are Soon placeholders."
+        "All registered from app/widgets/awws.js and fed by the Pi's awws snapshot, which a scheduled Claude task refreshes twice a day. The Glance also reads the calendar resource. Librarians and Books are Soon placeholders."
        ],
        "files": [
         "app/widgets/awws.js",
@@ -1899,7 +1899,7 @@
       }
      ],
      "notes": [
-      "pi/README.md says the routine runs 'usually every half hour'; memory says every 2 hours, 7 AM to 11 PM at :12. Memory is newer."
+      "The routine runs twice a day, 7:12 AM and 1:12 PM Central (changed 2026-11-17)."
      ]
     },
     {
@@ -2819,7 +2819,7 @@
      "talksTo": [
       {
        "to": "sched.awws-sync",
-       "label": "read every 2 hours",
+       "label": "read twice a day",
        "dir": "out"
       }
      ],
@@ -3088,7 +3088,7 @@
      "title": "AWWS sync",
      "kind": "task",
      "status": "live",
-     "summary": "Every 2 hours at :12, 7 AM to 11 PM Central: reads the AWWS board and profit page and sends one snapshot to the Pi.",
+     "summary": "Twice a day, 7:12 AM and 1:12 PM Central: reads the AWWS board and profit page and sends one snapshot to the Pi.",
      "details": [
       "A fresh Claude session each run. It reads the board's todos and handoffs and the profit page's costs and royalties, builds the snapshot with a small script in its prompt, and sends awws.set through the mailbox. A normal run posts nothing.",
       "Writes: the 'awws' snapshot on the Pi (to-dos, handoffs, reach, monthly money totals). It skips a run when the Pi's status is over 3 minutes old."
@@ -4241,11 +4241,11 @@
   {
    "id": "flow.pi-awws",
    "title": "The AWWS snapshot reaches the TV",
-   "summary": "A scheduled Claude routine builds the snapshot and sends it through the mailbox every 2 hours.",
+   "summary": "A scheduled Claude routine builds the snapshot and sends it through the mailbox twice a day.",
    "steps": [
     {
      "node": "sched.awws-sync",
-     "say": "At :12 every 2 hours from 7 AM a routine reads the AWWS board and profit page and builds the snapshot"
+     "say": "At 7:12 AM and 1:12 PM a routine reads the AWWS board and profit page and builds the snapshot"
     },
     {
      "node": "cloud.r2.status",
