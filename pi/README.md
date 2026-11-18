@@ -97,7 +97,7 @@ A tile is `{ "widget": "weather", "x": 0, "y": 0, "w": 3, "h": 2 }` on a grid 12
 
 ## A World Worth Saving snapshot
 
-The A World Worth Saving tiles on the TV (to-dos, handoffs, outreach and the rest) show one small file of figures, called the **snapshot**. A scheduled Claude routine builds it from places only a signed-in Claude can read and sends it to the Pi through the Claude mailbox (below), usually every half hour. The Pi checks it, keeps it in `data/state.json` and passes it to the TV. School visits and other dates still come from the calendars, not from the snapshot.
+The A World Worth Saving tiles on the TV (to-dos, handoffs, outreach and the rest) show one small file of figures, called the **snapshot**. A scheduled Claude routine builds it from places only a signed-in Claude can read and sends it to the Pi through the Claude mailbox (below), twice a day at 7:12 AM and 1:12 PM Central. The Pi checks it, keeps it in `data/state.json` and passes it to the TV. School visits and other dates still come from the calendars, not from the snapshot.
 
 The full description of the file, field by field, is in [`docs/awws-snapshot.md`](../docs/awws-snapshot.md). A made-up example is `fixtures/awws-sample.json` in this folder.
 
