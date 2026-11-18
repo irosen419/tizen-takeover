@@ -659,6 +659,23 @@ const COMMANDS = {
       return { message: shows.setText(r.list || []), data: { list: r.list } };
     }
   },
+  // episode is "S3E4"; left out on shows.watched = the earliest episode out and not yet marked.
+  'shows.watched': {
+    args: { name: [V.text(80), true], episode: [V.text(12), false] },
+    run: async (a, ctx) => {
+      const body = { show: a.name };
+      if (a.episode !== undefined) body.episode = a.episode;
+      const r = await ctx.call('POST', '/api/shows/watched', body);
+      return { message: shows.watchedText(r), data: { season: r.season, number: r.number, changed: !!r.changed } };
+    }
+  },
+  'shows.unwatch': {
+    args: { name: [V.text(80), true], episode: [V.text(12), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows/unwatch', { show: a.name, episode: a.episode });
+      return { message: shows.unwatchText(r), data: { season: r.season, number: r.number, changed: !!r.changed } };
+    }
+  },
   'shows.refresh': {
     args: {},
     run: async (a, ctx) => {

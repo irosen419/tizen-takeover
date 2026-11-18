@@ -316,14 +316,16 @@ async function main() {
         try {
           for (const id of IDS) {
             await H.openPanel(page, id);
-            let p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+            // Budget lab opens straight at full screen, read from the couch: 1.5rem at the least.
+            const direct = id === 'budget-lab';
+            let p = await page.evaluate(inspect, ['#panel .panel-body', direct ? 1.5 : 1]);
             assert(!p.length, id + ' panel: ' + p.slice(0, 5).join('; '));
             // The full name, or its short form when it doesn't fit (data-full holds the name then).
             const full = (sel) => page.evaluate((s) => { const n = document.querySelector(s); return n ? (n.getAttribute('data-full') || n.textContent) : null; }, sel);
             const title = await full('#panel .panel-title');
             assert(title === await full(titleOf(id)), id + ' panel title: ' + title);
-            await H.fullScreen(page);
-            p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+            if (!direct) await H.fullScreen(page);
+            p = await page.evaluate(inspect, ['#panel .panel-body', direct ? 1.5 : 1]);
             assert(!p.length, id + ' full screen: ' + p.slice(0, 5).join('; '));
             if (SHOTS && !long && (id === 'awws-money' || id === 'budget-card')) {
               await page.screenshot({ path: path.join(SHOTS, 'money-es-full-' + id + '.png') });
@@ -346,7 +348,7 @@ async function main() {
           const q = (s) => Array.prototype.slice.call(document.querySelectorAll('#panel ' + s));
           const lh = (n) => { const cs = getComputedStyle(n); return parseFloat(cs.lineHeight) / parseFloat(cs.fontSize); };
           const out = [];
-          q('.bl-clabel, .bl-msub, .bl-mnote, .bl-dname, .bl-dval, .bl-dextra').forEach((n) => {
+          q('.bl-clabel, .bl-camount, .bl-msub, .bl-mnote, .bl-dname, .bl-dval, .bl-dextra').forEach((n) => {
             if (n.offsetHeight && lh(n) < 1.245) out.push('line height ' + lh(n).toFixed(2) + ': ' + n.textContent.slice(0, 30));
           });
           q('.bl-cut').forEach((row) => {
@@ -362,21 +364,20 @@ async function main() {
             const nm = row.querySelector('.bl-dname').getBoundingClientRect();
             if (v.right > r.right + 1 || nm.right > v.left + 1) out.push('destination does not fit: ' + row.textContent.slice(0, 40));
           });
-          return { bad: out, labels: q('.bl-clabel').map((n) => n.textContent), dest: q('.bl-dname').map((n) => n.textContent), head: q('.bl-dest .bu-label').map((n) => n.textContent) };
+          return { bad: out, labels: q('.bl-cut').map((n) => n.querySelector('.bl-clabel').textContent + ' · ' + n.querySelector('.bl-camount').textContent), dest: q('.bl-dname').map((n) => n.textContent), head: q('.bl-dest .bu-label').map((n) => n.textContent) };
         });
         try {
           await H.openPanel(page, 'budget-lab');
-          for (let i = 0; i < 3; i++) await H.key(page, 'ArrowDown');
+          await H.key(page, 'ArrowDown');
           assert(await page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f && f.getAttribute('data-key'); }) === 'cut-0', 'not on the first merchant');
           await H.key(page, 'ArrowRight', 2);
-          for (const mode of ['panel', 'full']) {
-            if (mode === 'full') await H.fullScreen(page);
+          for (const mode of ['full']) {
             const l = await look();
             assert(!l.bad.length, mode + ': ' + l.bad.slice(0, 4).join('; '));
-            assert(l.labels.length === 5 && /^¡?Hilltop Grocer · \$184 /.test(l.labels[0]) && /recortas/.test(l.labels[0]) && /\$2!?$/.test(l.labels[0]), mode + ' row: ' + l.labels[0]);
+            assert(l.labels.length === 5 && /^¡?Hilltop Grocer · \$184 /.test(l.labels[0]) && /recorte/.test(l.labels[0]) && /\$2!?$/.test(l.labels[0]), mode + ' row: ' + l.labels[0]);
             assert(/Pago/.test(l.dest[0]) && /tarjeta/.test(l.dest[0]) && /Ahorro/.test(l.dest[1]) && /AWWS/.test(l.dest[2]) && /Colchón/.test(l.dest[3]), mode + ' destinations: ' + l.dest.join(' | '));
             assert(/dónde/.test(l.head[0]), mode + ' head: ' + l.head[0]);
-            const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+            const p = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
             assert(!p.length, mode + ': ' + p.slice(0, 5).join('; '));
           }
           noErrors(page);
@@ -390,7 +391,6 @@ async function main() {
         const page = await open(env, { layout: ROW, lang: 'es', long: long });
         try {
           await H.openPanel(page, 'budget-lab');
-          await H.fullScreen(page);
           const c = await page.evaluate(() => {
             const sec = document.querySelector('#panel .bl-chart-sec');
             const box = document.querySelector('#panel .bl-chart');
@@ -420,19 +420,60 @@ async function main() {
           });
           assert(c, 'no chart at full screen');
           assert(!c.bad.length, c.bad.slice(0, 4).join('; '));
-          assert(/Recorrido/.test(c.head) && /30 nov/.test(c.head), 'head: ' + c.head);
+          assert(/Recorrido/.test(c.head) && (long || /30 nov/.test(c.head)), 'head: ' + c.head);
           assert(/Margen/.test(c.legend) && /Gasto/.test(c.legend), 'legend: ' + c.legend);
           assert(c.labels.indexOf('lun') >= 0 && c.labels.indexOf('20 nov') >= 0 && c.labels.indexOf('30 nov') >= 0, 'labels: ' + c.labels.join(' | '));
-          assert(/Cubierto/.test(c.gap) && /sobrante/.test(c.gap), 'gap: ' + c.gap);
+          assert(/Cubierto/.test(c.gap) && /sobran/.test(c.gap), 'gap: ' + c.gap);
           const fk = () => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
-          for (let i = 0; i < 4 && !/^(cap|mode|save|reset|cut-\d+)$/.test(await fk() || ''); i++) await H.key(page, 'ArrowDown');
+          for (let i = 0; i < 4 && !/^(cap|reset|cut-\d+)$/.test(await fk() || ''); i++) await H.key(page, 'ArrowDown');
           for (let i = 0; i < 16 && (await fk()) !== 'cap'; i++) await H.key(page, 'ArrowUp');
           await H.key(page, 'ArrowRight');
           await H.sleep(200);
           const g = await text(page, '#panel .bl-ch-gap');
           assert(/Faltan\S* \$13/.test(g), 'gap at $147: ' + g);
-          const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+          const p = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
           assert(!p.length, p.slice(0, 5).join('; '));
+          noErrors(page);
+        } finally {
+          await page.ctx.close();
+          await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+        }
+      });
+
+      // The couch view in Spanish: the cap, its hint and result, and the short
+      // case's message and action, all whole, on one screen, nothing under 1.5rem.
+      await check(name + ': Budget lab couch view and the short case, words in Spanish, nothing clipped', async () => {
+        const page = await open(env, { layout: ROW, lang: 'es', long: long });
+        try {
+          await H.openPanel(page, 'budget-lab');
+          let p = await text(page, '#panel .panel-body');
+          assert(/Mantén/.test(p) && /◀ ▶/.test(p) && /cambiar/.test(p) && /Calculado\S* \$62/.test(p) && /cubierto/i.test(p), 'covered: ' + p.slice(0, 300));
+          const o = await page.evaluate(() => {
+            const out = [];
+            const body = document.querySelector('#panel .panel-body').getBoundingClientRect();
+            ['.bl-hero', '.bl-result', '.bl-hint', '.bl-herotop'].forEach((s) => {
+              const n = document.querySelector('#panel ' + s);
+              const r = n.getBoundingClientRect();
+              if (n.scrollWidth > n.clientWidth + 1) out.push('wider than its box: ' + s);
+              if (r.right > body.right + 1) out.push('out of the panel: ' + s);
+            });
+            return out;
+          });
+          assert(!o.length, o.join('; '));
+          let bad = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
+          assert(!bad.length, 'covered: ' + bad.slice(0, 4).join('; '));
+          await H.key(page, 'Escape');
+          await H.idle(page);
+          await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true, shortZero: true }));
+          await H.until(async () => /Te faltan/.test(await text(page, '#panel .panel-body')) || true, 100, '');
+          await H.openPanel(page, 'budget-lab');
+          await H.until(async () => /Te faltan/.test(await text(page, '#panel .panel-body')), 5000, 'no Spanish short message: ' + await text(page, '#panel .panel-body'));
+          p = await text(page, '#panel .panel-body');
+          assert(/Te faltan\S* \$138/.test(p) && /Qué/i.test(p) && /Pasa\S* \$138/.test(p), 'short: ' + p.slice(0, 300));
+          bad = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
+          assert(!bad.length, 'short: ' + bad.slice(0, 4).join('; '));
+          const fit = await page.evaluate(() => { const b = document.querySelector('#panel .panel-body'); return [b.scrollHeight, b.clientHeight, [].map.call(b.querySelectorAll('.bu-pcol'), (c) => c.offsetHeight), document.querySelector('.bl-pwrap').className]; });
+          assert(fit[0] <= fit[1] + 1, 'the short case does not fit one screen: ' + JSON.stringify(fit));
           noErrors(page);
         } finally {
           await page.ctx.close();

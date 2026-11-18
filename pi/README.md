@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.7.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.8.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -157,7 +157,7 @@ Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `la
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.7.0` or later.
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.8.0` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 
@@ -245,6 +245,7 @@ The Entertainment panel on the TV has a **Schedule**: what airs today, this week
   - `--via "Prime Video"` is for a service billed through another app (Prime Video Channels). The badge still says HBO Max, the TV adds "via Prime Video", and Watch opens Prime Video. `watchVia` in `app/config.js` does this for every show of a service.
   Adding a show that is already there updates it.
 - `./hub shows remove "Stick"` takes one off.
+- `./hub shows watched "Stick" S3E4` marks an episode watched by hand, and `./hub shows unwatch "Stick" S3E4` takes the mark off (server 0.8.0). The TV marks episodes when the person answers "Did you finish?" or taps the check on a row (`POST /shows/watched` and `POST /shows/unwatch` from the screen; README.md, Schedule); these two are for mistakes made elsewhere. Leave the episode out of `watched` to mark the earliest episode out in the last week that is not marked. The marks live in `data/shows.json` (`watched: [{ "s": 3, "e": 4, "at": "..." }]`) and `./hub shows list` ends a show's line with `[watched S3E4]`. The mailbox has `shows.watched` and `shows.unwatch`.
 - `./hub shows refresh` asks TVmaze about every show now and waits up to 25 seconds. Otherwise the Pi asks every 6 hours, and right after the list changes.
 
 The list starts with Hell's Kitchen and Shark Tank (Disney+), The Great British Baking Show (Netflix) and Stick (Apple TV), and lives in `data/shows.json`. The schedule itself is kept in `data/state.json`.
@@ -255,7 +256,7 @@ On the TV, OK on a show opens its app (with "Search: Stick" as a reminder, since
 
 `HUB_SHOWS=off` in `.env` stops the TVmaze lookups. `HUB_SHOWS=sample` sends a made-up sample instead (`fixtures/shows-sample.json`), to try the TV without TVmaze.
 
-The log names no show. It only counts, for example `shows refresh: 4 of 4 shows read` or `shows refresh: 3 of 4 shows read, 1 failed (timeout)`.
+The log names no show. It only counts, for example `shows refresh: 4 of 4 shows read` or `shows refresh: 3 of 4 shows read, 1 failed (timeout)`. Marking watched logs `screen marked an episode watched` (from the TV) or the usual `control POST /api/shows/watched -> 200 marked an episode watched` line.
 
 ### Watch link test answers
 
@@ -532,7 +533,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.7.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.8.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

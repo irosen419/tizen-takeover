@@ -14,6 +14,12 @@
  *     OK or Back launches at once);
  *   - the watch link test: placeholders never fire, a recipe fires through
  *     /launch-control, the answer reaches the Pi, the typed id is kept;
+ *   - "Did you finish?": every Watch press adds one started line (no timers, no
+ *     calls to the TV service), the tile and the Schedule item say "N to check",
+ *     the strip lists the lines sorted by title, Watched tells the Pi, Not yet
+ *     sends nothing, focus walks down the list, a line goes after 7 days or when
+ *     the Pi has the episode watched, and an aired row's check toggle marks and
+ *     unmarks (EN and ES, nothing clipped);
  *   - service.js's /launch-control checks (run in a sandbox with a stand-in
  *     tizen object), and the new app files are plain ES5.
  */
@@ -71,6 +77,7 @@ function loadService() {
     ApplicationControlData: function (key, value) { this.key = key; this.value = value; },
     ApplicationControl: function (op, uri, mime, category, data) { this.operation = op; this.uri = uri; this.data = data; },
     application: {
+      getAppsContext: (ok) => ok([]),
       launchAppControl: (control, id, ok, err) => {
         out.launched.push({ id: id, op: control.operation, uri: control.uri, data: control.data });
         if (out.fail) err({ message: out.fail }); else ok();
@@ -79,8 +86,7 @@ function loadService() {
   };
   const sandbox = {
     require: (m) => (m === 'http' ? fakeHttp : require(m)),
-    Buffer: { from: Buffer.from, alloc: Buffer.alloc, isBuffer: Buffer.isBuffer, concat: Buffer.concat },
-    console: { log: () => {} }, setTimeout, clearTimeout, setInterval, clearInterval, process, tizen,
+    console: { log: () => {} }, setTimeout, clearTimeout, setInterval: () => 1, clearInterval: () => {}, tizen, process,
     module: {}, exports: {}, __dirname: ROOT
   };
   // new Buffer(...) in the old service: the same as Buffer.from here.
@@ -571,6 +577,392 @@ async function main() {
       assert(seen.length === 10, seen.join(' '));
     });
 
+
+    // ---------- "Did you finish?" ----------
+    const NO_ANSWERS = ['the-great-british-baking-show', 'the-pitt'];
+    const startedOf = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('homeHub.watch.v1') || '[]'));
+    const outboxOf = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('homeHub.watch.out.v1') || '[]'));
+    const piShow = async (id) => (await getJson(env.LIVE + '/live/state')).resources.shows.data.shows.filter((x) => x.id === id)[0];
+    const piMarked = async (id, n) => (await piShow(id)).upcoming.some((e) => e.watched && e.number === n);
+    const finLines = (p) => p.evaluate(() => [].map.call(document.querySelectorAll('.sh-fin-line'), (l) => l.querySelector('.sh-fin-text').textContent + ' | ' + [].map.call(l.querySelectorAll('.sh-fin-btn'), (b) => b.textContent).join(' / ')));
+    const finKeys = (p) => p.evaluate(() => [].map.call(document.querySelectorAll('.sh-fin-line .sh-fin-btn:first-child'), (b) => b.getAttribute('data-key')));
+    const postsOf = (p) => { const out = []; p.on('request', (r) => { if (r.method() === 'POST' && /\/shows\//.test(r.url())) out.push(r.url().replace(/^.*:\d+/, '')); }); return out; };
+    const postPi = (route, body) => new Promise((resolve, reject) => {
+      const data = JSON.stringify(body);
+      const rq = http.request(env.LIVE + route, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(data), origin: env.PAGE } }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+      rq.on('error', reject);
+      rq.end(data);
+    });
+    // The Pi is shared by these checks: marks made by one are taken off again.
+    const unmarkAll = async () => { for (const [id, s, n] of [['the-great-british-baking-show', 16, 9], ['shark-tank', 17, 6], ['hells-kitchen', 24, 8]]) await postPi('/shows/unwatch', { id: id, season: s, number: n }); await H.sleep(300); };
+    const SIX = [['the-pitt', 2, 6, 40], ['slow-horses', 5, 5, 2], ['the-great-british-baking-show', 16, 9, 20], ['slow-horses', 5, 4, 3], ['hells-kitchen', 24, 8, 1]];
+
+    await check('Watch adds one started line, twice is still one; nothing is timed, asked or sent to the TV service', async () => {
+      const wp = await env.newPage({});
+      try {
+        const service = [];
+        wp.on('request', (r) => { if (/:8095\/(running|watch-track)/.test(r.url()) || /:8095\//.test(r.url()) && /watch|running/.test(r.url())) service.push(r.url()); });
+        await H.openSchedule(wp, 'week');
+        // Paradise has not aired yet (35 minutes to go): nothing is kept.
+        await H.focusKey(wp, 'sh:row:paradise:');
+        let before = env.launches.length;
+        await H.key(wp, 'Enter');
+        await H.until(() => env.launches.length > before, 3500, 'no launch');
+        assert((await startedOf(wp)).length === 0, 'kept an episode that has not aired');
+        // The Great British Baking Show S16 E9 is out.
+        await H.focusKey(wp, 'sh:row:the-great-british-baking-show:');
+        before = env.launches.length;
+        await H.key(wp, 'Enter');
+        await H.until(() => env.launches.length > before, 3500, 'no launch');
+        let list = await startedOf(wp);
+        assert(list.length === 1 && JSON.stringify(Object.keys(list[0]).sort()) === '["number","season","showId","startedAt"]', JSON.stringify(list));
+        assert(list[0].showId === 'the-great-british-baking-show' && list[0].season === 16 && list[0].number === 9 && Math.abs(list[0].startedAt - H.TUESDAY) < 60000, JSON.stringify(list));
+        // The same episode again: still one.
+        before = env.launches.length;
+        await H.key(wp, 'Enter');
+        await H.until(() => env.launches.length > before, 3500, 'no second launch');
+        list = await startedOf(wp);
+        assert(list.length === 1, 'pressed twice: ' + JSON.stringify(list));
+        // A show row (Coming soon) with no episode: its earliest one out and not watched, Slow Horses S5 E4.
+        await H.openSchedule(wp, 'soon').catch(() => {});
+        await wp.evaluate(() => window.HUB_SHOWS._test.tab('soon'));
+        await wp.evaluate(() => window.HUB_TEST.closePanel());
+        await H.sleep(500);
+        await H.openSchedule(wp, 'soon');
+        await H.focusKey(wp, 'sh:show:slow-horses');
+        before = env.launches.length;
+        await H.key(wp, 'Enter');
+        await H.until(() => env.launches.length > before, 3500, 'no launch from the show row');
+        list = await startedOf(wp);
+        assert(list.length === 2 && list.some((r) => r.showId === 'slow-horses' && r.season === 5 && r.number === 4), JSON.stringify(list));
+        assert(service.length === 0, 'the TV service was called: ' + service.join(' '));
+        assert(await wp.evaluate(() => !document.querySelector('.sh-ask') && typeof window.HUB_SHOWS._test.checkTracked === 'undefined' && typeof window.HUB_SHOWS.trackText === 'undefined'), 'tracking code is still there');
+        // The strip lists both when the Schedule is open; the tile says 2.
+        await H.sleep(600);
+        assert((await finLines(wp)).length === 2, JSON.stringify(await finLines(wp)));
+        assert(await wp.evaluate(() => document.querySelector('.cell[data-widget="entertainment"] .ent-check').textContent) === '2', 'the tile count');
+        assert(pageErrors(wp).length === 0, pageErrors(wp).join(' | '));
+      } finally { await wp.ctx.close(); }
+    });
+
+    await check('"N to check" on the tile at every size (a pill with words from three columns, a count dot in a strip or a narrow tile), and on the Schedule item in the panel and full screen (EN and ES)', async () => {
+      const seen = [];
+      const SIZES = [[1, 1], [2, 1], [3, 1], [6, 1], [12, 1], [2, 2], [3, 2], [6, 2], [3, 3], [3, 4], [6, 4]];
+      for (const [w, h] of SIZES) {
+        const layout = [{ widget: 'entertainment', x: 0, y: 0, w: w, h: h }, { widget: 'today', x: w === 12 ? 0 : w, y: w === 12 ? 1 : 0, w: 3, h: 2 }];
+        const t = await env.newPage({ layout: layout, started: SIX.slice(0, 3) });
+        try {
+          await H.sleep(500);
+          const v = await t.evaluate(() => {
+            const tile = document.querySelector('.cell[data-widget="entertainment"] .tile');
+            const tr = tile.getBoundingClientRect();
+            const b = tile.querySelectorAll('.ent-check');
+            const q = b.length ? b[0].getBoundingClientRect() : null;
+            let overlap = 0;
+            let outside = 0;
+            Array.prototype.forEach.call(tile.querySelectorAll('.ent-chip:not(.is-blank)'), (c) => {
+              const r = c.getBoundingClientRect();
+              if (r.bottom > tr.bottom + 0.5 || r.right > tr.right + 0.5 || r.left < tr.left - 0.5) outside++;
+              if (q && b[0].className.indexOf('is-dot') < 0 && r.top < q.bottom - 1 && r.bottom > q.top + 1 && r.left < q.right && r.right > q.left) overlap++;
+            });
+            return { n: b.length, text: b.length ? b[0].textContent : '', dot: b.length ? /is-dot/.test(b[0].className) : null,
+              inside: !!q && q.left >= tr.left - 0.5 && q.right <= tr.right + 0.5 && q.top >= tr.top - 0.5 && q.bottom <= tr.bottom + 0.5,
+              clipped: b.length ? b[0].scrollWidth > b[0].clientWidth + 1 : null, overlap: overlap, outside: outside, size: tile.className };
+          });
+          const wantDot = h === 1 || w < 3;
+          seen.push(w + 'x' + h + ':' + v.text);
+          assert(v.n === 1 && v.inside && !v.clipped && v.overlap === 0 && v.outside === 0, w + 'x' + h + ': ' + JSON.stringify(v));
+          assert(v.dot === wantDot && v.text === (wantDot ? '3' : '3 to check'), w + 'x' + h + ' says ' + v.text + ' (dot ' + v.dot + ')');
+        } finally { await t.ctx.close(); }
+      }
+      assert(seen.length === SIZES.length, seen.join(' '));
+      // Spanish, 6x2: the pill fits whole.
+      const es = await env.newPage({ lang: 'es', started: SIX.slice(0, 3), layout: [{ widget: 'entertainment', x: 0, y: 0, w: 6, h: 2 }, { widget: 'today', x: 6, y: 0, w: 3, h: 2 }] });
+      try {
+        await H.sleep(500);
+        const v = await es.evaluate(() => { const b = document.querySelector('.cell[data-widget="entertainment"] .ent-check'); const t = document.querySelector('.cell[data-widget="entertainment"] .tile').getBoundingClientRect(); const q = b.getBoundingClientRect(); return { text: b.textContent, clipped: b.scrollWidth > b.clientWidth + 1, inside: q.right <= t.right && q.left >= t.left }; });
+        assert(v.text === '3 por revisar' && !v.clipped && v.inside, JSON.stringify(v));
+      } finally { await es.ctx.close(); }
+      // The Schedule item: a count on its icon and "3 to check" under it, in the panel and full screen; without lines, neither.
+      for (const [lang, word] of [['en', '3 to check'], ['es', '3 por revisar']]) {
+        const p = await env.newPage(lang === 'es' ? { lang: 'es', started: SIX.slice(0, 3) } : { started: SIX.slice(0, 3) });
+        try {
+          for (const full of [false, true]) {
+            await H.openGrid(p);
+            if (full) await H.fullScreen(p);
+            const v = await p.evaluate(() => {
+              const it = [].filter.call(document.querySelectorAll('#panel .ent-item'), (n) => n.querySelector('.ent-name').textContent !== '' && n.querySelector('.ent-state') && /por revisar|to check|Tus series|Your shows/.test(n.textContent))[0];
+              const b = it.querySelectorAll('.ent-count');
+              const f = it.querySelector('.logo').getBoundingClientRect();
+              const q = b.length ? b[0].getBoundingClientRect() : null;
+              return { text: it.querySelector('.ent-state').textContent, count: b.length ? b[0].textContent : '', inside: !!q && q.right <= f.right + 0.5 && q.top >= f.top - 0.5 };
+            });
+            assert(v.text === word && v.count === '3' && v.inside, lang + (full ? ' full' : ' panel') + ': ' + JSON.stringify(v));
+            await p.evaluate(() => window.HUB_TEST.closePanel());
+            await H.sleep(600);
+          }
+        } finally { await p.ctx.close(); }
+      }
+      const none = await env.newPage({});
+      try {
+        await H.openGrid(none);
+        const v = await none.evaluate(() => ({ checks: document.querySelectorAll('.ent-check').length, text: [].filter.call(document.querySelectorAll('#panel .ent-state'), (n) => /to check/.test(n.textContent)).length }));
+        assert(v.checks === 0 && v.text === 0, 'nothing started, nothing to check: ' + JSON.stringify(v));
+      } finally { await none.ctx.close(); }
+    });
+
+    await check('The strip: sorted by show title (case-insensitive, "The " ignored), then season and episode; "started when" in words; EN and ES texts', async () => {
+      const p = await env.newPage({ started: SIX });
+      try {
+        await H.openSchedule(p, 'week');
+        const want = [
+          'The Great British Baking Show · S16 E9 · started last night | Watched / Not yet',
+          'Hell’s Kitchen · S24 E8 · started tonight | Watched / Not yet',
+          'The Pitt · S2 E6 · started yesterday | Watched / Not yet',
+          'Slow Horses · S5 E4 · started earlier today | Watched / Not yet',
+          'Slow Horses · S5 E5 · started tonight | Watched / Not yet'
+        ];
+        const got = await finLines(p);
+        assert(JSON.stringify(got.map((x) => x.replace(/'/g, '’'))) === JSON.stringify(want), JSON.stringify(got));
+        assert(await p.evaluate(() => document.querySelector('.sh-fin-head').textContent) === 'Did you finish?', 'title');
+        // The sort ignores case and a leading "The ", with names of every kind.
+        const order = await p.evaluate(() => {
+          const T = window.HUB_SHOWS._test;
+          const ep = [{ season: 1, number: 2, airstamp: '2026-11-19T03:00:00Z' }];
+          const mk = (id, name) => ({ id: id, name: name, service: 'Netflix', checkedAt: '2026-11-17T12:00:00Z', upcoming: ep, watched: [] });
+          const d = JSON.parse(localStorage.getItem('homeHub.shows.v1'));
+          d.shows = [mk('b', 'beta'), mk('a', 'Alpha'), mk('c', 'The Gamma'), mk('d', 'the alpha show'), mk('e', 'ZETA'), mk('f', 'The Beta Two')];
+          T.setData(d);
+          const t = window.HUB_TEST ? Date.now() : Date.now();
+          localStorage.setItem('homeHub.watch.v1', JSON.stringify(d.shows.map((s, i) => ({ showId: s.id, season: 1, number: 2 - (s.id === 'a' ? 0 : 0), startedAt: t - (i + 1) * 3600000 })).concat([{ showId: 'a', season: 1, number: 1, startedAt: t - 3600000 }, { showId: 'a', season: 0, number: 9, startedAt: t - 3600000 }])));
+          return T.finishLines(t).map((l) => l.show.name + ' S' + l.rec.season + 'E' + l.rec.number);
+        });
+        assert(JSON.stringify(order) === JSON.stringify(['Alpha S0E9', 'Alpha S1E1', 'Alpha S1E2', 'the alpha show S1E2', 'beta S1E2', 'The Beta Two S1E2', 'The Gamma S1E2', 'ZETA S1E2']), JSON.stringify(order));
+        // When, in words (now is Tuesday 7:25 PM in Chicago).
+        const when = await p.evaluate(() => {
+          const T = window.HUB_SHOWS._test;
+          const now = Date.parse('2026-11-18T01:25:00Z');
+          return [['2026-11-17T05:00:00Z'], ['2026-11-18T00:00:00Z'], ['2026-11-17T16:00:00Z'], ['2026-11-17T08:00:00Z'], ['2026-11-16T20:00:00Z'], ['2026-11-16T08:00:00Z'], ['2026-11-16T03:00:00Z'], ['2026-11-13T20:00:00Z']].map((a) => T.startedText(Date.parse(a[0]), now));
+        });
+        assert(JSON.stringify(when) === JSON.stringify(['started last night', 'started tonight', 'started earlier today', 'started last night', 'started yesterday', 'started yesterday', 'started Sun', 'started Fri']), JSON.stringify(when));
+      } finally { await p.ctx.close(); }
+      const es = await env.newPage({ lang: 'es', started: SIX });
+      try {
+        await H.openSchedule(es, 'week');
+        const got = await finLines(es);
+        assert(got[0] === 'The Great British Baking Show · T16 E9 · empezó anoche | Visto / Todavía no', got[0]);
+        assert(got[3] === 'Slow Horses · T5 E4 · empezó hoy más temprano | Visto / Todavía no' && got[2].indexOf('empezó ayer') > 0, got.join(' ## '));
+        assert(await es.evaluate(() => document.querySelector('.sh-fin-head').textContent) === '¿Lo terminaste?', 'title');
+        const day = await es.evaluate(() => window.HUB_SHOWS._test.startedText(Date.parse('2026-11-16T03:00:00Z'), Date.parse('2026-11-18T01:25:00Z')));
+        assert(day === 'empezó el domingo', day);
+      } finally { await es.ctx.close(); }
+    });
+
+    await check('Watched tells the Pi and the row becomes watched; Not yet sends nothing; focus walks down the list and ends on the first Schedule row', async () => {
+      const p = await env.newPage({ started: [['hells-kitchen', 24, 8, 40], ['shark-tank', 17, 6, 3], ['the-great-british-baking-show', 16, 9, 20]] });
+      try {
+        const posts = postsOf(p);
+        await H.openSchedule(p, 'week');
+        assert(await focusedKey(p) === 'sh:fin:yes:the-great-british-baking-show:16:9', 'first focus: ' + await focusedKey(p));
+        assert(!(await piMarked('the-great-british-baking-show', 9)), 'marked early');
+        const marks = () => env.logs.filter((l) => /screen marked an episode watched/.test(l)).length;
+        const m0 = marks();
+        await H.key(p, 'Enter');
+        await H.until(() => piMarked('the-great-british-baking-show', 9), 4000, 'the Pi never marked it');
+        await H.until(async () => (await finLines(p)).length === 2, 3000, 'the line stayed');
+        assert(await focusedKey(p) === 'sh:fin:yes:hells-kitchen:24:8', 'focus after Watched: ' + await focusedKey(p));
+        await H.until(() => p.evaluate(() => !!document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"].is-watched')), 4000, 'the row is not marked watched');
+        assert((await startedOf(p)).length === 2, 'the list kept the answered line');
+        assert(JSON.stringify(posts) === '["/shows/watched"]', JSON.stringify(posts));
+        // Not yet: Right, OK. Nothing is sent, nothing marked.
+        await H.key(p, 'ArrowRight');
+        assert(await focusedKey(p) === 'sh:fin:no:hells-kitchen:24:8', 'Right: ' + await focusedKey(p));
+        await H.key(p, 'Enter');
+        await H.until(async () => (await finLines(p)).length === 1, 3000, 'Not yet kept the line');
+        assert(await focusedKey(p) === 'sh:fin:yes:shark-tank:17:6', 'focus after Not yet: ' + await focusedKey(p));
+        await H.sleep(800);
+        assert(JSON.stringify(posts) === '["/shows/watched"]' && marks() === m0 + 1, 'Not yet reached the Pi: ' + JSON.stringify(posts));
+        assert((await startedOf(p)).length === 1, 'Not yet kept it in the list');
+        // The last line: Watched, the strip goes and focus is the first Schedule row.
+        await H.key(p, 'Enter');
+        await H.until(() => piMarked('shark-tank', 6), 4000, 'the Pi never marked Shark Tank');
+        await H.until(() => p.evaluate(() => !document.querySelector('.sh-fin')), 3000, 'the strip stayed');
+        assert((await focusedKey(p)).indexOf('sh:row:paradise:') === 0, 'focus at the end: ' + await focusedKey(p));
+        assert((await startedOf(p)).length === 0 && JSON.stringify(posts) === '["/shows/watched","/shows/watched"]', JSON.stringify(posts));
+        assert(await p.evaluate(() => document.querySelectorAll('.cell[data-widget="entertainment"] .ent-check').length) === 0, 'the tile still says to check');
+        const logs = env.logs.join('\n');
+        assert(/screen marked an episode watched/.test(logs) && !/netflix|baking|hell|shark|S16|S17|3201907018807/i.test(logs), logs);
+        assert(!(await piMarked('hells-kitchen', 8)), 'Not yet marked Hell’s Kitchen');
+        assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+      } finally { await p.ctx.close(); await unmarkAll(); }
+    });
+
+    await check('Marks keep trying until the Pi answers: the row shows watched at once, the mark waits in homeHub.watch.out.v1 and goes through later', async () => {
+      const p = await env.newPage({ started: [['the-great-british-baking-show', 16, 9, 20]] });
+      try {
+        await p.route(/:\d+\/shows\/(watched|unwatch)/, (r) => r.abort());
+        await H.openSchedule(p, 'week');
+        await H.key(p, 'Enter');
+        await H.sleep(900);
+        assert((await finLines(p)).length === 0, 'the line stayed');
+        let out = await outboxOf(p);
+        assert(out.length === 1 && out[0].op === 'watched' && out[0].showId === 'the-great-british-baking-show' && out[0].season === 16 && out[0].number === 9, JSON.stringify(out));
+        assert(await p.evaluate(() => !!document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"].is-watched')), 'the row does not show it while the Pi is out of reach');
+        assert(await p.evaluate(() => window.HUB_SHOWS.availability().Netflix === undefined), 'the count still has it');
+        assert(!(await piMarked('the-great-british-baking-show', 9)), 'the Pi has it already');
+        await p.unroute(/:\d+\/shows\/(watched|unwatch)/);
+        await p.evaluate(() => window.HUB_SHOWS._test.flushOut());
+        await H.until(() => piMarked('the-great-british-baking-show', 9), 4000, 'the Pi never got it');
+        await H.until(async () => (await outboxOf(p)).length === 0, 3000, 'the mark stayed in the outbox');
+        assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+      } finally { await p.ctx.close(); await unmarkAll(); }
+    });
+
+    await check('A line goes after 7 days, at most 20 are kept, and a line the Pi already has as watched goes by itself', async () => {
+      // 6.9 days stays, 7.1 days goes.
+      let p = await env.newPage({ started: [['the-great-british-baking-show', 16, 9, 165], ['the-pitt', 2, 6, 171]] });
+      try {
+        await H.openSchedule(p, 'week');
+        const got = await finLines(p);
+        assert(got.length === 1 && got[0].indexOf('The Great British Baking Show · S16 E9 · started ') === 0, JSON.stringify(got));
+        const kept = await startedOf(p);
+        assert(kept.length === 1 && kept[0].showId === 'the-great-british-baking-show', 'the old one stayed in storage: ' + JSON.stringify(kept));
+      } finally { await p.ctx.close(); }
+      // 25 started: the newest 20 stay.
+      const many = [];
+      for (let i = 1; i <= 25; i++) many.push(['slow-horses', 1, i, i]);
+      p = await env.newPage({ started: many });
+      try {
+        await H.openSchedule(p, 'week');
+        const kept = await startedOf(p);
+        assert(kept.length === 20 && Math.min.apply(null, kept.map((r) => r.number)) === 1 && Math.max.apply(null, kept.map((r) => r.number)) === 20, kept.length + ' kept: ' + kept.map((r) => r.number).join(','));
+        assert((await finLines(p)).length === 20, 'lines: ' + (await finLines(p)).length);
+        // One more Watch press makes room: still 20.
+        await p.evaluate(() => { const T = window.HUB_SHOWS._test; const d = JSON.parse(localStorage.getItem('homeHub.shows.v1')); T.noteStarted(d.shows.filter((s) => s.id === 'slow-horses')[0], []); });
+        const after = await startedOf(p);
+        assert(after.length === 20 && after.some((r) => r.season === 5 && r.number === 4) && !after.some((r) => r.season === 1 && r.number === 20), 'after one more: ' + after.length + ' (the oldest goes)');
+      } finally { await p.ctx.close(); }
+      // The Pi says watched while the strip is open: the line goes by itself.
+      p = await env.newPage({ started: [['the-great-british-baking-show', 16, 9, 20], ['the-pitt', 2, 6, 40]] });
+      try {
+        await H.openSchedule(p, 'week');
+        assert((await finLines(p)).length === 2, 'two lines first');
+        assert(await postPi('/shows/watched', { id: 'the-great-british-baking-show', season: 16, number: 9 }) === 200, 'the Pi refused');
+        await H.until(async () => (await finLines(p)).length === 1, 5000, 'the line stayed after the Pi marked it');
+        const left = await finLines(p);
+        assert(left[0].indexOf('The Pitt') === 0, left[0]);
+        assert((await startedOf(p)).length === 1, 'the list kept it');
+        // Marked on the Pi before the hub opens (cache and all): never listed.
+        const q = await env.newPage({ started: [['the-great-british-baking-show', 16, 9, 20]] });
+        try {
+          await H.openSchedule(q, 'week');
+          assert((await finLines(q)).length === 0 && (await startedOf(q)).length === 0, 'listed an episode the Pi has watched');
+        } finally { await q.ctx.close(); }
+      } finally { await p.ctx.close(); await unmarkAll(); }
+    });
+
+    await check('The check toggle: after "Also on", marks and unmarks an aired row (the unmark reaches the Pi), none on a row still to come', async () => {
+      const p = await env.newPage({});
+      try {
+        const posts = postsOf(p);
+        await H.openSchedule(p, 'week');
+        // Give the Baking Show an "Also on" chip, so the toggle comes after it.
+        await p.evaluate(() => { const d = JSON.parse(localStorage.getItem('homeHub.shows.v1')); d.shows.forEach((s) => { if (s.id === 'the-great-british-baking-show') s.alsoOn = ['Hulu']; }); window.HUB_SHOWS._test.setData(d); });
+        await H.sleep(500);
+        assert(await p.evaluate(() => !document.querySelector('[data-key^="sh:mark:paradise:"]') && !!document.querySelector('[data-key^="sh:mark:slow-horses:"]') && !document.querySelector('[data-key^="sh:mark:the-pitt:"]')), 'toggles on the wrong rows');
+        await H.focusKey(p, 'sh:row:the-great-british-baking-show:');
+        await H.key(p, 'ArrowRight');
+        assert((await focusedKey(p)).indexOf('sh:alt:the-great-british-baking-show:') === 0, 'Right goes to Also on first: ' + await focusedKey(p));
+        await H.key(p, 'ArrowRight');
+        const mk = await focusedKey(p);
+        assert(mk.indexOf('sh:mark:the-great-british-baking-show:') === 0, 'then the toggle: ' + mk);
+        await H.key(p, 'ArrowRight');
+        assert(await focusedKey(p) === mk, 'Right past the toggle moved');
+        await H.key(p, 'ArrowLeft');
+        assert((await focusedKey(p)).indexOf('sh:alt:') === 0, 'Left from the toggle');
+        await H.key(p, 'ArrowRight');
+        // OK: marked on the Pi, row dimmed with its check, toggle on; focus stays on the toggle.
+        const m0 = env.logs.filter((l) => /screen took a watched mark off an episode/.test(l)).length;
+        await H.key(p, 'Enter');
+        await H.until(() => piMarked('the-great-british-baking-show', 9), 4000, 'the Pi never marked it');
+        await H.until(() => p.evaluate(() => { const r = document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"]'); return /is-watched/.test(r.className); }), 3000, 'the row is not watched');
+        let st = await p.evaluate(() => { const t = document.querySelector('[data-key^="sh:mark:the-great-british-baking-show:"]'); return { on: /is-on/.test(t.className), aria: t.getAttribute('aria-checked'), text: t.querySelector('.sh-mark-text').textContent, focused: /is-focused/.test(t.className) }; });
+        assert(st.on && st.aria === 'true' && st.text === 'Mark as not watched' && st.focused, JSON.stringify(st));
+        assert(JSON.stringify(posts) === '["/shows/watched"]', JSON.stringify(posts));
+        // OK again: the mark comes off, and the Pi hears it on its own door.
+        await H.key(p, 'Enter');
+        await H.until(async () => !(await piMarked('the-great-british-baking-show', 9)), 4000, 'the Pi kept the mark');
+        await H.until(() => p.evaluate(() => { const r = document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"]'); return !/is-watched/.test(r.className); }), 3000, 'the row stayed watched');
+        st = await p.evaluate(() => { const t = document.querySelector('[data-key^="sh:mark:the-great-british-baking-show:"]'); return { on: /is-on/.test(t.className), aria: t.getAttribute('aria-checked'), text: t.querySelector('.sh-mark-text').textContent }; });
+        assert(!st.on && st.aria === 'false' && st.text === 'Mark as watched', JSON.stringify(st));
+        assert(JSON.stringify(posts) === '["/shows/watched","/shows/unwatch"]', JSON.stringify(posts));
+        assert(env.logs.filter((l) => /screen took a watched mark off an episode$/.test(l)).length === m0 + 1, 'no unwatch line in the Pi log');
+        assert(await p.evaluate(() => window.HUB_SHOWS.availability().Netflix === 1), 'the count did not come back');
+        assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+      } finally { await p.ctx.close(); await unmarkAll(); }
+    });
+
+    await check('Spanish: the strip, the buttons and the toggle fit at panel and full screen widths, wrap instead of clipping, and keep room for ¿ É ñ', async () => {
+      const LONG = 'El increíble caso de la niña que perdió su ñandú ¿Quién lo sabe? Éxito total de la temporada';
+      for (const full of [false, true]) {
+        const p = await env.newPage({ lang: 'es', started: SIX });
+        try {
+          await H.openSchedule(p, 'week');
+          if (full) await H.fullScreen(p);
+          await p.evaluate((name) => {
+            const d = JSON.parse(localStorage.getItem('homeHub.shows.v1'));
+            d.shows.push({ id: 'largo', name: name, service: 'Netflix', checkedAt: '2026-11-17T12:00:00Z', upcoming: [{ season: 12, number: 10, airstamp: '2026-11-17T20:00:00Z' }], watched: [] });
+            const l = JSON.parse(localStorage.getItem('homeHub.watch.v1')); l.push({ showId: 'largo', season: 12, number: 10, startedAt: Date.now() - 5 * 86400000 });
+            localStorage.setItem('homeHub.watch.v1', JSON.stringify(l));
+            window.HUB_SHOWS._test.setData(d);
+          }, LONG);
+          await H.sleep(700);
+          const v = await p.evaluate((long) => {
+            const bad = [];
+            const body = document.querySelector('#panel .panel-body');
+            const strip = document.querySelector('.sh-fin');
+            const br = body.getBoundingClientRect();
+            if (!strip) return { bad: ['no strip'] };
+            if (strip.getBoundingClientRect().right > br.right + 0.5 || body.scrollWidth > body.clientWidth + 1) bad.push('the strip or the body is wider than the panel');
+            const lines = strip.querySelectorAll('.sh-fin-line');
+            const names = [];
+            Array.prototype.forEach.call(lines, (l) => {
+              const lr = l.getBoundingClientRect();
+              const text = l.querySelector('.sh-fin-text');
+              const tr = text.getBoundingClientRect();
+              names.push(text.textContent);
+              if (text.scrollWidth > text.clientWidth + 1) bad.push('text wider than its box: ' + text.textContent);
+              const btns = l.querySelector('.sh-fin-btns').getBoundingClientRect();
+              if (tr.right > btns.left + 0.5) bad.push('text runs under the buttons');
+              Array.prototype.forEach.call(l.querySelectorAll('.sh-fin-btn'), (b) => {
+                const r = b.getBoundingClientRect();
+                if (b.scrollWidth > b.clientWidth + 1 || r.right > lr.right + 0.5 || r.left < lr.left - 0.5) bad.push('button clipped: ' + b.textContent);
+                const cs = getComputedStyle(b);
+                if (parseFloat(cs.lineHeight) < parseFloat(cs.fontSize) * 1.25) bad.push('button line height ' + cs.lineHeight);
+              });
+              const cs = getComputedStyle(text);
+              if (parseFloat(cs.lineHeight) < parseFloat(cs.fontSize) * 1.25) bad.push('text line height ' + cs.lineHeight);
+            });
+            Array.prototype.forEach.call(strip.querySelectorAll('*'), (n) => { const o = getComputedStyle(n); if (o.overflow !== 'visible' || o.overflowX !== 'visible') bad.push('overflow ' + o.overflow + ' on ' + n.className); });
+            const head = strip.querySelector('.sh-fin-head');
+            const hc = getComputedStyle(head);
+            if (parseFloat(hc.lineHeight) < parseFloat(hc.fontSize) * 1.25) bad.push('head line height');
+            const longLine = [].filter.call(lines, (l) => l.textContent.indexOf(long.slice(0, 20)) === 0)[0];
+            const lh = longLine ? parseFloat(getComputedStyle(longLine.querySelector('.sh-fin-text')).lineHeight) : 0;
+            const wraps = longLine ? longLine.querySelector('.sh-fin-text').getBoundingClientRect().height > lh * 1.5 : false;
+            // The toggle's label (focused) is whole too.
+            return { bad: bad, n: lines.length, wraps: wraps, names: names };
+          }, LONG);
+          assert(v.bad.length === 0 && v.n === 6 && (full || v.wraps), (full ? 'full: ' : 'panel: ') + JSON.stringify(v));
+          // The toggle with its Spanish label, focused, stays inside its row's line.
+          await H.focusKey(p, 'sh:row:the-great-british-baking-show:');
+          await H.key(p, 'ArrowRight');
+          const t = await p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); const line = f.parentNode.getBoundingClientRect(); const r = f.getBoundingClientRect(); const x = f.querySelector('.sh-mark-text'); return { key: f.getAttribute('data-key'), text: x ? x.textContent : '', inside: r.right <= line.right + 0.5, clipped: x ? x.scrollWidth > x.clientWidth + 1 : null }; });
+          assert(t.key.indexOf('sh:mark:') === 0 && t.text === 'Marcar como visto' && t.inside && !t.clipped, JSON.stringify(t));
+        } finally { await p.ctx.close(); }
+      }
+    });
+
   } finally {
     await env.stop();
   }
@@ -600,6 +992,66 @@ async function main() {
     assert(r.status === 500 && r.body.ok === false && r.body.error === 'NotFoundError', JSON.stringify(r));
   });
 
+
+  {
+    // Counts and the Schedule with a watched episode: Slow Horses S5 E4 (the
+    // only one of its out) and Baking Show S16 E9 are marked.
+    const base = await H.start();
+    const mark = await H.start({ watched: [['slow-horses', 5, 4], ['the-great-british-baking-show', 16, 9]] });
+    try {
+      const a = await base.newPage({});
+      const b = await mark.newPage({});
+      await check('Counts skip watched episodes: a show whose aired episodes are all watched leaves the badge', async () => {
+        const ca = await a.evaluate(() => window.HUB_SHOWS.availability());
+        const cb = await b.evaluate(() => window.HUB_SHOWS.availability());
+        assert(ca['Apple TV'] === 1 && ca.Netflix === 1, 'before: ' + JSON.stringify(ca));
+        assert(cb['Apple TV'] === undefined && cb.Netflix === undefined, 'after: ' + JSON.stringify(cb));
+        const rest = (o) => JSON.stringify(Object.keys(o).filter((k) => k !== 'Apple TV' && k !== 'Netflix').sort().map((k) => k + o[k]));
+        assert(rest(ca) === rest(cb), 'other apps changed: ' + rest(ca) + ' vs ' + rest(cb));
+        // The badge on the tile follows.
+        const n = (p) => p.evaluate(() => document.querySelectorAll('.ent-count').length);
+        const na = await n(a);
+        const nb = await n(b);
+        assert(na > 0 && nb === na - 2, 'count badges on the tile: ' + na + ' before, ' + nb + ' after');
+      });
+      await check('The Schedule dims watched rows with a check and "Watched" (EN, ES); watched rows are not the first focus; a row of several episodes counts only when all are watched', async () => {
+        await H.openSchedule(b, 'week');
+        const r = await b.evaluate(() => {
+          const q = (k) => document.querySelector('[data-key^="sh:row:' + k + ':"]');
+          const w = q('the-great-british-baking-show');
+          const u = q('paradise');
+          return { watched: /is-watched/.test(w.className), note: w.querySelector('.sh-note.is-watched').textContent, check: !!w.querySelector('.sh-check'),
+            other: /is-watched/.test(u.className), aired: q('slow-horses').querySelector('.sh-note.is-watched').textContent };
+        });
+        assert(r.watched && r.note === 'Watched' && r.check && !r.other && r.aired === 'Watched', JSON.stringify(r));
+        assert((await focusedKey(b)).indexOf('sh:row:paradise:') === 0, 'focus: ' + await focusedKey(b));
+        const row = await b.evaluate(() => window.HUB_SHOWS._test.rowWatched({ eps: [{ watched: true }, {}] }) + '/' + window.HUB_SHOWS._test.rowWatched({ eps: [{ watched: true }, { watched: true }] }));
+        assert(row === 'false/true', row);
+        await b.ctx.close();
+        const es = await mark.newPage({ lang: 'es' });
+        await H.openSchedule(es, 'week');
+        const t = await es.evaluate(() => document.querySelector('[data-key^="sh:row:slow-horses:"] .sh-note.is-watched').textContent);
+        assert(t === 'Visto', t);
+        await es.ctx.close();
+      });
+      await check('A started line whose episode the Pi has as watched is not listed (the Pi already knew)', async () => {
+        const q = await mark.newPage({ started: [['the-great-british-baking-show', 16, 9, 20], ['the-pitt', 2, 6, 40], ['slow-horses', 5, 4, 3]] });
+        try {
+          await H.openSchedule(q, 'week');
+          const lines = await q.evaluate(() => [].map.call(document.querySelectorAll('.sh-fin-line .sh-fin-name'), (n) => n.textContent));
+          assert(JSON.stringify(lines) === '["The Pitt"]', JSON.stringify(lines));
+          const kept = await q.evaluate(() => JSON.parse(localStorage.getItem('homeHub.watch.v1')));
+          assert(kept.length === 1 && kept[0].showId === 'the-pitt', JSON.stringify(kept));
+          assert(await q.evaluate(() => document.querySelectorAll('.cell[data-widget="entertainment"] .ent-check').length === 1 && document.querySelector('.cell[data-widget="entertainment"] .ent-check').textContent === '1'), 'tile count');
+        } finally { await q.ctx.close(); }
+      });
+      await a.ctx.close();
+    } finally {
+      await base.stop();
+      await mark.stop();
+    }
+  }
+
   await check('The new and changed app files are plain ES5', () => {
     let acorn = null;
     for (const p of ['acorn', '/opt/node-tools/node_modules/acorn', '/usr/local/lib/node_modules_global/acorn']) {
@@ -615,6 +1067,12 @@ async function main() {
       }
     }
     assert(!bad.length, bad.join(' | '));
+    // The TV service no longer counts anything: no /running, no /watch-track, no timing code in the page.
+    const svc = fs.readFileSync(path.join(ROOT, 'service.js'), 'utf8');
+    assert(!/watch-track|\/running|settleTracks|runningApps/.test(svc), 'service.js still counts watching');
+    const shw = fs.readFileSync(path.join(ROOT, 'app/widgets/shows.js'), 'utf8');
+    assert(!/watch-track|\/running|askWatched|nextAsk|checkTracked|trackText|sh-ask/.test(shw), 'shows.js still tracks app time');
+    assert(!/sh-ask|askTitle/.test(fs.readFileSync(path.join(ROOT, 'app/widgets/shows.css'), 'utf8') + fs.readFileSync(path.join(ROOT, 'app/i18n.js'), 'utf8')), 'the Did you watch it? card is still in the CSS or the words');
     // No CSS grid and no flex gap in the new stylesheet.
     const css = fs.readFileSync(path.join(ROOT, 'app/widgets/shows.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     assert(!/display:\s*grid|(^|[^-])gap:/m.test(css), 'grid or gap in shows.css');

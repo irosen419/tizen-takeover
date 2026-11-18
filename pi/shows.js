@@ -19,6 +19,14 @@
  *                service elsewhere (widgets.entertainment.watchAliases in
  *                app/config.js, Hulu -> Disney+ by default).
  *
+ * Watched episodes: each list entry may carry watched: [{ s, e, at }] (season,
+ * episode, when it was marked). The TV marks one when the person answers
+ * "Did you finish?" or taps the check on a row (POST /shows/watched and
+ * POST /shows/unwatch from the screen);
+ * ./hub shows watched / unwatch and the mailbox (shows.watched, shows.unwatch)
+ * correct mistakes. The snapshot gets shows[].watched and watched: true on
+ * the matching upcoming / next episodes (docs/shows-snapshot.md).
+ *
  * TVmaze calls, per show and refresh: GET /singlesearch/shows?q=<name> once
  * (until the id is known), then GET /shows/<id>?embed[]=nextepisode&
  * embed[]=previousepisode and GET /shows/<id>/episodes. At most 20 calls in
@@ -60,6 +68,9 @@ const MAX_NAME = 80;
 const MAX_SERVICE = 24;
 const MAX_EP_NAME = 80;
 const MAX_ALSO = 4;
+const MAX_WATCHED = 400;         // watched episodes kept per show (the oldest go first)
+const SEND_WATCHED = 60;         // watched episodes the TV is sent per show (the newest)
+const MAX_EP_NUM = 9999;
 const STATUSES = ['Running', 'Ended', 'To Be Determined', 'In Development'];
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f]+/g;
 
@@ -149,8 +160,8 @@ function normalizeEntry(raw, where) {
   if (typeof raw === 'string') raw = { name: raw };
   if (!isObj(raw)) throw bad('each show must be an object like {"name": "Stick", "service": "Apple TV"}' + at);
   Object.keys(raw).forEach((k) => {
-    if (['name', 'service', 'tvmazeId', 'serviceOverride', 'alsoOn', 'via'].indexOf(k) < 0) {
-      throw bad('unknown field "' + cleanText(k, 30) + '" (use name, service, tvmazeId, serviceOverride, alsoOn, via)' + at);
+    if (['name', 'service', 'tvmazeId', 'serviceOverride', 'alsoOn', 'via', 'watched'].indexOf(k) < 0) {
+      throw bad('unknown field "' + cleanText(k, 30) + '" (use name, service, tvmazeId, serviceOverride, alsoOn, via, watched)' + at);
     }
   });
   const name = cleanText(raw.name, MAX_NAME + 1);
@@ -183,7 +194,55 @@ function normalizeEntry(raw, where) {
     if (also.length > MAX_ALSO) throw bad('"alsoOn" has ' + also.length + ' apps; at most ' + MAX_ALSO + at);
     if (also.length) out.alsoOn = also;
   }
+  if (raw.watched !== undefined && raw.watched !== null) {
+    const w = cleanWatched(raw.watched);
+    if (w === null) throw bad('"watched" must be a list like [{"s": 3, "e": 4, "at": "2026-11-17T20:00:00Z"}]' + at);
+    if (w.length) out.watched = w;
+  }
   return out;
+}
+
+/* ---------- watched episodes ---------- */
+
+// [{ s, e, at }] cleaned: whole numbers, one per episode, oldest first, at
+// most MAX_WATCHED. null when it is not a list of such objects.
+function cleanWatched(v) {
+  if (!Array.isArray(v)) return null;
+  const seen = {};
+  const out = [];
+  for (const x of v) {
+    if (!isObj(x) || !Number.isInteger(x.s) || !Number.isInteger(x.e) || x.s < 0 || x.e < 0 || x.s > MAX_EP_NUM || x.e > MAX_EP_NUM) return null;
+    const k = x.s + 'x' + x.e;
+    if (seen[k]) continue;
+    seen[k] = true;
+    out.push({ s: x.s, e: x.e, at: timeOf(x.at) || iso(0) });
+  }
+  out.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return out.slice(-MAX_WATCHED);
+}
+
+// "S3E4", "s3e4", "3x4" or "S3 E4" -> { season: 3, number: 4 }, else null.
+function parseEpisode(text) {
+  const m = /^\s*s?(\d{1,4})\s*[ex]\s*(\d{1,4})\s*$/i.exec(String(text === undefined || text === null ? '' : text));
+  return m ? { season: Number(m[1]), number: Number(m[2]) } : null;
+}
+
+function isWatched(entry, season, number) {
+  return !!(entry && Array.isArray(entry.watched) && entry.watched.some((w) => w.s === season && w.e === number));
+}
+
+// Marks watched on a built show (fresh or a last good copy) from its list
+// entry: show.watched (the newest SEND_WATCHED) and watched: true on episodes.
+function applyWatched(show, entry) {
+  const list = entry && Array.isArray(entry.watched) ? entry.watched : [];
+  const mark = (e) => {
+    if (!e) return;
+    if (isWatched(entry, e.season, e.number)) e.watched = true; else delete e.watched;
+  };
+  mark(show.nextEpisode);
+  (show.upcoming || []).forEach(mark);
+  show.watched = list.slice(-SEND_WATCHED).map((w) => ({ season: w.s, number: w.e, at: w.at }));
+  return show;
 }
 
 function normalizeList(raw) {
@@ -247,8 +306,16 @@ function episodeOf(ep) {
   const season = Number.isInteger(ep.season) && ep.season >= 0 ? ep.season : null;
   const number = Number.isInteger(ep.number) && ep.number >= 0 ? ep.number : null;
   const out = { season: season, number: number, name: plainName(ep.name, MAX_EP_NAME), airstamp: airstamp };
+  if (Number.isInteger(ep.runtime) && ep.runtime >= 1 && ep.runtime <= 600) out.runtime = ep.runtime;
   if (typeof ep.airdate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ep.airdate)) out.airdate = ep.airdate;
   return out;
+}
+
+// An episode as the TV gets it (the runtime in minutes only when TVmaze has one).
+function epOut(e) {
+  const o = { season: e.season, number: e.number, name: e.name, airstamp: e.airstamp };
+  if (e.runtime) o.runtime = e.runtime;
+  return o;
 }
 
 // One show for the TV, from TVmaze's show (with its embeds) and episode list.
@@ -290,20 +357,20 @@ function buildShow(entry, show, episodes, nowMs) {
     running: status !== 'Ended',
     tvmazeId: Number.isInteger(s.id) ? s.id : entry.tvmazeId || null,
     checkedAt: iso(nowMs),
-    nextEpisode: next ? { season: next.season, number: next.number, name: next.name, airstamp: next.airstamp } : null,
-    upcoming: upcoming.map((e) => ({ season: e.season, number: e.number, name: e.name, airstamp: e.airstamp })),
+    nextEpisode: next ? epOut(next) : null,
+    upcoming: upcoming.map(epOut),
     returning: returning
   };
-  return out;
+  return applyWatched(out, entry);
 }
 
 // A show from the list that has no TVmaze copy yet.
 function placeholder(entry, error) {
-  return {
+  return applyWatched({
     id: slug(entry.name), name: entry.name, service: entry.service || '', watch: entry.serviceOverride || entry.service || '',
     channel: '', alsoOn: (entry.alsoOn || []).slice(), via: entry.via || null, status: '', running: null, tvmazeId: entry.tvmazeId || null, checkedAt: null,
     nextEpisode: null, upcoming: [], returning: null, error: error || 'not looked up yet'
-  };
+  }, entry);
 }
 
 /* ---------- the resource ---------- */
@@ -316,12 +383,15 @@ const T = (v) => (typeof v === 'string' ? timeOf(v) : null);
 
 function cleanEp(e) {
   if (!isObj(e) || !T(e.airstamp)) return null;
-  return {
+  const out = {
     season: Number.isInteger(e.season) ? e.season : null,
     number: Number.isInteger(e.number) ? e.number : null,
     name: cleanText(e.name, MAX_EP_NAME),
     airstamp: T(e.airstamp)
   };
+  if (Number.isInteger(e.runtime) && e.runtime >= 1 && e.runtime <= 600) out.runtime = e.runtime;
+  if (e.watched === true) out.watched = true;
+  return out;
 }
 
 function cleanShow(s) {
@@ -351,6 +421,14 @@ function cleanShow(s) {
       airstamp: T(r.airstamp)
     };
     if (Number.isInteger(r.episode)) out.returning.episode = r.episode;
+  }
+  out.watched = [];
+  if (Array.isArray(s.watched)) {
+    s.watched.forEach((w) => {
+      if (isObj(w) && Number.isInteger(w.season) && Number.isInteger(w.number) && out.watched.length < SEND_WATCHED) {
+        out.watched.push({ season: w.season, number: w.number, at: T(w.at) || iso(0) });
+      }
+    });
   }
   if (s.stale === true) out.stale = true;
   if (typeof s.error === 'string' && s.error) out.error = cleanText(s.error, 140);
@@ -546,7 +624,7 @@ function createTracker(o) {
     cur.shows.forEach((s) => { old[s.id] = s; });
     const shows = list.map((e) => {
       const id = slug(e.name);
-      if (fresh && fresh[id]) return fresh[id];
+      if (fresh && fresh[id]) return applyWatched(fresh[id], e);
       const prev = old[id];
       const why = problems && problems[id];
       if (!prev || prev.checkedAt === null) return placeholder(e, why || (prev && prev.error) || 'not looked up yet');
@@ -558,7 +636,7 @@ function createTracker(o) {
       copy.via = e.via || null;
       copy.upcoming = copy.upcoming.filter((x) => Date.parse(x.airstamp) >= t - BACK_MS);
       if (why) { copy.stale = true; copy.error = why; }
-      return copy;
+      return applyWatched(copy, e);
     });
     const data = { v: 1, updatedAt: cur.updatedAt, shows: shows };
     if (fresh && Object.keys(fresh).length) data.updatedAt = iso(t);
@@ -618,7 +696,7 @@ function createTracker(o) {
   function refresh() {
     if (closed) return Promise.resolve({ changed: false, data: o.current(), problems: [] });
     if (o.sampleFile) {
-      const changed = publishNow(sampleData(o.sampleFile, now()));
+      const changed = publishNow(sampleWatched(sampleData(o.sampleFile, now())));
       return Promise.resolve({ changed: changed, data: o.current(), problems: [] });
     }
     if (running) return running;
@@ -685,9 +763,107 @@ function createTracker(o) {
   }
 
   function set(raw) {
-    const next = normalizeList(raw);
+    const next = normalizeList(raw).map((e) => {
+      if (e.watched) return e;
+      const old = list.find((x) => slug(x.name) === slug(e.name));
+      return old && old.watched ? Object.assign({}, e, { watched: old.watched.slice() }) : e;
+    });
     changeList(next);
     return next;
+  }
+
+  // The earliest episode out already that is not marked: from the data the
+  // TV gets (a week back, so it is what the Schedule shows as aired).
+  function nextUnwatched(e) {
+    const cur = cleanData(o.current());
+    const s = cur.shows.find((x) => x.id === slug(e.name));
+    const t = now();
+    const eps = ((s && s.upcoming) || []).filter((x) => Date.parse(x.airstamp) <= t && x.season !== null && x.number !== null && !isWatched(e, x.season, x.number));
+    return eps.length ? eps[0] : null;
+  }
+
+  // The made-up sample (the preview and the tests): marks from the list
+  // go onto the sample's shows that are also on the list.
+  function sampleWatched(data) {
+    data.shows.forEach((sh) => {
+      const e = list.find((x) => slug(x.name) === sh.id);
+      if (e && e.watched) applyWatched(sh, e);   // a sample's own marks stay unless the list has some
+    });
+    return data;
+  }
+
+  // The sample after a mark came off: the flags of the episodes that left the
+  // list's watched go from the sample's copy too (it keeps its own marks otherwise).
+  function sampleAfter(before, entry) {
+    const data = cleanData(o.current());
+    const sh = data.shows.find((x) => x.id === slug(entry.name));
+    if (sh) {
+      (before.watched || []).filter((w) => !isWatched(entry, w.s, w.e)).forEach((w) => {
+        (sh.upcoming || []).concat(sh.nextEpisode ? [sh.nextEpisode] : []).forEach((ep) => { if (ep.season === w.s && ep.number === w.e) delete ep.watched; });
+        sh.watched = (sh.watched || []).filter((x) => !(x.season === w.s && x.number === w.e));
+      });
+    }
+    return sampleWatched(data);
+  }
+
+  // Saves a changed watched list and tells the TV at once. No TVmaze call.
+  function saveWatched(e, watched) {
+    const at = list.indexOf(e);
+    const entry = Object.assign({}, e);
+    if (watched.length) entry.watched = watched; else delete entry.watched;
+    const next = list.slice();
+    next[at] = entry;
+    try { writeList(listFile, next); } catch (err) {
+      const x = new Error('the show list could not be saved (' + codeOf(err) + ')');
+      x.status = 500;
+      throw x;
+    }
+    list = next;
+    publishNow(o.sampleFile ? sampleAfter(e, entry) : assemble(null, null, now()));
+    return entry;
+  }
+
+  function entryOrThrow(text) {
+    const e = findEntry(list, text);
+    if (!e) {
+      const err = bad('"' + cleanText(String(text || ''), 80) + '" is not on the show list. Run ./hub shows list to see it.');
+      err.notOnList = true;
+      throw err;
+    }
+    return e;
+  }
+
+  // Marks one episode watched: ep { season, number } or, left out, the
+  // earliest episode already out that is not marked. Returns
+  // { entry, season, number, changed }.
+  function markWatched(text, ep) {
+    const e = entryOrThrow(text);
+    let season;
+    let number;
+    if (ep) {
+      season = ep.season;
+      number = ep.number;
+      if (!Number.isInteger(season) || !Number.isInteger(number) || season < 0 || number < 0 || season > MAX_EP_NUM || number > MAX_EP_NUM) {
+        throw bad('the episode must be a season and a number, like S3E4');
+      }
+    } else {
+      const x = nextUnwatched(e);
+      if (!x) throw bad('there is no episode out in the last week that is not marked watched yet; name one, like S3E4');
+      season = x.season;
+      number = x.number;
+    }
+    if (isWatched(e, season, number)) return { entry: e, season: season, number: number, changed: false };
+    const watched = (e.watched || []).concat([{ s: season, e: number, at: iso(now()) }]).slice(-MAX_WATCHED);
+    return { entry: saveWatched(e, watched), season: season, number: number, changed: true };
+  }
+
+  // Takes a mark off (a mistake). Returns { entry, season, number, changed }.
+  function unwatch(text, ep) {
+    const e = entryOrThrow(text);
+    if (!ep || !Number.isInteger(ep.season) || !Number.isInteger(ep.number)) throw bad('say which episode, like S3E4');
+    if (!isWatched(e, ep.season, ep.number)) return { entry: e, season: ep.season, number: ep.number, changed: false };
+    const watched = e.watched.filter((w) => !(w.s === ep.season && w.e === ep.number));
+    return { entry: saveWatched(e, watched), season: ep.season, number: ep.number, changed: true };
   }
 
   return {
@@ -697,6 +873,8 @@ function createTracker(o) {
     add: add,
     remove: remove,
     set: set,
+    markWatched: markWatched,
+    unwatch: unwatch,
     lastRefresh: () => (lastRefresh === null ? null : iso(lastRefresh)),
     running: () => !!running,
     debug: () => ({ shows: list.length, timer: !!timer, refreshing: !!running, calls: calls, waitedMs: limiter.waitedMs(), sample: !!o.sampleFile }),
@@ -747,9 +925,16 @@ function listLines(r) {
       if (s.stale) line += ' [last good copy: ' + s.error + ']';
     }
     if (e.tvmazeId) line += ' [TVmaze ' + e.tvmazeId + ']';
+    if (e.watched && e.watched.length) line += ' [watched ' + watchedWords(e.watched) + ']';
     out.push(line);
   });
   return out;
+}
+
+// "S3E4, S3E5 and 7 more": the newest five marks.
+function watchedWords(w) {
+  const last = w.slice(-5).map((x) => 'S' + x.s + 'E' + x.e);
+  return last.join(', ') + (w.length > 5 ? ' and ' + (w.length - 5) + ' earlier' : '');
 }
 
 function summaryData(r) {
@@ -766,6 +951,7 @@ function summaryData(r) {
       if (e.alsoOn) o.alsoOn = e.alsoOn.slice();
       if (e.via) o.via = e.via;
       if (e.tvmazeId) o.tvmazeId = e.tvmazeId;
+      if (e.watched && e.watched.length) o.watched = e.watched.map((x) => ({ season: x.s, number: x.e, at: x.at }));
       if (s && s.status) o.status = s.status;
       if (s && s.nextEpisode) o.next = s.nextEpisode.airstamp;
       if (s && s.error) o.problem = s.error;
@@ -782,6 +968,16 @@ function addText(r) {
 
 function removeText(e) {
   return 'Removed ' + e.name + ' from the show list. The TV drops it now.';
+}
+
+function watchedText(r) {
+  const code = 'S' + r.season + 'E' + r.number;
+  return r.changed ? 'Marked ' + code + ' of ' + r.entry.name + ' as watched. The TV counts and dims it now.' : code + ' of ' + r.entry.name + ' was already marked watched.';
+}
+
+function unwatchText(r) {
+  const code = 'S' + r.season + 'E' + r.number;
+  return r.changed ? 'Took the watched mark off ' + code + ' of ' + r.entry.name + '. The TV counts it again.' : code + ' of ' + r.entry.name + ' was not marked watched.';
 }
 
 function setText(list) {
@@ -806,6 +1002,10 @@ module.exports = {
   channelOf: channelOf,
   normalizeEntry: normalizeEntry,
   normalizeList: normalizeList,
+  parseEpisode: parseEpisode,
+  cleanWatched: cleanWatched,
+  watchedText: watchedText,
+  unwatchText: unwatchText,
   readList: readList,
   writeList: writeList,
   findEntry: findEntry,
