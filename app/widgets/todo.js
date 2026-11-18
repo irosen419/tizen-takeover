@@ -21,6 +21,17 @@
  * it pulses slowly, a little stronger each hour until midnight, and at full
  * strength once the must-do is late. Only opacity animates.
  *
+ * Completed: a ticked item stays on the list for 24 hours after it was
+ * ticked (DONE_KEEP_MS), then purge() removes it, checked every minute, so
+ * it may be there across midnight. The panel lists them in "Completed", a
+ * row from before today's midnight with a quiet "Yesterday" where an open
+ * row has its due date. The home tile shows a small "Completed" section
+ * (the newest 2, then "+N more") between the open rows and "Coming up", only
+ * if the open rows keep every row they would have had without it; then the
+ * "{n} done today" line is left out, as it would say the same. Without room
+ * the newest one takes that line's place (check, struck title, "+N more"),
+ * and on a strip the tile is as it was.
+ *
  * A Pi server older than 0.6.0 can't take a level through ./hub or the
  * mailbox, so a level may also come as a tag in the notes: "[level:must]",
  * "[level:passive]" (a "level" field always wins). The lead likewise:
@@ -67,6 +78,7 @@
     heroMany: 'to do now',
     allClear: 'All clear for now',
     metaDone: '{n} done today',
+    yesterday: 'Yesterday',
     metaSep: ' · ',
     emptyTitle: 'Nothing on the list yet.',
     emptyHint: 'Press OK to add something.',
@@ -80,7 +92,7 @@
     inDays: 'in {n} days',
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-    sections: { must: 'Must today', optional: 'If you can', done: 'Done today' },
+    sections: { must: 'Must today', optional: 'If you can', done: 'Completed' },
     comingUp: 'Coming up',
     mustPill: 'MUST',
     alertOne: '{n} must-do today: {t}',
@@ -134,6 +146,8 @@
   var MAX_OPEN = 60;
   var TILE_ROWS = 8;
   var TILE_FOOT = 2;          // "Coming up" lines on the home tile
+  var TILE_DONE = 2;          // "Completed" lines on the home tile
+  var DONE_KEEP_MS = 24 * 60 * 60 * 1000;   // a ticked item stays this long
   var SECTIONS = ['now', 'next', 'waiting'];
   var LEVELS = ['must', 'optional', 'passive'];
   var NEXT_LEVEL = { must: 'optional', optional: 'passive', passive: 'must' };
@@ -407,15 +421,15 @@
     return out;
   }
 
-  // Done items last for the day they were ticked. Returns true if any went;
-  // each one that went is also queued for the Pi.
+  // Done items last for 24 hours after they were ticked. Returns true if any
+  // went; each one that went is also queued for the Pi.
   function purge() {
-    var now = today();
+    var cut = new Date().getTime() - DONE_KEEP_MS;
     var kept = [];
     var gone = [];
     for (var i = 0; i < store.items.length; i++) {
       var it = store.items[i];
-      if (it.done && dayOf(new Date(it.doneAt)) !== now) { gone.push(it.id); delete ticked[it.id]; continue; }
+      if (it.done && !(new Date(it.doneAt).getTime() > cut)) { gone.push(it.id); delete ticked[it.id]; continue; }
       kept.push(it);
     }
     store.items = kept;
@@ -423,12 +437,15 @@
     return gone.length > 0;
   }
 
-  // The hub stays open for days, so look for a new day once a minute.
+  // The hub stays open for days, so once a minute: clear what has been done
+  // for 24 hours, and draw again if something went or the day changed (a
+  // "Yesterday" label appears at midnight).
   function checkDay() {
     var now = today();
-    if (now === lastDay) return;
+    var gone = purge();
+    if (gone) store.save();
+    if (!gone && now === lastDay) return;
     lastDay = now;
-    if (purge()) store.save();
     refresh();
   }
 
@@ -742,11 +759,15 @@
     return out;
   }
 
+  // Done items still kept (see purge); on the tile, the newest first.
   function doneToday(panelView) {
     var out = [];
     for (var i = 0; i < store.items.length; i++) {
       var it = store.items[i];
       if (it.done && !(panelView && ticked[it.id])) out.push(it);
+    }
+    if (!panelView) {
+      out.sort(function (a, b) { return (Number(b.doneAt) || 0) - (Number(a.doneAt) || 0); });
     }
     return out;
   }
@@ -869,11 +890,33 @@
     var must = mustToday();
     markTile(body, must);
     if (size && size.tier === 'strip') return drawStrip(body);
+    var doneList = doneToday(false);
+    var wrap = fillTile(body, must, doneList, 'meta');
+    if (!doneList.length || !store.items.length) return;
+    // "Completed" only where the open rows keep all the room they had; if
+    // not, one line in place of the "{n} done today" line (same height).
+    var base = wrap.__fit;
+    body.removeChild(wrap);
+    var full = fillTile(body, must, doneList, 'full');
+    if (full.__fit.shown < base.shown || (full.__fit.over && !base.over)) {
+      body.removeChild(full);
+      var line = fillTile(body, must, doneList, 'line');
+      if (line.__fit.shown < base.shown || (line.__fit.over && !base.over)) {
+        body.removeChild(line);
+        fillTile(body, must, doneList, 'meta');
+      }
+    }
+  }
+
+  // The tile's content; wrap.__fit says how many open rows fit and whether
+  // the tile overflows. mode: 'meta' (the "{n} done today" line), 'line'
+  // (the newest completed item on that line) or 'full' (the Completed section).
+  function fillTile(body, must, doneList, mode) {
     var wrap = el('div', 'todo-tile', '', body);
     var now = today();
     var open = inLevel('must', false).concat(inLevel('optional', false));
     var coming = comingUp(false);
-    var doneN = doneToday(false).length;
+    var shown = 0;
 
     if (must.length) drawAlert(wrap, must, 'todo-tile-alert');
     if (!store.items.length) {
@@ -891,18 +934,53 @@
         el('span', 'todo-hero-clear', STRINGS.allClear, hero);
       }
       var parts = [];
-      if (doneN) parts.push(fill(STRINGS.metaDone, doneN));
+      if (doneList.length && mode === 'line') drawDoneLine(wrap, doneList);
+      else if (doneList.length && mode === 'meta') parts.push(fill(STRINGS.metaDone, doneList.length));
       if (parts.length) el('div', 'todo-meta', parts.join(STRINGS.metaSep), wrap);
 
       var list = open.length ? el('div', 'todo-tile-list', '', wrap) : null;
       var more = open.length ? el('div', 'todo-more', '', wrap) : null;
-      // The footnote first, so the rows are fitted to the room it leaves.
+      // The sections under the rows first, so the rows are fitted to the
+      // room they leave.
+      if (mode === 'full') drawDoneFoot(wrap, doneList);
       if (coming.length) drawFoot(wrap, coming, now, false);
-      if (list) fitRows(list, more, open, now);
+      if (list) shown = fitRows(list, more, open, now);
     }
 
     var w = warnText();
     if (w) el('div', 'todo-warn todo-tile-warn', w, wrap);
+    wrap.__fit = { shown: shown, over: wrap.scrollHeight > wrap.clientHeight + 1 };
+    return wrap;
+  }
+
+  // The compact Completed: on the meta line's row, a small green check, the
+  // newest done title struck through in gray, and "+N more" at the right.
+  function drawDoneLine(parent, items) {
+    var line = el('div', 'todo-meta todo-meta-done', '', parent);
+    var tick = el('span', 'todo-tick', '', line);
+    tick.innerHTML = ICON_TICK;
+    el('span', 'todo-done-title', shownTitle(items[0]), line);
+    if (items.length > 1) el('span', 'todo-meta-more', fill(STRINGS.more, items.length - 1), line);
+    return line;
+  }
+
+  // "Completed" on the tile: the newest done items, one line each (a green
+  // check, the title struck through in gray), "+N more" beside the label.
+  function drawDoneFoot(parent, items) {
+    var sec = el('div', 'todo-foot todo-tile-done', '', parent);
+    var head = el('div', 'todo-done-head', '', sec);
+    el('div', 'todo-foot-label', STRINGS.sections.done, head);
+    var n = Math.min(items.length, TILE_DONE);
+    // "+N more" shares the label's line, to spare the tile a row.
+    if (n < items.length) el('div', 'todo-foot-more', fill(STRINGS.more, items.length - n), head);
+    for (var i = 0; i < n; i++) {
+      var line = el('div', 'todo-done-line', '', sec);
+      line.setAttribute('data-id', String(items[i].id));
+      var tick = el('span', 'todo-tick', '', line);
+      tick.innerHTML = ICON_TICK;
+      el('span', 'todo-done-title', shownTitle(items[i]), line);
+    }
+    return sec;
   }
 
   function tileRow(item, now) {
@@ -948,6 +1026,7 @@
       // their level), else the first row.
       (list.querySelector('.lv-optional') || list.firstChild).setAttribute('data-agent-spot', '');
     }
+    return shown;
   }
 
   // "Coming up": passive items, dimmed, one line each, with a small green
@@ -1097,6 +1176,8 @@
     if (notes) el('span', 'todo-notes', notes, text);
     var due = item.done ? '' : (passive ? whenText(item.due, now) : dueText(item.due, now));
     if (due) el('span', 'todo-due' + (item.due < now ? ' is-overdue' : ''), due, text);
+    // A done item kept past midnight says so, where an open one has its date.
+    if (item.done && dayOf(new Date(item.doneAt)) < now) el('span', 'todo-due todo-yday', STRINGS.yesterday, text);
 
     // Every row keeps room for two round buttons; a done row has only the
     // bin, with an empty slot where Move would be. Only the active row's
@@ -1294,6 +1375,29 @@
 
   /* ---------- widget ---------- */
 
+  // The first draw happens before the hub has settled the tile's head, so the
+  // rows may have been fitted to a body that then shrank. A moment later, if
+  // the body's height changed, draw again (at most twice in a row).
+  var fitHeight = 0;
+  var fitTimer = null;
+  var fitCount = 0;
+  function refitSoon(body) {
+    fitHeight = body.clientHeight;
+    if (fitTimer) clearTimeout(fitTimer);
+    fitTimer = setTimeout(function () {
+      fitTimer = null;
+      try {
+        var h = body.clientHeight;
+        if (h && Math.abs(h - fitHeight) > 1 && fitCount < 2 && C) {
+          fitCount += 1;
+          C.redrawTile();
+        } else {
+          fitCount = 0;
+        }
+      } catch (e) { fitCount = 0; }
+    }, 400);
+  }
+
   var widget = {
     id: 'todo',
     icon: 'check-list',
@@ -1332,6 +1436,7 @@
         renderError(body, e, 'todo-tile-error');
       }
       try { updateSubs(); } catch (e2) { /* keep the line as it is */ }
+      try { refitSoon(body); } catch (e3) { /* the next redraw fits */ }
     },
 
     renderPanel: function (body) {
@@ -1372,7 +1477,7 @@
       return true;
     },
 
-    // Items ticked this time move to Done today when the panel next opens.
+    // Items ticked this time move to Completed when the panel next opens.
     onClose: function () {
       ticked = {};
       armed = null;

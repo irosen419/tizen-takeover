@@ -56,6 +56,14 @@ curl -sS "$B/outbox%2F$ID.json"
 
 Write `cmd.json` in your scratchpad folder. The reply is `{"id", "cmd", "ok", "state", "message", "data", "started", "finished"}`. Wait until `"state": "done"` (`"running"` means it is still going; `calendar.refresh` can take 25 seconds). Report `message` to the owner: it is the same text `./hub` prints. `ok: false` with `Rejected: ...` means it was never run; fix what it says and send a new id. No reply after a minute: check `status.json`; if it is old, the Pi or its internet is down, so tell the owner rather than resending (a resent command could run twice once the Pi is back).
 
+### Several to-dos at once
+
+To add more than one to-do, do not send them one by one and wait for each reply. `dev/todo-bulk.sh` checks the list, writes all the commands, sends them back to back and prints one line per item. The Pi runs up to 20 commands per poll, so they all land within about 10-20 seconds. The list reads top-down in the order you give. Add `--dry-run` to see the commands without sending.
+
+```sh
+printf '%s' '[{"title":"Call the dentist","level":"must","due":"2026-11-20"},"Buy milk","Renew passport"]' | dev/todo-bulk.sh -
+```
+
 Commands and args (`args` may be left out when empty; unknown args are refused):
 
 - `show {"widget": "weather", "full": true}` (widgets: weather, todo, calendar, entertainment, nowplaying, today, awws, awws-visits, awws-agenda, awws-todo, awws-reach, awws-money, budget-room, budget-card, budget-goals, budget-lab, allsounds), `home`, `reload`
