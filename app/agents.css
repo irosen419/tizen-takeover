@@ -117,10 +117,14 @@
   100% { transform: translateX(2rem) scale(0.5); opacity: 0; }
 }
 
-/* The work loop (about 3 s): Stormlight runs down her arm into the card
-   (three dots) and rings out from her hand; Wyndle's vine curl grows
+/* The work loop (about 3 s): one steady stream of Stormlight runs down her
+   arm into the card and rings out from her hand; Wyndle's vine curl grows
    toward it once and then sways; a small bob. Calm (after a while): the
-   bob stops and the light slows. */
+   bob stops and the light slows.
+   The stream: a still beam (soft glow + core, faint at her elbow, bright
+   at her hand), clipped; inside it a strip of soft brighter surges slides
+   toward the card. Only that strip moves (transform), by exactly three surge lengths
+   a cycle, so the loop has no seam. */
 .ag-ring {
   position: absolute;
   left: -0.75rem; top: -0.25rem;
@@ -129,12 +133,35 @@
   border-radius: 50%;
   opacity: 0;
 }
-.ag-dot {
+.ag-stream {
   position: absolute;
-  left: -0.0833rem; top: -0.0833rem;
-  width: 0.1667rem; height: 0.1667rem;
-  background-color: #e8fbff;
+  left: -0.0833rem; top: -1.3333rem;
+  width: 0.1667rem; height: 1.4167rem;
+  transform-origin: 50% 100%;
+  transform: rotate(-11deg);
   opacity: 0;
+  transition: opacity 250ms ease-out;
+}
+.ag-stream b {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -0.0833rem; right: -0.0833rem;
+  background-image: linear-gradient(to bottom, rgba(111, 214, 255, 0), #6fd6ff);
+  opacity: 0.3;
+}
+.ag-stream s {
+  position: absolute;
+  top: 0; bottom: 0; left: 0; right: 0;
+  overflow: hidden;
+  background-image: linear-gradient(to bottom, rgba(191, 243, 255, 0), rgba(191, 243, 255, 0.85) 55%, #e8fbff);
+}
+.ag-stream i {
+  position: absolute;
+  left: 0; right: 0;
+  top: -1.5rem; height: 3rem;
+  background-image: repeating-linear-gradient(to bottom,
+    rgba(255, 255, 255, 0) 0, rgba(255, 255, 255, 0.9) 0.25rem,
+    rgba(255, 255, 255, 0) 0.5rem);
 }
 .ag-vine {
   position: absolute;
@@ -163,14 +190,13 @@
 .ag-fig.is-work .ag-bob { animation: ag-bob 1500ms ease-in-out infinite alternate; }
 .ag-fig.is-work .ag-ring { animation: ag-ring 1500ms ease-out infinite; }
 .ag-fig.is-work .ag-ring + .ag-ring { animation-delay: -750ms; }
-.ag-fig.is-work .ag-dot { animation: ag-flow 1500ms linear infinite; }
-.ag-fig.is-work .ag-dot:nth-of-type(2) { animation-delay: -500ms; }
-.ag-fig.is-work .ag-dot:nth-of-type(3) { animation-delay: -1000ms; }
+.ag-fig.is-work .ag-stream { opacity: 1; }
+.ag-fig.is-work .ag-stream i { animation: ag-stream 1500ms linear infinite; }
 .ag-fig.is-work .ag-vine { animation: ag-grow 900ms ease-out 200ms 1 forwards; }
 .ag-fig.is-work .ag-curl { animation: ag-curl 1500ms ease-in-out 1100ms infinite alternate; }
 .ag-fig.is-calm .ag-bob { animation: none; }
 .ag-fig.is-calm .ag-ring { animation-duration: 3000ms; }
-.ag-fig.is-calm .ag-dot { animation-duration: 3000ms; }
+.ag-fig.is-calm .ag-stream i { animation-duration: 3000ms; }
 .ag-fig.is-calm .ag-curl { animation: none; }
 @keyframes ag-bob {
   from { transform: translate(0, 0); }
@@ -180,11 +206,9 @@
   0% { transform: scale(0.3); opacity: 0.95; }
   100% { transform: scale(1.8); opacity: 0; }
 }
-@keyframes ag-flow {
-  0% { transform: translate(-0.3333rem, -1.75rem); opacity: 0; }
-  20% { opacity: 1; }
-  85% { transform: translate(0, 0); opacity: 1; }
-  100% { transform: translate(0, 0.0833rem); opacity: 0; }
+@keyframes ag-stream {
+  from { transform: translateY(0); }
+  to { transform: translateY(1.5rem); }
 }
 @keyframes ag-grow {
   from { transform: scale(0); }

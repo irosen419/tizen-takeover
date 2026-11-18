@@ -15,7 +15,7 @@
  *           from the side of the tile that has screen room
  *   travel  a short carving skate to the work spot, ending in a braking
  *           skid and a spray of Stormlight sparks
- *   work    crouches with a hand on the card: Stormlight flows down her arm
+ *   work    crouches with a hand on the card: a stream of Stormlight flows down her arm
  *           into the card and rings out from her hand, Wyndle grows a vine
  *           curl toward it, a small bob. Loops (about 3 s) while the tile
  *           is working; a short while when the news is already there
@@ -527,7 +527,10 @@
     work.style.top = rem(hand.y);
     el('b', 'ag-ring', work);
     el('b', 'ag-ring', work);
-    for (var d = 0; d < 3; d++) el('i', 'ag-dot', work);
+    // One steady stream: glow, core, and the surges sliding inside the core.
+    var stream = el('div', 'ag-stream', work);
+    el('b', '', stream);
+    el('i', '', el('s', '', stream));
     var vp = role.vine || hand;
     var vine = el('div', 'ag-vine', bob);
     vine.style.left = rem(vp.x);
