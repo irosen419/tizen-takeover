@@ -13,7 +13,7 @@
  *
  * It checks:
  *   - old items (section now, next or waiting, no level) are "If you can"
- *   - sections Must today (red) and If you can (yellow), then Done today; the
+ *   - sections Must today (red) and If you can (yellow), then Completed; the
  *     colored edge on every row, the MUST pill on must-dos only
  *   - "Coming up": passive items only from 2 days before they are due (or
  *     with no date), no tick box, a green dot, under everything else
