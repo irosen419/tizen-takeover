@@ -7,9 +7,10 @@
  *   ./hub home                       close whatever is open
  *   ./hub say "Dinner in 10" [--seconds 8]
  *   ./hub reload                     load the hub afresh
- *   ./hub todo add "Buy milk" [--level must|optional|passive] [--due 2026-12-24] [--notes "Oat, not dairy"]
+ *   ./hub todo add "Buy milk" [--level must|optional|passive] [--due 2026-12-24] [--lead 3] [--notes "Oat, not dairy"]
  *   ./hub todo list
  *   ./hub todo level <id or exact title> must|optional|passive
+ *   ./hub todo lead <id or exact title> 3   (days, 0 to 30; or --clear for the default 2)
  *   ./hub todo notes <id or exact title> "Oat, not dairy"   (or --clear)
  *   ./hub todo done <id or exact title>
  *   ./hub todo remove <id or exact title>
@@ -24,10 +25,23 @@
  *   ./hub budget show                the budget snapshot: when sent, size, sections (no amounts)
  *   ./hub budget set <file.json|->   store one (the snapshot, or { snapshot: {...} })
  *   ./hub budget clear               remove it; the TV tiles say "Waiting for the budget app"
+ *   ./hub shows list                 the TV show list: running or ended, what airs next
+ *   ./hub shows add "Stick" --service "Apple TV" [--id 12345] [--watch Hulu] [--also "Hulu,Peacock"] [--via "Prime Video"]
+ *   ./hub shows remove "Stick"       take a show off the list
+ *   ./hub shows refresh              ask TVmaze about every show now
+ *   ./hub linktests                  the TV's watch link test answers
  *   ./hub spotify status             is Spotify connected, and what is playing
  *   ./hub spotify login              connect Spotify (once): a link to open, then paste the address back
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
  *   ./hub spotify logout             forget the Spotify sign-in
+ *   ./hub allsounds status           what plays anywhere (Echo speakers through Home Assistant, Spotify)
+ *   ./hub ambience status            the room's lights: how many answer, the scene
+ *   ./hub ambience scenes            the saved scenes, lights and plant wall moods, with ids
+ *   ./hub ambience scene <id>        apply a scene
+ *   ./hub ambience light <id> on|off|<1-100>   one light
+ *   ./hub ambience mood <id>         a plant wall mood (WLED)
+ *   ./hub ambience set <file.json|->   new lights, scenes and moods (see ambience.example.json)
+ *   ./hub ambience reset             back to the defaults (no lights)
  *   ./hub status                     is the server up, which screens are on
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub log [--errors] [--lines 120]   the server's recent log lines (50 unless --lines says)
@@ -48,11 +62,13 @@ const path = require('path');
 const crypto = require('crypto');
 const awws = require('./awws');
 const budget = require('./budget');
+const shows = require('./shows');
+const linktests = require('./linktests');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
 const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach',
-  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
+  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'allsounds'];
 
 /* ---------- settings ---------- */
 
@@ -230,9 +246,53 @@ function levelOf(item) {
   return m ? m[1] : 'optional';
 }
 
+// A passive item's "Coming up" lead: how many days before its due date the
+// TV shows it. A "lead" field, else a "[lead:3]" tag in its notes (how it
+// travels through a server older than 0.7.0), else null (the TV's 2).
+const MAX_LEAD = 30;
+const DEFAULT_LEAD = 2;
+
+function isLead(n) {
+  return Number.isInteger(n) && n >= 0 && n <= MAX_LEAD;
+}
+
+function leadOf(item) {
+  if (isLead(item.lead)) return item.lead;
+  const m = typeof item.notes === 'string' ? /\[lead:(\d{1,2})\]/.exec(item.notes) : null;
+  const n = m ? parseInt(m[1], 10) : -1;
+  return isLead(n) ? n : null;
+}
+
+// "3" -> 3; anything but a whole number from 0 to 30 -> null.
+function parseLead(text) {
+  const t = String(text).trim();
+  if (!/^\d{1,2}$/.test(t)) return null;
+  const n = parseInt(t, 10);
+  return isLead(n) ? n : null;
+}
+
+function leadWords(n) {
+  if (n === 0) return 'only on the day it is due';
+  return 'from ' + n + (n === 1 ? ' day' : ' days') + ' before it is due';
+}
+
 function todoAddText(r) {
+  const lead = leadOf(r.item);
   return 'Added "' + r.item.title + '" to ' + LEVEL_NAMES[levelOf(r.item)] + (r.item.due ? ', due ' + r.item.due : '') +
-    (r.item.notes ? ', with notes' : '') + '.';
+    (lead !== null ? ', shown ' + leadWords(lead) : '') + (r.item.notes ? ', with notes' : '') + '.';
+}
+
+function todoLeadText(item) {
+  const lead = leadOf(item);
+  if (lead === null) return '"' + item.title + '" shows under Coming up ' + leadWords(DEFAULT_LEAD) + ' (the default).';
+  return '"' + item.title + '" shows under Coming up ' + leadWords(lead) + '.';
+}
+
+// Sets (or, with null, removes) the lead of one item. Returns the item as
+// the server now holds it.
+async function setLead(callFn, item, lead) {
+  const r = await callFn('POST', '/api/todo/ops', { ops: [{ op: 'set', id: item.id, fields: { lead: lead === null ? null : lead } }] });
+  return (r.items || []).find((i) => i.id === item.id) || item;
 }
 
 function todoLevelText(item) {
@@ -253,7 +313,11 @@ function todoListLines(items) {
     if (!inSec.length) return;
     out.push(LEVEL_NAMES[lv] + ':');
     inSec.forEach((i) => {
-      out.push('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (i.due ? ' (due ' + i.due + ')' : '') + '   id ' + i.id);
+      const lead = leadOf(i);
+      const when = [];
+      if (i.due) when.push('due ' + i.due);
+      if (lead !== null) when.push('lead ' + lead + (lead === 1 ? ' day' : ' days'));
+      out.push('  [' + (i.done ? 'x' : ' ') + '] ' + i.title + (when.length ? ' (' + when.join(', ') + ')' : '') + '   id ' + i.id);
       if (i.notes) out.push('      notes: ' + i.notes);
     });
   });
@@ -280,7 +344,7 @@ async function todo(args) {
   const sub = args[0];
   const rest = args.slice(1);
   if (sub === 'add') {
-    const a = parseArgs(rest, ['section', 'level', 'due', 'notes']);
+    const a = parseArgs(rest, ['section', 'level', 'due', 'notes', 'lead']);
     const title = a.words.join(' ').trim();
     if (!title) stop('Say what to add, for example: ./hub todo add "Buy milk"');
     const body = { title: title };
@@ -290,6 +354,11 @@ async function todo(args) {
       body.level = a.opts.level;
     }
     if (a.opts.due) body.due = a.opts.due;
+    if (a.opts.lead !== undefined) {
+      const lead = parseLead(a.opts.lead);
+      if (lead === null) stop('--lead must be a whole number of days from 0 to ' + MAX_LEAD + '.');
+      body.lead = lead;
+    }
     if (a.opts.notes) body.notes = a.opts.notes;
     const r = await call('POST', '/api/todo', body);
     say(todoAddText(r));
@@ -333,7 +402,19 @@ async function todo(args) {
     say(todoLevelText(await setLevel(call, item, level)));
     return;
   }
-  stop('Use one of: todo add, todo list, todo notes, todo level, todo done, todo remove. Run ./hub help for examples.');
+  if (sub === 'lead') {
+    const a = parseArgs(rest, []);
+    const what = (a.words[0] || '').trim();
+    const lead = a.opts.clear ? null : parseLead(a.words[1] || '');
+    if (!what || (lead === null && !a.opts.clear)) {
+      stop('Say which to-do and how many days before its due date it shows, for example: ./hub todo lead "School meeting" 3 (0 to ' +
+        MAX_LEAD + '; or --clear for the default ' + DEFAULT_LEAD + ').');
+    }
+    const item = await findItem(what);
+    say(todoLeadText(await setLead(call, item, lead)));
+    return;
+  }
+  stop('Use one of: todo add, todo list, todo notes, todo level, todo lead, todo done, todo remove. Run ./hub help for examples.');
 }
 
 /* ---------- calendar ---------- */
@@ -533,6 +614,56 @@ async function awwsCommand(args) {
   stop('Use one of: awws show, awws set <file.json|->, awws clear. Run ./hub help for examples.');
 }
 
+/* ---------- TV show schedule ---------- */
+
+function showsListLines(r) {
+  return shows.listLines(Object.assign({}, r, { tz: r && zoneOk(r.tz) ? r.tz : 'America/Chicago' }));
+}
+
+async function showsCommand(args) {
+  const sub = args[0];
+  if (!sub || sub === 'list' || sub === 'show') {
+    const r = await call('GET', '/api/shows');
+    showsListLines(r).forEach(say);
+    return;
+  }
+  if (sub === 'add') {
+    const a = parseArgs(args.slice(1), ['service', 'id', 'watch', 'also', 'via']);
+    const name = a.words.join(' ').trim();
+    if (!name) stop('Say which show, for example: ./hub shows add "Stick" --service "Apple TV"');
+    const entry = { name: name };
+    if (a.opts.service !== undefined) entry.service = a.opts.service;
+    if (a.opts.watch !== undefined) entry.serviceOverride = a.opts.watch;
+    if (a.opts.via !== undefined) entry.via = a.opts.via;
+    if (a.opts.also !== undefined) entry.alsoOn = String(a.opts.also).split(',').map((x) => x.trim()).filter(Boolean);
+    if (a.opts.id !== undefined) {
+      if (!/^\d{1,9}$/.test(String(a.opts.id))) stop('--id must be the TVmaze show number, like 12345.');
+      entry.tvmazeId = Number(a.opts.id);
+    }
+    const r = await call('POST', '/api/shows', { add: entry });
+    say(shows.addText(r));
+    return;
+  }
+  if (sub === 'remove') {
+    const name = args.slice(1).join(' ').trim();
+    if (!name) stop('Say which show, for example: ./hub shows remove "Stick"');
+    const r = await call('POST', '/api/shows', { remove: name });
+    say(shows.removeText(r.removed));
+    return;
+  }
+  if (sub === 'refresh') {
+    const r = await call('POST', '/api/shows/refresh', {}, 40000);
+    say(shows.refreshText(r));
+    return;
+  }
+  stop('Use one of: shows list, shows add "<name>" --service <app>, shows remove "<name>", shows refresh. Run ./hub help for examples.');
+}
+
+async function linktestsCommand() {
+  const r = await call('GET', '/api/linktests');
+  linktests.lines(r.data).forEach(say);
+}
+
 /* ---------- budget snapshot ---------- */
 
 // The lines for ./hub budget show: times in the hub's time zone, no amounts.
@@ -633,6 +764,33 @@ function spotifyCodeText(r) {
 
 function spotifyLogoutText(r) {
   return r.changed ? 'Signed out of Spotify. Run ./hub spotify login to connect again.' : 'Spotify was not signed in. Nothing changed.';
+}
+
+/* ---------- All sounds ---------- */
+
+// ./hub allsounds status: the state, the source, the speaker, and the title
+// and artist only (allsounds.js). Example:
+//   All sounds: playing from TuneIn on Living room Echo.
+//   Now: "Morning Edition".
+function allsoundsStatusLines(a) {
+  if (!a || typeof a !== 'object') return ['This server does not know All sounds yet (it needs an update): run git pull, then docker compose restart hub.'];
+  if (!a.configured && a.problem) return ['All sounds: not set up (' + a.problem + '). Fix it in pi/.env, then docker compose restart hub.'];
+  const from = (a.source ? ' from ' + a.source : '') + (a.device ? ' on ' + a.device : '');
+  const song = a.title ? 'Now: "' + a.title + '"' + (a.artist ? ' by ' + a.artist : '') + '.' : '';
+  if (a.state === 'playing') return ['All sounds: playing' + from + '.'].concat(song ? [song] : []);
+  if (a.state === 'paused') return ['All sounds: paused,' + from + '.'].concat(song ? [song] : []);
+  if (a.state === 'error') {
+    return [a.haProblem === 'auth' ? 'All sounds: Home Assistant refused the token (make a new one, put it in pi/.env as HA_TOKEN).'
+      : 'All sounds: Home Assistant cannot be reached right now (it keeps trying).'];
+  }
+  if (!a.configured && a.state === 'notset') return ['All sounds: not set up (add HA_TOKEN to pi/.env, then docker compose restart hub).'];
+  return ['All sounds: nothing playing' + (a.device ? ' (' + a.device + ' is on)' : '') + '.'];
+}
+
+async function allsoundsCmd(args) {
+  if (args[0] !== 'status') stop('Use: ./hub allsounds status. Run ./hub help for examples.');
+  const r = await call('GET', '/api/allsounds');
+  allsoundsStatusLines(r.allsounds).forEach(say);
 }
 
 // One line of typed input, or '' when there is none (not a terminal, or closed).
@@ -785,6 +943,164 @@ async function mailbox(args) {
   mailboxLines(r.mailbox).forEach(say);
 }
 
+/* ---------- Ambience (ambience.js) ---------- */
+
+const AMBIENCE_UPDATE = 'This server does not know Ambience yet (it needs an update): run git pull, then docker compose restart hub.';
+
+function plain(n, word) {
+  return n + ' ' + word + (n === 1 ? '' : 's');
+}
+
+// The one line that sums the room up, for ./hub ambience status and the
+// mailbox's ambience.status. Example: "3 lights, 2 answering, scene Chill night."
+function ambienceLine(a) {
+  if (!a || typeof a !== 'object') return AMBIENCE_UPDATE;
+  if (!a.configured) {
+    return a.problem ? 'Ambience: not set up (' + a.problem + '). Fix it in pi/.env, then docker compose restart hub.'
+      : 'Ambience: not set up (add HA_TOKEN to pi/.env, then docker compose restart hub).';
+  }
+  const lights = Array.isArray(a.lights) ? a.lights : [];
+  if (a.state === 'notset') return 'Ambience: no lights added yet (./hub ambience set <file.json>; see pi/ambience.example.json).';
+  if (a.state === 'error' && a.haProblem === 'auth') return 'Ambience: Home Assistant refused the token (make a new one, put it in pi/.env as HA_TOKEN).';
+  const scene = (Array.isArray(a.scenes) ? a.scenes : []).filter((s) => s.id === a.active)[0];
+  let line = plain(lights.length, 'light') + ', ' + lights.filter((l) => l.reachable).length + ' answering, ' +
+    lights.filter((l) => l.on).length + ' on, ' + (scene ? 'scene ' + scene.name : 'no scene') + '.';
+  if (a.state === 'error') line = 'Home Assistant is not answering (it keeps trying). Last known: ' + line;
+  if (a.wled && a.wledState) {
+    const mood = (Array.isArray(a.moods) ? a.moods : []).filter((m) => m.id === a.wledState.mood)[0];
+    line += a.wledState.reachable ? ' Plant wall: ' + (mood ? mood.name : a.wledState.on ? 'on' : 'off') + '.' : ' Plant wall: not answering.';
+  }
+  return line;
+}
+
+// ./hub ambience status: the line above, then one line per light.
+function ambienceStatusLines(a) {
+  const out = [ambienceLine(a)];
+  if (!a || !a.configured || a.state === 'notset') return out;
+  (a.lights || []).forEach((l) => {
+    const st = !l.reachable ? 'not answering' : !l.on ? 'off' : l.kind === 'switch' ? 'on' : 'on at ' + l.pct + '%';
+    out.push('  ' + l.name + ' (' + l.id + '): ' + st + (l.flaky ? ' (flaky)' : ''));
+  });
+  if (a.lastResult && a.lastResult.result === 'partial' && a.lastResult.missing.length) {
+    out.push('Last scene: ' + a.lastResult.missing.join(', ') + ' didn\'t answer.');
+  }
+  return out;
+}
+
+// ./hub ambience scenes: the ids to use with the other commands.
+function ambienceScenesLines(a) {
+  if (!a || typeof a !== 'object') return [AMBIENCE_UPDATE];
+  const out = [];
+  const scenes = a.scenes || [];
+  out.push(scenes.length ? 'Scenes:' : 'No scenes yet.');
+  scenes.forEach((s) => out.push('  ' + s.id + '  ' + s.name + (s.id === a.active ? '  (now)' : '')));
+  const lights = a.lights || [];
+  if (lights.length) {
+    out.push('Lights:');
+    lights.forEach((l) => out.push('  ' + l.id + '  ' + l.name + (l.kind === 'switch' ? '  (switch)' : '')));
+  }
+  if (a.wled) {
+    out.push('Plant wall moods:');
+    (a.moods || []).forEach((m) => out.push('  ' + m.id + '  ' + m.name));
+  }
+  return out;
+}
+
+// After ./hub ambience scene: "Chill night: applied (2 of 2 lights answered)."
+function ambienceSceneText(r, name) {
+  const n = name || 'The scene';
+  const count = ' (' + r.answered + ' of ' + plain(r.total, 'light') + ' answered)';
+  const miss = (r.missing || []).length ? '; ' + r.missing.join(', ') + ' didn\'t answer' : '';
+  if (r.result === 'ok') return n + ': applied' + count + '.';
+  if (r.result === 'partial') return n + ': partly applied' + count.slice(0, -1) + miss + ').';
+  return n + ': did not apply' + count.slice(0, -1) + miss + ').';
+}
+
+function ambienceLightText(r, name) {
+  const n = name || 'The light';
+  if (r.result === 'no-answer') return n + ' didn\'t answer. Nothing changed.';
+  if (r.result === 'refused') return 'Home Assistant refused the change to ' + n + '.';
+  return n + ' is ' + (r.on ? 'on' + (r.pct && r.pct < 100 ? ' at ' + r.pct + '%' : '') : 'off') + '.';
+}
+
+function ambienceMoodText(r, name) {
+  const n = name || 'The mood';
+  if (r.result === 'no-answer') return 'The plant wall didn\'t answer. Nothing changed.';
+  if (r.result === 'refused') return 'The plant wall refused ' + n + '.';
+  return 'Plant wall: ' + n + '.';
+}
+
+function ambienceSetText(r, reset) {
+  const c = (r && r.config) || { lights: [], scenes: [], moods: [] };
+  const what = plain(c.lights.length, 'light') + ', ' + plain(c.scenes.length, 'scene') + ', ' + plain(c.moods.length, 'mood');
+  return (reset ? 'Back to the defaults: ' : 'Saved: ') + what + '. Screens that are on change now.';
+}
+
+function readAmbienceFile(name) {
+  let text;
+  try {
+    text = name === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(name, 'utf8');
+  } catch (e) {
+    stop(name === '-' ? 'Could not read the settings from standard input.' : 'Could not read ' + name + ' (' + (e.code || e.message) + ').');
+  }
+  let data;
+  try { data = JSON.parse(text); } catch (e) { stop((name === '-' ? 'The input' : name) + ' is not valid JSON.'); }
+  if (data && typeof data === 'object' && !Array.isArray(data) && 'config' in data) data = data.config;
+  return data;
+}
+
+const nameOf = (list, id) => ((list || []).filter((x) => x.id === id)[0] || {}).name || '';
+
+async function ambienceCommand(args) {
+  const sub = args[0];
+  const use = 'Use one of: ambience status, ambience scenes, ambience scene <id>, ambience light <id> on|off|<1-100>, ' +
+    'ambience mood <id>, ambience set <file.json|->, ambience reset. Run ./hub help for examples.';
+  const st = async () => (await call('GET', '/api/ambience')).ambience;
+  if (sub === 'status') { ambienceStatusLines(await st()).forEach(say); return; }
+  if (sub === 'scenes') { ambienceScenesLines(await st()).forEach(say); return; }
+  if (sub === 'scene') {
+    if (!args[1]) stop('Say which scene, for example: ./hub ambience scene chill (./hub ambience scenes lists them).');
+    const a = await st();
+    const r = await call('POST', '/api/ambience/scene', { id: args[1] });
+    say(ambienceSceneText(r, nameOf(a && a.scenes, args[1])));
+    return;
+  }
+  if (sub === 'light') {
+    const id = args[1];
+    const v = String(args[2] || '').toLowerCase();
+    if (!id || !v) stop('Say which light and what, for example: ./hub ambience light geeni on, off or 40.');
+    const body = { id: id };
+    if (v === 'on') body.on = true;
+    else if (v === 'off') body.on = false;
+    else if (/^\d{1,3}%?$/.test(v) && Number(v.replace('%', '')) >= 1 && Number(v.replace('%', '')) <= 100) body.pct = Number(v.replace('%', ''));
+    else stop('Use on, off or a number from 1 to 100.');
+    const a = await st();
+    const r = await call('POST', '/api/ambience/light', body);
+    say(ambienceLightText(r, nameOf(a && a.lights, id)));
+    return;
+  }
+  if (sub === 'mood') {
+    if (!args[1]) stop('Say which mood, for example: ./hub ambience mood dim (./hub ambience scenes lists them).');
+    const a = await st();
+    const r = await call('POST', '/api/ambience/mood', { id: args[1] });
+    say(ambienceMoodText(r, nameOf(a && a.moods, args[1])));
+    return;
+  }
+  if (sub === 'set') {
+    const name = args[1];
+    if (!name) stop('Say which file holds the settings, or - to read them from standard input. For example: ./hub ambience set ambience.json');
+    const r = await call('POST', '/api/ambience/config', { config: readAmbienceFile(name) });
+    say(ambienceSetText(r, false));
+    return;
+  }
+  if (sub === 'reset') {
+    const r = await call('POST', '/api/ambience/config', { config: null });
+    say(ambienceSetText(r, true));
+    return;
+  }
+  stop(use);
+}
+
 /* ---------- recent log lines ---------- */
 
 function problemsText(n) {
@@ -845,13 +1161,14 @@ const HELP = [
   '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying,',
   '                              today (the clock), awws, awws-visits, awws-agenda, awws-todo,',
   '                              awws-reach, awws-money, budget-room, budget-card, budget-goals',
-  '                              or budget-lab',
+  '                              budget-lab or allsounds (the test widget)',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
   '  ./hub reload                load the hub afresh',
   '  ./hub todo add "Buy milk"   add a to-do (add --level must or passive, --due 2026-12-24; optional when left out)',
   '  ./hub todo level "Buy milk" must   change a to-do\'s level: must, optional or passive',
+  '  ./hub todo lead "School meeting" 3   a passive to-do shows 3 days before it is due (0 to 30; --clear for 2)',
   '  ./hub todo list             show the to-do list with ids and notes',
   '  ./hub todo add "Buy milk" --notes "Oat, not dairy"   a to-do with notes (up to 300 characters)',
   '  ./hub todo notes "Buy milk" "Oat, not dairy"   set the notes of a to-do (--clear removes them)',
@@ -868,9 +1185,25 @@ const HELP = [
   '  ./hub budget show           the budget snapshot: when sent, size, sections (no amounts)',
   '  ./hub budget set file.json  store a budget snapshot (- reads it from input; see docs/budget-snapshot.md)',
   '  ./hub budget clear          remove it; the TV tiles say "Waiting for the budget app"',
+  '  ./hub shows list            the TV show list: still running or ended, what airs next',
+  '  ./hub shows add "Stick" --service "Apple TV"   add a show (--id 12345 sets its TVmaze number,',
+  '                              --watch Hulu opens another app than the badge says,',
+  '                              --also "Hulu,Peacock" lists other apps that carry it,',
+  '                              --via "Prime Video" opens it in the app it is billed through)',
+  '  ./hub shows remove "Stick"  take a show off the list',
+  '  ./hub shows refresh         ask TVmaze about every show now (it also does so every 6 hours)',
+  '  ./hub linktests             what the TV\'s watch link test found (About panel on the TV)',
   '  ./hub spotify status        is Spotify connected, and what is playing',
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
+  '  ./hub allsounds status      what plays anywhere: Echo speakers (Home Assistant) and Spotify',
+  '  ./hub ambience status       the room\'s lights: how many answer, which scene is on',
+  '  ./hub ambience scenes       the scenes, lights and plant wall moods, with their ids',
+  '  ./hub ambience scene chill  apply a scene (a light that doesn\'t answer never stops the others)',
+  '  ./hub ambience light geeni 40   one light: on, off or a level from 1 to 100',
+  '  ./hub ambience mood dim     a plant wall mood (needs WLED_URL in pi/.env)',
+  '  ./hub ambience set file.json   new lights, scenes and moods (see pi/ambience.example.json)',
+  '  ./hub ambience reset        back to the defaults (no lights)',
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
@@ -908,10 +1241,14 @@ async function main(argv) {
   if (cmd === 'layout') return layout(rest);
   if (cmd === 'awws') return awwsCommand(rest);
   if (cmd === 'budget') return budgetCommand(rest);
+  if (cmd === 'shows') return showsCommand(rest);
+  if (cmd === 'linktests') return linktestsCommand(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'log') return logCommand(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
+  if (cmd === 'allsounds') return allsoundsCmd(rest);
+  if (cmd === 'ambience') return ambienceCommand(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
 }
@@ -924,6 +1261,10 @@ module.exports = {
   levelOf: levelOf,
   todoLevelText: todoLevelText,
   setLevel: setLevel,
+  leadOf: leadOf,
+  todoLeadText: todoLeadText,
+  setLead: setLead,
+  MAX_LEAD: MAX_LEAD,
   commandText: commandText,
   matchItem: matchItem,
   todoAddText: todoAddText,
@@ -938,6 +1279,7 @@ module.exports = {
   layoutResetText: layoutResetText,
   awwsShowLines: awwsShowLines,
   budgetShowLines: budgetShowLines,
+  showsListLines: showsListLines,
   statusLines: statusLines,
   mailboxLines: mailboxLines,
   logLines: logLines,
@@ -947,7 +1289,15 @@ module.exports = {
   vibeLine: vibeLine,
   spotifyLoginLines: spotifyLoginLines,
   spotifyCodeText: spotifyCodeText,
-  spotifyLogoutText: spotifyLogoutText
+  spotifyLogoutText: spotifyLogoutText,
+  allsoundsStatusLines: allsoundsStatusLines,
+  ambienceLine: ambienceLine,
+  ambienceStatusLines: ambienceStatusLines,
+  ambienceScenesLines: ambienceScenesLines,
+  ambienceSceneText: ambienceSceneText,
+  ambienceLightText: ambienceLightText,
+  ambienceMoodText: ambienceMoodText,
+  ambienceSetText: ambienceSetText
 };
 
 if (require.main === module) {

@@ -9,7 +9,11 @@
  * still moves; a panel clears and blocks scenes; a layout change ends one;
  * the layout bar blocks scenes and a layout picked there is measured anew;
  * clay: false and ?clay=off load nothing; a missing sprite skips the scene;
- * night hours pick night scenes; a ticked to-do item queues a cheer; the
+ * night hours pick night scenes; by day, over 4000 picks fed their last
+ * scene with HUB_TEST.clay.setLast(name) (a test-only hook: the scene choose()
+ * treats as played last), sock-heist and the fetch family (fetch, fetch-bolt,
+ * fetch-snub) each come 17 to 23 % of the time and no family comes twice in
+ * a row; a ticked to-do item queues a cheer; the
  * status (HUB_CLAY.status(), shown in the About panel) says what is going
  * on and why not; no stylesheet is fetched; a failed sprite list is tried
  * again at the next visit and a skipped scene after 10 minutes; slow frames
@@ -974,7 +978,7 @@ async function checkSmoothLive() {
   assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'the About panel did not open');
   await until(async () => /^Smooth, \d+ frames a second$/.test(await about.value(page, 'Drawing')), 3000, 'no Drawing row');
   const rows = (await about.rows(page)).map((r) => r.label).join(',');
-  assert(rows === 'Version,Browser,Motion,Now,Visits,Drawing,Loading', 'rows: ' + rows);
+  assert(rows === 'Version,Browser,Motion,Watch link test,Now,Visits,Drawing,Loading', 'rows: ' + rows);
   noErrors(page);
 }
 
@@ -1280,7 +1284,8 @@ async function checkAboutKeys() {
   await until(() => about.shown(page), 1000, 'the panel did not slide in');
   const z = await page.evaluate(() => Number(getComputedStyle(document.getElementById('about')).zIndex));
   assert(z === 15, 'z-index ' + z);
-  for (const key of ['Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft']) {
+  // (Enter is the Watch link test row's action since v0.28.16; checked below.)
+  for (const key of ['ArrowUp', 'ArrowDown', 'ArrowLeft']) {
     await page.keyboard.press(key);
     await sleep(100);
     assert(await about.isOpen(page), key + ' closed it');
@@ -1319,6 +1324,14 @@ async function checkAboutKeys() {
   assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'it did not open from the test hook');
   await page.evaluate(() => window.HUB_TEST.openPanel('weather'));
   assert(!(await about.isOpen(page)), 'it stayed open under a panel');
+  // (closePanel is refused while the panel is still opening, so ask until it goes.)
+  await until(() => page.evaluate(() => { window.HUB_TEST.closePanel(); return window.HUB_TEST.open() === null && !window.HUB_TEST.busy(); }), 4000, 'the weather panel did not close');
+  // Enter: the About panel's one action, the Watch link test (v0.28.16): it
+  // closes About and opens Entertainment on the test.
+  assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'it did not open again');
+  await page.keyboard.press('Enter');
+  await until(() => page.evaluate(() => window.HUB_TEST.open() === 'entertainment' && !window.HUB_TEST.busy()), 4000, 'Enter did not open the watch link test');
+  assert(!(await about.isOpen(page)), 'About stayed open over the link test');
   noErrors(page);
 }
 
@@ -1330,7 +1343,7 @@ async function checkAboutRows() {
   let rows = await about.rows(page);
   const names = rows.map((r) => r.group + '/' + r.label).join(', ');
   // ?live=off and no TizenBrew: nothing to say about updates; no visit yet.
-  assert(names === 'This hub/Version, This hub/Browser, This hub/Motion, Wanderers/Now, Wanderers/Visits', 'rows at start: ' + names);
+  assert(names === 'This hub/Version, This hub/Browser, This hub/Motion, This hub/Watch link test, Wanderers/Now, Wanderers/Visits', 'rows at start: ' + names);
   const groups = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#about .about-group'), (e) => e.textContent).join(','));
   assert(groups === 'This hub,Wanderers', 'groups: ' + groups);
   assert(/^v0\.\d+\.\d+/.test(rows[0].value) && !/^Motion/.test(rows[2].value), 'values: ' + JSON.stringify(rows));
@@ -1347,7 +1360,7 @@ async function checkAboutRows() {
   await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 7 }));
   await until(async () => (await about.value(page, 'Last problem')) !== null, 5000, 'no Last problem row');
   rows = await about.rows(page);
-  assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
+  assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Watch link test,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
   const p1 = await about.value(page, 'Last problem');
   assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror, 3 tries\), \d+ s ago$/.test(p1), 'problem: ' + p1);
   await until(async () => (await about.value(page, 'Last problem')) !== p1, 3000, 'the problem\'s age did not change by itself');
@@ -1484,6 +1497,39 @@ async function checkChoosing() {
   for (const h of [23, 2, 5]) assert(picks[h].every((n) => n === 'night'), 'hour ' + h + ': ' + picks[h].join(','));
   assert(picks[14].every((n) => n !== 'night' && n !== 'morning' && n !== 'evening'), 'hour 14: ' + picks[14].join(','));
   assert(picks[7].indexOf('morning') >= 0 && picks[20].indexOf('evening') >= 0, 'no morning or evening scene');
+  // Many visits in a row at 14:00 with no weather outfit, each told the one
+  // before: equal shares by family, and never one family twice in a row.
+  const run = await page.evaluate(() => {
+    const C = window.HUB_TEST.clay;
+    const ws = (window.HUB_WIDGETS || []).filter((x) => x && x.id === 'weather');
+    const saved = ws.map((x) => ({ x, had: x.hasOwnProperty('current'), real: x.current }));
+    for (const x of ws) x.current = function () { return null; };
+    const seq = [];
+    try {
+      C.setHour(14);
+      let last = '';
+      for (let i = 0; i < 4000; i++) {
+        C.setLast(last);
+        last = C.choose();
+        seq.push(last);
+      }
+    } finally {
+      for (const v of saved) { if (v.had) v.x.current = v.real; else delete v.x.current; }
+      C.setLast('');
+      C.setHour(null);
+    }
+    return seq;
+  });
+  const fam = (n) => /^fetch(-|$)/.test(n) ? 'fetch' : n;
+  const count = {};
+  for (const n of run) count[fam(n)] = (count[fam(n)] || 0) + 1;
+  const share = (f) => (count[f] || 0) / run.length;
+  const shares = Object.keys(count).sort().map((f) => f + ' ' + (100 * share(f)).toFixed(1) + '%').join(', ');
+  assert(!count.weather && !count.night && !count.morning && !count.evening, 'hour 14 without weather: ' + shares);
+  assert(share('sock-heist') >= 0.17 && share('sock-heist') <= 0.23, 'sock-heist share: ' + shares);
+  assert(share('fetch') >= 0.17 && share('fetch') <= 0.23, 'fetch family share: ' + shares);
+  for (let i = 1; i < run.length; i++) assert(fam(run[i]) !== fam(run[i - 1]), 'same family twice in a row at ' + i + ': ' + run[i - 1] + ', ' + run[i]);
+  console.log('    day shares over ' + run.length + ' picks: ' + shares);
   // Ticking off an item in the To-do panel queues a cheer for the next visit.
   await page.evaluate(() => window.HUB_TEST.openPanel('todo'));
   await until(() => page.evaluate(() => window.HUB_TEST.open() === 'todo' && !window.HUB_TEST.busy()), 4000, 'to-do did not open');
@@ -1575,7 +1621,7 @@ async function main() {
   await check('6b. The layout bar ends a scene and blocks new ones; a layout picked there is measured anew', checkSwitcher);
   await check('7. clay: false, on: false and ?clay=off load and show nothing', checkOff);
   await check('8. A missing sprite skips that scene; a missing sprite list skips all; the hub is fine', checkMissing);
-  await check('9. Night hours pick night scenes; a ticked to-do item queues a cheer', checkChoosing);
+  await check('9. Night hours pick night scenes; by day each family as likely, never twice in a row; a ticked to-do item queues a cheer', checkChoosing);
   await check('10. The status: playing, stopped, a busy hub, a page that reports hidden', checkStatus);
   await check('11. The sprite list: not valid, too slow (and used when it comes late), and a failure tried again at the next visit', checkSpriteList);
   await check('12. No stylesheet to wait for: a scene plays with clay.css never asked for', checkNoStylesheet);

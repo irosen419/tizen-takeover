@@ -9,6 +9,9 @@
  *   GET  /live/events    the push line (Server-Sent Events)
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
+ *   POST /linktests      one watch link test answer from the About panel
+ *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
+ *                        from the TV (ambience.js): saved ids only, rate limited
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
  *
  * Control API (needs "Authorization: Bearer <token>"):
@@ -22,6 +25,10 @@
  *   POST /api/awws       store one, { snapshot: {...} }, or { snapshot: null } to clear
  *   GET  /api/budget     the personal budget snapshot (budget.js)
  *   POST /api/budget     store one (sent by the budget app on the Pi), or null to clear
+ *   GET  /api/shows      the show list and the schedule from TVmaze (shows.js)
+ *   POST /api/shows      { add: {name, service, ...} }, { remove: "name" } or { set: [...] }
+ *   POST /api/shows/refresh   ask TVmaze about every show now and wait for it
+ *   GET  /api/linktests  the TV's watch link test answers (linktests.js)
  *   GET  /api/status     version, rev, connected screens, calendar summary
  *   GET  /api/log        the last log lines kept in memory (?lines=1-200,
  *                        ?errors=1 for problems only, ?scrub=1 hides addresses
@@ -33,6 +40,14 @@
  *   POST /api/spotify/code     finish signing in, { input: the pasted address }
  *   POST /api/spotify/logout   forget the sign-in
  *   POST /api/spotify/refresh  ask Spotify what is playing right now
+ *   GET  /api/allsounds  what plays anywhere in the house (allsounds.js): state,
+ *                        source, speaker, title and artist
+ *   GET  /api/ambience   the room's lights, scenes and plant wall (ambience.js)
+ *   POST /api/ambience/scene   apply a scene, { id }
+ *   POST /api/ambience/light   one light, { id, on?, pct? }
+ *   POST /api/ambience/mood    a plant wall mood, { id }
+ *   GET  /api/ambience/config  the saved lights, scenes and moods
+ *   POST /api/ambience/config  replace them, { config }, or { config: null } for the defaults
  *   GET  /health         no token, just "is it running"
  *
  * The Claude mailbox (mailbox.js, off unless HUB_MAILBOX_ settings are in
@@ -45,8 +60,11 @@
  * server holds nothing open. Data (the to-do list, the calendar events, the
  * tile layout, the A World Worth Saving and budget snapshots) lives in
  * data/state.json. The calendar reader is in calendar.js, the snapshot checks
- * in awws.js and budget.js, and
- * what plays on Spotify comes from spotify.js.
+ * in awws.js and budget.js,
+ * what plays on Spotify comes from spotify.js, and what plays on any speaker
+ * (Home Assistant's Echo speakers plus Spotify) from allsounds.js.
+ * what plays on Spotify comes from spotify.js, and the room's lights
+ * (Home Assistant, and the plant wall's WLED) from ambience.js.
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -61,9 +79,13 @@ const awws = require('./awws');
 const budget = require('./budget');
 const mailbox = require('./mailbox');
 const spotify = require('./spotify');
+const shows = require('./shows');
+const linktests = require('./linktests');
+const ambience = require('./ambience');
 const logscrub = require('./logscrub');
+const allsounds = require('./allsounds');
 
-const SERVER_VERSION = '0.6.0';
+const SERVER_VERSION = '0.7.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -84,6 +106,7 @@ const DONE_KEEP_MS = 48 * 60 * 60 * 1000;
 const SSE_MAX_BUFFER = 64 * 1024; // a screen this far behind is dropped
 const SECTIONS = ['now', 'next', 'waiting'];
 const LEVELS = ['must', 'optional', 'passive'];
+const MAX_LEAD = 30; // a passive to-do's "Coming up" lead, in days
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 const DUE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const WIDGET_RE = /^[a-z][a-z0-9_-]{0,39}$/;
@@ -176,7 +199,7 @@ function loadSettings(file) {
   const fromFile = readEnvFile(file);
   const out = Object.assign({}, fromFile);
   Object.keys(process.env).forEach((k) => {
-    if (/^(HUB_|CALENDAR_|SPOTIFY_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
+    if (/^(HUB_|CALENDAR_|SPOTIFY_|HA_|ALLSOUNDS_|WLED_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
   });
   return out;
 }
@@ -274,6 +297,10 @@ function normalizeItem(raw, now) {
   // Optional level; none means optional (and is how older items stay).
   if (it.level === undefined || it.level === null || it.level === '') delete it.level;
   else if (LEVELS.indexOf(it.level) < 0) throw bad('to-do level must be must, optional or passive');
+  // Optional lead: how many days before its due date a passive item shows
+  // under "Coming up". None means the TV's default (2).
+  if (it.lead === undefined || it.lead === null || it.lead === '') delete it.lead;
+  else if (!Number.isInteger(it.lead) || it.lead < 0 || it.lead > MAX_LEAD) throw bad('to-do lead must be a whole number of days from 0 to ' + MAX_LEAD);
   if (it.done === undefined || it.done === null) it.done = false;
   if (typeof it.done !== 'boolean') throw bad('to-do "done" must be true or false');
   if (it.done) {
@@ -462,7 +489,11 @@ function freshState() {
       layout: { rev: 0, data: { layout: null } },
       awws: { rev: 0, data: awws.emptyData() },
       budget: { rev: 0, data: budget.emptyData() },
-      nowplaying: { rev: 0, data: spotify.offData() }
+      nowplaying: { rev: 0, data: spotify.offData() },
+      shows: { rev: 0, data: shows.emptyData() },
+      linktests: { rev: 0, data: linktests.emptyData() },
+      allsounds: { rev: 0, data: allsounds.notsetData() },
+      ambience: { rev: 0, data: ambience.notsetData('noha') }
     }
   };
 }
@@ -510,6 +541,14 @@ function loadState(dir, log) {
     st.resources.budget = budget.cleanResource(st.resources.budget);
     // And no "now playing"; picture addresses are checked again on the way in.
     st.resources.nowplaying = spotify.cleanResource(st.resources.nowplaying, true);
+    // The TV show schedule (shows.js) and the watch link test answers: empty
+    // in older files.
+    st.resources.shows = shows.cleanResource(st.resources.shows);
+    st.resources.linktests = linktests.cleanResource(st.resources.linktests);
+    // Nor "all sounds" (allsounds.js), cleaned the same way.
+    st.resources.allsounds = allsounds.cleanResource(st.resources.allsounds, true);
+    // Nor the room's lights (ambience.js), rebuilt from known fields.
+    st.resources.ambience = ambience.cleanResource(st.resources.ambience);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -624,6 +663,7 @@ function start(options) {
   // opt.spotifyEnv is the .env settings (SPOTIFY_CLIENT_ID ...). opt.spotify
   // may point at a stand-in for Spotify: { accounts, api, allowHttp, ... }.
   const spOpt = isObj(opt.spotify) ? opt.spotify : {};
+  let sounds = null;          // All sounds (below); Spotify's changes are passed on to it
   const player = spotify.createPlayer(Object.assign({}, spOpt, {
     config: spotify.configFromEnv(opt.spotifyEnv || {}, port || DEFAULT_PORT),
     vibeOff: spOpt.vibeOff === true || spotify.vibeOffFromEnv(opt.spotifyEnv),
@@ -637,10 +677,75 @@ function start(options) {
         state.resources.nowplaying = { rev: state.resources.nowplaying.rev, data: data };
         return;
       }
-      try { changeResource('nowplaying', data); } catch (e) { /* changeResource already logged it */ }
+      // All sounds folds Spotify in: its change (if any) goes in the same
+      // save and the same rev, so Now Playing's revs are as before.
+      const also = sounds ? sounds.withSpotify(data) : null;
+      try { changeResource('nowplaying', data, also ? { allsounds: also } : null); } catch (e) { /* changeResource already logged it */ }
+    }
+  }));
+
+  /* --- All sounds (allsounds.js): Home Assistant's speakers plus Spotify --- */
+
+  // opt.allsoundsEnv is the .env settings (HA_URL, HA_TOKEN,
+  // ALLSOUNDS_ENTITIES). opt.allsounds may hold { allowHttp, manual, ... }
+  // for tests and the preview.
+  const asOpt = isObj(opt.allsounds) ? opt.allsounds : {};
+  sounds = allsounds.createWatcher(Object.assign({}, asOpt, {
+    config: allsounds.configFromEnv(opt.allsoundsEnv || {}),
+    log: log,
+    current: () => state.resources.allsounds.data,
+    spotify: () => state.resources.nowplaying.data,
+    publish: (data) => {
+      try { changeResource('allsounds', data); } catch (e) { /* changeResource already logged it */ }
     }
   }));
   player.start();
+  sounds.start();
+
+  /* --- the TV show schedule (shows.js) --- */
+
+  // opt.shows: { api, sampleFile, refreshMs, rate, ... } turns the TVmaze
+  // lookups on (the real server always passes it; tests and the preview pass
+  // a stand-in or the sample). Without it nothing is fetched by itself.
+  const showsOpt = isObj(opt.shows) ? opt.shows : null;
+  const showsWaitMs = opt.showsWait || 25000;
+  const tracker = shows.createTracker(Object.assign({}, showsOpt || {}, {
+    dataDir: dataDir,
+    enabled: !!showsOpt && showsOpt.enabled !== false,
+    autoRefresh: !!showsOpt && showsOpt.enabled !== false,
+    now: typeof opt.now === 'function' ? opt.now : () => new Date(),
+    log: log,
+    current: () => state.resources.shows.data,
+    publish: (data, changed) => {
+      if (!changed) {
+        // Only the "checked at" times moved: in memory, no push, no write.
+        state.resources.shows = { rev: state.resources.shows.rev, data: data };
+        return;
+      }
+      try {
+        changeResource('shows', data);
+        log('shows changed: ' + data.shows.length + ' shows (rev ' + state.rev + ')');
+      } catch (e) { /* changeResource already logged it */ }
+    }
+  }));
+  tracker.start();
+
+  /* --- Ambience (ambience.js): the room's lights through Home Assistant --- */
+
+  // opt.ambienceEnv is the .env settings (HA_URL, HA_TOKEN, WLED_URL).
+  // opt.ambience may hold { manual, timeoutMs, ... } for tests and the preview.
+  const amOpt = isObj(opt.ambience) ? opt.ambience : {};
+  const lights = ambience.createController(Object.assign({}, amOpt, {
+    env: ambience.configFromEnv(opt.ambienceEnv || {}),
+    dataDir: dataDir,
+    log: log,
+    screens: () => sse.size + pollSeen.size,
+    current: () => state.resources.ambience.data,
+    publish: (data) => {
+      try { changeResource('ambience', data); } catch (e) { /* changeResource already logged it */ }
+    }
+  }));
+  lights.start();
 
   /* --- replies --- */
 
@@ -728,11 +833,14 @@ function start(options) {
     return true;
   }
 
-  // Replaces one resource: saves, bumps rev, tells every screen.
-  function changeResource(name, data) {
+  // Replaces one resource: saves, bumps rev, tells every screen. also:
+  // { otherName: data } changed in the same step, with the same rev.
+  function changeResource(name, data, also) {
     const next = JSON.parse(JSON.stringify(state));
     next.rev += 1;
     next.resources[name] = { rev: next.rev, data: data };
+    const extra = also ? Object.keys(also) : [];
+    extra.forEach((k) => { next.resources[k] = { rev: next.rev, data: also[k] }; });
     try {
       saveState(dataDir, next);
     } catch (e) {
@@ -743,6 +851,7 @@ function start(options) {
     }
     state = next;
     broadcast('change', { resource: name, rev: state.rev, data: state.resources[name].data });
+    extra.forEach((k) => broadcast('change', { resource: k, rev: state.rev, data: state.resources[k].data }));
     wakePolls();
   }
 
@@ -784,6 +893,43 @@ function start(options) {
     const items = applyOps(todoItems(), body.ops, Date.now());
     changeTodo(items);
     sendJson(res, 200, { ok: true, rev: state.rev, items: todoItems() }, extra);
+  }
+
+  /* --- Ambience commands (ambience.js) --- */
+
+  // The control API and the screen's door share this. sub is
+  // '/ambience', '/ambience/scene', ... Resolves { status, body, note }; it
+  // never rejects. The note (for the control log line) is a result word,
+  // never a name.
+  function ambienceCall(method, sub, body) {
+    const b = isObj(body) ? body : {};
+    const idOf = () => {
+      if (typeof b.id !== 'string' || !b.id) throw bad('send { "id": "..." }');
+      return b.id;
+    };
+    const done = (p) => p.then((r) => ({ status: 200, body: Object.assign({ ok: true }, r), note: r.result }));
+    return Promise.resolve().then(() => {
+      if (sub === '/ambience' && method === 'GET') return { status: 200, body: { ok: true, ambience: lights.status() } };
+      if (sub === '/ambience/config' && method === 'GET') return { status: 200, body: { ok: true, config: lights.getConfig() } };
+      if (sub === '/ambience/config') {
+        if (!isObj(body) || body.config === undefined) throw bad('send { "config": { "lights": [...], "scenes": [...], "moods": [...] } }, or { "config": null } for the defaults');
+        const c = body.config === null ? lights.resetConfig() : lights.setConfig(body.config);
+        return { status: 200, body: { ok: true, config: c, ambience: lights.status() }, note: body.config === null ? 'defaults' : 'saved' };
+      }
+      if (sub === '/ambience/scene') return done(lights.applyScene(idOf()));
+      if (sub === '/ambience/light') {
+        const want = {};
+        if (b.on !== undefined) want.on = b.on;
+        if (b.pct !== undefined) want.pct = b.pct;
+        return done(lights.setLight(idOf(), want));
+      }
+      if (sub === '/ambience/mood') return done(lights.applyMood(idOf()));
+      throw bad('no such call');
+    }).catch((e) => {
+      const status = e && e.status ? e.status : 500;
+      if (status === 500) log('ambience: unexpected problem with a command');
+      return { status: status, body: { ok: false, error: e && e.status ? e.message : 'the server had a problem' } };
+    });
   }
 
   /* --- push line --- */
@@ -832,6 +978,7 @@ function start(options) {
     sse.add(client);
     log('screen connected (live line) ' + address);
     player.wake();
+    lights.screensChanged();
     res.on('close', () => dropSse(client));
     res.on('error', () => dropSse(client, 'write error'));
     try {
@@ -925,6 +1072,7 @@ function start(options) {
         pollSeen.set(address, { since: Date.now(), last: Date.now() });
         log('screen connected (poll) ' + address);
         player.wake();
+        lights.screensChanged();
       }
     }
     ensureForgetTimer();
@@ -1020,7 +1168,16 @@ function start(options) {
     '/api/spotify/login': ['POST'],
     '/api/spotify/code': ['POST'],
     '/api/spotify/logout': ['POST'],
-    '/api/spotify/refresh': ['POST']
+    '/api/spotify/refresh': ['POST'],
+    '/api/shows': ['GET', 'POST'],
+    '/api/shows/refresh': ['POST'],
+    '/api/linktests': ['GET'],
+    '/api/allsounds': ['GET'],
+    '/api/ambience': ['GET'],
+    '/api/ambience/scene': ['POST'],
+    '/api/ambience/light': ['POST'],
+    '/api/ambience/mood': ['POST'],
+    '/api/ambience/config': ['GET', 'POST']
   };
 
   function statusBody() {
@@ -1029,7 +1186,9 @@ function start(options) {
       uptime: Math.round((Date.now() - startedAt) / 1000), screens: screenList(),
       calendar: { configured: calReader.configured, calendars: calList.length, lastRefresh: calReader.lastRefresh() },
       mailbox: mbox ? mbox.info() : { configured: false, problem: mailboxCfg.problem || '' },
-      spotify: player.status()
+      spotify: player.status(),
+      shows: { shows: tracker.list().length, lastRefresh: tracker.lastRefresh(), sample: !!state.resources.shows.data.sample },
+      ambience: lights.summary()
     };
   }
 
@@ -1115,6 +1274,7 @@ function start(options) {
           return undefined;
         }
         if (route === '/api/spotify') return reply(200, { ok: true, spotify: player.status() });
+        if (route === '/api/allsounds') return reply(200, { ok: true, allsounds: sounds.status() });
         if (route === '/api/spotify/login') {
           const l = player.loginUrl();
           return reply(200, { ok: true, url: l.url, redirectUri: l.redirectUri, minutes: l.minutes }, 'sign-in link made');
@@ -1132,6 +1292,10 @@ function start(options) {
         }
         if (route === '/api/spotify/refresh') {
           player.poll().then(() => reply(200, { ok: true, spotify: player.status() })).catch(failed);
+          return undefined;
+        }
+        if (route.indexOf('/api/ambience') === 0) {
+          ambienceCall(method, route.slice(4), body).then((a) => reply(a.status, a.body, a.note));
           return undefined;
         }
         if (route === '/api/layout' && method === 'GET') {
@@ -1153,6 +1317,44 @@ function start(options) {
         if (route === '/api/budget') {
           const answer = postSnapshot('budget', budget, body);
           return reply(200, answer[0], answer[1]);
+        }
+        if (route === '/api/shows' && method === 'GET') {
+          const r = state.resources.shows;
+          return reply(200, { ok: true, rev: r.rev, data: r.data, list: tracker.list(), tz: calTz });
+        }
+        if (route === '/api/shows') {
+          if (!isObj(body)) throw bad('send { "add": {...} }, { "remove": "name" } or { "set": [...] }');
+          const ops = ['add', 'remove', 'set'].filter((k) => Object.prototype.hasOwnProperty.call(body, k));
+          if (ops.length !== 1) throw bad('send exactly one of { "add": {...} }, { "remove": "name" } or { "set": [...] }');
+          if (ops[0] === 'add') {
+            const a = tracker.add(body.add);
+            return reply(200, { ok: true, entry: a.entry, replaced: a.replaced, list: tracker.list() }, (a.replaced ? 'updated ' : 'added ') + 'a show');
+          }
+          if (ops[0] === 'remove') {
+            if (typeof body.remove !== 'string' || !body.remove.trim()) throw bad('"remove" must be the show\'s name');
+            const e = tracker.remove(body.remove);
+            return reply(200, { ok: true, removed: e, list: tracker.list() }, 'removed a show');
+          }
+          const list = tracker.set(body.set);
+          return reply(200, { ok: true, list: list }, plural(list.length, 'show') + ' on the list');
+        }
+        if (route === '/api/shows/refresh') {
+          let waitTimer = null;
+          const late = new Promise((r) => { waitTimer = setTimeout(() => r(null), showsWaitMs); });
+          Promise.race([tracker.refresh().then((r) => ({ r: r })), late]).then((w) => {
+            clearTimeout(waitTimer);
+            const finished = !!(w && w.r);
+            reply(200, {
+              ok: true, done: finished, changed: finished ? w.r.changed : false,
+              problems: finished ? w.r.problems || [] : [], count: tracker.list().length,
+              data: state.resources.shows.data, list: tracker.list()
+            }, finished ? (w.r.changed ? 'changed' : 'no change') : 'still reading');
+          }).catch(failed);
+          return undefined;
+        }
+        if (route === '/api/linktests') {
+          const l = state.resources.linktests;
+          return reply(200, { ok: true, rev: l.rev, data: l.data });
         }
         if (route === '/api/todo' && method === 'GET') {
           return reply(200, { ok: true, rev: state.rev, items: todoItems() });
@@ -1177,6 +1379,7 @@ function start(options) {
           if (body.due !== undefined) raw.due = body.due;
           if (body.notes !== undefined) raw.notes = body.notes;
           if (body.level !== undefined) raw.level = body.level;
+          if (body.lead !== undefined) raw.lead = body.lead;
           const item = normalizeItem(raw, Date.now());
           const items = purgeOld(todoItems(), Date.now());
           if (items.length >= MAX_ITEMS) throw bad('the to-do list is full (' + MAX_ITEMS + ' items)');
@@ -1208,7 +1411,7 @@ function start(options) {
     if (!checkToken(req)) return done(401, { ok: false, error: 'wrong token' });
     if (ROUTES[route] && ROUTES[route].indexOf(req.method) < 0) res.setHeader('Allow', ROUTES[route].join(', '));
     const run = (body) => api(req.method, route, body, query).then((r) => done(r.status, r.body, r.note));
-    if (req.method !== 'POST' || route === '/api/calendar/refresh' || !ROUTES[route]) {
+    if (req.method !== 'POST' || route === '/api/calendar/refresh' || route === '/api/shows/refresh' || !ROUTES[route]) {
       req.resume(); // no body is needed
       return run(undefined);
     }
@@ -1233,7 +1436,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/linktests' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1244,11 +1447,38 @@ function start(options) {
     }
     if (route === '/live/events') return openSse(req, res, address);
     if (route === '/live/poll') return openPoll(req, res, query, address);
-    // POST /todo/ops. A web page on another site must not be able to change
-    // the list through a browser at home, so a foreign Origin is refused.
+    // POST /todo/ops and /ambience/*. A web page on another site must not be
+    // able to change the list or the lights through a browser at home, so a
+    // foreign Origin is refused.
     const origin = req.headers.origin;
     if (origin && origins.indexOf(origin) < 0) {
       return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    }
+    if (route === '/linktests') {
+      return readBody(req, res, (body) => {
+        try {
+          if (!isObj(body)) throw bad('send { "result": { ... } }');
+          const r = linktests.normalizeResult(body.result, Date.now());
+          changeResource('linktests', linktests.addResult(state.resources.linktests.data, r));
+          sendJson(res, 200, { ok: true, rev: state.rev }, cors);
+          log('screen sent a watch link test answer (' + r.outcome + ')');
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
+    }
+    if (route.indexOf('/ambience/') === 0) {
+      // The TV holds no secret: it may only name ids from the saved
+      // settings, and not too fast. Nothing about it is logged here (the
+      // address included); ambience.js logs counts and results.
+      if (!lights.screenAllowed()) {
+        req.resume();
+        return sendJson(res, 429, { ok: false, error: 'slow down' }, cors);
+      }
+      readBody(req, res, (body) => {
+        ambienceCall('POST', route, body).then((a) => sendJson(res, a.status, a.body, cors));
+      });
+      return undefined;
     }
     readBody(req, res, (body) => {
       try {
@@ -1285,7 +1515,10 @@ function start(options) {
     });
   }
 
-  const SCREEN_ROUTES = { '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/spotify/callback': 1 };
+  const SCREEN_ROUTES = {
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/spotify/callback': 1,
+    '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
+  };
 
   function handler(door) {
     return (req, res) => {
@@ -1378,8 +1611,11 @@ function start(options) {
     api: api,
     mailbox: mbox,
     spotify: player,
+    ambience: lights,
     // Keeps a line that was already printed some other way (process events).
     note: (s) => { try { remember(String(s)); } catch (e) { /* never throws */ } },
+    shows: tracker,
+    allsounds: sounds,
     _debug: () => {
       forgetOld();
       return {
@@ -1410,6 +1646,9 @@ function start(options) {
     closing = true;
     calReader.close();
     player.close();
+    tracker.close();
+    sounds.close();
+    lights.close();
     if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));
@@ -1462,6 +1701,14 @@ if (require.main === module) {
     refreshMinutes: env.CALENDAR_REFRESH_MINUTES || '',
     mailboxEnv: env,
     spotifyEnv: env,
+    // TVmaze for the show schedule. HUB_SHOWS=off stops the lookups;
+    // HUB_SHOWS=sample shows the made-up sample instead (for trying the TV).
+    shows: {
+      enabled: env.HUB_SHOWS !== 'off',
+      sampleFile: env.HUB_SHOWS === 'sample' ? path.join(__dirname, 'fixtures', 'shows-sample.json') : undefined
+    },
+    allsoundsEnv: env,
+    ambienceEnv: env,
     // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
     // or systemd (Restart=always) starts the server again, with any new code.
     onRestart: () => {

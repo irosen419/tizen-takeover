@@ -1,0 +1,472 @@
+/* Ambience widget. Every class starts with am-.
+
+   The tile and panel are already glass, so inside them it is light itself
+   that leads: the active scene's name big, a soft wash of the scene's own
+   colour from one corner, and small bulbs. No boxes in boxes on the tile.
+   Only opacity and transform ever animate (the wash and the bulbs breathe,
+   a bar's fill slides); in the hub's fade mode and for reduced motion they
+   stay still. Every text keeps a line height of 1.25 or more so accents
+   (Á, Ñ, Ú) never clip, one-line names end in "...", and nothing has a
+   width a longer language could overflow. No grid, no flex gap. */
+
+/* ---------- shared ---------- */
+
+.am-tile,
+.am-page {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.am-glyph { display: inline-block; flex: 0 0 auto; }
+.am-glyph svg { display: block; width: 100%; height: 100%; }
+
+/* The scene's light: a wash from the lower left, breathing slowly. */
+.am-wash {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  border-radius: 1.45rem;
+  pointer-events: none;
+  opacity: 0.85;
+  -webkit-animation: am-breathe 7s ease-in-out infinite alternate;
+  animation: am-breathe 7s ease-in-out infinite alternate;
+}
+.am-tile > *:not(.am-wash),
+.am-page > *:not(.am-wash) { position: relative; }
+
+@-webkit-keyframes am-breathe { from { opacity: 0.62; } to { opacity: 1; } }
+@keyframes am-breathe { from { opacity: 0.62; } to { opacity: 1; } }
+
+.am-big {
+  font-size: 2rem;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  padding-top: 0.05rem;
+}
+.am-meta {
+  min-width: 0;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: 0.4rem;
+}
+.am-note {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.am-note.am-warn,
+#panel .panel-sub.am-sub-warn { color: #f2c98a; }
+.am-note.am-bad,
+#panel .panel-sub.am-sub-bad { color: #ffa395; }
+.am-msg {
+  font-size: 1.35rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.am-hint {
+  margin-top: 0.35rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* ---------- bulbs ---------- */
+
+.am-dots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 0.2rem 0 0.2rem 0.1rem;
+}
+.am-dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin: 0.15rem 0.55rem 0.15rem 0;
+  border-radius: 50%;
+}
+.am-dot.is-switch { border-radius: 0.24rem; }
+.am-dot.is-off { border: 0.14rem solid rgba(255, 255, 255, 0.34); }
+.am-dot.is-gone { border: 0.14rem solid rgba(255, 255, 255, 0.2); }
+/* Crossed out: a light that doesn't answer. */
+.am-dot.is-gone::after {
+  content: '';
+  position: absolute;
+  left: -0.22rem; right: -0.22rem; top: 50%;
+  height: 0.14rem;
+  margin-top: -0.07rem;
+  background: rgba(255, 255, 255, 0.42);
+  -webkit-transform: rotate(-45deg);
+  transform: rotate(-45deg);
+}
+/* A lit bulb's halo breathes, with opacity only. */
+.am-halo {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  border-radius: 50%;
+  opacity: 0.8;
+  -webkit-animation: am-halo 4.8s ease-in-out infinite alternate;
+  animation: am-halo 4.8s ease-in-out infinite alternate;
+}
+.am-dot.is-switch .am-halo { border-radius: 0.4rem; }
+.am-dots.is-small .am-dot { width: 0.7rem; height: 0.7rem; margin-right: 0.42rem; }
+@-webkit-keyframes am-halo { from { opacity: 0.55; } to { opacity: 1; } }
+@keyframes am-halo { from { opacity: 0.55; } to { opacity: 1; } }
+
+/* ---------- a light's level ---------- */
+
+.am-lrow { min-width: 0; }
+.am-lrow-top {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.am-lrow-dot { margin: 0 0.6rem 0 0; width: 0.7rem; height: 0.7rem; }
+.am-lrow-dot.is-off,
+.am-lrow-dot.is-gone { border-width: 0.12rem; }
+.am-lrow-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-lrow-state {
+  flex: 0 0 auto;
+  margin-left: 0.7rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.am-lrow.is-gone .am-lrow-name { color: var(--text-2); }
+.am-lrow.is-gone .am-lrow-state { color: #e7bd80; }
+.am-bar {
+  position: relative;
+  height: 0.28rem;
+  margin: 0.32rem 0 0 1.3rem;
+  border-radius: 0.2rem;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.am-bar-fill {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 100%;
+  border-radius: 0.2rem;
+  background: rgba(255, 255, 255, 0.85);
+  -webkit-transform-origin: 0 50%;
+  transform-origin: 0 50%;
+  -webkit-transition: -webkit-transform 160ms ease-out;
+  transition: transform 160ms ease-out;
+}
+.am-lrow.is-gone .am-bar { opacity: 0.45; }
+.am-bar.am-bar-none { background: transparent; }
+
+/* The scenes, quietly, at the foot of a big tile. */
+.am-ladder { margin-top: auto; padding-top: 1rem; }
+.am-step {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0.18rem 0;
+  color: var(--text-3);
+}
+.am-step-icon { width: 1.15rem; height: 1.15rem; margin-right: 0.6rem; }
+.am-step-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-step.is-active { color: var(--text); }
+.am-step.is-active .am-step-name { font-weight: 600; }
+.am-main > .am-ladder + .am-note { margin-top: 0.4rem; }
+
+/* ---------- tile layouts ---------- */
+
+.am-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+.am-metarow {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+  margin-top: 0.55rem;
+}
+.am-main > .am-note { margin-top: auto; padding-top: 0.5rem; }
+
+/* 2 x 2 and narrow tall tiles: a little smaller. */
+.am-l-stack .am-big { font-size: 1.45rem; line-height: 1.3; }
+.am-l-stack .am-metarow { flex-wrap: wrap; }
+.am-l-stack .am-meta { width: 100%; margin: 0.25rem 0 0; }
+
+/* Wide: the name and bulbs on the left, a row per light on the right. */
+.am-l-wide { flex-direction: row; }
+/* A message (not set up, waiting) stacks at every width. */
+.am-l-wide.am-k-notset, .am-l-wide.am-k-waiting, .am-l-wide.am-k-offline,
+.am-l-wide.am-k-update, .am-l-wide.am-k-liveoff { flex-direction: column; }
+.am-l-wide .am-main { flex: 1 1 45%; padding-right: 1.4rem; }
+.am-l-wide .am-rows {
+  flex: 1 1 55%;
+  min-width: 0;
+  padding-left: 1.4rem;
+  border-left: 0.08rem solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.am-rows .am-tile-row { margin-bottom: 0.65rem; }
+.am-l-tall .am-rows { margin-top: 1rem; overflow: hidden; }
+.tile-h3 .am-l-wide .am-big,
+.tile-h3 .am-l-tall .am-big { font-size: 2.6rem; line-height: 1.25; }
+.tile-h3 .am-l-wide .am-rows { padding-top: 0.2rem; }
+.tile-h3 .am-tile-row { margin-bottom: 0.9rem; }
+.tile-h3 .am-l-wide .am-lrow-name { font-size: 1.1rem; }
+
+/* One column: the bulb (in the scene's colour) and how many are on. */
+.am-l-one { align-items: center; justify-content: center; }
+.am-one-glyph { width: 2.3rem; height: 2.3rem; color: var(--text); }
+.am-one-glyph.is-quiet { color: var(--text-3); }
+.am-one-count { margin-top: 0.2rem; font-size: 1rem; line-height: 1.3; font-weight: 600; color: var(--text-2); }
+
+/* A strip: one line, the name first. */
+.am-l-strip { justify-content: center; }
+.am-sline {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+.am-l-strip .am-big {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 1.45rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-l-strip .am-dots { flex: 0 0 auto; flex-wrap: nowrap; margin-left: 1.1rem; }
+.am-l-strip .am-meta { flex: 0 0 auto; margin-left: 0.2rem; }
+.am-l-strip .am-note {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-l-strip .am-msg { font-size: 1.1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Waiting, not set up: the message and what to do. */
+.am-k-notset .am-msg { color: var(--text); }
+.is-stale .am-big,
+.is-stale .am-dots { opacity: 0.6; }
+
+/* ---------- the panel ---------- */
+
+.am-page { padding: 0 0 0.3rem; }
+.am-label {
+  margin: 0.8rem 0 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-label-note { margin-left: 0.6rem; letter-spacing: 0.04em; text-transform: none; color: #e7bd80; font-weight: 400; }
+.am-sec-scenes .am-label { margin-top: 0.1rem; }
+
+/* Scenes: cards on a rail that slides (instantly) to keep focus in view. */
+.am-rail {
+  overflow: hidden;
+  margin: -1rem -1rem 0;
+  padding: 1rem;
+}
+.am-track {
+  display: flex;
+  flex-wrap: nowrap;
+}
+.am-card {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: 9.4rem;
+  height: 7.4rem;
+  margin-right: 0.85rem;
+  padding: 0.95rem 1rem 0.85rem;
+  border-radius: 1.2rem;
+  background: rgba(255, 255, 255, 0.045);
+  border: var(--edge) solid rgba(255, 255, 255, 0.08);
+}
+.am-card:last-child { margin-right: 0; }
+.am-card.is-focused { background: var(--card-2); border-color: var(--focus); }
+.am-card-glow,
+.am-card-ring {
+  position: absolute;
+  pointer-events: none;
+}
+.am-card-glow {
+  top: -0.16rem; right: -0.16rem; bottom: -0.16rem; left: -0.16rem;
+  border-radius: 1.2rem;
+  -webkit-animation: am-breathe 5.5s ease-in-out infinite alternate;
+  animation: am-breathe 5.5s ease-in-out infinite alternate;
+}
+.am-card-ring {
+  top: 0.22rem; right: 0.22rem; bottom: 0.22rem; left: 0.22rem;
+  border-radius: 0.86rem;
+  border: 0.1rem solid transparent;
+}
+.am-card-icon { position: relative; width: 1.9rem; height: 1.9rem; color: var(--text-2); }
+.am-card.is-dark .am-card-icon { color: var(--text-3); }
+.am-card-name {
+  position: relative;
+  margin-top: 0.55rem;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.am-card-state {
+  position: relative;
+  margin-top: auto;
+  min-height: 1.1rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-card.is-pending .am-card-state {
+  -webkit-animation: am-pulse 0.9s ease-in-out infinite alternate;
+  animation: am-pulse 0.9s ease-in-out infinite alternate;
+}
+@-webkit-keyframes am-pulse { from { opacity: 0.45; } to { opacity: 1; } }
+@keyframes am-pulse { from { opacity: 0.45; } to { opacity: 1; } }
+
+/* Room lights: one row each, the whole row is the control. */
+.am-lights { margin: 0 -0.9rem; }
+.am-prow {
+  padding: 0.5rem 0.9rem;
+  margin-bottom: 0.15rem;
+  border-radius: 0.9rem;
+  border: var(--edge) solid transparent;
+}
+/* One line: the name (up to 40%), the bar, the state. */
+.am-inline .am-lrow-name { flex: 0 0 34%; max-width: 34%; }
+.am-inline .am-bar { flex: 1 1 auto; min-width: 3rem; margin: 0 0 0 1.1rem; }
+.am-inline .am-lrow-state { min-width: 3.4rem; text-align: right; margin-left: 1rem; }
+.am-prow.is-focused { background: var(--card-2); border-color: var(--focus); }
+.am-prow .am-lrow-name { font-size: 1.1rem; }
+.am-prow .am-lrow-state { font-size: 1rem; }
+.am-prow .am-bar { height: 0.36rem; }
+.am-prow.is-gone .am-lrow-name,
+.am-prow.is-gone .am-lrow-dot { opacity: 0.6; }
+
+/* Plant wall moods: chips. */
+.am-chips { display: flex; flex-wrap: wrap; }
+.am-chip {
+  flex: 0 0 auto;
+  max-width: 14rem;
+  margin: 0 0.7rem 0.5rem 0;
+  padding: 0.4rem 1.1rem 0.45rem;
+  border-radius: 2rem;
+  border: var(--edge) solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+}
+.am-chip-text {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-chip.is-active { background: rgba(120, 210, 150, 0.16); border-color: rgba(140, 220, 165, 0.6); }
+.am-chip.is-focused { border-color: var(--focus); background: var(--card-2); }
+.am-chip.is-active.is-focused { background: rgba(120, 210, 150, 0.24); }
+.am-chip.is-pending { opacity: 0.7; }
+
+.am-nolights { margin-top: 0.8rem; }
+
+/* Not set up, or waiting: a calm card with what to do. */
+.am-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 1.2rem 0 0.6rem;
+  max-width: 34rem;
+}
+.am-empty-glyph { width: 2.6rem; height: 2.6rem; color: var(--text-3); margin-bottom: 0.8rem; }
+.am-empty-title { font-size: 1.6rem; line-height: 1.3; font-weight: 600; color: var(--text); }
+.am-empty-hint { margin-top: 0.4rem; font-size: 1.1rem; line-height: 1.4; color: var(--text-2); }
+.am-empty-how { margin-top: 0.9rem; font-size: 0.95rem; line-height: 1.45; color: var(--text-3); }
+.am-fallback { font-size: 1.1rem; line-height: 1.4; color: var(--text-2); }
+
+/* Full screen: the same parts, bigger. */
+.am-page.is-full .am-label { font-size: 0.95rem; margin-top: 1rem; margin-bottom: 0.6rem; }
+.am-page.is-full .am-card { width: 12.4rem; height: 9.6rem; padding: 1.1rem 1.3rem 1rem; margin-right: 1.1rem; border-radius: 1.4rem; }
+.am-page.is-full .am-card-glow { border-radius: 1.4rem; }
+.am-page.is-full .am-card-ring { border-radius: 1.06rem; }
+.am-page.is-full .am-card-icon { width: 2.5rem; height: 2.5rem; }
+.am-page.is-full .am-card-name { font-size: 1.5rem; margin-top: 0.8rem; }
+.am-page.is-full .am-card-state { font-size: 0.85rem; min-height: 1.25rem; }
+.am-page.is-full .am-prow { padding: 0.55rem 1rem 0.6rem; }
+.am-page.is-full .am-prow .am-lrow-name { font-size: 1.35rem; }
+.am-page.is-full .am-prow .am-lrow-state { font-size: 1.2rem; }
+.am-page.is-full .am-prow .am-lrow-dot { width: 0.85rem; height: 0.85rem; }
+.am-page.is-full .am-prow .am-bar { height: 0.45rem; }
+.am-page.is-full .am-chip-text { font-size: 1.2rem; }
+.am-page.is-full .am-chip { padding: 0.5rem 1.3rem 0.55rem; }
+.am-page.is-full .am-chips { padding-bottom: 1.4rem; }
+
+.css-end { top: 0; }
+

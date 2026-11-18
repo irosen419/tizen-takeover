@@ -6,6 +6,10 @@
  *   GET /ping            health check
  *   GET /apps            installed apps, as [{ id, name }]
  *   GET /launch?id=...   open an app by its Tizen app ID
+ *   GET /launch-control?id=...&op=...[&uri=...][&key=...&val=...]
+ *                        open an app with an app control (an operation, an
+ *                        optional URI and one optional data key and value):
+ *                        how the watch link test tries deep links
  *   GET /key?k=KEY_...   press a remote key (used for HDMI inputs)
  *   GET /webhook?url=... send an empty POST, e.g. to a Home Assistant webhook
  *   GET /fetch?url=...   read JSON from one of four public weather/city addresses
@@ -24,7 +28,7 @@ var urlLib = require('url');
 var os = require('os');
 
 var PORT = 8095;
-var VERSION = '0.29.2';
+var VERSION = '0.29.9';
 var TOKEN_FILE = '/home/owner/share/tizen-takeover-remote-token.txt';
 var REMOTE_NAME = new Buffer('Home Hub').toString('base64');
 
@@ -61,6 +65,45 @@ function launchApp(id, cb) {
       cb(null);
     }, function (e) {
       cb(e && e.message ? e.message : 'launch failed');
+    });
+  } catch (e) {
+    cb(e.message);
+  }
+}
+
+/* ---------- Opening an app with an app control (watch link test) ---------- */
+
+// Strict shapes, so only a plain app control can be asked for.
+var APP_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+var OP_RE = /^https?:\/\/[A-Za-z0-9.-]{1,64}(\/[A-Za-z0-9._-]{1,64}){1,8}$/;
+var URI_RE = /^[A-Za-z][A-Za-z0-9+.-]{0,15}:[\x21-\x7e]{1,500}$/;
+var KEY_RE = /^[A-Za-z0-9_.-]{1,64}$/;
+var VAL_RE = /^[\x20-\x7e]{1,1000}$/;
+
+/* Checks the query. Returns { id, op, uri, key, val } or a string saying what is wrong. */
+function checkControl(q) {
+  var id = String(q.id || '');
+  var op = String(q.op || '');
+  var uri = q.uri === undefined || q.uri === '' ? null : String(q.uri);
+  var key = q.key === undefined || q.key === '' ? null : String(q.key);
+  var val = q.val === undefined ? null : String(q.val);
+  if (!APP_ID_RE.test(id)) return 'bad id';
+  if (!OP_RE.test(op)) return 'bad op';
+  if (uri !== null && !URI_RE.test(uri)) return 'bad uri';
+  if (key !== null && !KEY_RE.test(key)) return 'bad key';
+  if ((key === null) !== (val === null)) return 'key and val go together';
+  if (val !== null && !VAL_RE.test(val)) return 'bad val';
+  return { id: id, op: op, uri: uri, key: key, val: val };
+}
+
+function launchControl(c, cb) {
+  try {
+    var data = c.key !== null ? [new tizen.ApplicationControlData(c.key, [c.val])] : null;
+    var control = new tizen.ApplicationControl(c.op, c.uri, null, null, data);
+    tizen.application.launchAppControl(control, c.id, function () {
+      cb(null);
+    }, function (e) {
+      cb(e && e.message ? e.message : 'launchAppControl failed');
     });
   } catch (e) {
     cb(e.message);
@@ -361,6 +404,15 @@ var server = http.createServer(function (req, res) {
   if (parsed.pathname === '/launch') {
     if (!q.id) return send(res, 400, { ok: false, error: 'missing id' });
     return launchApp(String(q.id), function (err) {
+      if (err) return send(res, 500, { ok: false, error: String(err) });
+      send(res, 200, { ok: true });
+    });
+  }
+
+  if (parsed.pathname === '/launch-control') {
+    var c = checkControl(q);
+    if (typeof c === 'string') return send(res, 400, { ok: false, error: c });
+    return launchControl(c, function (err) {
       if (err) return send(res, 500, { ok: false, error: String(err) });
       send(res, 200, { ok: true });
     });

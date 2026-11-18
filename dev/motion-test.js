@@ -304,6 +304,45 @@ async function checkOff(pi) {
   }
 }
 
+// Frame times (ms) of a run: n frames of 'gap' ms, with the given long gaps put in.
+function runOf(n, gap, longs) {
+  const times = [0];
+  for (let i = 1; i <= n; i++) times.push(times[i - 1] + (longs && longs[i] ? longs[i] : gap));
+  return times;
+}
+
+async function checkDetection(pi) {
+  const page = await open({ pi: pi });
+  const run = (runs) => page.evaluate((r) => window.HUB_TEST.motionRuns(r), runs);
+  // Smooth runs (~100 fps, then ~71 fps) settle on push.
+  let r = await run([runOf(30, 10), runOf(30, 14), runOf(30, 10)]);
+  assert(r.mode === 'push' && !r.measuring, 'smooth runs: ' + JSON.stringify(r));
+  // The reported case: runs that are fast but each carry one 180 ms stall do not step down.
+  r = await run([runOf(30, 10, { 12: 180 }), runOf(30, 10, { 12: 180 }), runOf(30, 10, { 12: 180 }), runOf(30, 10, { 12: 180 })]);
+  assert(r.mode === 'push', 'one stall per run stepped down: ' + JSON.stringify(r));
+  // Three stalls in a run is janky, but needs three such runs to step down.
+  const jerky = () => runOf(30, 10, { 8: 130, 14: 130, 20: 130 });
+  r = await run([jerky(), jerky()]);
+  assert(r.mode === 'push', 'two janky runs stepped down: ' + JSON.stringify(r));
+  r = await run([jerky(), jerky(), jerky()]);
+  assert(r.mode === 'expand' && r.worst === 130, 'three janky runs: ' + JSON.stringify(r));
+  // A real slow rate (25 fps) steps down after three runs too.
+  r = await run([runOf(30, 40), runOf(30, 40), runOf(30, 40)]);
+  assert(r.mode === 'expand' && r.fps >= 24 && r.fps <= 26, 'slow runs: ' + JSON.stringify(r));
+  // A step-down is forgotten after a day: the stored record goes back to push.
+  await page.evaluate((b) => localStorage.setItem('homeHub.motion', JSON.stringify({ mode: 'expand', build: b, fps: 71, at: Date.now() - 25 * 3600 * 1000 })), BUILD);
+  await page.reload();
+  await page.waitForFunction(() => window.HUB_TEST);
+  const st = await fx(page);
+  assert(st.speed === 'ok', 'a day-old step-down still on: ' + st.speed);
+  await page.evaluate((b) => localStorage.setItem('homeHub.motion', JSON.stringify({ mode: 'expand', build: b, fps: 71, at: Date.now() - 3600 * 1000 })), BUILD);
+  await page.reload();
+  await page.waitForFunction(() => window.HUB_TEST);
+  assert((await fx(page)).speed === 'slow', 'a fresh step-down was forgotten');
+  noErrors(page);
+  await page.context().close();
+}
+
 async function checkDisabled(pi) {
   const cases = [
     { name: 'fade', o: { query: 'motion=fade' }, why: 'fade' },
@@ -1051,6 +1090,7 @@ async function main() {
   await check('13. Activity chips: a new to-do adds exactly one chip in the To-do tile, which goes by itself and leaves nothing', () => checkActivityTodo(pi));
   await check('14. Activity chips: none while the wanderers are on screen, or behind a panel', () => checkActivityClay(pi));
   await check('15. Activity chips: the Spanish from app/i18n.js fits one line in 3-column tiles (3x1, 3x2, 3x4), 22px+, 4.5:1; a language change applies live', () => checkActivityText(pi));
+  await check('16. Motion timing: one stall does not step down, three janky runs do, a step-down lasts a day', () => checkDetection(pi));
   await check('16. Activity chips: a to-do whose notes change on the Pi adds one chip; the first list, an unchanged list and a tick add none', () => checkActivityTodoEdit(pi));
   await check('17. Auto stepped down to expand at 60 fps or more: chips, the accent edge and its light still run, the ring does not; the Motion row says so', () => checkLightStepped(pi));
 }

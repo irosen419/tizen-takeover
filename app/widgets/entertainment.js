@@ -2,6 +2,11 @@
  * Entertainment: the app launcher. Streaming apps, TizenTube, the Xbox
  * (through Home Assistant), dashboards and the list of every app on the TV.
  * Items come from HUB_CONFIG.widgets.entertainment.sections.
+ *
+ * Two more views in the same panel: the Schedule of TV shows (a "schedule"
+ * item; drawn by app/widgets/shows.js) and the watch link test (opened from
+ * the About panel; drawn by app/widgets/linktest.js). Back returns to the
+ * grid from either.
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -14,7 +19,7 @@
   var items = [];           // every item, flat: { cfg, key, appId }
   var apps = null;          // [{ id, name, hidden }] once loaded
   var lookupFailed = false;
-  var view = 'grid';        // grid | list
+  var view = 'grid';        // grid | list | schedule | linktests
   var lastKey = null;       // last focused item, so reopening lands on it
   var gridCache = null;     // the grid's DOM, built once: { grid, nodes: [{ item, node, state }] }
 
@@ -104,6 +109,26 @@
     return fit;
   }
 
+  /* ---------- what's on (from the Schedule) ---------- */
+
+  // Per app label, how many of the owner's shows have something to watch
+  // now (out this week, or later today): {} without the Schedule.
+  function availability() {
+    try { return window.HUB_SHOWS && typeof HUB_SHOWS.availability === 'function' ? HUB_SHOWS.availability() || {} : {}; } catch (e) { return {}; }
+  }
+
+  // The tile's order: apps with something to watch first (most first), the
+  // rest as in config.js. Only app items count; a sort that keeps ties stable.
+  function tileOrder(avail) {
+    var list = [];
+    for (var i = 0; i < items.length; i++) {
+      var n = items[i].cfg.kind === 'app' && avail.hasOwnProperty(items[i].cfg.label) ? avail[items[i].cfg.label] : 0;
+      list.push({ item: items[i], n: n, at: i });
+    }
+    list.sort(function (a, b) { return (b.n - a.n) || (a.at - b.at); });
+    return list;
+  }
+
   /* ---------- items ---------- */
 
   function buildItems() {
@@ -130,6 +155,7 @@
   // What the small line under an item says, and whether it's dimmed.
   function stateOf(item) {
     var cfg = item.cfg;
+    if (cfg.kind === 'schedule' && window.HUB_SHOWS) return { text: HUB_SHOWS.entry().sub, missing: false };
     if (cfg.kind !== 'app') return { text: cfg.sub || '', missing: false };
     if (item.appId) return { text: cfg.sub || '', missing: false };
     if (!apps) return { text: lookupFailed ? 'Couldn’t check' : 'Looking for it', missing: false };
@@ -217,6 +243,45 @@
     if (launchBloom) { try { launchBloom.cancel(); } catch (e) { /* gone */ } }
     launchBloom = null;
   }
+
+  // An app control (the watch link test, and deep links later): the page's
+  // own tizen API when it has one, otherwise service.js. c: { id, op, uri,
+  // key, val }; cb(err) with err null when the TV took it.
+  function launchControl(c, cb) {
+    function viaService() {
+      var q = '/launch-control?id=' + encodeURIComponent(c.id) + '&op=' + encodeURIComponent(c.op) +
+        (c.uri ? '&uri=' + encodeURIComponent(c.uri) : '') +
+        (c.key ? '&key=' + encodeURIComponent(c.key) + '&val=' + encodeURIComponent(c.val || '') : '');
+      C.service(q, 8000, function (err) { cb(err || null); });
+    }
+    if (C.hasTizen && window.tizen && tizen.ApplicationControl) {
+      try {
+        var data = c.key ? [new tizen.ApplicationControlData(c.key, [c.val || ''])] : null;
+        tizen.application.launchAppControl(new tizen.ApplicationControl(c.op, c.uri || null, null, null, data), c.id,
+          function () { cb(null); }, viaService);
+        return;
+      } catch (e) { /* fall back */ }
+    }
+    viaService();
+  }
+
+  // The names to find an app by, from the Entertainment item with this label.
+  function matchFor(label) {
+    for (var i = 0; i < items.length; i++) {
+      var cfg = items[i].cfg;
+      if (cfg.kind === 'app' && cfg.label === label && cfg.match && cfg.match.length) return cfg.match.slice();
+    }
+    return null;
+  }
+
+  // What shows.js and linktest.js use to find and open apps.
+  var host = {
+    findApp: function (match) { return findApp(match); },
+    appsReady: function () { return !!apps; },
+    launch: function (id, label) { launchById(id, label); },
+    launchControl: function (c, cb) { launchControl(c, cb); },
+    matchFor: matchFor
+  };
 
   function launchById(id, label) {
     function viaService() {
@@ -311,6 +376,31 @@
     if (tc.kind === 'dashboard') return C.openFrame(tc.url);
     if (tc.kind === 'webhook') return callWebhook(tc);
     if (tc.kind === 'allApps') return openList(item);
+    if (tc.kind === 'schedule') return openView('schedule', item);
+  }
+
+  /* ---------- Schedule and the watch link test ---------- */
+
+  function viewTitle(name) {
+    if (name === 'schedule' && window.HUB_SHOWS) return HUB_SHOWS.title();
+    if (name === 'linktests' && window.HUB_LINKTEST) return HUB_LINKTEST.title();
+    return '';
+  }
+
+  function openView(name, item) {
+    if (name === 'schedule' && !window.HUB_SHOWS) return C.toast('The schedule didn’t load. Try closing and reopening the hub.', 5000);
+    if (name === 'linktests' && !window.HUB_LINKTEST) return C.toast('The watch link test didn’t load.', 5000);
+    view = name;
+    if (item) lastKey = item.key;
+    C.setSub(viewTitle(name));
+    if (C.isOpen()) C.redrawPanel();
+  }
+
+  // The tile's small line: "Tonight: Stick 8 PM" when something airs today.
+  function tileSub() {
+    var line = '';
+    try { line = window.HUB_SHOWS ? HUB_SHOWS.tileLine() : ''; } catch (e) { line = ''; }
+    C.setTileSub(line || (C.config && C.config.sub) || '');
   }
 
   /* ---------- all apps list ---------- */
@@ -413,12 +503,28 @@
     init: function (ctx) {
       C = ctx;
       buildItems();
+      if (window.HUB_SHOWS) {
+        try {
+          HUB_SHOWS.attach(ctx, host);
+          var tileSig = null;
+          HUB_SHOWS.onChange(function () {
+            // Redrawn only when its line or counts change (logos are slow to draw).
+            var sig = HUB_SHOWS.tileLine() + '|' + JSON.stringify(availability());
+            if (sig !== tileSig) { tileSig = sig; C.redrawTile(); }
+            if (C.isOpen() && view === 'schedule') C.redrawPanel();
+          });
+        } catch (e) { /* the grid works without it */ }
+      }
+      if (window.HUB_LINKTEST) {
+        try { HUB_LINKTEST.attach(ctx, host); } catch (e) { /* About says it can't run */ }
+      }
       loadApps(1);
       setTimeout(prebuild, 1000);
     },
 
     renderTile: function (body, ctx) {
       C = ctx;
+      tileSub();
       var fit = chipFit(body, ctx);
       // As many logos as fit, the last one "+N" when there are more.
       var room = fit.perRow * fit.rows;
@@ -430,6 +536,7 @@
         return;
       }
       var shown = items.length <= room ? items.length : room - 1;
+      var order = tileOrder(availability());
       var rowEl = null;
       var inRow = 0;
       function nextChip(chip) {
@@ -444,8 +551,11 @@
       }
       // Each chip is a flex item holding a square icon.
       for (var i = 0; i < shown; i++) {
-        var chip = el('span', 'ent-chip' + (stateOf(items[i]).missing ? ' is-missing' : ''));
-        chip.appendChild(logoEl(items[i].cfg));
+        var it = order[i].item;
+        var chip = el('span', 'ent-chip' + (stateOf(it).missing ? ' is-missing' : '') + (order[i].n ? ' has-count' : ''));
+        chip.appendChild(logoEl(it.cfg));
+        // Shows with something to watch in this app: a small count on its logo.
+        if (order[i].n) chip.firstChild.appendChild(el('span', 'ent-count', String(order[i].n)));
         nextChip(chip);
       }
       if (items.length > shown) {
@@ -461,7 +571,16 @@
 
     renderPanel: function (body) {
       if (view === 'list' && apps) renderList(body);
+      else if (view === 'schedule' && window.HUB_SHOWS) { C.setSub(viewTitle(view)); HUB_SHOWS.renderPanel(body); }
+      else if (view === 'linktests' && window.HUB_LINKTEST) { C.setSub(viewTitle(view)); HUB_LINKTEST.renderPanel(body); }
       else { view = 'grid'; renderGrid(body); }
+    },
+
+    // The About panel's "Watch link test" opens it here (hub.js openWidgetView).
+    openView: function (name) {
+      if (name !== 'schedule' && name !== 'linktests') return false;
+      openView(name, null);
+      return view === name;
     },
 
     onFocus: function (target) {
@@ -469,8 +588,16 @@
       if (key && key.indexOf('app:') !== 0) lastKey = key;
     },
 
+    // Done on the watch link test's id box.
+    onSubmit: function (box) {
+      if (view === 'linktests' && window.HUB_LINKTEST && HUB_LINKTEST.onSubmit) return HUB_LINKTEST.onSubmit(box);
+      return false;
+    },
+
     onSelect: function (target) {
       var key = target.getAttribute('data-key') || '';
+      if (key.indexOf('sh:') === 0 && window.HUB_SHOWS) return HUB_SHOWS.onSelect(target);
+      if (key.indexOf('lt:') === 0 && window.HUB_LINKTEST) return HUB_LINKTEST.onSelect(target);
       if (key.indexOf('app:') === 0) return launchById(target.getAttribute('data-id'), target.getAttribute('data-name'));
       var item = itemByKey(key);
       if (!item) return;
@@ -483,13 +610,14 @@
     },
 
     onBack: function () {
-      if (view !== 'list') return false;
+      if (view === 'linktests' && window.HUB_LINKTEST && HUB_LINKTEST.onBack()) return true;
+      if (view === 'grid') return false;
       closeList();
       return true;
     },
 
     onClose: function (ctx) {
-      if (view === 'list') {
+      if (view !== 'grid') {
         view = 'grid';
         ctx.setSub(ctx.config.sub || '');
       }

@@ -1,0 +1,29 @@
+{
+ "lights": [
+  { "id": "geeni", "name": "Geeni lamp", "entity": "light.example_geeni_1", "kind": "light" },
+  { "id": "sengled", "name": "Sengled lamp", "entity": "light.example_sengled_1", "kind": "light", "flaky": true },
+  { "id": "camera", "name": "Camera plug", "entity": "switch.example_camera_plug", "kind": "switch" }
+ ],
+ "scenes": [
+  { "id": "chill", "name": "Chill night", "icon": "moon", "wled": "dim", "lights": {
+   "geeni": { "on": true, "pct": 20, "kelvin": 2200 },
+   "sengled": { "on": true, "pct": 15, "kelvin": 2200 } } },
+  { "id": "lights-on", "name": "Lights on", "icon": "sun", "lights": {
+   "geeni": { "on": true, "pct": 100, "kelvin": 4000 },
+   "sengled": { "on": true, "pct": 100, "kelvin": 4000 } } },
+  { "id": "reading", "name": "Reading", "icon": "book", "lights": {
+   "geeni": { "on": true, "pct": 85, "kelvin": 3500 },
+   "sengled": { "on": true, "pct": 40, "kelvin": 3000 } } },
+  { "id": "movie", "name": "Movie", "icon": "film", "lights": {
+   "geeni": { "on": true, "pct": 6, "color": [86, 60, 196] },
+   "sengled": { "on": false } } },
+  { "id": "all-off", "name": "All off", "icon": "power", "wled": "off", "lights": {
+   "geeni": { "on": false },
+   "sengled": { "on": false } } }
+ ],
+ "moods": [
+  { "id": "off", "name": "Off", "state": { "on": false } },
+  { "id": "dim", "name": "Dim", "state": { "on": true, "bri": 40 } },
+  { "id": "bright", "name": "Bright", "state": { "on": true, "bri": 200 } }
+ ]
+}

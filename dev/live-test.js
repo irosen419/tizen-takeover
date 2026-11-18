@@ -16,6 +16,8 @@
 const http = require('http');
 const net = require('net');
 const fs = require('fs');
+const VER = require('./version').VERSION;
+const VER_RE = require('./version').VERSION_RE;
 const os = require('os');
 const path = require('path');
 const childProcess = require('child_process');
@@ -278,7 +280,7 @@ async function check1() {
   const lines = await look.statusLines(page);
   // In the About panel: the version, the browser and motion; no live updates row.
   assert(lines.length === 3, 'expected 3 rows, got ' + JSON.stringify(lines));
-  assert(lines[0].indexOf('v0.29.2') === 0, 'first status line: ' + lines[0]);
+  assert(lines[0].indexOf('v' + VER) === 0, 'first status line: ' + lines[0]);
   assert((await look.todoSub(page)) === 'On this TV', 'to-do sub line: ' + (await look.todoSub(page)));
   assert((await look.state(page)) === 'off', 'live state: ' + (await look.state(page)));
   await addOnScreen(page, 'Milk');

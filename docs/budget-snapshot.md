@@ -197,7 +197,7 @@ Control API (token needed, see `docs/live-updates.md`):
 
 ## On the TV
 
-- `budget-room` (Daily room), `budget-card` (Card day) and `budget-goals` (Goals), with a wallet icon. `budget-lab` (Budget lab) reads `lab`, `merchants`, `pace` and `runway`; it reaches the TV in a later hub update, and until then those sections are stored but not shown. Every size works; [tile-sizes.md](tile-sizes.md) says what each shows. The **Budget** layout in the switcher places them with Calendar, Today and Entertainment.
+- `budget-room` (Daily room), `budget-card` (Card day) and `budget-goals` (Goals), with a wallet icon. `budget-lab` (Budget lab) reads `lab`, `merchants`, `pace` and `runway` (the runway as a chart at full screen from hub v0.29.5, with no dollar axis; its one figure is the gap on card day). Every size works; [tile-sizes.md](tile-sizes.md) says what each shows. The **Budget** layout in the switcher places them with Calendar, Today and Entertainment.
 - A section that is missing makes its tile say "Waiting for the budget app"; with no line to the Pi they say "Needs the Pi" or "Can’t reach the Pi".
 - The TV keeps its last copy (`homeHub.budget.v1`), so the tiles have something to show straight after the TV turns on.
 - `widgets.budget.show: false` in `app/config.js` hides it all on that TV: the tiles say "Budget is hidden" and the banner never shows.

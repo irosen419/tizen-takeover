@@ -7,22 +7,32 @@
  * { id, title, level: 'must' | 'optional' | 'passive' (optional; missing
  * means optional), section: 'now' | 'next' | 'waiting' (kept for older Pi
  * servers, no longer shown), done, doneAt, createdAt, due: 'YYYY-MM-DD'
- * (optional), notes: 'plain text' (optional, at most 300 characters) }.
+ * (optional), notes: 'plain text' (optional, at most 300 characters),
+ * lead: 0 to 30 (optional; a passive item's "Coming up" lead in days) }.
  * Fields this file doesn't know are kept as they are.
  *
  * Levels: "Must today" (red, with a MUST pill), "If you can" (yellow) and
  * passive ones, which have no tick box: they show as a dimmed "Coming up"
- * footnote, only from COMING_UP_DAYS before their due date (always when they
- * have none). While a must-do due today (or earlier, or with no date) is
+ * footnote, only from their lead (COMING_UP_DAYS, 2, unless the item says
+ * otherwise; 0 means only on the day) before their due date (always when
+ * they have none). A line says when: Today, Tomorrow, or the day and how far
+ * off it is ("Thu · in 3 days"). While a must-do due today (or earlier, or with no date) is
  * open, a red strip at the top of the tile and the panel says so; from 5 PM
  * it pulses slowly, a little stronger each hour until midnight, and at full
  * strength once the must-do is late. Only opacity animates.
  *
  * A Pi server older than 0.6.0 can't take a level through ./hub or the
  * mailbox, so a level may also come as a tag in the notes: "[level:must]",
- * "[level:passive]" (a "level" field always wins). Tags in square brackets
- * that start with "level:" or "cal:" (the calendar converter's own marks)
- * are never shown.
+ * "[level:passive]" (a "level" field always wins). The lead likewise:
+ * "[lead:3]" in the notes, for a Pi server older than 0.7.0 (a "lead" field
+ * always wins). Tags in square brackets that start with "level:", "lead:" or
+ * "cal:" (the calendar converter's own marks) are never shown, in notes or
+ * in titles.
+ *
+ * The calendar converter keeps its prefix in the title: "TODO!:" (must),
+ * "TODO:" (optional), "TODO~:" (passive), as in "TODO!: Take weekly shot".
+ * The saved title keeps it; the TV never shows it (shownTitle), and an item
+ * without a "level" field takes its level from it (before any notes tag).
  *
  * Notes come only from the Pi (./hub todo add --notes, the mailbox's
  * todo.add and todo.notes); the TV shows them under the title, quietly, and
@@ -67,6 +77,8 @@
     today: 'Today',
     tomorrow: 'Tomorrow',
     dateShort: '{mon} {d}',
+    inDays: 'in {n} days',
+    daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     sections: { must: 'Must today', optional: 'If you can', done: 'Done today' },
     comingUp: 'Coming up',
@@ -125,15 +137,21 @@
   var SECTIONS = ['now', 'next', 'waiting'];
   var LEVELS = ['must', 'optional', 'passive'];
   var NEXT_LEVEL = { must: 'optional', optional: 'passive', passive: 'must' };
-  // A passive item shows from this many days before its due date.
+  // A passive item shows from this many days before its due date, unless
+  // its own lead (0 to MAX_LEAD) says otherwise.
   var COMING_UP_DAYS = 2;
+  var MAX_LEAD = 30;
   // The must-do strip pulses from 5 PM, from a faint swing to a stronger one
   // at midnight, and at the strongest once a must-do is late.
   var PULSE_FROM_HOUR = 17;
   var PULSE_MIN = 0.15;
   var PULSE_MAX = 0.55;
   var TAG_LEVEL = /\[level:(must|optional|passive)\]/;
-  var TAGS = /\s*\[(?:level|cal):[^\]]*\]/g;
+  var TAG_LEAD = /\[lead:(\d{1,2})\]/;
+  var TAGS = /\s*\[(?:level|lead|cal):[^\]]*\]/g;
+  // A leading "TODO!:", "TODO:" or "TODO~:" (any case, spaces after the colon).
+  var PREFIX = /^\s*todo([!~]?):\s*/i;
+  var PREFIX_LEVEL = { '!': 'must', '': 'optional', '~': 'passive' };
 
   // 24x24 line icons, same style as icons.js.
   function svg(body, width) {
@@ -206,13 +224,28 @@
     return fill(STRINGS.dueOn, shortDate(due));
   }
 
-  // When a passive item is: Today, Tomorrow, Nov 19 (or Overdue).
+  // When a passive item is: Today, Tomorrow, "Thu · in 3 days" within the
+  // week, "Dec 12 · in 25 days" further off (or Overdue).
   function whenText(due, now) {
     if (!due) return '';
     if (due < now) return STRINGS.overdue;
-    if (due === now) return STRINGS.today;
-    if (due === addDays(now, 1)) return STRINGS.tomorrow;
-    return shortDate(due);
+    var n = daysBetween(now, due);
+    if (n === 0) return STRINGS.today;
+    if (n === 1) return STRINGS.tomorrow;
+    var label = n < 7 ? (STRINGS.daysShort[dateOf(due).getDay()] || shortDate(due)) : shortDate(due);
+    return label + STRINGS.metaSep + fill(STRINGS.inDays, n);
+  }
+
+  function dateOf(day) {
+    return new Date(parseInt(day.substring(0, 4), 10), parseInt(day.substring(5, 7), 10) - 1, parseInt(day.substring(8, 10), 10));
+  }
+
+  // Whole days from one 'YYYY-MM-DD' to another (by the calendar, so a
+  // daylight saving change in between does not matter).
+  function daysBetween(from, to) {
+    var a = Date.UTC(parseInt(from.substring(0, 4), 10), parseInt(from.substring(5, 7), 10) - 1, parseInt(from.substring(8, 10), 10));
+    var b = Date.UTC(parseInt(to.substring(0, 4), 10), parseInt(to.substring(5, 7), 10) - 1, parseInt(to.substring(8, 10), 10));
+    return Math.round((b - a) / 86400000);
   }
 
   // 'YYYY-MM-DD' n days after day, in local time.
@@ -221,12 +254,34 @@
     return dayOf(d);
   }
 
-  // An item's level: its level field, else a "[level:...]" tag in its
-  // notes (from a Pi too old to take the field), else optional.
+  // An item's level: its level field, else the calendar prefix of its
+  // title, else a "[level:...]" tag in its notes (from a Pi too old to take
+  // the field), else optional.
   function levelOf(item) {
     if (LEVELS.indexOf(item.level) >= 0) return item.level;
+    var p = typeof item.title === 'string' ? PREFIX.exec(item.title) : null;
+    if (p) return PREFIX_LEVEL[p[1]];
     var m = typeof item.notes === 'string' ? TAG_LEVEL.exec(item.notes) : null;
     return m ? m[1] : 'optional';
+  }
+
+  function isLead(n) { return typeof n === 'number' && n >= 0 && n <= MAX_LEAD && Math.floor(n) === n; }
+
+  // How many days before its due date a passive item shows: its lead
+  // field, else a "[lead:3]" tag in its notes, else COMING_UP_DAYS.
+  function leadOf(item) {
+    if (isLead(item.lead)) return item.lead;
+    var m = typeof item.notes === 'string' ? TAG_LEAD.exec(item.notes) : null;
+    var n = m ? parseInt(m[1], 10) : -1;
+    return isLead(n) ? n : COMING_UP_DAYS;
+  }
+
+  // The title as shown: without a leading calendar prefix (the saved title
+  // keeps it). A title that is only a prefix shows as it is.
+  function shownTitle(item) {
+    var title = typeof item.title === 'string' ? item.title : '';
+    var rest = tidy(title.replace(PREFIX, '').replace(TAGS, ' '));
+    return rest || title;
   }
 
   // Notes as shown: without the machine tags.
@@ -333,6 +388,8 @@
       if (SECTIONS.indexOf(it.section) < 0) it.section = 'now';
       // A level this file doesn't know goes; no level means optional.
       if (it.level !== undefined && LEVELS.indexOf(it.level) < 0) delete it.level;
+      // A lead that is not a whole number of days from 0 to MAX_LEAD goes.
+      if (it.lead !== undefined && !isLead(it.lead)) delete it.lead;
       it.done = it.done === true;
       it.doneAt = it.done ? (typeof it.doneAt === 'number' ? it.doneAt : now) : null;
       if (typeof it.createdAt !== 'number') it.createdAt = now;
@@ -676,12 +733,12 @@
   }
 
   // Passive items for the "Coming up" footnote: no due date, or due within
-  // COMING_UP_DAYS (and late ones, until they are cleared).
+  // the item's lead (and late ones, until they are cleared).
   function comingUp(panelView) {
-    var last = addDays(today(), COMING_UP_DAYS);
+    var now = today();
     var list = inLevel('passive', panelView);
     var out = [];
-    for (var i = 0; i < list.length; i++) if (!list[i].due || list[i].due <= last) out.push(list[i]);
+    for (var i = 0; i < list.length; i++) if (!list[i].due || list[i].due <= addDays(now, leadOf(list[i]))) out.push(list[i]);
     return out;
   }
 
@@ -744,7 +801,7 @@
   function drawAlert(parent, list, cls) {
     var box = el('div', 'todo-alert ' + cls, '', parent);
     setGlow(el('span', 'todo-glow', '', box), pulseLevel(list));
-    var text = fill(list.length === 1 ? STRINGS.alertOne : STRINGS.alertMany, list.length).replace('{t}', list[0].title);
+    var text = fill(list.length === 1 ? STRINGS.alertOne : STRINGS.alertMany, list.length).replace('{t}', shownTitle(list[0]));
     var line = el('div', 'todo-alert-text', '', box);
     el('span', 'todo-alert-dot', '', line);
     line.appendChild(document.createTextNode(text));
@@ -795,13 +852,13 @@
       wrap.className += ' has-must';
       el('span', 'todo-strip-num', String(must.length), wrap);
       var late = anyLate(must);
-      el('div', 'todo-strip-text is-must' + (late ? ' is-late' : ''), must[0].title, wrap);
+      el('div', 'todo-strip-text is-must' + (late ? ' is-late' : ''), shownTitle(must[0]), wrap);
     } else if (!store.items.length) {
       el('div', 'todo-strip-text', STRINGS.emptyTitle, wrap);
     } else if (open.length) {
       el('span', 'todo-strip-num', String(open.length), wrap);
       var first = open[0];
-      el('div', 'todo-strip-text' + (first.due && first.due < today() ? ' is-late' : ''), first.title, wrap);
+      el('div', 'todo-strip-text' + (first.due && first.due < today() ? ' is-late' : ''), shownTitle(first), wrap);
     } else {
       el('div', 'todo-strip-text', STRINGS.allClear, wrap);
     }
@@ -855,7 +912,7 @@
     el('span', 'todo-lv', '', row);
     el('span', 'todo-tick', '', row);
     var text = el('div', 'todo-tile-text', '', row);
-    var title = el('div', 'todo-tile-title', item.title, text);
+    var title = el('div', 'todo-tile-title', shownTitle(item), text);
     if (level === 'must') mustPill(title);
     var notes = shownNotes(item);
     if (notes) el('div', 'todo-tile-notes', notes, text);
@@ -905,7 +962,7 @@
       var line = el('div', 'todo-foot-line', '', foot);
       line.setAttribute('data-id', String(items[i].id));
       el('span', 'todo-dot', '', line);
-      el('span', 'todo-foot-title', items[i].title, line);
+      el('span', 'todo-foot-title', shownTitle(items[i]), line);
       var when = whenText(items[i].due, now);
       if (when) el('span', 'todo-foot-when', '· ' + when, line);
     }
@@ -1034,7 +1091,7 @@
       tick.innerHTML = ICON_TICK;
     }
     var text = el('span', 'todo-text', '', main);
-    var title = el('span', 'todo-title', item.title, text);
+    var title = el('span', 'todo-title', shownTitle(item), text);
     if (level === 'must' && !item.done) mustPill(title);
     var notes = shownNotes(item);
     if (notes) el('span', 'todo-notes', notes, text);
