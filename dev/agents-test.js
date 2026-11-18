@@ -683,8 +683,29 @@ async function check11(pi) {
   // The marker is the row where the new to-do showed (new ones go to the top of their level).
   assert(row && /todo-tile-row/.test(row.cls) && /Spot one/.test(row.text) && g.spot.marker, 'the to-do marker: ' + JSON.stringify([row, g.spot]));
   assert(Math.abs(g.at.x - g.spot.x) < 40 && Math.abs(g.at.y - g.spot.y) < 40, 'her hand is not at the spot: ' + JSON.stringify([g.at, g.spot]));
-  // She crouches on the row's top edge (her feet on it), not over its words.
-  assert(Math.abs(g.spot.y - row.top) < 2 && g.at.y <= row.top + 6, 'she covers the row: ' + JSON.stringify([g.at, row]));
+  // Her hand on the row (its top edge first: her body in the room at the
+  // end of the line above; lower, over the row's own end, only if that
+  // covers fewer words), and her drawn crouch over none of the tile's words.
+  assert(Math.abs(g.spot.y - row.top) < 2 && g.at.y >= row.top - 6 && g.at.y <= row.bottom + 6, 'her hand is not on the row: ' + JSON.stringify([g.at, row]));
+  const hidden = await page.evaluate(() => {
+    const art = document.querySelector('.ag-fig .ag-pose-crouch img').getBoundingClientRect();
+    const tile = document.querySelector('.cell[data-widget="todo"] .tile');
+    const walk = document.createTreeWalker(tile, 4, null, false);
+    const range = document.createRange();
+    const out = [];
+    let n;
+    while ((n = walk.nextNode())) {
+      if (!/\S/.test(n.nodeValue)) continue;
+      range.selectNodeContents(n);
+      Array.prototype.forEach.call(range.getClientRects(), (r) => {
+        const w = Math.min(art.right, r.right) - Math.max(art.left, r.left);
+        const h = Math.min(art.bottom, r.bottom) - Math.max(art.top, r.top);
+        if (w > 1 && h > 1) out.push(n.nodeValue.trim().slice(0, 30));
+      });
+    }
+    return out;
+  });
+  assert(g.covers === 0 && hidden.length === 0, 'she covers words: ' + JSON.stringify([g.covers, hidden]));
   // A language change while she works: still no chip, she carries on.
   await page.evaluate(() => window.HUB_I18N.setLang('es'));
   await sleep(1200);

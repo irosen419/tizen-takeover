@@ -322,6 +322,7 @@
     var x = r.left + r.width / 2;
     var y = r.top + r.height * 0.72;
     var marker = false;
+    var row = null;
     var list = tile.querySelectorAll('[data-agent-spot]');
     for (var i = 0; i < list.length; i++) {
       var m = list[i].getBoundingClientRect();
@@ -329,14 +330,63 @@
         x = fromLeft ? m.left + Math.min(inset, m.width / 2) : m.right - Math.min(inset, m.width / 2);
         y = m.top;
         marker = true;
+        row = { top: m.top, bottom: m.bottom };
         break;
       }
     }
     return {
       x: clamp(x, r.left + inset, r.right - inset),
       y: clamp(y, r.top + inset, r.bottom - inset),
-      marker: marker
+      marker: marker,
+      row: row
     };
+  }
+
+  // The boxes of the tile's words on screen (each line of each text), at
+  // most 300 texts; measured once, as she starts.
+  function wordBoxes(tile) {
+    var out = [];
+    if (!document.createRange || !document.createTreeWalker) return out;
+    var walk = document.createTreeWalker(tile, 4, null, false);   // 4: text only
+    var range = document.createRange();
+    var n = 0;
+    var node;
+    while ((node = walk.nextNode()) && n < 300) {
+      if (!/\S/.test(node.nodeValue || '')) continue;
+      n += 1;
+      range.selectNodeContents(node);
+      var rects = range.getClientRects();
+      for (var i = 0; i < rects.length; i++) {
+        if (rects[i].width > 0 && rects[i].height > 0) out.push({ left: rects[i].left, top: rects[i].top, right: rects[i].right, bottom: rects[i].bottom });
+      }
+    }
+    return out;
+  }
+
+  // How much of the words box b would cover (px squared).
+  function covers(b, words) {
+    var sum = 0;
+    for (var i = 0; i < words.length; i++) {
+      var w = Math.min(b.right, words[i].right) - Math.max(b.left, words[i].left);
+      var h = Math.min(b.bottom, words[i].bottom) - Math.max(b.top, words[i].top);
+      if (w > 0 && h > 0) sum += w * h;
+    }
+    return sum;
+  }
+
+  // Her drawn box while she works (the crouch pose's parts), in the box's
+  // own pixels, mirrored or not.
+  function workArt(mirrored) {
+    var parts = partsOf('crouch');
+    var b = { left: 1e9, top: 1e9, right: -1e9, bottom: -1e9 };
+    for (var i = 0; i < parts.length; i++) {
+      var l = mirrored ? role.w - parts[i].left - parts[i].w : parts[i].left;
+      b.left = Math.min(b.left, l);
+      b.right = Math.max(b.right, l + parts[i].w);
+      b.top = Math.min(b.top, parts[i].top);
+      b.bottom = Math.max(b.bottom, parts[i].top + parts[i].h);
+    }
+    return b;
   }
 
   // Where everything happens, measured once: the tile, her size, the side
@@ -363,15 +413,36 @@
     var hy = hand.y * k;
     var wx = ex;
     var wy = baseY;
+    var best = -1;
     if (!small) {
       wx = clamp(spot.x - hx, r.left + inset * 0.5, r.right - inset * 0.5 - w);
       wx = clamp(wx, 0, W - w);
       // Never back past the corner she came in at.
       wx = fromLeft ? Math.max(wx, ex) : Math.min(wx, ex);
       wy = clamp(spot.y - hy, r.top - h * 0.25, baseY);
+      // Never over the tile's words if she can help it: on the row's top
+      // edge (the end of the line above) first, then pressed to the tile's
+      // edge, then lower, over the end of the row itself; the place that
+      // covers the fewest words wins (the first, on a tie).
+      if (spot.row) {
+        var words = wordBoxes(tile);
+        var art = workArt(mirrored);
+        var edge = fromLeft ? clamp(r.left + inset * 0.5, 0, W - w) : clamp(r.right - inset * 0.5 - w, 0, W - w);
+        var xs = [wx, edge];
+        var ys = [spot.y, (spot.row.top + spot.row.bottom) / 2, spot.row.bottom];
+        for (var yi = 0; yi < ys.length && best !== 0; yi++) {
+          var cy = clamp(ys[yi] - hy, r.top - h * 0.25, baseY);
+          for (var xi = 0; xi < xs.length && best !== 0; xi++) {
+            // (2 px more all round: the work loop bobs her a little.)
+            var c = covers({ left: xs[xi] + art.left * k - 2, right: xs[xi] + art.right * k + 2,
+              top: cy + art.top * k - 2, bottom: cy + art.bottom * k + 2 }, words);
+            if (best < 0 || c < best) { best = c; wx = xs[xi]; wy = cy; }
+          }
+        }
+      }
     }
     return { k: k, w: w, h: h, r: r, fromLeft: fromLeft, mirrored: mirrored, baseY: baseY, ex: ex, startX: startX,
-      small: small, spot: spot, wx: wx, dy: wy - baseY,
+      small: small, spot: spot, wx: wx, dy: wy - baseY, covers: best,
       // The spot she really works at (the hand, after keeping her in the tile).
       at: { x: wx + hx, y: wy + hy } };
   }
@@ -737,7 +808,7 @@
             var cell = f.tile.parentNode;
             return { widget: cell && cell.getAttribute ? cell.getAttribute('data-widget') || '' : '', state: f.state,
               phases: f.phases.slice(), mode: f.mode, pose: f.pose, small: f.p.small, fromLeft: f.p.fromLeft,
-              spot: { x: f.p.spot.x, y: f.p.spot.y, marker: f.p.spot.marker }, at: f.p.at,
+              spot: { x: f.p.spot.x, y: f.p.spot.y, marker: f.p.spot.marker }, at: f.p.at, covers: f.p.covers,
               tile: { left: f.p.r.left, top: f.p.r.top, right: f.p.r.right, bottom: f.p.r.bottom },
               x: f.x, y: f.p.baseY + f.dy };
           })
