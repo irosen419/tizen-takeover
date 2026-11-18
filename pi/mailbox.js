@@ -30,6 +30,8 @@ const crypto = require('crypto');
 const hubctl = require('./hubctl');
 const awws = require('./awws');
 const budget = require('./budget');
+const shows = require('./shows');
+const linktests = require('./linktests');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -331,6 +333,11 @@ const V = {
     if (typeof v !== 'number' || !isFinite(v) || v < min || v > max) throw argError('"' + name + '" must be a number from ' + min + ' to ' + max);
     return v;
   },
+  // A whole number from min to max.
+  int: (min, max) => (name, v) => {
+    if (!Number.isInteger(v) || v < min || v > max) throw argError('"' + name + '" must be a whole number from ' + min + ' to ' + max);
+    return v;
+  },
   oneOf: (list) => (name, v) => {
     if (typeof v !== 'string' || list.indexOf(v.trim()) < 0) throw argError('"' + name + '" must be one of: ' + list.join(', '));
     return v.trim();
@@ -432,13 +439,14 @@ const COMMANDS = {
     args: {
       title: [V.text(MAX_TITLE), true], section: [V.oneOf(Object.keys(hubctl.SECTION_NAMES)), false],
       level: [V.oneOf(Object.keys(hubctl.LEVEL_NAMES)), false], due: [V.date(), false],
-      notes: [V.notes(MAX_NOTES), false]
+      lead: [V.int(0, hubctl.MAX_LEAD), false], notes: [V.notes(MAX_NOTES), false]
     },
     run: async (a, ctx) => {
       const body = { title: a.title };
       if (a.section !== undefined) body.section = a.section;
       if (a.level !== undefined) body.level = a.level;
       if (a.due !== undefined) body.due = a.due;
+      if (a.lead !== undefined) body.lead = a.lead;
       if (a.notes) body.notes = a.notes;
       const r = await ctx.call('POST', '/api/todo', body);
       return { message: hubctl.todoAddText(r), data: { item: r.item } };
@@ -451,6 +459,7 @@ const COMMANDS = {
       const items = (r.items || []).map((i) => {
         const o = { id: i.id, title: i.title, level: hubctl.levelOf(i), section: i.section, done: i.done };
         if (i.due) o.due = i.due;
+        if (hubctl.leadOf(i) !== null) o.lead = hubctl.leadOf(i);
         if (i.notes) o.notes = i.notes;
         return o;
       });
@@ -492,6 +501,23 @@ const COMMANDS = {
       }
       const after = await hubctl.setLevel(ctx.call, item, a.level);
       return { message: hubctl.todoLevelText(after), data: { id: after.id, title: after.title, level: hubctl.levelOf(after) } };
+    }
+  },
+  // "lead": null goes back to the TV's default (2 days).
+  'todo.lead': {
+    args: { id: [V.text(40), false], title: [V.text(MAX_TITLE), false], lead: [V.int(0, hubctl.MAX_LEAD), true, true] },
+    check: oneOfIdOrTitle,
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/todo');
+      let item;
+      try {
+        item = hubctl.matchItem(r.items || [], a.id !== undefined ? a.id : a.title);
+      } catch (e) {
+        if (e instanceof hubctl.Stop) return { ok: false, message: e.message };
+        throw e;
+      }
+      const after = await hubctl.setLead(ctx.call, item, a.lead);
+      return { message: hubctl.todoLeadText(after), data: { id: after.id, title: after.title, lead: hubctl.leadOf(after) } };
     }
   },
   'calendar.status': {
@@ -591,6 +617,54 @@ const COMMANDS = {
       return { message: budget.clearText(r), data: { changed: r.changed, cleared: r.cleared } };
     }
   },
+  'shows.list': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/shows');
+      return { message: lines(hubctl.showsListLines(r)), data: shows.summaryData(r) };
+    }
+  },
+  // Only the shape is checked here; the server's own list check decides.
+  'shows.add': {
+    args: {
+      name: [V.text(80), true], service: [V.text(24), false], tvmazeId: [V.number(1, 999999999), false], serviceOverride: [V.text(24), false],
+      alsoOn: [V.list(4), false], via: [V.text(24), false]
+    },
+    run: async (a, ctx) => {
+      const entry = { name: a.name };
+      ['service', 'tvmazeId', 'serviceOverride', 'alsoOn', 'via'].forEach((k) => { if (a[k] !== undefined) entry[k] = a[k]; });
+      const r = await ctx.call('POST', '/api/shows', { add: entry });
+      return { message: shows.addText(r), data: { entry: r.entry, replaced: !!r.replaced, list: r.list } };
+    }
+  },
+  'shows.remove': {
+    args: { name: [V.text(80), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows', { remove: a.name });
+      return { message: shows.removeText(r.removed), data: { removed: r.removed, list: r.list } };
+    }
+  },
+  'shows.set': {
+    args: { shows: [V.list(40), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows', { set: a.shows });
+      return { message: shows.setText(r.list || []), data: { list: r.list } };
+    }
+  },
+  'shows.refresh': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows/refresh', {});
+      return { message: shows.refreshText(r), data: Object.assign({ done: !!r.done, changed: !!r.changed, problems: r.problems || [] }, shows.summaryData(r)) };
+    }
+  },
+  'linktests.show': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/linktests');
+      return { message: lines(linktests.lines(r.data)), data: { results: ((r.data && r.data.results) || []).slice(0, 40) } };
+    }
+  },
   status: {
     args: {},
     run: async (a, ctx) => {
@@ -645,6 +719,19 @@ const COMMANDS = {
       return {
         message: hubctl.logSummaryText(r, a.errors === true),
         data: { lines: r.lines || [], errors24h: r.errors24h || 0 }
+      };
+    }
+  },
+  // What plays anywhere (allsounds.js): state, source, speaker, title and
+  // artist only; never a token or an address.
+  'allsounds.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/allsounds');
+      const s = r.allsounds || null;
+      return {
+        message: lines(hubctl.allsoundsStatusLines(s)),
+        data: { allsounds: s ? { state: s.state, source: s.source, device: s.device, title: s.title, artist: s.artist } : null }
       };
     }
   },

@@ -18,6 +18,14 @@
  *   - the empty states in Spanish ("Esperando la app de presupuesto",
  *     "Sin sincronizar todavía");
  *   - the banner in Spanish ("Cargo nuevo: <label>");
+ *   - Budget lab (budget-lab) in Spanish: the tile, every key with its
+ *     Spanish, and the panel (the cap, the pills, the buttons, the pace) at
+ *     25% longer with nothing clipped and accents whole; the merchants' cut
+ *     rows (label on its own line over the track) and "A dónde va" at panel
+ *     and full screen, plain and 25% longer, line height 1.25 or more; the
+ *     runway chart at full screen ("Recorrido hasta el 30 nov", the legend,
+ *     Spanish weekdays, the gap "Cubierto, sin sobrante", "Faltan $13"),
+ *     every label inside the chart, apart from the others, accents whole;
  *   - a language change (HUB_I18N.setLang) redraws the tiles, their titles
  *     and an open panel, and back to English;
  *   - app/i18n.js is plain ES5 and every money key has a Spanish text.
@@ -35,7 +43,7 @@ const path = require('path');
 const H = require('./awws-harness');
 
 const ROOT = path.join(__dirname, '..');
-const IDS = ['awws-money', 'budget-room', 'budget-card', 'budget-goals'];
+const IDS = ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'];
 const SIZES = [[1, 1], [2, 1], [3, 1], [6, 1], [12, 1], [2, 2], [3, 2], [6, 2], [3, 4], [6, 4], [9, 6]];
 const SEL = '.cell[data-widget="awws-money"] .tile-body, .cell[data-widget^="budget"] .tile-body';
 const SEEN = { 'homeHub.budget.seen.v1': '["a-1042"]' };
@@ -43,7 +51,8 @@ const FRESH = new Date(H.MONDAY - 60000).toISOString().replace(/\.\d+Z$/, 'Z');
 const ROW = [
   { widget: 'awws-money', x: 0, y: 0, w: 3, h: 3 }, { widget: 'budget-room', x: 3, y: 0, w: 3, h: 3 },
   { widget: 'budget-card', x: 6, y: 0, w: 3, h: 3 }, { widget: 'budget-goals', x: 9, y: 0, w: 3, h: 3 },
-  { widget: 'awws', x: 0, y: 3, w: 6, h: 3 }, { widget: 'entertainment', x: 6, y: 3, w: 6, h: 3 }
+  { widget: 'awws', x: 0, y: 3, w: 6, h: 3 }, { widget: 'budget-lab', x: 6, y: 3, w: 3, h: 3 },
+  { widget: 'entertainment', x: 9, y: 3, w: 3, h: 3 }
 ];
 
 let SHOTS = process.env.MONEY_I18N_SHOTS || '';
@@ -84,7 +93,7 @@ function longer() {
         const es = v.strings.es;
         const extra = 'ÁÉñíóú';
         Object.keys(es).forEach((k) => {
-          if (!/^(budget|awws)\./.test(k)) return;
+          if (!/^(budget|budgetLab|awws)\./.test(k)) return;
           const text = es[k];
           const words = text.replace(/\{\w+\}/g, '').match(/[A-Za-zÁÉÍÓÚáéíóúñÑ]{3,}/g);
           if (!words) return;
@@ -228,18 +237,32 @@ async function main() {
     const es = ctx.window.HUB_I18N.strings.es;
     const budget = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'budget.js'), 'utf8');
     const awws = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'awws.js'), 'utf8');
+    const lab = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'budget-lab.js'), 'utf8');
     // An activity chip's English is in app/motion.js's kinds table, its row naming the key.
     const motion = fs.readFileSync(path.join(ROOT, 'app', 'motion.js'), 'utf8');
     const bad = [];
     Object.keys(es).forEach((k) => {
-      const m = /^(budget|awws)\.(.+)$/.exec(k);
+      const m = /^(budget|budgetLab|awws)\.(.+)$/.exec(k);
       if (!m) return;
       if (motion.indexOf('key: \'' + k + '\'') >= 0) return;
       const last = m[2].split('.').pop();
-      const file = m[1] === 'budget' ? budget : awws;
+      const file = m[1] === 'budget' ? budget : m[1] === 'budgetLab' ? lab : awws;
       if (file.indexOf(last + ':') < 0 && file.indexOf('\'' + last + '\':') < 0) bad.push(k);
     });
     assert(!bad.length, 'no such English key: ' + bad.join(', '));
+    // And the other way: every Budget lab word has its Spanish (the figure
+    // forms that read the same in both languages excepted).
+    const box = { window: {} };
+    require('vm').runInNewContext(lab.replace(/\(function \(\) \{/, '(function () { window.__EN = null;').replace("var EN = {", "var EN = window.__EN = {"), Object.assign(box, { document: {} }));
+    const missing = [];
+    (function walk(o, at) {
+      Object.keys(o).forEach((k) => {
+        const key = at + '.' + k;
+        if (typeof o[k] === 'string') { if (!es.hasOwnProperty(key) && ['budgetLab.cash', 'budgetLab.minus', 'budgetLab.sep', 'budgetLab.full'].indexOf(key) < 0) missing.push(key); }
+        else if (!Array.isArray(o[k])) walk(o[k], key);
+      });
+    })(box.window.__EN, 'budgetLab');
+    assert(!missing.length, 'no Spanish for: ' + missing.join(', '));
   });
 
   const env = await H.start({});
@@ -250,7 +273,9 @@ async function main() {
       const page = await open(env, { layout: ROW, lang: 'es' });
       try {
         const titles = await text(page, IDS.map(titleOf).join(', '));
-        assert(titles === 'Ganado y gastado | Margen diario | Pago de tarjeta | Metas', 'titles: ' + titles);
+        assert(titles === 'Ganado y gastado | Margen diario | Pago de tarjeta | Metas | Laboratorio', 'titles: ' + titles);
+        const l = await text(page, tileOf('budget-lab'));
+        assert(/día bajo el tope/.test(l) && /Ayer \$41 de \$65/.test(l) && /Quédate bajo \$62 hoy/.test(l) && /19 nov: cubierto/.test(l), 'lab: ' + l);
         const m = await text(page, tileOf('awws-money'));
         assert(/neto/.test(m) && /−\$575/.test(m) && /\$1,265/.test(m) && /ganado/.test(m) && /gastado/.test(m), 'money: ' + m);
         assert(/Próxima transferencia: 1 dic/.test(m), 'no Spanish date for the next transfer: ' + m);
@@ -311,6 +336,108 @@ async function main() {
           }
           noErrors(page);
         } finally { await page.ctx.close(); }
+      });
+
+      // Budget lab rows 6 and 7: the merchants' cut sliders and Put it
+      // somewhere, scrolled to at panel size and at full screen.
+      await check(name + ': Budget lab merchants and "A dónde va" at panel and full, label over track, accents whole', async () => {
+        const page = await open(env, { layout: ROW, lang: 'es', long: long });
+        const look = () => page.evaluate(() => {
+          const q = (s) => Array.prototype.slice.call(document.querySelectorAll('#panel ' + s));
+          const lh = (n) => { const cs = getComputedStyle(n); return parseFloat(cs.lineHeight) / parseFloat(cs.fontSize); };
+          const out = [];
+          q('.bl-clabel, .bl-msub, .bl-mnote, .bl-dname, .bl-dval, .bl-dextra').forEach((n) => {
+            if (n.offsetHeight && lh(n) < 1.245) out.push('line height ' + lh(n).toFixed(2) + ': ' + n.textContent.slice(0, 30));
+          });
+          q('.bl-cut').forEach((row) => {
+            const a = row.querySelector('.bl-clabel').getBoundingClientRect();
+            const t = row.querySelector('.bl-ctrack').getBoundingClientRect();
+            const r = row.getBoundingClientRect();
+            if (a.bottom > t.top + 0.5) out.push('label over its track: ' + row.textContent.slice(0, 30));
+            if (a.right > r.right + 1) out.push('label out of its row: ' + row.textContent.slice(0, 30));
+          });
+          q('.bl-drow').forEach((row) => {
+            const r = row.getBoundingClientRect();
+            const v = row.querySelector('.bl-dval').getBoundingClientRect();
+            const nm = row.querySelector('.bl-dname').getBoundingClientRect();
+            if (v.right > r.right + 1 || nm.right > v.left + 1) out.push('destination does not fit: ' + row.textContent.slice(0, 40));
+          });
+          return { bad: out, labels: q('.bl-clabel').map((n) => n.textContent), dest: q('.bl-dname').map((n) => n.textContent), head: q('.bl-dest .bu-label').map((n) => n.textContent) };
+        });
+        try {
+          await H.openPanel(page, 'budget-lab');
+          for (let i = 0; i < 3; i++) await H.key(page, 'ArrowDown');
+          assert(await page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f && f.getAttribute('data-key'); }) === 'cut-0', 'not on the first merchant');
+          await H.key(page, 'ArrowRight', 2);
+          for (const mode of ['panel', 'full']) {
+            if (mode === 'full') await H.fullScreen(page);
+            const l = await look();
+            assert(!l.bad.length, mode + ': ' + l.bad.slice(0, 4).join('; '));
+            assert(l.labels.length === 5 && /^¡?Hilltop Grocer · \$184 /.test(l.labels[0]) && /recortas/.test(l.labels[0]) && /\$2!?$/.test(l.labels[0]), mode + ' row: ' + l.labels[0]);
+            assert(/Pago/.test(l.dest[0]) && /tarjeta/.test(l.dest[0]) && /Ahorro/.test(l.dest[1]) && /AWWS/.test(l.dest[2]) && /Colchón/.test(l.dest[3]), mode + ' destinations: ' + l.dest.join(' | '));
+            assert(/dónde/.test(l.head[0]), mode + ' head: ' + l.head[0]);
+            const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+            assert(!p.length, mode + ': ' + p.slice(0, 5).join('; '));
+          }
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      });
+
+      // The runway chart at full screen: the head, the legend, the weekdays
+      // and the gap in Spanish, every label inside the chart and on its own.
+      await check(name + ': Budget lab runway chart at full screen, words in Spanish, labels whole and apart', async () => {
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
+        const page = await open(env, { layout: ROW, lang: 'es', long: long });
+        try {
+          await H.openPanel(page, 'budget-lab');
+          await H.fullScreen(page);
+          const c = await page.evaluate(() => {
+            const sec = document.querySelector('#panel .bl-chart-sec');
+            const box = document.querySelector('#panel .bl-chart');
+            if (!sec || !box) return null;
+            const b = box.getBoundingClientRect();
+            const sr = sec.getBoundingClientRect();
+            const out = [];
+            const lh = (n) => { const cs = getComputedStyle(n); return parseFloat(cs.lineHeight) / parseFloat(cs.fontSize); };
+            const labs = Array.prototype.slice.call(box.querySelectorAll('.bl-ch-lab, .bl-ch-gap'));
+            const rects = labs.map((n) => n.getBoundingClientRect());
+            labs.forEach((n, i) => {
+              const r = rects[i];
+              if (lh(n) < 1.245) out.push('line height ' + lh(n).toFixed(2) + ': ' + n.textContent);
+              if (r.left < b.left - 1 || r.right > b.right + 1 || r.top < b.top - 1 || r.bottom > b.bottom + 1) out.push('outside the chart: ' + n.textContent);
+              for (let j = 0; j < i; j++) {
+                const o = rects[j];
+                if (r.left < o.right - 1 && o.left < r.right - 1 && r.top < o.bottom - 1 && o.top < r.bottom - 1) out.push('overlap: ' + n.textContent + ' / ' + labs[j].textContent);
+              }
+            });
+            Array.prototype.forEach.call(sec.querySelectorAll('.bl-leg, .bl-chart-head'), (n) => {
+              const r = n.getBoundingClientRect();
+              if (r.right > sr.right + 1) out.push('out of its section: ' + n.textContent);
+              if (lh(n) < 1.245) out.push('line height ' + lh(n).toFixed(2) + ': ' + n.textContent);
+            });
+            return { bad: out, head: sec.querySelector('.bl-chart-head').textContent, legend: sec.querySelector('.bl-legend').textContent,
+              labels: labs.map((n) => n.textContent), gap: box.querySelector('.bl-ch-gap').textContent };
+          });
+          assert(c, 'no chart at full screen');
+          assert(!c.bad.length, c.bad.slice(0, 4).join('; '));
+          assert(/Recorrido/.test(c.head) && /30 nov/.test(c.head), 'head: ' + c.head);
+          assert(/Margen/.test(c.legend) && /Gasto/.test(c.legend), 'legend: ' + c.legend);
+          assert(c.labels.indexOf('lun') >= 0 && c.labels.indexOf('20 nov') >= 0 && c.labels.indexOf('30 nov') >= 0, 'labels: ' + c.labels.join(' | '));
+          assert(/Cubierto/.test(c.gap) && /sobrante/.test(c.gap), 'gap: ' + c.gap);
+          const fk = () => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
+          for (let i = 0; i < 4 && !/^(cap|mode|save|reset|cut-\d+)$/.test(await fk() || ''); i++) await H.key(page, 'ArrowDown');
+          for (let i = 0; i < 16 && (await fk()) !== 'cap'; i++) await H.key(page, 'ArrowUp');
+          await H.key(page, 'ArrowRight');
+          await H.sleep(200);
+          const g = await text(page, '#panel .bl-ch-gap');
+          assert(/Faltan\S* \$13/.test(g), 'gap at $147: ' + g);
+          const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+          assert(!p.length, p.slice(0, 5).join('; '));
+          noErrors(page);
+        } finally {
+          await page.ctx.close();
+          await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+        }
       });
     }
 
