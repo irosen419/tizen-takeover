@@ -5,7 +5,8 @@
  * a talksTo link or a data-flow step points at an id that does not exist, a status or kind
  * is not one the page knows, a file path named by a live node is missing from the repo,
  * the data looks like it holds a secret or personal detail (key, token, email, IP address,
- * Cloudflare account id), or the Studio page does not carry the same data
+ * Cloudflare account id), the diagram layout in arch.js throws, overlaps boxes or points at a
+ * missing part for any group, or the Studio page does not carry the same data
  * (run node studio/build-architecture.js).
  * No browser and no network. Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  */
@@ -62,6 +63,35 @@ if (/\b[0-9a-f]{32}\b/i.test(lower)) leaks.push('a 32-character id (Cloudflare a
 if (/(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{16,}|xox[bp]-|AKIA[0-9A-Z]{12,}|Bearer\s+[A-Za-z0-9._-]{16,})/.test(lower)) leaks.push('a token');
 if (/api\.cloudflare\.com\/client\/v4\/accounts\//.test(lower)) leaks.push('a Cloudflare account URL');
 check('the data holds no email, IP address, account id or token', leaks.length === 0, leaks.join(', '));
+
+// The diagrams: run the layout engine from arch.js (it is pure, no DOM) on every group and every part
+// with parts, closed and with everything open, and check the drawing is sound.
+const archJs = fs.readFileSync(path.join(root, 'studio/architecture/arch.js'), 'utf8');
+const lm = archJs.match(/\/\*LAYOUT-BEGIN\*\/([\s\S]*?)\/\*LAYOUT-END\*\//);
+let makeLayout = null;
+try { makeLayout = lm && new Function(lm[1] + '; return makeLayout;')(); } catch (e) { /* reported below */ }
+check('arch.js holds the diagram layout between LAYOUT markers', typeof makeLayout === 'function');
+if (makeLayout) {
+  const M = makeLayout(D.tree);
+  const thrown = [], over = [], missing = [], labelHits = [];
+  const allOpen = (id) => { const o = {}; (function w(i) { M.kids(i).forEach((k) => { if (M.kids(k).length) { o[k] = 1; w(k); } }); })(id); return o; };
+  const roots = Object.keys(byId).filter((id) => (byId[id].children || []).length);
+  roots.forEach((rid) => [{}, allOpen(rid)].forEach((open) => {
+    let L;
+    try { L = M.layout(rid, open); } catch (e) { thrown.push(rid + ': ' + e.message); return; }
+    const solid = L.boxes.filter((b) => !b.open).concat(L.chips);
+    for (let i = 0; i < solid.length; i++) for (let j = i + 1; j < solid.length; j++) if (M.hit(solid[i], solid[j], -0.5)) over.push(rid + ': ' + solid[i].id + ' / ' + solid[j].id);
+    L.boxes.forEach((b) => { if (!byId[b.id]) missing.push(rid + ' box ' + b.id); });
+    L.chips.forEach((c) => { if (!byId[c.key]) missing.push(rid + ' chip ' + c.key); });
+    L.edges.forEach((e) => [e.a, e.b].forEach((x) => { const id = x.replace(/^(in|out):/, ''); if (!byId[id] || !L.pos[x] || !e.d || /NaN|undefined/.test(e.d)) missing.push(rid + ' edge ' + x); }));
+    const rects = L.boxes.map((b) => b.open ? { x: b.x, y: b.y, w: b.w, h: M.C.HEAD } : b).concat(L.chips);
+    L.labels.filter((l) => !l.over).forEach((l) => rects.forEach((r) => { if (M.hit(l, r, -0.5)) labelHits.push(rid + ': "' + l.text.slice(0, 24) + '" on ' + r.id); }));
+  }));
+  check('every part with parts lays out as a diagram without throwing (' + roots.length + ' diagrams, closed and all open)', thrown.length === 0, thrown.slice(0, 4).join('; '));
+  check('no two boxes or chips overlap in any diagram', over.length === 0, over.slice(0, 4).join('; '));
+  check('every drawn box, chip and arrow points at a real part', missing.length === 0, missing.slice(0, 4).join('; '));
+  check('no shown arrow label sits on a box', labelHits.length === 0, labelHits.slice(0, 4).join('; '));
+}
 
 // The Studio page carries the same data.
 const html = fs.readFileSync(path.join(root, 'studio/layout-studio.html'), 'utf8');
