@@ -366,13 +366,16 @@
     return out;
   }
 
-  // How much of the words box b would cover (px squared).
-  function covers(b, words) {
+  // How much of the words box b would cover (px squared). The words of the
+  // row itself (the new thing's, from row.top to row.bottom) count four
+  // times: if she must cover something, better the end of the line above.
+  function covers(b, words, row) {
     var sum = 0;
     for (var i = 0; i < words.length; i++) {
       var w = Math.min(b.right, words[i].right) - Math.max(b.left, words[i].left);
       var h = Math.min(b.bottom, words[i].bottom) - Math.max(b.top, words[i].top);
-      if (w > 0 && h > 0) sum += w * h;
+      var mid = (words[i].top + words[i].bottom) / 2;
+      if (w > 0 && h > 0) sum += w * h * (row && mid > row.top && mid < row.bottom ? 4 : 1);
     }
     return sum;
   }
@@ -437,7 +440,8 @@
       // edge (the end of the line above) first, then pressed to the tile's
       // edge, then just low enough to clear the line above, then lower,
       // over the end of the row itself; the place that
-      // covers the fewest words wins (the first, on a tie).
+      // covers the fewest words wins (the first, on a tie; the row's own
+      // words count four times).
       if (spot.row) {
         var words = wordBoxes(tile);
         var shape = workArt(mirrored);
@@ -462,7 +466,7 @@
             for (var si = 0; si < shape.all.length; si++) {
               var sb = shape.all[si];
               c += covers({ left: xs[xi] + sb.left * k - 2, right: xs[xi] + sb.right * k + 2,
-                top: cy + sb.top * k - 2, bottom: cy + sb.bottom * k + 2 }, words);
+                top: cy + sb.top * k - 2, bottom: cy + sb.bottom * k + 2 }, words, spot.row);
             }
             if (best < 0 || c < best) { best = c; wx = xs[xi]; wy = cy; }
           }

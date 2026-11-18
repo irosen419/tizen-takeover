@@ -5,7 +5,7 @@
  *
  * Uses the preview (node dev/preview.js on 8090, with its hub server on
  * 8097, the sample calendars and the Spotify stand-in); starts it when it
- * isn't running. 1920x1080 at device scale 2, wanderers off (?clay=off).
+ * isn't running (then with a fresh data folder and four ordinary to-dos). 1920x1080 at device scale 2, wanderers off (?clay=off).
  * Her pictures are loaded at once on the page that has her.
  *
  * Each pair changes only the character: two pages open side by side, one
@@ -251,7 +251,7 @@ async function phases() {
   await shot('4 work (' + mark() + ')');
   await sleep(2200);
   await shot('5 work, loop (' + mark() + ')');
-  await postTodo('Fix the porch light ' + Date.now() % 1000);
+  await postTodo('Fix the porch light');
   await atPhase(page, 'todo', 'reveal');
   const r0 = Date.now();
   await sleep(200);
@@ -305,7 +305,7 @@ async function clip() {
   await record('lift-sequence', async () => {
     await say('hub:working todo 300');
     await sleep(6000);
-    await postTodo('Sweep the porch ' + Date.now() % 1000);
+    await postTodo('Sweep the porch');
     await sleep(4200);
   });
   // A calendar change alone (no events to the sample's): the short fixed sequence.
@@ -320,10 +320,14 @@ async function clip() {
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   if (!(await up(PAGE + '/'))) {
-    preview = childProcess.spawn(process.execPath, [path.join(__dirname, 'preview.js')], { stdio: 'ignore' });
+    // A fresh data folder each run, so the pictures show the same short,
+    // ordinary list every time (not the to-dos earlier runs added).
+    const data = fs.mkdtempSync(path.join(require('os').tmpdir(), 'agents-shots-'));
+    preview = childProcess.spawn(process.execPath, [path.join(__dirname, 'preview.js')], { stdio: 'ignore', env: Object.assign({}, process.env, { HUB_LIVE_DATA_DIR: data }) });
     await until(() => up(PAGE + '/'), 10000, 'the preview did not start');
     await until(() => up(LIVE + '/health'), 10000, 'the preview hub server did not start');
     await sleep(1500);
+    for (const t of ['Return the library books', 'Call the plumber', 'Buy oat milk', 'Water the plants']) await postTodo(t);
   }
   browser = await chromium.launch();
   console.log('Pictures:');
