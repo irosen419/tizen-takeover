@@ -82,7 +82,10 @@
           { file: 'wyndle.webp', left: 113, top: 71, w: 23, h: 31, sway: true }
         ],
         skid: [{ file: 'skid.webp', left: 6, top: 12, w: 125, h: 114 }],
-        crouch: [{ file: 'crouch.webp', left: 14, top: 56, w: 112, h: 70 }],
+        // shape: where the picture is drawn (not see-through), as boxes
+        // [left, top, w, h] in it, so she can keep clear of the tile's words.
+        crouch: [{ file: 'crouch.webp', left: 14, top: 56, w: 112, h: 70,
+          shape: [[0, 53, 8, 14], [8, 0, 64, 70], [72, 47, 8, 18], [80, 30, 8, 35], [88, 21, 8, 46], [96, 14, 16, 54]] }],
         leap: [{ file: 'leap.webp', left: 20, top: 1, w: 99, h: 125 }],
         wave: [{ file: 'wave.webp', left: 26, top: 9, w: 87, h: 117 }]
       },
@@ -374,19 +377,29 @@
     return sum;
   }
 
-  // Her drawn box while she works (the crouch pose's parts), in the box's
-  // own pixels, mirrored or not.
+  // Where she is drawn while she works (the crouch pose: each part's shape
+  // boxes, or the whole part), in her box's own pixels, mirrored or not;
+  // all: the boxes, and box: around them all.
   function workArt(mirrored) {
     var parts = partsOf('crouch');
+    var all = [];
     var b = { left: 1e9, top: 1e9, right: -1e9, bottom: -1e9 };
     for (var i = 0; i < parts.length; i++) {
-      var l = mirrored ? role.w - parts[i].left - parts[i].w : parts[i].left;
-      b.left = Math.min(b.left, l);
-      b.right = Math.max(b.right, l + parts[i].w);
-      b.top = Math.min(b.top, parts[i].top);
-      b.bottom = Math.max(b.bottom, parts[i].top + parts[i].h);
+      var p = parts[i];
+      var shape = p.shape && p.shape.length ? p.shape : [[0, 0, p.w, p.h]];
+      for (var j = 0; j < shape.length; j++) {
+        var l = p.left + shape[j][0];
+        var t = p.top + shape[j][1];
+        if (mirrored) l = role.w - l - shape[j][2];
+        var one = { left: l, top: t, right: l + shape[j][2], bottom: t + shape[j][3] };
+        all.push(one);
+        b.left = Math.min(b.left, one.left);
+        b.right = Math.max(b.right, one.right);
+        b.top = Math.min(b.top, one.top);
+        b.bottom = Math.max(b.bottom, one.bottom);
+      }
     }
-    return b;
+    return { all: all, box: b };
   }
 
   // Where everything happens, measured once: the tile, her size, the side
@@ -422,20 +435,35 @@
       wy = clamp(spot.y - hy, r.top - h * 0.25, baseY);
       // Never over the tile's words if she can help it: on the row's top
       // edge (the end of the line above) first, then pressed to the tile's
-      // edge, then lower, over the end of the row itself; the place that
+      // edge, then just low enough to clear the line above, then lower,
+      // over the end of the row itself; the place that
       // covers the fewest words wins (the first, on a tie).
       if (spot.row) {
         var words = wordBoxes(tile);
-        var art = workArt(mirrored);
+        var shape = workArt(mirrored);
+        var art = shape.box;
         var edge = fromLeft ? clamp(r.left + inset * 0.5, 0, W - w) : clamp(r.right - inset * 0.5 - w, 0, W - w);
         var xs = [wx, edge];
-        var ys = [spot.y, (spot.row.top + spot.row.bottom) / 2, spot.row.bottom];
+        // (cy: her box's top. Second choice: just low enough that her
+        // drawn top clears the words of the line above.)
+        var above = -1;
+        for (var a = 0; a < words.length; a++) {
+          if (words[a].bottom <= spot.y + 2 && words[a].bottom > above &&
+              words[a].right > Math.min(wx, edge) + art.left * k && words[a].left < Math.max(wx, edge) + art.right * k) above = words[a].bottom;
+        }
+        var ys = [spot.y - hy];
+        if (above > 0) ys.push(Math.min(above + 3 - art.top * k, spot.row.bottom - hy));
+        ys.push((spot.row.top + spot.row.bottom) / 2 - hy, spot.row.bottom - hy);
         for (var yi = 0; yi < ys.length && best !== 0; yi++) {
-          var cy = clamp(ys[yi] - hy, r.top - h * 0.25, baseY);
+          var cy = clamp(ys[yi], r.top - h * 0.25, baseY);
           for (var xi = 0; xi < xs.length && best !== 0; xi++) {
             // (2 px more all round: the work loop bobs her a little.)
-            var c = covers({ left: xs[xi] + art.left * k - 2, right: xs[xi] + art.right * k + 2,
-              top: cy + art.top * k - 2, bottom: cy + art.bottom * k + 2 }, words);
+            var c = 0;
+            for (var si = 0; si < shape.all.length; si++) {
+              var sb = shape.all[si];
+              c += covers({ left: xs[xi] + sb.left * k - 2, right: xs[xi] + sb.right * k + 2,
+                top: cy + sb.top * k - 2, bottom: cy + sb.bottom * k + 2 }, words);
+            }
             if (best < 0 || c < best) { best = c; wx = xs[xi]; wy = cy; }
           }
         }
