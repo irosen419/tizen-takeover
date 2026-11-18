@@ -121,7 +121,7 @@
    arm into the card and rings out from her hand; Wyndle's vine curl grows
    toward it once and then sways; a small bob. Calm (after a while): the
    bob stops and the light slows.
-   The stream: a still, deep blue beam (soft glow + core, faint at her
+   The stream: a still, mid blue beam (soft glow + core, faint at her
    elbow, strong at her hand), clipped; inside it a strip of soft lighter
    surges slides toward the card, and two thin light strands twist around
    it. Only those strips move (transform), by a whole number of their
@@ -148,22 +148,22 @@
   position: absolute;
   top: 0; bottom: 0;
   left: -0.0833rem; right: -0.0833rem;
-  background-image: linear-gradient(to bottom, rgba(30, 110, 190, 0), #1e6ebe);
+  background-image: linear-gradient(to bottom, rgba(58, 143, 214, 0), #3a8fd6);
   opacity: 0.35;
 }
 .ag-stream s {
   position: absolute;
   top: 0; bottom: 0; left: 0; right: 0;
   overflow: hidden;
-  background-image: linear-gradient(to bottom, rgba(40, 132, 214, 0), rgba(40, 132, 214, 0.9) 55%, #3b9be6);
+  background-image: linear-gradient(to bottom, rgba(88, 168, 228, 0), rgba(88, 168, 228, 0.9) 55%, #7cc2f2);
 }
 .ag-stream s i {
   position: absolute;
   left: 0; right: 0;
   top: -1.5rem; height: 3rem;
   background-image: repeating-linear-gradient(to bottom,
-    rgba(150, 215, 255, 0) 0, rgba(150, 215, 255, 0.55) 0.25rem,
-    rgba(150, 215, 255, 0) 0.5rem);
+    rgba(185, 232, 255, 0) 0, rgba(185, 232, 255, 0.65) 0.25rem,
+    rgba(185, 232, 255, 0) 0.5rem);
 }
 /* The two strands (soft faded gray-blue, like the rings): one pixel helix picture (6 x 24 pixels, close to the core, solid lines, the
    strand behind the core left out where it crosses), repeated down and
