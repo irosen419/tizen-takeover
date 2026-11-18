@@ -240,6 +240,13 @@ async function main() {
     assert.strictEqual(allsounds.merge(idle, fsPaused).state, 'paused');
     assert.strictEqual(allsounds.merge(idle, null).state, 'idle');
     assert.strictEqual(allsounds.merge(allsounds.notsetData(), fs1).state, 'playing', 'Spotify shows even without Home Assistant');
+    // Spotify still says "playing" on an Echo that has moved on to another app: the Echo wins.
+    const npOnEcho = allsounds.fromSpotify(Object.assign({}, npPlaying, { device: { name: 'Living room Echo' } }));
+    assert.strictEqual(allsounds.merge(house, npOnEcho).title, 'Show', 'the Echo playing something else beats a stale Spotify on that Echo');
+    const houseSame = Object.assign({}, house, { title: 'Song' });
+    assert.strictEqual(allsounds.merge(houseSame, npOnEcho).source, 'Spotify', 'same song on that Echo: Spotify (richer) wins');
+    const houseNoTitle = Object.assign({}, house, { title: '' });
+    assert.strictEqual(allsounds.merge(houseNoTitle, npOnEcho).source, 'Spotify', 'the Echo with no details yet does not beat Spotify');
     assert.strictEqual(allsounds.fromSpotify({ state: 'idle', track: { title: 'x' } }), null);
     assert.strictEqual(allsounds.fromSpotify(null), null);
   });

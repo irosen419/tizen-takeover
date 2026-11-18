@@ -251,9 +251,18 @@ function fromSpotify(np, allowHttp) {
 
 // The house (from Home Assistant, or its notset/error picture) and Spotify,
 // together: Spotify playing wins; then the house playing; then whichever is
-// paused (the house first).
+// paused (the house first). One exception: Spotify keeps saying "playing" on
+// an Echo for a while after that Echo has moved on to another app (seen
+// 2026-11-17: Spotify still "playing" while the Echo Show played iHeartRadio).
+// So when the house reports that same speaker playing something else, the
+// speaker wins.
+function sameName(a, b) {
+  return !!a && !!b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+}
 function merge(house, sp) {
   const h = house || notsetData();
+  if (sp && sp.state === 'playing' && h.state === 'playing' && sameName(sp.device, h.device) &&
+      h.title && !sameName(h.title, sp.title)) return h;
   if (sp && sp.state === 'playing') return sp;
   if (h.state === 'playing' || h.state === 'paused') return h;
   if (sp) return sp;
