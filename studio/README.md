@@ -18,3 +18,12 @@ The Studio must hold every widget and every layout the hub has. `node dev/studio
 - a widget is marked built in the Studio but is still `soon`, or is in the Studio, absent from the hub and not marked `soon` (a proposal).
 
 Any PR that adds or changes a widget or a layout updates the Studio in the same PR, runs this test, and then republishes the page (same URL). Proposed widgets that are not built yet go in with `soon: true` and a `budgetPlanned`/`plannedEntry` size entry, so they can be placed and commented on.
+
+## Architecture page
+
+The "Pages → Architecture" chip in the Studio swaps the workspace for an expandable map of the whole system (TV, Pi, cloud, outside services, scheduled tasks, Studio and tools), with search, status filters, data flows and a big-picture diagram.
+
+- The map is data: `studio/architecture/data.json` (nodes with status `live`, `unverified`, `draft` or `planned`, files, links, plus `flows` and the `overview` diagram). `arch.js` and `arch.css` in the same folder draw it.
+- The Studio is published as one file, so run `node studio/build-architecture.js` after editing any of the three to copy them into `layout-studio.html` (`--check` only reports), then republish.
+- `node dev/architecture-test.js` checks unique ids, links, flow steps, that live nodes' files exist, that no email, IP address, account id or token is in the data, and that the Studio carries the same data.
+- When a PR lands or something is checked on the real TV, change that node's status in `data.json`.
