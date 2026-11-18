@@ -2558,7 +2558,33 @@
 
   // Texts that start with "hub:" are for the hub, never shown, even when
   // they make no sense to this version.
+  // "hub:motion push" (or expand, fade): that motion for this session only,
+  // whatever auto measured (to see the extras and the character on a TV
+  // that stepped itself down); nothing is stored, so a reload goes back to
+  // auto. "hub:motion auto": forget the step-down and time the top rung
+  // again from now.
+  var MOTION_SAY_RE = /^hub:motion (push|expand|fade|auto)$/;
+
+  function liveMotion(want) {
+    if (want === 'auto') {
+      try { if (window.localStorage) localStorage.removeItem(MOTION_KEY); } catch (e) { /* ignore */ }
+      motion.source = 'auto';
+      motion.mode = LADDER[0];
+      motion.measuring = true;
+    } else {
+      motion.source = 'remote';
+      motion.mode = want;
+      motion.measuring = false;
+    }
+    motion.fps = 0; motion.worst = 0; motion.worstJanky = 0; motion.clean = []; motion.janky = [];
+    markMotion();
+    fxHook('motionChanged');
+    announceStatus();
+  }
+
   function liveHubSay(text) {
+    var mm = MOTION_SAY_RE.exec(text);
+    if (mm) { liveMotion(mm[1]); return; }
     var m = WORK_SAY_RE.exec(text);
     if (!m) return;
     if (m[2] === 'done') fxCall('workingDone', [m[1]]);

@@ -106,7 +106,6 @@
     seenOne: '1 swoop',
     seenMany: '{n} swoops',
     drawOn: 'on',
-    drawLight: 'chips only ({why})',
     why: { fade: 'fade mode', slow: 'slow screen', calm: 'less motion asked for' },
     offWhy: 'off ({why})',
     offConfig: 'off (config)',
@@ -715,9 +714,15 @@
     }
   }
 
+  // She runs when the chips' light extras may (motion.js canLight: full
+  // speed, or stepped down from push but still 60+ fps without stutter):
+  // she is transform and opacity on a few small pictures, like a chip.
   function fullSpeed() {
     var F = window.HUB_FX;
-    try { return !!(F && typeof F.can === 'function' && F.can('activity')) && !lessMotion() && !document.hidden; } catch (e) { return false; }
+    try {
+      var ok = F && typeof F.canLight === 'function' ? F.canLight('activity') : !!(F && typeof F.can === 'function' && F.can('activity'));
+      return !!ok && !lessMotion() && !document.hidden;
+    } catch (e) { return false; }
   }
 
   /* ---------- from motion.js ---------- */
@@ -780,12 +785,11 @@
     try { fx = F && typeof F.state === 'function' ? F.state() : null; } catch (e) { fx = null; }
     if (!F || (typeof F.on === 'function' && !F.on('activity'))) return tr('offChips', STRINGS.offChips);
     if (pics.state === 'failed') return tr('offFailed', STRINGS.offFailed);
-    var sp = fx ? fx.speed : 'fade';
+    // She follows the light extras (the chips' rule), not full speed.
+    var sp = fx ? (fx.lightSpeed || fx.speed) : 'fade';
     var why = sp !== 'ok' ? sp : lessMotion() ? 'calm' : '';
     if (!why) return tr('drawOn', STRINGS.drawOn);
     var whyText = tr('why.' + why, STRINGS.why[why] || why);
-    // The chips still show (motion.js's light extras), she does not.
-    if (fx && fx.lightSpeed === 'ok') return tr('drawLight', STRINGS.drawLight, { why: whyText });
     return tr('offWhy', STRINGS.offWhy, { why: whyText });
   }
 

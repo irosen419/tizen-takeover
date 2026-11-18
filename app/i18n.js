@@ -651,7 +651,6 @@
     'agents.seenOne': '1 pasada',
     'agents.seenMany': '{n} pasadas',
     'agents.drawOn': 'activado',
-    'agents.drawLight': 'solo avisos ({why})',
     'agents.why.fade': 'modo fundido',
     'agents.why.slow': 'pantalla lenta',
     'agents.why.calm': 'se pidió menos movimiento',

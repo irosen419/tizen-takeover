@@ -406,7 +406,11 @@ async function check3(pi) {
 async function check4(pi) {
   const cases = [
     { name: 'fade', o: { query: 'motion=fade' }, chips: false, row: 'off (fade mode)' },
-    { name: 'slow screen, chips still on (expand at 71 fps)', o: { slow: { mode: 'expand', fps: 71 }, query: 'x=1' }, chips: true, row: 'chips only (slow screen)' },
+    // Stepped down to expand but still 60+ fps: the light extras run, and she follows them (no chip).
+    { name: 'stepped down, light extras on (expand at 71 fps)', o: { slow: { mode: 'expand', fps: 71 }, query: 'x=1' }, chips: false, fig: true, row: 'on' },
+    { name: 'stepped down and under 60 fps (expand at 50 fps)', o: { slow: { mode: 'expand', fps: 50 }, query: 'x=1' }, chips: false, row: 'off (slow screen)' },
+    // The remote "try push": hub:motion push in a say text puts that TV back on push for the session.
+    { name: 'hub:motion push on a stepped-down TV (expand at 50 fps)', o: { slow: { mode: 'expand', fps: 50 }, query: 'x=1' }, remote: true, chips: false, fig: true, row: 'on' },
     { name: 'measured slow (24 fps)', o: { slow: { mode: 'push', fps: 24 }, query: 'x=1' }, chips: false, row: 'off (slow screen)' },
     { name: 'agents: false', o: { config: 'HUB_CONFIG.agents = false;' }, chips: true, row: 'off (config)', nothing: true },
     { name: 'on: false', o: { config: 'HUB_CONFIG.agents = { on: false, who: "lift" };' }, chips: true, row: 'off (config)', nothing: true },
@@ -420,9 +424,16 @@ async function check4(pi) {
     const page = await open(Object.assign({ pi: pi }, c.o));
     await say(pi, 'hub:working todo');
     await sleep(1500);
+    if (c.remote) {
+      await say(pi, 'hub:motion push');
+      await until(() => page.evaluate(() => document.body.classList.contains('motion-push') && window.HUB_FX.state().speed === 'ok'), 3000, c.name + ': not back on push');
+    }
+    if (c.fig) await until(() => page.evaluate(() => window.HUB_AGENTS.test.state().pictures === 'ready'), 9000, c.name + ': pictures');
+    if (c.fig) { await say(pi, 'hub:working todo done'); await sleep(2500); await say(pi, 'hub:working todo'); await sleep(1500); }
     const chips = await page.evaluate(() => document.querySelectorAll('.fx-chip').length);
     assert(!!chips === c.chips, c.name + ': chips ' + chips);
-    assert(!(await figLog(page)).length && !(await page.evaluate(() => document.querySelector('.ag-layer'))), c.name + ': a character');
+    if (c.fig) assert((await figLog(page)).length && (await page.evaluate(() => !!document.querySelector('.ag-fig'))), c.name + ': no character');
+    else assert(!(await figLog(page)).length && !(await page.evaluate(() => document.querySelector('.ag-layer'))), c.name + ': a character');
     if (c.row) {
       const row = await page.evaluate(() => window.HUB_AGENTS.status().drawing);
       assert(row === c.row, c.name + ': row ' + row);
@@ -436,6 +447,13 @@ async function check4(pi) {
       await until(() => page.evaluate(() => window.HUB_AGENTS.test.state().pictures === 'ready'), 9000, 'the pictures did not load by themselves');
       await sleep(1500);
       assert(!(await figLog(page)).length && (await chipsIn(page, 'todo')) === 1, 'she joined the chip');
+    }
+    if (c.remote) {
+      // hub:motion auto forgets the step-down and times push again.
+      await say(pi, 'hub:motion auto');
+      await sleep(1500);
+      assert(await page.evaluate(() => document.body.classList.contains('motion-push')), c.name + ': not on push after auto');
+      assert(!(await page.evaluate(() => localStorage.getItem('homeHub.motion'))), c.name + ': step-down still stored');
     }
     await say(pi, 'hub:working todo done');
     noErrors(page);
@@ -630,7 +648,7 @@ async function onLayout(pi, layout, widget, kind, wantFromLeft, wantSmall) {
     // Facing her way: mirrored when she came from the right.
     assert(/is-mirrored/.test(await page.evaluate(() => document.querySelector('.ag-flip').className)) === !wantFromLeft, widget + ': facing the wrong way');
     await say(pi, 'hub:working ' + kind + ' done');
-    await noneLeft(page, 2500, 'she stayed');
+    await noneOn(page, widget, 2500, widget + ': she stayed');   // (a New song arrival may bring her to Now Playing meanwhile)
     const ph = (await phasesOf(page, widget)).join();
     assert(ph === (wantSmall ? 'enter,work,exit' : 'enter,travel,skid,work,exit'), widget + ': phases ' + ph);
     noErrors(page);

@@ -771,7 +771,8 @@
 
   // The character (app/agents.js, docs/agents.md) comes instead of the
   // chip when she can: asked as a chip would show ('in', with whether the
-  // screen keeps full speed and the home screen is quiet, and mode 'work'
+  // light extras may run (canLight, the chips' own rule) and the home
+  // screen is quiet, and mode 'work'
   // or 'arrive'); true means she comes and the act gets no chip (a.chip
   // null), only the border light. Then told when the working state turns
   // into news on the same tile ('reveal'; false: she is already leaving, so
@@ -781,7 +782,7 @@
   function figure(phase, a, mode) {
     var A = window.HUB_AGENTS;
     if (!a || !A || typeof A.chip !== 'function') return false;
-    try { return A.chip(phase, a.tile, phase === 'in' ? (can('activity') && homeQuiet()) : true, mode) === true; } catch (e) { return false; }
+    try { return A.chip(phase, a.tile, phase === 'in' ? (canLight('activity') && homeQuiet()) : true, mode) === true; } catch (e) { return false; }
   }
 
   // Was the character on this act's tile taken away at once (not by the
@@ -1130,12 +1131,11 @@
       ringDrop();
       staggerClear();
       shareEnd();
-      // The character needs full speed: she goes, the chips stay (and a
-      // tile she was working on gets its chip, below).
-      try { if (window.HUB_AGENTS && typeof window.HUB_AGENTS.stop === 'function') window.HUB_AGENTS.stop(); } catch (e) { /* nothing more */ }
     }
     if (lightSpeed() === 'ok') chipBack();
     if (lightSpeed() !== 'ok') {
+      // The character follows the chips' rule (light extras): she goes with them.
+      try { if (window.HUB_AGENTS && typeof window.HUB_AGENTS.stop === 'function') window.HUB_AGENTS.stop(); } catch (e) { /* nothing more */ }
       activityStop();
       // Edges stay, but as still borders (no lap, no fade).
       for (var i = 0; i < edges.length; i++) {
@@ -1168,6 +1168,7 @@
     start: safe(start),
     on: function (name) { return on(name); },
     can: function (name) { return can(name); },
+    canLight: function (name) { return canLight(name); },
     markTile: safe(markTile),
     focus: safe(focus),
     ringHide: safe(ringHide),
