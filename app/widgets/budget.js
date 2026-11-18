@@ -308,7 +308,7 @@
 
   /* ---------- the shared store ---------- */
 
-  var S = { ctxs: {}, order: [], bound: false, data: null, fromCache: false, timer: null, sig: '', seen: null, banner: null, current: null };
+  var S = { ctxs: {}, order: [], listeners: [], bound: false, data: null, fromCache: false, timer: null, sig: '', seen: null, banner: null, current: null };
 
   function config() {
     var w = window.HUB_CONFIG && window.HUB_CONFIG.widgets;
@@ -434,6 +434,15 @@
         if (ctx.isOpen()) ctx.redrawPanel();
       } catch (e) { warn('redraw: ' + (e && e.message)); }
     }
+    tell();
+  }
+
+  // The other budget widgets (budget-lab.js) draw again on the same news.
+  function tell() {
+    var fns = S.listeners.slice();
+    for (var j = 0; j < fns.length; j++) {
+      try { fns[j](); } catch (e) { warn('listener: ' + (e && e.message)); }
+    }
   }
 
   function schedule() {
@@ -463,6 +472,7 @@
     try { x.on('budget', function (d) { try { onData(d); } catch (e) { warn(e && e.message); } }); } catch (e) { warn('live: ' + (e && e.message)); }
     try { if (typeof x.onStatus === 'function') x.onStatus(function () { try { refreshAll(); } catch (e) { /* next time */ } }); } catch (e) { /* ignore */ }
     S.sig = signature();
+    tell();
     schedule();
     updateBanner();
   }
@@ -1094,6 +1104,41 @@
     var lx = I18N();
     if (lx && typeof lx.onChange === 'function') lx.onChange(function () { try { onLang(); } catch (e) { warn('language: ' + (e && e.message)); } });
   } catch (e) { /* stays in the language it started in */ }
+
+  /*
+   * For the other budget widgets (app/widgets/budget-lab.js), so the cache,
+   * Guest mode and widgets.budget.show stay in this one file:
+   *   data()        the snapshot, or null while none may show (hidden, Guest
+   *                 mode, nothing sent yet)
+   *   onChange(fn)  fn() after anything that changes what a budget tile
+   *                 shows (new figures, Guest mode, the language, the line,
+   *                 a new minute that makes the data old or a new day)
+   *   shown()       figures may show: config.js allows them, Guest mode off
+   *   state()       why there is nothing to show: a key of the states below
+   *   stateText(k)  { head, line, short } for that key, in the hub's language
+   *   asOf()        "as of 7:10 AM" once the data is over 2 hours old, else ''
+   *   stale()       true once the data is over 2 hours old
+   *   today()       today in the Pi's time zone, 'YYYY-MM-DD'
+   */
+  window.HUB_BUDGET = {
+    data: function () { return shown() && ready(S.data) ? S.data : null; },
+    onChange: function (fn) {
+      if (typeof fn === 'function') S.listeners.push(fn);
+      // A layout with no other budget tile: the line is bound from here.
+      bindLive();
+    },
+    shown: shown,
+    state: emptyState,
+    stateText: function (key) { return STRINGS.states[key] || STRINGS.states.waiting; },
+    asOf: function () { return shown() ? asOfText() : ''; },
+    stale: function () { return !!staleAt(); },
+    today: function () {
+      var d = new Date(today() * DAY);
+      var m = d.getUTCMonth() + 1;
+      var n = d.getUTCDate();
+      return d.getUTCFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (n < 10 ? '0' : '') + n;
+    }
+  };
 
   // For dev/money-test.js. Not used by the hub.
   window.HUB_BUDGET_TEST = {

@@ -16,6 +16,8 @@
  * data in dev/.live-data. Open the hub with ?live=http://127.0.0.1:8097 to
  * use it, and steer it with pi/hubctl.js (the address it prints).
  * HUB_LIVE_PORT=off leaves it out (dev/live-test.js runs its own).
+ * Its Schedule (shows) is the made-up pi/fixtures/shows-sample.json, moved to
+ * today; it never asks TVmaze. HUB_SHOWS=off leaves the shows out.
  *
  * Calendar: that hub server reads four sample calendars (dev/calendar-sample.js)
  * from a small local feed server, the way it reads Google on the Pi. Try the
@@ -222,6 +224,11 @@ var service = http.createServer(function (req, res) {
     log('launch ' + q.id);
     return send(res, 200, { ok: true });
   }
+  if (p === '/launch-control') {
+    // Only the app id and what was sent along, never the address or the data itself.
+    log('launch-control ' + q.id + (q.uri ? ' (with a uri)' : '') + (q.key ? ' (with data)' : ''));
+    return send(res, 200, { ok: true });
+  }
   if (p === '/key') {
     log('key ' + q.k);
     return send(res, 200, { ok: true });
@@ -338,8 +345,14 @@ var liveServer = null;
       } : {},
       spotify: { accounts: mockSpotify && mockSpotify.url, api: mockSpotify && mockSpotify.url, vibe: mockSpotify && mockSpotify.url, allowHttp: true,
         playMs: 1500, idleMs: 1500, awayMs: 1500 },
+<<<<<<< HEAD
       ambienceEnv: mockLights ? { HA_URL: mockLights.url, HA_TOKEN: mockLights.token, WLED_URL: mockLights.wledUrl } : {},
       ambience: { timeoutMs: 1500, screenMs: 3000, idleMs: 3000 }
+=======
+      // The Schedule: the made-up sample, never TVmaze (HUB_SHOWS=off: none).
+      shows: process.env.HUB_SHOWS === 'off' ? undefined :
+        { sampleFile: path.join(__dirname, '..', 'pi', 'fixtures', 'shows-sample.json') }
+>>>>>>> origin/main
     });
     if (mockLights) log('Lights:   sample Home Assistant and plant wall, mode "' + lightsMode + '"; switch with /preview?lights=ok|sengled|slow|down|unauthorized|wall-down');
     signInToMock();

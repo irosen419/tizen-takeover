@@ -26,7 +26,7 @@ var HUB_CONFIG = {
 
   /* How opening a widget looks:
        'auto'    start with 'push', time it on the TV, and step down to
-                 'expand', then 'fade', if the TV can't keep up (the default)
+                 'expand', then 'fade', if the TV can't keep up, and tries push again after a day (the default)
        'push'    the widget grows in the middle and the other tiles slide aside
        'expand'  the widget grows over a dimmed screen
        'fade'    a plain fade (lightest on slow TVs) */
@@ -129,6 +129,7 @@ var HUB_CONFIG = {
     { id: 'budget', name: 'Budget', layout: [
       { widget: 'budget-room',   x: 0, y: 0, w: 4, h: 3 },
       { widget: 'budget-card',   x: 4, y: 0, w: 4, h: 3 },
+<<<<<<< HEAD
       { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 6 },
       { widget: 'calendar',      x: 0, y: 3, w: 5, h: 3 },
       { widget: 'today',         x: 5, y: 3, w: 3, h: 1 },
@@ -139,6 +140,23 @@ var HUB_CONFIG = {
        layout. New widgets are tried the same way: one layout, one widget. */
     { id: 'ambience-test', name: 'Ambience test', layout: [
       { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
+=======
+      { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 3 },
+      { widget: 'budget-lab',    x: 0, y: 3, w: 4, h: 3 },
+      { widget: 'calendar',      x: 4, y: 3, w: 4, h: 3 },
+      { widget: 'today',         x: 8, y: 3, w: 4, h: 1 },
+      { widget: 'entertainment', x: 8, y: 4, w: 4, h: 2 }
+    ] },
+    /* A test layout: the All sounds widget (app/widgets/allsounds.js) on its
+       own, filling the screen, to try it before it joins any real layout.
+       New widgets can be tried the same way: one layout, one widget. */
+    { id: 'allsounds-test', name: 'All sounds test', layout: [
+      { widget: 'allsounds',     x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    // Plant sun alone, to try it out (a new widget gets a layout of its own first).
+    { id: 'plant-wall', name: 'Plant wall', layout: [
+      { widget: 'sunpath',       x: 0, y: 0, w: 12, h: 6 }
+>>>>>>> origin/main
     ] }
   ],
 
@@ -157,6 +175,9 @@ var HUB_CONFIG = {
      *   webhook    asks Home Assistant to do something (POSTs to a webhook url)
      *   dashboard  opens a web page full screen inside the hub (Back returns)
      *   allApps    lists every app on the TV
+     *   schedule   the TV shows on the Pi's list: today, this week, this month
+     *              and coming soon (app/widgets/shows.js; the list is kept on
+     *              the Pi with ./hub shows add|remove, see pi/README.md)
      *
      * "logo" picks the brand logo from logos.js. Without one, the item shows
      * its first letter.
@@ -203,10 +224,79 @@ var HUB_CONFIG = {
         {
           label: 'More',
           items: [
+            { kind: 'schedule', label: 'Schedule', sub: 'Your shows', logo: 'schedule' },
             { kind: 'allApps', label: 'All apps', sub: 'On this TV', logo: 'allapps' }
           ]
         }
-      ]
+      ],
+
+      /*
+       * Schedule: a show opens in its watch app (the service on the Pi's
+       * list). watchAliases sends every show of one service to another app
+       * instead: Hulu titles open in Disney+ here. The app it came from shows
+       * as "Also on Hulu" beside the episode (Right, then OK, opens it).
+       */
+      watchAliases: { 'Hulu': 'Disney+' },
+
+      /*
+       * Prime Video Channels: a service billed through another app opens in
+       * that app. The badge still names the service, with a small "via
+       * Prime Video" beside the episode, and Watch opens Prime Video. One
+       * show alone can say so on the Pi instead (./hub shows add "X"
+       * --service "HBO Max" --via "Prime Video"). An example only; uncomment
+       * and change it to match the subscriptions on this TV:
+       */
+      // watchVia: { 'HBO Max': 'Prime Video' },
+
+      /*
+       * Watch link test (About panel: Left on a left-most tile, then OK on
+       * "Watch link test"). Each recipe opens one app with an app control:
+       * op (the operation), and optionally uri, or key + val (one data
+       * item). app is the Entertainment item's label (its match names find
+       * the app). {name} is filled from ids below. A value still in
+       * <angle brackets> is a placeholder: its recipes say "needs id" and
+       * never fire. Answers go to the Pi: ./hub linktests. The ids in
+       * editable also get a text box at the top of the test, so one can be
+       * changed with the remote (kept on that TV, over the one here).
+       */
+      linkTests: {
+        editable: ['primeGti'],
+        ids: {
+          // EDIT: the Prime Video title id (GTI) the Prime recipe opens.
+          primeGti: 'amzn1.dv.gti.50f41028-8256-4293-9d0d-14556b501136',
+          // A Netflix title id, as seen in netflix.com/title/<id>.
+          netflixTitle: '81505776',
+          // Apple TV show ids: unverified, edit here if they don't open.
+          appleFoundation: 'umc.cmc.5983fiap1xtpb4p1dp4w7w3zd',
+          appleForAllMankind: 'umc.cmc.6wsi780sz5tsh3jmcixqwr5o2',
+          // Placeholders until someone finds the real ids.
+          disneyHellsKitchen: '<Disney+ series id>',
+          hulu: '<Hulu series id>',
+          peacock: '<Peacock series id>'
+        },
+        recipes: [
+          { id: 'prime-resume', app: 'Prime Video', name: 'Title by GTI (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: '{"values":"{primeGti}"}' },
+          { id: 'netflix-resume', app: 'Netflix', name: 'Title by id (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: 'm=https://www.netflix.com/title/{netflixTitle}&source_type=4' },
+          { id: 'netflix-view', app: 'Netflix', name: 'Title page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.netflix.com/title/{netflixTitle}' },
+          { id: 'appletv-view', app: 'Apple TV', name: 'Foundation page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://tv.apple.com/us/show/foundation/{appleFoundation}' },
+          { id: 'appletv-resume', app: 'Apple TV', name: 'Foundation by id (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: '{"values":"{appleFoundation}"}' },
+          { id: 'appletv-fam', app: 'Apple TV', name: 'For All Mankind page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://tv.apple.com/us/show/for-all-mankind/{appleForAllMankind}' },
+          { id: 'disney-view', app: 'Disney+', name: 'Hell’s Kitchen page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.disneyplus.com/series/hells-kitchen/{disneyHellsKitchen}' },
+          { id: 'disney-resume', app: 'Disney+', name: 'Hell’s Kitchen by id (eden_resume)',
+            op: 'http://samsung.com/appcontrol/operation/eden_resume', key: 'PAYLOAD', val: '{"values":"{disneyHellsKitchen}"}' },
+          { id: 'hulu-view', app: 'Hulu', name: 'Series page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.hulu.com/series/{hulu}' },
+          { id: 'peacock-view', app: 'Peacock', name: 'Series page (view)',
+            op: 'http://tizen.org/appcontrol/operation/view', uri: 'https://www.peacocktv.com/watch/asset/tv/{peacock}' }
+        ]
+      }
     },
 
     /*
@@ -241,8 +331,9 @@ var HUB_CONFIG = {
     },
 
     /*
-     * Personal budget: Daily room, Card day and Goals (budget-room,
-     * budget-card, budget-goals, on the "Budget" layout), and a banner across
+     * Personal budget: Daily room, Card day, Goals and Budget lab (budget-room,
+     * budget-card, budget-goals, budget-lab, on the "Budget" layout; the lab
+     * is the pace streak and a daily cap to try out), and a banner across
      * the top when a charge posts at a merchant that was cut ("New charge:
      * ...", never an amount; OK dismisses it). The budget app on the Pi sends
      * only totals to the hub server there (docs/budget-snapshot.md).
@@ -286,6 +377,40 @@ var HUB_CONFIG = {
      * ?viz=off|wash|glow|lite|classic|sharplite|sharp|native|radiant on the address
      * tries one for a visit.
      */
-    nowplaying: { visualizer: true }
+    nowplaying: { visualizer: true },
+
+    /*
+     * Plant sun: when direct sun reaches the plant wall (the "Plant wall"
+     * layout). The sun's position is worked out on the TV (NOAA formulas)
+     * for the weather location above, rounded; latitude and longitude here
+     * would take its place. The window itself (faces about 306 degrees
+     * true, 23 in wide, sill 28.5 in, 4.5 ft tall) is in sunpath.js.
+     *
+     * PLACEHOLDERS, not measured yet:
+     *   roofAngle  the balcony roof blocks the sun above this angle (degrees)
+     *   gapFeet    from the right window's right edge to the plant wall (ft)
+     *   plantFromWindowFeet  (below) where the plants start and end
+     * While placeholder is true the tile's badge says "Estimate" and the
+     * panel says which numbers are estimates. Put in the measured numbers
+     * and set placeholder to false.
+     *
+     *   plantFromWindowFeet  [nearest, furthest]: how far into the room
+     *              the plants run along the wall (ft). "Sun on the plants"
+     *              means the beam lands anywhere in that stretch. One number
+     *              (a single plant spot) still works.
+     *
+     * plantHeightFeet: how high the plants sit (3 ft up). plants: shown in
+     * the panel's note; keepOutOfSun: the one to keep out of the summer
+     * evening beam.
+     */
+    sunpath: {
+      roofAngle: 40,
+      gapFeet: 2.0,
+      placeholder: true,
+      plantFromWindowFeet: [2.0, 6],      // PLACEHOLDER: nearest and furthest plant
+      plantHeightFeet: 3,
+      plants: ['4in Birkin philodendron', 'Golden pothos', 'Maranta Gold Lines'],
+      keepOutOfSun: 'Maranta Gold Lines'
+    }
   }
 };

@@ -340,6 +340,42 @@ async function main() {
     await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [{ op: 'remove', id: a.json.item.id }, { op: 'remove', id: b.json.item.id }] } });
   });
 
+  await check('to-do lead: POST /api/todo takes 0 to 30, none stays none, a bad one is refused, set and clear it', async () => {
+    const a = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'School meeting', level: 'passive', due: '2026-11-20', lead: 3 } });
+    assert.strictEqual(a.status, 200);
+    assert.strictEqual(a.json.item.lead, 3);
+    const z = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'Only on the day', level: 'passive', lead: 0 } });
+    assert.strictEqual(z.json.item.lead, 0);
+    const b = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'No lead', level: 'passive' } });
+    assert.ok(!('lead' in b.json.item));
+    for (const lead of [31, -1, 2.5, '3', true]) {
+      const bad = await request(P, 'POST', '/api/todo', { token: TOKEN, body: { title: 'ok', lead: lead } });
+      assert.strictEqual(bad.status, 400, JSON.stringify(lead));
+      assert.ok(/lead must be a whole number of days from 0 to 30/.test(bad.json.error), bad.json.error);
+    }
+    let r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: b.json.item.id, fields: { lead: 30 } }] } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.items.find((i) => i.id === b.json.item.id).lead, 30);
+    r = await request(P, 'POST', '/todo/ops', { body: { ops: [{ op: 'set', id: a.json.item.id, fields: { lead: null } }] } });
+    assert.ok(!('lead' in r.json.items.find((i) => i.id === a.json.item.id)));
+    await request(P, 'POST', '/api/todo/ops', { token: TOKEN, body: { ops: [a, z, b].map((x) => ({ op: 'remove', id: x.json.item.id })) } });
+  });
+
+  await check('hubctl lead: a field wins over a "[lead:N]" tag, words for 0, 1 and N days, list shows it', () => {
+    assert.strictEqual(hubctl.leadOf({ title: 'A' }), null);
+    assert.strictEqual(hubctl.leadOf({ title: 'A', notes: 'x [lead:5] [level:passive]' }), 5);
+    assert.strictEqual(hubctl.leadOf({ title: 'A', lead: 0, notes: '[lead:5]' }), 0);
+    assert.strictEqual(hubctl.leadOf({ title: 'A', notes: '[lead:31]' }), null);
+    assert.strictEqual(hubctl.todoLeadText({ title: 'A', lead: 3 }), '"A" shows under Coming up from 3 days before it is due.');
+    assert.strictEqual(hubctl.todoLeadText({ title: 'A', lead: 1 }), '"A" shows under Coming up from 1 day before it is due.');
+    assert.strictEqual(hubctl.todoLeadText({ title: 'A', lead: 0 }), '"A" shows under Coming up only on the day it is due.');
+    assert.strictEqual(hubctl.todoLeadText({ title: 'A' }), '"A" shows under Coming up from 2 days before it is due (the default).');
+    assert.strictEqual(hubctl.todoAddText({ item: { title: 'A', level: 'passive', due: '2026-11-20', lead: 3 } }),
+      'Added "A" to Coming up, due 2026-11-20, shown from 3 days before it is due.');
+    assert.deepStrictEqual(hubctl.todoListLines([{ id: 'x1', title: 'A', level: 'passive', due: '2026-11-20', lead: 3, done: false }]),
+      ['Coming up:', '  [ ] A (due 2026-11-20, lead 3 days)   id x1']);
+  });
+
   await check('to-do ops: add top/end, set, move to end, remove, last one wins', async () => {
     const ops = [
       { op: 'remove', id: 'nothere' },

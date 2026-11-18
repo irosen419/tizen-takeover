@@ -143,10 +143,17 @@ Every to-do has a level: `must` (Must today), `optional` (If you can, the defaul
 
 An older server keeps a level the TV sets (Move on the TV) but refuses `level` on `todo add` and in the mailbox, and has no `todo level`. Until it is updated, a level can ride in the notes: end them with `[level:must]` or `[level:passive]`; the TV reads the tag and never shows it. To update: `git pull`, then `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.6.0`. Nothing changes in `.env`.
 
+### Coming up lead (server 0.7.0)
+
+A passive to-do can say how many days before its due date the TV starts showing it under Coming up: `lead`, a whole number from 0 to 30 (0 means only on the day it is due; none means 2). `./hub todo add "School meeting" --level passive --due 2026-11-20 --lead 3`, `./hub todo lead "School meeting" 5` (`--clear` goes back to 2), and the mailbox's `todo.add` with `lead` and `todo.lead` (`"lead": null` clears it). `./hub todo list` shows it as `(due 2026-11-20, lead 3 days)`.
+
+An older server drops `lead` on `todo add` (the mailbox refuses it) and has no `todo lead`. Until it is updated, the lead can ride in the notes as `[lead:3]`, next to `[level:passive]`; the TV reads the tag and never shows it, and a `lead` field wins over it. To update: `git pull`, then `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.7.0`. Nothing changes in `.env`.
+
 ### Budget lab sections (server 0.5.0)
 
 Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0` or later.
 
+<<<<<<< HEAD
 ## Ambience (the room's lights)
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
@@ -226,6 +233,46 @@ The server asks Home Assistant how the lights are every 10 seconds while a TV is
 | Log `ambience: plant wall did not answer` | The WLED controller is off or `WLED_URL` is wrong | Open `WLED_URL` in a browser on the same network |
 | Log `ambience: plant wall off (WLED_URL does not look right)` | `WLED_URL` is not an `http://` address | Fix it in `.env` and restart |
 | Log `ambience: a screen sent commands too fast (asked it to slow down)` | Someone held a button down | Nothing: the TV waits and tries again |
+=======
+## TV shows (the Schedule)
+
+The Entertainment panel on the TV has a **Schedule**: what airs today, this week and this month from the shows on your list, and which seasons are coming back. The Entertainment tile also puts first the apps that have something new, with a small count. The Pi keeps the list and looks the shows up on [TVmaze](https://www.tvmaze.com/api), a free public TV guide that needs no key or account.
+
+- `./hub shows list` shows the list. For each show it says still running or ended, what airs next and when, a returning season, or why it couldn't be read.
+- `./hub shows add "Stick" --service "Apple TV"` adds a show. The options:
+  - `--service` names the app it shows under (its badge on the TV). It wins over what TVmaze says.
+  - `--id 12345` sets its TVmaze number when the name finds the wrong show (the number is in the show's address on tvmaze.com).
+  - `--watch Hulu` opens a different app than the badge.
+  - `--also "Hulu,Peacock"` lists other apps that carry it (up to 4); the TV offers each as "Also on Hulu".
+  - `--via "Prime Video"` is for a service billed through another app (Prime Video Channels). The badge still says HBO Max, the TV adds "via Prime Video", and Watch opens Prime Video. `watchVia` in `app/config.js` does this for every show of a service.
+  Adding a show that is already there updates it.
+- `./hub shows remove "Stick"` takes one off.
+- `./hub shows refresh` asks TVmaze about every show now and waits up to 25 seconds. Otherwise the Pi asks every 6 hours, and right after the list changes.
+
+The list starts with Hell's Kitchen and Shark Tank (Disney+), The Great British Baking Show (Netflix) and Stick (Apple TV), and lives in `data/shows.json`. The schedule itself is kept in `data/state.json`.
+
+If TVmaze can't be reached, each show keeps its last good copy and the TV keeps showing it. `./hub shows list` then says the copy is old. The Pi asks TVmaze at most 20 times in 10 seconds (TVmaze's limit), one call at a time; a list of 4 shows takes about 12 calls.
+
+On the TV, OK on a show opens its app (with "Search: Stick" as a reminder, since the apps don't take a show from outside yet). Hulu titles open in Disney+ by default (`watchAliases` in `app/config.js`), with "Also on Hulu" beside them. The shape of the data is in [`docs/shows-snapshot.md`](../docs/shows-snapshot.md).
+
+`HUB_SHOWS=off` in `.env` stops the TVmaze lookups. `HUB_SHOWS=sample` sends a made-up sample instead (`fixtures/shows-sample.json`), to try the TV without TVmaze.
+
+The log names no show. It only counts, for example `shows refresh: 4 of 4 shows read` or `shows refresh: 3 of 4 shows read, 1 failed (timeout)`.
+
+### Watch link test answers
+
+The TV's About panel has a **Watch link test**: each recipe tries one way of opening a title straight in an app (Prime Video, Netflix, Apple TV, Disney+...). You answer "Opened the title", "Only opened the app" or "Nothing". The TV sends each answer here, and the Pi keeps the last 100. `./hub linktests` lists them, newest first, so a Claude thread can see which deep links work on this TV.
+
+### After pulling this change
+
+It adds `shows.js`, `shows-seed.json` and `linktests.js` next to `server.js` and makes the server version 0.6.0. A restart is enough, with no rebuild and no change to `.env`:
+
+1. `cd tizen-takeover && git pull && cd pi`
+2. With Docker: `docker compose restart hub`. With systemd: `sudo systemctl restart home-hub`.
+3. `./hub status` should say `version 0.6.0`. In a few seconds, `./hub shows list` should list the four shows with what airs next. If it says `The server said no: no such call.`, the server is still running the old code: do step 2 again.
+
+The Pi needs to reach `api.tvmaze.com` over HTTPS. If your network blocks it, the Schedule says "TVmaze couldn't be reached".
+>>>>>>> origin/main
 
 ## Calendars
 
@@ -426,6 +473,60 @@ With it off, the Pi still guesses from Spotify's genres (no one new sees anythin
 
 Spotify's rules can limit how often the Pi may ask; if it asks for a pause the Pi waits as long as told and the log says so (`asked us to slow down`).
 
+## All sounds (test widget)
+
+The "All sounds" test widget on the TV (the "All sounds test" layout) shows what plays anywhere: the Echo speakers through Home Assistant, and Spotify (Spotify wins when both play). `allsounds.js` reads Home Assistant's REST API (`GET /api/states`, every 5 seconds while something plays, 20 seconds otherwise, backing off up to 2 minutes when it cannot get through) and keeps the `allsounds` resource; it changes nothing for Now Playing.
+
+Setup (once):
+
+1. In Home Assistant, the Alexa Media Player integration (HACS) must be installed and signed in, so each Echo is a `media_player` entity.
+2. In Home Assistant, open your profile, the **Security** tab, and create a **long-lived access token**. Copy it.
+3. Add it to `.env` as `HA_TOKEN=...` (see `.env.example`). `HA_URL` defaults to `http://127.0.0.1:8123`, Home Assistant on this Pi.
+4. Set `ALLSOUNDS_ENTITIES` to your own speakers, for example `ALLSOUNDS_ENTITIES=media_player.ian_s_echo_show,media_player.ian_s_echo_dot`. Left out, the Pi watches every Alexa speaker Home Assistant knows (entities with `last_called` or `bluetooth_list`), and Alexa Media Player lists every Echo and Fire TV on the Amazon account, so someone else's (Stan's, say) could show on your TV. It never watches `media_player.everywhere` (a group that repeats the others), TVs, the Xbox or `browser_mod` panels.
+5. `docker compose restart hub`, then `./hub allsounds status`.
+
+What reaches the TV: the state, the app's name when Home Assistant gives one ("TuneIn"), the speaker's name, the title, artist and album, and a picture only when it is an absolute `https` address. Never the token or a Home Assistant address. The token is only ever sent to `HA_URL`.
+
+What a real Echo Show sends (seen 2026-11-17), and what the TV shows:
+
+- Amazon Music: the title, artist, album and picture, but no app name. The TV shows the song and the speaker, with no source chip.
+- TuneIn: the station's name as the title (`KERA`) and a picture, no artist or album. The TV shows the station, then the speaker. In the first few seconds after it starts there is nothing at all; the TV then shows "Something is playing" and the speaker, with the music mark.
+- NPR: reported as `idle`, so the TV says "Nothing playing".
+- Audible (and other apps Alexa Media Player does not understand): it keeps showing the last song as playing. When that song has a length and should have ended over a minute ago, the TV adds a small "May be out of date" line under the title. Radio streams have no length and never get it; Spotify never does.
+
+What reaches the log (fixed words only, never the token, an address, a title, a speaker's name or the app's name):
+
+```
+allsounds: off (no HA_TOKEN in .env)
+allsounds: off (HA_TOKEN does not look like a Home Assistant token)
+allsounds: off (HA_URL does not look right (it is like http://127.0.0.1:8123))
+allsounds: off (ALLSOUNDS_ENTITIES must be media_player ids, separated by commas)
+allsounds: off (ALLSOUNDS_ENTITIES lists more than 12)
+allsounds: watching Home Assistant
+allsounds: watching Home Assistant (2 listed speakers)
+allsounds: playing from an Echo
+allsounds: playing from Spotify
+allsounds: paused
+allsounds: nothing playing
+allsounds: Home Assistant refused the token (401)
+allsounds: Home Assistant could not be reached
+allsounds: Home Assistant sent a reply that could not be read
+allsounds: Home Assistant answered HTTP 500
+allsounds: Home Assistant timed out
+allsounds: Home Assistant working again
+allsounds: unexpected problem
+```
+
+Commands: `./hub allsounds status` (state, source, speaker, title and artist), `./hub show allsounds` (the page on the TV). Tests: `node pi/allsounds-test.js` (against the pretend Home Assistant in `dev/mock-ha.js`).
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `All sounds: not set up` | No `HA_TOKEN` in `.env` | Steps 2 to 5 above |
+| Someone else's Echo shows | `ALLSOUNDS_ENTITIES` is not set, so every Echo on the Amazon account is watched | Step 4 above |
+| `Home Assistant refused the token` | The token is wrong or was deleted | Make a new one, put it in `.env`, restart |
+| `Home Assistant cannot be reached` | `HA_URL` is wrong, or Home Assistant is down | Check Home Assistant opens at that address from the Pi |
+| `nothing playing` while an Echo plays | Alexa Media Player has not caught up (it can lag 10 to 30 seconds), or the speaker is not listed in `ALLSOUNDS_ENTITIES` | Wait a moment; check the entity in Home Assistant |
+
 ## Run without Docker
 
 If you prefer, install Node 14 or newer (`node --version` shows yours) and run it directly:
@@ -434,7 +535,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.6.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.7.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 
