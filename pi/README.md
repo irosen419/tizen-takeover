@@ -153,7 +153,6 @@ An older server drops `lead` on `todo add` (the mailbox refuses it) and has no `
 
 Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0` or later.
 
-<<<<<<< HEAD
 ## Ambience (the room's lights)
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
@@ -233,7 +232,6 @@ The server asks Home Assistant how the lights are every 10 seconds while a TV is
 | Log `ambience: plant wall did not answer` | The WLED controller is off or `WLED_URL` is wrong | Open `WLED_URL` in a browser on the same network |
 | Log `ambience: plant wall off (WLED_URL does not look right)` | `WLED_URL` is not an `http://` address | Fix it in `.env` and restart |
 | Log `ambience: a screen sent commands too fast (asked it to slow down)` | Someone held a button down | Nothing: the TV waits and tries again |
-=======
 ## TV shows (the Schedule)
 
 The Entertainment panel on the TV has a **Schedule**: what airs today, this week and this month from the shows on your list, and which seasons are coming back. The Entertainment tile also puts first the apps that have something new, with a small count. The Pi keeps the list and looks the shows up on [TVmaze](https://www.tvmaze.com/api), a free public TV guide that needs no key or account.
@@ -272,7 +270,6 @@ It adds `shows.js`, `shows-seed.json` and `linktests.js` next to `server.js` and
 3. `./hub status` should say `version 0.6.0`. In a few seconds, `./hub shows list` should list the four shows with what airs next. If it says `The server said no: no such call.`, the server is still running the old code: do step 2 again.
 
 The Pi needs to reach `api.tvmaze.com` over HTTPS. If your network blocks it, the Schedule says "TVmaze couldn't be reached".
->>>>>>> origin/main
 
 ## Calendars
 

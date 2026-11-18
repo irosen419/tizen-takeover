@@ -345,14 +345,11 @@ var liveServer = null;
       } : {},
       spotify: { accounts: mockSpotify && mockSpotify.url, api: mockSpotify && mockSpotify.url, vibe: mockSpotify && mockSpotify.url, allowHttp: true,
         playMs: 1500, idleMs: 1500, awayMs: 1500 },
-<<<<<<< HEAD
       ambienceEnv: mockLights ? { HA_URL: mockLights.url, HA_TOKEN: mockLights.token, WLED_URL: mockLights.wledUrl } : {},
-      ambience: { timeoutMs: 1500, screenMs: 3000, idleMs: 3000 }
-=======
+      ambience: { timeoutMs: 1500, screenMs: 3000, idleMs: 3000 },
       // The Schedule: the made-up sample, never TVmaze (HUB_SHOWS=off: none).
       shows: process.env.HUB_SHOWS === 'off' ? undefined :
         { sampleFile: path.join(__dirname, '..', 'pi', 'fixtures', 'shows-sample.json') }
->>>>>>> origin/main
     });
     if (mockLights) log('Lights:   sample Home Assistant and plant wall, mode "' + lightsMode + '"; switch with /preview?lights=ok|sengled|slow|down|unauthorized|wall-down');
     signInToMock();

@@ -34,7 +34,7 @@
  *   ./hub spotify login              connect Spotify (once): a link to open, then paste the address back
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
  *   ./hub spotify logout             forget the Spotify sign-in
-<<<<<<< HEAD
+ *   ./hub allsounds status           what plays anywhere (Echo speakers through Home Assistant, Spotify)
  *   ./hub ambience status            the room's lights: how many answer, the scene
  *   ./hub ambience scenes            the saved scenes, lights and plant wall moods, with ids
  *   ./hub ambience scene <id>        apply a scene
@@ -42,9 +42,6 @@
  *   ./hub ambience mood <id>         a plant wall mood (WLED)
  *   ./hub ambience set <file.json|->   new lights, scenes and moods (see ambience.example.json)
  *   ./hub ambience reset             back to the defaults (no lights)
-=======
- *   ./hub allsounds status           what plays anywhere (Echo speakers through Home Assistant, Spotify)
->>>>>>> origin/main
  *   ./hub status                     is the server up, which screens are on
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub log [--errors] [--lines 120]   the server's recent log lines (50 unless --lines says)
@@ -1199,7 +1196,7 @@ const HELP = [
   '  ./hub spotify status        is Spotify connected, and what is playing',
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
-<<<<<<< HEAD
+  '  ./hub allsounds status      what plays anywhere: Echo speakers (Home Assistant) and Spotify',
   '  ./hub ambience status       the room\'s lights: how many answer, which scene is on',
   '  ./hub ambience scenes       the scenes, lights and plant wall moods, with their ids',
   '  ./hub ambience scene chill  apply a scene (a light that doesn\'t answer never stops the others)',
@@ -1207,9 +1204,6 @@ const HELP = [
   '  ./hub ambience mood dim     a plant wall mood (needs WLED_URL in pi/.env)',
   '  ./hub ambience set file.json   new lights, scenes and moods (see pi/ambience.example.json)',
   '  ./hub ambience reset        back to the defaults (no lights)',
-=======
-  '  ./hub allsounds status      what plays anywhere: Echo speakers (Home Assistant) and Spotify',
->>>>>>> origin/main
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
@@ -1253,11 +1247,8 @@ async function main(argv) {
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'log') return logCommand(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
-<<<<<<< HEAD
-  if (cmd === 'ambience') return ambienceCommand(rest);
-=======
   if (cmd === 'allsounds') return allsoundsCmd(rest);
->>>>>>> origin/main
+  if (cmd === 'ambience') return ambienceCommand(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
 }
@@ -1299,7 +1290,7 @@ module.exports = {
   spotifyLoginLines: spotifyLoginLines,
   spotifyCodeText: spotifyCodeText,
   spotifyLogoutText: spotifyLogoutText,
-<<<<<<< HEAD
+  allsoundsStatusLines: allsoundsStatusLines,
   ambienceLine: ambienceLine,
   ambienceStatusLines: ambienceStatusLines,
   ambienceScenesLines: ambienceScenesLines,
@@ -1307,9 +1298,6 @@ module.exports = {
   ambienceLightText: ambienceLightText,
   ambienceMoodText: ambienceMoodText,
   ambienceSetText: ambienceSetText
-=======
-  allsoundsStatusLines: allsoundsStatusLines
->>>>>>> origin/main
 };
 
 if (require.main === module) {

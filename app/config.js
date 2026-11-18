@@ -129,18 +129,6 @@ var HUB_CONFIG = {
     { id: 'budget', name: 'Budget', layout: [
       { widget: 'budget-room',   x: 0, y: 0, w: 4, h: 3 },
       { widget: 'budget-card',   x: 4, y: 0, w: 4, h: 3 },
-<<<<<<< HEAD
-      { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 6 },
-      { widget: 'calendar',      x: 0, y: 3, w: 5, h: 3 },
-      { widget: 'today',         x: 5, y: 3, w: 3, h: 1 },
-      { widget: 'entertainment', x: 5, y: 4, w: 3, h: 2 }
-    ] },
-    /* A test layout: Ambience (app/widgets/ambience.js, the room's lights)
-       on its own, filling the screen, to try it before it joins a real
-       layout. New widgets are tried the same way: one layout, one widget. */
-    { id: 'ambience-test', name: 'Ambience test', layout: [
-      { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
-=======
       { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 3 },
       { widget: 'budget-lab',    x: 0, y: 3, w: 4, h: 3 },
       { widget: 'calendar',      x: 4, y: 3, w: 4, h: 3 },
@@ -156,7 +144,12 @@ var HUB_CONFIG = {
     // Plant sun alone, to try it out (a new widget gets a layout of its own first).
     { id: 'plant-wall', name: 'Plant wall', layout: [
       { widget: 'sunpath',       x: 0, y: 0, w: 12, h: 6 }
->>>>>>> origin/main
+    ] },
+    /* A test layout: Ambience (app/widgets/ambience.js, the room's lights)
+       on its own, filling the screen, to try it before it joins a real
+       layout. New widgets are tried the same way: one layout, one widget. */
+    { id: 'ambience-test', name: 'Ambience test', layout: [
+      { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
 

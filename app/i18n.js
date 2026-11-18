@@ -58,7 +58,6 @@
     'nowplaying.badge.offline': 'Sin la Pi',
     'nowplaying.badge.update': 'Necesita la Pi',
 
-<<<<<<< HEAD
     /* ---- Ambience: the room's lights (app/widgets/ambience.js) ----
      * Key 'ambience.<name>'; the English is in ambience.js (T). Light, scene
      * and mood names come from the Pi's settings and are never translated.
@@ -115,7 +114,6 @@
     'ambience.update': 'La Pi necesita una actualización',
     'ambience.updateHint': 'En la Pi: git pull y luego docker compose restart hub.',
     'ambience.broken': 'No se pudo mostrar Ambiente.',
-=======
     /* ---- All sounds, the test widget (app/widgets/allsounds.js) ----
      * The source chip ("TuneIn", "Spotify") and the speaker's name come from
      * the Pi as they are. The badge words are in capitals: a word or two. */
@@ -148,7 +146,6 @@
     'allsounds.badge.waiting': 'Esperando',
     'allsounds.badge.offline': 'Sin la Pi',
     'allsounds.badge.update': 'Necesita la Pi',
->>>>>>> origin/main
 
     /* ---- Guest mode on the Clock page (app/guest.js, app/widgets/today.js) ---- */
     'guest.label': 'Modo invitados',

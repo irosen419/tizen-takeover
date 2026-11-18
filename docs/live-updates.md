@@ -218,13 +218,8 @@ Control API: `GET /api/spotify` (`{ ok, spotify: { configured, signedIn, user, s
 
 - `rev` is one counter for the whole server. Every change adds 1 and stamps the changed resource.
 - `epoch` is made once with the file. A new epoch means "forget what you knew, take everything".
-<<<<<<< HEAD
-- The resources are `todo`, `calendar`, `layout`, `awws`, `budget`, `nowplaying` and `ambience`. A state file from before a resource existed loads fine: the missing one starts empty.
-- A to-do item: `{ id, title, section: 'now'|'next'|'waiting', done, doneAt, createdAt, due?, notes? }`, the same shape the TV already saves. Order in `items` is display order. At most 200 items; title 1 to 80 characters; `notes` plain text of 1 to 300 characters (control characters and runs of spaces become one space; empty or `null` removes the field, so an item never holds empty notes); id up to 40 of `A-Z a-z 0-9 _ -`; one item at most 2000 bytes as JSON. Done items ticked more than 48 hours ago are dropped on the next write.
-=======
-- The resources are `todo`, `calendar`, `layout`, `awws`, `budget`, `nowplaying`, `allsounds` (the All sounds test widget), `shows` (the TV show schedule, [`docs/shows-snapshot.md`](shows-snapshot.md)) and `linktests` (the watch link test answers). A state file from before a resource existed loads fine: the missing one starts empty.
+- The resources are `todo`, `calendar`, `layout`, `awws`, `budget`, `nowplaying`, `allsounds` (the All sounds test widget), `shows` (the TV show schedule, [`docs/shows-snapshot.md`](shows-snapshot.md)), `linktests` (the watch link test answers) and `ambience` (the room's lights). A state file from before a resource existed loads fine: the missing one starts empty.
 - A to-do item: `{ id, title, section: 'now'|'next'|'waiting', level?, done, doneAt, createdAt, due?, notes?, lead? }`, the same shape the TV already saves. Order in `items` is display order. At most 200 items; title 1 to 80 characters; `notes` plain text of 1 to 300 characters (control characters and runs of spaces become one space; empty or `null` removes the field, so an item never holds empty notes); id up to 40 of `A-Z a-z 0-9 _ -`; `lead` (server 0.7.0) a whole number of days from 0 to 30, how long before its due date a passive item shows under Coming up (`null` removes it; none means 2); one item at most 2000 bytes as JSON. Done items ticked more than 48 hours ago are dropped on the next write.
->>>>>>> origin/main
 
 ### Screen API (no token; private addresses only, or `HUB_TV_IPS`)
 
@@ -280,19 +275,16 @@ Ops are applied in order and the last one to arrive wins. `set` merges `fields` 
 | `POST /api/awws` | `{ snapshot: {...} \| null }` | `{ ok, rev, changed, bytes, accepted, cleared, rejected }`; see below |
 | `GET /api/budget` | | `{ ok, rev, data, tz }`: the stored budget snapshot |
 | `POST /api/budget` | `{ snapshot: {...} \| null }` | the same answer as `POST /api/awws`; see below |
-<<<<<<< HEAD
 | `GET /api/ambience` | | `{ ok, ambience: { configured, state, haProblem, lights, scenes, active, moods, wledState, lastResult, ... } }` (no token, address or entity id) |
 | `POST /api/ambience/scene` | `{ id }` | `{ ok, result: 'ok'\|'partial'\|'failed', answered, total, missing, lights, mood }` |
 | `POST /api/ambience/light` | `{ id, on?, pct? }` | `{ ok, result: 'ok'\|'no-answer'\|'refused', on, pct }` |
 | `POST /api/ambience/mood` | `{ id }` | `{ ok, result: 'ok'\|'no-answer'\|'refused' }` |
 | `GET /api/ambience/config` | | `{ ok, config }`: the saved lights (with their entity ids), scenes and moods |
 | `POST /api/ambience/config` | `{ config: {...} \| null }` | `{ ok, config, ambience }`; `null` goes back to the defaults |
-=======
 | `GET /api/shows` | | `{ ok, rev, data, list, tz }`: the schedule (`docs/shows-snapshot.md`) and the owner's list |
 | `POST /api/shows` | exactly one of `{ add: { name, service?, tvmazeId?, serviceOverride?, alsoOn? } }`, `{ remove: "name" }`, `{ set: [...] }` | `{ ok, entry?, replaced?, removed?, list }`; TVmaze is asked again at once |
 | `POST /api/shows/refresh` | `{}` | `{ ok, done, changed, problems, count, data, list }`, after at most 25 s (`done: false` while it still reads) |
 | `GET /api/linktests` | | `{ ok, rev, data: { v, results: [...] } }`, newest first, at most 100 |
->>>>>>> origin/main
 | `GET /api/status` | | `{ ok, server, rev, epoch, uptime, screens: [{ since, via, address }] }` |
 | `GET /api/log?lines=50&errors=1&scrub=1` | | `{ ok, lines: [{ t, text, level: 'error'\|'info' }], errors24h, kept }`: the last log lines kept in memory (at most 400). `lines` 1 to 200 (default 50), `errors=1` problems only, `scrub=1` replaces IP addresses with `[address]` and calendar names, the Spotify name and the mailbox bucket and host with `[name]` (each line cut to 300 characters). A good read is not kept itself. Bad values are `400` |
 | `GET /health` (no token) | | `{ ok, server }` |

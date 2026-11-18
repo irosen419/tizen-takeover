@@ -58,11 +58,7 @@ function look(page) {
   });
 }
 
-<<<<<<< HEAD
-var ORDER = 'style.css widgets/today.css widgets/todo.css widgets/weather.css widgets/calendar.css widgets/nowplaying.css widgets/awws.css widgets/wotd.css widgets/budget.css widgets/ambience.css';
-=======
-var ORDER = 'style.css widgets/today.css widgets/todo.css widgets/weather.css widgets/calendar.css widgets/nowplaying.css widgets/awws.css widgets/wotd.css widgets/budget.css widgets/shows.css widgets/allsounds.css widgets/sunpath.css widgets/budget-lab.css';
->>>>>>> origin/main
+var ORDER = 'style.css widgets/today.css widgets/todo.css widgets/weather.css widgets/calendar.css widgets/nowplaying.css widgets/awws.css widgets/wotd.css widgets/budget.css widgets/shows.css widgets/allsounds.css widgets/sunpath.css widgets/budget-lab.css widgets/ambience.css';
 
 var CHECKS = [
   ['Every stylesheet ends with the .css-end rule', async function () {
