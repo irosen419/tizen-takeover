@@ -21,7 +21,9 @@ const SECTIONS = require('../pi/budget').SECTIONS;
 
 /*
  * opts: { sentAt, short (card day not covered, short by $120), negative
- * (room below zero), under (room under the cap; the default), atCap,
+ * (room below zero), shortZero (the Budget lab's room below zero, so even
+ * $0 a day leaves card day short; a number sets the room, default -137.40; with
+ * payday the runway still ends at the room), under (room under the cap; the default), atCap,
  * noRefund, goals (a list to use instead), alerts (a list), only [section
  * names to keep], payday (a 14 day window to card day on Nov 30 with a
  * payday on Nov 20 inside it, for the runway chart: its runway ends at
@@ -56,6 +58,15 @@ function snapshot(opts) {
     // 340.25 - 120 + 2400 - 95 - 64.50 - 415 = 2045.75
     Object.assign(s.lab, { room: 2045.75, daysLeft: 14, cardDate: '2026-11-30' });
     Object.assign(s.cardDay, { date: '2026-11-30', daysAway: 14 });
+  }
+  if (opts.shortZero) {
+    // Short even at $0 a day: the room is below zero, so no cap covers card
+    // day. With payday the runway still ends at lab.room to the cent.
+    const room = typeof opts.shortZero === 'number' ? opts.shortZero : -137.4;
+    s.lab.room = room;
+    s.cardDay.covered = false;
+    s.cardDay.shortBy = -room;
+    if (opts.payday) s.runway.start = Math.round((room - (-120 + 2400 - 95 - 64.5 - 415)) * 100) / 100;
   }
   if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
