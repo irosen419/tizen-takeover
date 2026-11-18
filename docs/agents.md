@@ -5,7 +5,7 @@ When a tile is busy (a working state: "Working on to-dos", "Checking calendar") 
 ## No chip while she is there
 
 - When she comes, the tile gets **no chip**: only her and the tile's border light, exactly as before (the light that laps the border on arrival, the accent edge after it, the focus highlight stepping aside while the light laps). The chip's words ("Working on to-dos") are not shown while she works; that is intended.
-- The chip is the **fallback**, and shows exactly as before, whenever she cannot come: a slow screen (`chips only (slow screen)`), fade mode, less motion asked for, the motion extras off, her pictures not loaded yet or failed, two characters already out (the third tile gets its chip), the home screen not quiet, or agents off.
+- The chip is the **fallback**, and shows exactly as before, whenever she cannot come: a slow screen (she follows the chips' own rule, `canLight`: full speed, or stepped down from push but still 60+ fps without stutter; below that neither she nor the chips show), fade mode (a TV that stepped itself down can be put back on push for the session with the say text `hub:motion push`), less motion asked for, the motion extras off, her pictures not loaded yet or failed, two characters already out (the third tile gets its chip), the home screen not quiet, or agents off.
 - It is decided once, at the moment the chip would be made (motion.js asks `HUB_AGENTS.chip('in', tile, ok, mode)`; `HUB_AGENTS.willShow(tile, ok)` is the same question without starting her). A chip never gets her beside it later, and she never gets a chip beside her, except one way: if she is taken away at once while the tile is still working (a resize, a layout change, the hub slowing down), the working chip comes back so the tile never says nothing.
 - Her pictures load 6 seconds after the hub starts (or at the first chip, if sooner), so a chip in the first seconds after a load is a chip.
 
@@ -45,7 +45,7 @@ Press Left on a left-most tile. The **Characters** group, in the hub's language,
 
 - **Now:** `Lift, on To-do` (the tile's title), `none`, or `loading pictures`.
 - **Seen:** how many times she has come since the page loaded.
-- **Drawing:** `on`; `chips only (slow screen)` (the chips run, she does not); `off (fade mode)`, `off (slow screen)`, `off (config)`, `off (?agent=off)`, `off (no character called x)`, `off (the activity chips are off)`, or `off (pictures did not load; tried again in 10 min)`. In every case but `on`, the tiles get their chips.
+- **Drawing:** `on`; `off (fade mode)`, `off (slow screen)`, `off (config)`, `off (?agent=off)`, `off (no character called x)`, `off (the activity chips are off)`, or `off (pictures did not load; tried again in 10 min)`. In every case but `on`, the tiles get their chips.
 
 ## How it stays light on the TV
 
