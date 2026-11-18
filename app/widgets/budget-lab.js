@@ -111,36 +111,46 @@
     shortBy: 'Short by {n}',
     roomNote: 'The Daily room tile uses {n} a day',
     capLabel: 'Daily cap',
-    keepLabel: 'Keep on {d}',
     aDay: 'a day',
-    toKeep: 'to keep',
-    calcTick: 'calculated {n}',
-    savedTick: 'saved {n}',
-    noSaved: 'no saved cap',
-    capResult: 'cap {n} a day',
-    modeCap: 'Set the cap',
-    modeKeep: 'Set what to keep',
-    keepOn: 'Keep {n} on {d}',
-    nothingOn: 'Nothing to spare on {d}',
-    shortOn: 'Short by {n} on {d}',
-    monthly: 'Monthly remaining {n}',
-    gapLess: '{n} less than calculated',
-    gapMore: '{n} more than calculated',
-    gapSame: 'same as calculated',
-    savedGap: 'saved cap: {gap}',
-    save: 'Save this cap',
-    reset: 'Back to calculated',
+    // The one thing to do, under the big number (the arrows are drawn, these are words)
+    capHint: 'Hold \u25C0 \u25B6 to change your daily cap',
+    keyCap: '\u25C0 \u25B6 change \u00B7 OK save',
+    keyCut: '\u25C0 \u25B6 cut \u00B7 OK save',
+    keyOk: 'OK',
+    keyMore: 'Down for merchants',
+    // The result right under it
+    heroSpare: '{d}: covered, {n} spare',
+    heroSpareShort: 'Covered, {n} spare',
+    heroZero: '{d}: covered, $0 spare',
+    heroZeroShort: 'Covered',
+    heroShort: '{d}: short by {n}',
+    heroShortShort: 'Short by {n}',
+    // Reference lines
+    refCalc: 'Calculated {n} a day',
+    refSaved: 'Saved {n} a day',
+    refNoSaved: 'No saved cap yet',
+    usingCalc: 'Using the calculated cap',
+    reset: 'Back to calculated cap',
     toastSaved: 'Cap saved: {n} a day (re-averaged each morning)',
     paceHead: 'Pace',
+    // Short even at $0 a day: the plain message, the one action, and why there is no slider
+    shortHead: 'You\u2019re {n} short for {d} even at $0 a day',
+    shortDo: 'What to do',
+    shortWhy: 'A daily cap only matters once card day is covered, so there is nothing to set yet.',
+    shortWhyShort: 'There is no cap to set until card day is covered.',
     // Row 6: the merchants' cut sliders
     merchantsHead: 'Merchants',
     merchantsSub: 'Cut what you would skip before {d}',
     merchantsSubShort: 'Cut what you would skip',
-    cutRow: '{merchant} · {mtd} so far · cut {cut}',
-    cutRowShort: '{merchant} · cut {cut}',
+    cutRow: '{merchant} · {mtd} so far',
+    cutRowShort: '{merchant}',
+    cutAmount: 'cut {cut}',
     soFar: '{merchant} · {mtd} so far',
+    soFarShort: '{merchant} · {mtd}',
     cutsLocked: 'Nothing left to cut from: the cap is $0 a day',
     cutsLockedShort: 'Nothing left to cut from',
+    cutsAfter: 'Cuts open up once you are back above $0 a day.',
+    cutsAfterShort: 'Cuts open once you are above $0 a day.',
     cutsTogether: 'The five together cut at most {n} (a shared order counts once)',
     cutsTogetherShort: 'The five together: at most {n}',
     // Row 7: Put it somewhere
@@ -154,14 +164,15 @@
     cardToday: 'Card day is today: {state}',
     // The runway chart (full screen). The gap label is its only figure.
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
-    chartHead: 'Runway to {d}',
+    chartHead: 'Runway to {d}, {away}',
+    chartHeadMid: 'Runway to {d}',
     chartHeadShort: 'Runway',
     chartRoom: 'Headroom',
     chartOwed: 'Spending at this cap',
     chartOwedShort: 'Spending',
     gapSpare: 'Covered, {n} spare',
     gapSpareShort: '{n} spare',
-    gapZero: 'Covered, nothing to spare',
+    gapZero: 'Covered, $0 spare',
     gapZeroShort: 'Covered',
     gapShort: 'Short by {n}',
     gapShortShort: 'Short {n}'
@@ -521,7 +532,6 @@
 
   // Where a value sits on its slider, 0..1.
   function sliderSpan(r) {
-    if (r.mode === 'keep') return { lo: r.keepMin, hi: r.keepMax };
     return { lo: 0, hi: r.capMax };
   }
 
@@ -546,46 +556,37 @@
     if (node && node.className !== cls) node.className = cls;
   }
 
-  function headWord(r) {
-    return r.covered ? STRINGS.covered : fill(STRINGS.shortBy, { n: cash(r.short) });
-  }
-
-  function gapText(r) {
-    var g = MATH().toCents(r.gap);
-    var text = Math.abs(g) < 0.5 ? STRINGS.gapSame : fill(g < 0 ? STRINGS.gapLess : STRINGS.gapMore, { n: near(Math.abs(g)) });
-    return r.gapBase === 'saved' ? fill(STRINGS.savedGap, { gap: text }) : text;
-  }
-
-  function outcomeLine(r) {
+  // The result under the big number as [long, short]: "Dec 1: covered, $214
+  // spare" (green) or "Dec 1: short by $120" (coral).
+  function heroForms(r) {
     var d = dateText(r.cardDate);
-    if (!r.covered) return fill(STRINGS.shortOn, { n: cash(r.short), d: d });
+    if (!r.covered) {
+      return [fill(STRINGS.heroShort, { d: d, n: cash(r.short) }), fill(STRINGS.heroShortShort, { n: cash(r.short) })];
+    }
     var spare = MATH().wholeDown(r.keep);
-    return spare > 0 ? fill(STRINGS.keepOn, { n: cash(spare), d: d }) : fill(STRINGS.nothingOn, { d: d });
+    if (spare > 0) return [fill(STRINGS.heroSpare, { d: d, n: cash(spare) }), fill(STRINGS.heroSpareShort, { n: cash(spare) })];
+    return [fill(STRINGS.heroZero, { d: d }), STRINGS.heroZeroShort];
+  }
+
+  // The plain case: even $0 a day leaves card day short. The math module
+  // says so with its first suggested move.
+  function isShortZero(r) {
+    return !!(r && r.ok && r.move && r.move.kind === 'moveMoney');
   }
 
   // The numbers of a result into the panel's text nodes and the slider's
-  // one transform (its fill). Ticks move only when the mode or the saved cap changed.
+  // one transform (its fill). Ticks move only when the saved cap changed.
   function paint(refs, r) {
     if (!refs || !r) return;
-    var keep = r.mode === 'keep';
-    if (refs.headState) {
-      setText(refs.headState, headWord(r));
-      setTone(refs.headState, 'bl-head-state', r.covered ? 'is-ok' : 'is-neg');
-    }
     if (!r.ok || !refs.slider) return;
-    var span = sliderSpan(r);
-    setText(refs.label, keep ? fill(STRINGS.keepLabel, { d: dateText(r.cardDate) }) : STRINGS.capLabel);
-    if (keep) {
-      var k = r.keepGoal;
-      setText(refs.big, k < 0 ? STRINGS.minus + up(-k) : down(k));
-      setText(refs.unit, STRINGS.toKeep);
-    } else {
-      setText(refs.big, down(r.cap));
-      setText(refs.unit, STRINGS.aDay);
-    }
+    setText(refs.big, down(r.cap));
     setTone(refs.big, 'bl-big', r.covered ? '' : 'is-neg');
+    // The arrows dim at the ends of the slider: nothing more that way.
+    setTone(refs.arrL, 'bl-arrow is-left', r.cap <= 0 ? 'is-end' : '');
+    setTone(refs.arrR, 'bl-arrow is-right', r.cap >= r.capMax ? 'is-end' : '');
     // The fill grows from the left to the value: scaleX, set directly.
-    var f = frac(keep ? r.keepGoal : r.cap, span);
+    var span = sliderSpan(r);
+    var f = frac(r.cap, span);
     var tf = 'scaleX(' + (Math.round(f * 10000) / 10000) + ')';
     if (refs.fill.tf !== tf) {
       refs.fill.tf = tf;
@@ -593,29 +594,31 @@
       refs.fill.style.transform = tf;
     }
     setTone(refs.fill, 'bl-fill', r.covered ? '' : 'is-neg');
-    var tickKey = r.mode + '|' + (r.saved ? r.saved.keep : '') + '|' + span.lo + '|' + span.hi;
+    var tickKey = (r.saved ? r.saved.cap : '') + '|' + span.hi + '|' + r.c0;
     if (refs.tickKey !== tickKey) {
       refs.tickKey = tickKey;
-      var calcAt = keep ? r.R - r.c0 * r.D : r.c0;
-      refs.calcTick.style.left = pct(frac(calcAt, span));
+      refs.calcTick.style.left = pct(frac(r.c0, span));
       if (r.saved) {
         refs.savedTick.style.display = '';
-        refs.savedTick.style.left = pct(frac(keep ? r.saved.keep : r.saved.cap, span));
+        refs.savedTick.style.left = pct(frac(r.saved.cap, span));
       } else {
         refs.savedTick.style.display = 'none';
       }
     }
-    var ticks = [];
-    if (keep) ticks.push(fill(STRINGS.capResult, { n: down(r.cap) }));
-    ticks.push(fill(STRINGS.calcTick, { n: down(r.c0) }));
-    ticks.push(r.saved ? fill(STRINGS.savedTick, { n: down(r.saved.cap) }) : STRINGS.noSaved);
-    setText(refs.ticks, ticks.join(STRINGS.sep));
-    refs.pills[0].className = 'bl-pill' + (keep ? '' : ' is-on');
-    refs.pills[1].className = 'bl-pill' + (keep ? ' is-on' : '');
-    setText(refs.outcome, outcomeLine(r));
-    setTone(refs.outcome, 'bl-outcome', r.covered ? 'is-ok' : 'is-neg');
-    setText(refs.monthly, fill(STRINGS.monthly, { n: down(r.monthly.session) }));
-    setText(refs.gap, gapText(r));
+    setText(refs.result, heroForms(r)[refs.heroForm || 0]);
+    setTone(refs.result, 'bl-result', r.covered ? 'is-ok' : 'is-neg');
+    setText(refs.refCalc, fill(STRINGS.refCalc, { n: down(r.c0) }));
+    setText(refs.refSaved, r.saved ? fill(STRINGS.refSaved, { n: down(r.saved.cap) }) : STRINGS.refNoSaved);
+    // The row under the reference lines: a reset when something moved,
+    // otherwise a quiet word. Same height either way, so nothing shifts.
+    var changed = !r.capIsCalculated || r.cutsAsked > 0;
+    if (refs.changed !== changed) {
+      refs.changed = changed;
+      if (changed) { refs.reset.classList.add('f'); refs.reset.classList.add('is-on'); }
+      else { refs.reset.classList.remove('f'); refs.reset.classList.remove('is-on'); refs.reset.classList.remove('is-focused'); }
+      setText(refs.resetText, changed ? STRINGS.reset : STRINGS.usingCalc);
+      setText(refs.resetKey, changed ? STRINGS.keyOk : refs.cuts ? STRINGS.keyMore : '');
+    }
     if (refs.move) {
       var mf = moveForms(r);
       setText(refs.move, mf.length ? mf[0] : '');
@@ -641,7 +644,7 @@
   // Row 6: each cut's words and its fill (cut of p_i), the locked look and
   // the one note under the rows.
   function cutForms(m) {
-    var map = { merchant: m.label, mtd: near(m.mtd), cut: down(m.cut) };
+    var map = { merchant: m.label, mtd: near(m.mtd) };
     return [fill(STRINGS.cutRow, map), fill(STRINGS.cutRowShort, map)];
   }
 
@@ -652,6 +655,7 @@
       var m = r.merchants[i];
       if (!m || m.label !== c.label) continue;
       setText(c.text, cutForms(m)[c.form]);
+      setText(c.amount, fill(STRINGS.cutAmount, { cut: down(m.cut) }));
       setScale(c.fill, m.projected > 0 ? frac(m.cut, { lo: 0, hi: m.projected }) : 0);
       if (c.locked !== r.locked) {
         c.locked = r.locked;
@@ -713,7 +717,8 @@
   function tooTall(node, lines) {
     var cs = window.getComputedStyle(node);
     var lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.35;
-    return node.offsetHeight > lh * lines + 1;
+    var pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    return node.offsetHeight - pad > lh * lines + 1;
   }
 
   function fitPanelForms(refs, r) {
@@ -724,19 +729,95 @@
     }
     if (refs.cutNote && refs.cutNote.textContent && tooTall(refs.cutNote, 2)) { refs.noteForm = 1; again = true; }
     if (refs.msub && refs.msubForms && tooTall(refs.msub, 2)) setText(refs.msub, refs.msubForms[1]);
+    if (refs.result && !refs.heroForm) {
+      // The long form is picked for the widest figure this slider can show, so
+      // a key press never makes the line longer than its box.
+      var m = MATH();
+      var d = dateText(r.cardDate);
+      var wide = [fill(STRINGS.heroSpare, { d: d, n: cash(Math.max(0, m.wholeDown(r.R))) }), fill(STRINGS.heroShort, { d: d, n: cash(m.wholeUp(r.capMax * r.D)) })];
+      for (i = 0; i < wide.length; i++) {
+        refs.result.textContent = wide[i];
+        if (overW(refs.result) || overW(refs.slider)) { refs.heroForm = 1; again = true; }
+      }
+      refs.result.textContent = '';
+      again = true;
+    }
+    if (refs.why && tooTall(refs.why, 2)) setText(refs.why, STRINGS.shortWhyShort);
+    if (refs.after && tooTall(refs.after, 3)) setText(refs.after, STRINGS.cutsAfterShort);
     if (again) paint(refs, r);
   }
 
-  function drawMerchants(col, r, refs) {
+  // The big number with its arrows, the one hint, and the result under it:
+  // the screen's one focal point, and the one focusable row that saves.
+  function drawHero(col, r, refs) {
+    var sl = section(col, 'cap', 'bl-hero');
+    sl.setAttribute('data-autofocus', '');
+    refs.slider = sl;
+    var top = el('div', 'bl-herotop', sl);
+    el('div', 'bl-label', top, STRINGS.capLabel);
+    el('div', 'bl-keyhint', top, STRINGS.keyCap);
+    var val = el('div', 'bl-value', sl);
+    refs.arrL = el('span', 'bl-arrow is-left', val);
+    var mid = el('span', 'bl-valmid', val);
+    refs.big = el('span', 'bl-big', mid);
+    el('span', 'bl-unit', mid, STRINGS.aDay);
+    refs.arrR = el('span', 'bl-arrow is-right', val);
+    var track = el('div', 'bl-track', sl);
+    refs.fill = el('span', 'bl-fill', track);
+    refs.calcTick = el('span', 'bl-tick is-calc', track);
+    refs.savedTick = el('span', 'bl-tick is-saved', track);
+    el('div', 'bl-hint', sl, STRINGS.capHint);
+    refs.result = el('div', 'bl-result', sl);
+
+    // The calculated and the saved cap, as small reference text.
+    var refl = el('div', 'bl-refs', col);
+    var one = el('span', 'bl-ref', refl);
+    el('span', 'bl-dot is-calc', one);
+    refs.refCalc = el('span', 'bl-ref-text', one);
+    one = el('span', 'bl-ref', refl);
+    el('span', 'bl-dot is-saved', one);
+    refs.refSaved = el('span', 'bl-ref-text', one);
+
+    // Back to calculated: a row only once something moved.
+    var rs = section(col, 'reset', 'bl-reset');
+    refs.reset = rs;
+    refs.resetText = el('span', 'bl-reset-text', rs);
+    refs.resetKey = el('span', 'bl-keyhint', rs);
+    rs.classList.remove('f');
+    refs.changed = null;
+  }
+
+  // Short even at $0 a day: the message, the one action, and why there is no
+  // slider. Nothing here takes focus: there is nothing to change.
+  function drawShort(col, r, refs) {
+    var d = dateText(r.cardDate);
+    var amount = cash(r.move.amount);
+    var box = el('div', 'bl-short', col);
+    el('div', 'bl-short-head is-neg', box, fill(STRINGS.shortHead, { n: amount, d: d }));
+    var act = el('div', 'bl-action', box);
+    el('div', 'bl-action-label', act, STRINGS.shortDo);
+    el('div', 'bl-action-text', act, fill(STRINGS.moves.moveMoneyShort, { n: amount, d: d }));
+    refs.why = el('div', 'bl-why', box, STRINGS.shortWhy);
+    var refl = el('div', 'bl-refs', col);
+    var one = el('span', 'bl-ref', refl);
+    el('span', 'bl-dot is-calc', one);
+    el('span', 'bl-ref-text', one, fill(STRINGS.refCalc, { n: down(r.c0) }));
+  }
+
+  function drawMerchants(col, r, refs, short) {
     if (!r.merchants.length) return;
     var head = el('div', 'bl-msec', col);
     el('div', 'bu-label', head, STRINGS.merchantsHead);
-    if (!r.ok) {
-      // No equation (no payday, or card day is today): the five as they stand.
+    if (!r.ok || short) {
+      // No cuts to make: the five as they stand, this month so far.
       for (var j = 0; j < r.merchants.length; j++) {
         var m = r.merchants[j];
-        el('div', 'bu-pline bl-mline', head, fill(STRINGS.soFar, { merchant: m.label, mtd: near(m.mtd) }));
+        var line1 = el('div', 'bu-pline bl-mline', head, fill(STRINGS.soFar, { merchant: m.label, mtd: near(m.mtd) }));
+        // One line each: a longer language takes the short form.
+        if (tooTall(line1, 1)) line1.textContent = fill(STRINGS.soFarShort, { merchant: m.label, mtd: near(m.mtd) });
+        if (tooTall(line1, 1)) line1.textContent = m.label + STRINGS.sep + near(m.mtd);
       }
+      if (short) refs.after = el('div', 'bl-mnote', head, STRINGS.cutsAfter);
       return;
     }
     refs.msubForms = [fill(STRINGS.merchantsSub, { d: dateText(r.cardDate) }), STRINGS.merchantsSubShort];
@@ -744,10 +825,14 @@
     refs.cuts = [];
     for (var i = 0; i < r.merchants.length; i++) {
       var row = section(col, 'cut-' + i, 'bl-cut');
-      var text = el('div', 'bl-clabel', row);
-      var track = el('div', 'bl-track bl-ctrack', row);
+      var top = el('div', 'bl-ctop', row);
+      var text = el('div', 'bl-clabel', top);
+      var amount = el('div', 'bl-camount', top);
+      var line = el('div', 'bl-cline', row);
+      var track = el('div', 'bl-track bl-ctrack', line);
       var f = el('span', 'bl-fill bl-cfill', track);
-      refs.cuts.push({ node: row, label: r.merchants[i].label, text: text, fill: f, form: 0 });
+      el('span', 'bl-keyhint', line, STRINGS.keyCut);
+      refs.cuts.push({ node: row, label: r.merchants[i].label, text: text, amount: amount, fill: f, form: 0 });
     }
     refs.cutNote = el('div', 'bl-mnote', col);
     refs.noteForm = 0;
@@ -770,21 +855,23 @@
     refs.destExtra = el('div', 'bu-pline bl-dextra', box);
   }
 
+  // A focusable row when its key is given; the key lets a redraw keep focus on it.
   function section(parent, key, cls) {
     var s = el('div', 'bu-psec f' + (cls ? ' ' + cls : ''), parent);
     s.setAttribute('data-key', key);
     return s;
   }
 
-  function drawPace(col, r, refs) {
-    var sec = section(col, 'pace', 'bl-pace');
-    el('div', 'bu-label', sec, STRINGS.paceHead);
+  // The streak: a plain block, never focusable (nothing to change here).
+  function drawPace(col, r, refs, short) {
+    var sec = el('div', 'bl-pace', col);
     var v = streakView(r);
     var hero = streakHero(sec, v, 'is-panel');
     var yf = yesterdayForms(r);
     if (yf.length) el('div', 'bu-pline', sec, yf[0]);
     var mf = moveForms(r);
-    refs.move = mf.length || r.ok ? el('div', 'bu-pline bl-pmove', sec, mf.length ? mf[0] : '') : null;
+    // Short even at $0 a day: the action is already the headline.
+    refs.move = !short && (mf.length || r.ok) ? el('div', 'bu-pline bl-pmove', sec, mf.length ? mf[0] : '') : null;
     refs.paceHero = hero;
     refs.paceView = v;
     return sec;
@@ -835,7 +922,7 @@
       el('div', 'bu-pline is-quiet bl-chart-empty', sec, msg.head);
       return;
     }
-    fitForms(head, [fill(STRINGS.chartHead, { d: dateText(r.cardDate) }), STRINGS.chartHeadShort]);
+    fitForms(head, [fill(STRINGS.chartHead, { d: dateText(r.cardDate), away: awayText(r.D) }), fill(STRINGS.chartHeadMid, { d: dateText(r.cardDate) }), STRINGS.chartHeadShort]);
     head.style.display = '';
     var legend = el('div', 'bl-legend', sec);
     var li = el('span', 'bl-leg', legend);
@@ -867,7 +954,7 @@
     var X0 = rem * 1.8;
     var X1 = w - rem * 0.3;
     var Y0 = gapH + rem * 0.6;
-    var axisH = rem * 1.9;
+    var axisH = rem * 2.5;
     var Y1 = h - axisH;
     if (Y1 - Y0 < rem * 3) return;
     var D = c.days;
@@ -922,9 +1009,10 @@
       var pl = chartLabel(box, 'is-pay', dateText(pd.date), x(pd.day), 0);
       labH = pl.offsetHeight;
       var top = y(pd.value) - rem * 0.45 - labH;
-      if (top < Y0) top = y(pd.value) + rem * 0.45;
       var half = pl.offsetWidth / 2;
       var cx = Math.max(half, Math.min(w - half, x(pd.day)));
+      // Above the dot unless that runs into the box's top or the gap label.
+      if (top < 0 || (top < gapH && cx + half > gap.offsetLeft)) top = y(pd.value) + rem * 0.45;
       pl.style.left = px(cx) + 'px';
       pl.style.top = px(top) + 'px';
     }
@@ -983,103 +1071,83 @@
     LAB.chartDirty = false;
   }
 
+  // The short case has nothing to scroll with, so it must fit the screen: if a
+  // longer language does not, it is drawn again a size smaller (is-tight).
   function drawPanel(body, ctx) {
+    var root = buildPanel(body, ctx, false);
+    if (root && LAB.refs && LAB.refs.short && body.scrollHeight > body.clientHeight + 1) {
+      body.removeChild(root);
+      buildPanel(body, ctx, true);
+    }
+  }
+
+  function buildPanel(body, ctx, tight) {
     var full = ctx.mode && ctx.mode() === 'full';
     ctx.setSub(asOf());
     var root = el('div', 'bu-panel bl-panel' + (full ? ' is-full' : ''), body);
     LAB.refs = null;
     var r = result();
-    if (!r) return panelMessage(root, emptyKey());
-    var wrap = el('div', 'bu-pwrap bl-pwrap' + (full ? ' is-full is-cols' : '') + (stale() ? ' is-stale' : ''), root);
+    if (!r) { panelMessage(root, emptyKey()); return null; }
+    var short = isShortZero(r);
+    var wrap = el('div', 'bu-pwrap bl-pwrap' + (short ? ' is-short' : '') + (tight ? ' is-tight' : '') + (full ? ' is-full is-cols' : '') + (stale() ? ' is-stale' : ''), root);
     var colA = el('div', 'bu-pcol', wrap);
     var colB = full ? el('div', 'bu-pcol', wrap) : null;
-    var refs = { pills: [], full: full };
+    var refs = { full: full, short: short };
 
-    // 1. The head line: "Dec 1 · in 14 days · Covered".
-    var head = el('div', 'bl-head', colA);
-    if (r.ok) {
-      el('span', '', head, dateText(r.cardDate) + STRINGS.sep + awayText(r.D) + STRINGS.sep);
-      refs.headState = el('span', 'bl-head-state', head);
+    if (short) {
+      drawShort(colA, r, refs);
+    } else if (r.ok) {
+      drawHero(colA, r, refs);
     } else {
+      // No equation (no payday, or card day is today): the outcome in words.
       var ov = outcomeView(r);
+      var head = el('div', 'bl-head', colA);
       el('span', ov ? 'bl-head-state ' + ov.tone : 'bl-head-state', head, ov ? ov.forms[0] : STRINGS.noLab);
     }
-    if (r.ok && r.roomCap) el('div', 'bl-note', colA, fill(STRINGS.roomNote, { n: down(r.roomCap.cap) }));
 
-    if (r.ok) {
-      // 2. The cap slider: its label on its own line, the figure, the track.
-      var sl = section(colA, 'cap', 'bl-slider');
-      sl.setAttribute('data-autofocus', '');
-      refs.slider = sl;
-      refs.label = el('div', 'bl-label', sl);
-      var val = el('div', 'bl-value', sl);
-      refs.big = el('span', 'bl-big', val);
-      refs.unit = el('span', 'bl-unit', val);
-      var track = el('div', 'bl-track', sl);
-      refs.fill = el('span', 'bl-fill', track);
-      refs.calcTick = el('span', 'bl-tick is-calc', track);
-      refs.savedTick = el('span', 'bl-tick is-saved', track);
-      refs.ticks = el('div', 'bl-ticks', sl);
-
-      // 3. The mode pills (OK toggles).
-      var modes = refs.modes = section(colA, 'mode', 'bl-modes');
-      refs.pills.push(el('span', 'bl-pill', modes, STRINGS.modeCap));
-      refs.pills.push(el('span', 'bl-pill', modes, STRINGS.modeKeep));
-
-      // 4. The outcome (not focusable).
-      var oc = el('div', 'bl-oblock', colA);
-      refs.outcome = el('div', 'bl-outcome', oc);
-      refs.monthly = el('div', 'bu-pline', oc);
-      refs.gap = el('div', 'bu-pline is-quiet', oc);
-
-      // 5. The buttons.
-      var btns = el('div', 'bl-buttons', colA);
-      var save = el('span', 'bl-btn f', btns, STRINGS.save);
-      save.setAttribute('data-key', 'save');
-      refs.save = save;
-      var reset = el('span', 'bl-btn f', btns, STRINGS.reset);
-      reset.setAttribute('data-key', 'reset');
-    }
-
-    // The runway chart, at the top of the right column at full screen only.
+    // At full screen the left column is what you act on (the cap, then the
+    // merchants, which scroll into view as focus moves down) and the right
+    // one is what you read (the runway and Put it somewhere), always in view.
+    // The pace sits between the cap and the merchants. Short even at $0 a
+    // day there is nothing to act on, so the merchants join the readings.
     chartStop();
-    if (colB && r.ok) {
-      colB.className += ' has-chart';
-      drawChart(colB, r, refs);
+    var left = colA;
+    var right = colB || colA;
+    if (colB && r.ok) drawChart(colB, r, refs);
+    if (short) {
+      drawPace(left, r, refs, true);
+      drawMerchants(right, r, refs, true);
+    } else {
+      drawPace(left, r, refs, false);
+      drawMerchants(left, r, refs, false);
+      if (r.ok && r.roomCap) el('div', 'bl-note', left, fill(STRINGS.roomNote, { n: down(r.roomCap.cap) }));
+      drawDest(right, r, refs);
     }
-
-    // 6. The merchants' cuts; 7. Put it somewhere (on the right at full screen).
-    drawMerchants(colA, r, refs);
-    drawDest(colB || colA, r, refs);
-
-    // 8. The pace.
-    var pace = drawPace(colB || colA, r, refs);
-    refs.pace = pace;
-    if (!r.ok) pace.setAttribute('data-autofocus', '');
     paint(refs, r);
     fitPanelForms(refs, r);
     fitWidth(refs.paceHero.numEl);
+    if (refs.big) fitWidth(refs.big);
     LAB.refs = refs;
+    return root;
   }
 
   /* ---------- keys ---------- */
 
-  // slider: 'cap' (the cap or keep goal) or a merchant's label (its cut).
+  // slider: 'cap' or a merchant's label (its cut).
   function nudge(dir, slider) {
     var m = MATH();
     var r = result();
     if (!m || !r || !r.ok) return;
     var t = now();
     var h = LAB.hold;
-    var mode = slider === 'cap' ? LAB.session.mode : 'cap';
-    if (!h || h.dir !== dir || h.mode !== mode || h.slider !== slider || t - h.last >= HOLD_GAP || t < h.last) {
-      h = LAB.hold = { dir: dir, mode: mode, slider: slider, start: t, last: t };
+    if (!h || h.dir !== dir || h.slider !== slider || t - h.last >= HOLD_GAP || t < h.last) {
+      h = LAB.hold = { dir: dir, mode: 'cap', slider: slider, start: t, last: t };
     }
     h.last = t;
-    var size = m.holdStep(t - h.start, mode);
+    var size = m.holdStep(t - h.start, 'cap');
     var d = dir === 'right' ? 1 : -1;
     if (slider !== 'cap') LAB.session = m.nudgeCut(LAB.session, r, slider, d, size);
-    else LAB.session = LAB.session.mode === 'keep' ? m.nudgeKeep(LAB.session, r, d, size) : m.nudgeCap(LAB.session, r, d, size);
+    else LAB.session = m.nudgeCap(LAB.session, r, d, size);
     paint(LAB.refs, result());
     chartSoon();
   }
@@ -1089,22 +1157,34 @@
     return -1;
   }
 
-  // Up and Down between the rows go in their order (the buttons sit
-  // left, so a move by position could skip them for the wider Pace row).
+  // The rows that take focus, in the order Up and Down visit them (the
+  // columns do not matter): the cap, Back to calculated when it is showing,
+  // then the merchants.
+  function rowList(refs) {
+    var out = [];
+    if (refs.slider) out.push(refs.slider);
+    if (refs.reset && refs.changed) out.push(refs.reset);
+    for (var i = 0; refs.cuts && i < refs.cuts.length; i++) out.push(refs.cuts[i].node);
+    return out;
+  }
+
   function rowMove(dir, from, refs) {
-    var key = from && from.getAttribute ? from.getAttribute('data-key') : null;
-    var cuts = refs.cuts || [];
-    var i = cutOf(refs, from);
-    if (dir === 'down' && key === 'mode') return refs.save;
-    if (dir === 'up' && (key === 'save' || key === 'reset')) return refs.modes;
-    if (dir === 'down' && (key === 'save' || key === 'reset') && cuts.length) return cuts[0].node;
-    if (i >= 0) {
-      if (dir === 'up') return i > 0 ? cuts[i - 1].node : refs.save;
-      if (i < cuts.length - 1) return cuts[i + 1].node;
-      return refs.full ? true : refs.pace;
-    }
-    if (dir === 'up' && key === 'pace' && !refs.full) return cuts.length ? cuts[cuts.length - 1].node : refs.save;
-    return undefined;
+    var list = rowList(refs);
+    var at = list.indexOf(from);
+    if (at < 0) return undefined;
+    var to = at + (dir === 'down' ? 1 : -1);
+    if (to >= 0 && to < list.length) return list[to];
+    scrollBody(dir);
+    return true;
+  }
+
+  // Past the first or last row the panel scrolls on by itself, so the chart,
+  // Put it somewhere and the pace are reachable without a row of their own.
+  function scrollBody(dir) {
+    var body = document.querySelector('#panel .panel-body');
+    if (!body) return;
+    var step = Math.round(body.clientHeight * 0.7);
+    body.scrollTop += dir === 'down' ? step : -step;
   }
 
   function onMove(dir, from) {
@@ -1114,7 +1194,9 @@
     if (dir !== 'left' && dir !== 'right') return undefined;
     var i = cutOf(refs, from);
     var slider = from === refs.slider && refs.slider ? 'cap' : i >= 0 ? refs.cuts[i].label : null;
-    if (!slider) return undefined;
+    // Back to calculated has nothing to change sideways, and Left and Right
+    // must not jump to the other column.
+    if (!slider) return from === refs.reset ? true : undefined;
     try { nudge(dir, slider); } catch (e) { warn('slider: ' + (e && e.message)); }
     return true;
   }
@@ -1125,11 +1207,10 @@
     var r = result();
     if (!m || !r || !r.ok) return;
     LAB.hold = null;
-    if (key === 'mode') {
-      LAB.session = m.toggleMode(LAB.session, r);
-    } else if (key === 'reset') {
+    if (key === 'reset') {
       LAB.session = m.newSession();
-    } else if (key === 'save') {
+    } else if (key === 'cap' || /^cut-\d+$/.test(key || '')) {
+      // OK on the cap or on a merchant saves the cap as it stands.
       var p = m.makePref(r, new Date(now()).toISOString());
       if (!p) return;
       writePref(p);
@@ -1142,7 +1223,9 @@
     var now2 = result();
     paint(LAB.refs, now2);
     chartStop();
-    if (LAB.refs) paintChart(LAB.refs.chart, now2);
+    if (LAB.refs && LAB.refs.chart) paintChart(LAB.refs.chart, now2);
+    // The reset row is gone after a reset: focus goes back to the cap.
+    if (key === 'reset' && LAB.refs && LAB.refs.slider) ctx.focus(LAB.refs.slider);
   }
 
   /* ---------- wiring ---------- */
@@ -1207,6 +1290,8 @@
     id: 'budget-lab',
     icon: 'wallet',
     expandable: true,
+    // OK on the tile opens straight to full screen; Back closes it.
+    openMode: 'full',
     init: function (ctx) { bind(ctx); },
     renderTile: function (body, ctx) {
       try {

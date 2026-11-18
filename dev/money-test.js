@@ -238,11 +238,13 @@ async function main() {
         try {
           for (const id of IDS) {
             await H.openPanel(page, id);
-            let p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+            // Budget lab opens straight at full screen and is read from the couch: 1.5rem at the least.
+            const direct = id === 'budget-lab';
+            let p = await page.evaluate(inspect, ['#panel .panel-body', direct ? 1.5 : 1]);
             assert(!p.length, id + ' panel: ' + p.slice(0, 5).join('; '));
             assert((await text(page, '#panel .panel-body')).trim().length > 0, id + ': a blank panel');
-            await H.fullScreen(page);
-            p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+            if (!direct) await H.fullScreen(page);
+            p = await page.evaluate(inspect, ['#panel .panel-body', direct ? 1.5 : 1]);
             assert(!p.length, id + ' full screen: ' + p.slice(0, 5).join('; '));
             await H.key(page, 'Escape');
             await H.idle(page);
@@ -544,15 +546,50 @@ async function main() {
       } finally { await strip.ctx.close(); }
     });
 
-    await check('Budget lab panel: a key press changes text and the fill only; mode, Save this cap and Back to calculated', async () => {
+    await check('Budget lab: OK on the tile opens full screen at once; Back closes it in one press', async () => {
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        assert((await page.evaluate(() => window.HUB_TEST.mode())) === 'full', 'the lab did not open full screen');
+        const box = await page.evaluate(() => { const r = document.getElementById('panel').getBoundingClientRect(); return [r.width, r.height, window.innerWidth, window.innerHeight, document.getElementById('panel').className]; });
+        assert(box[0] === box[2] && box[1] === box[3] && /is-direct/.test(box[4]), 'panel box: ' + box.join());
+        assert((await page.evaluate(() => getComputedStyle(document.querySelector('#panel .panel-btn')).display)) === 'none', 'a Full screen button on a panel that is already full');
+        assert(/Back to close/.test(await text(page, '#panel .panel-hint')), 'hint: ' + await text(page, '#panel .panel-hint'));
+        await H.key(page, 'Escape');
+        await H.until(() => page.evaluate(() => !window.HUB_TEST.open()), 5000, 'one Back did not close it');
+        await H.idle(page);
+        // Another widget still opens as a panel.
+        await H.openPanel(page, 'budget-card');
+        assert((await page.evaluate(() => window.HUB_TEST.mode())) === 'panel', 'another tile opens full screen');
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Budget lab panel: the cap is huge and lit; a key press changes text and the fill only; Save with OK and Back to calculated', async () => {
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.openPanel(page, 'budget-lab');
         assert((await focusedKey(page)) === 'cap', 'the cap slider does not have focus: ' + await focusedKey(page));
         let p = await labPanel(page);
-        assert(/Nov 19 · in 3 days · Covered/.test(p) && /\$62\s*a day/.test(p) && /calculated \$62 · no saved cap/.test(p), 'panel: ' + p);
-        assert(/Monthly remaining \$186/.test(p) && /same as calculated/.test(p) && /The Daily room tile uses \$60 a day/.test(p), 'panel: ' + p);
-        assert(/PACE|Pace/.test(p) && /Stay under \$62 today for 2 days in a row/.test(p), 'pace: ' + p);
+        assert(/\$62\s*a day/.test(p) && /Hold ◀ ▶ to change your daily cap/.test(p) && /Nov 19: covered, \$0 spare/.test(p), 'panel: ' + p);
+        assert(/Calculated \$62 a day/.test(p) && /No saved cap yet/.test(p) && /Down for merchants/.test(p), 'panel: ' + p);
+        assert(/The Daily room tile uses \$60 a day/.test(p), 'panel: ' + p);
+        assert(/Stay under \$62 today for 2 days in a row/.test(p), 'pace: ' + p);
+        const look = await page.evaluate(() => {
+          const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+          const big = getComputedStyle(document.querySelector('#panel .bl-big'));
+          const f = document.querySelector('#panel .bl-hero');
+          const fs = getComputedStyle(f);
+          const res = document.querySelector('#panel .bl-result');
+          const rs = res.getBoundingClientRect();
+          const arrows = document.querySelectorAll('#panel .bl-arrow').length;
+          return { big: parseFloat(big.fontSize) / rem, edge: parseFloat(fs.borderTopWidth) / rem, color: fs.borderTopColor, bg: fs.backgroundColor,
+            res: parseFloat(getComputedStyle(res).fontSize) / rem, resColor: getComputedStyle(res).color, underBig: rs.top >= document.querySelector('#panel .bl-big').getBoundingClientRect().bottom - 2,
+            keys: document.querySelectorAll('#panel .bl-hero .bl-keyhint').length, arrows: arrows };
+        });
+        assert(look.big >= 7, 'the cap is ' + look.big + 'rem');
+        assert(look.edge >= 0.25 && /255, 255, 255/.test(look.color) && !/rgba\(0, 0, 0, 0\)|transparent/.test(look.bg), 'focus look: ' + JSON.stringify(look));
+        assert(look.res >= 2.2 && look.underBig && look.arrows === 2 && look.keys === 1, 'result / arrows: ' + JSON.stringify(look));
         const before = await page.evaluate(() => {
           window.__labRoot = document.querySelector('#panel .bl-panel');
           window.__labBig = document.querySelector('#panel .bl-big').firstChild;
@@ -570,21 +607,13 @@ async function main() {
         assert(/^0s(, 0s)*$/.test(after.trans), 'the fill has a transition: ' + after.trans);
         assert((await session(page)).cap === 63, 'session: ' + JSON.stringify(await session(page)));
         p = await labPanel(page);
-        assert(/Short by \$3/.test(p) && /\$3 more than calculated/.test(p), 'at $63: ' + p);
+        assert(/Nov 19: short by \$3/.test(p) && /Back to calculated cap/.test(p), 'at $63: ' + p);
+        assert(await has(page, '#panel .bl-result.is-neg'), 'short is not coral');
         await H.key(page, 'ArrowLeft', 2);
         assert((await session(page)).cap === 61, 'after Left twice: ' + JSON.stringify(await session(page)));
         assert((await focusedKey(page)) === 'cap', 'Left moved focus away');
-        // Mode: OK on the pills turns the slider into the keep goal.
-        await H.key(page, 'ArrowDown');
-        assert((await focusedKey(page)) === 'mode', 'Down from the slider: ' + await focusedKey(page));
-        await H.key(page, 'Enter');
-        p = await labPanel(page);
-        assert(/Keep on Nov 19/i.test(p) && /to keep/.test(p) && /cap \$61 a day/.test(p), 'keep mode: ' + p);
-        assert((await session(page)).mode === 'keep', 'mode: ' + JSON.stringify(await session(page)));
-        assert(after.same && await page.evaluate(() => window.__labRoot === document.querySelector('#panel .bl-panel')), 'the panel was drawn again for OK');
-        // Save this cap: stored as a keep amount for this card day, and a toast.
-        await H.key(page, 'ArrowDown');
-        assert((await focusedKey(page)) === 'save', 'Down from the pills: ' + await focusedKey(page));
+        assert(await has(page, '#panel .bl-result.is-ok'), 'covered is not green');
+        // OK on the cap saves it: stored as a keep amount for this card day, and a toast.
         await H.key(page, 'Enter');
         await H.sleep(150);
         const toast = await text(page, '#toast');
@@ -592,19 +621,53 @@ async function main() {
         const pref = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), PREF));
         assert(pref.v === 1 && pref.cardDate === '2026-11-19' && Math.abs(pref.keep - 3.4) < 0.001 && typeof pref.at === 'string', 'stored: ' + JSON.stringify(pref));
         p = await labPanel(page);
-        assert(/saved \$61/.test(p) && /saved cap: \$3 less than calculated/.test(p), 'after Save: ' + p);
+        assert(/Saved \$61 a day/.test(p) && /Nov 19: covered, \$3 spare/.test(p), 'after Save: ' + p);
         assert(await page.evaluate(() => getComputedStyle(document.querySelector('#panel .bl-tick.is-saved')).display !== 'none'), 'no saved mark on the track');
-        // Back to calculated: the cap, the mode and the cuts go back; the saved cap stays.
+        // Down from the cap is Back to calculated (lit now); Left and Right do nothing there.
+        await H.key(page, 'ArrowDown');
+        assert((await focusedKey(page)) === 'reset', 'Down from the cap: ' + await focusedKey(page));
         await H.key(page, 'ArrowRight');
-        assert((await focusedKey(page)) === 'reset', 'Right from Save: ' + await focusedKey(page));
+        assert((await focusedKey(page)) === 'reset', 'Right left the row: ' + await focusedKey(page));
         await H.key(page, 'Enter');
         const s = await session(page);
-        assert(s.mode === 'cap' && s.cap === null && s.keep === null, 'after reset: ' + JSON.stringify(s));
+        assert(s.cap === null && s.keep === null, 'after reset: ' + JSON.stringify(s));
+        assert((await focusedKey(page)) === 'cap', 'focus did not go back to the cap: ' + await focusedKey(page));
+        assert(!(await has(page, '#panel .bl-reset.f')), 'Back to calculated still takes focus with nothing to reset');
         p = await labPanel(page);
-        assert(/Daily cap/i.test(p) && /\$62\s*a day/.test(p) && /saved \$61/.test(p), 'after reset: ' + p);
+        assert(/\$62\s*a day/.test(p) && /Saved \$61 a day/.test(p) && /Using the calculated cap/.test(p), 'after reset: ' + p);
         assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'reset dropped the saved cap');
         noErrors(page);
       } finally { await page.ctx.close(); }
+    });
+
+    await check('Budget lab: short even at $0 a day says so plainly, gives the one action, and has no dead slider', async () => {
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true, shortZero: true }));
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        await H.openPanel(page, 'budget-lab');
+        const p = await labPanel(page);
+        assert(/You’re \$138 short for Nov 30 even at \$0 a day/.test(p), 'message: ' + p);
+        assert(/Move \$138 into checking before Nov 30/.test(p), 'action: ' + p);
+        assert(/Cuts open up once you are back above \$0 a day/.test(p) && /no cap to set|nothing to set yet/i.test(p), 'explanation: ' + p);
+        assert(await has(page, '#panel .bl-short-head.is-neg') && await has(page, '#panel .bl-action'), 'no message or action block');
+        assert(!(await has(page, '#panel .bl-hero, #panel .bl-big, #panel .bl-arrow, #panel .bl-cut, #panel .bl-dest')), 'a slider or a cut row in the short case');
+        assert(!(await has(page, '#panel .panel-body .f')), 'a focusable row with nothing to change');
+        const rows = await text(page, '#panel .bl-mline');
+        assert(/Hilltop Grocer · \$\d+ so far/.test(rows) && !/cut \$/.test(rows), 'merchants: ' + rows);
+        assert(await has(page, '#panel .bl-chart'), 'no runway chart');
+        const head = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#panel .bl-short-head')).fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize));
+        assert(head >= 3, 'the message is ' + head + 'rem');
+        const sm = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
+        assert(!sm.length, 'short case: ' + sm.slice(0, 5).join('; '));
+        const fit = await page.evaluate(() => { const b = document.querySelector('#panel .panel-body'); return b.scrollHeight <= b.clientHeight + 1; });
+        assert(fit, 'the short case does not fit one screen');
+        await H.key(page, 'Escape');
+        await H.until(() => page.evaluate(() => !window.HUB_TEST.open()), 5000, 'Back did not close it');
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
     });
 
     await check('Budget lab: a saved cap survives a reload; a new card day drops it', async () => {
@@ -617,12 +680,12 @@ async function main() {
         await H.idle(page);
         await H.openPanel(page, 'budget-lab');
         let p = await labPanel(page);
-        assert(/saved \$61/.test(p) && /\$62\s*a day/.test(p), 'after the reload: ' + p);
+        assert(/Saved \$61 a day/.test(p) && /\$62\s*a day/.test(p), 'after the reload: ' + p);
         const next = H.budgetSample.snapshot({ sentAt: FRESH });
         next.lab.cardDate = '2026-11-20';
         next.lab.daysLeft = 4;
         await env.setBudget(next);
-        await H.until(async () => /no saved cap/.test(await labPanel(page)), 5000, 'the old cycle\'s cap stayed: ' + await labPanel(page));
+        await H.until(async () => /No saved cap yet/.test(await labPanel(page)), 5000, 'the old cycle\'s cap stayed: ' + await labPanel(page));
         assert(await page.evaluate((k) => localStorage.getItem(k) === null, PREF), 'the old cycle\'s cap is still stored');
         noErrors(page);
       } finally {
@@ -678,7 +741,7 @@ async function main() {
         const t = await text(page, LAB_TILE);
         assert(/Hidden for guests/.test(t) && !/\$/.test(t), 'tile: ' + t);
         const s = await session(page);
-        assert(s.mode === 'cap' && s.cap === null && s.keep === null && !Object.keys(s.cuts).length, 'session kept: ' + JSON.stringify(s));
+        assert(s.cap === null && s.keep === null && !Object.keys(s.cuts).length, 'session kept: ' + JSON.stringify(s));
         assert(await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result() === null && window.HUB_BUDGET.data() === null), 'figures still readable');
         assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'Guest mode deleted the saved cap');
         await H.openPanel(page, 'budget-lab');
@@ -690,7 +753,7 @@ async function main() {
         await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back: ' + await text(page, LAB_TILE));
         await H.openPanel(page, 'budget-lab');
         const back = await labPanel(page);
-        assert(/\$62\s*a day/.test(back) && /saved \$61/.test(back), 'after Guest mode: ' + back);
+        assert(/\$62\s*a day/.test(back) && /Saved \$61 a day/.test(back), 'after Guest mode: ' + back);
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -703,7 +766,8 @@ async function main() {
       for (let i = 0; i < 16 && (await focusedKey(page)) !== want; i++) await press(page, dir || 'ArrowDown');
       assert((await focusedKey(page)) === want, 'could not reach ' + want + ', at ' + await focusedKey(page));
     };
-    const cutLabels = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-clabel'), (n) => n.textContent));
+    const cutLabels = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-cut'), (n) =>
+      n.querySelector('.bl-clabel').textContent + ' · ' + n.querySelector('.bl-camount').textContent));
     const destVals = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-drow'), (n) =>
       n.querySelector('.bl-dname').textContent + ': ' + n.querySelector('.bl-dval').textContent));
     const fills = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-fill, #panel .bl-dfill'), (n) => n.style.transform));
@@ -758,30 +822,31 @@ async function main() {
         assert(now[1] === 'scaleX(' + Math.round(3 / 35 * 10000) / 10000 + ')', 'cut fill: ' + now[1]);
         dest = await destVals(page);
         assert(dest[1] === 'Savings: $3 of $500', 'destinations: ' + dest.join(' | '));
-        assert(/Keep \$3 on Nov 19/.test(await labPanel(page)), 'outcome: ' + await labPanel(page));
+        assert(/Nov 19: covered, \$3 spare/.test(await labPanel(page)), 'outcome: ' + await labPanel(page));
         // Held on and on: the cut stops at the merchant's projection, $35.
         await press(page, 'ArrowRight', 45);
         assert((await session(page)).cuts['Hilltop Grocer'] === P_I[0], 'at the top: ' + JSON.stringify(await session(page)));
         assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'row: ' + (await cutLabels(page))[0]);
         assert((await fills(page))[1] === 'scaleX(1)', 'full fill: ' + (await fills(page))[1]);
-        // Up and Down go through the rows in order; Up from the first is Save this cap.
+        // Up and Down go through the rows in order; Back to calculated sits between the cap and the first row.
         await press(page, 'ArrowDown');
         assert((await focusedKey(page)) === 'cut-1', 'Down: ' + await focusedKey(page));
         await press(page, 'ArrowUp', 2);
-        assert((await focusedKey(page)) === 'save', 'Up from the first row: ' + await focusedKey(page));
-        // Full screen: the rows on the left, Put it somewhere on the right; the cut is still there.
-        await H.fullScreen(page);
+        assert((await focusedKey(page)) === 'reset', 'Up from the first row: ' + await focusedKey(page));
+        await press(page, 'ArrowUp');
+        assert((await focusedKey(page)) === 'cap', 'Up from Back to calculated: ' + await focusedKey(page));
+        // Full screen all along: the cap and the rows on the left, the runway and Put it somewhere on the right; the cut is still there.
         const cols = await page.evaluate(() => {
           const c = document.querySelectorAll('#panel .bl-pwrap > .bu-pcol');
-          return { n: c.length, cuts: c[0] && c[0].querySelectorAll('.bl-cut').length, dest: c[1] && !!c[1].querySelector('.bl-dest'), pace: c[1] && !!c[1].querySelector('.bl-pace') };
+          return { n: c.length, cuts: c[0] && c[0].querySelectorAll('.bl-cut').length, dest: c[1] && !!c[1].querySelector('.bl-dest'), pace: c[1] && !!c[1].querySelector('.bl-pace'), paceLeft: !!c[0].querySelector('.bl-pace') };
         });
-        assert(cols.n === 2 && cols.cuts === 5 && cols.dest && cols.pace, 'full screen: ' + JSON.stringify(cols));
+        assert(cols.n === 2 && cols.cuts === 5 && cols.dest && !cols.pace && cols.paceLeft, 'full screen: ' + JSON.stringify(cols));
         assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'full row: ' + (await cutLabels(page))[0]);
         assert((await destVals(page))[1] === 'Savings: $35 of $500', 'full destinations: ' + (await destVals(page)).join(' | '));
         await goTo(page, 'cut-0');
         await press(page, 'ArrowLeft');
         assert((await session(page)).cuts['Hilltop Grocer'] === 34, 'Left at full screen: ' + JSON.stringify(await session(page)));
-        const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
+        const p = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
         assert(!p.length, 'full screen: ' + p.slice(0, 5).join('; '));
         noErrors(page);
       } finally { await page.ctx.close(); }
@@ -853,7 +918,7 @@ async function main() {
         assert((await cutLabels(page))[0] === 'Amazon · $495 so far · cut $40', 'row: ' + (await cutLabels(page))[0]);
         d = await destVals(page);
         assert(d[1] === 'Savings: $269 of $500' && d[0] === 'Card day: Covered', 'with cuts: ' + d.join(' | '));
-        assert(/Keep \$269 on Nov 30/.test(await labPanel(page)), 'outcome: ' + await labPanel(page));
+        assert(/Nov 30: covered, \$269 spare/.test(await labPanel(page)), 'outcome: ' + await labPanel(page));
         // Cap $100 is short 66 before any cut; the 55 of cuts go to card day first, 11 still short, nothing to savings.
         await goTo(page, 'cap', 'ArrowUp');
         await press(page, 'ArrowRight', 20);
@@ -896,21 +961,19 @@ async function main() {
     });
     // From the full screen button: Down into the left column's rows, then Up to the cap (the first row).
     const toCap = async (page) => {
-      for (let i = 0; i < 4 && !/^(cap|mode|save|reset|cut-\d+)$/.test(await focusedKey(page) || ''); i++) await H.key(page, 'ArrowDown');
+      for (let i = 0; i < 4 && !/^(cap|reset|cut-\d+)$/.test(await focusedKey(page) || ''); i++) await H.key(page, 'ArrowDown');
       for (let i = 0; i < 16 && (await focusedKey(page)) !== 'cap'; i++) await H.key(page, 'ArrowUp');
       assert((await focusedKey(page)) === 'cap', 'could not reach the cap: ' + await focusedKey(page));
     };
 
-    await check('Budget lab runway chart: full screen only; the owed line ends at P and moves with the cap and a cut; no $ but the gap', async () => {
+    await check('Budget lab runway chart: at full screen; the owed line ends at P and moves with the cap and a cut; no $ but the gap', async () => {
       await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true }));
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.openPanel(page, 'budget-lab');
-        assert(!(await has(page, '#panel .bl-chart, #panel .panel-body svg, #panel .bl-chart-sec')), 'a chart at panel size');
-        await H.fullScreen(page);
         let c = await chartOf(page);
         assert(c && c.right && c.n === 2 && c.pay === 1, 'full screen chart: ' + JSON.stringify(c));
-        assert(c.gap === 'Covered, nothing to spare' && /is-ok/.test(c.gapCls), 'gap at the calculated cap: ' + c.gap + ' ' + c.gapCls);
+        assert(c.gap === 'Covered, $0 spare' && /is-ok/.test(c.gapCls), 'gap at the calculated cap: ' + c.gap + ' ' + c.gapCls);
         assert(!/\$/.test(c.other), 'a figure in the chart besides the gap: ' + c.other);
         assert(c.labels.indexOf('Nov 20') >= 0 && c.labels.indexOf('Nov 30') >= 0 && c.labels.indexOf('Mon') >= 0, 'labels: ' + c.labels.join(' | '));
         assert(/Runway to Nov 30/i.test(await text(page, '#panel .bl-chart-head')), 'head: ' + await text(page, '#panel .bl-chart-head'));
@@ -935,12 +998,10 @@ async function main() {
         c = await chartOf(page);
         assert(c.end[1] > at145[1] && c.gap === 'Covered, $25 spare', 'a $10 cut: ' + JSON.stringify(c.end) + ' ' + c.gap);
         assert(!/\$/.test(c.other), 'a figure in the chart besides the gap: ' + c.other);
-        // Back to the panel size: no chart.
+        const p = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
+        assert(!p.length, 'chart text: ' + p.slice(0, 5).join('; '));
         await H.key(page, 'Escape');
-        await H.idle(page);
-        assert(!(await has(page, '#panel .bl-chart')), 'a chart after leaving full screen');
-        const p = await page.evaluate(inspect, ['#panel .panel-body', 1]);
-        assert(!p.length, 'panel: ' + p.slice(0, 5).join('; '));
+        await H.until(() => page.evaluate(() => !window.HUB_TEST.open()), 5000, 'Back did not close it');
         noErrors(page);
       } finally {
         await page.ctx.close();
@@ -953,7 +1014,6 @@ async function main() {
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.openPanel(page, 'budget-lab');
-        await H.fullScreen(page);
         await toCap(page);
         const before = await chartOf(page);
         const every = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.CHART_EVERY);
@@ -1012,7 +1072,7 @@ async function main() {
         // Drawn again from nothing at the same session, the owed line ends in the same place.
         await H.key(page, 'Escape');
         await H.idle(page);
-        await H.fullScreen(page);
+        await H.openPanel(page, 'budget-lab');
         const again = await chartOf(page);
         assert(again.end.join() === after.end.join() && again.gap === after.gap && again.room === before.room, 'redrawn: ' + again.end + ' vs ' + after.end);
         noErrors(page);
@@ -1029,7 +1089,6 @@ async function main() {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.openPanel(page, 'budget-lab');
-        await H.fullScreen(page);
         assert(!(await has(page, '#panel .bl-chart')) && /Waiting for the budget app/.test(await text(page, '#panel .bl-chart-sec')), 'no runway: ' + await text(page, '#panel .bl-chart-sec'));
         await H.key(page, 'Escape');
         await H.idle(page);
@@ -1039,7 +1098,6 @@ async function main() {
         await page.evaluate(() => window.HUB_GUEST.set(true));
         await H.sleep(300);
         await H.openPanel(page, 'budget-lab');
-        await H.fullScreen(page);
         const p = await labPanel(page);
         assert(/Hidden for guests/.test(p) && !/\$/.test(p) && !(await has(page, '#panel .bl-chart, #panel .bl-chart-sec, #panel svg polyline')), 'guest full screen: ' + p);
         noErrors(page);
