@@ -275,6 +275,23 @@ var HUB_CONFIG = {
       watchAliases: { 'Hulu': 'Disney+' },
 
       /*
+       * When a show from a TV channel streams. TVmaze dates each episode by
+       * its first broadcast (Hell's Kitchen: FOX, Thursday 7 PM; the Baking
+       * Show: Channel 4 in the UK, Tuesday). When that channel isn't a
+       * streaming app, the Schedule lists the episode on the day it reaches
+       * the show's app and adds "Airs live on FOX · Thu 7 PM" under it.
+       * A rule per show (by name) wins over one per app; anything else
+       * streams the next day. { days: n } counts days after the broadcast,
+       * { weekday: 'fri' } is the first Friday after it, at: '02:00' adds the
+       * hour when it is known (without it only the day shows), and
+       * { live: true } keeps the broadcast time (watched live).
+       */
+      streamAfterAir: {
+        apps: { 'Disney+': { days: 1 }, 'Hulu': { days: 1 }, 'Peacock': { days: 1 } },
+        shows: { 'The Great British Baking Show': { weekday: 'fri' } }
+      },
+
+      /*
        * Prime Video Channels: a service billed through another app opens in
        * that app. The badge still names the service, with a small "via
        * Prime Video" beside the episode, and Watch opens Prime Video. One

@@ -82,6 +82,11 @@
     am: 'AM',
     pm: 'PM',
     aired: 'Aired',
+    out: 'Out',
+    streamsOn: 'Streams on {service}',
+    airsLive: 'Airs live on {channel} · {when}',
+    airedLive: 'Aired live on {channel} · {when}',
+    newToday: 'New today: {name}',
     watched: 'Watched',
     inMin: 'in {n} min',
     now: 'On now',
@@ -160,7 +165,8 @@
   var S = {
     C: null,          // the Entertainment widget's ctx
     host: null,       // { findApp(match), appsReady(), launch(id, label), matchFor(label) }
-    data: null,       // the shows resource, last good
+    data: null,       // the shows resource, last good, moved to when each episode streams (streamView)
+    raw: null,        // the same as the Pi sent it (kept in the cache)
     fromCache: false,
     tab: 'week',
     soonSeen: {},
@@ -315,8 +321,12 @@
   }
 
   // "Thu 8:00 PM", or "today 8:00 PM" style for the next-up lines.
-  function whenText(ms, t) {
+  function whenText(ms, t, dayOnly) {
     var d0 = dayStart(t);
+    if (dayOnly) {
+      if (ms >= d0 && ms < addDays(d0, 1)) return word('todayMark');
+      return ms < addDays(d0, 7) ? dayName(ms, true) : dayDate(ms);
+    }
     if (ms >= d0 && ms < addDays(d0, 1)) return timeText(ms);
     if (ms < addDays(d0, 7)) return dayName(ms, true) + ' ' + timeText(ms);
     return dayDate(ms) + ' · ' + timeText(ms);
@@ -330,6 +340,112 @@
 
   function showsOf(d) {
     return validData(d) ? d.shows : [];
+  }
+
+  /* ---------- when an episode can be watched ---------- */
+
+  // TVmaze dates an episode by its first broadcast: FOX at 7 PM, Channel 4 in
+  // the UK. When that channel is not a streaming app, the episode reaches the
+  // show's app later, so the schedule lists it on the day it streams and says
+  // where it airs live. How much later: widgets.entertainment.streamAfterAir
+  // in config.js, per show (by name) and then per app, else the next day.
+  // A rule is { days: 1 } (that many days after the broadcast's local day),
+  // { weekday: 'fri' } (the first Friday after it), either with at: '02:00'
+  // when the hour is known (without it the day alone is shown), or
+  // { live: true } (watched as it airs: no change).
+  var DEFAULT_STREAM = { days: 1 };
+  var WEEKDAYS = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+
+  // True when the channel is a streaming app itself ("Netflix", "FX on Hulu"):
+  // its airstamp is already when it streams.
+  function channelStreams(channel) {
+    if (!channel) return true;
+    var c = ' ' + String(channel).toLowerCase().replace(/[^a-z0-9+]+/g, ' ') + ' ';
+    for (var k in SERVICES) {
+      if (!SERVICES.hasOwnProperty(k)) continue;
+      var m = SERVICES[k].match.concat([k]);
+      for (var i = 0; i < m.length; i++) {
+        var w = ' ' + m[i].toLowerCase().replace(/[^a-z0-9+]+/g, ' ') + ' ';
+        if (c.indexOf(w) >= 0) return true;
+      }
+    }
+    return false;
+  }
+
+  function streamRule(show) {
+    var c = S.C && S.C.config;
+    var cfg = c && c.streamAfterAir && typeof c.streamAfterAir === 'object' ? c.streamAfterAir : {};
+    var byShow = cfg.shows && typeof cfg.shows === 'object' ? cfg.shows : {};
+    var byApp = cfg.apps && typeof cfg.apps === 'object' ? cfg.apps : {};
+    var name = String((show && show.name) || '').toLowerCase();
+    for (var k in byShow) if (byShow.hasOwnProperty(k) && k.toLowerCase() === name && byShow[k]) return byShow[k];
+    var app = watchApp(show);
+    if (app && byApp.hasOwnProperty(app) && byApp[app]) return byApp[app];
+    var own = (show && (show.watch || show.service)) || '';
+    if (own && byApp.hasOwnProperty(own) && byApp[own]) return byApp[own];
+    return DEFAULT_STREAM;
+  }
+
+  // When an episode can be watched in the show's app:
+  // { ms, dayOnly, airMs, airedOn } (airedOn '' when the airstamp already is
+  // the streaming time). null without a time. Works on the Pi's episodes as
+  // they come (the show page's full list too).
+  function streamTime(show, ep) {
+    var airMs = parseIso(ep && (ep.airedAt || ep.airstamp));
+    if (airMs === null) return null;
+    var channel = (show && show.channel) || '';
+    var rule = channelStreams(channel) ? null : streamRule(show);
+    if (!rule || rule.live === true) return { ms: airMs, dayOnly: false, airMs: airMs, airedOn: '' };
+    var day = dayStart(airMs);
+    var wd = typeof rule.weekday === 'string' ? WEEKDAYS[rule.weekday.slice(0, 3).toLowerCase()] : undefined;
+    if (typeof wd === 'number') {
+      day = addDays(day, 1);
+      while (new Date(day).getDay() !== wd) day = addDays(day, 1);
+    } else {
+      var n = typeof rule.days === 'number' && rule.days >= 0 && rule.days <= 30 ? Math.round(rule.days) : 1;
+      day = addDays(day, n);
+    }
+    var at = typeof rule.at === 'string' ? /^(\d{1,2}):(\d{2})$/.exec(rule.at) : null;
+    if (at && +at[1] < 24 && +at[2] < 60) {
+      var d = new Date(day);
+      d.setHours(+at[1], +at[2], 0, 0);
+      return { ms: d.getTime(), dayOnly: false, airMs: airMs, airedOn: channel };
+    }
+    return { ms: day, dayOnly: true, airMs: airMs, airedOn: channel };
+  }
+
+  function isoOf(ms) { return new Date(ms).toISOString().replace('.000Z', 'Z'); }
+
+  // The Pi's data with every episode moved to when it streams (the original
+  // kept as airedAt, dayOnly when only the day is known). The rest of the
+  // Schedule reads airstamp, so it all follows.
+  function streamView(d) {
+    if (!validData(d)) return d;
+    var out;
+    try { out = JSON.parse(JSON.stringify(d)); } catch (e) { return d; }
+    function move(show, ep) {
+      if (!ep || typeof ep !== 'object' || ep.airedAt) return;
+      var st = streamTime(show, ep);
+      if (!st || !st.airedOn) return;
+      ep.airedAt = ep.airstamp;
+      ep.airstamp = isoOf(st.ms);
+      if (st.dayOnly) ep.dayOnly = true;
+    }
+    for (var i = 0; i < out.shows.length; i++) {
+      var s = out.shows[i];
+      if (!s || typeof s !== 'object') continue;
+      if (isArr(s.upcoming)) for (var j = 0; j < s.upcoming.length; j++) move(s, s.upcoming[j]);
+      move(s, s.nextEpisode);
+      var r = s.returning;
+      if (r && typeof r === 'object' && r.airstamp) {
+        move(s, r);
+        if (r.airedAt) {
+          var rd = new Date(parseIso(r.airstamp));
+          r.date = rd.getFullYear() + '-' + pad(rd.getMonth() + 1) + '-' + pad(rd.getDate());
+        }
+      }
+    }
+    return out;
   }
 
   function epCode(eps) {
@@ -452,8 +568,14 @@
   // The Entertainment tile's line: "Tonight: Stick 8 PM", or '' when
   // nothing more airs today.
   function tileLine(d, t) {
-    var list = airings(d, t - 30 * MIN, addDays(dayStart(t), 1));
-    if (!list.length) return '';
+    var all = airings(d, dayStart(t), addDays(dayStart(t), 1));
+    var list = [];
+    var fresh = null;
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].eps[0].dayOnly) { if (!fresh && !rowWatched(all[i])) fresh = all[i]; }
+      else if (all[i].ms >= t - 30 * MIN) list.push(all[i]);
+    }
+    if (!list.length) return fresh ? word('newToday', { name: fresh.show.name }) : '';
     var a = list[0];
     var key = new Date(a.ms).getHours() >= 17 ? 'tonight' : 'todayLine';
     return word(key, { name: a.show.name, time: timeText(a.ms, true) });
@@ -880,18 +1002,19 @@
   function loadCache() {
     try {
       var d = JSON.parse(load(CACHE_KEY) || 'null');
-      if (validData(d)) { S.data = d; S.fromCache = true; }
+      if (validData(d)) { S.raw = d; S.data = streamView(d); S.fromCache = true; }
     } catch (e) { /* none */ }
   }
 
   function saveCache() {
-    try { store(CACHE_KEY, JSON.stringify(S.data)); } catch (e) { /* not kept */ }
+    try { store(CACHE_KEY, JSON.stringify(S.raw)); } catch (e) { /* not kept */ }
   }
 
   function onData(d) {
     if (!validData(d)) return;
-    var before = S.data ? JSON.stringify(S.data.shows) : null;
-    S.data = d;
+    var before = S.raw ? JSON.stringify(S.raw.shows) : null;
+    S.raw = d;
+    S.data = streamView(d);
     S.fromCache = false;
     saveCache();
     changed(before !== null && before !== JSON.stringify(d.shows));
@@ -914,7 +1037,7 @@
     var list = airings(S.data, t, t + HOUR);
     for (var i = 0; i < list.length; i++) {
       var k = list[i].show.id + '@' + list[i].ms;
-      if (S.soonSeen[k]) continue;
+      if (S.soonSeen[k] || list[i].eps[0].dayOnly) continue;
       S.soonSeen[k] = true;
       try { C.accent('soon'); } catch (e) { /* it just shows */ }
     }
@@ -991,8 +1114,10 @@
   function rowKey(a) { return 'sh:row:' + a.show.id + ':' + a.ms; }
 
   function drawRow(parent, a, t, past) {
-    var soon = a.ms > t - 5 * MIN && a.ms - t <= HOUR;
-    var on = a.ms <= t && a.ms > t - 5 * MIN;
+    var dayOnly = !!a.eps[0].dayOnly;
+    var airMs = parseIso(a.eps[0].airedAt);
+    var soon = !dayOnly && a.ms > t - 5 * MIN && a.ms - t <= HOUR;
+    var on = !dayOnly && a.ms <= t && a.ms > t - 5 * MIN;
     var app = watchApp(a.show);
     var alts = alternatives(a.show);
     var line = el('div', 'sh-line' + (alts.length ? ' has-alt' : ''), parent);
@@ -1003,18 +1128,22 @@
     var info = el('div', 'sh-info', row);
     el('div', 'sh-title', info, a.show.name);
     var meta = el('div', 'sh-meta', info);
-    var bits = epCode(a.eps) + ' · ' + timeText(a.ms);
+    var bits = epCode(a.eps) + ' · ' + (dayOnly ? word('streamsOn', { service: app || a.show.service || '' }) : timeText(a.ms));
     el('span', 'sh-meta-text', meta, bits);
     if (seen) {
       var wn = el('span', 'sh-note is-watched', meta);
       el('span', 'sh-check', wn);
       el('span', 'sh-note-text', wn, word('watched'));
-    } else if (past) el('span', 'sh-note', meta, word('aired'));
+    } else if (past) el('span', 'sh-note', meta, word(airMs !== null ? 'out' : 'aired'));
     else if (on) el('span', 'sh-note is-live', meta, word('now'));
     else if (soon) el('span', 'sh-note is-live', meta, word('inMin', { n: Math.max(1, Math.round((a.ms - t) / MIN)) }));
     if (a.eps[0].number === 1 && !past) el('span', 'sh-chip', meta, word('premiere'));
     var via = viaApp(a.show, app);
     if (via) el('span', 'sh-via', meta, word('via', { service: via }));
+    if (airMs !== null && a.show.channel) {
+      // Where it airs live, under the line: "Airs live on FOX · Thu 7 PM".
+      el('div', 'sh-air', info, word(airMs > t ? 'airsLive' : 'airedLive', { channel: a.show.channel, when: dayName(airMs, true) + ' ' + timeText(airMs, true) }));
+    }
     var side = el('div', 'sh-side', row);
     badge(side, app);
     var w = el('span', 'sh-watch', side);
@@ -1139,7 +1268,7 @@
       el('div', 'sh-title', info, s.name);
       var line = '';
       var next = nextFor(s, t);
-      if (next) line = word('nextLine', { code: epCode([next.ep]), when: whenText(next.ms, t) });
+      if (next) line = word('nextLine', { code: epCode([next.ep]), when: whenText(next.ms, t, next.ep.dayOnly) });
       el('div', 'sh-meta', info, line || (s.checkedAt ? '' : (s.error || '')));
       var side = el('div', 'sh-side', row);
       el('span', 'sh-flag' + (s.running === false ? ' is-ended' : ' is-running'), side, s.checkedAt ? statusText(s) : '…');
@@ -1151,7 +1280,7 @@
     var ups = isArr(s.upcoming) ? s.upcoming : [];
     for (var i = 0; i < ups.length; i++) {
       var ms = parseIso(ups[i].airstamp);
-      if (ms !== null && ms > t - 30 * MIN) return { ep: ups[i], ms: ms };
+      if (ms !== null && (ms > t - 30 * MIN || (ups[i].dayOnly && ms >= dayStart(t)))) return { ep: ups[i], ms: ms };
     }
     var n = s.nextEpisode;
     var nm = n ? parseIso(n.airstamp) : null;
@@ -1199,7 +1328,7 @@
     } else if (!v.groups.length) {
       var e = el('div', 'sh-empty', root, word(v.tab === 'today' ? 'nothingToday' : v.tab === 'month' ? 'nothingMonth' : 'nothingWeek'));
       var nx = nextAiring(S.data, t);
-      if (nx) el('div', 'sh-empty-next', e, word('nextAiring', { name: nx.show.name, when: whenText(nx.ms, t) }));
+      if (nx) el('div', 'sh-empty-next', e, word('nextAiring', { name: nx.show.name, when: whenText(nx.ms, t, nx.eps[0].dayOnly) }));
       drawSoonStrip(root, v.soon);
     } else {
       drawDays(root, v.groups, t);
@@ -1298,6 +1427,9 @@
   window.HUB_SHOWS = {
     STRINGS: STRINGS,
     SERVICES: SERVICES,
+    // When an episode (as the Pi sends it) can be watched in the show's app:
+    // { ms, dayOnly, airMs, airedOn }; see "when an episode can be watched".
+    streamTime: function (show, ep) { try { return streamTime(show, ep); } catch (e) { warn('a streaming time', e); return null; } },
     attach: attach,
     onChange: function (fn) { if (typeof fn === 'function') S.listeners.push(fn); },
     title: function () { return word('title'); },
@@ -1314,7 +1446,7 @@
       view: view, airings: airings, groupByDay: groupByDay, returning: returning, tileLine: tileLine,
       noteStarted: noteStarted, started: loadStarted, finishLines: finishLines, startedText: startedText, rowWatched: rowWatched, pendingOut: function () { return loadOut().slice(); }, flushOut: flushOut,
       ladder: ladder, watch: watch, watchApp: watchApp, viaApp: viaApp, alternatives: alternatives, availability: availability, timeText: timeText, epCode: epCode, rangeText: rangeText, word: word,
-      weekStart: weekStart, monthEnd: monthEnd, setData: function (d) { S.data = d; S.fromCache = false; changed(); },
+      weekStart: weekStart, monthEnd: monthEnd, setData: function (d) { S.raw = d; S.data = streamView(d); S.fromCache = false; changed(); }, streamView: streamView, channelStreams: channelStreams,
       tab: function (t) { if (t) S.tab = t; return S.tab; }
     }
   };
