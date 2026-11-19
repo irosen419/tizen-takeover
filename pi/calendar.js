@@ -22,6 +22,12 @@
  * out, at most MAX_NOTES characters each and MAX_NOTES_TOTAL in all (the
  * nearest events keep theirs). A "busy" calendar never has notes. Notes text
  * is never logged.
+ * An event with other people on it carries guestCount and guests (their
+ * names, at most MAX_GUESTS): everyone on the invitation except the
+ * calendar's owner (read from a Google link, else the organizer), rooms and
+ * people who declined. A name is the CN; without one, the part of the email
+ * address before the @ (never a whole address). Busy calendars carry none.
+ * Guest names are never logged.
  * Timed events have UTC start and end like "2026-11-16T15:00:00Z". All-day
  * events have dates like "2026-11-16", and the end date is the day after the
  * last day. With nothing set up the data is
@@ -49,6 +55,8 @@ const MAX_TITLE = 120;
 const MAX_LOCATION = 80;
 const MAX_NOTES = 2000;
 const MAX_NOTES_TOTAL = 60000;
+const MAX_GUESTS = 25;
+const MAX_GUEST_NAME = 60;
 const MAX_NAME = 40;
 const FEED_LIMIT = 5 * 1024 * 1024;
 const FETCH_TIMEOUT = 10000;
@@ -327,6 +335,46 @@ function cleanNotes(s, max) {
   const chars = Array.from(t);
   if (chars.length <= max) return t;
   return chars.slice(0, max - 1).join('').trimEnd() + '\u2026';
+}
+
+// The owner of a Google calendar, from its secret link
+// (.../calendar/ical/<address>/private-.../basic.ics), lower case; '' otherwise.
+function ownerOf(url) {
+  const m = /\/calendar\/ical\/([^/]+)\//.exec(String(url || ''));
+  if (!m) return '';
+  let a = '';
+  try { a = decodeURIComponent(m[1]); } catch (e) { return ''; }
+  return /^[^@\s]+@[^@\s]+$/.test(a) ? a.toLowerCase() : '';
+}
+
+function mailOf(v) {
+  return String(v || '').replace(/^mailto:/i, '').trim().toLowerCase();
+}
+
+// The other people on an event: { count, names }.
+function guestsOf(props, owner) {
+  const list = props.ATTENDEE || [];
+  if (!list.length) return { count: 0, names: [] };
+  const org = props.ORGANIZER && props.ORGANIZER[0] ? mailOf(props.ORGANIZER[0].value) : '';
+  const me = owner || org;
+  const seen = new Set();
+  const names = [];
+  let count = 0;
+  list.forEach((p) => {
+    const kind = String(p.params.CUTYPE || '').toUpperCase();
+    if (kind === 'RESOURCE' || kind === 'ROOM') return;
+    if (String(p.params.PARTSTAT || '').toUpperCase() === 'DECLINED') return;
+    const mail = mailOf(p.value);
+    if (me && mail === me) return;
+    const key = mail || String(p.params.CN || '').toLowerCase();
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    count++;
+    let name = cleanText(String(p.params.CN || ''), MAX_GUEST_NAME);
+    if (!name || name.indexOf('@') >= 0) name = cleanText((mail || name).split('@')[0], MAX_GUEST_NAME);
+    if (name && names.length < MAX_GUESTS) names.push(name);
+  });
+  return { count: count, names: names };
 }
 
 function noteKey(text) {
@@ -671,11 +719,13 @@ function expandEvents(parsed, opts) {
   };
 
   const words = (props) => {
-    if (busy) return { title: 'Busy', location: '', notes: '' };
+    if (busy) return { title: 'Busy', location: '', notes: '', guests: null };
+    const g = guestsOf(props, opts.owner || '');
     return {
       title: cleanText(propText(props, 'SUMMARY'), MAX_TITLE) || '(No title)',
       location: cleanText(propText(props, 'LOCATION'), MAX_LOCATION),
-      notes: cleanNotes(propText(props, 'DESCRIPTION'), MAX_NOTES)
+      notes: cleanNotes(propText(props, 'DESCRIPTION'), MAX_NOTES),
+      guests: g.count ? g : null
     };
   };
 
@@ -685,11 +735,13 @@ function expandEvents(parsed, opts) {
       if (!(a < w.toDay && b > w.fromDay)) return;
       ev = { id: makeId(cal, uid, key), cal: cal, title: txt.title, start: dayText(a), end: dayText(b), allDay: true, location: txt.location };
       if (txt.notes) ev.notes = txt.notes;
+      if (txt.guests) { ev.guestCount = txt.guests.count; ev.guests = txt.guests.names.slice(); }
       ev._sort = midnight(a);
     } else {
       if (!(a < w.to && (b > w.from || a >= w.from))) return;
       ev = { id: makeId(cal, uid, key), cal: cal, title: txt.title, start: isoText(a), end: isoText(b), allDay: false, location: txt.location };
       if (txt.notes) ev.notes = txt.notes;
+      if (txt.guests) { ev.guestCount = txt.guests.count; ev.guests = txt.guests.names.slice(); }
       ev._sort = a;
     }
     if (seen.has(ev.id)) return;
@@ -849,7 +901,8 @@ function cleanData(d) {
     .slice(0, MAX_EVENTS).map((e) => ({
       id: e.id.slice(0, 20), cal: e.cal, title: cleanText(str(e.title), MAX_TITLE), start: e.start.slice(0, 20),
       end: e.end.slice(0, 20), allDay: e.allDay, location: cleanText(str(e.location), MAX_LOCATION),
-      notes: isObj(d.notes) && typeof e.note === 'string' && typeof d.notes[e.note] === 'string' ? d.notes[e.note] : ''
+      notes: isObj(d.notes) && typeof e.note === 'string' && typeof d.notes[e.note] === 'string' ? d.notes[e.note] : '',
+      guestCount: e.guestCount, guests: e.guests
     }));
   const out = shareNotes(events);
   return {
@@ -872,6 +925,8 @@ function shareNotes(list) {
   let total = 0;
   const events = list.map((e) => {
     const ev = { id: e.id, cal: e.cal, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location };
+    const g = cleanGuests(e);
+    if (g) { ev.guestCount = g.count; ev.guests = g.names; }
     const text = typeof e.notes === 'string' && e.notes ? cleanNotes(e.notes, MAX_NOTES) : '';
     if (text) {
       const key = noteKey(text);
@@ -884,6 +939,14 @@ function shareNotes(list) {
     return ev;
   });
   return { events: events, notes: notes };
+}
+
+// An event's guests checked again (stored data may be hand-edited): null or { count, names }.
+function cleanGuests(e) {
+  if (!Number.isInteger(e.guestCount) || e.guestCount < 1) return null;
+  const names = (Array.isArray(e.guests) ? e.guests : []).filter((n) => typeof n === 'string')
+    .map((n) => cleanText(n, MAX_GUEST_NAME)).filter((n) => n && n.indexOf('@') < 0).slice(0, MAX_GUESTS);
+  return { count: Math.min(e.guestCount, 999), names: names };
 }
 
 // Stored events (note keys) -> events with their notes text again.
@@ -1206,7 +1269,7 @@ function createReader(o) {
           const parsed = parseIcs(r.body);
           if (!parsed) error = 'did not look like a calendar';
           else {
-            const res = expandEvents(parsed, { cal: c.cfg.cal, tz: tz, window: windowFor(t, tz), details: c.cfg.details });
+            const res = expandEvents(parsed, { cal: c.cfg.cal, tz: tz, window: windowFor(t, tz), details: c.cfg.details, owner: ownerOf(c.cfg.url) });
             c.ok = true;
             c.error = '';
             c.events = res.events;
@@ -1283,6 +1346,7 @@ module.exports = {
   windowFor: windowFor,
   cleanText: cleanText,
   cleanNotes: cleanNotes,
+  ownerOf: ownerOf,
   shareNotes: shareNotes,
   cleanData: cleanData,
   normalizeColor: normalizeColor,

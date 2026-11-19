@@ -934,7 +934,7 @@ async function checkLayout() {
   require('vm').runInNewContext(fs.readFileSync(path.join(ROOT, 'app', 'config.js'), 'utf8') + '\nthis.c = HUB_CONFIG;', box);
   const c = box.c;
   const pw = c.layouts.filter((l) => l.id === 'plant-wall')[0];
-  assert(pw && pw.name === 'Plant wall' && pw.layout.length === 1 && pw.layout[0].widget === 'sunpath' && pw.layout[0].w === 12 && pw.layout[0].h === 6, 'Plant wall layout: ' + JSON.stringify(pw));
+  assert(pw && pw.name === 'Plants' && pw.layout.length === 1 && pw.layout[0].widget === 'sunpath' && pw.layout[0].w === 12 && pw.layout[0].h === 6, 'Plants layout: ' + JSON.stringify(pw));
   assert(!c.layout.some((e) => e.widget === 'sunpath'), 'sunpath is on the default layout');
   const sp = c.widgets.sunpath;
   assert(sp.careEvent === 'Water plants' && sp.light && ['maranta', 'birkin', 'pothos', 'cuttings'].every((k) => typeof sp.light[k] === 'string' && sp.light[k]), 'careEvent and light in the config: ' + JSON.stringify(sp.light));
@@ -965,7 +965,7 @@ async function checkLayout() {
   try {
     await waitForPort(pagePort);
     browser = await chromium.launch();
-    await check('config: the Plant wall layout alone, placeholders marked, plain ES5, no address', checkLayout);
+    await check('config: the Plants layout alone, placeholders marked, plain ES5, no address', checkLayout);
     await check('the sun against the almanac, noon heights, Ian\'s Nov 17 look, June yes, December and November no', checkMath);
     await check('the next sun: March from Nov 17, same day, now, tomorrow; cached and cheap', checkSearch);
     await check('every tile size in English: lit, winter, later today', () => checkTiles('en', false));

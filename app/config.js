@@ -174,7 +174,7 @@ var HUB_CONFIG = {
       { widget: 'allsounds',     x: 0, y: 0, w: 12, h: 6 }
     ] },
     // Plant sun alone, to try it out (a new widget gets a layout of its own first).
-    { id: 'plant-wall', name: 'Plant wall', layout: [
+    { id: 'plant-wall', name: 'Plants', layout: [
       { widget: 'sunpath',       x: 0, y: 0, w: 12, h: 6 }
     ] },
     /* A test layout: Ambience (app/widgets/ambience.js, the room's lights)
@@ -452,7 +452,7 @@ var HUB_CONFIG = {
     nowplaying: { visualizer: true },
 
     /*
-     * Plant sun: when direct sun reaches the plant wall (the "Plant wall"
+     * Plant sun: when direct sun reaches the plant wall (the "Plants"
      * layout). The sun's position is worked out on the TV (NOAA formulas)
      * for the weather location above, rounded; latitude and longitude here
      * would take its place. The window itself (faces about 306 degrees

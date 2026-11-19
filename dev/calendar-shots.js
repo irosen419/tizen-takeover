@@ -475,6 +475,7 @@ async function fakeState(context, make) {
 // the shots need no Gemini key (app/i18n-dyn.js keeps these in homeHub.tr.es).
 const ES_NOTES = {
   'Water plants': 'Regar las plantas',
+  'Library visit': 'Visita a la biblioteca',
   'Call with the contractor': 'Llamada con el contratista',
   'Ask about': 'Preguntar por',
   'the kitchen tile and the this': 'el azulejo de la cocina y esto',
@@ -508,19 +509,42 @@ async function notesShots(lang) {
   await sleep(300);
   const marks = await page.evaluate(() => document.querySelectorAll('.cell[data-widget="calendar"] .cal-has-notes').length);
   expect(marks === 1, lang + ': the tile marks the one event today with notes, got ' + marks);
+  const g1 = lang === 'es' ? '1 invitado' : '1 guest';
+  const g3 = lang === 'es' ? '3 invitados' : '3 guests';
+  const tileText = await page.evaluate(() => document.querySelector('.cell[data-widget="calendar"] .tile-body').textContent);
+  expect(tileText.indexOf(g1) >= 0, lang + ': the tile says ' + g1 + ' next to the call');
   await tileShot(page, 'calendar-notes-tile' + tag);
 
   await openPanel(page);
   await shot(page, 'calendar-notes-1-preview' + tag);
+  expect((await page.evaluate(() => document.querySelector('#panel .cal-detail').textContent)).indexOf(g1) >= 0, lang + ': the overlay says ' + g1);
   await key(page, 'Enter');
   expect(await readingNow(page), lang + ': OK on an event with notes opens them');
+  const reading = await page.evaluate(() => document.querySelector('#panel .cal-notes-body').textContent);
+  expect(reading.indexOf(g1) === 0 && reading.indexOf('Marta Ibáñez') > 0, lang + ': the notes open with the guest count and name: ' + reading.slice(0, 60));
   await shot(page, 'calendar-notes-2-reading' + tag);
   await key(page, 'Escape');
   expect(!(await readingNow(page)) && (await page.evaluate(() => window.HUB_TEST.open() === 'calendar')),
     lang + ': Back closes the notes and keeps the panel open');
 
+  // Tuesday: Library visit has 3 guests and no notes; OK still opens the list.
+  await key(page, 'ArrowRight', 2);
+  for (let i = 0; i < 6 && (await selected(page)) !== (lang === 'es' ? 'Visita a la biblioteca' : 'Library visit'); i++) await key(page, 'ArrowDown');
+  expect((await page.evaluate(() => document.querySelector('#panel .cal-stage').textContent)).indexOf(g3) >= 0, lang + ': the day view says ' + g3);
+  await key(page, 'Enter');
+  expect(await readingNow(page), lang + ': OK opens the guest list of an event without notes');
+  await shot(page, 'calendar-guests-library-reading' + tag);
+  await key(page, 'Escape');
+  await toTabs(page);
+  await key(page, 'ArrowRight');
+  await key(page, 'ArrowDown');
+  await shot(page, 'calendar-guests-week' + tag);
+  await toTabs(page);
+  await key(page, 'ArrowLeft');
+  await key(page, 'ArrowDown');
+
   // Saturday: Water plants.
-  await key(page, 'ArrowRight', 6);
+  await key(page, 'ArrowRight', 4);
   const sel = await selected(page);
   expect(sel === (lang === 'es' ? 'Regar las plantas' : 'Water plants'), lang + ': Saturday picks Water plants, got "' + sel + '"');
   await shot(page, 'calendar-notes-3-water-preview' + tag);
@@ -556,11 +580,26 @@ async function notesShots(lang) {
   await idle(page);
   await done(page, 'notes ' + lang);
 
+  // One-row tiles: guests show only when the whole title still fits.
+  for (const w of [12, 4]) {
+    const sp = await openHub({ storage: Object.assign({}, storage, { 'homeHub.layout': JSON.stringify([{ widget: 'calendar', x: 0, y: 0, w: w, h: 1 }]) }) });
+    await waitTile(sp, lang === 'es' ? 'Llamada con el contratista' : 'Call with the contractor');
+    const st = await sp.evaluate(() => {
+      const t = document.querySelector('.cell[data-widget="calendar"] .cal-strip-title');
+      return { guests: !!document.querySelector('.cal-strip-guests'), cut: t ? t.scrollWidth > t.clientWidth + 1 : false };
+    });
+    expect(!st.cut || !st.guests, lang + ' ' + w + 'x1: the title is never cut for the guests');
+    if (w === 12) expect(st.guests, lang + ' 12x1: a wide strip shows the guests');
+    await tileShot(sp, 'calendar-guests-strip-' + w + 'x1' + tag);
+    await done(sp, 'strip ' + w);
+  }
+
   // Guest mode: no mark, no notes.
   const g = await openHub({ storage: { 'homeHub.guest.v1': 'on' } });
   await waitTile(g, 'Call with the contractor');
   const gm = await g.evaluate(() => document.querySelectorAll('.cal-has-notes').length);
   expect(gm === 0, 'guest: no notes mark on the tile, got ' + gm);
+  expect((await g.evaluate(() => document.body.textContent)).indexOf('1 guest') < 0, 'guest mode: no guest count anywhere');
   await openPanel(g);
   const gtext = await g.evaluate(() => document.querySelector('#panel').textContent);
   expect(gtext.indexOf('paint chips') < 0 && /hidden for guests/.test(gtext), 'guest: the panel hides the notes and says so');

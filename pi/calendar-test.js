@@ -270,10 +270,13 @@ async function main() {
     assert.strictEqual(ev('(No title)').start, '2026-11-14T17:00:00Z');
   });
 
-  await check('title, place and notes are kept; never people, a link or an alarm', () => {
+  await check('title, place, notes and guest names are kept; never an email address, a link or an alarm', () => {
     const text = JSON.stringify(basic.events);
+    const z = ev('Zebra planning secret');
+    assert.strictEqual(z.guestCount, 1);
+    assert.deepStrictEqual(z.guests, ['Attendee Person']);
     assert.strictEqual(ev('Zebra planning secret').notes, 'Notes about the hidden agenda\nwith a second line');
-    ['organizer-xyz', 'attendee-xyz', 'meeting-link-xyz', 'Alarm text', 'Organizer Person'].forEach((s) => {
+    ['organizer-xyz', '@example.test', 'Organizer Person', 'attendee-xyz', 'meeting-link-xyz', 'Alarm text', 'Organizer Person'].forEach((s) => {
       assert.ok(text.indexOf(s) < 0, s);
     });
     assert.ok(ev('Zebra planning secret'));
@@ -303,6 +306,35 @@ async function main() {
     const total = Object.keys(rb.notes).reduce((a, k) => a + rb.notes[k].length, 0);
     assert.ok(total <= 60000, String(total));
     assert.ok(rb.events[0].note && !rb.events[39].note, 'the nearest keep theirs');
+  });
+
+  await check('guests: the owner, rooms and people who declined are left out; no name falls back to the address before the @', () => {
+    const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', 'UID:g1@x', 'DTSTART:20261103T150000Z', 'DTEND:20261103T160000Z', 'SUMMARY:Library visit',
+      'ORGANIZER;CN=Me:mailto:me@example.test',
+      'ATTENDEE;CN=Me;PARTSTAT=ACCEPTED:mailto:ME@example.test',
+      'ATTENDEE;CN=Ana Núñez;PARTSTAT=NEEDS-ACTION:mailto:ana@example.test',
+      'ATTENDEE;PARTSTAT=ACCEPTED:mailto:sam.lee@example.test',
+      'ATTENDEE;CN=bo@example.test:mailto:bo@example.test',
+      'ATTENDEE;CN=Gone;PARTSTAT=DECLINED:mailto:gone@example.test',
+      'ATTENDEE;CUTYPE=ROOM;CN=Room 4:mailto:room4@resource.example.test',
+      'ATTENDEE;CN=Ana Again:mailto:ana@example.test',
+      'END:VEVENT',
+      'BEGIN:VEVENT', 'UID:g2@x', 'DTSTART:20261104T150000Z', 'DTEND:20261104T160000Z', 'SUMMARY:Solo',
+      'ORGANIZER:mailto:me@example.test', 'ATTENDEE;CN=Me:mailto:me@example.test', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    const w = cal.windowFor(Date.parse('2026-11-01T17:00:00Z'), TZ);
+    const owned = cal.expandEvents(cal.parseIcs(ics), { cal: 1, tz: TZ, window: w, owner: 'me@example.test' });
+    const lib = owned.events.find((e) => e.title === 'Library visit');
+    assert.strictEqual(lib.guestCount, 3);
+    assert.deepStrictEqual(lib.guests, ['Ana Núñez', 'sam.lee', 'bo']);
+    const solo = owned.events.find((e) => e.title === 'Solo');
+    assert.ok(solo.guestCount === undefined && solo.guests === undefined, 'only the owner: no guests at all');
+    const noOwner = cal.expandEvents(cal.parseIcs(ics), { cal: 1, tz: TZ, window: w });
+    assert.strictEqual(noOwner.events.find((e) => e.title === 'Library visit').guestCount, 3, 'without an owner the organizer is left out');
+    const busy = cal.expandEvents(cal.parseIcs(ics), { cal: 1, tz: TZ, window: w, details: 'busy' });
+    assert.ok(busy.events.every((e) => e.guests === undefined));
+    assert.ok(JSON.stringify(owned).indexOf('@') < 0, 'no address anywhere');
+    assert.strictEqual(cal.ownerOf('https://calendar.google.com/calendar/ical/me%40example.test/private-abc/basic.ics'), 'me@example.test');
+    assert.strictEqual(cal.ownerOf('https://example.test/feed.ics'), '');
   });
 
   await check('DETAILS=busy: every title is Busy, no place, nothing from the event leaks', () => {
