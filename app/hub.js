@@ -246,7 +246,7 @@
       return fn.apply(rec.w, args || []);
     } catch (e) {
       if (window.console && console.warn) console.warn('Widget ' + rec.w.id + ' ' + hook + ': ' + (e && e.message));
-      toast((rec.w.title || rec.w.id) + ' ran into a problem (' + hook + ').', 4000);
+      toast(hubWord('widgetProblem', '{name} ran into a problem ({hook}).', { name: rec.w.title || rec.w.id, hook: hook }), 4000);
       return undefined;
     }
   }
@@ -1390,7 +1390,7 @@
       if (p.layout && !list) continue;
       // Guest mode: the money layouts ("AWWS money", "Budget") leave the bar.
       if (guestOn() && window.HUB_GUEST.hasMoney(list || cfg.layout)) continue;
-      out.push({ name: p.name, layout: list });
+      out.push({ name: p.name, id: typeof p.id === 'string' ? p.id : '', layout: list });
     }
     return out;
   }
@@ -1441,6 +1441,14 @@
     }
   } catch (e) { /* no Guest mode on this page */ }
 
+  // A preset's name in the hub's language (key 'hub.layout.<id>'); a layout
+  // named by the owner, with no Spanish for its id, keeps its own name.
+  function layoutName(p) {
+    var L = window.HUB_I18N;
+    if (!p.id || !L || typeof L.has !== 'function' || !L.has('hub.layout.' + p.id)) return p.name;
+    return hubWord('layout.' + p.id, p.name);
+  }
+
   function drawSwitcher() {
     switcherEl.innerHTML = '';
     sw.bar = el('div', 'switcher-bar', switcherEl);
@@ -1456,7 +1464,7 @@
         el('span', 'switcher-star', node).innerHTML = STAR_SVG;
         sw.index = i;
       }
-      el('span', 'switcher-name', node).textContent = sw.presets[i].name;
+      el('span', 'switcher-name', node).textContent = layoutName(sw.presets[i]);
       node.addEventListener('click', (function (n) { return function () { sw.index = n; chooseLayout(); }; })(i));
       sw.nodes.push(node);
     }
@@ -1511,7 +1519,7 @@
     saveLayout(p.layout);
     pendingLayout = p.layout;
     applyPendingLayout();
-    toast(p.name + ' layout', 1800);
+    toast(hubWord('layoutPicked', '{name} layout', { name: layoutName(p) }), 1800);
   }
 
   /* ---------- the About panel ---------- */
@@ -1536,6 +1544,11 @@
   function noPrefix(text, prefix) {
     text = text ? String(text) : '';
     return text.indexOf(prefix) === 0 ? text.slice(prefix.length) : text;
+  }
+
+  // 'This hub' -> 'hub.about.ThisHub'
+  function aboutKey(english) {
+    return 'hub.about.' + String(english).replace(/[^A-Za-z]+(.)?/g, function (m, c) { return c ? c.toUpperCase() : ''; });
   }
 
   function aboutWord(key, english) {
@@ -1642,10 +1655,10 @@
       var r = list[i].row;
       if (r.group !== group) {
         group = r.group;
-        el('div', 'about-group', ab.box).textContent = r.groupKey ? aboutWord(r.groupKey, group) : group;
+        el('div', 'about-group', ab.box).textContent = aboutWord(r.groupKey || aboutKey(group), group);
       }
       var row = el('div', 'about-row' + (r.action ? ' is-action' : ''), ab.box);
-      el('div', 'about-label', row).textContent = r.labelKey ? aboutWord(r.labelKey, r.label) : r.label;
+      el('div', 'about-label', row).textContent = aboutWord(r.labelKey || aboutKey(r.label), r.label);
       var value = el('div', 'about-value', row);
       value.textContent = list[i].text;
       ab.rows.push(value);
@@ -1742,7 +1755,7 @@
     for (var i = 0; i < ab.drawn.length && !pick; i++) if (typeof ab.drawn[i].action === 'function') pick = ab.drawn[i];
     for (var j = 0; j < ABOUT_ROWS.length && !pick; j++) if (ABOUT_ROWS[j].spare && ab.dropped[ABOUT_ROWS[j].label] && typeof ABOUT_ROWS[j].action === 'function') pick = ABOUT_ROWS[j];
     if (!pick) return false;
-    try { pick.action(); } catch (e) { toast('That didn’t work (' + (e && e.message) + ').', 4000); }
+    try { pick.action(); } catch (e) { toast(hubWord('didntWork', 'That didn’t work ({why}).', { why: e && e.message }), 4000); }
     return true;
   }
 
@@ -1752,13 +1765,13 @@
       var rec = widgets[i];
       if (rec.w.id !== id || !rec.expandable) continue;
       closeAbout();
-      if (typeof rec.w.openView !== 'function') return toast('This hub can’t open that yet.', 4000);
+      if (typeof rec.w.openView !== 'function') return toast(hubWord('cantOpen', 'This hub can’t open that yet.'), 4000);
       if (call(rec, 'openView', [name, rec.ctx]) === false) return undefined;
       focusHome(i);
       openPanel(rec);
       return undefined;
     }
-    toast('Entertainment isn’t on this layout. Pick one with it (Up on a top tile), then try again.', 6000);
+    toast(hubWord('noEntertainment', 'Entertainment isn’t on this layout. Pick one with it (Up on a top tile), then try again.'), 6000);
     return undefined;
   }
 
@@ -2514,7 +2527,7 @@
   /* ---------- dashboard frame ---------- */
 
   function openFrame(url) {
-    if (!url) return toast('This dashboard has no address yet.');
+    if (!url) return toast(hubWord('noAddress', 'This dashboard has no address yet.'));
     closeAbout();
     clayHook('stop');
     fxCall('activityStop');
@@ -2815,7 +2828,7 @@
     var rec = widgetById(id);
     if (!rec || !rec.expandable) {
       var name = id.length > 40 ? id.substring(0, 40) + '...' : id;
-      toast('Asked to show "' + name + '", which this hub doesn\'t have.', 5000);
+      toast(hubWord('askedShow', 'Asked to show "{name}", which this hub doesn\'t have.', { name: name }), 5000);
       return;
     }
     var wanted = data.mode === 'full' || data.mode === 'panel' ? data.mode : null;

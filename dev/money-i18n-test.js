@@ -533,8 +533,8 @@ async function main() {
         assert(/neto/.test(await text(page, tileOf('awws-money'))), 'money: ' + await text(page, tileOf('awws-money')));
         assert((await text(page, '#panel .panel-title')) === 'Margen diario', 'panel title: ' + await text(page, '#panel .panel-title'));
         assert(/disponible al día/.test(await text(page, '#panel .panel-body')), 'panel: ' + await text(page, '#panel .panel-body'));
-        // The A World Worth Saving Glance stays English for now.
-        assert(/Next visit|Now for you|now for you|Progress|Coming up/.test(await text(page, tileOf('awws'))), 'the Glance changed: ' + (await text(page, tileOf('awws'))).slice(0, 120));
+        // The A World Worth Saving Glance follows the language too.
+        assert(/Próximamente|ahora para ti|Ahora para ti|Avance/.test(await text(page, tileOf('awws'))), 'the Glance did not change: ' + (await text(page, tileOf('awws'))).slice(0, 120));
         await page.evaluate(() => window.HUB_I18N.setLang('en'));
         await H.sleep(300);
         assert((await text(page, titleOf('budget-card'))) === 'Card day', 'back to English');

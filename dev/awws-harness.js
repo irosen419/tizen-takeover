@@ -220,8 +220,12 @@ async function start(opts) {
   env.PAGE = 'http://127.0.0.1:' + env.PAGE_PORT;
   env.LIVE = 'http://127.0.0.1:' + env.LIVE_PORT;
   env.DEAD = 'http://127.0.0.1:' + (await spare());
+  // opts.ownService: the preview's service on a free port instead of 8095 (the
+  // page still asks 8095; openHub sends those requests to the free port), so
+  // a test can run beside another that holds 8095.
+  env.SERVICE_PORT = opts.ownService ? await spare() : 8095;
   env.preview = childProcess.spawn(process.execPath, [path.join(__dirname, 'preview.js')], {
-    env: Object.assign({}, process.env, { HUB_PAGE_PORT: String(env.PAGE_PORT), HUB_SERVICE_PORT: '8095', HUB_LIVE_PORT: 'off' }),
+    env: Object.assign({}, process.env, { HUB_PAGE_PORT: String(env.PAGE_PORT), HUB_SERVICE_PORT: String(env.SERVICE_PORT), HUB_LIVE_PORT: 'off' }),
     stdio: 'ignore'
   });
   env.feeds = await sample.feedServer({ today: () => sample.chicagoToday(env.at) });
@@ -296,6 +300,11 @@ async function openHub(env, o) {
     if (BLOCKED.indexOf(host) >= 0) return route.abort();
     return route.fallback();
   });
+  if (env.SERVICE_PORT !== 8095) {
+    await context.route('http://127.0.0.1:8095/**', (route) => {
+      return route.continue({ url: route.request().url().replace('127.0.0.1:8095', '127.0.0.1:' + env.SERVICE_PORT) });
+    });
+  }
   if (o.route) await o.route(context);
   const page = await context.newPage();
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') context.errors.push(m.text()); });

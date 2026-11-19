@@ -30,11 +30,9 @@
  *
  * Every word is in STRINGS. window.HUB_AWWS_STRINGS, when set before this
  * file loads, replaces any of them key by key (the screenshots use it to try
- * Spanish). Earned vs spent follows the hub's language (the Clock page's
+ * Spanish). Every tile follows the hub's language (the Clock page's
  * Language choice): while it draws, STRINGS is HUB_I18N.localize's copy,
- * with the Spanish under 'awws.<path>' keys in app/i18n.js. The other tiles
- * stay English for now; adding their 'awws.' keys there is enough to
- * translate them once they draw through inLang too.
+ * with the Spanish under 'awws.<path>' keys in app/i18n.js.
  */
 (function () {
   'use strict';
@@ -1001,6 +999,14 @@
     return out;
   }
 
+  // The sync's own "Nov 30" is English: in another language the date comes
+  // from dueISO, in this tile's date style. Other text ("Soon") stays as sent.
+  function dueText(it) {
+    var x = I18N();
+    if (it.due && it.dueDay !== null && x && x.lang() !== 'en') return dateText(it.dueDay, 'short');
+    return it.due;
+  }
+
   function itemWhen(it) {
     if (it.now) return STRINGS.now;
     if (it.kind === 'todo') return isNaN(it.todo.dueMs) ? STRINGS.due : hm(it.todo.dueMs);
@@ -1256,8 +1262,9 @@
     var text = el('div', 'aw-trow-text', row);
     el('div', 'aw-trow-title aw-cut', text, it.title);
     var meta = [];
-    if (late) meta.push({ t: it.due ? STRINGS.overdue + STRINGS.sep + it.due : STRINGS.overdue, c: 'is-late' });
-    else if (it.due) meta.push({ t: it.due, c: '' });
+    var dueShown = dueText(it);
+    if (late) meta.push({ t: dueShown ? STRINGS.overdue + STRINGS.sep + dueShown : STRINGS.overdue, c: 'is-late' });
+    else if (dueShown) meta.push({ t: dueShown, c: '' });
     if (it.waitingOn) meta.push({ t: fill(STRINGS.waitingOn, { name: it.waitingOn }), c: 'is-wait' });
     if (meta.length && opts.meta !== false) {
       var line = el('div', 'aw-trow-meta', text);
@@ -2683,8 +2690,7 @@
   }
 
   function drawPanel(body, ctx) {
-    if (ctx.id === 'awws-money') return inLang(function () { drawPanelNow(body, ctx); });
-    drawPanelNow(body, ctx);
+    return inLang(function () { drawPanelNow(body, ctx); });
   }
 
   function drawPanelNow(body, ctx) {
@@ -2712,8 +2718,7 @@
         try { drawPanel(body, ctx); } catch (e) {
           warn('panel: ' + (e && e.message));
           var key = id === 'awws' ? 'awws' : id.replace('awws-', '');
-          if (id === 'awws-money') inLang(function () { broken(body, STRINGS.titles[key] || ''); });
-          else broken(body, STRINGS.titles[key] || '');
+          inLang(function () { broken(body, STRINGS.titles[key] || ''); });
         }
       },
       onSelect: function (target, ctx) {
@@ -2759,16 +2764,16 @@
 
   /* ---------- registering ---------- */
 
-  // local: the tile follows the hub's language (Earned vs spent).
-  function real(id, titleKey, drawTile, local) {
-    function run(fn) { return local ? inLang(fn) : fn(); }
+  // Every tile follows the hub's language.
+  function real(id, titleKey, drawTile) {
+    function run(fn) { return inLang(fn); }
     var w = {
       id: id,
       icon: 'globe',
       expandable: true,
       init: function (ctx) {
         try { bind(ctx); } catch (e) { warn('init: ' + (e && e.message)); }
-        if (local) watchLang(ctx, titleKey);
+        watchLang(ctx, titleKey);
       },
       renderTile: function (body, ctx) {
         run(function () {
@@ -2845,13 +2850,17 @@
   }
 
   function placeholder(key) {
-    var words = STRINGS.planned[key];
     var w = {
       id: 'awws-' + key,
       icon: 'globe',
       expandable: true,
       planned: true,
-      renderTile: function (body, ctx) {
+      init: function (ctx) { watchLang(ctx, key); },
+      renderTile: function (body, ctx) { inLang(function () { drawPlannedTile(body, ctx); }); },
+      renderPanel: function (body) { inLang(function () { drawPlannedPanel(body); }); }
+    };
+    function drawPlannedTile(body, ctx) {
+        var words = STRINGS.planned[key];
         try {
           var text = el('p', 'planned-text aw-planned-text', body, words);
           var m = el('span', 'planned-mark', body);
@@ -2859,15 +2868,15 @@
           var size = ctx && ctx.size ? ctx.size() : null;
           if (!size || size.tier !== 'strip') fitLines(body, text, m);
         } catch (e) { broken(body, STRINGS.titles[key]); }
-      },
-      renderPanel: function (body) {
+    }
+    function drawPlannedPanel(body) {
+        var words = STRINGS.planned[key];
         var wrap = el('div', 'planned-panel', body);
         el('p', 'planned-lead', wrap, words);
         el('p', 'planned-note aw-planned-note', wrap, STRINGS.plannedNote);
         var m = el('span', 'planned-mark planned-mark-panel', body);
         m.innerHTML = (window.HUB_ICONS && window.HUB_ICONS.globe) || '';
-      }
-    };
+    }
     Object.defineProperty(w, 'title', { get: function () { return inLang(function () { return STRINGS.titles[key]; }); },
       enumerable: true, configurable: true });
     return w;
@@ -2907,7 +2916,7 @@
   list.push(real('awws-agenda', 'agenda', agendaTile));
   list.push(real('awws-todo', 'todo', todoTile));
   list.push(real('awws-reach', 'reach', reachTile));
-  list.push(real('awws-money', 'money', moneyTile, true));
+  list.push(real('awws-money', 'money', moneyTile));
   list.push(placeholder('outreach'));
   list.push(placeholder('pipeline'));
 })();

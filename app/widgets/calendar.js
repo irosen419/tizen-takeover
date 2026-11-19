@@ -34,6 +34,14 @@
   /* Every word the widget shows, in one place for translating. {n} is a
      number, {t} a time, {d} a day, {name} a calendar's name. */
   var STRINGS = {
+    title: 'Calendar',
+    calendarN: 'Calendar {n}',
+    fmtShort: '{mon} {d}',
+    fmtLong: '{dow}, {mon} {d}',
+    fmtLongYear: '{dow}, {mon} {d}, {y}',
+    fmtRangeSame: '{mon} {a} – {b}',
+    fmtWithYear: '{s}, {y}',
+    fmtMonthYear: '{mon} {y}',
     days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     daysMin: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
@@ -110,6 +118,24 @@
     }
   }
   try { mergeStrings(STRINGS, window.HUB_CALENDAR_STRINGS); } catch (e) { /* keep English */ }
+
+  /* The words in the hub's language ('calendar.<path in STRINGS>' in
+     app/i18n.js). STRINGS keeps its identity and is refilled from the
+     English copy, or from the Spanish, when the language changes. */
+  var EN = JSON.parse(JSON.stringify(STRINGS));
+  function localizeStrings() {
+    var L = window.HUB_I18N;
+    var src = EN;
+    try { if (L && typeof L.localize === 'function') src = L.localize(EN, 'calendar'); } catch (e) { src = EN; }
+    for (var k in src) if (src.hasOwnProperty(k)) STRINGS[k] = src[k];
+    try {
+      if (L && typeof L.t === 'function') STRINGS.daysMin = String(L.t('calendar.daysMin', EN.daysMin.join(','))).split(',');
+    } catch (e) { /* the English letters */ }
+  }
+  localizeStrings();
+
+  // "a. m." and "p. m." keep their space, so a time never breaks in two.
+  function apWord(h) { return String(h < 12 ? STRINGS.am : STRINGS.pm).replace(/ /g, '\u00a0'); }
 
   // States that only wait for the Pi: the hub may show these tiles quietly
   // (motion extras, quietTiles), as one small line.
@@ -483,7 +509,7 @@
 
   function hm(h, m, withAmPm) {
     var h12 = h % 12 === 0 ? 12 : h % 12;
-    return h12 + ':' + pad(m) + (withAmPm ? ' ' + (h < 12 ? STRINGS.am : STRINGS.pm) : '');
+    return h12 + ':' + pad(m) + (withAmPm ? ' ' + apWord(h) : '');
   }
 
   function timeText(z, ms) {
@@ -493,17 +519,17 @@
 
   // "9 AM" for hour lines.
   function hourText(h) {
-    return (h % 12 === 0 ? 12 : h % 12) + ' ' + (h < 12 ? STRINGS.am : STRINGS.pm);
+    return (h % 12 === 0 ? 12 : h % 12) + ' ' + apWord(h);
   }
 
   function shortDate(n) {
     var p = ymd(n);
-    return STRINGS.monthsShort[p.m] + ' ' + p.d;
+    return fill(STRINGS.fmtShort, { mon: STRINGS.monthsShort[p.m], d: p.d });
   }
 
   function longDate(n, withYear) {
     var p = ymd(n);
-    return STRINGS.days[weekday(n)] + ', ' + STRINGS.months[p.m] + ' ' + p.d + (withYear ? ', ' + p.y : '');
+    return fill(withYear ? STRINGS.fmtLongYear : STRINGS.fmtLong, { dow: STRINGS.days[weekday(n)], mon: STRINGS.months[p.m], d: p.d, y: p.y });
   }
 
   // "Today", "Tomorrow", "Yesterday", a weekday within the week, else "Tue, Nov 24".
@@ -522,7 +548,7 @@
       if (ev.endDay - ev.startDay <= 1) return STRINGS.allDay;
       var a = ymd(ev.startDay);
       var b = ymd(ev.endDay - 1);
-      var range = a.m === b.m && a.y === b.y ? shortDate(ev.startDay) + ' – ' + b.d : shortDate(ev.startDay) + ' – ' + shortDate(ev.endDay - 1);
+      var range = a.m === b.m && a.y === b.y ? fill(STRINGS.fmtRangeSame, { mon: STRINGS.monthsShort[a.m], a: a.d, b: b.d }) : shortDate(ev.startDay) + ' – ' + shortDate(ev.endDay - 1);
       return STRINGS.allDay + ', ' + range;
     }
     var s = clockOf(z, ev.s);
@@ -656,7 +682,7 @@
     return out;
   }
 
-  function calName(c) { return str(c && c.name) || ('Calendar ' + (c && c.cal)); }
+  function calName(c) { return str(c && c.name) || fill(STRINGS.calendarN, { n: c && c.cal }); }
 
   // The error text from the Pi, only when it is short and plain.
   function plainError(text) {
@@ -1066,10 +1092,11 @@
       var a = weekStartOf(selDay);
       var pa = ymd(a);
       var pb = ymd(a + 6);
-      text = shortDate(a) + ' – ' + (pa.m === pb.m ? String(pb.d) : shortDate(a + 6)) + (pb.y !== thisYear ? ', ' + pb.y : '');
+      text = pa.m === pb.m ? fill(STRINGS.fmtRangeSame, { mon: STRINGS.monthsShort[pa.m], a: pa.d, b: pb.d }) : shortDate(a) + ' – ' + shortDate(a + 6);
+      if (pb.y !== thisYear) text = fill(STRINGS.fmtWithYear, { s: text, y: pb.y });
     } else {
       var pm = ymd(selDay);
-      text = STRINGS.months[pm.m] + ' ' + pm.y;
+      text = fill(STRINGS.fmtMonthYear, { mon: STRINGS.months[pm.m], y: pm.y });
     }
     ui.label.textContent = text;
     if (selDay === td) ui.today.classList.add('is-here');
@@ -1480,7 +1507,7 @@
 
   return {
     id: 'calendar',
-    title: 'Calendar',
+    get title() { return STRINGS.title; },
     icon: 'calendar',
     expandable: true,
     activity: 'calendar',      // its working chip (app/motion.js)
@@ -1496,6 +1523,14 @@
         } catch (e) { /* wait for it */ }
         L.on('calendar', safe(function (d) { onLive(d); }));
       }
+      // A language change: new words, the tile and an open panel drawn again.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+          window.HUB_I18N.onChange(function () {
+            try { localizeStrings(); refresh(true); } catch (e) { warn('language: ' + (e && e.message)); }
+          });
+        }
+      } catch (e) { /* stays in the language it started in */ }
       lastToday = today();
       tileSig = signature();
       shownState = stateNow();
