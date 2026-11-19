@@ -26,7 +26,7 @@ const clockPage = require('./clock-page');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 
 let PAGE_PORT, SERVICE_PORT, LIVE_PORT, PAGE, LIVE;
 let dataDir;
@@ -179,7 +179,8 @@ function liveQuery(poll) { return 'live=' + encodeURIComponent(LIVE) + (poll ? '
 
 const look = {
   // The About panel (opened, read and closed again).
-  statusLines: (page) => clockPage.lines(page),
+  // Without the Look and Picture rows (day or night, and the picture's credit: spare rows that come and go with the room).
+  statusLines: async (page) => (await clockPage.lines(page)).filter((l) => !/^(day|night) \(/.test(l) && !/ \u00b7 (placeholder picture$|NASA|Photo: )/.test(l)),
   liveLine: (page) => clockPage.line(page, 'live'),
   todoSub: (page) => page.evaluate(() => { const e = document.querySelector('.cell[data-widget="todo"] .tile-sub'); return e ? e.textContent : null; }),
   panelSub: (page) => page.evaluate(() => { const e = document.querySelector('#panel .panel-sub'); return e ? e.textContent : null; }),

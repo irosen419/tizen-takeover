@@ -29,7 +29,7 @@ const childProcess = require('child_process');
 const { chromium } = require('playwright');
 const clockPage = require('./clock-page');
 
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 const SHOTS = process.env.CLOCK_TEST_SHOTS || '';
 const ZONE = 'America/Chicago';
 // Sunday 15 November 2026, 10:09:30 in Chicago: the hands well apart.

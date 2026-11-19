@@ -1622,6 +1622,21 @@
     return 'Moving' + (scene.fps ? ', ' + scene.fps + ' frames a second' : (scene.source === 'auto' ? ', measuring' : ' (' + scene.source + ')'));
   }
 
+  // For the hub's day and night look (app/hub.js, setTheme): is it daylight at
+  // the place now, by the forecast's own sunrise and sunset? null when there is
+  // no forecast worth showing. Reads only; nothing on screen depends on it.
+  function sunNow() {
+    var r = usable();
+    if (!r) return null;
+    var d = r.data;
+    var now = locNow(r);
+    var di = dayIndex(d, now);
+    var rise = parseTime(at(d.daily.sunrise, di));
+    var set = parseTime(at(d.daily.sunset, di));
+    if (isNaN(rise) || isNaN(set)) return null;
+    return { day: now >= rise && now < set, sunrise: wallClock(rise), sunset: wallClock(set) };
+  }
+
   /* ---------- widget ---------- */
 
   function fallbackText(body, text) {
@@ -1658,6 +1673,9 @@
 
     // For the About panel: how the picture is running.
     sceneStatus: sceneStatus,
+
+    // For the hub's day and night look: { day, sunrise, sunset } or null.
+    sunNow: sunNow,
 
     renderTile: function (body, ctx) {
       C = ctx;
