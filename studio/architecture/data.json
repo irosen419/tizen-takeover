@@ -3535,10 +3535,10 @@
      "id": "sched.pi-health",
      "title": "Weekly Pi health check",
      "kind": "task",
-     "status": "planned",
-     "summary": "Proposed: a Claude routine on Sunday mornings that reads health/latest.json and tells Ian only what is out of the ordinary.",
+     "status": "unverified",
+     "summary": "Sundays 9:20 AM Central: a fresh Claude thread reads health/latest.json and last week's report and tells Ian only what is out of the ordinary.",
      "details": [
-      "Waits on Ian's yes. It would compare with last week's dated report, post nothing when all is ok, and never send Pi commands on its own."
+      "Routine trig_011Gr7sUWzh5aDp3uEo4ScUe, created 2026-11-19 with Ian's yes. Read-only: it never sends Pi commands. All ok means a one-line note."
      ],
      "files": [],
      "talksTo": [
