@@ -216,6 +216,87 @@ async function main() {
     assert.ok(/holds a link/.test(one('cardDay', Object.assign({}, CARD, { plan: [withField(row, 'label', 'https://x')] })).error));
   });
 
+  await check('cardDay.receipt: the sample is kept whole, field by field, and unknown fields are dropped', () => {
+    const n = budget.normalizeSnapshot(sample(), NOW);
+    const r = n.sections.cardDay.receipt;
+    assert.deepStrictEqual(r, sample().cardDay.receipt);
+    assert.deepStrictEqual(r.lines.map((l) => l.key), ['checking', 'paychecks', 'billsBefore', 'cardsToday', 'billsAfter', 'buys']);
+    assert.strictEqual(r.bottom, 430);
+    assert.strictEqual(r.lines[3].items[0].autopay, '2026-11-27');
+    const extra = sample().cardDay.receipt;
+    extra.account = '1234';
+    extra.lines[2].items[0].merchantId = 'x';
+    extra.lines[2].items[0].new = false;
+    const clean = one('cardDay', Object.assign({}, CARD, { receipt: extra })).clean.receipt;
+    assert.ok(!('account' in clean) && !('merchantId' in clean.lines[2].items[0]) && !('new' in clean.lines[2].items[0]));
+    // A card day with no receipt is stored as before.
+    assert.ok(!('receipt' in one('cardDay', CARD).clean));
+  });
+
+  await check('cardDay.receipt: limits, signs, sums to the cent', () => {
+    const base = () => sample().cardDay.receipt;
+    const bad = (mut, re) => {
+      const r = base();
+      mut(r);
+      const out = one('cardDay', Object.assign({}, CARD, { receipt: r }));
+      assert.ok(out.error && re.test(out.error), out.error || 'was accepted');
+    };
+    bad((r) => { r.bottom = 430.01; }, /the lines do not add up to "bottom" \(receipt\)/);
+    bad((r) => { r.lines[2].items[0].amount = 85.01; }, /its items do not add up to "amount" .*receipt line 3, billsBefore/);
+    bad((r) => { r.lines[0].items = []; }, /"items" is not for the checking line/);
+    bad((r) => { r.lines.shift(); }, /the first line must be "checking"/);
+    bad((r) => { r.lines.push(r.lines[1]); }, /"paychecks" is used twice/);
+    bad((r) => { r.lines[1].key = 'rent'; }, /"key" must be checking, paychecks/);
+    bad((r) => { r.lines = []; }, /"lines" must have at least 1 entry/);
+    bad((r) => { delete r.lines; }, /"lines" is missing/);
+    bad((r) => { delete r.bottom; }, /"bottom" is missing/);
+    bad((r) => { delete r.asOf; }, /"asOf" is missing/);
+    bad((r) => { r.next.date = 'Nov 20'; }, /"date" must be a real date/);
+    bad((r) => { r.perDay = -1; }, /"perDay" must be a number/);
+    bad((r) => { r.lines[2].items[0].label = 'https://x.example'; }, /holds a link/);
+    bad((r) => { r.lines[2].items[1].label = 'a@b.example'; }, /holds an email address/);
+    bad((r) => { r.lines[2].items[0].date = '11/17'; }, /"date" must be a real date/);
+    bad((r) => { r.lines[3].items[0].autopay = 'soon'; }, /"autopay" must be a real date/);
+    bad((r) => { r.lines[3].items[0].pay = -5; }, /"pay" must be a number from 0 to 1,000,000/);
+    bad((r) => { r.lines[3].items[0].new = 'yes'; }, /"new" must be true or false/);
+    bad((r) => { r.lines[4].amount = 'lots'; }, /"amount" must be a number/);
+    bad((r) => { r.lines[4].amount = -2000000; }, /"amount" must be a number from -1,000,000/);
+    // Labels are cut, not refused: 30 for an item, 60 for a line.
+    const long = base();
+    long.lines[2].items[0].label = 'B'.repeat(45);
+    long.lines[2].label = 'L'.repeat(80);
+    const ok = one('cardDay', Object.assign({}, CARD, { receipt: long })).clean.receipt;
+    assert.strictEqual(Array.from(ok.lines[2].items[0].label).length, 30);
+    assert.strictEqual(Array.from(ok.lines[2].label).length, 60);
+    // At most 12 items a line (13 refused), and at most 8 lines.
+    const items = (n, amt) => Array.from({ length: n }, (_, i) => ({ label: 'Bill ' + i, amount: amt, date: '2026-11-18' }));
+    const twelve = { asOf: SENT, bottom: 1000 - 12, lines: [{ key: 'checking', amount: 1000 }, { key: 'billsBefore', amount: -12, items: items(12, 1) }] };
+    assert.strictEqual(one('cardDay', Object.assign({}, CARD, { receipt: twelve })).clean.receipt.lines[1].items.length, 12);
+    const thirteen = { asOf: SENT, bottom: 1000 - 13, lines: [{ key: 'checking', amount: 1000 }, { key: 'billsBefore', amount: -13, items: items(13, 1) }] };
+    assert.ok(/"items" has 13 entries; at most 12/.test(one('cardDay', Object.assign({}, CARD, { receipt: thirteen })).error));
+    const nine = base();
+    nine.lines = Array.from({ length: 9 }, () => nine.lines[0]);
+    assert.ok(/"lines" has 9 entries; at most 8/.test(one('cardDay', Object.assign({}, CARD, { receipt: nine })).error));
+    // Cents are compared whole: three 0.1 bills are 0.3.
+    const cents = { asOf: SENT, bottom: 99.7, lines: [{ key: 'checking', amount: 100 }, { key: 'billsBefore', amount: -0.3, items: items(3, 0.1) }] };
+    assert.strictEqual(one('cardDay', Object.assign({}, CARD, { receipt: cents })).clean.receipt.bottom, 99.7);
+    // Paychecks add; a receipt may be short (negative bottom) and have no next paycheck.
+    const short = { asOf: SENT, bottom: -50, lines: [{ key: 'checking', amount: 100 }, { key: 'paychecks', amount: 200, items: [{ label: 'Paycheck', amount: 200, date: '2026-11-18' }] }, { key: 'cardsToday', amount: -350, items: [{ label: 'Card', amount: 350 }] }] };
+    const sh = one('cardDay', Object.assign({}, CARD, { covered: false, shortBy: 50, receipt: short })).clean.receipt;
+    assert.strictEqual(sh.bottom, -50);
+    assert.ok(!('next' in sh) && !('perDay' in sh));
+  });
+
+  await check('a snapshot with a receipt stays under the size cap and the receipt survives a merge', () => {
+    const n = budget.normalizeSnapshot(sample(), NOW);
+    const m = budget.merge(null, n, NOW);
+    assert.strictEqual(m.data.cardDay.receipt.bottom, 430);
+    assert.ok(budget.MAX_BYTES >= JSON.stringify(m.data).length);
+    // The text ./hub prints never says a label or an amount of the receipt.
+    const text = budget.summaryLines(m.data).join('\n');
+    assert.ok(!/Rent|Phone|Headphones|4,200|4200/.test(text), text);
+  });
+
   await check('room.basis and lab.autopayRoom / autopayDate', () => {
     assert.strictEqual(one('room', Object.assign({}, ROOM, { basis: 'autopay' })).clean.basis, 'autopay');
     assert.strictEqual(one('room', Object.assign({}, ROOM, { basis: 'first' })).clean.basis, 'first');

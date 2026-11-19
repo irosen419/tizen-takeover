@@ -68,8 +68,7 @@ var HUB_CONFIG = {
      motionFx: false turns them all off; so does ?fx=off on the address. */
   motionFx: { quietTiles: true, ring: true, stagger: true, cover: true, bloom: true, activity: true, edge: true },
 
-  // The tile that has focus when the hub opens.
-  start: 'entertainment',
+  // Focus starts on the top-left tile of whatever layout is showing (app/hub.js topLeftIndex).
 
   /* Live updates: the hub server on the Raspberry Pi, which can change what
      the screen shows and keeps the to-do list (see docs/live-updates.md).
@@ -273,6 +272,23 @@ var HUB_CONFIG = {
        * as "Also on Hulu" beside the episode (Right, then OK, opens it).
        */
       watchAliases: { 'Hulu': 'Disney+' },
+
+      /*
+       * When a show from a TV channel streams. TVmaze dates each episode by
+       * its first broadcast (Hell's Kitchen: FOX, Thursday 7 PM; the Baking
+       * Show: Channel 4 in the UK, Tuesday). When that channel isn't a
+       * streaming app, the Schedule lists the episode on the day it reaches
+       * the show's app and adds "Airs live on FOX · Thu 7 PM" under it.
+       * A rule per show (by name) wins over one per app; anything else
+       * streams the next day. { days: n } counts days after the broadcast,
+       * { weekday: 'fri' } is the first Friday after it, at: '02:00' adds the
+       * hour when it is known (without it only the day shows), and
+       * { live: true } keeps the broadcast time (watched live).
+       */
+      streamAfterAir: {
+        apps: { 'Disney+': { days: 1 }, 'Hulu': { days: 1 }, 'Peacock': { days: 1 } },
+        shows: { 'The Great British Baking Show': { weekday: 'fri' } }
+      },
 
       /*
        * Prime Video Channels: a service billed through another app opens in

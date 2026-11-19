@@ -14,11 +14,11 @@
  *   cards   level 2 on "Cards today, pending included"
  *
  * The clock is the harness's (Monday 16 November 2026, 10:40 AM in Chicago),
- * 1920x1080 at deviceScaleFactor 2. The receipt is not in the Pi's validator
- * yet (it keeps only the fields it knows), so the snapshot, receipt and all,
- * is put straight into the TV's store the way a live copy would arrive. An
- * older checkout ignores the receipt, which is how the "before" pictures are
- * taken: same snapshot file (--snapshot), same layout, same clock.
+ * 1920x1080 at deviceScaleFactor 2. The snapshot, receipt and all, goes
+ * through the Pi's own validator (pi/budget.js) and reaches the TV the way a
+ * live copy does. An older checkout ignores the receipt, which is how the
+ * "before" pictures are taken: same snapshot file (--snapshot), same layout,
+ * same clock.
  * Needs Playwright and port 8095 free. Every figure is made up.
  */
 'use strict';
@@ -60,15 +60,7 @@ async function main() {
     await env.setBudget(snap);
     const page = await env.newPage({ layout: LAYOUT, scale: SCALE, storage: { 'homeHub.lang': LANG, 'homeHub.budget.seen.v1': '["a-1042"]' } });
     try {
-      await H.sleep(500);
-      // The Pi keeps only the fields it knows: the receipt goes in here.
-      await page.evaluate((d) => {
-        const t = window.HUB_BUDGET_TEST;
-        d.receivedAt = t.store.data && t.store.data.receivedAt;
-        t.store.data = d;
-        t.refresh();
-      }, snap);
-      await H.sleep(500);
+      await H.sleep(1000);
       for (const scene of SCENES) {
         const file = path.join(OUT, PREFIX + '-' + scene + SUFFIX + '.png');
         if (scene === 'tile') {

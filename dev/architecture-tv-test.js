@@ -248,8 +248,19 @@ async function checkRegistered() {
   await page.context().close();
 }
 
+// A layout of this widget alone over the whole screen opens straight to its
+// full screen (hub.js openSolo) instead of a big tile of empty boxes.
+async function checkSolo() {
+  const page = await openHub({ size: [12, 6] });
+  await page.waitForFunction(() => window.HUB_TEST.open() === 'architecture' && !!document.querySelector('#panel .ar-box'), null, { timeout: 8000 });
+  const r = await page.evaluate(() => ({ full: document.getElementById('panel').className, boxes: document.querySelectorAll('#panel .ar-box').length }));
+  assert(/is-full/.test(r.full) && r.boxes >= 7, 'the one-widget layout did not open full screen: ' + JSON.stringify(r));
+  noErrors(page);
+  await page.context().close();
+}
+
 async function checkTiles() {
-  const sizes = [[1, 1], [2, 1], [3, 1], [6, 1], [3, 2], [3, 4], [6, 3], [12, 6]];
+  const sizes = [[1, 1], [2, 1], [3, 1], [6, 1], [3, 2], [3, 4], [6, 3], [12, 5]];
   for (const size of sizes) {
     const page = await openHub({ size });
     const r = await page.evaluate(() => {
@@ -635,6 +646,7 @@ async function checkPi() {
     await check('files: plain ES5, no template strings, CSS ends with .css-end, linked and ordered, TV data in step with data.json', checkFiles);
     await check('the widget registers (openMode full) with a tile titled Architecture', checkRegistered);
     await check('the tile draws at every size without the data file (map, counts, nothing past the tile)', checkTiles);
+    await check('a layout of the widget alone opens straight to full screen', checkSolo);
     await check('OK opens full screen, the data loads once, Big picture drawn, Back closes', checkOpenAndLoad);
     await check('a failed data fetch is tried again; two failures say so and OK retries', checkLoadFailure);
     await check('Big picture: arrows move to the nearest box, the flows chip, OK opens a group, Back returns', checkBigPicture);

@@ -31,15 +31,16 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * payment plan, the room says basis "autopay", the lab sends autopayRoom and
  * autopayDate), payday (a 14 day window to card day on Nov 30 with a
  * payday on Nov 20 inside it, for the runway chart: its runway ends at
- * lab.room to the cent), pace ('fresh', 'over' or a number: the streak), receipt (the Card day receipt prototype: 'autopay'
- * short on Dec 1 and covered by autopay, 'covered', or 'short' even with
- * autopay, $312 more; cardDay.receipt is NOT in the Pi's validator yet, so it is
- * injected into the TV: see dev/budget-receipt-shots.js), outlook (true adds
+ * lab.room to the cent), pace ('fresh', 'over' or a number: the streak), receipt
+ * (cardDay.receipt, the Card day receipt: 'autopay' short on Dec 1 and covered by
+ * autopay, 'covered', or 'short' even with autopay, $312 more; every figure made up), outlook (true adds
  * cardDay.outlook, the "Next 3 months" page; 'ahead' starts it ahead of plan; needs receipt) }.
  */
 function snapshot(opts) {
   opts = opts || {};
   const s = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+  // The fixture carries a receipt for the Pi's tests; the TV's samples ask for one with opts.receipt.
+  if (s.cardDay) delete s.cardDay.receipt;
   if (opts.sentAt) s.sentAt = opts.sentAt;
   if (opts.short) {
     s.cardDay.covered = false;

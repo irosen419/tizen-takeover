@@ -18,7 +18,7 @@ A sample with made-up figures is in [`pi/fixtures/budget-sample.json`](../pi/fix
  The budget tiles and the banner on the TV
 ```
 
-Only totals ever leave the budget app: room per day, the card day and how it is covered, goal states, the names of merchants with a new charge, and for Budget lab the room to card day, one spending total per day, the top 5 merchants with their month-to-date totals and the runway to card day as headroom. **Never a balance, never a transaction list, never an amount on an alert.** (The owner asked for the merchant names and their totals on 2026-11-17; see [Privacy for Budget lab](#privacy-for-budget-lab).) The budget app talks to the hub server on the Pi directly; nothing goes through the cloud. (The Claude mailbox also has `budget.show`, `budget.set` and `budget.clear`, for setting things up by hand; `budget.show` only ever answers with dates, counts and states.)
+Only totals ever leave the budget app: room per day, the card day and how it is covered, goal states, the names of merchants with a new charge, and for Budget lab the room to card day, one spending total per day, the top 5 merchants with their month-to-date totals and the runway to card day as headroom. **Never a balance, never a transaction list, never an amount on an alert**, with one exception: the Card day receipt (`cardDay.receipt`, below) carries the checking balance, what each card owes and the names of bills and planned buys. (The owner asked for the merchant names and their totals on 2026-11-17, see [Privacy for Budget lab](#privacy-for-budget-lab), and approved the receipt for the TV on 2026-11-19; guest mode on the TV hides it.) The budget app talks to the hub server on the Pi directly; nothing goes through the cloud. (The Claude mailbox also has `budget.show`, `budget.set` and `budget.clear`, for setting things up by hand; `budget.show` only ever answers with dates, counts and states.)
 
 By hand on the Pi: `./hub budget set file.json`.
 
@@ -99,11 +99,45 @@ On the TV: the room per day, big; amber when it is under the cap, coral below ze
 | `autopayShortBy` | dollars | optional, and only when `byAutopay` is `false`: how short it is even when the cards wait for their autopay days (refused otherwise) |
 | `plan` | list, at most 6 | optional: `{ "label": "Sapphire Reserve", "date": "2026-12-01", "amount": 1200, "kind": "first" }`; `label` is text, 24; `date` is the day of the payment; `amount` is dollars, the payment itself; `kind` is `first` (paid by hand on card day) or `autopay` (left for the card's autopay day, which can be before card day too). In date order |
 
-| `outlook` | object | optional: the next 3 months (server 0.11.0). `start`: `{ "date", "behind", "ahead" }` (the day the outlook starts from; `behind` and `ahead` are dollars from 0 to 1,000,000; an ahead start is a cushion the savings start from). `dailyAverage`: dollars, the average daily spending. `averageMonths`: whole number 1 to 12 (3). `months`: 1 to 3 of `{ "month": "2026-12", "days": 28 to 31, "paydays": [dates, at most 3], "paycheck", "bills", "cardRecurring", "planned" }` (the four are dollars). Anything wrong in `outlook` drops the outlook only; the rest of card day is kept |
+| `receipt` | object | optional: the Card day sum, line by line, as the budget site shows it (below) |
+| `outlook` | object | optional: the next 3 months (server 0.12.0). `start`: `{ "date", "behind", "ahead" }` (the day the outlook starts from; `behind` and `ahead` are dollars from 0 to 1,000,000; an ahead start is a cushion the savings start from). `dailyAverage`: dollars, the average daily spending. `averageMonths`: whole number 1 to 12 (3). `months`: 1 to 3 of `{ "month": "2026-12", "days": 28 to 31, "paydays": [dates, at most 3], "paycheck", "bills", "cardRecurring", "planned" }` (the four are dollars). Anything wrong in `outlook` drops the outlook only; the rest of card day is kept |
 
-The `plan` amounts are payments the owner asked to see. They are the one exception to "no balance": never what a card owes in any other form.
+The `plan` amounts are payments the owner asked to see. Outside `receipt`, they are the one exception to "no balance": never what a card owes in any other form.
 
 On the TV: "Thu, Nov 19 · in 3 days", then "Covered" in green or "Short by $120" in coral, the transfer rows, and "Next paycheck Fri, Nov 20" (the first paycheck from today on). With `covered: false` and `byAutopay: true` the word is amber, "Short $954 for Dec 1, covered by autopay", not a coral alarm. When there is a `plan`, its rows come next ("Dec 1  Sapphire Reserve  $1,200", "Dec 7  Sapphire Reserve  $400 autopay"), also when the card day is covered. With `byAutopay: false` the tile stays coral, as before, and says "$X short even with autopay" from `autopayShortBy`.
+
+#### `cardDay.receipt`: the Card day sum
+
+The same lines, in the same order, as the Card day sum on the budget site, so the TV and the site always agree. The owner approved sending the checking balance, what the cards owe and the names of bills and planned buys for this on 2026-11-19. On the TV the whole receipt is hidden in guest mode. Nothing here pays or moves money.
+
+A shortened example (a real one has all its lines, and they add up):
+
+```json
+"receipt": {
+  "asOf": "2026-11-16T15:05:00Z", "bottom": 430, "perDay": 143, "next": { "date": "2026-11-20", "amount": 3595 },
+  "lines": [
+    { "key": "checking", "label": "Checking now", "amount": 4200 },
+    { "key": "billsBefore", "label": "Bills before card day", "amount": -160,
+      "items": [ { "label": "Phone", "amount": 85, "date": "2026-11-17", "new": true }, { "label": "Internet", "amount": 75, "date": "2026-11-18" } ] },
+    { "key": "cardsToday", "label": "Cards today, pending included", "amount": -800,
+      "items": [ { "label": "Green Card", "amount": 800, "bal": 750, "pending": 50, "coming": 0, "autopay": "2026-11-24", "pay": 800, "auto": 0 } ] }
+  ]
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `asOf` | UTC time | required: when the figures were worked (the sync the checking balance is from) |
+| `bottom` | dollars, may be negative | required: left to spend before the next paycheck (the card day allowance) |
+| `perDay` | dollars | optional: the allowance over the days left, sent when `bottom` is more than 0 |
+| `next` | `{ "date", "amount" }` | optional: the paycheck that ends the window; `date` is a date, `amount` is dollars |
+| `lines` | list, 1 to 8 | required, each `key` at most once, the first is `checking`, in the budget site's order |
+
+Each line: `key` is `checking`, `paychecks`, `billsBefore`, `cardsToday`, `cardCharges` (recurring charges on the cards before card day), `billsAfter` (bills from card day to the next payday) or `buys` (planned buys); `label` is text, 60, optional (the TV words each line itself, in the language it is set to); `amount` is signed dollars (the checking balance and paychecks are plus, the rest minus); `items` is optional, at most 12, and not for `checking`.
+
+**The sums are checked to the cent, and a receipt that does not add up is refused.** The lines add up to `bottom`, and a line's items add up to the line (paychecks add, every other line takes away, so the items are plain figures and the line carries the sign). A line with more than 12 things behind it sends 11 and one more item for the rest ("4 more"), so the sum still holds. A sender that cannot make it add up leaves the receipt out and the TV draws its older Card day tile.
+
+Each item: `label` is text, 30; `amount` is dollars; and, all optional, `date` (the day it falls), `new` (`true` when the owner has not yet chosen whether the bill counts), `note` (text, 30; for a card charge, the card), and, for a card only, `bal` and `pending` (the owed `amount` split in the posted balance and pending charges), `coming` (recurring charges still to come before card day), `autopay` (the card's next autopay date), `pay` (what the plan pays on card day) and `auto` (what is left to the card's autopay).
 
 ### `goals`
 

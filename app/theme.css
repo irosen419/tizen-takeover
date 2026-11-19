@@ -282,5 +282,19 @@
 .theme-day.is-glass .tile.is-planned:not(.is-focused) .tile-title,
 .theme-day.is-glass .tile.is-planned:not(.is-focused) .tile-icon,
 .theme-day.is-glass .tile.is-planned:not(.is-focused) .planned-text { color: #3c4552; }
+/* The analog clock: dark ink on the light glass, as the digits are. The
+   numerals keep weight 400 so their thin strokes don't wash out; the second
+   hand and its cap are a deeper orange (4.5:1 on the glass). */
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-dial { fill: rgba(21, 27, 36, 0.03); stroke: rgba(21, 27, 36, 0.22); }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-dial-ring { stroke: rgba(21, 27, 36, 0.08); }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-tick-m { stroke: rgba(21, 27, 36, 0.42); }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-tick-h { stroke: #151b24; }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-num { fill: #3c4552; font-weight: 400; }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-hand-h line,
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-hand-m line { stroke: #151b24; }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-hand-s line { stroke: #c9411f; }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-cap { fill: #c9411f; }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-cap-dot { fill: #ffffff; }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-window { fill: rgba(21, 27, 36, 0.78); stroke: none; }
 
 .css-end { top: 0; }
