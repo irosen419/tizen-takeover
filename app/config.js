@@ -16,9 +16,21 @@ var HUB_CONFIG = {
   title: 'Living room',
   pi: HUB_PI,
 
-  /* The picture behind the tiles: a file next to hub.html or a full URL.
-     Any 1920x1080 picture works. '' or null = no picture (plain dark). */
-  background: 'backgrounds/ocean.jpg',
+  /* The picture behind the tiles:
+       'auto'   a picture from app/backgrounds/backgrounds.js: a day picture in
+                the day look and a night picture in the night look, a new one
+                each day (the default). ?bg=day/3 or ?bg=night/0 on the address
+                shows one by its place in the list (counting from 0).
+       a file next to hub.html or a full URL: that one picture, in both looks.
+       '' or null = no picture (plain dark).
+     Any 1920x1080 picture works. */
+  background: 'auto',
+
+  /* true = the current picture's title in small grey type in the bottom-right
+     corner of the home screen, so a picture can be named while trying them.
+     It hides while a panel or a dashboard is open. false = no label (the
+     About panel's "Picture" line still has the title and credit). */
+  pictureLabel: true,
 
   /* true = frosted-glass tiles that show a soft blur of the picture.
      false = solid dark cards, even with a picture. */

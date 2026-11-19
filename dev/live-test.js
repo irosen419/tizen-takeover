@@ -179,8 +179,8 @@ function liveQuery(poll) { return 'live=' + encodeURIComponent(LIVE) + (poll ? '
 
 const look = {
   // The About panel (opened, read and closed again).
-  // Without the Look row (day or night, a spare row that comes and goes with the room).
-  statusLines: async (page) => (await clockPage.lines(page)).filter((l) => !/^(day|night) \(/.test(l)),
+  // Without the Look and Picture rows (day or night, and the picture's credit: spare rows that come and go with the room).
+  statusLines: async (page) => (await clockPage.lines(page)).filter((l) => !/^(day|night) \(/.test(l) && !/ \u00b7 placeholder picture$/.test(l)),
   liveLine: (page) => clockPage.line(page, 'live'),
   todoSub: (page) => page.evaluate(() => { const e = document.querySelector('.cell[data-widget="todo"] .tile-sub'); return e ? e.textContent : null; }),
   panelSub: (page) => page.evaluate(() => { const e = document.querySelector('#panel .panel-sub'); return e ? e.textContent : null; }),

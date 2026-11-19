@@ -775,33 +775,95 @@
     tile.style.setProperty('--veil-l', clamp(0.36 + 0.55 * (1 - m) + 1.2 * sd, 0.40, 0.86).toFixed(2));
   }
 
-  function setupBackground() {
+  /* Which picture: cfg.background 'auto' picks from HUB_BACKGROUNDS
+     (app/backgrounds/backgrounds.js) by the look: list[dayNumber % length],
+     dayNumber being the days since 1970 on the TV's local date. ?bg=day/N or
+     ?bg=night/N forces entry N (from 0) of that list. A file or URL is one
+     picture for both looks. '' or null: none. */
+  var picture = null; // the picture on screen: { file, title, credit }
+  var picLabelEl = document.getElementById('picLabel');
+
+  // The corner label (cfg.pictureLabel): the picture's title, shown on the home screen only.
+  function syncPicLabel() {
+    if (!picLabelEl) return;
+    var text = cfg.pictureLabel === false || !picture ? '' : (picture.title || '');
+    if (picLabelEl.textContent !== text) picLabelEl.textContent = text;
+    var on = !!text && !open && !frameOpen;
+    picLabelEl.className = on ? 'pic-label is-on' : 'pic-label';
+  }
+
+  function dayNumber() {
+    var d = new Date();
+    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+  }
+
+  function pictureFor(look) {
     var src = cfg.background;
-    if (!src) return;
+    if (!src) return null;
+    if (src !== 'auto') return { file: String(src), title: '', credit: '' };
+    var lists = window.HUB_BACKGROUNDS;
+    var list = lists && lists[look];
+    if (!list || !list.length) return null;
+    var n = dayNumber();
+    var m = /^(day|night)\/(\d+)$/.exec(readQuery('bg') || '');
+    if (m && m[1] === look) n = parseInt(m[2], 10);
+    return list[n % list.length] || null;
+  }
+
+  // Loads a picture, then calls done(img), or done(null) if it fails.
+  function loadPicture(pic, done) {
     var img = new Image();
-    img.onload = function () {
-      hasPicture = true;
-      backdropEl.style.backgroundImage = 'url("' + src + '")';
-      document.body.classList.add('has-picture');
-      if (cfg.glass === false) return;
-      var data = blurredCopy(img);
-      if (data) document.documentElement.style.setProperty('--glass-img', 'url("' + data + '")');
-      var soft = softCopy(img);
-      if (soft) document.documentElement.style.setProperty('--soft-img', 'url("' + soft + '")');
-      veil = readVeil(img);
-      document.body.classList.add('is-glass');
-      // An old engine may not take url() through a custom property, or may
-      // drop the whole background. Then fall back to the plain tint.
-      if (data && widgets.length) {
-        var bg = getComputedStyle(widgets[0].tile).backgroundImage || '';
-        if (bg.indexOf('url(') === -1) document.body.classList.add('glass-tint-only');
-      }
-      placeGlass();
-      // The glass look has its own border and padding (theme.css): the room the titles have changes a little.
-      retitleAll();
-    };
-    img.onerror = function () { /* keep the plain dark look */ };
-    img.src = src;
+    img.onload = function () { done(img); };
+    img.onerror = function () { done(null); };
+    img.src = pic.file;
+  }
+
+  // Puts a loaded picture behind the tiles: the backdrop, the blurred and
+  // soft copies for the glass, the veil grid, then the glass itself.
+  function applyPicture(pic, img) {
+    picture = pic;
+    hasPicture = true;
+    syncPicLabel();
+    backdropEl.style.backgroundImage = 'url("' + pic.file + '")';
+    document.body.classList.add('has-picture');
+    if (cfg.glass === false) return;
+    var root = document.documentElement;
+    var data = blurredCopy(img);
+    if (data) root.style.setProperty('--glass-img', 'url("' + data + '")');
+    else root.style.removeProperty('--glass-img');
+    var soft = softCopy(img);
+    if (soft) root.style.setProperty('--soft-img', 'url("' + soft + '")');
+    else root.style.removeProperty('--soft-img');
+    veil = readVeil(img);
+    document.body.classList.add('is-glass');
+    // An old engine may not take url() through a custom property, or may
+    // drop the whole background. Then fall back to the plain tint.
+    document.body.classList.remove('glass-tint-only');
+    if (data && widgets.length) {
+      var bg = getComputedStyle(widgets[0].tile).backgroundImage || '';
+      if (bg.indexOf('url(') === -1) document.body.classList.add('glass-tint-only');
+    }
+    placeGlass();
+    // The glass look has its own border and padding (theme.css): the room the titles have changes a little.
+    retitleAll();
+  }
+
+  function setupBackground() {
+    var pic = pictureFor(theme.look || wantedTheme().look);
+    if (!pic) return;
+    loadPicture(pic, function (img) {
+      if (img) applyPicture(pic, img); // else keep the plain dark look
+    });
+  }
+
+  // For the About panel: "Navagio, Zakynthos · Photo: Name, CC BY-SA 4.0".
+  function pictureStatus() {
+    if (!picture) return '';
+    var parts = [];
+    var title = picture.title || (picture.credit ? '' : String(picture.file).split('/').pop());
+    if (title) parts.push(title);
+    if (picture.credit) parts.push(picture.credit);
+    return parts.join(' \u00b7 ');
   }
 
   // Lines up the blurred picture on a surface with the spot it covers.
@@ -871,13 +933,18 @@
   }
 
   // One quick fade of the stage (out 140 ms, in 220 ms) over the change; at
-  // once when the hub is on plain fades or something is open or moving.
-  function switchTheme(look) {
-    if (!theme.look || motion.mode === 'fade' || open || busy || frameOpen || theme.fading) return paintTheme(look);
+  // once when the hub is on plain fades or something is open or moving. The
+  // new look's picture (pic, already loaded as img) goes on under the same fade.
+  function switchTheme(look, pic, img) {
+    function paint() {
+      paintTheme(look);
+      if (pic && img) applyPicture(pic, img);
+    }
+    if (!theme.look || motion.mode === 'fade' || open || busy || frameOpen || theme.fading) return paint();
     theme.fading = true;
     setOpacity(stageEl, 0, 140);
     setTimeout(function () {
-      paintTheme(look);
+      paint();
       setOpacity(stageEl, 1, 220);
       setTimeout(function () {
         stageEl.style.transition = '';
@@ -893,8 +960,13 @@
     theme.source = want.source;
     theme.sunrise = want.sunrise;
     theme.sunset = want.sunset;
-    if (want.look !== theme.look) switchTheme(want.look);
     theme.timer = setTimeout(checkTheme, 60000);
+    if (want.look === theme.look) return;
+    // The first look is painted at once; setupBackground picks its picture.
+    var pic = theme.look ? pictureFor(want.look) : null;
+    if (!pic || (picture && pic.file === picture.file)) return switchTheme(want.look);
+    // Load the new picture first; if it fails, keep the old one and still switch the look.
+    loadPicture(pic, function (img) { switchTheme(want.look, pic, img); });
   }
 
   // For the About panel: "night (auto, until 7:04 AM)", the next change.
@@ -1461,6 +1533,8 @@
     } },
     // Day or night, and why (see Day and night, above).
     { group: 'This hub', label: 'Look', spare: true, value: function () { return themeStatus(); } },
+    // The picture behind the tiles and who made it (app/backgrounds/backgrounds.js).
+    { group: 'This hub', label: 'Picture', spare: true, value: function () { return pictureStatus(); } },
     // A stylesheet that had to be fetched again, or never arrived (see hub.html).
     { group: 'This hub', label: 'Styles', value: function () {
       var S = window.HUB_STYLES;
@@ -2167,6 +2241,7 @@
     closeAbout();                          // a panel the Pi opens goes over it: close it first
     clayHook('stop');
     open = rec;
+    syncPicLabel();
     // openMode: 'full' (a widget's own choice) opens straight to full screen.
     var direct = isDirect(rec.w);
     mode = direct ? 'full' : 'panel';
@@ -2302,6 +2377,7 @@
       if (panelFocus) panelFocus.classList.remove('is-focused');
       panelFocus = null;
       open = null;
+      syncPicLabel();
       mode = null;
       busy = false;
       focusHome(rec.index);
@@ -2410,6 +2486,7 @@
     clayHook('stop');
     fxCall('activityStop');
     frameOpen = true;
+    syncPicLabel();
     frameEl.src = url;
     frameWrap.hidden = false;
   }
@@ -2418,6 +2495,7 @@
     frameEl.src = 'about:blank';
     frameWrap.hidden = true;
     frameOpen = false;
+    syncPicLabel();
     layoutChance();
   }
 

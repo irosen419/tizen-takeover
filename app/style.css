@@ -721,6 +721,26 @@ body {
 }
 .has-picture .backdrop::after { display: block; }
 
+/* The picture's title, small in the bottom-right corner (HUB_CONFIG.pictureLabel).
+   Before the stage in the page, so under every tile; hub.js hides it (opacity)
+   while a panel or frame is open. */
+.pic-label {
+  position: fixed;
+  right: 0.9rem; bottom: 0.2rem;
+  max-width: 40%;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 8px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.2s linear;
+  pointer-events: none;
+}
+.pic-label.is-on { opacity: 1; }
+
 /* Grays a step lighter so they hold up on glass over the picture. */
 body.has-picture {
   --text-2: #ced1d8;
