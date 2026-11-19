@@ -557,6 +557,15 @@ async function main() {
     assert.ok(lines.some((l) => /^Last command: status/.test(l)));
   });
 
+  await check('translate.status: counts and estimated cost, no texts', async () => {
+    const r = await run(fake, h, 'translate.status');
+    assert.strictEqual(r.ok, true, r.message);
+    assert.ok(/^Translating: (on|off \(no key\)|paused after an error); \d+ lines saved; limit \d+ new lines a day\.$/m.test(r.message), r.message);
+    assert.ok(/^Today: \d+ new lines, \d+ Gemini calls, \d+ tokens, about \$\d/m.test(r.message), r.message);
+    assert.ok(/^This month: /m.test(r.message) && /^All time: /m.test(r.message), r.message);
+    assert.deepStrictEqual(Object.keys(r.data).sort(), ['all', 'cached', 'cap', 'enabled', 'lastError', 'month', 'paused', 'today']);
+  });
+
   /* --- log.tail --- */
 
   await check('log.tail: accepted with and without args, same count words as ./hub log', async () => {

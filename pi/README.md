@@ -239,8 +239,10 @@ In Spanish mode the TV shows your to-dos, calendar events and AWWS task lines in
 It uses `HUB_TRANSLATE_KEY` from `.env`, or else `GEMINI_VIDEO_GEN_KEY` (your personal key; `GEMINI_API_KEY` is never used). With neither set, the TV simply stays in English for those lines. At most 2000 new lines a day go to Gemini, and an error pauses it for 10 minutes. The log counts lines and never shows the text, for example:
 
 ```
-translate: 4 asked, 1 cached, 3 new (Gemini 812 ms)
+translate: 4 asked, 1 cached, 3 new (Gemini 812 ms, 210 + 95 tokens)
 ```
+
+To see what it costs, Claude sends the mailbox command `translate.status` (or call `GET /api/translate/usage` with the token): new lines, Gemini calls, tokens and an estimated dollar cost for today, this month and all time, from `data/translate-usage.json` (62 days kept). The estimate uses Flash-Lite's list price ($0.10 per million tokens in, $0.40 out; `PRICE_IN`/`PRICE_OUT` in `translate.js`); Google's billing page is the real number.
 
 ## TV shows (the Schedule)
 

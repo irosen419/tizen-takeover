@@ -71,6 +71,7 @@
  * (Home Assistant, and the plant wall's WLED) from ambience.js.
  *
  *   POST /api/translate  { to: "es", texts: [...] } -> { map } (translate.js; the TV uses POST /translate)
+ *   GET  /api/translate/usage -> lines, Gemini calls, tokens and estimated cost today, this month, in all
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -1187,7 +1188,8 @@ function start(options) {
     '/api/ambience/light': ['POST'],
     '/api/ambience/mood': ['POST'],
     '/api/ambience/config': ['GET', 'POST'],
-    '/api/translate': ['POST']
+    '/api/translate': ['POST'],
+    '/api/translate/usage': ['GET']
   };
 
   function statusBody() {
@@ -1273,6 +1275,7 @@ function start(options) {
           }).catch(failed);
           return undefined;
         }
+        if (route === '/api/translate/usage') return reply(200, Object.assign({ ok: true }, translator.info()));
         if (route === '/api/status') return reply(200, statusBody());
         if (route === '/api/log') return reply(200, logBody(query));
         if (route === '/api/calendar') {

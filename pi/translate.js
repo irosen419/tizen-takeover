@@ -29,6 +29,12 @@ const HOST = 'generativelanguage.googleapis.com';
 const MAX_TEXTS = 60;
 const MAX_TEXT = 500;
 const MAX_CACHE = 5000;
+// Gemini 2.5 Flash-Lite list price in US dollars per million tokens (Nov 2026; check
+// ai.google.dev/pricing if it looks off). Used only for the estimate in the usage report.
+const PRICE_IN = 0.10;
+const PRICE_OUT = 0.40;
+const USAGE_FILE = 'translate-usage.json';
+const USAGE_DAYS = 62;
 const MAX_NEW_PER_DAY = 2000; // new lines sent to Gemini per day; the /translate route has no token, so this caps the cost
 const BACKOFF_MS = 10 * 60 * 1000;
 const CALL_TIMEOUT_MS = 20000;
@@ -95,7 +101,8 @@ function geminiCall(key, items) {
         try {
           const j = JSON.parse(Buffer.concat(chunks).toString('utf8'));
           const parts = j.candidates[0].content.parts;
-          resolve(parts.map((p) => p.text || '').join(''));
+          const u = j.usageMetadata || {};
+          resolve({ text: parts.map((p) => p.text || '').join(''), inTok: u.promptTokenCount || 0, outTok: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) });
         } catch (e) {
           reject(new Error('Gemini answer not readable'));
         }
@@ -132,6 +139,43 @@ function createTranslator(opt) {
     if (e.code !== 'ENOENT') log('translate: the saved translations could not be read, starting empty');
   }
 
+  // Usage per local day (the Pi's clock): new lines, Gemini calls, tokens in and out.
+  const usageFile = path.join(opt.dataDir, USAGE_FILE);
+  let usage = {};
+  try {
+    const u = JSON.parse(fs.readFileSync(usageFile, 'utf8'));
+    if (u && u.days && typeof u.days === 'object') usage = u.days;
+  } catch (e) { /* none yet */ }
+
+  function dayKey(t) {
+    const d = new Date(t);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function count(lines, inTok, outTok) {
+    const k = dayKey(now());
+    const d = usage[k] || (usage[k] = { lines: 0, calls: 0, inTok: 0, outTok: 0 });
+    d.lines += lines; d.calls += 1; d.inTok += inTok; d.outTok += outTok;
+    const keys = Object.keys(usage).sort();
+    while (keys.length > USAGE_DAYS) delete usage[keys.shift()];
+    try {
+      fs.mkdirSync(opt.dataDir, { recursive: true });
+      const tmp = usageFile + '.tmp-' + process.pid;
+      fs.writeFileSync(tmp, JSON.stringify({ v: 1, days: usage }) + '\n');
+      fs.renameSync(tmp, usageFile);
+    } catch (e) { /* the count is a nicety; translating goes on */ }
+  }
+
+  function sum(prefix) {
+    const t = { lines: 0, calls: 0, inTok: 0, outTok: 0 };
+    Object.keys(usage).forEach((k) => {
+      if (k.indexOf(prefix) !== 0) return;
+      ['lines', 'calls', 'inTok', 'outTok'].forEach((f) => { t[f] += usage[k][f] || 0; });
+    });
+    t.cost = (t.inTok * PRICE_IN + t.outTok * PRICE_OUT) / 1e6;
+    return t;
+  }
+
   function save() {
     try {
       fs.mkdirSync(opt.dataDir, { recursive: true });
@@ -157,10 +201,13 @@ function createTranslator(opt) {
   // One Gemini call for all of `items`; every item's inflight promise settles with its text or null.
   function fetchBatch(items, asked, cached) {
     const started = now();
-    const work = Promise.resolve().then(() => call(items)).then((text) => {
-      const spanish = parseAnswer(text, items.length);
+    const work = Promise.resolve().then(() => call(items)).then((answer) => {
+      const a = typeof answer === 'string' ? { text: answer, inTok: 0, outTok: 0 } : (answer || {});
+      const spanish = parseAnswer(a.text, items.length);
       remember(items, spanish);
-      log('translate: ' + asked + ' asked, ' + cached + ' cached, ' + items.length + ' new (Gemini ' + (now() - started) + ' ms)');
+      count(items.length, a.inTok || 0, a.outTok || 0);
+      log('translate: ' + asked + ' asked, ' + cached + ' cached, ' + items.length + ' new (Gemini ' + (now() - started) + ' ms, ' +
+        (a.inTok || 0) + ' + ' + (a.outTok || 0) + ' tokens)');
       return spanish;
     }).catch((e) => {
       pausedUntil = now() + BACKOFF_MS;
@@ -214,10 +261,16 @@ function createTranslator(opt) {
   }
 
   function info() {
-    return { enabled: enabled, cached: cache.size, paused: now() < pausedUntil, lastError: lastErrorAt ? new Date(lastErrorAt).toISOString() : '' };
+    const today = dayKey(now());
+    return {
+      enabled: enabled, cached: cache.size, paused: now() < pausedUntil,
+      lastError: lastErrorAt ? new Date(lastErrorAt).toISOString() : '',
+      cap: maxNew, today: sum(today), month: sum(today.slice(0, 8)), all: sum(''),
+      price: { inPerMillion: PRICE_IN, outPerMillion: PRICE_OUT }
+    };
   }
 
   return { translate: translate, info: info, size: () => cache.size };
 }
 
-module.exports = { MAX_NEW_PER_DAY, createTranslator, checkRequest, parseAnswer, MAX_TEXTS, MAX_TEXT, MAX_CACHE, BACKOFF_MS, MODEL, FILE };
+module.exports = { MAX_NEW_PER_DAY, USAGE_FILE, PRICE_IN, PRICE_OUT, createTranslator, checkRequest, parseAnswer, MAX_TEXTS, MAX_TEXT, MAX_CACHE, BACKOFF_MS, MODEL, FILE };

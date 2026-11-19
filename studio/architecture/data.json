@@ -1936,7 +1936,8 @@
      "summary": "Turns Ian's own text (to-dos, calendar events, AWWS tasks) into Latin American Spanish when the hub is in Spanish, and remembers each line.",
      "details": [
       "The TV sends up to 60 lines at a time to POST /translate. Lines already known come from data/translations-es.json (up to 5000, oldest dropped); new ones go to Gemini (gemini-2.5-flash-lite) in one batched call, are checked, then saved, so each line is translated once.",
-      "Uses Ian's personal key (HUB_TRANSLATE_KEY, else GEMINI_VIDEO_GEN_KEY in pi/.env), never the AWWS key. No key means cache only. A Gemini error pauses new translations for 10 minutes. The log counts lines and never shows the text."
+      "Uses Ian's personal key (HUB_TRANSLATE_KEY, else GEMINI_VIDEO_GEN_KEY in pi/.env), never the AWWS key. No key means cache only. A Gemini error pauses new translations for 10 minutes. The log counts lines and never shows the text.",
+      "Usage per day (new lines, Gemini calls, tokens, estimated cost) is kept in data/translate-usage.json for 62 days; Claude reads it with the mailbox command translate.status (GET /api/translate/usage). At most 2000 new lines a day."
      ],
      "files": [
       "(PR 112) pi/translate.js",

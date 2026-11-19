@@ -43,7 +43,7 @@ function post(port, route, body) {
     assert.strictEqual(calls.length, 2);
     assert.deepStrictEqual(calls[1], ['New one']);
     assert.strictEqual(r2.map['Buy milk'], 'ES:Buy milk');
-    assert(logs.some((l) => /^translate: 2 asked, 0 cached, 2 new \(Gemini \d+ ms\)$/.test(l)), logs.join('|'));
+    assert(logs.some((l) => /^translate: 2 asked, 0 cached, 2 new \(Gemini \d+ ms, 0 \+ 0 tokens\)$/.test(l)), logs.join('|'));
     assert(logs.some((l) => /^translate: 2 asked, 1 cached, 1 new/.test(l)));
     logs.forEach((l) => assert(!/milk|Ana|New one/i.test(l), 'a text reached the log'));
   });
@@ -90,6 +90,20 @@ function post(port, route, body) {
     r = await t.translate(['a1', 'b1', 'b2']); assert.deepStrictEqual(r.map, { a1: 'ES:a1' });
     assert.strictEqual(calls.length, 1);
     assert(lines.some((l) => l === 'translate: 3 asked, 1 cached, 2 not translated (daily limit)'));
+  });
+  await check('usage is counted per day, kept on disk, with an estimated cost', async () => {
+    const dir = tmp();
+    const call = (items) => Promise.resolve({ text: JSON.stringify(items.map((s) => 'ES:' + s)), inTok: 1000000, outTok: 500000 });
+    let t = translate.createTranslator({ dataDir: dir, log: () => {}, call: call });
+    await t.translate(['a1', 'a2']);
+    await t.translate(['a3']);
+    t = translate.createTranslator({ dataDir: dir, log: () => {}, call: call }); // reload
+    const i = t.info();
+    assert.strictEqual(i.today.lines, 3); assert.strictEqual(i.today.calls, 2);
+    assert.strictEqual(i.month.lines, 3); assert.strictEqual(i.all.inTok, 2000000);
+    assert(Math.abs(i.today.cost - (2 * translate.PRICE_IN + 1 * translate.PRICE_OUT)) < 1e-9, String(i.today.cost));
+    assert.strictEqual(i.cap, translate.MAX_NEW_PER_DAY);
+    assert(!/a1|a2|a3/.test(fs.readFileSync(path.join(dir, translate.USAGE_FILE), 'utf8')), 'texts in the usage file');
   });
   await check('no key: cache hits only, disabled', async () => {
     const dir = tmp();
