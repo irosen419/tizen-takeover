@@ -629,6 +629,8 @@
 .cal-person i { display: block; margin: 0 auto; background: currentColor; }
 .cal-person i:first-child { width: 0.34em; height: 0.34em; border-radius: 50%; }
 .cal-person i:last-child { width: 0.62em; height: 0.36em; margin-top: 0.06em; border-radius: 0.31em 0.31em 0.06em 0.06em; }
+.cal-strip-title.has-guests { flex: 0 1 auto; }
+.cal-strip-guests { flex: 0 0 auto; margin-left: 0.6rem; font-size: 0.9rem; line-height: 1.4; color: var(--text-3); white-space: nowrap; }
 .cal-detail-guests { margin-top: 0.3rem; font-size: 0.9rem; line-height: 1.35; color: var(--text-2); word-wrap: break-word; }
 .cal-nb-guests .cal-nb-line { color: var(--text); }
 

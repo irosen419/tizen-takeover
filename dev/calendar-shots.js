@@ -580,6 +580,20 @@ async function notesShots(lang) {
   await idle(page);
   await done(page, 'notes ' + lang);
 
+  // One-row tiles: guests show only when the whole title still fits.
+  for (const w of [12, 4]) {
+    const sp = await openHub({ storage: Object.assign({}, storage, { 'homeHub.layout': JSON.stringify([{ widget: 'calendar', x: 0, y: 0, w: w, h: 1 }]) }) });
+    await waitTile(sp, lang === 'es' ? 'Llamada con el contratista' : 'Call with the contractor');
+    const st = await sp.evaluate(() => {
+      const t = document.querySelector('.cell[data-widget="calendar"] .cal-strip-title');
+      return { guests: !!document.querySelector('.cal-strip-guests'), cut: t ? t.scrollWidth > t.clientWidth + 1 : false };
+    });
+    expect(!st.cut || !st.guests, lang + ' ' + w + 'x1: the title is never cut for the guests');
+    if (w === 12) expect(st.guests, lang + ' 12x1: a wide strip shows the guests');
+    await tileShot(sp, 'calendar-guests-strip-' + w + 'x1' + tag);
+    await done(sp, 'strip ' + w);
+  }
+
   // Guest mode: no mark, no notes.
   const g = await openHub({ storage: { 'homeHub.guest.v1': 'on' } });
   await waitTile(g, 'Call with the contractor');

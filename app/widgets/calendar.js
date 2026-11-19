@@ -654,6 +654,22 @@
     el('span', '', m, String(ev.guestCount));
   }
 
+  // Guests are the least important words on a line: wherever a line is too
+  // tight for them (it would cut its time or title), they leave.
+  function fitGuests(root) {
+    if (!root || !root.querySelectorAll) return;
+    var tags = root.querySelectorAll('.cal-guests');
+    for (var i = tags.length - 1; i >= 0; i--) {
+      var p = tags[i].parentNode;
+      if (!p) continue;
+      if (p.scrollWidth > p.clientWidth + 1) { p.removeChild(tags[i]); continue; }
+      // A line that wraps (a narrow tile) must not grow a row for them.
+      var withTag = p.offsetHeight;
+      var tag = p.removeChild(tags[i]);
+      if (p.offsetHeight >= withTag) p.appendChild(tag);
+    }
+  }
+
   // The event can be opened to read: it has notes or guests to show.
   function readable(ev) { return !!(notesOf(ev) || guestText(ev)); }
 
@@ -930,7 +946,17 @@
       var when = el('span', 'cal-strip-when', line);
       if (u.now) el('span', 'cal-now-tag', when, STRINGS.now);
       else when.textContent = timeText(zone, u.ev.s);
-      el('span', 'cal-strip-title', line, titleOf(u.ev));
+      var st = el('span', 'cal-strip-title', line, titleOf(u.ev));
+      // Guests come last and only when the whole title still fits beside them.
+      var gt = guestText(u.ev);
+      if (gt) {
+        st.className += ' has-guests';
+        var sg = el('span', 'cal-strip-guests', line, '\u00b7 ' + gt);
+        if (st.scrollWidth > st.clientWidth + 1 || line.scrollWidth > line.clientWidth + 1) {
+          line.removeChild(sg);
+          st.className = st.className.replace(' has-guests', '');
+        }
+      }
     } else if (a.allDay.length) {
       bar(line, a.allDay[0].cal);
       el('span', 'cal-strip-when cal-trow-tag', line, STRINGS.allDay);
@@ -1046,6 +1072,7 @@
       fitRows(list, more, rows);
     }
     if (size && size.tier === 'tall' && a.upcoming.length && list.childNodes.length === rows.length) drawLater(root, list, a);
+    fitGuests(root);
   }
 
   function alldayRow(ev) {
@@ -1238,6 +1265,7 @@
     if (view === 'week') drawWeek(ui.stage);
     else if (view === 'month') drawMonth(ui.stage);
     else drawDay(ui.stage);
+    fitGuests(ui.stage);
     setLabel();
     setHint();
   }
