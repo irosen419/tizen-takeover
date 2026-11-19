@@ -35,7 +35,7 @@ const SWAPPED = [
   { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
   { widget: 'mirror',        x: 9, y: 2, w: 3, h: 2 },
   { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 },
-  { widget: 'ambiance',      x: 3, y: 4, w: 6, h: 1 },
+  { widget: 'ambience',      x: 3, y: 4, w: 6, h: 1 },
   { widget: 'weather',       x: 0, y: 5, w: 3, h: 1 },
   { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
 ];
