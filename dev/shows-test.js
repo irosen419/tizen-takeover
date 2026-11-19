@@ -120,6 +120,62 @@ async function main() {
       assert(v[2] === 'hells-kitchen@19 8:00 PM' && v[3] === 'shark-tank@20 7:00 PM' && v[4] === 'task@21 8:00 PM', JSON.stringify(v));
     });
 
+    await check('Streaming times: a broadcast show moves to the day it streams (next day, or the Baking Show\'s Friday), a streaming one stays, live rows say where it aired (EN, ES), the tile says "New today"', async () => {
+      const v = await page.evaluate(() => {
+        const T = window.HUB_SHOWS._test;
+        const raw = JSON.parse(localStorage.getItem('homeHub.shows.v1'));
+        raw.shows.forEach((s) => { if (s.id === 'the-great-british-baking-show') s.channel = 'Channel 4'; });
+        const d = T.streamView(raw);
+        const by = (id) => d.shows.filter((s) => s.id === id)[0];
+        const hk = by('hells-kitchen').upcoming[0];
+        const gb = by('the-great-british-baking-show').upcoming[0];
+        const pa = by('paradise').upcoming[0];
+        const bear = by('the-bear');
+        const st = window.HUB_SHOWS.streamTime(raw.shows.filter((s) => s.id === 'hells-kitchen')[0], raw.shows.filter((s) => s.id === 'hells-kitchen')[0].upcoming[0]);
+        const week = T.view(d, 'week', Date.now()).groups.map((g) => g.rows.map((a) => a.show.id + '@' + new Date(a.ms).getDate()).join(','));
+        return {
+          hk: [new Date(hk.airstamp).getDate(), new Date(hk.airstamp).getHours(), hk.dayOnly, hk.airedAt],
+          gb: [new Date(gb.airstamp).getDay(), gb.dayOnly],
+          pa: [pa.airedAt === undefined, pa.dayOnly === undefined],
+          bear: bear.upcoming[0].airedAt === undefined,
+          st: st && [st.dayOnly, st.airedOn, new Date(st.ms).getDate()],
+          again: JSON.stringify(T.streamView(d)) === JSON.stringify(d),
+          chan: [T.channelStreams('FX on Hulu'), T.channelStreams('Netflix'), T.channelStreams('FOX'), T.channelStreams('Cinemax'), T.channelStreams('')],
+          week: week
+        };
+      });
+      // Hell's Kitchen: FOX Thu Nov 19, 8 PM in the sample -> Disney+ on Fri Nov 20, day only.
+      assert(v.hk[0] === 20 && v.hk[1] === 0 && v.hk[2] === true && v.hk[3] === '2026-11-20T02:00:00Z', JSON.stringify(v.hk));
+      assert(v.gb[0] === 5 && v.gb[1] === true, 'Baking Show not on a Friday: ' + JSON.stringify(v.gb));
+      assert(v.pa[0] && v.pa[1] && v.bear, 'a streaming show moved');
+      assert(v.st && v.st[0] === true && v.st[1] === 'FOX' && v.st[2] === 20, JSON.stringify(v.st));
+      assert(v.again, 'moving twice moved again');
+      assert(JSON.stringify(v.chan) === '[true,true,false,false,true]', JSON.stringify(v.chan));
+      assert(v.week.join('|').indexOf('hells-kitchen@20') >= 0 && v.week.join('|').indexOf('the-great-british-baking-show@20') >= 0, JSON.stringify(v.week));
+      // The drawn rows, at Fri Nov 20 noon: "Streams on Disney+" and the live line, in English and Spanish; the tile says New today.
+      const fri = Date.parse('2026-11-20T18:00:00Z');
+      for (const lang of ['en', 'es']) {
+        const p = await env.newPage({ lang: lang === 'es' ? 'es' : undefined, at: fri });
+        try {
+          await H.openSchedule(p, 'today');
+          const r = await p.evaluate(() => {
+            const row = document.querySelector('[data-key^="sh:row:hells-kitchen:"]');
+            const air = row && row.querySelector('.sh-air');
+            const box = air && air.getBoundingClientRect();
+            const info = row && row.querySelector('.sh-info').getBoundingClientRect();
+            return { meta: row && row.querySelector('.sh-meta-text').textContent, air: air && air.textContent, fits: !!box && box.right <= info.right + 1 && air.scrollWidth <= air.clientWidth + 1, tile: window.HUB_SHOWS.tileLine() };
+          });
+          if (lang === 'en') {
+            assert(r.meta === 'S24 E8 · Streams on Disney+' && r.air === 'Aired live on FOX · Thu 8 PM', JSON.stringify(r));
+            assert(/^(Tonight|Today|New today): /.test(r.tile), r.tile);
+          } else {
+            assert(r.meta === 'T24 E8 · Disponible en Disney+' && r.air === 'Se emitió en vivo en FOX · Jue 8 p. m.', JSON.stringify(r));
+          }
+          assert(r.fits, 'the live line does not fit: ' + JSON.stringify(r));
+        } finally { await p.ctx.close(); }
+      }
+    });
+
     await check('Today, This month and Coming soon pick the right episodes and seasons', async () => {
       const v = await page.evaluate(() => {
         const T = window.HUB_SHOWS._test;

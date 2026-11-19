@@ -71,7 +71,9 @@ Everything lives in `app/config.js`.
 
 ### Layout
 
-`layout` places each widget on a grid 12 columns wide and 6 rows tall. `x` and `y` are the top-left cell, `w` and `h` the size in cells. Make the tiles cover the whole grid so there are no gaps. `start` is the tile that has focus when the hub opens.
+`layout` places each widget on a grid 12 columns wide and 6 rows tall. `x` and `y` are the top-left cell, `w` and `h` the size in cells. Make the tiles cover the whole grid so there are no gaps. Focus starts on the top-left tile (smallest `y`, then smallest `x`) when the hub opens or a layout arrives; a layout that only moves tiles leaves focus alone if the remote was used in the last minute.
+
+A layout that is one widget over the whole grid (`x: 0, y: 0, w: 12, h: 6`, like "Architecture test" or "Plant wall") opens straight to that widget's full screen when the hub starts, instead of showing one giant tile. Back closes it to the tile, and Up from there opens the layout bar as usual.
 
 ### Background and glass
 

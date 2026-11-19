@@ -573,21 +573,21 @@ async function main() {
     const focusedKey = (page) => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
     const session = (page) => page.evaluate(() => window.HUB_BUDGET_LAB_TEST.session());
 
-    await check('Budget lab tile: the streak, yesterday and the suggested move; a tall tile adds the card day outcome', async () => {
+    await check('Budget lab tile: today\'s cap big, the card day outcome, and the streak in a small box at the bottom', async () => {
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const t = await text(page, LAB_TILE);
-        assert(/^1\s*day under/.test(t.trim()) && /Yesterday \$41 of \$65, \$24 under/.test(t), 'tile: ' + t);
-        assert(/Stay under \$62 today/.test(t) && /Nov 19: On track at \$62 a day/.test(t) && !/nothing to spare|Covered/.test(t), 'tile: ' + t);
-        assert(await has(page, LAB_TILE + ' .bl-foot.is-even') && !(await has(page, LAB_TILE + ' .bl-foot.is-ok')), 'the on track line is not amber');
-        assert(await has(page, LAB_TILE + ' .bu-hero-num.is-ok'), 'the streak is not green');
+        assert(/^\$62\s*a day/.test(t.trim()) && /Keeps Nov 19 covered/.test(t) && !/New streak|nothing to spare/.test(t), 'tile: ' + t);
+        assert(/1 day under/.test(t) && /Stay under \$62 today/.test(t), 'tile: ' + t);
+        assert(await has(page, LAB_TILE + ' .bl-oline.is-even'), 'the on track line is not amber');
+        assert(await has(page, LAB_TILE + ' .bl-sbox.is-on .bl-scount') && await has(page, LAB_TILE + ' .bl-pip.is-lit'), 'no streak box with its count');
         noErrors(page);
       } finally { await page.ctx.close(); }
       const strip = await env.newPage({ layout: [{ widget: 'budget-lab', x: 0, y: 0, w: 6, h: 1 }, { widget: 'today', x: 6, y: 0, w: 6, h: 1 }],
         storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const t = await text(strip, LAB_TILE);
-        assert(/1 day under · \$41 of \$65/.test(t), 'strip: ' + t);
+        assert(/\$62 a day · 1 day under/.test(t), 'strip: ' + t);
         noErrors(strip);
       } finally { await strip.ctx.close(); }
     });
@@ -797,7 +797,7 @@ async function main() {
         await H.key(page, 'Escape');
         await H.idle(page);
         await page.evaluate(() => window.HUB_GUEST.set(false));
-        await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back: ' + await text(page, LAB_TILE));
+        await H.until(async () => /a day/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back: ' + await text(page, LAB_TILE));
         await H.openPanel(page, 'budget-lab');
         const back = await labPanel(page);
         assert(/\$62\s*a day/.test(back) && /Saved \$61 a day/.test(back), 'after Guest mode: ' + back);
@@ -1174,7 +1174,7 @@ async function main() {
         await H.key(page, 'Escape');
         await H.idle(page);
         await page.evaluate(() => window.HUB_GUEST.set(false));
-        await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back');
+        await H.until(async () => /a day/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back');
         await H.openPanel(page, 'budget-lab');
         assert((await cutLabels(page))[1] === 'Quick Bites Delivery · $127 so far · cut $0', 'a cut came back: ' + (await cutLabels(page))[1]);
         noErrors(page);
@@ -1253,8 +1253,7 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
-    await check('the default layout and start tile are unchanged', async () => {
-      assert(C.start === 'entertainment', 'start: ' + C.start);
+    await check('the default layout is unchanged', async () => {
       assert(C.layout.map((t) => t.widget).join() === 'today,calendar,awws,weather,todo,mirror,wotd,ambience,nowplaying,entertainment', 'stock layout changed');
       assert(C.layouts[0].id === 'stock' && C.layouts[0].layout === null, 'Stock is not first');
       assert(C.widgets.budget && C.widgets.budget.show === true, 'budget.show is not true by default');

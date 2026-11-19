@@ -274,6 +274,12 @@ async function main() {
     await waitKind(s.page, 'playing', 'Morning Edition');
     const cfg = await s.page.evaluate(() => window.HUB_CONFIG.layouts.map((l) => l.name));
     assert(cfg.join('|') === 'Stock|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|All sounds test|Plant wall|Ambience test|Architecture test', 'layouts: ' + cfg.join(', '));
+    // A one-widget layout opens straight to full screen: Back to its tile, then Up.
+    if (TEST_LAYOUT.length === 1 && TEST_LAYOUT[0].w === 12 && TEST_LAYOUT[0].h === 6) {
+      await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'allsounds' && !window.HUB_TEST.busy()), 5000, 'the one-widget layout did not open full screen');
+      await s.page.keyboard.press('Escape');
+      await until(() => s.page.evaluate(() => !window.HUB_TEST.open() && !window.HUB_TEST.busy()), 5000, 'Back did not close it');
+    }
     await s.page.keyboard.press('ArrowUp');
     await until(() => s.page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
     await sleep(400);

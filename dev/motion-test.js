@@ -546,6 +546,10 @@ async function checkRing(pi) {
   assert(same(r, want), 'the ring is not on the focused tile at start: ' + JSON.stringify({ r, want }));
   const border = await page.evaluate(() => getComputedStyle(document.querySelector('#grid .tile.is-focused')).borderTopColor);
   assert(!/^rgb\(255, 255, 255\)$/.test(border), 'the tile still draws its own white border under the ring: ' + border);
+  // Focus starts top-left (Today); walk to Entertainment first.
+  assert((await focused(page)) === 'today', 'start focus: ' + (await focused(page)));
+  for (const k of ['ArrowDown', 'ArrowDown', 'ArrowRight']) { await page.keyboard.press(k); await sleep(250); }
+  assert((await focused(page)) === 'entertainment', 'walk to Entertainment: ' + (await focused(page)));
   // A press glides (190 ms), ending on the new tile.
   await page.keyboard.press('ArrowLeft');
   r = await ringRect(page);
@@ -573,7 +577,15 @@ async function checkRing(pi) {
   await control(pi, 'POST', '/api/layout', { layout: SWAPPED });
   await until(() => page.evaluate(() => window.HUB_TEST.homeRects().weather.left < 200), 4000, 'the layout did not switch');
   await sleep(80);
-  await page.keyboard.press('ArrowLeft');
+  // This layout has other widgets, so the hub reloads and focus starts top-left again.
+  await until(async () => (await focused(page)) === 'today', 4000, 'focus after the switch is not top-left');
+  r = await ringRect(page);
+  want = await page.evaluate(() => window.HUB_TEST.homeRects().today);
+  assert(same(r, want), 'the ring after the layout switch is not on Today: ' + JSON.stringify({ r, want }));
+  // Down, Down: Today, To-do, Weather (now bottom-left).
+  await page.keyboard.press('ArrowDown');
+  await sleep(250);
+  await page.keyboard.press('ArrowDown');
   await sleep(320);
   r = await ringRect(page);
   want = await page.evaluate(() => window.HUB_TEST.homeRects().weather);
