@@ -83,6 +83,19 @@
     nextPayShort: 'Paycheck {d}',
     paychecksHead: 'Paychecks',
     noTransfers: 'No transfers needed',
+    // Card day, autopay days: short on card day but every card is paid by its own autopay day
+    planHead: 'Payments',
+    autoWord: 'Short {n}',
+    autoNote: 'for {d}, covered by autopay',
+    autoNoteShort: 'covered by autopay',
+    autoNoteTiny: 'autopay',
+    autoSolo: 'autopay',
+    autoPay: 'autopay',
+    autoShortNote: '{n} short even with autopay',
+    autoShortNoteShort: '{n} short with autopay',
+    // Daily room, when its figure is worked from the autopay days
+    usingAutopay: 'using autopay days',
+    usingAutopayShort: 'autopay days',
     // Goals
     goalStates: { clean: 'Clean', 'on-pace': 'On pace', over: 'Over', under: 'Under' },
     overN: '{n} over',
@@ -601,7 +614,7 @@
     // a cent more than there is.
     var refund = num(s.roomIfRefund);
     var r = { cap: s.cap, per: Math.floor(s.roomPerDay), refund: refund === null ? null : Math.floor(refund),
-      days: num(s.daysLeft), through: dayFromText(s.throughDate) };
+      days: num(s.daysLeft), through: dayFromText(s.throughDate), auto: s.basis === 'autopay' };
     r.tone = r.per < 0 ? 'is-neg' : r.per < r.cap ? 'is-under' : 'is-ok';
     return r;
   }
@@ -657,6 +670,7 @@
     var cap = el('div', 'bu-line', root);
     var thru = r.through !== null ? el('div', 'bu-quiet', root) : null;
     var refund = r.refund !== null ? el('div', 'bu-note', root) : null;
+    var auto = r.auto ? el('div', 'bu-quiet bu-auto-line', root, STRINGS.usingAutopay) : null;
     fitHero(h, STRINGS.aDay);
     fitForms(cap, roomForms(r, false));
     if (thru) fitForms(thru, [fill(STRINGS.through, { d: dateText(r.through, 'long') }), fill(STRINGS.through, { d: dateText(r.through, 'short') })]);
@@ -664,7 +678,8 @@
       refund.textContent = fill(STRINGS.refund, { n: cash(r.refund) });
       if (overH(refund) || overW(refund)) fitForms(refund, [fill(STRINGS.refundShort, { n: cash(r.refund) }), fill(STRINGS.refundTiny, { n: cash(r.refund) })]);
     }
-    trim(root, [cap, refund, thru]);
+    if (auto) fitForms(auto, [STRINGS.usingAutopay, STRINGS.usingAutopayShort]);
+    trim(root, [cap, refund, thru, auto]);
     if (overH(root) && bar.parentNode) root.removeChild(bar);
   }
 
@@ -684,6 +699,7 @@
     if (r.per < 0) el('div', 'bu-pline is-neg', sec, STRINGS.overBudget);
     else if (r.per < r.cap) el('div', 'bu-pline is-under', sec, STRINGS.underCap);
     if (r.refund !== null) el('div', 'bu-pline is-quiet', sec, fill(STRINGS.refund, { n: cash(r.refund) }));
+    if (r.auto) el('div', 'bu-pline is-quiet', sec, STRINGS.usingAutopay);
     fitWidth(h.numEl);
     if (full) wrap.className += ' is-full';
   }
@@ -696,7 +712,18 @@
     if (!s || day === null || typeof s.covered !== 'boolean') return null;
     var short = num(s.shortBy);
     // A shortfall in whole dollars rounded up, never smaller than it is.
-    var c = { day: day, away: num(s.daysAway), covered: s.covered, short: short === null ? null : Math.ceil(short), transfers: [], pay: [] };
+    var c = { day: day, away: num(s.daysAway), covered: s.covered, short: short === null ? null : Math.ceil(short), transfers: [], pay: [], plan: [] };
+    // Short on card day but every card paid by its autopay day: amber, not an alarm.
+    c.byAuto = !s.covered && s.byAutopay === true;
+    var ashort = num(s.autopayShortBy);
+    c.autoShort = !s.covered && s.byAutopay === false && ashort !== null ? Math.ceil(ashort) : null;
+    var pl = isArr(s.plan) ? s.plan : [];
+    for (var q = 0; q < pl.length; q++) {
+      var pday = pl[q] ? dayFromText(pl[q].date) : null;
+      if (pday !== null && str(pl[q].label) && num(pl[q].amount) !== null) {
+        c.plan.push({ day: pday, label: str(pl[q].label), amount: pl[q].amount, auto: pl[q].kind === 'autopay' });
+      }
+    }
     var t = isArr(s.transfers) ? s.transfers : [];
     for (var i = 0; i < t.length; i++) {
       if (t[i] && str(t[i].label) && num(t[i].amount) !== null) c.transfers.push({ label: str(t[i].label), amount: t[i].amount });
@@ -711,9 +738,10 @@
     // The days away, from the date itself once the TV's day has moved on.
     var left = day - td;
     if (c.away === null || left !== c.away) c.away = Math.max(0, left);
-    c.tone = c.covered ? 'is-ok' : 'is-neg';
-    c.word = c.covered ? STRINGS.covered : fill(STRINGS.shortBy, { n: cash(c.short || 0) });
-    if (!c.covered && c.short === null) c.word = fill(STRINGS.shortBy, { n: '' }).replace(/\s+$/, '');
+    c.tone = c.covered ? 'is-ok' : c.byAuto ? 'is-under' : 'is-neg';
+    var wordText = c.byAuto ? STRINGS.autoWord : STRINGS.shortBy;
+    c.word = c.covered ? STRINGS.covered : fill(wordText, { n: cash(c.short || 0) });
+    if (!c.covered && c.short === null) c.word = fill(wordText, { n: '' }).replace(/\s+$/, '');
     return c;
   }
 
@@ -732,6 +760,25 @@
       fill(STRINGS.nextPayShort, { d: dateText(c.pay[0], 'short') })];
   }
 
+  // The plain words under the figure: covered by autopay, or still short with it.
+  function noteForms(c) {
+    if (c.byAuto) {
+      return [fill(STRINGS.autoNote, { d: dateText(c.day, 'short') }), STRINGS.autoNoteShort, STRINGS.autoNoteTiny];
+    }
+    if (c.autoShort !== null) return [fill(STRINGS.autoShortNote, { n: cash(c.autoShort) }), fill(STRINGS.autoShortNoteShort, { n: cash(c.autoShort) })];
+    return [];
+  }
+
+  // One payment of the plan: its day, the card and the amount ("autopay" after it when left for the card's day).
+  function planRow(p) {
+    var row = el('div', 'bu-trow bu-prow');
+    el('span', 'bu-prow-date', row, dateText(p.day, 'short'));
+    el('span', 'bu-trow-label bu-cut', row, p.label);
+    var v = el('span', 'bu-trow-value', row, cash(p.amount));
+    if (p.auto) el('span', 'bu-prow-auto', v, STRINGS.autoPay);
+    return row;
+  }
+
   function transferRow(t) {
     var row = el('div', 'bu-trow');
     el('span', 'bu-trow-label bu-cut', row, t.label);
@@ -748,7 +795,7 @@
     dim(root);
     if (size.cols === 1) {
       return solo(root, c.away === 0 ? STRINGS.todayCap : fmtNum(c.away), c.covered ? [STRINGS.coveredWord] :
-        [fill(STRINGS.shortWord, { n: cash(c.short || 0) }), cash(-(c.short || 0))], c.tone);
+        c.byAuto ? [STRINGS.autoSolo] : [fill(STRINGS.shortWord, { n: cash(c.short || 0) }), cash(-(c.short || 0))], c.tone);
     }
     if (size.tier === 'strip') {
       root.className += ' bu-strip';
@@ -763,6 +810,8 @@
       var forms = [];
       var w = whenForms(c);
       var p = payForms(c);
+      var nf = noteForms(c);
+      if (nf.length) forms.push(STRINGS.sep + w[0] + STRINGS.sep + nf[nf.length - 1]);
       for (var i = 0; i < w.length; i++) {
         if (p.length) forms.push(STRINGS.sep + w[i] + STRINGS.sep + p[Math.min(i, p.length - 1)]);
         forms.push(STRINGS.sep + w[i]);
@@ -775,29 +824,35 @@
       }
       return;
     }
-    var wide = size.width === 'wide' && c.transfers.length > 0;
+    // The payment plan takes the list's place when there is one; the transfers stay in the panel.
+    var usePlan = c.plan.length > 0;
+    var wide = size.width === 'wide' && (usePlan || c.transfers.length > 0);
     var left = wide ? el('div', 'bu-split-a', el('div', 'bu-split', root)) : root;
     var right = wide ? el('div', 'bu-split-b', left.parentNode) : null;
     var when = el('div', 'bu-when', left);
     var h = hero(left, c.word, '', c.tone, 'is-word');
+    var nfs = noteForms(c);
+    var note = nfs.length ? el('div', 'bu-line bu-auto-note ' + (c.byAuto ? 'is-under' : 'is-neg'), left) : null;
     var list = null;
     var more = null;
-    if (c.transfers.length && size.cols >= 3) {
+    if ((usePlan || c.transfers.length) && size.cols >= 3) {
       var sect = el('div', 'bu-sect', wide ? right : left);
-      el('div', 'bu-label', sect, STRINGS.transfersHead);
+      el('div', 'bu-label', sect, usePlan ? STRINGS.planHead : STRINGS.transfersHead);
       list = el('div', 'bu-list', sect);
       more = el('div', 'bu-more', sect);
     }
     var pay = c.pay.length ? el('div', 'bu-foot', root) : null;
     fitForms(when, whenForms(c));
     fitHero(h);
+    if (note) fitForms(note, nfs);
     if (pay) fitForms(pay, payForms(c));
     if (list) {
       var rows = [];
-      for (var k = 0; k < c.transfers.length; k++) rows.push(transferRow(c.transfers[k]));
+      if (usePlan) for (var m = 0; m < c.plan.length; m++) rows.push(planRow(c.plan[m]));
+      else for (var k = 0; k < c.transfers.length; k++) rows.push(transferRow(c.transfers[k]));
       if (!fitRows(list, more, rows)) list.parentNode.parentNode.removeChild(list.parentNode);
     }
-    trim(root, [pay]);
+    trim(root, [note, pay]);
     if (!list && size.cols >= 3) mark(root);
   }
 
@@ -813,6 +868,14 @@
     el('div', 'bu-pline', top, fill(STRINGS.cardOn, { d: dateText(c.day, 'long') }) + STRINGS.sep + awayText(c));
     var h = hero(top, c.word, '', c.tone, 'is-panel is-word');
     fitWidth(h.numEl);
+    var pnf = noteForms(c);
+    if (pnf.length) el('div', 'bu-pline ' + (c.byAuto ? 'is-under' : 'is-neg'), top, pnf[0]);
+    if (c.plan.length) {
+      var pls = el('div', 'bu-psec f', colB);
+      pls.setAttribute('data-key', 'plan');
+      el('div', 'bu-label', pls, STRINGS.planHead);
+      for (var n = 0; n < c.plan.length; n++) pls.appendChild(planRow(c.plan[n]));
+    }
     var ts = el('div', 'bu-psec f', colB);
     ts.setAttribute('data-key', 'transfers');
     el('div', 'bu-label', ts, STRINGS.transfersHead);

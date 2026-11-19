@@ -16,13 +16,35 @@ var HUB_CONFIG = {
   title: 'Living room',
   pi: HUB_PI,
 
-  /* The picture behind the tiles: a file next to hub.html or a full URL.
-     Any 1920x1080 picture works. '' or null = no picture (plain dark). */
-  background: 'backgrounds/ocean.jpg',
+  /* The picture behind the tiles:
+       'auto'   a picture from app/backgrounds/backgrounds.js: a day picture in
+                the day look and a night picture in the night look, a new one
+                each day (the default). ?bg=day/3 or ?bg=night/0 on the address
+                shows one by its place in the list (counting from 0).
+       a file next to hub.html or a full URL: that one picture, in both looks.
+       '' or null = no picture (plain dark).
+     Any 1920x1080 picture works. */
+  background: 'auto',
+
+  /* true = the current picture's title in small grey type in the bottom-right
+     corner of the home screen, so a picture can be named while trying them.
+     It hides while a panel or a dashboard is open. false = no label (the
+     About panel's "Picture" line still has the title and credit). */
+  pictureLabel: true,
 
   /* true = frosted-glass tiles that show a soft blur of the picture.
      false = solid dark cards, even with a picture. */
   glass: true,
+
+  /* The look of the glass tiles (app/theme.css), when glass is on and there
+     is a picture:
+       'auto'   day (light glass, dark text) between sunrise and sunset, night
+                (dark glass) otherwise. Sunrise and sunset come from the
+                Weather widget; without them, day is 7:00 AM to 6:00 PM (the default)
+       'day'    always light
+       'night'  always dark
+     ?theme=day or ?theme=night on the address tries one without editing this. */
+  theme: 'auto',
 
   /* How opening a widget looks:
        'auto'    start with 'push', time it on the TV, and step down to
@@ -160,6 +182,12 @@ var HUB_CONFIG = {
        layout. New widgets are tried the same way: one layout, one widget. */
     { id: 'ambience-test', name: 'Ambience test', layout: [
       { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    /* A test layout: Architecture (app/widgets/architecture.js, the map of the
+       whole system, driven by the remote) on its own, filling the screen. The
+       three busy layouts have no free cell for a tile yet. */
+    { id: 'architecture-test', name: 'Architecture test', layout: [
+      { widget: 'architecture', x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
 
@@ -430,6 +458,13 @@ var HUB_CONFIG = {
      * the panel's note; keepOutOfSun: the one to keep out of the summer
      * evening beam.
      */
+    /*
+     * Architecture: the map of the whole system, opened with the remote (app/widgets/architecture.js).
+     * OK on its tile opens straight to full screen; Back goes up a level and closes at the Big picture.
+     * It is on the "Architecture test" layout only; the map's data loads when it is first opened.
+     */
+    architecture: { openMode: 'full' },
+
     sunpath: {
       roofAngle: 40,
       gapFeet: 2.0,

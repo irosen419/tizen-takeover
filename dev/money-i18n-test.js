@@ -123,7 +123,8 @@ function inspect(args) {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
   const out = [];
   const roots = document.querySelectorAll(sel);
-  function cuts(cs) { return cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none'); }
+  // A cut that is shown: "...", a line clamp, or (the redesign, app/theme.css) an edge that fades out under a mask.
+  function cuts(cs) { return cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || (cs.webkitMaskImage && cs.webkitMaskImage !== 'none'); }
   function hides(cs) { return cs.overflowX === 'hidden' || cs.overflowY === 'hidden'; }
   function scrolls(cs, el) { return /auto|scroll/.test(cs.overflowY) || /auto|scroll/.test(cs.overflowX) || el.classList.contains('panel-body'); }
   for (let i = 0; i < roots.length; i++) {
@@ -474,6 +475,30 @@ async function main() {
           assert(!bad.length, 'short: ' + bad.slice(0, 4).join('; '));
           const fit = await page.evaluate(() => { const b = document.querySelector('#panel .panel-body'); return [b.scrollHeight, b.clientHeight, [].map.call(b.querySelectorAll('.bu-pcol'), (c) => c.offsetHeight), document.querySelector('.bl-pwrap').className]; });
           assert(fit[0] <= fit[1] + 1, 'the short case does not fit one screen: ' + JSON.stringify(fit));
+          noErrors(page);
+        } finally {
+          await page.ctx.close();
+          await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+        }
+      });
+      // Autopay days in Spanish: the amber card tile with its payment rows, the room's quiet line and the lab's header, nothing clipped.
+      await check(name + ': autopay days, the card tile, the room line and the lab header in Spanish, nothing clipped', async () => {
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true, autopay: true }));
+        const page = await open(env, { layout: ROW, lang: 'es', long: long });
+        try {
+          const card = await text(page, tileOf('budget-card'));
+          assert(/Faltan/.test(card) && /Pagos/.test(card) && /autom/.test(card) && /Sapphire Reserve/.test(card), 'card: ' + card);
+          assert(!/Faltan \$955.*Faltan/.test(card), 'card: ' + card);
+          assert(/pago autom|autom/.test(await text(page, tileOf('budget-room'))), 'room: ' + await text(page, tileOf('budget-room')));
+          let bad = await page.evaluate(inspect, [tileOf('budget-card'), 0]);
+          assert(!bad.length, 'card tile: ' + bad.slice(0, 4).join('; '));
+          bad = await page.evaluate(inspect, [tileOf('budget-room'), 0]);
+          assert(!bad.length, 'room tile: ' + bad.slice(0, 4).join('; '));
+          await H.openPanel(page, 'budget-lab');
+          const p = await text(page, '#panel .panel-body');
+          assert(/\$955/.test(p) && /pago/.test(p), 'lab: ' + p.slice(0, 300));
+          bad = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
+          assert(!bad.length, 'lab panel: ' + bad.slice(0, 4).join('; '));
           noErrors(page);
         } finally {
           await page.ctx.close();

@@ -65,6 +65,9 @@ var HUB_ICONS = (function () {
     'plant-sun': svg('<circle cx="16.5" cy="7" r="2.6"/><path d="M16.5 2.2v.9M16.5 10.9v.9M21.3 7h-.9M12.6 7h-.9' +
       'M19.9 3.6l-.6.6M13.7 9.8l-.6.6M19.9 10.4l-.6-.6M13.7 4.2l-.6-.6"/>' +
       '<path d="M3.5 20.5c0-6 3.6-9.2 9.4-9.2 0 5.8-3.4 9.2-9.4 9.2z"/><path d="M3.5 20.5l5.6-5.6"/>'),
+    // Architecture: a box over two boxes, joined.
+    architecture: svg('<rect x="8.5" y="3" width="7" height="5.5" rx="1.2"/><rect x="2.5" y="15.5" width="7" height="5.5" rx="1.2"/>' +
+      '<rect x="14.5" y="15.5" width="7" height="5.5" rx="1.2"/><path d="M12 8.5v3.5M6 15.5V12h12v3.5"/>'),
     camera: svg('<path d="M21.5 18.5a2 2 0 0 1-2 2h-15a2 2 0 0 1-2-2v-10a2 2 0 0 1 2-2h3.2L9.5 4h5l1.8 2.5h3.2a2 2 0 0 1 2 2z"/>' +
       '<circle cx="12" cy="13" r="3.8"/>'),
     // Ambience: a light bulb.
