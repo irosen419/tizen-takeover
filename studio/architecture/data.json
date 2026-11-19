@@ -2395,7 +2395,7 @@
      "title": "Weekly health report",
      "kind": "script",
      "status": "draft",
-     "pr": "PR (Pi health)",
+     "pr": "PR 114",
      "summary": "A script on the Pi itself (not in Docker), run every Sunday 3:15 AM by a systemd user timer, that checks the whole Pi and writes one JSON report.",
      "details": [
       "Checks CPU heat and throttling, under-voltage, memory and swap, disks and folder sizes, SD card errors in the kernel log, reboots without a clean shutdown, every Docker container and its restarts, user services (budget) and failed units, timers, whether each checkout under ~/code is on main and up to date with GitHub (the hourly auto-update), Wi-Fi signal and drops, the hub's log problems, data ages and translation use against the 2,000-line daily cap.",
@@ -2403,10 +2403,10 @@
       "Writes data/health/latest.json, a dated copy (12 kept) and latest.txt. Scrubbed before writing: no keys, addresses, Wi-Fi names, links, entity ids or amounts. New parts (storm speaker, room lights) add a file to checks.d/ instead of changing the script."
      ],
      "files": [
-      "(PR (Pi health)) pi/health/pi-health.py",
-      "(PR (Pi health)) pi/health/install.sh",
-      "(PR (Pi health)) pi/health/checks.d/README.md",
-      "(PR (Pi health)) pi/health/test_pi_health.py"
+      "(PR 114) pi/health/pi-health.py",
+      "(PR 114) pi/health/install.sh",
+      "(PR 114) pi/health/checks.d/README.md",
+      "(PR 114) pi/health/test_pi_health.py"
      ],
      "talksTo": [
       {
@@ -2509,13 +2509,13 @@
        "title": "health/",
        "kind": "data",
        "status": "draft",
-       "pr": "PR (Pi health)",
+       "pr": "PR 114",
        "summary": "The weekly Pi health report: health/latest.json and one dated copy per week, kept 180 days.",
        "details": [
         "The Pi's mailbox reader copies data/health/latest.json here within a minute of it changing; status.json then carries a one-line summary (when, ok/warn/bad, counts). Claude reads it with curl, like status.json."
        ],
        "files": [
-        "(PR (Pi health)) pi/mailbox.js"
+        "(PR 114) pi/mailbox.js"
        ],
        "children": []
       }
