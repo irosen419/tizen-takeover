@@ -31,7 +31,7 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * payment plan, the room says basis "autopay", the lab sends autopayRoom and
  * autopayDate), payday (a 14 day window to card day on Nov 30 with a
  * payday on Nov 20 inside it, for the runway chart: its runway ends at
- * lab.room to the cent), receipt (the Card day receipt prototype: 'autopay'
+ * lab.room to the cent), pace ('fresh', 'over' or a number: the streak), receipt (the Card day receipt prototype: 'autopay'
  * short on Dec 1 and covered by autopay, 'covered', or 'short' even with
  * autopay, $312 more; cardDay.receipt is NOT in the Pi's validator yet, so it is
  * injected into the TV: see dev/budget-receipt-shots.js), outlook (true adds
@@ -102,6 +102,20 @@ function snapshot(opts) {
   }
   if (opts.receipt) applyReceipt(s, opts.receipt === true ? 'autopay' : opts.receipt);
   if (opts.outlook && s.cardDay) applyOutlook(s, opts.outlook);
+  if (opts.pace !== undefined) {
+    // The pace streak: 'fresh' (no capped day logged yet, no streak),
+    // 'over' (yesterday went over), or a number of days under in a row
+    // ending yesterday (Nov 15), with a day over just before them.
+    const days = [];
+    const n = typeof opts.pace === 'number' ? opts.pace : 0;
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.UTC(2026, 10, 15 - i)).toISOString().slice(0, 10);
+      if (opts.pace === 'fresh') { days.push({ date: d, spent: 52.4 }); continue; }
+      const under = opts.pace === 'over' ? i > 0 && i % 3 !== 0 : i < n;
+      days.push({ date: d, spent: under ? 48.5 : 81.2, cap: 64.5 });
+    }
+    s.pace.days = days;
+  }
   if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
   for (const k of SECTIONS) if (s[k]) s[k].asOf = s.sentAt;
