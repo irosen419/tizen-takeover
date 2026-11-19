@@ -102,6 +102,8 @@
     outcomeShort: '{d}: Short by {n}',
     spareShort: 'Covered, {n} spare',
     zeroShort: 'Covered',
+    outcomeOnTrack: '{d}: On track at {cap} a day',
+    onTrackShort: 'On track at {cap}/day',
     shortShort: 'Short by {n}',
     // The panel
     today: 'today',
@@ -123,6 +125,8 @@
     heroSpareShort: 'Covered, {n} spare',
     heroZero: '{d}: covered, $0 spare',
     heroZeroShort: 'Covered',
+    heroOnTrack: '{d}: on track at {cap} a day',
+    heroOnTrackShort: 'On track at {cap}/day',
     heroShort: '{d}: short by {n}',
     heroShortShort: 'Short by {n}',
     // Reference lines
@@ -158,6 +162,7 @@
     dest: { card: 'Card day', savings: 'Savings', awws: 'AWWS', buffer: 'Buffer', extra: 'Extra to savings' },
     destOf: '{funded} of {planned}',
     destCovered: 'Covered',
+    destOnTrack: 'On track',
     destShortBy: '{funded} of {planned} · short {short}',
     destExtra: '+{n} more to savings',
     noLab: 'Card day needs a payday in the budget app',
@@ -174,6 +179,8 @@
     gapSpareShort: '{n} spare',
     gapZero: 'Covered, $0 spare',
     gapZeroShort: 'Covered',
+    gapOnTrack: 'On track, $0 spare',
+    gapOnTrackShort: 'On track',
     gapShort: 'Short by {n}',
     gapShortShort: 'Short {n}'
   };
@@ -391,6 +398,12 @@
     return out;
   }
 
+  // Covered with nothing over: the cap is the calculated one (R / D), so the
+  // result is $0 by construction. That is "on track", not "plenty".
+  function onTrack(r) {
+    return !!(r && r.ok && r.covered && MATH().wholeDown(r.keep) === 0 && r.R > 0);
+  }
+
   // The card day outcome: { forms (long first), tone }.
   function outcomeView(r) {
     if (r.ok) {
@@ -398,6 +411,7 @@
       if (!r.covered) return { forms: [fill(STRINGS.outcomeShort, { d: d, n: cash(r.short) }), fill(STRINGS.shortShort, { n: cash(r.short) })], tone: 'is-neg' };
       var spare = MATH().wholeDown(r.keep);
       if (spare > 0) return { forms: [fill(STRINGS.outcomeSpare, { d: d, n: cash(spare) }), fill(STRINGS.spareShort, { n: cash(spare) })], tone: 'is-ok' };
+      if (onTrack(r)) return { forms: [fill(STRINGS.outcomeOnTrack, { d: d, cap: down(r.cap) }), fill(STRINGS.onTrackShort, { cap: down(r.cap) })], tone: 'is-even' };
       return { forms: [fill(STRINGS.outcomeZero, { d: d }), STRINGS.zeroShort], tone: 'is-ok' };
     }
     if (r.reason === 'cardDayToday' && r.cardDayToday) {
@@ -565,6 +579,7 @@
     }
     var spare = MATH().wholeDown(r.keep);
     if (spare > 0) return [fill(STRINGS.heroSpare, { d: d, n: cash(spare) }), fill(STRINGS.heroSpareShort, { n: cash(spare) })];
+    if (onTrack(r)) return [fill(STRINGS.heroOnTrack, { d: d, cap: down(r.cap) }), fill(STRINGS.heroOnTrackShort, { cap: down(r.cap) })];
     return [fill(STRINGS.heroZero, { d: d }), STRINGS.heroZeroShort];
   }
 
@@ -606,7 +621,7 @@
       }
     }
     setText(refs.result, heroForms(r)[refs.heroForm || 0]);
-    setTone(refs.result, 'bl-result', r.covered ? 'is-ok' : 'is-neg');
+    setTone(refs.result, 'bl-result', !r.covered ? 'is-neg' : (onTrack(r) ? 'is-even' : 'is-ok'));
     setText(refs.refCalc, fill(STRINGS.refCalc, { n: down(r.c0) }));
     setText(refs.refSaved, r.saved ? fill(STRINGS.refSaved, { n: down(r.saved.cap) }) : STRINGS.refNoSaved);
     // The row under the reference lines: a reset when something moved,
@@ -678,9 +693,9 @@
   }
 
   // Row 7: card day, then the split's buckets, funded of planned.
-  function destValue(row) {
+  function destValue(row, r) {
     if (row.card) {
-      if (!(row.planned > 0)) return STRINGS.destCovered;
+      if (!(row.planned > 0)) return onTrack(r) ? STRINGS.destOnTrack : STRINGS.destCovered;
       var map = { funded: down(row.funded), planned: up(row.planned), short: up(row.short) };
       return row.short > 0 ? fill(STRINGS.destShortBy, map) : fill(STRINGS.destOf, map);
     }
@@ -700,7 +715,7 @@
     for (var i = 0; i < refs.dest.length && i < rows.length; i++) {
       var b = refs.dest[i];
       var row = rows[i];
-      setText(b.val, destValue(row));
+      setText(b.val, destValue(row, r));
       var f = row.planned > 0 ? frac(row.funded, { lo: 0, hi: row.planned }) : (row.card ? 1 : 0);
       setScale(b.fill, f);
       var neg = row.card && row.short > 0;
@@ -734,7 +749,7 @@
       // a key press never makes the line longer than its box.
       var m = MATH();
       var d = dateText(r.cardDate);
-      var wide = [fill(STRINGS.heroSpare, { d: d, n: cash(Math.max(0, m.wholeDown(r.R))) }), fill(STRINGS.heroShort, { d: d, n: cash(m.wholeUp(r.capMax * r.D)) })];
+      var wide = [fill(STRINGS.heroSpare, { d: d, n: cash(Math.max(0, m.wholeDown(r.R))) }), fill(STRINGS.heroShort, { d: d, n: cash(m.wholeUp(r.capMax * r.D)) }), fill(STRINGS.heroOnTrack, { d: d, cap: cash(m.wholeDown(r.capMax)) })];
       for (i = 0; i < wide.length; i++) {
         refs.result.textContent = wide[i];
         if (overW(refs.result) || overW(refs.slider)) { refs.heroForm = 1; again = true; }
@@ -898,6 +913,7 @@
     if (!r.covered) return [fill(STRINGS.gapShort, { n: cash(r.short) }), fill(STRINGS.gapShortShort, { n: cash(r.short) })];
     var spare = MATH().wholeDown(r.keep);
     if (spare > 0) return [fill(STRINGS.gapSpare, { n: cash(spare) }), fill(STRINGS.gapSpareShort, { n: cash(spare) })];
+    if (onTrack(r)) return [STRINGS.gapOnTrack, STRINGS.gapOnTrackShort];
     return [STRINGS.gapZero, STRINGS.gapZeroShort];
   }
 
@@ -944,7 +960,7 @@
     var gap = el('div', 'bl-ch-gap', box);
     var wide = cash(m.wholeUp(c.hi - c.lo));
     var form = 0;
-    var tries = [fill(STRINGS.gapSpare, { n: wide }), fill(STRINGS.gapShort, { n: wide })];
+    var tries = [fill(STRINGS.gapSpare, { n: wide }), fill(STRINGS.gapShort, { n: wide }), STRINGS.gapOnTrack];
     for (var t = 0; t < tries.length; t++) {
       gap.textContent = tries[t];
       if (overW(gap)) form = 1;
@@ -1044,7 +1060,7 @@
       ch.owed.setAttribute('points', pts);
     }
     setText(ch.gap, gapForms(r)[ch.gapForm]);
-    setTone(ch.gap, 'bl-ch-gap', r.covered ? 'is-ok' : 'is-neg');
+    setTone(ch.gap, 'bl-ch-gap', !r.covered ? 'is-neg' : (onTrack(r) ? 'is-even' : 'is-ok'));
   }
 
   // During a hold: now, then at most every CHART_EVERY ms, and once more

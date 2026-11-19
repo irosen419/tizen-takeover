@@ -535,7 +535,8 @@ async function main() {
       try {
         const t = await text(page, LAB_TILE);
         assert(/^1\s*day under/.test(t.trim()) && /Yesterday \$41 of \$65, \$24 under/.test(t), 'tile: ' + t);
-        assert(/Stay under \$62 today/.test(t) && /Nov 19: Covered, nothing to spare/.test(t), 'tile: ' + t);
+        assert(/Stay under \$62 today/.test(t) && /Nov 19: On track at \$62 a day/.test(t) && !/nothing to spare|Covered/.test(t), 'tile: ' + t);
+        assert(await has(page, LAB_TILE + ' .bl-foot.is-even') && !(await has(page, LAB_TILE + ' .bl-foot.is-ok')), 'the on track line is not amber');
         assert(await has(page, LAB_TILE + ' .bu-hero-num.is-ok'), 'the streak is not green');
         noErrors(page);
       } finally { await page.ctx.close(); }
@@ -573,7 +574,8 @@ async function main() {
         await H.openPanel(page, 'budget-lab');
         assert((await focusedKey(page)) === 'cap', 'the cap slider does not have focus: ' + await focusedKey(page));
         let p = await labPanel(page);
-        assert(/\$62\s*a day/.test(p) && /Hold ◀ ▶ to change your daily cap/.test(p) && /Nov 19: covered, \$0 spare/.test(p), 'panel: ' + p);
+        assert(/\$62\s*a day/.test(p) && /Hold ◀ ▶ to change your daily cap/.test(p) && /Nov 19: on track at \$62 a day/.test(p) && !/covered, \$0 spare/i.test(p), 'panel: ' + p);
+        assert(await has(page, '#panel .bl-result.is-even') && !(await has(page, '#panel .bl-result.is-ok')), 'the on track result is not amber');
         assert(/Calculated \$62 a day/.test(p) && /No saved cap yet/.test(p) && /Down for merchants/.test(p), 'panel: ' + p);
         assert(/The Daily room tile uses \$60 a day/.test(p), 'panel: ' + p);
         assert(/Stay under \$62 today for 2 days in a row/.test(p), 'pace: ' + p);
@@ -623,7 +625,7 @@ async function main() {
         const pref = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), PREF));
         assert(pref.v === 1 && pref.cardDate === '2026-11-19' && Math.abs(pref.keep - 3.4) < 0.001 && typeof pref.at === 'string', 'stored: ' + JSON.stringify(pref));
         p = await labPanel(page);
-        assert(/Saved \$61 a day/.test(p) && /Nov 19: covered, \$3 spare/.test(p), 'after Save: ' + p);
+        assert(/Saved \$61 a day/.test(p) && /Nov 19: covered, \$3 spare/.test(p) && await has(page, '#panel .bl-result.is-ok'), 'after Save: ' + p);
         assert(await page.evaluate(() => getComputedStyle(document.querySelector('#panel .bl-tick.is-saved')).display !== 'none'), 'no saved mark on the track');
         // Down from the cap is Back to calculated (lit now); Left and Right do nothing there.
         await H.key(page, 'ArrowDown');
@@ -789,7 +791,7 @@ async function main() {
         assert(/MERCHANTS|Merchants/.test(await labPanel(page)) && /Cut what you would skip before Nov 19/.test(await labPanel(page)), 'merchants head: ' + await labPanel(page));
         assert(/PUT IT SOMEWHERE|Put it somewhere/.test(await labPanel(page)), 'no Put it somewhere');
         let dest = await destVals(page);
-        assert(dest.join(' | ') === 'Card day: Covered | Savings: $0 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'destinations: ' + dest.join(' | '));
+        assert(dest.join(' | ') === 'Card day: On track | Savings: $0 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'destinations: ' + dest.join(' | '));
         assert(!(await has(page, '#panel .bl-dest.f, #panel .bl-dest .f')), 'Put it somewhere takes focus');
         // The panel is longer than its box at this size: it scrolls to the focused row.
         await goTo(page, 'cut-0');
@@ -975,7 +977,7 @@ async function main() {
         await H.openPanel(page, 'budget-lab');
         let c = await chartOf(page);
         assert(c && c.right && c.n === 2 && c.pay === 1, 'full screen chart: ' + JSON.stringify(c));
-        assert(c.gap === 'Covered, $0 spare' && /is-ok/.test(c.gapCls), 'gap at the calculated cap: ' + c.gap + ' ' + c.gapCls);
+        assert(c.gap === 'On track, $0 spare' && /is-even/.test(c.gapCls) && !/is-ok/.test(c.gapCls), 'gap at the calculated cap: ' + c.gap + ' ' + c.gapCls);
         assert(!/\$/.test(c.other), 'a figure in the chart besides the gap: ' + c.other);
         assert(c.labels.indexOf('Nov 20') >= 0 && c.labels.indexOf('Nov 30') >= 0 && c.labels.indexOf('Mon') >= 0, 'labels: ' + c.labels.join(' | '));
         assert(/Runway to Nov 30/i.test(await text(page, '#panel .bl-chart-head')), 'head: ' + await text(page, '#panel .bl-chart-head'));
