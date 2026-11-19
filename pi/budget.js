@@ -8,7 +8,9 @@
  * for Budget lab the room to card day (lab), the top 5 merchants with their
  * month-to-date totals (merchants, which the owner asked for), one spending
  * total per day (pace) and the runway as headroom (runway). No balances, no
- * transactions, no amounts on alerts. The budget app talks to the server on
+ * transactions, no amounts on alerts, with one exception the owner approved on
+ * 2026-11-19: cardDay.receipt, the Card day sum with the checking balance, what
+ * each card owes and bill names (the TV hides it in guest mode). The budget app talks to the server on
  * the Pi itself, so none of it goes through the cloud.
  *
  * This file only checks, merges and describes snapshots, the same way
@@ -40,6 +42,9 @@ const STEP_KINDS = ['pay', 'bill', 'reserve'];
 const PLAN_KINDS = ['first', 'autopay'];
 const BASES = ['first', 'autopay'];
 const MAX_PLAN = 6;
+// Card day's receipt (cardDay.receipt): the lines of the budget site's own sum.
+const RECEIPT_KEYS = ['checking', 'paychecks', 'billsBefore', 'cardsToday', 'cardCharges', 'billsAfter', 'buys'];
+const MAX_RECEIPT_ITEMS = 12;
 const MAX_MERCHANTS = 5;
 const MAX_PACE_DAYS = 31;
 const MAX_STEPS = 40;
@@ -85,6 +90,72 @@ function amountOf(o, k, where, required, opts) {
 function requiredBool(o, k, where) {
   if (field(o, k) === undefined) throw wrong('"' + k + '" is missing (true or false)', where);
   return F.boolOf(o, k, where);
+}
+
+// Whole cents, so sums are compared without floating point drift.
+function cents(v) {
+  return (v < 0 ? -1 : 1) * Math.round(Math.abs(v) * 100);
+}
+
+// One thing behind a receipt line: a bill, a card, a paycheck, a planned buy.
+function receiptItem(e, where) {
+  const it = {
+    label: F.textOf(e, 'label', 30, where, true),
+    amount: amountOf(e, 'amount', where, true, { signed: true })
+  };
+  F.put(it, 'date', F.dateOf(e, 'date', where));
+  if (F.boolOf(e, 'new', where)) it.new = true;
+  F.put(it, 'note', F.textOf(e, 'note', 30, where));
+  // A card: what it owes split in posted and pending, the recurring charges
+  // still to come before card day, the autopay day, and what the plan pays.
+  F.put(it, 'bal', amountOf(e, 'bal', where, false, { signed: true }));
+  F.put(it, 'pending', amountOf(e, 'pending', where, false, { signed: true }));
+  F.put(it, 'coming', amountOf(e, 'coming', where, false));
+  F.put(it, 'pay', amountOf(e, 'pay', where, false));
+  F.put(it, 'auto', amountOf(e, 'auto', where, false));
+  F.put(it, 'autopay', F.dateOf(e, 'autopay', where));
+  return it;
+}
+
+// cardDay.receipt: top to bottom, oldest money first. Every line adds up to
+// "bottom" and every line's items add up to the line, to the cent, or the
+// receipt is refused (the sender is tested against the same rule).
+function receiptOf(r) {
+  const out = {};
+  out.asOf = F.timeOf(r, 'asOf', 'receipt', true);
+  out.bottom = amountOf(r, 'bottom', 'receipt', true, { signed: true });
+  F.put(out, 'perDay', amountOf(r, 'perDay', 'receipt', false));
+  const next = F.objectOf(r, 'next', 'receipt');
+  if (next !== undefined) {
+    out.next = { date: F.dateOf(next, 'date', 'receipt next', true) };
+    F.put(out.next, 'amount', amountOf(next, 'amount', 'receipt next', false));
+  }
+  const lines = F.listOf(r, 'lines', RECEIPT_KEYS.length + 1, 'receipt', true);
+  if (!lines.length) throw wrong('"lines" must have at least 1 entry', 'receipt');
+  const seen = Object.create(null);
+  let sum = 0;
+  out.lines = F.eachEntry(lines, 'receipt line', (e, where) => {
+    const ln = { key: F.choiceOf(e, 'key', RECEIPT_KEYS, where) };
+    where += ', ' + ln.key;
+    if (seen[ln.key]) throw wrong('"' + ln.key + '" is used twice', where);
+    seen[ln.key] = true;
+    F.put(ln, 'label', F.textOf(e, 'label', 60, where));
+    ln.amount = amountOf(e, 'amount', where, true, { signed: true });
+    sum += cents(ln.amount);
+    const items = F.listOf(e, 'items', MAX_RECEIPT_ITEMS, where);
+    if (items !== undefined) {
+      if (ln.key === 'checking') throw wrong('"items" is not for the checking line', where);
+      ln.items = F.eachEntry(items, 'item', receiptItem);
+      const total = ln.items.reduce((a, it) => a + cents(it.amount), 0);
+      if (ln.items.length && total !== cents(ln.amount) * (ln.key === 'paychecks' ? 1 : -1)) {
+        throw wrong('its items do not add up to "amount" (paychecks add, every other line takes away)', where);
+      }
+    }
+    return ln;
+  });
+  if (out.lines[0].key !== 'checking') throw wrong('the first line must be "checking"', 'receipt');
+  if (sum !== cents(out.bottom)) throw wrong('the lines do not add up to "bottom"', 'receipt');
+  return out;
 }
 
 /* ---------- the sections ---------- */
@@ -144,6 +215,10 @@ const CHECK = {
     if (pay !== undefined) {
       out.paychecks = pay.map((v, n) => F.dateOf({ d: v }, 'd', 'paycheck ' + (n + 1), true, 'paychecks'));
     }
+    // The Card day receipt: checking balance, what the cards owe and bill
+    // names, which the owner approved for the TV (guest mode hides it there).
+    const receipt = F.objectOf(s, 'receipt', '');
+    if (receipt !== undefined) out.receipt = receiptOf(receipt);
     return out;
   },
 
