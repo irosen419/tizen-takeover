@@ -155,6 +155,7 @@
         headOn: 'Back on top by {d}',
         headBehind: 'Still behind by {d}',
         headAhead: 'Ahead all {n} months',
+        headAheadBy: 'Ahead by {n} on {d}',
         subCatch: 'Your {o} {m} paycheck catches you up. After that, about {n} a month you could save.',
         subAhead: 'About {n} a month you could save.',
         subBehind: 'Try a lower daily amount.',
@@ -162,6 +163,7 @@
         ordSfx: 'st|nd|rd|th',
         start: 'Starting {d}: {n} behind',
         startAhead: 'Starting {d}: even',
+        startAheadBy: 'Starting {d}: {n} ahead',
         paychecks: 'Paychecks',
         bills: 'Bills from checking',
         cards: 'Card spending, paid on the 1st after',
@@ -883,12 +885,20 @@
   function outlookData(s) {
     var o = s.outlook;
     if (!o || typeof o !== 'object' || !isArr(o.months) || !o.months.length || !o.start || typeof o.start !== 'object') return null;
-    var out = { startDay: dayFromText(o.start.date), behind: num(o.start.behind), avg: num(o.dailyAverage), avgMonths: num(o.averageMonths), months: [] };
-    if (out.startDay === null || out.behind === null || out.avg === null) return null;
-    for (var i = 0; i < o.months.length; i++) {
+    var out = { startDay: dayFromText(o.start.date), behind: num(o.start.behind), ahead: num(o.start.ahead), avg: num(o.dailyAverage), avgMonths: num(o.averageMonths), months: [] };
+    if (out.startDay === null || out.behind === null || out.avg === null || out.behind < 0 || out.avg < 0) return null;
+    // Older sample data had no "ahead": that is the same as 0.
+    if (out.ahead === null) out.ahead = 0;
+    if (out.ahead < 0) return null;
+    // A cushion and a gap cancel: only the net is shown.
+    var net = out.ahead - out.behind;
+    out.behind = net < 0 ? -net : 0;
+    out.ahead = net > 0 ? net : 0;
+    // The budget app sends 3 months; more than that is not drawn.
+    for (var i = 0; i < o.months.length && i < 3; i++) {
       var m = o.months[i];
       var mm = m && /^(\d{4})-(\d{2})$/.exec(str(m.month));
-      if (!mm || num(m.days) === null || !isArr(m.paydays) || num(m.paycheck) === null || num(m.bills) === null ||
+      if (!mm || num(m.days) === null || m.days < 28 || m.days > 31 || m.days % 1 !== 0 || +mm[2] < 1 || +mm[2] > 12 || !isArr(m.paydays) || num(m.paycheck) === null || num(m.bills) === null ||
           num(m.cardRecurring) === null) return null;
       var pd = [];
       for (var j = 0; j < m.paydays.length; j++) { var d = dayFromText(m.paydays[j]); if (d !== null) pd.push(d); }
@@ -907,9 +917,9 @@
    * is null and endDay is the last day of the window.
    */
   function outlookCalc(o, daily) {
-    var pos = -o.behind;
+    var pos = o.ahead - o.behind;
     var caught = null;
-    var out = { months: [], catchDay: null, catchMonth: -1, catchNth: 0, endDay: o.months[o.months.length - 1].end, avgSave: 0, behind: o.behind };
+    var out = { months: [], catchDay: null, catchMonth: -1, catchNth: 0, endDay: o.months[o.months.length - 1].end, avgSave: 0, behind: o.behind, ahead: o.ahead };
     var i;
     for (i = 0; i < o.months.length; i++) {
       var m = o.months[i];
@@ -990,7 +1000,8 @@
     var head;
     var sub;
     if (o.behind <= 0) {
-      tone = 'is-ok'; head = fill(O.headAhead, { n: nm }); sub = fill(O.subAhead, { n: cash(r.avgSave) });
+      tone = 'is-ok';
+      head = o.ahead > 0 ? fill(O.headAheadBy, { n: cash(o.ahead), d: dateText(o.startDay, 'short') }) : fill(O.headAhead, { n: nm }); sub = fill(O.subAhead, { n: cash(r.avgSave) });
     } else if (r.catchDay !== null) {
       tone = 'is-ok'; head = fill(O.headOn, { d: dateText(r.catchDay, 'short') });
       sub = fill(O.subCatch, { o: olOrd(r.catchNth), m: STRINGS.months[r.months[r.catchMonth].idx], n: cash(r.avgSave) });
@@ -1001,6 +1012,7 @@
     el('div', 'bu-rhero-word ' + tone, top, head);
     el('div', 'bu-rhero-cap bu-ol-sub', top, sub);
     if (o.behind > 0) el('div', 'bu-ol-start is-neg', wrap, fill(O.start, { d: dateText(o.startDay, 'short'), n: cash(o.behind) }));
+    else if (o.ahead > 0) el('div', 'bu-ol-start is-ok', wrap, fill(O.startAheadBy, { d: dateText(o.startDay, 'short'), n: cash(o.ahead) }));
     else el('div', 'bu-ol-start is-ok', wrap, fill(O.startAhead, { d: dateText(o.startDay, 'short') }));
     // The table
     var tbl = el('div', 'bu-otable', wrap);
@@ -1196,9 +1208,10 @@
   function rcPanel(root, ctx, full, c) {
     var R = STRINGS.receipt;
     var rc = c.rc;
-    if (c.ol && !S.rcOpen) {
-      olTabs(root, S.rcPage === 'outlook' ? 'outlook' : 'receipt', c.ol.months.length);
-      if (S.rcPage === 'outlook') return olPage(root, c);
+    var tabbed = !!(c.ol && !S.rcOpen);
+    if (tabbed && S.rcPage === 'outlook') {
+      olTabs(root, 'outlook', c.ol.months.length);
+      return olPage(root, c);
     }
     var wrap = el('div', 'bu-pwrap bu-rc' + (full ? ' is-full is-cols' : '') + (S.rcOpen ? ' is-detail' : '') + (staleAt() ? ' is-stale' : ''), root);
     var detail = S.rcOpen;
@@ -1212,6 +1225,9 @@
       if (!line) { S.rcOpen = null; detail = null; }
     }
     var colA = el('div', 'bu-pcol', wrap);
+    // The tab strip sits over the receipt's own column only, so the plan column keeps its height
+    // (and its "OK for details" hint stays on screen).
+    if (tabbed) olTabs(colA, 'receipt', c.ol.months.length);
     var colB = full && !detail ? el('div', 'bu-pcol', wrap) : null;
     var hh = rcHero(c);
     if (detail) {

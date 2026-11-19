@@ -143,10 +143,41 @@ async function main() {
         await page.evaluate(() => window.HUB_GUEST.set(false)); await H.sleep(300);
         while (await page.evaluate(() => window.HUB_TEST.open())) { await H.key(page, 'Escape'); await H.sleep(400); }
       });
+      await check('outlook ahead start: cushion, headline, Spanish wording; still behind; empty months', async () => {
+        const base = H.budgetSample.snapshot({ receipt: 'autopay', outlook: 'ahead' }).cardDay.outlook;
+        const r = await page.evaluate((o) => {
+          const t = window.HUB_BUDGET_TEST; const d = t.outlookData({ outlook: o });
+          const c = t.outlookCalc(d, 110);
+          const lowAhead = t.outlookData({ outlook: Object.assign({}, o, { months: [] }) });
+          const bad = t.outlookData({ outlook: Object.assign({}, o, { start: { date: '2026-12-01', behind: 0, ahead: -1 } }) });
+          return { ahead: d.ahead, behind: d.behind, left: c.months.map((m) => m.left), save: c.months.map((m) => m.save), catchDay: c.catchDay, empty: lowAhead, bad: bad };
+        }, base);
+        assert(r.ahead === 640 && r.behind === 0 && r.catchDay === null, JSON.stringify(r));
+        assert(r.save[0] === 4713 && r.empty === null && r.bad === null, JSON.stringify(r));
+        await inject(page, snap('autopay', (x) => { x.cardDay.outlook = base; }));
+        await H.openPanel(page, 'budget-card');
+        await H.key(page, 'ArrowRight'); await H.sleep(400);
+        let t = await panelText(page);
+        assert(/Ahead by \$640 on Dec 1/.test(t) && /Starting Dec 1: \$640 ahead/.test(t) && !/catches you up/.test(t), t);
+        // Still behind after 3 months at a high daily amount.
+        
+        while (await page.evaluate(() => window.HUB_TEST.open())) { await H.key(page, 'Escape'); await H.sleep(400); }
+        await inject(page, snap('autopay', (x) => { x.cardDay.outlook = H.budgetSample.snapshot({ receipt: 'autopay', outlook: true }).cardDay.outlook; x.cardDay.outlook.dailyAverage = 330; }));
+        await H.openPanel(page, 'budget-card');
+        await H.key(page, 'ArrowRight'); await H.sleep(400);
+        t = await panelText(page);
+        assert(/Still behind by Feb 28/.test(t) && /Try a lower daily amount/.test(t), t);
+        while (await page.evaluate(() => window.HUB_TEST.open())) { await H.key(page, 'Escape'); await H.sleep(400); }
+        // An empty months list: no tab strip.
+        await inject(page, snap('autopay', (x) => { x.cardDay.outlook = H.budgetSample.snapshot({ receipt: 'autopay', outlook: true }).cardDay.outlook; x.cardDay.outlook.months = []; }));
+        await H.openPanel(page, 'budget-card');
+        { const pt = await panelText(page); assert(!/Next \d months/.test(pt), 'empty strip shown: ' + pt.slice(0, 120)); }
+        while (await page.evaluate(() => window.HUB_TEST.open())) { await H.key(page, 'Escape'); await H.sleep(400); }
+      });
       await check('no outlook in the snapshot: no tab strip', async () => {
         await inject(page, snap('autopay'));
         await H.openPanel(page, 'budget-card');
-        assert(!/Next 3 months/.test(await panelText(page)), 'strip shown');
+        { const pt = await panelText(page); assert(!/Next 3 months/.test(pt), 'strip shown: ' + pt.slice(0, 200)); }
         while (await page.evaluate(() => window.HUB_TEST.open())) { await H.key(page, 'Escape'); await H.sleep(400); }
       });
       assert(!H.errorsOf(page, false).length, 'console: ' + H.errorsOf(page, false).join(' | '));

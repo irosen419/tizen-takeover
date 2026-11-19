@@ -149,6 +149,39 @@ async function main() {
     assert.ok(/"paychecks" must be a real date like 2026-12-01 \(paycheck 2\)/.test(one('cardDay', Object.assign({}, CARD, { paychecks: ['2026-11-20', 'Friday'] })).error));
   });
 
+  await check('cardDay outlook: strict shape, a bad outlook is dropped and card day kept', () => {
+    const M = (n) => ({ month: '2026-1' + n, days: 30, paydays: ['2026-1' + n + '-05'], paycheck: 4000, bills: 2000.004, cardRecurring: 300, planned: 0 });
+    const OUT = { start: { date: '2026-12-01', behind: 0, ahead: 120 }, dailyAverage: 47.5, averageMonths: 3, months: [M(0), M(1), M(2)] };
+    const c = (o) => one('cardDay', Object.assign({}, CARD, { outlook: o })).clean;
+    const good = c(OUT);
+    assert.strictEqual(good.outlook.months.length, 3);
+    assert.strictEqual(good.outlook.months[0].bills, 2000);
+    assert.strictEqual(good.outlook.start.ahead, 120);
+    const extra = c(Object.assign({}, OUT, { balance: 5, months: [Object.assign({}, M(0), { note: 'x' })] }));
+    assert.ok(!('balance' in extra.outlook) && !('note' in extra.outlook.months[0]));
+    const bads = [
+      'x', null, [],
+      Object.assign({}, OUT, { months: [] }),
+      Object.assign({}, OUT, { months: [M(0), M(1), M(2), M(3)] }),
+      Object.assign({}, OUT, { months: [Object.assign({}, M(0), { paydays: ['2026-10-01', '2026-10-08', '2026-10-15', '2026-10-22'] })] }),
+      Object.assign({}, OUT, { months: [Object.assign({}, M(0), { month: '2026-13' })] }),
+      Object.assign({}, OUT, { months: [Object.assign({}, M(0), { days: 40 })] }),
+      Object.assign({}, OUT, { months: [Object.assign({}, M(0), { paycheck: -1 })] }),
+      Object.assign({}, OUT, { months: [Object.assign({}, M(0), { bills: 2000000 })] }),
+      Object.assign({}, OUT, { start: { date: '2026-12-01', behind: -5, ahead: 0 } }),
+      Object.assign({}, OUT, { start: { date: 'soon', behind: 0, ahead: 0 } }),
+      Object.assign({}, OUT, { start: { date: '2026-12-01', behind: 5 } }),
+      Object.assign({}, OUT, { dailyAverage: 'a lot' }),
+      Object.assign({}, OUT, { averageMonths: 2.5 })
+    ];
+    bads.forEach((b, n) => {
+      const r = one('cardDay', Object.assign({}, CARD, { outlook: b }));
+      if (b === null) return;
+      assert.ok(r.clean && !('outlook' in r.clean), 'bad outlook ' + n + ' is dropped');
+      assert.strictEqual(r.clean.date, '2026-11-19');
+    });
+  });
+
   await check('cardDay autopay days: byAutopay, autopayShortBy and the payment plan', () => {
     const short = Object.assign({}, CARD, { covered: false, shortBy: 954.2 });
     const plan = [

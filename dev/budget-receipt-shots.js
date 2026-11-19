@@ -46,7 +46,7 @@ const LAYOUT = [
 function snapshot() {
   const file = arg('--snapshot');
   const s = file ? JSON.parse(fs.readFileSync(file, 'utf8'))
-    : H.budgetSample.snapshot({ sentAt: FRESH, payday: true, receipt: KIND, outlook: true });
+    : H.budgetSample.snapshot({ sentAt: FRESH, payday: true, receipt: KIND, outlook: arg('--outlook-kind') || true });
   s.sentAt = FRESH;
   Object.keys(s).forEach((k) => { if (s[k] && typeof s[k] === 'object' && s[k].asOf) s[k].asOf = FRESH; });
   return s;
