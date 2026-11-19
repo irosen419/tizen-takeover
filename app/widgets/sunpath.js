@@ -1286,7 +1286,7 @@
   function careScroll(dir) {
     if (!pv || !pv.careView) return false;
     var max = careMax();
-    var step = Math.max(24, Math.round(pv.careView.clientHeight * 0.6));
+    var step = Math.max(12, Math.round(pv.careView.clientHeight * 0.3));
     var y = Math.max(0, Math.min(max, (pv.careY || 0) + dir * step));
     if (y === (pv.careY || 0)) return false;
     pv.careY = y;
