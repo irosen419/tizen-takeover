@@ -42,10 +42,11 @@ One JSON object. `v` and `sentAt` are required. Every section is optional.
   "sentAt": "2026-11-16T15:10:00Z",
   "room":    { "asOf": "...", "cap": 60, "roomPerDay": 42.5, "roomIfRefund": 48, "daysLeft": 9, "throughDate": "2026-11-24" },
   "cardDay": { "asOf": "...", "date": "2026-11-19", "daysAway": 3, "covered": true,
-               "transfers": [ { "label": "From checking", "amount": 310 } ], "paychecks": ["2026-11-20"] },
+               "transfers": [ { "label": "From checking", "amount": 310 } ], "paychecks": ["2026-11-20"],
+               "plan": [ { "label": "Sapphire Reserve", "date": "2026-11-19", "amount": 480, "kind": "first" } ] },
   "goals":   { "asOf": "...", "items": [ { "label": "Coffee out", "state": "over", "text": "$62 over", "pct": 100 } ] },
   "alerts":  { "asOf": "...", "items": [ { "id": "a-1042", "label": "Corner Bakery Stand" } ] },
-  "lab":       { "asOf": "...", "room": 1334, "spentToday": 0, "daysLeft": 14, "cardDate": "2026-12-01", "monthDay": 17,
+  "lab":       { "asOf": "...", "room": 1334, "spentToday": 0, "daysLeft": 14, "cardDate": "2026-12-01", "monthDay": 17, "autopayRoom": 412.6, "autopayDate": "2026-11-24",
                  "split": [ { "key": "savings", "amount": 500 }, { "key": "awws", "amount": 150 }, { "key": "buffer", "amount": 350 } ] },
   "merchants": { "asOf": "...", "month": "2026-11", "combined": 702.4,
                  "items": [ { "label": "Corner Bakery Stand", "mtd": 212.6, "count": 9 } ] },
@@ -78,6 +79,7 @@ These are the same rules as the A World Worth Saving snapshot ([`awws-snapshot.m
 | `cap` | dollars, more than 0 | required: the daily cap |
 | `roomPerDay` | dollars, may be negative | required: what is left to spend per day through `throughDate` |
 | `roomIfRefund` | dollars, may be negative | optional: `roomPerDay` once a pending refund posts |
+| `basis` | `first` or `autopay` | optional, `first` when left out: which card day plan `roomPerDay` is worked from. `autopay` means the cards wait for their own autopay days |
 | `daysLeft` | whole number, 0 to 366 | required |
 | `throughDate` | date | required: the last day the room covers |
 
@@ -93,8 +95,13 @@ On the TV: the room per day, big; amber when it is under the cap, coral below ze
 | `shortBy` | dollars | optional, and only when `covered` is false; a snapshot with `shortBy` and `covered: true` has its card day refused |
 | `transfers` | list, at most 6 | optional: `{ "label": "From checking", "amount": 310 }`; `label` is text, 24; `amount` is dollars. The split that covers the card |
 | `paychecks` | list of dates, at most 4 | optional: the coming paychecks |
+| `byAutopay` | true or false | optional, and only when `covered` is false (a snapshot with `byAutopay` and `covered: true` is refused). `true`: the card day is short, but every card is paid in full by its own autopay day |
+| `autopayShortBy` | dollars | optional, and only when `byAutopay` is `false`: how short it is even when the cards wait for their autopay days (refused otherwise) |
+| `plan` | list, at most 6 | optional: `{ "label": "Sapphire Reserve", "date": "2026-12-01", "amount": 1200, "kind": "first" }`; `label` is text, 24; `date` is the day of the payment; `amount` is dollars, the payment itself; `kind` is `first` (paid by hand on card day) or `autopay` (left for the card's autopay day, which can be before card day too). In date order |
 
-On the TV: "Thu, Nov 19 · in 3 days", then "Covered" in green or "Short by $120" in coral, the transfer rows, and "Next paycheck Fri, Nov 20" (the first paycheck from today on).
+The `plan` amounts are payments the owner asked to see. They are the one exception to "no balance": never what a card owes in any other form.
+
+On the TV: "Thu, Nov 19 · in 3 days", then "Covered" in green or "Short by $120" in coral, the transfer rows, and "Next paycheck Fri, Nov 20" (the first paycheck from today on). With `covered: false` and `byAutopay: true` the word is amber, "Short $954 for Dec 1, covered by autopay", not a coral alarm. When there is a `plan`, its rows come next ("Dec 1  Sapphire Reserve  $1,200", "Dec 7  Sapphire Reserve  $400 autopay"), also when the card day is covered. With `byAutopay: false` the tile stays coral, as before, and says "$X short even with autopay" from `autopayShortBy`.
 
 ### `goals`
 
@@ -131,6 +138,8 @@ The figures the Budget lab tile works its equations from (cap, what is kept on c
 | `daysLeft` | whole number, 0 to 366 | required: today through the day before card day. 0 means card day is today |
 | `cardDate` | date | required: card day |
 | `monthDay` | whole number, 1 to 31 | required: the day of the month today, today included |
+| `autopayRoom` | dollars, may be negative | optional: the room to the autopay date, worked on the same morning basis as `room` (the autopay allowance less pending refunds plus `spentToday`). Sent whenever the budget app works it out; the TV uses it only when `room` is below zero |
+| `autopayDate` | date | optional: the day that plan is worked to (the earliest autopay day on or after card day) |
 | `split` | list, at most 4 | optional: `{ "key": "savings", "amount": 500 }`; `key` is `savings`, `awws`, `buffer` or `extra`, each at most once; `amount` is dollars. Where spare money on card day goes, in this order. Left out, the TV uses 500, 150 and 350 |
 
 ### `merchants`: the top 5 merchants this month
@@ -146,6 +155,8 @@ The figures the Budget lab tile works its equations from (cap, what is kept on c
 | Field | Type | Notes |
 |---|---|---|
 | `days` | list, at most 31 | required, oldest first, one entry per date, each date once: `{ "date": "2026-11-16", "spent": 71.2, "cap": 95.29 }`; `spent` is dollars, that day's total in the spend buckets; `cap` is dollars, more than 0, the calculated daily cap the budget app logged that morning, left out on a day with no log (the Pi was off). One total per day, never the charges themselves |
+
+When `room` is below zero and `autopayRoom` is there, Budget lab works from `autopayRoom` instead of showing "You're $X short even at $0 a day": its header says the 1st is short and the plan relies on the cards' autopay days (up to `autopayDate`), then the usual cap screen runs off `autopayRoom`. When `autopayRoom` is below zero too, the move money screen shows that shortfall.
 
 ### `runway`: headroom from today to card day
 
