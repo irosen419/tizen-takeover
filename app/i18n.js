@@ -289,7 +289,7 @@
     'budget.receipt.outlook.startAheadBy': 'Al empezar el {d}: {n} por delante',
     'budget.receipt.outlook.paychecks': 'Sueldos',
     'budget.receipt.outlook.bills': 'Facturas de la cuenta corriente',
-    'budget.receipt.outlook.cards': 'Gasto en tarjetas, se paga el día 1 siguiente',
+    'budget.receipt.outlook.cards': 'Gastos del día a día y cargos de tarjeta',
     'budget.receipt.outlook.buys': 'Compras previstas',
     'budget.receipt.outlook.left': 'Sobra este mes',
     'budget.receipt.outlook.save': 'Podría pasar a ahorros',

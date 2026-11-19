@@ -166,7 +166,7 @@
         startAheadBy: 'Starting {d}: {n} ahead',
         paychecks: 'Paychecks',
         bills: 'Bills from checking',
-        cards: 'Card spending, paid on the 1st after',
+        cards: 'Everyday spending and card charges',
         buys: 'Planned buys',
         left: 'Left over this month',
         save: 'Could move to savings',
