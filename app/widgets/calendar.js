@@ -28,6 +28,10 @@
  *              of them beside the Day view; OK there (or a click on the
  *              event) opens them to read: Up/Down scroll, OK, Back, Left or
  *              Right close. Guest mode hides notes (app/guest.js).
+ *   Guests:    an event with other people on it (Pi server 0.17.0:
+ *              guestCount and guests) says "1 guest" / "3 guests" beside its
+ *              time in every view; its notes open with the count and the
+ *              names. Nothing when there are none; Guest mode hides both.
  *
  * Opening the panel when nothing is left today goes straight to the next
  * event's day with it chosen, the one the tile shows under "Next".
@@ -90,6 +94,9 @@
     notesLabel: 'Notes',
     readNotes: 'OK to read',
     notesGuest: 'Notes hidden for guests',
+    guestOne: '1 guest',
+    guestMany: '{n} guests',
+    guestsLabel: 'Guests',
     states: {
       off: { head: 'Calendar needs the Pi',
         line: 'Your calendars come from the hub server on the Raspberry Pi. Live updates are off on this TV: set live.server in config.js to the Pi’s address.',
@@ -385,7 +392,12 @@
         location: str(ev.location).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''),
         allDay: ev.allDay === true,
         notes: typeof ev.note === 'string' && d.notes && typeof d.notes === 'object' && typeof d.notes[ev.note] === 'string' ?
-          d.notes[ev.note].replace(/\r\n?/g, '\n').replace(/^\s+|\s+$/g, '') : '' };
+          d.notes[ev.note].replace(/\r\n?/g, '\n').replace(/^\s+|\s+$/g, '') : '',
+        guestCount: typeof ev.guestCount === 'number' && ev.guestCount >= 1 ? Math.floor(ev.guestCount) : 0,
+        guests: [] };
+      if (n.guestCount && isArr(ev.guests)) {
+        for (var gi = 0; gi < ev.guests.length && gi < 25; gi++) if (typeof ev.guests[gi] === 'string' && ev.guests[gi]) n.guests.push(ev.guests[gi]);
+      }
       if (seen.hasOwnProperty('k' + n.id)) n.id = n.id + '~' + i;
       seen['k' + n.id] = true;
       if (n.allDay) {
@@ -622,6 +634,29 @@
     }
   }
 
+  // How many other people are on the event, as words; '' for none or in Guest mode.
+  function guestText(ev) {
+    if (!ev || !ev.guestCount || guestOn()) return '';
+    return ev.guestCount === 1 ? STRINGS.guestOne : fill(STRINGS.guestMany, { n: ev.guestCount });
+  }
+
+  // " · 3 guests" after an event's time, in its own span so it can be quieter.
+  // Narrow places (a Week column) get a small person mark and the number.
+  function guestTag(parent, ev, mini) {
+    var t = guestText(ev);
+    if (!t) return;
+    if (!mini) { el('span', 'cal-guests', parent, '\u00a0\u00b7 ' + t); return; }
+    var m = el('span', 'cal-guests is-mini', parent);
+    m.setAttribute('title', t);
+    var p = el('span', 'cal-person', m);
+    el('i', '', p);
+    el('i', '', p);
+    el('span', '', m, String(ev.guestCount));
+  }
+
+  // The event can be opened to read: it has notes or guests to show.
+  function readable(ev) { return !!(notesOf(ev) || guestText(ev)); }
+
   // A small lines mark: this event has notes.
   function notesMark(parent) {
     var m = el('span', 'cal-has-notes', parent);
@@ -655,7 +690,9 @@
     relDay: relDay,
     isPast: isPast,
     noteBlocks: noteBlocks,
-    notesOf: notesOf
+    notesOf: notesOf,
+    guestText: guestText,
+    readable: readable
   };
 
   /* ---------- the data and the live line ---------- */
@@ -974,7 +1011,8 @@
         bar(line, a.next.cal);
         var txt = el('div', 'cal-next-text', line);
         var when = relDay(a.next.startDay, a.today) + (a.next.allDay ? '' : ' ' + timeText(zone, a.next.s));
-        el('div', 'cal-next-when', txt, when);
+        var nw = el('div', 'cal-next-when', txt, when);
+        guestTag(nw, a.next);
         var nt = el('div', 'cal-next-title', txt, titleOf(a.next));
         if (notesOf(a.next)) notesMark(nt);
       } else if (!a.had) {
@@ -1016,6 +1054,7 @@
     el('span', 'cal-trow-tag', row, STRINGS.allDay);
     var line = el('span', 'cal-trow-line', row, titleOf(ev));
     if (notesOf(ev)) notesMark(line);
+    guestTag(line, ev);
     return row;
   }
 
@@ -1030,6 +1069,7 @@
     } else {
       when.textContent = timeText(zone, u.ev.s);
     }
+    guestTag(when, u.ev);
     var t = el('div', 'cal-trow-title', text, titleOf(u.ev));
     if (notesOf(u.ev)) notesMark(t);
     return row;
@@ -1158,7 +1198,7 @@
   function setHint() {
     if (!ui || !ui.hint) return;
     var text = ui.focus === 'tabs' ? STRINGS.hintTabs :
-      view === 'day' ? (reading ? STRINGS.hintReading : notesOf(selectedEvent()) ? STRINGS.hintDayNotes : STRINGS.hintDay) :
+      view === 'day' ? (reading ? STRINGS.hintReading : readable(selectedEvent()) ? STRINGS.hintDayNotes : STRINGS.hintDay) :
       view === 'week' ? STRINGS.hintWeek : STRINGS.hintMonth;
     ui.hint.textContent = text;
   }
@@ -1271,7 +1311,7 @@
     pack(de.timed, minH / H * 60);
 
     var selEv = selectedEvent();
-    if (reading && !notesOf(selEv)) reading = false;
+    if (reading && !readable(selEv)) reading = false;
     var wrap = el('div', 'cal-day' + (reading ? ' is-reading' : ''), stage);
     var tl = el('div', 'cal-tl', wrap);
     var detailBox = el('div', 'cal-detail', wrap);
@@ -1321,7 +1361,8 @@
       face.style.backgroundColor = color(it.ev.cal, 0.26);
       face.style.borderLeftColor = color(it.ev.cal);
       el('div', 'cal-ev-title', face, titleOf(it.ev));
-      el('div', 'cal-ev-time', face, it.before ? fill(STRINGS.untilT, { t: timeText(zone, it.ev.e) }) : timeText(zone, it.ev.s));
+      var et = el('div', 'cal-ev-time', face, it.before ? fill(STRINGS.untilT, { t: timeText(zone, it.ev.e) }) : timeText(zone, it.ev.s));
+      guestTag(et, it.ev);
       clickPick(box, it.ev.id);
       if (it.ev.id === selId) selItem = { top: top, height: height };
     }
@@ -1384,6 +1425,8 @@
     el('span', 'cal-detail-calname', who, calName(c || { cal: ev.cal }));
     el('div', 'cal-detail-title' + (ev.title === 'Busy' ? ' is-busy' : ''), meta, titleOf(ev));
     el('div', 'cal-detail-when', meta, whenText(zone, ev));
+    var gtext = guestText(ev);
+    if (gtext) el('div', 'cal-detail-guests', meta, gtext);
     if (ev.location) el('div', 'cal-detail-place', meta, ev.location);
     var count = dayOrder(de).length;
     if (count > 1 && !reading) {
@@ -1397,15 +1440,24 @@
       return;
     }
     var text = notesOf(ev);
-    if (!text) { ui.readView = null; return; }
+    if (!text && !gtext) { ui.readView = null; return; }
     var notes = el('div', 'cal-notes', box);
     var head = el('div', 'cal-notes-head', notes);
     var label = el('div', 'cal-notes-label', head);
     notesMark(label);
-    el('span', '', label, STRINGS.notesLabel);
+    el('span', '', label, text ? STRINGS.notesLabel : STRINGS.guestsLabel);
     var nview = el('div', 'cal-notes-view', notes);
     var body = el('div', 'cal-notes-body', nview);
-    drawNoteBlocks(body, text);
+    // Who is on it comes first: the count, then the names.
+    if (gtext) {
+      var gb = el('div', 'cal-nb cal-nb-guests', body);
+      el('div', 'cal-nb-head', gb, gtext);
+      if (ev.guests.length) {
+        var more = ev.guestCount - ev.guests.length;
+        el('div', 'cal-nb-line', gb, ev.guests.join(', ') + (more > 0 ? ', ' + fill(STRINGS.more, { n: more }) : ''));
+      }
+    }
+    if (text) drawNoteBlocks(body, text);
     if (reading) {
       ui.readView = nview;
       ui.readBody = body;
@@ -1448,7 +1500,7 @@
   }
 
   function openNotes() {
-    if (view !== 'day' || !notesOf(selectedEvent())) return false;
+    if (view !== 'day' || !readable(selectedEvent())) return false;
     reading = true;
     readTop = 0;
     drawStage();
@@ -1495,7 +1547,8 @@
         } else {
           item.style.borderLeftColor = color(ev.cal);
           var startsHere = zone.dayOf(ev.s) === n;
-          el('div', 'cal-wev-time', item, startsHere ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) }));
+          var wt = el('div', 'cal-wev-time', item, startsHere ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) }));
+          guestTag(wt, ev, true);
           el('div', 'cal-wev-title', item, titleOf(ev));
         }
         clickPickDay(item, n, ev.id);
@@ -1514,6 +1567,7 @@
       el('span', 'cal-wdetail-when', strip, whenText(zone, ev2));
       el('span', 'cal-wdetail-title', strip, titleOf(ev2));
       var extra = [];
+      if (guestText(ev2)) extra.push(guestText(ev2));
       if (ev2.location) extra.push(ev2.location);
       extra.push(calName(calendarFor(ev2.cal) || { cal: ev2.cal }));
       el('span', 'cal-wdetail-more', strip, extra.join(' · '));
@@ -1603,7 +1657,8 @@
       var item = el('div', 'cal-mev' + (isPast(ev, t, td) ? ' is-past' : ''));
       bar(item, ev.cal);
       var text = el('div', 'cal-mev-text', item);
-      el('div', 'cal-mev-when', text, ev.allDay ? STRINGS.allDay : (zone.dayOf(ev.s) === selDay ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) })));
+      var mw = el('div', 'cal-mev-when', text, ev.allDay ? STRINGS.allDay : (zone.dayOf(ev.s) === selDay ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) })));
+      guestTag(mw, ev);
       el('div', 'cal-mev-title', text, titleOf(ev));
       rows.push(item);
     }

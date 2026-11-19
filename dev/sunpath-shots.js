@@ -8,7 +8,7 @@
  * is still (in every shot, before and after alike), so only what a shot is
  * about changes.
  *
- *   plant-wall-1-lit.png            "Plant wall" layout, Jun 21 2026 6:10 PM (sun on the plants)
+ *   plant-wall-1-lit.png            "Plants" layout, Jun 21 2026 6:10 PM (sun on the plants)
  *   plant-wall-2-later-today.png    the same, 2:00 PM ("Next sun at 5:15 PM")
  *   plant-wall-3-nov17.png          Nov 17 2026 3:05 PM ("Next sun Mar 9, 6:15 PM")
  *   panel-lit.png, full-lit.png     the panel and full screen at 6:10 PM, slider one step back (6:00 PM)

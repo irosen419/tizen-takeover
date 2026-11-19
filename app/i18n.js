@@ -57,7 +57,7 @@
     'hub.layout.awws-money': 'Dinero AWWS',
     'hub.layout.budget': 'Presupuesto',
     'hub.layout.allsounds-test': 'Prueba de sonidos',
-    'hub.layout.plant-wall': 'Pared de plantas',
+    'hub.layout.plant-wall': 'Plantas',
     'hub.layout.ambience-test': 'Prueba de ambiente',
     'hub.layout.architecture-test': 'Prueba de arquitectura',
     /* The About strip's group and row names (key 'hub.about.<name>' with the
@@ -938,6 +938,9 @@
     'calendar.notesLabel': 'Notas',
     'calendar.readNotes': 'OK para leer',
     'calendar.notesGuest': 'Notas ocultas para invitados',
+    'calendar.guestOne': '1 invitado',
+    'calendar.guestMany': '{n} invitados',
+    'calendar.guestsLabel': 'Invitados',
     'calendar.states.off.head': 'El calendario necesita la Pi',
     'calendar.states.off.line': 'Tus calendarios vienen del servidor del hub en la Raspberry Pi. Las actualizaciones en vivo están apagadas en esta TV: pon la dirección de la Pi en live.server de config.js.',
     'calendar.states.off.short': 'Actualizaciones apagadas. Pon live.server en config.js.',

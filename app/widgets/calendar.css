@@ -621,6 +621,17 @@
 .cal-day.is-reading .cal-nb:first-child { margin-top: 0; }
 .cal-day.is-reading .cal-nb-head { font-size: 1.1rem; color: var(--text); }
 
+/* Guests: "· 3 guests" after a time, a touch quieter than the time itself. */
+.cal-guests { color: var(--text-3); white-space: nowrap; }
+/* The small person mark: a head over shoulders, drawn in CSS, then the number. */
+.cal-guests.is-mini { margin-left: 0.35em; }
+.cal-person { display: inline-block; vertical-align: -0.05em; width: 0.62em; height: 0.8em; margin-right: 0.15em; }
+.cal-person i { display: block; margin: 0 auto; background: currentColor; }
+.cal-person i:first-child { width: 0.34em; height: 0.34em; border-radius: 50%; }
+.cal-person i:last-child { width: 0.62em; height: 0.36em; margin-top: 0.06em; border-radius: 0.31em 0.31em 0.06em 0.06em; }
+.cal-detail-guests { margin-top: 0.3rem; font-size: 0.9rem; line-height: 1.35; color: var(--text-2); word-wrap: break-word; }
+.cal-nb-guests .cal-nb-line { color: var(--text); }
+
 /* ---------- Week ---------- */
 
 .cal-week { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
@@ -826,6 +837,7 @@
 .panel.is-full .cal-detail-place { font-size: 1.1rem; }
 .panel.is-full .cal-detail-count { font-size: 0.9rem; }
 .panel.is-full .cal-notes-label { font-size: 0.85rem; }
+.panel.is-full .cal-detail-guests { font-size: 1.1rem; }
 .panel.is-full .cal-nb { font-size: 1.02rem; }
 .panel.is-full .cal-notes-more { font-size: 0.9rem; }
 .panel.is-full .cal-day.is-reading .cal-detail-meta { flex-basis: 22rem; width: 22rem; padding-right: 2rem; }

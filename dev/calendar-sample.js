@@ -7,7 +7,8 @@
  * would. Titles include accents (Ángel, Ñandú, Évènement) and one very long
  * title on purpose. Two events carry notes (DESCRIPTION): the weekly "Water
  * plants" with the owner's real plant care text, and a call whose notes are
- * HTML with a link, as Google sends them. Only what ships with Node is used.
+ * HTML with a link, as Google sends them. Two carry guests (ATTENDEE), the
+ * owner on each too, as Google sends them. Only what ships with Node is used.
  *
  *   const sample = require('./calendar-sample');
  *   sample.feedServer({ today: () => '2026-11-15' }).then((feeds) => {
@@ -54,6 +55,11 @@ function vevent(cal, i, today, e) {
   lines.push('SUMMARY:' + esc(e.title));
   if (e.where) lines.push('LOCATION:' + esc(e.where));
   if (e.notes) lines.push('DESCRIPTION:' + esc(e.notes));
+  if (e.guests) {
+    lines.push('ORGANIZER;CN=Ian:mailto:owner@sample.test');
+    lines.push('ATTENDEE;CN=Ian;PARTSTAT=ACCEPTED:mailto:owner@sample.test');
+    e.guests.forEach((g, k) => lines.push('ATTENDEE;CN=' + g + ';PARTSTAT=NEEDS-ACTION:mailto:guest' + k + '@sample.test'));
+  }
   lines.push('END:VEVENT');
   return lines.join('\r\n');
 }
@@ -96,7 +102,7 @@ function events(today) {
       { d: 20, start: '1500', end: '1700', title: 'Évènement: vernissage at the gallery', where: 'Deep Ellum Art Co.' }
     ],
     '/ian.ics': [
-      { d: 0, start: '1000', end: '1100', title: 'Call with the contractor', notes: '<b>Ask about</b><br>the kitchen tile and the <a href="https://example.test/quote">quote</a><br><br>Bring the paint chips. Join: https://meet.example.test/abc-defg-hij' },
+      { d: 0, start: '1000', end: '1100', title: 'Call with the contractor', guests: ['Marta Ibáñez'], notes: '<b>Ask about</b><br>the kitchen tile and the <a href="https://example.test/quote">quote</a><br><br>Bring the paint chips. Join: https://meet.example.test/abc-defg-hij' },
       { d: 0, start: '1030', end: '1130', title: 'Évènement planning review', where: 'Video call' },
       { d: 0, start: '1600', end: '1615', title: 'Quick check-in' },
       { d: 1, start: '1300', end: '1430', title: 'Haircut', where: 'Bishop Arts' },
@@ -104,6 +110,7 @@ function events(today) {
       { d: 5, start: '0730', end: '0830', title: 'Run club' },
       { d: 6, start: '1000', end: '1015', title: 'Water plants', rrule: 'FREQ=WEEKLY;COUNT=8', notes: WATER_NOTES },
       { d: 8, start: '1200', end: '1300', title: 'Lunch with Ñico' },
+      { d: 2, start: '1500', end: '1600', title: 'Library visit', where: 'Central Library', guests: ['Ana Núñez', 'Sam Lee', 'Jordan Ortiz'] },
       { d: 17, start: '1830', end: '2100', title: 'Book club: “Cien años de soledad”' }
     ],
     '/work.ics': [

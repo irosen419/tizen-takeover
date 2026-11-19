@@ -292,5 +292,17 @@ check('notes: paragraphs become blocks; a short first line with more under it is
   same(b[3].lines, ['One line only']);
 });
 
+check('guests: "1 guest" / "3 guests", nothing without, nothing in Guest mode; guests alone make an event readable', () => {
+  const n = T.normalize({ configured: true, tz: TZ, events: [
+    { id: 'a', cal: 1, title: 'A', start: '2026-11-21T16:00:00Z', end: '2026-11-21T16:15:00Z', guestCount: 1, guests: ['Ana'] },
+    { id: 'b', cal: 1, title: 'B', start: '2026-11-21T17:00:00Z', end: '2026-11-21T17:15:00Z', guestCount: 3, guests: ['Ana', 'Sam', 'Jo'] },
+    { id: 'c', cal: 1, title: 'C', start: '2026-11-21T18:00:00Z', end: '2026-11-21T18:15:00Z' }] }, z);
+  same(n.map((e) => T.guestText(e)), ['1 guest', '3 guests', '']);
+  same(n[1].guests, ['Ana', 'Sam', 'Jo']);
+  assert.ok(T.readable(n[0]) && !T.readable(n[2]));
+  sandbox.window.HUB_GUEST = { on: () => true };
+  try { assert.strictEqual(T.guestText(n[1]), ''); assert.ok(!T.readable(n[0])); } finally { delete sandbox.window.HUB_GUEST; }
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);
