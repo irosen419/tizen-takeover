@@ -33,6 +33,16 @@
  *     day chooser through today, Dec 21, Mar 20, Jun 21, Sep 22; OK on a
  *     view chip shows that view; the status follows ("Direct sun on the
  *     wall..." while in the beam).
+ *   - Care (the fourth view, from calendar live data injected into the
+ *     page): the notes cut into 1 top paragraph, 4 plants and 1 bottom
+ *     paragraph; the "Water plants" event picked (past ones skipped, title
+ *     case aside, no data gives nothing); the light line matched by name;
+ *     the header ("Next watering: Sat, Nov 21, 10 AM", "Now", none), cards
+ *     with their Light lines, the warning, two columns in full screen, one
+ *     scrolling column in the panel (Down and Up, Up at the top leaves for
+ *     the panel's button), English, Spanish and Spanish +25% (words and
+ *     notes) without cut text; the tile's "Water plants Sat 10 AM" line
+ *     (and gone when it does not fit); data arriving after the first draw.
  *   - The minute timer: the tile turns from "now" to "tomorrow" when the
  *     sun leaves, without a reload.
  *   - No console errors anywhere.
@@ -133,6 +143,39 @@ function longer() {
   });
 }
 
+// Runs before the hub's scripts, with the calendar data (or null): the hub's
+// live data answers get('calendar') with it and hands the listeners to
+// window.__calHandlers (window.__setCal(data) sends new data to them).
+function calInject(D) {
+  let real;
+  window.__calHandlers = [];
+  window.__setCal = (d) => { D = d; window.__calHandlers.forEach((fn) => fn(d, 2)); };
+  Object.defineProperty(window, 'HUB_LIVE', {
+    configurable: true,
+    get: () => real,
+    set: (v) => {
+      real = v;
+      const g = v.get;
+      const on = v.on;
+      v.get = function (r) { return r === 'calendar' ? D : g.apply(v, arguments); };
+      v.on = function (r, fn) { if (r === 'calendar') window.__calHandlers.push(fn); return on.apply(v, arguments); };
+    }
+  });
+}
+
+const NOTES = 'Check each plant with a finger in the soil first. Water slowly until it drains, then empty the saucer so roots never sit in water. Winter light is low, so they drink less until March.\n\n' +
+  'Gold Lines maranta\nWater when the top inch is dry, usually every week. Keep it evenly moist but never soggy. Use filtered water or tap water left out overnight, since it browns from chlorine and fluoride. Mist the leaves or keep it near a humidifier.\n\n' +
+  'Birkin philodendron\nWater when the top 1 to 2 inches are dry, usually every 7 to 10 days in winter. Yellow leaves mean too much water. Wipe dust off the leaves once a month.\n\n' +
+  'Golden pothos\nWater only when the top half of the soil is dry, usually every other week in winter. Drooping, soft leaves mean it is thirsty. It handles drying out better than overwatering.\n\n' +
+  'Cuttings in the glass wall vases\nTop up the water weekly and swap it out fully every two weeks.\n\n' +
+  'Keep the Birkin and pothos out of Ember\u2019s reach, since both are toxic to dogs.';
+function calData(events) {
+  return { configured: true, tz: 'America/Chicago', from: '2026-11-19T06:00:00Z', to: '2027-01-18T06:00:00Z', updatedAt: '2026-11-19T21:00:00Z', calendars: [], events: events, notes: { n1: NOTES } };
+}
+const WATER = { id: 'wp1', cal: 'home', title: 'Water plants', start: '2026-11-21T16:00:00Z', end: '2026-11-21T16:15:00Z', allDay: false, location: '', note: 'n1' };
+// Thursday 19 November 2026, 3:05 PM in Chicago: two days before the watering.
+const NOV19 = Date.parse('2026-11-19T21:05:00Z');
+
 /* ---------- pages ---------- */
 
 // opts: { at, size: [w, h] | layout, lang, grow, install (a running fake
@@ -167,6 +210,7 @@ async function openHub(opts) {
     } catch (e) { /* ignore */ }
   }, storage);
   if (opts.grow) await context.addInitScript(longer);
+  if (opts.cal !== undefined) await context.addInitScript(calInject, opts.cal);
   const page = await context.newPage();
   page.on('console', (m) => {
     if (m.type() !== 'error' && m.type() !== 'warning') return;
@@ -521,6 +565,311 @@ async function checkKeys() {
   noErrors(page);
 }
 
+/* ---------- care ---------- */
+
+async function checkCareParse() {
+  const page = await openHub({ at: NOV19, cal: null });
+  const r = await page.evaluate((a) => {
+    const H = window.HUB_SUNPATH;
+    const at = Date.parse('2026-11-19T21:05:00Z');
+    const ev = (title, start, end, extra) => Object.assign({ id: title + start, cal: 'c', title: title, start: start, end: end, allDay: false, location: '', note: 'n1' }, extra || {});
+    return {
+      notes: H.parseNotes(a.notes),
+      empty: H.parseNotes(''),
+      none: H.parseNotes(undefined),
+      allPlain: H.parseNotes('One line.\n\nAnother, with two\nlines of it.'),
+      shortEnds: H.parseNotes('Is this a plant?\nNo, a question.\n\nWater first:\nthen wait'),
+      longName: H.parseNotes('This first line is far too long to be a plant name at all, really\nso it is general'),
+      crlf: H.parseNotes('Intro text.\r\n\r\nFern\r\nWater twice a week.\r\n'),
+      past: H.pickCare({ events: [ev('Water plants', '2026-11-14T16:00:00Z', '2026-11-14T16:15:00Z'), ev('Water plants', '2026-11-21T16:00:00Z', '2026-11-21T16:15:00Z')] }, at, 'Water plants'),
+      onlyPast: H.pickCare({ events: [ev('Water plants', '2026-11-14T16:00:00Z', '2026-11-14T16:15:00Z')] }, at, 'Water plants'),
+      sorted: H.pickCare({ events: [ev('Water plants', '2026-11-28T16:00:00Z', '2026-11-28T16:15:00Z'), ev('Water plants', '2026-11-21T16:00:00Z', '2026-11-21T16:15:00Z')] }, at, 'Water plants'),
+      cased: H.pickCare({ events: [ev('  WATER   plants ', '2026-11-21T16:00:00Z', '2026-11-21T16:15:00Z')] }, at, 'water plants'),
+      other: H.pickCare({ events: [ev('Water the lawn', '2026-11-21T16:00:00Z', '2026-11-21T16:15:00Z'), ev('Plants', '2026-11-22T16:00:00Z', '2026-11-22T16:15:00Z')] }, at, 'Water plants'),
+      running: H.pickCare({ events: [ev('Water plants', '2026-11-21T16:00:00Z', '2026-11-21T16:15:00Z')] }, Date.parse('2026-11-21T16:05:00Z'), 'Water plants'),
+      ended: H.pickCare({ events: [ev('Water plants', '2026-11-21T16:00:00Z', '2026-11-21T16:15:00Z')] }, Date.parse('2026-11-21T16:15:00Z'), 'Water plants'),
+      allDay: H.pickCare({ events: [ev('Water plants', '2026-11-21', '2026-11-22', { allDay: true })] }, at, 'Water plants'),
+      nothing: [H.pickCare(null, at), H.pickCare(undefined, at), H.pickCare({}, at), H.pickCare({ events: 'x' }, at), H.pickCare({ events: [] }, at), H.pickCare({ events: [null, {}, { title: 5 }] }, at)],
+      light: ['Gold Lines maranta', 'Birkin philodendron', 'Golden pothos', 'Cuttings in the glass wall vases', 'Snake plant', 'Pothos Birkin'].map((n) => H.lightFor(n, a.light)),
+      lightNone: [H.lightFor('Fern', null), H.lightFor('Fern', {}), H.lightFor(null, a.light)],
+      st: H.settings()
+    };
+  }, { notes: NOTES, light: { maranta: 'M light', birkin: 'B light', pothos: 'P light', cuttings: 'C light' } });
+  const n = r.notes;
+  assert(n.top.length === 1 && n.plants.length === 4 && n.bottom.length === 1, 'parse: ' + n.top.length + ' top, ' + n.plants.length + ' plants, ' + n.bottom.length + ' bottom');
+  assert(/^Check each plant with a finger/.test(n.top[0]) && /until March\.$/.test(n.top[0]), 'top: ' + n.top[0]);
+  assert(n.plants.map((p) => p.name).join('|') === 'Gold Lines maranta|Birkin philodendron|Golden pothos|Cuttings in the glass wall vases', 'names: ' + n.plants.map((p) => p.name).join('|'));
+  assert(/^Water when the top inch is dry/.test(n.plants[0].care) && /humidifier\.$/.test(n.plants[0].care) && n.plants[3].care === 'Top up the water weekly and swap it out fully every two weeks.', 'care texts');
+  assert(/^Keep the Birkin and pothos out of Ember/.test(n.bottom[0]) && /dogs\.$/.test(n.bottom[0]), 'bottom: ' + n.bottom[0]);
+  assert(!r.empty.top.length && !r.empty.plants.length && !r.empty.bottom.length && !r.none.plants.length, 'no text, no paragraphs');
+  assert(r.allPlain.top.length === 1 && r.allPlain.plants.length === 1 && r.allPlain.plants[0].name === 'Another, with two', 'a plain note: ' + JSON.stringify(r.allPlain));
+  assert(r.shortEnds.plants.length === 0 && r.shortEnds.top.length === 2, 'a first line ending in ? or : is not a name: ' + JSON.stringify(r.shortEnds));
+  assert(r.longName.plants.length === 0 && r.longName.top.length === 1, 'a long first line is not a name');
+  assert(r.crlf.plants.length === 1 && r.crlf.plants[0].name === 'Fern' && r.crlf.plants[0].care === 'Water twice a week.', 'CRLF: ' + JSON.stringify(r.crlf));
+  assert(r.past && r.past.ev.start === '2026-11-21T16:00:00Z', 'past events are skipped');
+  assert(r.onlyPast === null, 'only a past event gives null');
+  assert(r.sorted && r.sorted.ev.start === '2026-11-21T16:00:00Z', 'the earliest start wins');
+  assert(r.cased && r.cased.ev.title.indexOf('WATER') > 0, 'the title matches without case or extra spaces');
+  assert(r.other === null, 'other titles do not match');
+  assert(r.running && r.running.start === Date.parse('2026-11-21T16:00:00Z'), 'a running event is still the one');
+  assert(r.ended === null, 'an event that just ended is not');
+  assert(r.allDay && r.allDay.allDay === true && r.allDay.end > r.allDay.start, 'an all-day event');
+  assert(r.nothing.every((x) => x === null), 'missing or odd data gives null: ' + JSON.stringify(r.nothing));
+  assert(r.light.join('|') === 'M light|B light|P light|C light||B light', 'light by name: ' + r.light.join('|'));
+  assert(r.lightNone.every((x) => x === ''), 'no light without a match: ' + JSON.stringify(r.lightNone));
+  assert(r.st.careEvent === 'Water plants' && r.st.light.maranta && r.st.light.birkin && r.st.light.pothos && r.st.light.cuttings, 'settings: ' + JSON.stringify(r.st.light));
+  noErrors(page);
+}
+
+// What is wrong with the Care text inside .sp-care: type, line height, sideways cuts.
+function inspectCare(page) {
+  return page.evaluate(() => {
+    const care = document.querySelector('.sp-care');
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const problems = [];
+    if (!care) return { problems: ['no .sp-care'], text: '' };
+    const cb = care.getBoundingClientRect();
+    const shown = (el) => { for (let e = el; e && e !== care.parentNode; e = e.parentElement) { if (getComputedStyle(e).display === 'none') return false; } return true; };
+    care.querySelectorAll('*').forEach((el) => {
+      if (!shown(el) || !el.textContent.trim()) return;
+      const cs = getComputedStyle(el);
+      const name = (el.getAttribute('class') || el.tagName) + ' "' + el.textContent.slice(0, 30) + '"';
+      const r = el.getBoundingClientRect();
+      if (r.left < cb.left - 0.5 || r.right > cb.right + 0.5) problems.push(name + ' is outside sideways');
+      if (cs.display !== 'inline' && el.scrollWidth > el.clientWidth + 1) problems.push(name + ' is cut sideways');
+      if (el.children.length) return;
+      const fs = parseFloat(cs.fontSize);
+      if (fs < 0.75 * rem - 0.2) problems.push(name + ' type ' + (fs / rem).toFixed(2) + 'rem');
+      const lh = parseFloat(cs.lineHeight);
+      if (lh && lh < fs * 1.25 - 0.2) problems.push(name + ' line-height ' + (lh / fs).toFixed(2));
+    });
+    const view = care.querySelector('.sp-care-view');
+    const inner = care.querySelector('.sp-care-in');
+    return {
+      problems: problems,
+      text: care.innerText.replace(/\s+/g, ' ').trim(),
+      scrolls: !!view && inner.offsetHeight > view.clientHeight + 2,
+      cards: care.querySelectorAll('.sp-card').length,
+      lights: care.querySelectorAll('.sp-card-light').length,
+      lefts: Array.prototype.map.call(care.querySelectorAll('.sp-card'), (c) => Math.round(c.getBoundingClientRect().left)),
+      hint: (care.querySelector('.sp-care-hint') || {}).offsetHeight > 0
+    };
+  });
+}
+
+// Spanish 25% longer for the Care words and for the owner's text (dyn).
+async function growCare(page) {
+  await page.evaluate(() => {
+    const I = window.HUB_I18N;
+    const grow = (text, mark) => {
+      const words = text.replace(/\{\w+\}/g, '').match(/[A-Za-zÁÉÍÓÚáéíóúñÑ]{3,}/g) || [];
+      let add = Math.ceil(text.length * 0.25);
+      let i = 0;
+      return text.replace(/(\{\w+\})|([A-Za-zÁÉÍÓÚáéíóúñÑ]{3,})/g, (all, ph, w) => {
+        if (ph || add <= 0) return all;
+        const share = Math.max(1, Math.ceil(add / Math.max(1, words.length - i)));
+        i++;
+        add -= share;
+        return w + mark.repeat(share);
+      });
+    };
+    Object.keys(I.strings.es).forEach((k) => { if (/^sunpath\.(care\.|panel\.views\.(care|sun))/.test(k)) I.strings.es[k] = grow(I.strings.es[k], 'ñá'.charAt(k.length % 2)); });
+    I.dyn = (t) => (I.lang() === 'es' ? grow(t, 'ó') : t);
+    I.setLang('en');
+    I.setLang('es');
+  });
+  await sleep(200);
+}
+
+async function checkCareView() {
+  for (const [lang, grow] of [['en', false], ['es', false], ['es', true]]) {
+    const tag = lang + (grow ? ' +25%' : '');
+    // The panel: one column, scrolling.
+    let page = await openHub({ at: NOV19, size: [12, 5], lang: lang, cal: calData([WATER]) });
+    if (grow) await growCare(page);
+    await openPanel(page);
+    await showView(page, 'care');
+    let c = await inspectCare(page);
+    assert(!c.problems.length, 'panel ' + tag + ': ' + c.problems.join('; '));
+    if (lang === 'en') {
+      assert(/Next watering: Sat, Nov 21, 10 AM/.test(c.text), 'header: ' + c.text.slice(0, 80));
+      assert(/Check each plant with a finger/.test(c.text) && /Gold Lines maranta/.test(c.text) && /Water when the top inch is dry/.test(c.text), 'text: ' + c.text.slice(0, 200));
+      assert(c.cards >= 1 && c.lights >= 1 && /LIGHT|Light/i.test(c.text) && /Bright, indirect light\. Direct sun bleaches/.test(c.text), 'light: ' + c.text.slice(0, 300));
+    } else {
+      assert(grow ? /Pr.ximo/.test(c.text) && /desplaz/.test(c.text) : /Próximo riego: sáb, 21 nov, 10 a\. m\./.test(c.text), 'Spanish header: ' + c.text.slice(0, 100));
+      assert(/Luz|LUZ/i.test(c.text) || /L.{0,3}u.{0,3}z/i.test(c.text), 'Spanish Light: ' + c.text.slice(0, 300));
+    }
+    assert(c.scrolls && c.hint, 'the panel text scrolls (' + tag + ')');
+    assert(new Set(c.lefts).size === 1, 'one column in the panel: ' + c.lefts);
+    // The chips, Care last and chosen; the other views are hidden.
+    const chips = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.sp-view-chip'), (e) => e.getAttribute('data-view') + (e.classList.contains('is-on') ? '*' : '')).join());
+    assert(chips === 'plan,arc,table,care*', 'chips: ' + chips);
+    // Keys: Down moves to the chip, then scrolls to the end; the end shows the warning; Up comes back and leaves for the button.
+    await page.keyboard.press('ArrowDown');
+    let st = await page.evaluate(() => ({ f: (document.querySelector('#panel .is-focused') || {}).getAttribute('data-key'), y: window.HUB_SUNPATH.panel().careY }));
+    assert(st.f === 'view-care' && st.y > 0, 'Down on the Care chip scrolls: ' + JSON.stringify(st));
+    for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowUp');
+    st = await page.evaluate(() => window.HUB_SUNPATH.panel().careY);
+    assert(st === 0, 'Up scrolls back to the top: ' + st);
+    await page.keyboard.press('ArrowDown');
+    for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowDown');
+    st = await page.evaluate(() => {
+      const v = document.querySelector('.sp-care-view').getBoundingClientRect();
+      const w = document.querySelector('.sp-care-warn').getBoundingClientRect();
+      const inner = document.querySelector('.sp-care-in');
+      return { y: window.HUB_SUNPATH.panel().careY, warnBottom: w.bottom - v.bottom, warnTop: w.top - v.top, tf: inner.style.transform || inner.style.webkitTransform, f: document.querySelector('#panel .is-focused').getAttribute('data-key') };
+    });
+    assert(st.y > 0 && st.warnBottom <= 1 && st.warnTop >= 0 && /translateY\(-/.test(st.tf) && st.f === 'view-care', 'scrolled to the end (' + tag + '): ' + JSON.stringify(st));
+    c = await inspectCare(page);
+    assert(!c.problems.length, 'panel scrolled ' + tag + ': ' + c.problems.join('; '));
+    for (let i = 0; i < 12; i++) await page.keyboard.press('ArrowUp');
+    st = await page.evaluate(() => ({ y: window.HUB_SUNPATH.panel().careY, f: document.querySelector('#panel .is-focused').className }));
+    assert(st.y === 0 && /panel-btn/.test(st.f), 'Up scrolls back, then leaves for the panel button: ' + JSON.stringify(st));
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowRight');
+    st = await page.evaluate(() => (document.querySelector('#panel .is-focused') || {}).getAttribute && document.querySelector('#panel .is-focused').getAttribute('data-key'));
+    assert(st === 'view-care', 'Right at the last chip stays (' + st + ')');
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Enter');
+    assert((await page.evaluate(() => window.HUB_SUNPATH.panel().view)) === 'table', 'Left then OK chooses Seasons');
+    assert(await page.evaluate(() => getComputedStyle(document.querySelector('.sp-care')).display === 'none' && getComputedStyle(document.querySelector('.sp-col-mid')).display !== 'none'), 'Seasons brings the moment column back');
+    noErrors(page);
+    await page.context().close();
+
+    // Full screen: two columns, all of it without scrolling.
+    page = await openHub({ at: NOV19, size: [12, 5], lang: lang, cal: calData([WATER]) });
+    if (grow) await growCare(page);
+    await openPanel(page);
+    await fullScreen(page);
+    await showView(page, 'care');
+    c = await inspectCare(page);
+    assert(!c.problems.length, 'full ' + tag + ': ' + c.problems.join('; '));
+    assert(c.cards === 4 && c.lights === 4, 'four cards with their Light lines (' + tag + '): ' + c.cards + '/' + c.lights);
+    assert(new Set(c.lefts).size === 2, 'two columns in full screen: ' + c.lefts);
+    // At +25% it may need the scroll (with its hint); otherwise all of it shows.
+    assert(grow ? c.hint === c.scrolls : !c.scrolls, 'full screen shows all of it, or scrolls with its hint (' + tag + ')');
+    assert(/dogs/.test(c.text) || lang === 'es', 'the dog line: ' + c.text.slice(-120));
+    const chips2 = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.sp-view-chip'), (e) => e.getAttribute('data-view') + (e.classList.contains('is-on') ? '*' : '')).join());
+    assert(chips2 === 'plan,care*', 'full chips: ' + chips2);
+    await showView(page, 'plan');
+    const parts = await page.evaluate(() => ['.sp-plan svg', '.sp-arc svg', '.sp-seasons .sp-table'].map((s) => { const e = document.querySelector(s); return !!e && e.getBoundingClientRect().height > 50; }));
+    assert(parts.every(Boolean), 'the Sun chip brings the three pictures back: ' + parts);
+    noErrors(page);
+    await page.context().close();
+  }
+}
+
+async function checkCareEdges() {
+  // No event in the data: the line says so, no cards.
+  let page = await openHub({ at: NOV19, size: [12, 5], cal: calData([]) });
+  await openPanel(page);
+  await showView(page, 'care');
+  let c = await inspectCare(page);
+  assert(!c.problems.length && /No “Water plants” event in the next 60 days/.test(c.text) && c.cards === 0, 'none: ' + c.text);
+  noErrors(page);
+  await page.context().close();
+  // Without any calendar data at all.
+  page = await openHub({ at: NOV19, size: [12, 5] });
+  await openPanel(page);
+  await showView(page, 'care');
+  c = await inspectCare(page);
+  assert(/No “Water plants” event/.test(c.text) && !c.problems.length, 'no data: ' + c.text);
+  noErrors(page);
+  await page.context().close();
+  // An event with no notes.
+  const bare = calData([Object.assign({}, WATER, { note: '' })]);
+  page = await openHub({ at: NOV19, size: [12, 5], cal: bare });
+  await openPanel(page);
+  await showView(page, 'care');
+  c = await inspectCare(page);
+  assert(/Next watering: Sat, Nov 21, 10 AM/.test(c.text) && /no care notes/.test(c.text) && !c.problems.length, 'no notes: ' + c.text);
+  await page.context().close();
+  // Today, tomorrow, now, all day, a title in other letters, and the setting.
+  const times = [
+    ['Saturday 10 AM, on Saturday at 8 AM: Today', '2026-11-21T14:00:00Z', WATER, /Next watering: Today, 10 AM/],
+    ['the day before: Tomorrow', '2026-11-20T21:00:00Z', WATER, /Next watering: Tomorrow, 10 AM/],
+    ['running: Now', '2026-11-21T16:05:00Z', WATER, /Next watering: Now/],
+    ['after it ended: none', '2026-11-21T16:20:00Z', WATER, /No “Water plants” event/],
+    ['all day', '2026-11-19T21:05:00Z', Object.assign({}, WATER, { start: '2026-11-24', end: '2026-11-25', allDay: true }), /Next watering: Tue, Nov 24(?!,)/],
+    ['other letters', '2026-11-19T21:05:00Z', Object.assign({}, WATER, { title: 'WATER PLANTS' }), /Next watering: Sat, Nov 21, 10 AM/]
+  ];
+  for (const [name, at, ev, re] of times) {
+    page = await openHub({ at: Date.parse(at), size: [12, 5], cal: calData([ev]) });
+    await openPanel(page);
+    await showView(page, 'care');
+    c = await inspectCare(page);
+    assert(re.test(c.text) && !c.problems.length, name + ': ' + c.text.slice(0, 90) + ' ' + c.problems.join('; '));
+    await page.context().close();
+  }
+  page = await openHub({ at: NOV19, size: [12, 5], cal: calData([Object.assign({}, WATER, { title: 'Feed the ferns' })]), config: [[/careEvent: 'Water plants'/, "careEvent: 'feed the FERNS'"]] });
+  await openPanel(page);
+  await showView(page, 'care');
+  c = await inspectCare(page);
+  assert(/Next watering: Sat, Nov 21, 10 AM/.test(c.text), 'careEvent in config: ' + c.text.slice(0, 80));
+  await page.context().close();
+}
+
+async function checkCareTile() {
+  for (const lang of ['en', 'es']) {
+    // The line where there is room (3x4), and every size without a problem.
+    for (const size of [[1, 1], [2, 1], [3, 1], [3, 2], [3, 4], [6, 3], [12, 6]]) {
+      const page = await openHub({ at: NOV19, size: size, lang: lang, cal: calData([WATER]) });
+      const t = await inspect(page, TILE, 0.85, 0.8);
+      assert(!t.problems.length, 'care tile ' + size.join('x') + ' ' + lang + ': ' + t.problems.join('; '));
+      const has = lang === 'en' ? /Water plants Sat 10 AM/.test(t.text) : /Regar plantas s.b 10 a\. m\./.test(t.text);
+      if (size[0] > 1 && size[1] >= 3) assert(has, 'the watering line on ' + size.join('x') + ' ' + lang + ': ' + t.text);
+      if (size[1] === 1 || size[0] === 1) assert(!has, 'no watering line on ' + size.join('x') + ': ' + t.text);
+      await page.context().close();
+    }
+  }
+  // At 3x2 it is the first to go when there is not room (the others stay).
+  let page = await openHub({ at: NOV19, size: [3, 2], cal: calData([WATER]) });
+  let t = await inspect(page, TILE, 0.85, 0.8);
+  assert(/Mar/.test(t.text) && /Grow lights do the work/.test(t.text), 'the 3x2 tile keeps its words: ' + t.text);
+  await page.context().close();
+  // Today and now on the tile.
+  page = await openHub({ at: Date.parse('2026-11-21T14:00:00Z'), size: [3, 4], cal: calData([WATER]) });
+  t = await inspect(page, TILE, 0.85, 0.8);
+  assert(/Water plants today 10 AM/.test(t.text) && !t.problems.length, 'today: ' + t.text);
+  await page.context().close();
+  page = await openHub({ at: Date.parse('2026-11-21T16:05:00Z'), size: [3, 4], cal: calData([WATER]) });
+  t = await inspect(page, TILE, 0.85, 0.8);
+  assert(/Water plants now/.test(t.text) && !t.problems.length, 'now: ' + t.text);
+  await page.context().close();
+  // No calendar data: no line.
+  page = await openHub({ at: NOV19, size: [3, 4] });
+  t = await inspect(page, TILE, 0.85, 0.8);
+  assert(!/Water plants/.test(t.text), 'no data, no line: ' + t.text);
+  noErrors(page);
+  await page.context().close();
+}
+
+async function checkCareLate() {
+  // The hub drawn before the calendar arrives: the tile line and the Care view follow.
+  const page = await openHub({ at: NOV19, size: [3, 4], cal: null });
+  let t = await inspect(page, TILE, 0.85, 0.8);
+  assert(!/Water plants/.test(t.text), 'before: ' + t.text);
+  await page.evaluate((d) => window.__setCal(d), calData([WATER]));
+  await until(async () => /Water plants Sat 10 AM/.test((await inspect(page, TILE, 0.85, 0.8)).text), 3000, 'the tile did not get the watering line');
+  await openPanel(page);
+  await showView(page, 'care');
+  let c = await inspectCare(page);
+  assert(/Next watering: Sat, Nov 21, 10 AM/.test(c.text), 'care after data: ' + c.text.slice(0, 80));
+  // New notes while Care is open: the panel is drawn again with them.
+  const next = calData([WATER]);
+  next.notes.n1 = NOTES.replace('Golden pothos', 'Marble queen pothos');
+  await page.evaluate((d) => window.__setCal(d), next);
+  await until(async () => /Marble queen pothos/.test((await inspectCare(page)).text), 3000, 'an open Care view did not follow new notes');
+  // A calendar change that leaves the watering alone does not redraw the panel.
+  await page.evaluate(() => document.querySelector('.sp-panel').setAttribute('data-mark', 'same'));
+  const other = JSON.parse(JSON.stringify(next));
+  other.events.push({ id: 'x', cal: 'c', title: 'Dentist', start: '2026-11-23T16:00:00Z', end: '2026-11-23T17:00:00Z', allDay: false, location: '', note: '' });
+  await page.evaluate((d) => window.__setCal(d), other);
+  await sleep(300);
+  assert(await page.evaluate(() => !!document.querySelector('.sp-panel[data-mark="same"]')), 'an unrelated calendar change redrew the Care view');
+  noErrors(page);
+}
+
 async function checkTimer() {
   // 7:05 PM: two minutes of sun left. The minute timer turns the tile over.
   const page = await openHub({ at: Date.parse('2026-06-22T00:05:00Z'), size: [3, 2], install: true });
@@ -578,6 +927,8 @@ async function checkLayout() {
   const pw = c.layouts.filter((l) => l.id === 'plant-wall')[0];
   assert(pw && pw.name === 'Plant wall' && pw.layout.length === 1 && pw.layout[0].widget === 'sunpath' && pw.layout[0].w === 12 && pw.layout[0].h === 6, 'Plant wall layout: ' + JSON.stringify(pw));
   assert(!c.layout.some((e) => e.widget === 'sunpath'), 'sunpath is on the default layout');
+  const sp = c.widgets.sunpath;
+  assert(sp.careEvent === 'Water plants' && sp.light && ['maranta', 'birkin', 'pothos', 'cuttings'].every((k) => typeof sp.light[k] === 'string' && sp.light[k]), 'careEvent and light in the config: ' + JSON.stringify(sp.light));
   c.layouts.forEach((l) => { if (l.id !== 'plant-wall' && l.layout) assert(!l.layout.some((e) => e.widget === 'sunpath'), 'sunpath on ' + l.id); });
   // Never an address or a finer location than the rounded weather point.
   const src = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'sunpath.js'), 'utf8');
@@ -614,6 +965,11 @@ async function checkLayout() {
     await check('the panel views and full screen in Spanish', () => checkPanels('es', false));
     await check('the panel views and full screen in Spanish +25%', () => checkPanels('es', true));
     await check('the remote: time slider, day chooser, views, Back', checkKeys);
+    await check('care: the notes cut into plants, the event picked, the light matched', checkCareParse);
+    await check('care view in the panel and full screen: English, Spanish, Spanish +25%, scrolling keys', checkCareView);
+    await check('care view: no event, no data, no notes, today, tomorrow, now, all day, the setting', checkCareEdges);
+    await check('care line on the tile, every size, English and Spanish', checkCareTile);
+    await check('care: data arriving after the first draw, new notes, unrelated changes', checkCareLate);
     await check('the minute timer turns the tile over when the sun leaves', checkTimer);
     await check('the plants run 2 to 6 ft: spread on the plan, the note says so; one number still works', checkPlantRange);
     await check('placeholder: false hides the badge and the note', checkPlaceholderOff);
