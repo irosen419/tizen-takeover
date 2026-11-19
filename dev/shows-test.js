@@ -1068,6 +1068,24 @@ async function main() {
     const fk = (pg) => pg.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? (f.getAttribute('data-key') || 'button') : ''; });
     const openFull = async (pg) => { await H.openGrid(pg); await H.fullScreen(pg); };
     try {
+      await check('config.js opens Entertainment straight to full screen: no Full screen button, "Back to close", Back closes it; openMode \'panel\' in config keeps the small panel', async () => {
+        const p = await sp.newPage({ entOpen: 'config' });
+        try {
+          assert(await p.evaluate(() => window.HUB_TEST.openPanel('entertainment')), 'did not open');
+          await H.until(() => p.evaluate(() => window.HUB_TEST.open() === 'entertainment' && !window.HUB_TEST.busy()), 6000, 'not open');
+          const v = await p.evaluate(() => ({ mode: window.HUB_TEST.mode(), btn: document.querySelector('#panel .panel-btn').style.display, hint: document.querySelector('#panel .panel-hint').textContent, direct: /is-direct/.test(document.getElementById('panel').className) }));
+          assert(v.mode === 'full' && v.direct && v.btn === 'none' && v.hint === 'Back to close', JSON.stringify(v));
+          await H.key(p, 'Escape');
+          await H.until(() => p.evaluate(() => window.HUB_TEST.open() === null || window.HUB_TEST.open() === '' || !window.HUB_TEST.open()), 6000, 'Back did not close it');
+          // A config.js openMode: 'panel' keeps the small panel (the harness default).
+          const q = await sp.newPage({});
+          try {
+            await H.openGrid(q);
+            assert((await q.evaluate(() => window.HUB_TEST.mode())) === 'panel', 'panel override ignored');
+          } finally { await q.ctx.close(); }
+        } finally { await p.ctx.close(); }
+      });
+
       await check('Full screen: the app column (with its counts) and the live Schedule are both there, the column a quarter wide, and focus starts in the Schedule', async () => {
         const p = await sp.newPage({});
         try {
