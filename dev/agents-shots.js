@@ -37,7 +37,7 @@ const PAGE = 'http://127.0.0.1:8090';
 const SERVICE = 'http://127.0.0.1:8095';
 const LIVE = 'http://127.0.0.1:8097';
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED = ['192.168.1.219', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'cdn.jsdelivr.net'];
+const BLOCKED = ['192.168.1.219', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev'];
 const LIVE_Q = 'live=' + encodeURIComponent(LIVE) + '&motion=push';
 const ES_INIT = 'try { localStorage.setItem("homeHub.lang", "es"); } catch (e) {}';
 

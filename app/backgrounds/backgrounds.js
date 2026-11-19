@@ -13,22 +13,22 @@
  *
  * base      (optional, below) put before every file that is not a full web
  *           address, so one line moves all the pictures to another host,
- *           e.g. 'https://cdn.jsdelivr.net/gh/owner/repo@backgrounds/'.
+ *           e.g. a public R2 bucket address.
  *           A file that starts with http:// or https:// is used as it is.
  *           Pictures from another site must send Access-Control-Allow-Origin
  *           (jsDelivr does), or the tiles lose their glass window.
  *
  * fallback  the picture used when the picture host can't be reached.
  *
- * The pictures live on the repo's 'backgrounds' branch (kept apart so the
- * hub itself stays under jsDelivr's 50 MB package limit); credits are in
- * CREDITS.md there.
+ * The pictures live in the public Cloudflare R2 bucket home-hub-pictures
+ * (free tier, no download fees), not in the repo, so the hub package stays
+ * small for jsDelivr. Credits are in CREDITS.md in the same bucket.
  *
  * ?bg=day/3 or ?bg=night/0 on the address forces entry 3 of the day list or
  * entry 0 of the night list (counting from 0), for screenshots and testing.
  */
 var HUB_BACKGROUNDS = {
-  base: 'https://cdn.jsdelivr.net/gh/irosen419/tizen-takeover@backgrounds/',
+  base: 'https://pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev/',
   fallback: { file: 'backgrounds/ocean.jpg', title: 'Ocean', credit: 'placeholder picture' },
   day: [
     { file: "day/cloud-sea-horizon.jpg", title: "Cloud sea horizon", credit: "NASA, public domain" },

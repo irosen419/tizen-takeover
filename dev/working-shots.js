@@ -28,7 +28,7 @@ const { SPANISH: AWWS_ES } = require('./awws-harness');
 const PAGE = 'http://127.0.0.1:8090';
 const LIVE = 'http://127.0.0.1:8097';
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED = ['192.168.1.219', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'cdn.jsdelivr.net'];
+const BLOCKED = ['192.168.1.219', 'api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev'];
 
 const args = process.argv.slice(2);
 function arg(name) { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; }
