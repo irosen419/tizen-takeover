@@ -6,6 +6,8 @@ Ian and Ember as stop-motion clay puppets, for the hub to animate. Nothing here 
 
 ## What's where
 
+`models/` and `raw/` are not in git. They live in the picture bucket (see `docs/asset-storage.md`) under `clay/source/v1/`, listed with their checksums in `source.sha256`. Get them with `python3 art/clay/tools/fetch_source.py` before using the tools.
+
 - `models/` holds the two turnaround sheets and three test shots. The sheets are the reference for every pose, so a new pose still looks like the same puppet.
 - `raw/` holds the pose sheets as Gemini drew them: one row of poses on a green or blue backdrop.
 - `tools/` turns those into sprites (below).
@@ -18,7 +20,7 @@ Ian and Ember as stop-motion clay puppets, for the hub to animate. Nothing here 
 It needs Python 3 with `pillow`, `numpy` and `scipy`, and a Gemini key in `GEMINI_API_KEY`.
 
 1. Describe the poses in `tools/sheets.py`: add a `sheet(...)` with five or six poses. The first must be an upright standing pose, because its height sets the scale for the whole sheet. Use a green backdrop for Ian (his jeans are blue) and a blue one for Ember and anything with a tennis ball in it (the ball is nearly green).
-2. `python3 art/clay/tools/gen.py my-sheet` asks Gemini for the sheet and saves `raw/my-sheet.jpg`. Each run costs one image.
+2. `python3 art/clay/tools/gen.py my-sheet` asks Gemini for the sheet and saves `raw/my-sheet.jpg`. Each run costs one image. A sheet you keep goes to the bucket at `clay/source/v1/raw/` (a Claude thread can upload it), and its line goes in `source.sha256` (`cd art/clay && sha256sum raw/my-sheet.jpg >> source.sha256`).
    A sheet can send more pictures after the model sheets with `refs=[(path, what it is)]`, such as `raw/ember-move.jpg`, so it keeps the look and size of earlier poses. Gemini copies a reference's poses unless the text says not to (`LOOK_ONLY` in `sheets.py`); the ball and sock cycles use that on purpose, redrawing the accepted trot and gallop sheets with a toy. `ask_rows=2` asks for two rows, for a cycle with more poses than fit in one; the standing pose still comes first. `edit='raw/<sheet>.jpg'` sends that one sheet alone with `note` as the whole prompt, to ask for a small change to it.
    When Gemini will not put a limb where a cycle needs it (it draws Ember's near hind leg trailing behind in nearly every trot pose, whatever the words say), `moves={pose: [dict(take=polygon, pivot=..., rotate=deg)]}` (or `shear=px`) has `cut.py` cut that leg out of the pose, swing it about the hip and lay it back, like re-posing a clay leg between frames. Coordinates are in the cut-out's pixels (`cut/<sheet>/<pose>.png`); see `TROT_MOVES` in `sheets.py`.
 3. Look at it. Gemini strays: it adds or drops a pose, stacks two, draws a logo, forgets the glasses. Say what it actually drew with `found=[...]` (a name per pose, `None` to throw one away), `rows=`, `join=` and `scales=`; `sheets.py` has examples of each. Redo anything that is wrong in a new sheet.
