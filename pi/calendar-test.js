@@ -270,12 +270,39 @@ async function main() {
     assert.strictEqual(ev('(No title)').start, '2026-11-14T17:00:00Z');
   });
 
-  await check('only title and place are ever kept (no description, people, link or alarm)', () => {
+  await check('title, place and notes are kept; never people, a link or an alarm', () => {
     const text = JSON.stringify(basic.events);
-    ['hidden agenda', 'organizer-xyz', 'attendee-xyz', 'meeting-link-xyz', 'Alarm text', 'Organizer Person'].forEach((s) => {
+    assert.strictEqual(ev('Zebra planning secret').notes, 'Notes about the hidden agenda\nwith a second line');
+    ['organizer-xyz', 'attendee-xyz', 'meeting-link-xyz', 'Alarm text', 'Organizer Person'].forEach((s) => {
       assert.ok(text.indexOf(s) < 0, s);
     });
     assert.ok(ev('Zebra planning secret'));
+  });
+
+  await check('notes: HTML becomes lines, links and email addresses go, blank runs shrink, long notes are cut', () => {
+    const n = cal.cleanNotes('<b>Gold Lines maranta</b><br>Water weekly &amp; mist.<br><br><br>See https://example.test/care?x=1 or <a href="https://example.test/a">this</a><br>ask me@example.test<br>https://example.test/only', 2000);
+    assert.strictEqual(n, 'Gold Lines maranta\nWater weekly & mist.\n\nSee or this\nask');
+    assert.strictEqual(cal.cleanNotes('a\n\n\n\nb\r\nc', 2000), 'a\n\nb\nc');
+    assert.strictEqual(cal.cleanNotes('Join: https://meet.example.test/abc-defg', 2000), 'Join:');
+    assert.strictEqual(cal.cleanNotes('<ul><li>One</li><li>Two</li></ul>', 2000), '\u2022 One\n\u2022 Two');
+    const long = cal.cleanNotes('x'.repeat(3000), 2000);
+    assert.strictEqual(Array.from(long).length, 2000);
+    assert.ok(/\u2026$/.test(long));
+    assert.strictEqual(cal.cleanNotes('', 2000), '');
+  });
+
+  await check('notes: a repeating event shares one copy; past the total, later events go without', () => {
+    const list = [];
+    for (let i = 0; i < 9; i++) list.push({ id: 'w' + i, cal: 1, title: 'Water plants', start: 's', end: 'e', allDay: false, location: '', notes: 'Same care text' });
+    const r = cal.shareNotes(list);
+    assert.strictEqual(Object.keys(r.notes).length, 1);
+    assert.ok(r.events.every((e) => e.note === r.events[0].note && e.notes === undefined));
+    const big = [];
+    for (let i = 0; i < 40; i++) big.push({ id: 'b' + i, cal: 1, title: 't', start: 's', end: 'e', allDay: false, location: '', notes: i + ' ' + 'y'.repeat(1990) });
+    const rb = cal.shareNotes(big);
+    const total = Object.keys(rb.notes).reduce((a, k) => a + rb.notes[k].length, 0);
+    assert.ok(total <= 60000, String(total));
+    assert.ok(rb.events[0].note && !rb.events[39].note, 'the nearest keep theirs');
   });
 
   await check('DETAILS=busy: every title is Busy, no place, nothing from the event leaks', () => {
@@ -487,7 +514,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/calendar', { token: TOKEN });
     const d = r.json.data;
     assert.strictEqual(r.json.rev, rev1);
-    assert.deepStrictEqual(Object.keys(d), ['configured', 'tz', 'from', 'to', 'updatedAt', 'truncated', 'calendars', 'events']);
+    assert.deepStrictEqual(Object.keys(d), ['configured', 'tz', 'from', 'to', 'updatedAt', 'truncated', 'calendars', 'events', 'notes']);
     assert.strictEqual(d.tz, TZ);
     assert.strictEqual(d.from, '2026-10-30T05:00:00Z');
     assert.strictEqual(d.to, '2026-12-31T06:00:00Z');
@@ -500,7 +527,9 @@ async function main() {
     const health = d.events.filter((e) => e.cal === 2);
     assert.strictEqual(health.length, 14);
     assert.ok(health.every((e) => e.title === 'Busy' && e.location === ''));
-    assert.ok(r.text.indexOf('Bring the form') < 0 && r.text.indexOf('Zebra') < 0 && r.text.indexOf('Kitchen') < 0);
+    assert.strictEqual(d.notes[dentist.note], 'Bring the form', 'a shown calendar carries its notes');
+    assert.ok(health.every((e) => e.note === undefined), 'a busy calendar has no notes');
+    assert.ok(r.text.indexOf('hidden agenda') < 0 && r.text.indexOf('Zebra') < 0 && r.text.indexOf('Kitchen') < 0);
     const st = await request(P, 'GET', '/live/state');
     assert.strictEqual(st.json.resources.calendar.rev, rev1);
     assert.strictEqual(st.json.resources.calendar.data.events.length, d.events.length);
@@ -614,6 +643,7 @@ async function main() {
     assert.strictEqual(r.json.rev, saved.resources.calendar.rev);
     assert.deepStrictEqual(r.json.data, saved.resources.calendar.data);
     assert.ok(r.json.data.events.length > 0);
+    assert.ok(Object.keys(r.json.data.notes).length > 0, 'notes are kept across a restart');
     feeds.open();
     const again = await request(h.port, 'POST', '/api/calendar/refresh', { token: TOKEN });
     assert.strictEqual(again.json.changed, false);

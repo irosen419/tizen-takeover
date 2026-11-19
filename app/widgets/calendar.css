@@ -517,6 +517,110 @@
 .cal-detail-empty { margin-top: 0.7rem; font-size: 1.1rem; font-weight: 300; line-height: 1.35; color: var(--text-2); }
 .cal-detail-note { margin-top: 0.5rem; font-size: 0.8rem; line-height: 1.4; color: var(--text-3); word-wrap: break-word; }
 
+/* ---------- Notes: the start beside the Day view, all of it when opened ---------- */
+
+/* The details stack: the event's words on top, its notes fill what is left. */
+.cal-detail { display: flex; flex-direction: column; }
+.cal-detail-meta { flex: 0 0 auto; min-width: 0; }
+
+/* Three short lines: this event has notes. Sits after a title, never on its own line. */
+.cal-has-notes {
+  display: inline-block;
+  vertical-align: 0.1em;
+  width: 0.62em;
+  margin-left: 0.4em;
+  opacity: 0.7;
+}
+.cal-has-notes i {
+  display: block;
+  height: 0.09em;
+  min-height: 1px;
+  margin-top: 0.12em;
+  border-radius: 0.05em;
+  background: currentColor;
+}
+.cal-has-notes i:first-child { margin-top: 0; }
+.cal-has-notes i:last-child { width: 62%; }
+
+.cal-notes {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 0.06rem solid var(--cal-hair);
+}
+.cal-notes-head { flex: 0 0 auto; display: flex; align-items: baseline; min-width: 0; }
+.cal-notes-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-top: 0.1em;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.cal-notes-label .cal-has-notes { margin: 0 0.5em 0 0; vertical-align: 0.15em; }
+.cal-notes-view { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; margin-top: 0.45rem; }
+.cal-notes-body { will-change: transform; }
+/* A soft fade where the notes go on past the bottom (a mask, so it suits any background). */
+.cal-notes.is-more .cal-notes-view {
+  -webkit-mask-image: -webkit-linear-gradient(top, #000 78%, rgba(0, 0, 0, 0));
+  -webkit-mask-image: linear-gradient(to bottom, #000 78%, rgba(0, 0, 0, 0));
+  mask-image: linear-gradient(to bottom, #000 78%, rgba(0, 0, 0, 0));
+}
+.cal-notes-more {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 0.8rem;
+  padding-top: 0.08em;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cal-notes.is-squeezed { flex: 0 0 auto; }
+.cal-notes.is-squeezed .cal-notes-view { display: none; }
+.cal-notes.is-clipped .cal-notes-view { flex: 0 0 auto; }
+.cal-stage.is-focused .cal-notes-more { color: var(--text-2); }
+
+.cal-nb { margin-top: 0.7em; font-size: 0.85rem; line-height: 1.45; color: var(--text-2); word-wrap: break-word; }
+.cal-nb:first-child { margin-top: 0; }
+.cal-nb-head { padding-top: 0.1em; font-weight: 600; line-height: 1.35; color: var(--text); }
+.cal-nb-line { padding-top: 0.05em; }
+
+/* Reading: the hours step aside, the event's words on the left, the notes
+   at a comfortable measure on the right. Up and Down move them on a transform. */
+.cal-day.is-reading .cal-tl { display: none; }
+.cal-day.is-reading .cal-detail {
+  flex: 1 1 auto;
+  width: auto;
+  margin-left: 0;
+  padding-left: 0;
+  border-left: 0;
+  flex-direction: row;
+}
+.cal-day.is-reading .cal-detail-meta { flex: 0 0 15rem; width: 15rem; padding-right: 1.4rem; }
+.cal-day.is-reading .cal-notes {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 44rem;
+  margin-top: 0;
+  padding-top: 0;
+  padding-left: 1.6rem;
+  border-top: 0;
+  border-left: 0.06rem solid var(--cal-hair);
+}
+.cal-day.is-reading .cal-nb { margin-top: 1em; font-size: 1.05rem; line-height: 1.5; }
+.cal-day.is-reading .cal-nb:first-child { margin-top: 0; }
+.cal-day.is-reading .cal-nb-head { font-size: 1.1rem; color: var(--text); }
+
 /* ---------- Week ---------- */
 
 .cal-week { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
@@ -721,6 +825,13 @@
 .panel.is-full .cal-detail-when { font-size: 1.25rem; }
 .panel.is-full .cal-detail-place { font-size: 1.1rem; }
 .panel.is-full .cal-detail-count { font-size: 0.9rem; }
+.panel.is-full .cal-notes-label { font-size: 0.85rem; }
+.panel.is-full .cal-nb { font-size: 1.02rem; }
+.panel.is-full .cal-notes-more { font-size: 0.9rem; }
+.panel.is-full .cal-day.is-reading .cal-detail-meta { flex-basis: 22rem; width: 22rem; padding-right: 2rem; }
+.panel.is-full .cal-day.is-reading .cal-notes { max-width: 58rem; padding-left: 2.4rem; }
+.panel.is-full .cal-day.is-reading .cal-nb { font-size: 1.35rem; }
+.panel.is-full .cal-day.is-reading .cal-nb-head { font-size: 1.45rem; }
 
 .panel.is-full .cal-wcol { padding: 0.5rem 0.5rem 0.3rem; }
 .panel.is-full .cal-wdow { font-size: 0.85rem; }

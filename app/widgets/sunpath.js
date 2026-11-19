@@ -30,7 +30,16 @@
  *              (today, Dec 21, Mar 20, Jun 21, Sep 22), what the sun does
  *              then, and one of three views: the room from above, the sun's
  *              arc against the window, the seasons with the plant notes
- *   full       all three views at once
+ *   full       all three views at once, or the Care view (a chip row)
+ *
+ * Care: a fourth view, the owner's weekly "Water plants" calendar event
+ * (config careEvent) read from the hub's live "calendar" data: when the
+ * next watering is, the notes' general paragraphs, one card per plant
+ * (its watering text and, from config light, its sunlight), and the last
+ * paragraph as a quiet warning. The tile adds one small line, "Water plants
+ * Sat 10 AM", first to leave when there is no room. How the notes are cut
+ * into plants is parseNotes() below. Text from the notes goes through
+ * HUB_I18N.dyn() one paragraph at a time.
  *
  * Everything that can't fit leaves, lowest first, measured once after each
  * draw. The next sun is searched for once and kept until it passes, the
@@ -108,8 +117,22 @@
     panel: {
       time: 'Time',
       day: 'Day',
-      views: { plan: 'Room', arc: 'Sun arc', table: 'Seasons' },
+      views: { plan: 'Room', arc: 'Sun arc', table: 'Seasons', sun: 'Sun', care: 'Care' },
       stepHint: '← → 15 min'
+    },
+    care: {
+      next: 'Next watering: {when}',
+      now: 'Now',
+      tomorrow: 'Tomorrow',
+      dayDate: '{wd}, {d}',
+      none: 'No “{title}” event in the next 60 days',
+      noNotes: 'This event has no care notes yet.',
+      light: 'Light',
+      scroll: '↑ ↓ scroll',
+      tile: 'Water plants {when}',
+      tileToday: 'today',
+      tileTomorrow: 'tomorrow',
+      tileNow: 'now'
     },
     status: {
       lit: 'Direct sun on the wall. Keep the {plant} out of the beam.',
@@ -131,6 +154,32 @@
     }
   };
   var S = EN;
+
+  // Spanish for the Care view's words. The rest of the Spanish is in
+  // app/i18n.js; these are added to its table when it has no entry of its
+  // own (so a later move into i18n.js just takes over).
+  var ES_CARE = {
+    'sunpath.panel.views.sun': 'Sol',
+    'sunpath.panel.views.care': 'Cuidado',
+    'sunpath.care.next': 'Próximo riego: {when}',
+    'sunpath.care.now': 'Ahora',
+    'sunpath.care.tomorrow': 'Mañana',
+    'sunpath.care.dayDate': '{wd}, {d}',
+    'sunpath.care.none': 'Ningún evento “{title}” en los próximos 60 días',
+    'sunpath.care.noNotes': 'Este evento aún no tiene notas de cuidado.',
+    'sunpath.care.light': 'Luz',
+    'sunpath.care.scroll': '↑ ↓ desplazar',
+    'sunpath.care.tile': 'Regar plantas {when}',
+    'sunpath.care.tileToday': 'hoy',
+    'sunpath.care.tileTomorrow': 'mañana',
+    'sunpath.care.tileNow': 'ahora'
+  };
+  (function () {
+    var L = window.HUB_I18N;
+    var es = L && L.strings && L.strings.es;
+    if (!es) return;
+    for (var k in ES_CARE) if (ES_CARE.hasOwnProperty(k) && !es.hasOwnProperty(k)) es[k] = ES_CARE[k];
+  })();
 
   function I18N() {
     var L = window.HUB_I18N;
@@ -221,7 +270,9 @@
       height: num(c.plantHeightFeet, 3),
       placeholder: c.placeholder !== false,
       plants: plants,
-      shy: typeof c.keepOutOfSun === 'string' && c.keepOutOfSun ? c.keepOutOfSun : plants[plants.length - 1]
+      shy: typeof c.keepOutOfSun === 'string' && c.keepOutOfSun ? c.keepOutOfSun : plants[plants.length - 1],
+      careEvent: typeof c.careEvent === 'string' && c.careEvent.replace(/\s+/g, '') ? c.careEvent : 'Water plants',
+      light: c.light && typeof c.light === 'object' ? c.light : {}
     };
   }
 
@@ -364,8 +415,139 @@
     var a = answer(nowMs);
     var d = new Date(nowMs);
     // The day bar's "now" tick moves a step each quarter hour.
-    return [a.k, a.start || 0, a.end || 0, a.days || 0, dayKey(d), Math.floor((d.getHours() * 60 + d.getMinutes()) / 15)].join('|');
+    return [a.k, a.start || 0, a.end || 0, a.days || 0, dayKey(d), Math.floor((d.getHours() * 60 + d.getMinutes()) / 15), careTile(nowMs)].join('|');
   }
+
+  /* ---------- care: the watering event and its notes ---------- */
+
+  var DAY_MS = 86400000;
+  var calData = null;       // the live "calendar" resource, as last received
+
+  function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+  function dyn(s) {
+    var L = window.HUB_I18N;
+    try { return L && typeof L.dyn === 'function' ? L.dyn(s) : s; } catch (e) { return s; }
+  }
+  function normTitle(s) { return String(s).replace(/\s+/g, ' ').replace(/^ | $/g, '').toLowerCase(); }
+
+  // "2026-11-21" is a local day; anything else is a UTC ISO time.
+  function evMs(s) {
+    if (typeof s !== 'string') return NaN;
+    var m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(s);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]).getTime();
+    return Date.parse(s);
+  }
+
+  // The first "Water plants" event (case and spacing aside) that has not
+  // ended, by start: { ev, start, end, allDay } or null.
+  function pickCare(data, nowMs, title) {
+    if (!data || !isArr(data.events)) return null;
+    var want = normTitle(title === undefined ? 'Water plants' : title);
+    var found = [];
+    for (var i = 0; i < data.events.length; i++) {
+      var ev = data.events[i];
+      if (!ev || typeof ev.title !== 'string' || normTitle(ev.title) !== want) continue;
+      var st = evMs(ev.start);
+      if (isNaN(st)) continue;
+      var en = evMs(ev.end);
+      if (isNaN(en) || en <= st) en = st + (ev.allDay ? DAY_MS : 0);
+      if (en > nowMs) found.push({ ev: ev, start: st, end: en, allDay: !!ev.allDay });
+    }
+    found.sort(function (a, b) { return a.start - b.start; });
+    return found.length ? found[0] : null;
+  }
+
+  // Paragraphs split on blank lines. A plant is a paragraph whose first line
+  // is short (48 or fewer), does not end in . ! ? or :, and has more lines
+  // after it: name = that line, care = the rest joined with a space.
+  // Paragraphs before the first plant are the top, all others the bottom.
+  function parseNotes(text) {
+    var out = { top: [], plants: [], bottom: [] };
+    if (typeof text !== 'string') return out;
+    var paras = text.replace(/\r/g, '').split(/\n[ \t]*\n/);
+    for (var i = 0; i < paras.length; i++) {
+      var lines = [];
+      var raw = paras[i].split('\n');
+      for (var j = 0; j < raw.length; j++) {
+        var ln = raw[j].replace(/^\s+|\s+$/g, '');
+        if (ln) lines.push(ln);
+      }
+      if (!lines.length) continue;
+      if (lines.length >= 2 && lines[0].length <= 48 && !/[.!?:]$/.test(lines[0])) {
+        out.plants.push({ name: lines[0], care: lines.slice(1).join(' ') });
+      } else {
+        (out.plants.length ? out.bottom : out.top).push(lines.join(' '));
+      }
+    }
+    return out;
+  }
+
+  // The config light line for a plant: the first key (lowercase word) that
+  // the lowercased name contains.
+  function lightFor(name, map) {
+    if (!map || typeof map !== 'object' || typeof name !== 'string') return '';
+    var low = name.toLowerCase();
+    for (var k in map) {
+      if (map.hasOwnProperty(k) && typeof map[k] === 'string' && k && low.indexOf(k.toLowerCase()) >= 0) return map[k];
+    }
+    return '';
+  }
+
+  function careOf(nowMs) { return pickCare(calData, nowMs, P ? P.careEvent : undefined); }
+
+  function noteText(c) {
+    var n = c && c.ev.note && calData && calData.notes ? calData.notes[c.ev.note] : '';
+    return typeof n === 'string' ? n : '';
+  }
+
+  // What the Care view shows depends on this: a change redraws it.
+  function careKey(nowMs) {
+    var c = careOf(nowMs);
+    if (!c) return 'none';
+    return [c.start, c.end, c.ev.title, c.start <= nowMs && !c.allDay ? 'now' : '', noteText(c)].join('|');
+  }
+
+  function dayStart(ms) { var d = new Date(ms); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+
+  function weekdayShort(ms) {
+    var L = I18N();
+    var d = new Date(ms);
+    if (L && typeof L.dayName === 'function') return L.dayName(d, true);
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+  }
+
+  // "10 AM", "10:30 AM": minutes only when there are some.
+  function careClock(ms) {
+    var d = new Date(ms);
+    var m = d.getMinutes();
+    return (d.getHours() % 12 || 12) + (m ? ':' + pad2(m) : '') + NB + nb(d.getHours() >= 12 ? S.pm : S.am);
+  }
+
+  function isNow(c, nowMs) { return !c.allDay && c.start <= nowMs && nowMs < c.end; }
+
+  // "Now", "Today, 10 AM", "Tomorrow, 10 AM", "Sat, Nov 21, 10 AM".
+  function careWhen(c, nowMs) {
+    if (isNow(c, nowMs)) return S.care.now;
+    var diff = Math.round((dayStart(c.start) - dayStart(nowMs)) / DAY_MS);
+    var day = diff <= 0 ? S.today : diff === 1 ? S.care.tomorrow : fill(S.care.dayDate, { wd: weekdayShort(c.start), d: fmtDate(c.start) });
+    return c.allDay ? day : day + ', ' + careClock(c.start);
+  }
+
+  // The tile's one line: "Water plants Sat 10 AM".
+  function careTile(nowMs) {
+    var c = careOf(nowMs);
+    if (!c) return '';
+    var when;
+    if (isNow(c, nowMs)) when = S.care.tileNow;
+    else {
+      var diff = Math.round((dayStart(c.start) - dayStart(nowMs)) / DAY_MS);
+      var day = diff <= 0 ? S.care.tileToday : diff === 1 ? S.care.tileTomorrow : diff < 7 ? weekdayShort(c.start) : fmtDate(c.start);
+      when = c.allDay ? day : day + ' ' + careClock(c.start);
+    }
+    return fill(S.care.tile, { when: when });
+  }
+
+  function validCal(d) { return !!d && typeof d === 'object' && isArr(d.events); }
 
   /* ---------- small helpers ---------- */
 
@@ -604,6 +786,8 @@
     }
     var table = tall ? seasonTable(box, nowMs, 'is-tile') : null;
     if (table && !fitTable(table)) { drop(table); table = null; }
+    var careText = careTile(nowMs);
+    var careLn = careText ? div('sp-care-line', box, careText) : null;
 
     if (big) shrink(big, 1.3, function () { return fitsWidth(big); });
 
@@ -618,6 +802,9 @@
       if (lines >= min) clampLines(n, lines);
       else drop(n);
     }
+    // The watering line goes first, but comes back if what else leaves frees the room.
+    var careGone = null;
+    if (over() && careLn) { careGone = careLn; drop(careLn); careLn = null; }
     if (over() && table) { drop(table); table = null; }
     if (over() && todayBox) { var bar = todayBox.querySelector('.sp-bar'); drop(bar); }
     if (over()) squeeze(grow, 1);
@@ -626,6 +813,10 @@
     if (over()) squeeze(sub, 1);
     if (over() && big) shrink(big, 1.0, function () { return !over(); });
     if (over()) squeeze(kick, 1);
+    if (careGone && !over()) {
+      box.appendChild(careGone);
+      if (over()) drop(careGone);
+    }
   }
 
   function renderTile(body, ctx) {
@@ -899,6 +1090,7 @@
     var full = ctx && ctx.mode && ctx.mode() === 'full';
     var root = div('sp-panel' + (full ? ' is-full' : ''), body);
     pv.full = full;
+    if (full && pv.view !== 'care') pv.view = 'plan';     // full screen shows the three pictures together
 
     // Panel: the picture (one of three) on the left, the moment on the right.
     // Full screen: the room, the moment, then the arc and the seasons.
@@ -914,7 +1106,7 @@
 
     // Time slider.
     var tc = control(mid, 'sp-ctl-time', 'time', S.panel.time, S.panel.stepHint);
-    tc.box.setAttribute('data-autofocus', '');
+    if (pv.view !== 'care') tc.box.setAttribute('data-autofocus', '');
     tc.box.className += ' sp-slider';
     var rail = div('sp-slider-rail', tc.box);
     pv.track = div('sp-slider-track', rail);
@@ -934,17 +1126,17 @@
     pv.dayText = span('sp-step-text', dc.box);
     span('sp-step-arrow', dc.box, '\u203a');
 
-    if (!full) {
-      // Which picture the left side shows.
-      var views = div('sp-views', left);
-      var vk = ['plan', 'arc', 'table'];
-      pv.viewEls = [];
-      for (var v = 0; v < vk.length; v++) {
-        var chip = div('sp-view-chip f' + (pv.view === vk[v] ? ' is-on' : ''), views, S.panel.views[vk[v]]);
-        chip.setAttribute('data-key', 'view-' + vk[v]);
-        chip.setAttribute('data-view', vk[v]);
-        pv.viewEls.push(chip);
-      }
+    // Which picture the left side shows. Full screen shows the three
+    // pictures together, so its chips are only Sun (all three) and Care.
+    var views = div('sp-views', left);
+    var vk = full ? ['plan', 'care'] : ['plan', 'arc', 'table', 'care'];
+    pv.viewEls = [];
+    for (var v = 0; v < vk.length; v++) {
+      var chip = div('sp-view-chip f' + (pv.view === vk[v] ? ' is-on' : ''), views, S.panel.views[full && vk[v] === 'plan' ? 'sun' : vk[v]]);
+      chip.setAttribute('data-key', 'view-' + vk[v]);
+      chip.setAttribute('data-view', vk[v]);
+      if (pv.view === 'care' && vk[v] === 'care') chip.setAttribute('data-autofocus', '');
+      pv.viewEls.push(chip);
     }
     pv.planBox = div('sp-plan', left);
     pv.arcBox = div('sp-arc', right);
@@ -959,24 +1151,147 @@
       notes(pv.tableBox, ['plants', 'grow'], true);
     }
     placeholderNote(mid);
+    pv.root = root;
+    pv.left = left;
+    pv.rightCol = full ? right : null;
+    pv.care = drawCare(left, nowMs);
     pv.mid = mid;
-    pv.views = full ? null : left.querySelector('.sp-views');
+    pv.views = views;
     showView();
     refresh();
     fitChips();
-    if (full) fitTable(pv.table);
+    if (full && pv.view !== 'care') fitTable(pv.table);
+    careFit();
   }
 
   function showView() {
-    if (!pv || pv.full) return;
-    pv.planBox.style.display = pv.view === 'plan' ? '' : 'none';
-    pv.arcBox.style.display = pv.view === 'arc' ? '' : 'none';
-    pv.tableBox.style.display = pv.view === 'table' ? '' : 'none';
+    if (!pv) return;
+    var care = pv.view === 'care';
     for (var i = 0; i < pv.viewEls.length; i++) {
       var on = pv.viewEls[i].getAttribute('data-view') === pv.view;
       pv.viewEls[i].className = pv.viewEls[i].className.replace(/ is-on\b/g, '') + (on ? ' is-on' : '');
     }
+    // Care takes the whole panel: the moment's column (and, in full screen,
+    // the arc and the seasons) step aside.
+    pv.root.className = 'sp-panel' + (pv.full ? ' is-full' : '') + (care ? ' is-care' : '');
+    pv.care.style.display = care ? '' : 'none';
+    pv.mid.style.display = care ? 'none' : '';
+    if (pv.rightCol) pv.rightCol.style.display = care ? 'none' : '';
+    if (pv.full) {
+      pv.planBox.style.display = care ? 'none' : '';
+      return;
+    }
+    pv.planBox.style.display = pv.view === 'plan' ? '' : 'none';
+    pv.arcBox.style.display = pv.view === 'arc' ? '' : 'none';
+    pv.tableBox.style.display = pv.view === 'table' ? '' : 'none';
     if (pv.view === 'table') { fitTable(pv.table); fitSeasons(); }
+    if (care) careFit();
+  }
+
+  /* ---------- the Care view ---------- */
+
+  function careEl(parent, cls, text) { return div(cls, parent, text); }
+
+  // One paragraph or care text: the owner's words in the hub's language.
+  function para(parent, cls, text) { return careEl(parent, cls, dyn(text)); }
+
+  function drawCard(parent, pl) {
+    var card = careEl(parent, 'sp-card', '');
+    careEl(card, 'sp-card-name', pl.name);
+    para(card, 'sp-card-text', pl.care);
+    var light = lightFor(pl.name, P.light);
+    if (light) {
+      var ln = careEl(card, 'sp-card-light', '');
+      sunDot(ln);
+      span('sp-card-label', ln, S.care.light + ' ');
+      span('sp-card-lighttext', ln, dyn(light));
+    }
+    return card;
+  }
+
+  function drawCare(parent, nowMs) {
+    var box = div('sp-care' + (pv.full ? ' is-wide' : ''), parent);
+    pv.careView = pv.careIn = pv.careBar = pv.careThumb = pv.careHint = null;
+    var c = careOf(nowMs);
+    var head = div('sp-care-head', box);
+    if (!c) {
+      span('sp-care-when is-none', head, fill(S.care.none, { title: P.careEvent }));
+      return box;
+    }
+    span('sp-care-when', head, fill(S.care.next, { when: careWhen(c, nowMs) }));
+    pv.careHint = span('sp-hint sp-care-hint', head, S.care.scroll);
+    var view = div('sp-care-view', box);
+    pv.careView = view;
+    var inner = div('sp-care-in', view);
+    pv.careIn = inner;
+    pv.careBar = div('sp-care-bar', view);
+    pv.careThumb = div('sp-care-thumb', pv.careBar);
+    var notes = parseNotes(noteText(c));
+    var i;
+    if (!notes.top.length && !notes.plants.length && !notes.bottom.length) {
+      div('sp-care-p', inner, S.care.noNotes);
+      return box;
+    }
+    for (i = 0; i < notes.top.length; i++) para(inner, 'sp-care-p', notes.top[i]);
+    if (notes.plants.length) {
+      var cards = div('sp-cards', inner);
+      if (pv.full && notes.plants.length > 1) {
+        // Two columns without grid: the cards split by the length of their
+        // words, in reading order.
+        var total = 0;
+        for (i = 0; i < notes.plants.length; i++) total += notes.plants[i].name.length + notes.plants[i].care.length + 80;
+        var cols = [div('sp-cards-col', cards), div('sp-cards-col is-second', cards)];
+        var sum = 0;
+        for (i = 0; i < notes.plants.length; i++) {
+          var which = sum * 2 >= total && i > 0 ? 1 : 0;
+          if (i === notes.plants.length - 1 && cols[1].children.length === 0) which = 1;
+          drawCard(cols[which], notes.plants[i]);
+          sum += notes.plants[i].name.length + notes.plants[i].care.length + 80;
+        }
+      } else {
+        for (i = 0; i < notes.plants.length; i++) drawCard(cards, notes.plants[i]);
+      }
+    }
+    for (i = 0; i < notes.bottom.length; i++) para(inner, 'sp-care-warn', notes.bottom[i]);
+    return box;
+  }
+
+  // How far the Care text can move, the hint and the scroll bar to match.
+  // Scrolling is transform only: the text is laid out once.
+  function careMax() {
+    if (!pv || !pv.careView || !pv.careIn) return 0;
+    var over = pv.careIn.offsetHeight - pv.careView.clientHeight;
+    return over > 2 ? over : 0;
+  }
+  function careFit() {
+    if (!pv || !pv.careView || !pv.care || pv.care.style.display === 'none') return;
+    var max = careMax();
+    var y = Math.max(0, Math.min(max, pv.careY || 0));
+    pv.careY = y;
+    var t = max ? 'translateY(' + (-y) + 'px)' : '';
+    pv.careIn.style.webkitTransform = t;
+    pv.careIn.style.transform = t;
+    pv.careHint.style.display = max ? '' : 'none';
+    pv.careBar.style.display = max ? '' : 'none';
+    if (max) {
+      var h = pv.careBar.clientHeight;
+      var th = Math.max(h * 0.15, h * pv.careView.clientHeight / pv.careIn.offsetHeight);
+      pv.careThumb.style.height = th.toFixed(1) + 'px';
+      var ty = 'translateY(' + ((h - th) * y / max).toFixed(1) + 'px)';
+      pv.careThumb.style.webkitTransform = ty;
+      pv.careThumb.style.transform = ty;
+    }
+  }
+  // dir 1 scrolls down, -1 up; true when it moved.
+  function careScroll(dir) {
+    if (!pv || !pv.careView) return false;
+    var max = careMax();
+    var step = Math.max(24, Math.round(pv.careView.clientHeight * 0.6));
+    var y = Math.max(0, Math.min(max, (pv.careY || 0) + dir * step));
+    if (y === (pv.careY || 0)) return false;
+    pv.careY = y;
+    careFit();
+    return true;
   }
 
   // The seasons view in the panel: the notes get smaller type, then the
@@ -1044,6 +1359,7 @@
     pv.thumb.className = 'sp-slider-thumb' + (st.k === 'lit' ? ' is-lit' : '');
     fitMid();
     // The pictures.
+    if (pv.view === 'care') return;
     if (pv.full || pv.view === 'plan') pv.planBox.innerHTML = planSvg(ms);
     if (pv.full || pv.view === 'arc') {
       pv.arcSvg.innerHTML = arcSvg(ms, nowMs);
@@ -1096,6 +1412,13 @@
     refresh();
   }
 
+  function liveApi() {
+    var c = tileCtx && tileCtx.live;
+    if (c && typeof c.get === 'function' && typeof c.on === 'function') return c;
+    var h = window.HUB_LIVE;
+    return h && typeof h.get === 'function' && typeof h.on === 'function' ? h : null;
+  }
+
   function keyOf(target) { return target && target.getAttribute ? target.getAttribute('data-key') || '' : ''; }
 
   /* ---------- the widget ---------- */
@@ -1121,6 +1444,41 @@
           }
         });
       }
+      // The watering event, from the hub's live calendar data.
+      try {
+        var LV = liveApi();
+        if (LV) {
+          try {
+            var first = LV.get('calendar');
+            if (validCal(first)) calData = first;
+          } catch (e0) { /* wait for it */ }
+          LV.on('calendar', function (d) {
+            try {
+              if (!validCal(d)) return;
+              var before = careKey(now());
+              calData = d;
+              if (careKey(now()) === before) return;
+              ctx.redrawTile();
+              if (ctx.isOpen() && pv && pv.view === 'care') ctx.redrawPanel();
+            } catch (e1) { /* the next change tries again */ }
+          });
+        }
+      } catch (e2) { /* no Care without live data */ }
+      // Spanish for the notes arrived: draw the Care view again once per batch.
+      try {
+        if (L && typeof L.onDyn === 'function') {
+          var dynTimer = null;
+          L.onDyn(function () {
+            if (dynTimer) return;
+            dynTimer = setTimeout(function () {
+              dynTimer = null;
+              try {
+                if (ctx.isOpen() && pv && pv.view === 'care') ctx.redrawPanel();
+              } catch (e3) { /* shown as typed */ }
+            }, 120);
+          });
+        }
+      } catch (e4) { /* stays as typed */ }
       // Once a minute: redraw only when the answer (or the day) changed.
       setInterval(function () {
         try {
@@ -1152,6 +1510,31 @@
     },
 
     onMove: function (dir, from) {
+      if (pv && pv.view === 'care' && pv.viewEls) {
+        // Care has only the view chips: Left and Right between them, Down
+        // scrolls the text, Up scrolls back and then leaves for the button.
+        var at = -1;
+        var on = null;
+        for (var i = 0; i < pv.viewEls.length; i++) {
+          if (pv.viewEls[i] === from) at = i;
+          if (pv.viewEls[i].getAttribute('data-view') === 'care') on = pv.viewEls[i];
+        }
+        if (at < 0) {
+          // From the panel's button, Down comes back to the chip and the
+          // other arrows stay put (the hidden controls are not to be found).
+          var isBtn = from && /\bpanel-btn\b/.test(from.className || '');
+          if (isBtn) return dir === 'down' ? on || true : true;
+          return on || undefined;
+        }
+        if (dir === 'down') { careScroll(1); return true; }
+        if (dir === 'up') {
+          // Up scrolls back first, then goes on to the panel's own button.
+          if (careScroll(-1)) return true;
+          return document.querySelector('#panel .panel-btn') || true;
+        }
+        var to = at + (dir === 'left' ? -1 : 1);
+        return to >= 0 && to < pv.viewEls.length ? pv.viewEls[to] : true;
+      }
       if (!pv || (dir !== 'left' && dir !== 'right')) return;
       var k = keyOf(from);
       if (k === 'time') { stepTime(dir === 'left' ? -1 : 1); return true; }
@@ -1179,7 +1562,11 @@
     search: function (ms) { P = P || settings(cfgOwn()); return search(ms); },
     answer: function (ms) { P = P || settings(cfgOwn()); return answer(ms); },
     settings: function () { P = P || settings(cfgOwn()); return JSON.parse(JSON.stringify(P)); },
-    panel: function () { return pv ? { day: pv.day, minute: pv.minute, view: pv.view } : null; },
+    panel: function () { return pv ? { day: pv.day, minute: pv.minute, view: pv.view, careY: pv.careY || 0 } : null; },
+    parseNotes: parseNotes,
+    pickCare: function (data, ms, title) { return pickCare(data, ms, title); },
+    lightFor: lightFor,
+    careTile: function (ms) { P = P || settings(cfgOwn()); return careTile(ms); },
     constants: { MAG_DECLINATION: MAG_DECLINATION, AZ_LO: AZ_LO, AZ_HI: AZ_HI, FACE: FACE, WIN_W: WIN_W, SILL: SILL, WIN_H: WIN_H }
   };
   function cfgOwn() { return (window.HUB_CONFIG && window.HUB_CONFIG.widgets && window.HUB_CONFIG.widgets.sunpath) || {}; }
