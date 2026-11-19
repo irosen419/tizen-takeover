@@ -1421,7 +1421,13 @@
           var qm = parseIso(eps[q].airstamp);
           if (qm !== null && qm <= t0 + 5 * MIN && typeof eps[q].season === 'number' && typeof eps[q].number === 'number') last = eps[q];
         }
-        if (last) queueMark('upto', show.id, last.season, last.number);
+        // Never move the up-to point back: an episode already inside it (an
+        // exception taken off by hand) is only marked watched again.
+        var up = show.progress && show.progress.upTo;
+        var inside = !!(last && up && typeof up.season === 'number' && typeof up.number === 'number' &&
+          (last.season < up.season || (last.season === up.season && last.number <= up.number)));
+        if (inside) toggleRow(show, eps, t0);
+        else if (last) queueMark('upto', show.id, last.season, last.number);
       }
       changed();
       return true;
