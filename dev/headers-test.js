@@ -121,6 +121,10 @@ async function pushPage(env, o) {
   await p.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0);
   await H.until(() => p.evaluate(() => window.HUB_LIVE && window.HUB_LIVE.status().state === 'live'), 10000, 'not live');
   await H.until(() => p.evaluate(() => !window.HUB_TEST.busy()), 5000, 'busy');
+  // These checks measure the small panel, and Entertainment uses it as a
+  // sample; config.js opens Entertainment straight to full screen, so keep
+  // its small panel here.
+  await p.evaluate(() => { const w = window.HUB_CONFIG && window.HUB_CONFIG.widgets; if (w && w.entertainment) w.entertainment.openMode = 'panel'; });
   await H.sleep(900);
   return p;
 }
