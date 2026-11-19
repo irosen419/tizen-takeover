@@ -382,8 +382,8 @@
 .sp-view-chip {
   flex: 0 1 auto;
   min-width: 0;
-  margin-right: 0.5rem;
-  padding: 0.25rem 0.9rem;
+  margin-right: 0.4rem;
+  padding: 0.25rem 0.75rem;
   border-radius: 1.2rem;
   border: var(--edge) solid var(--line);
   font-size: 1em;
@@ -514,6 +514,119 @@
 .sp-panel.is-full .sp-legend { font-size: 0.95rem; }
 .sp-panel.is-full .sp-seasons { flex: 0 0 auto; margin-top: 1.4rem; }
 .sp-panel.is-full .sp-seasons .sp-table { font-size: 1rem; }
+
+/* ---------- care: the watering notes ---------- */
+
+/* The tile's one line, the first thing to leave. */
+.sp-care-line {
+  flex: 0 0 auto;
+  margin-top: 0.45rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+
+.sp-panel.is-care .sp-col-left,
+.sp-panel.is-full.is-care .sp-col-left { flex: 1 1 0; padding-right: 0; }
+.sp-care { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.sp-care-head {
+  flex: 0 0 auto;
+  margin-bottom: 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text);
+}
+.sp-care-when { word-wrap: break-word; }
+.sp-care-when.is-none { font-weight: 400; color: var(--text-2); }
+.sp-care-hint { font-size: 0.8rem; font-weight: 400; margin-left: 0.8rem; }
+.sp-care-view { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+.sp-care-in { padding-right: 0.9rem; will-change: transform; }
+.sp-care-in > :last-child,
+.sp-cards-col > :last-child { margin-bottom: 0; }
+.sp-care-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 0.2rem;
+  border-radius: 0.1rem;
+  background: rgba(255, 255, 255, 0.08);
+}
+.sp-care-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-radius: 0.1rem;
+  background: rgba(255, 255, 255, 0.4);
+}
+.sp-care-p {
+  margin-bottom: 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.sp-card {
+  margin-bottom: 0.55rem;
+  padding: 0.5rem 0.8rem 0.55rem;
+  border-radius: 0.8rem;
+  border: var(--edge) solid var(--line);
+  background: rgba(255, 255, 255, 0.035);
+}
+.sp-card-name {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #7ed9a0;
+  word-wrap: break-word;
+}
+.sp-card-text {
+  margin-top: 0.1rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text);
+  word-wrap: break-word;
+}
+.sp-card-light {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.sp-card-light .sp-dot { width: 0.6em; height: 0.6em; margin-right: 0.35em; }
+.sp-card-label {
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.sp-care-warn {
+  margin-top: 0.15rem;
+  padding: 0.1rem 0 0.2rem 0.8rem;
+  border-left: 0.16rem solid rgba(255, 207, 138, 0.6);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #ffcf8a;
+  word-wrap: break-word;
+}
+
+/* Full screen: wider type, the cards in two columns (inline-block, no grid). */
+.sp-care.is-wide .sp-care-head { font-size: 1.5rem; margin-bottom: 0.8rem; }
+.sp-care.is-wide .sp-care-hint { font-size: 0.95rem; }
+.sp-care.is-wide .sp-care-in { padding-right: 1.4rem; }
+.sp-care.is-wide .sp-care-p,
+.sp-care.is-wide .sp-care-warn { max-width: 62rem; font-size: 1.1rem; }
+.sp-care.is-wide .sp-care-p { margin-bottom: 1rem; }
+.sp-care.is-wide .sp-card { margin-bottom: 0.9rem; padding: 0.75rem 1.1rem 0.85rem; }
+.sp-care.is-wide .sp-card-name { font-size: 1.3rem; }
+.sp-care.is-wide .sp-card-text { font-size: 1.05rem; }
+.sp-care.is-wide .sp-card-light { margin-top: 0.5rem; font-size: 0.95rem; }
+.sp-cards-col { display: inline-block; vertical-align: top; width: 50%; box-sizing: border-box; padding-right: 0.9rem; }
+.sp-cards-col.is-second { padding-right: 0; padding-left: 0.9rem; }
 
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }

@@ -14,7 +14,14 @@
  * The resource data:
  *   { configured: true, tz, from, to, updatedAt, truncated,
  *     calendars: [{ cal, name, color, ok, error, count, skipped, updatedAt }],
- *     events: [{ id, cal, title, start, end, allDay, location }] }
+ *     events: [{ id, cal, title, start, end, allDay, location, note? }],
+ *     notes: { key: text } }
+ * An event with notes (the event's description in Google Calendar) carries
+ * note, a short key into notes; a repeating event shares one copy. Notes are
+ * plain text: HTML is turned into lines, links and email addresses are taken
+ * out, at most MAX_NOTES characters each and MAX_NOTES_TOTAL in all (the
+ * nearest events keep theirs). A "busy" calendar never has notes. Notes text
+ * is never logged.
  * Timed events have UTC start and end like "2026-11-16T15:00:00Z". All-day
  * events have dates like "2026-11-16", and the end date is the day after the
  * last day. With nothing set up the data is
@@ -40,6 +47,8 @@ const MAX_INSTANCES = 1000; // per repeating event
 const MAX_WORK = 200000;    // steps per feed, so a strange feed cannot run for long
 const MAX_TITLE = 120;
 const MAX_LOCATION = 80;
+const MAX_NOTES = 2000;
+const MAX_NOTES_TOTAL = 60000;
 const MAX_NAME = 40;
 const FEED_LIMIT = 5 * 1024 * 1024;
 const FETCH_TIMEOUT = 10000;
@@ -284,6 +293,44 @@ function cleanText(s, max) {
   const chars = Array.from(t);
   if (chars.length <= max) return t;
   return chars.slice(0, max - 1).join('').trimEnd() + '\u2026';
+}
+
+// An event's notes (DESCRIPTION) as plain text with line breaks. Google
+// sends HTML when the notes were formatted on the web: tags become line
+// breaks or nothing, entities become characters. Links and email addresses
+// are taken out (a line left with nothing in it goes too), blank runs become
+// one blank line, at most max characters with an ellipsis when cut.
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '\u2013', mdash: '\u2014', hellip: '\u2026', rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201d', ldquo: '\u201c', bull: '\u2022' };
+function cleanNotes(s, max) {
+  let t = String(s || '');
+  if (/<[a-z\/][^>]*>/i.test(t)) {
+    t = t.replace(/\r?\n/g, ' ')
+      .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+      .replace(/<\s*li[^>]*>/gi, '\n\u2022 ')
+      .replace(/<\s*\/\s*(p|div|ul|ol|h[1-6]|tr)\s*>/gi, '\n')
+      .replace(/<[^>]*>/g, '');
+  }
+  t = t.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+    if (e[0] === '#') {
+      const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return n > 31 && n < 0x110000 ? String.fromCodePoint(n) : ' ';
+    }
+    const v = ENTITIES[e.toLowerCase()];
+    return v === undefined ? m : v;
+  });
+  t = t.replace(/\b(?:https?:\/\/|www\.)[^\s<>"]+/gi, '')
+    .replace(/[^\s<>"()]+@[^\s<>"()]+\.[a-z]{2,}/gi, '');
+  const lines = t.replace(/\r\n?/g, '\n').split('\n').map((l) =>
+    l.replace(/[\u0000-\u0008\u000b-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/[ \t\u00a0]+/g, ' ').trim());
+  const kept = lines.filter((l) => l === '' || /[\p{L}\p{N}]/u.test(l));
+  t = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  const chars = Array.from(t);
+  if (chars.length <= max) return t;
+  return chars.slice(0, max - 1).join('').trimEnd() + '\u2026';
+}
+
+function noteKey(text) {
+  return parseInt(crypto.createHash('sha1').update(text).digest('hex').slice(0, 10), 16).toString(36);
 }
 
 // A TZID names an IANA zone. Some programs put a prefix in front of it
@@ -624,10 +671,11 @@ function expandEvents(parsed, opts) {
   };
 
   const words = (props) => {
-    if (busy) return { title: 'Busy', location: '' };
+    if (busy) return { title: 'Busy', location: '', notes: '' };
     return {
       title: cleanText(propText(props, 'SUMMARY'), MAX_TITLE) || '(No title)',
-      location: cleanText(propText(props, 'LOCATION'), MAX_LOCATION)
+      location: cleanText(propText(props, 'LOCATION'), MAX_LOCATION),
+      notes: cleanNotes(propText(props, 'DESCRIPTION'), MAX_NOTES)
     };
   };
 
@@ -636,10 +684,12 @@ function expandEvents(parsed, opts) {
     if (allDay) {
       if (!(a < w.toDay && b > w.fromDay)) return;
       ev = { id: makeId(cal, uid, key), cal: cal, title: txt.title, start: dayText(a), end: dayText(b), allDay: true, location: txt.location };
+      if (txt.notes) ev.notes = txt.notes;
       ev._sort = midnight(a);
     } else {
       if (!(a < w.to && (b > w.from || a >= w.from))) return;
       ev = { id: makeId(cal, uid, key), cal: cal, title: txt.title, start: isoText(a), end: isoText(b), allDay: false, location: txt.location };
+      if (txt.notes) ev.notes = txt.notes;
       ev._sort = a;
     }
     if (seen.has(ev.id)) return;
@@ -798,11 +848,13 @@ function cleanData(d) {
     typeof e.id === 'string' && typeof e.start === 'string' && typeof e.end === 'string' && typeof e.allDay === 'boolean')
     .slice(0, MAX_EVENTS).map((e) => ({
       id: e.id.slice(0, 20), cal: e.cal, title: cleanText(str(e.title), MAX_TITLE), start: e.start.slice(0, 20),
-      end: e.end.slice(0, 20), allDay: e.allDay, location: cleanText(str(e.location), MAX_LOCATION)
+      end: e.end.slice(0, 20), allDay: e.allDay, location: cleanText(str(e.location), MAX_LOCATION),
+      notes: isObj(d.notes) && typeof e.note === 'string' && typeof d.notes[e.note] === 'string' ? d.notes[e.note] : ''
     }));
+  const out = shareNotes(events);
   return {
     configured: true, tz: str(d.tz), from: str(d.from), to: str(d.to), updatedAt: strOrNull(d.updatedAt),
-    truncated: d.truncated === true, calendars: calendars, events: events
+    truncated: d.truncated === true, calendars: calendars, events: out.events, notes: out.notes
   };
 }
 
@@ -810,6 +862,38 @@ function cleanResource(r) {
   if (!isObj(r)) return { rev: 0, data: unconfiguredData() };
   const rev = Number.isInteger(r.rev) && r.rev >= 0 ? r.rev : 0;
   return { rev: rev, data: cleanData(r.data) };
+}
+
+// Events with their notes text (e.notes) -> the shape the screen gets:
+// each event carries note (a key) and notes holds each text once. Texts are
+// cleaned again, and past MAX_NOTES_TOTAL characters later events go without.
+function shareNotes(list) {
+  const notes = {};
+  let total = 0;
+  const events = list.map((e) => {
+    const ev = { id: e.id, cal: e.cal, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location };
+    const text = typeof e.notes === 'string' && e.notes ? cleanNotes(e.notes, MAX_NOTES) : '';
+    if (text) {
+      const key = noteKey(text);
+      if (!notes.hasOwnProperty(key) && total + text.length <= MAX_NOTES_TOTAL) {
+        notes[key] = text;
+        total += text.length;
+      }
+      if (notes.hasOwnProperty(key)) ev.note = key;
+    }
+    return ev;
+  });
+  return { events: events, notes: notes };
+}
+
+// Stored events (note keys) -> events with their notes text again.
+function withNotesText(events, notes) {
+  return (events || []).map((e) => {
+    const ev = Object.assign({}, e);
+    if (isObj(notes) && typeof e.note === 'string' && typeof notes[e.note] === 'string') ev.notes = notes[e.note];
+    delete ev.note;
+    return ev;
+  });
 }
 
 // The same data apart from the "read at" times.
@@ -1066,7 +1150,7 @@ function createReader(o) {
       c.error = old.ok ? '' : old.error || 'not read yet';
       c.skipped = old.skipped;
       c.lastGood = old.updatedAt ? Date.parse(old.updatedAt) || null : null;
-      c.events = (stored.events || []).filter((e) => e.cal === c.cfg.cal);
+      c.events = withNotesText(stored.events, stored.notes).filter((e) => e.cal === c.cfg.cal);
     });
   }
 
@@ -1082,7 +1166,8 @@ function createReader(o) {
     sortEvents(all);
     const truncated = all.length > MAX_EVENTS;
     if (truncated) all = all.slice(0, MAX_EVENTS);
-    all = all.map((e) => ({ id: e.id, cal: e.cal, title: e.title, start: e.start, end: e.end, allDay: e.allDay, location: e.location }));
+    const shared = shareNotes(all);
+    all = shared.events;
     return {
       configured: true,
       tz: tz,
@@ -1100,7 +1185,8 @@ function createReader(o) {
         skipped: c.skipped,
         updatedAt: c.lastGood === null ? null : isoText(c.lastGood)
       })),
-      events: all
+      events: all,
+      notes: shared.notes
     };
   }
 
@@ -1196,6 +1282,8 @@ module.exports = {
   zonedToUtc: zonedToUtc,
   windowFor: windowFor,
   cleanText: cleanText,
+  cleanNotes: cleanNotes,
+  shareNotes: shareNotes,
   cleanData: cleanData,
   normalizeColor: normalizeColor,
   cleanResource: cleanResource,
