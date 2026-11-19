@@ -111,11 +111,11 @@ var HUB_CONFIG = {
 
   /* Saved layouts for the switcher: press Up on a top tile (or Left on a
      left-most one) and a bar of pills drops from the top. Pick one and it is applied (and sent to the Pi, so it
-     is remembered). "Stock" is the built-in layout above. Copy a layout here
+     is remembered). "Default" is the built-in layout above (id 'stock', kept so a saved pick still matches). Copy a layout here
      from the Layout Studio's saved list; widgets this hub doesn't have are
      skipped, and a layout may leave widgets out to hide them. */
   layouts: [
-    { id: 'stock', name: 'Stock', layout: null },
+    { id: 'stock', name: 'Default', layout: null },
     { id: 'main', name: 'Main', layout: [
       { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
       { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
@@ -183,10 +183,10 @@ var HUB_CONFIG = {
     { id: 'ambience-test', name: 'Ambience test', layout: [
       { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
     ] },
-    /* A test layout: Architecture (app/widgets/architecture.js, the map of the
-       whole system, driven by the remote) on its own, filling the screen. The
-       three busy layouts have no free cell for a tile yet. */
-    { id: 'architecture-test', name: 'Architecture test', layout: [
+    /* Architecture (app/widgets/architecture.js, the map of the whole system,
+       driven by the remote) on its own; it opens straight into a window (hub.js
+       openSolo). The id still says test so a saved pick still matches. */
+    { id: 'architecture-test', name: 'Hub architecture', layout: [
       { widget: 'architecture', x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
@@ -474,11 +474,26 @@ var HUB_CONFIG = {
      * plantHeightFeet: how high the plants sit (3 ft up). plants: shown in
      * the panel's note; keepOutOfSun: the one to keep out of the summer
      * evening beam.
+     *
+     * Care view (the panel's fourth view, and one small line on the tile):
+     *   careEvent  the title of the weekly calendar event whose notes hold
+     *              the care for each plant (case and spacing ignored; the
+     *              next one that has not ended is used). Default
+     *              'Water plants'. Its notes come from the hub server's
+     *              "calendar" live data: paragraphs before the first plant
+     *              are shown on top, a plant is a paragraph whose short
+     *              first line (48 characters or fewer, not ending in . ! ?
+     *              or :) is its name and whose other lines are its care,
+     *              paragraphs after are shown last as a warning.
+     *   light      each plant's sunlight, shown as "Light" on its card. The
+     *              key is a lowercase word that appears in the plant's
+     *              name (the first key found in it is used); no match, no
+     *              line.
      */
     /*
      * Architecture: the map of the whole system, opened with the remote (app/widgets/architecture.js).
      * OK on its tile opens straight to full screen; Back goes up a level and closes at the Big picture.
-     * It is on the "Architecture test" layout only; the map's data loads when it is first opened.
+     * It is on the "Hub architecture" layout only; the map's data loads when it is first opened.
      */
     architecture: { openMode: 'full' },
 
@@ -489,7 +504,14 @@ var HUB_CONFIG = {
       plantFromWindowFeet: [2.0, 6],      // PLACEHOLDER: nearest and furthest plant
       plantHeightFeet: 3,
       plants: ['4in Birkin philodendron', 'Golden pothos', 'Maranta Gold Lines'],
-      keepOutOfSun: 'Maranta Gold Lines'
+      keepOutOfSun: 'Maranta Gold Lines',
+      careEvent: 'Water plants',
+      light: {
+        maranta: 'Bright, indirect light. Direct sun bleaches and scorches its stripes.',
+        birkin: 'Bright, indirect light. Too little light fades its white stripes.',
+        pothos: 'Low to bright indirect light. Grows faster and more golden in brighter spots.',
+        cuttings: 'Bright, indirect light. Keep them out of hot direct sun so the water stays cool.'
+      }
     }
   }
 };

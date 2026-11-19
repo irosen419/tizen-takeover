@@ -184,8 +184,8 @@ async function main() {
       await H.sleep(300);
       const names = await es.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.switcher-name'), (n) => n.textContent));
       assert(names.length >= 3, 'no switcher: ' + names.join(', '));
-      assert(names.indexOf('Original') >= 0 && names.indexOf('Principal') >= 0 && names.indexOf('A arreglarse') >= 0, names.join(', '));
-      assert(names.indexOf('Stock') < 0 && names.indexOf('Main') < 0, 'English names: ' + names.join(', '));
+      assert(names.indexOf('Predeterminado') >= 0 && names.indexOf('Principal') >= 0 && names.indexOf('A arreglarse') >= 0, names.join(', '));
+      assert(names.indexOf('Default') < 0 && names.indexOf('Main') < 0, 'English names: ' + names.join(', '));
       await H.key(es, 'Escape');
       await H.idle(es);
     });

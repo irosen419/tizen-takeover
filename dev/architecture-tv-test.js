@@ -250,11 +250,42 @@ async function checkRegistered() {
 
 // A layout of this widget alone over the whole screen opens straight to its
 // full screen (hub.js openSolo) instead of a big tile of empty boxes.
+// Tests, tools and docs (the bottom row) sits between the boxes above it and
+// the Data flows row, about as far from each, and nothing overlaps.
+async function checkBottomRow(page, label) {
+  const r = await page.evaluate(() => {
+    const rect = (el) => el.getBoundingClientRect();
+    const dev = document.querySelector('#panel .ar-box[data-g="dev"]');
+    let above = 0;
+    document.querySelectorAll('#panel .ar-box').forEach((b) => { if (b !== dev) above = Math.max(above, rect(b).bottom); });
+    const chips = rect(document.querySelector('#panel .ar-chips'));
+    const d = rect(dev);
+    return { gapAbove: d.top - above, gapBelow: chips.top - d.bottom };
+  });
+  assert(r.gapAbove >= 0 && r.gapBelow >= 4, label + ': Tests, tools and docs touches its neighbours ' + JSON.stringify(r));
+  assert(Math.abs(r.gapAbove - r.gapBelow) <= 30, label + ': Tests, tools and docs is not centered ' + JSON.stringify(r));
+}
+
 async function checkSolo() {
   const page = await openHub({ size: [12, 6] });
-  await page.waitForFunction(() => window.HUB_TEST.open() === 'architecture' && !!document.querySelector('#panel .ar-box'), null, { timeout: 8000 });
-  const r = await page.evaluate(() => ({ full: document.getElementById('panel').className, boxes: document.querySelectorAll('#panel .ar-box').length }));
-  assert(/is-full/.test(r.full) && r.boxes >= 7, 'the one-widget layout did not open full screen: ' + JSON.stringify(r));
+  await page.waitForFunction(() => window.HUB_TEST.open() === 'architecture' && !window.HUB_TEST.busy() && !!document.querySelector('#panel .ar-box'), null, { timeout: 8000 });
+  const r = await page.evaluate(() => {
+    const p = document.getElementById('panel');
+    const b = p.getBoundingClientRect();
+    const btn = Array.prototype.filter.call(p.querySelectorAll('*'), (el) => /Full screen/.test(el.textContent) && !el.children.length)[0];
+    const cell = document.querySelector('.cell[data-widget="architecture"]');
+    return { cls: p.className, boxes: p.querySelectorAll('.ar-box').length, w: b.width / innerWidth, h: b.height / innerHeight,
+      button: !!btn && btn.getBoundingClientRect().width > 0, tile: getComputedStyle(cell).visibility };
+  });
+  assert(!/is-full/.test(r.cls) && /is-wide/.test(r.cls) && r.boxes >= 7, 'the one-widget layout did not open as a window: ' + JSON.stringify(r));
+  assert(r.w > 0.8 && r.w < 0.95 && r.h > 0.75 && r.h < 0.95, 'the window is not most of the screen: ' + JSON.stringify(r));
+  assert(r.button, 'no Full screen button in the window');
+  assert(r.tile === 'hidden', 'the screen-sized tile shows under the window');
+  await checkBottomRow(page, 'window');
+  // Back closes the window to the tile, which shows again.
+  await press(page, 'Escape');
+  await until(() => page.evaluate(() => !window.HUB_TEST.open() && !window.HUB_TEST.busy()), 4000, 'Back did not close the window');
+  assert(await page.evaluate(() => getComputedStyle(document.querySelector('.cell[data-widget="architecture"]')).visibility) === 'visible', 'the tile stays hidden after Back');
   noErrors(page);
   await page.context().close();
 }
@@ -345,6 +376,9 @@ async function checkBigPicture() {
   await press(page, 'ArrowUp'); await want('bp:dev', 'Up from the chip');
   await press(page, 'ArrowUp'); await want('bp:pi', 'Up from the tests box');
   await press(page, 'ArrowLeft'); await want('bp:ext', 'Left from the Pi');
+  await press(page, 'ArrowDown'); await want('bp:dev', 'Down from Outside services');
+  await press(page, 'ArrowUp'); await press(page, 'ArrowLeft'); await want('bp:ext', 'Up and Left from the tests box');
+  await checkBottomRow(page, 'full screen');
   await press(page, 'ArrowUp'); await want('bp:sched', 'Up from Outside services');
   await press(page, 'ArrowUp'); await want('bp:studio', 'Up from Scheduled tasks');
   await press(page, 'ArrowRight'); await want('bp:cloud', 'Right from Claude + Studio');
@@ -646,7 +680,7 @@ async function checkPi() {
     await check('files: plain ES5, no template strings, CSS ends with .css-end, linked and ordered, TV data in step with data.json', checkFiles);
     await check('the widget registers (openMode full) with a tile titled Architecture', checkRegistered);
     await check('the tile draws at every size without the data file (map, counts, nothing past the tile)', checkTiles);
-    await check('a layout of the widget alone opens straight to full screen', checkSolo);
+    await check('a layout of the widget alone opens straight into a window (no tile first), Back to the tile', checkSolo);
     await check('OK opens full screen, the data loads once, Big picture drawn, Back closes', checkOpenAndLoad);
     await check('a failed data fetch is tried again; two failures say so and OK retries', checkLoadFailure);
     await check('Big picture: arrows move to the nearest box, the flows chip, OK opens a group, Back returns', checkBigPicture);

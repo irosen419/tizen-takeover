@@ -23,6 +23,14 @@
  *   Month:     arrows move by day and week (and into the next or last month),
  *              OK opens the Day.
  *   Up from the first event (or the top row of the month) goes back to the tabs.
+ *   Notes:     an event with notes (its description in Google Calendar,
+ *              data.notes[ev.note], from Pi server 0.16.0) shows the start
+ *              of them beside the Day view; OK there (or a click on the
+ *              event) opens them to read: Up/Down scroll, OK, Back, Left or
+ *              Right close. Guest mode hides notes (app/guest.js).
+ *
+ * Opening the panel when nothing is left today goes straight to the next
+ * event's day with it chosen, the one the tile shows under "Next".
  *
  * Past events: hidden on the tile (it is about what's next), dimmed in the panel.
  */
@@ -77,6 +85,11 @@
     hintDay: '← → day · ↑ ↓ events',
     hintWeek: '← → day · ↑ ↓ events · OK opens the day',
     hintMonth: 'Arrows move · OK opens the day',
+    hintDayNotes: '← → day · ↑ ↓ events · OK reads the notes',
+    hintReading: '↑ ↓ scroll · OK or Back closes',
+    notesLabel: 'Notes',
+    readNotes: 'OK to read',
+    notesGuest: 'Notes hidden for guests',
     states: {
       off: { head: 'Calendar needs the Pi',
         line: 'Your calendars come from the hub server on the Raspberry Pi. Live updates are off on this TV: set live.server in config.js to the Pi’s address.',
@@ -180,6 +193,8 @@
   var selId = null;             // the chosen event's id in Day and Week
   var panelOpen = false;
   var ui = null;                // { root, stage, label, hint, tabs, today, full, focus: 'stage'|'tabs' }
+  var reading = false;          // the chosen event's notes are open to read (Day view)
+  var readTop = 0;              // how far the notes are scrolled (rem)
 
   /* ---------- small helpers ---------- */
 
@@ -356,8 +371,8 @@
 
   function str(v) { return typeof v === 'string' ? v : ''; }
 
-  // The events as the views use them: { id, cal, title, location, allDay,
-  // s, e (UTC ms), startDay, endDay (exclusive day numbers) }, sorted.
+  // The events as the views use them: { id, cal, title, location, notes,
+  // allDay, s, e (UTC ms), startDay, endDay (exclusive day numbers) }, sorted.
   function normalize(d, z) {
     var out = [];
     var list = d && isArr(d.events) ? d.events : [];
@@ -368,7 +383,9 @@
       var n = { id: str(ev.id) || ('x' + i), cal: typeof ev.cal === 'number' && ev.cal >= 1 ? ev.cal : 1,
         title: str(ev.title).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''),
         location: str(ev.location).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''),
-        allDay: ev.allDay === true };
+        allDay: ev.allDay === true,
+        notes: typeof ev.note === 'string' && d.notes && typeof d.notes === 'object' && typeof d.notes[ev.note] === 'string' ?
+          d.notes[ev.note].replace(/\r\n?/g, '\n').replace(/^\s+|\s+$/g, '') : '' };
       if (seen.hasOwnProperty('k' + n.id)) n.id = n.id + '~' + i;
       seen['k' + n.id] = true;
       if (n.allDay) {
@@ -568,6 +585,52 @@
 
   function titleOf(ev) { return ev.title ? dyn(ev.title) : STRINGS.noTitle; }
 
+  function guestOn() {
+    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
+  }
+
+  // Notes the screen may show: none while Guest mode is on.
+  function notesOf(ev) { return ev && ev.notes && !guestOn() ? ev.notes : ''; }
+
+  // Notes as blocks: { head, lines } per paragraph (blank line between). A
+  // short first line with more under it reads as a heading ("Golden pothos").
+  // Each line is translated on its own (dyn takes up to 500 characters).
+  function noteBlocks(text) {
+    var out = [];
+    var paras = String(text).split(/\n[ \t]*\n/);
+    for (var i = 0; i < paras.length; i++) {
+      var lines = paras[i].split('\n');
+      var kept = [];
+      for (var j = 0; j < lines.length; j++) {
+        var l = lines[j].replace(/^\s+|\s+$/g, '');
+        if (l) kept.push(l);
+      }
+      if (!kept.length) continue;
+      var head = '';
+      if (kept.length > 1 && kept[0].length <= 48 && !/[.!?:,;]$/.test(kept[0])) head = kept.shift();
+      out.push({ head: head ? dyn(head) : '', lines: kept.map(function (x) { return x.length > 500 ? x : dyn(x); }) });
+    }
+    return out;
+  }
+
+  function drawNoteBlocks(parent, text) {
+    var blocks = noteBlocks(text);
+    for (var i = 0; i < blocks.length; i++) {
+      var b = el('div', 'cal-nb', parent);
+      if (blocks[i].head) el('div', 'cal-nb-head', b, blocks[i].head);
+      for (var j = 0; j < blocks[i].lines.length; j++) el('div', 'cal-nb-line', b, blocks[i].lines[j]);
+    }
+  }
+
+  // A small lines mark: this event has notes.
+  function notesMark(parent) {
+    var m = el('span', 'cal-has-notes', parent);
+    el('i', '', m);
+    el('i', '', m);
+    el('i', '', m);
+    return m;
+  }
+
   /* ---------- test hook ---------- */
 
   // For dev/calendar-test.js (node) and the screenshot script. Not used by the hub.
@@ -590,7 +653,9 @@
     whenText: whenText,
     timeText: timeText,
     relDay: relDay,
-    isPast: isPast
+    isPast: isPast,
+    noteBlocks: noteBlocks,
+    notesOf: notesOf
   };
 
   /* ---------- the data and the live line ---------- */
@@ -708,7 +773,7 @@
   var liveEvents = '';
 
   function eventsKey(d) {
-    try { return d && d.configured === true ? JSON.stringify(d.events) : 'none'; } catch (e) { return 'none'; }
+    try { return d && d.configured === true ? JSON.stringify(d.events) + JSON.stringify(d.notes || null) : 'none'; } catch (e) { return 'none'; }
   }
 
   function onLive(d) {
@@ -910,7 +975,8 @@
         var txt = el('div', 'cal-next-text', line);
         var when = relDay(a.next.startDay, a.today) + (a.next.allDay ? '' : ' ' + timeText(zone, a.next.s));
         el('div', 'cal-next-when', txt, when);
-        el('div', 'cal-next-title', txt, titleOf(a.next));
+        var nt = el('div', 'cal-next-title', txt, titleOf(a.next));
+        if (notesOf(a.next)) notesMark(nt);
       } else if (!a.had) {
         empty.textContent = STRINGS.nothingComing;
       }
@@ -948,7 +1014,8 @@
     var row = el('div', 'cal-trow cal-trow-allday');
     bar(row, ev.cal);
     el('span', 'cal-trow-tag', row, STRINGS.allDay);
-    el('span', 'cal-trow-line', row, titleOf(ev));
+    var line = el('span', 'cal-trow-line', row, titleOf(ev));
+    if (notesOf(ev)) notesMark(line);
     return row;
   }
 
@@ -963,7 +1030,8 @@
     } else {
       when.textContent = timeText(zone, u.ev.s);
     }
-    el('div', 'cal-trow-title', text, titleOf(u.ev));
+    var t = el('div', 'cal-trow-title', text, titleOf(u.ev));
+    if (notesOf(u.ev)) notesMark(t);
     return row;
   }
 
@@ -1008,6 +1076,7 @@
       panelOpen = true;
       selDay = null;
       selId = null;
+      reading = false;
       ui.focus = 'stage';
     }
     C.setSub(subText());
@@ -1022,7 +1091,17 @@
       return;
     }
     var td = today();
-    if (selDay === null || Math.abs(selDay - td) > NAV_LIMIT) selDay = td;
+    if (selDay === null || Math.abs(selDay - td) > NAV_LIMIT) {
+      selDay = td;
+      // Nothing left today: open on the next event, as the tile's "Next" says.
+      var ag = agenda(index, now());
+      if (!ag.upcoming.length && ag.next && ag.next.startDay - td <= NAV_LIMIT) {
+        var lefts = orderFor(td);
+        var open = false;
+        for (var q = 0; q < lefts.length; q++) if (!isPast(lefts[q], now(), td)) open = true;
+        if (!open) { selDay = ag.next.startDay; selId = ag.next.id; }
+      }
+    }
 
     // Today comes first, so reaching it never walks across (and switches) the views.
     var barRow = el('div', 'cal-bar-row', root);
@@ -1079,7 +1158,8 @@
   function setHint() {
     if (!ui || !ui.hint) return;
     var text = ui.focus === 'tabs' ? STRINGS.hintTabs :
-      view === 'day' ? STRINGS.hintDay : view === 'week' ? STRINGS.hintWeek : STRINGS.hintMonth;
+      view === 'day' ? (reading ? STRINGS.hintReading : notesOf(selectedEvent()) ? STRINGS.hintDayNotes : STRINGS.hintDay) :
+      view === 'week' ? STRINGS.hintWeek : STRINGS.hintMonth;
     ui.hint.textContent = text;
   }
 
@@ -1125,6 +1205,8 @@
   /* ---------- panel: picking ---------- */
 
   function orderFor(n) { return dayOrder(dayEvents(index, n)); }
+
+  function selectedEvent() { return selId && index ? index.byId['k' + selId] || null : null; }
 
   // The event to pick on a day: on today the first that hasn't ended, else the first.
   function defaultPick(n) {
@@ -1188,7 +1270,9 @@
     settleSelection();
     pack(de.timed, minH / H * 60);
 
-    var wrap = el('div', 'cal-day', stage);
+    var selEv = selectedEvent();
+    if (reading && !notesOf(selEv)) reading = false;
+    var wrap = el('div', 'cal-day' + (reading ? ' is-reading' : ''), stage);
     var tl = el('div', 'cal-tl', wrap);
     var detailBox = el('div', 'cal-detail', wrap);
 
@@ -1286,27 +1370,97 @@
   function drawDetail(box, de) {
     var td = today();
     var ev = selId && index.byId['k' + selId];
-    el('div', 'cal-detail-day', box, relDay(selDay, td) === STRINGS.today || Math.abs(selDay - td) === 1 ? relDay(selDay, td) : STRINGS.days[weekday(selDay)]);
+    var meta = el('div', 'cal-detail-meta', box);
+    el('div', 'cal-detail-day', meta, relDay(selDay, td) === STRINGS.today || Math.abs(selDay - td) === 1 ? relDay(selDay, td) : STRINGS.days[weekday(selDay)]);
     if (!ev) {
-      el('div', 'cal-detail-empty', box, index.events.length ? STRINGS.nothingDay : STRINGS.nothingComing);
-      if (outsideData(selDay)) el('div', 'cal-detail-note', box, STRINGS.outside);
+      el('div', 'cal-detail-empty', meta, index.events.length ? STRINGS.nothingDay : STRINGS.nothingComing);
+      if (outsideData(selDay)) el('div', 'cal-detail-note', meta, STRINGS.outside);
       return;
     }
     var c = calendarFor(ev.cal);
-    var who = el('div', 'cal-detail-cal', box);
+    var who = el('div', 'cal-detail-cal', meta);
     var dot = el('span', 'cal-swatch', who);
     dot.style.backgroundColor = color(ev.cal);
     el('span', 'cal-detail-calname', who, calName(c || { cal: ev.cal }));
-    el('div', 'cal-detail-title' + (ev.title === 'Busy' ? ' is-busy' : ''), box, titleOf(ev));
-    el('div', 'cal-detail-when', box, whenText(zone, ev));
-    if (ev.location) el('div', 'cal-detail-place', box, ev.location);
+    el('div', 'cal-detail-title' + (ev.title === 'Busy' ? ' is-busy' : ''), meta, titleOf(ev));
+    el('div', 'cal-detail-when', meta, whenText(zone, ev));
+    if (ev.location) el('div', 'cal-detail-place', meta, ev.location);
     var count = dayOrder(de).length;
-    if (count > 1) {
+    if (count > 1 && !reading) {
       var at = 0;
       var order = dayOrder(de);
       for (var i = 0; i < order.length; i++) if (order[i].id === ev.id) at = i;
-      el('div', 'cal-detail-count', box, (at + 1) + ' / ' + count);
+      el('div', 'cal-detail-count', meta, (at + 1) + ' / ' + count);
     }
+    if (ev.notes && guestOn()) {
+      el('div', 'cal-detail-note', meta, STRINGS.notesGuest);
+      return;
+    }
+    var text = notesOf(ev);
+    if (!text) { ui.readView = null; return; }
+    var notes = el('div', 'cal-notes', box);
+    var head = el('div', 'cal-notes-head', notes);
+    var label = el('div', 'cal-notes-label', head);
+    notesMark(label);
+    el('span', '', label, STRINGS.notesLabel);
+    var nview = el('div', 'cal-notes-view', notes);
+    var body = el('div', 'cal-notes-body', nview);
+    drawNoteBlocks(body, text);
+    if (reading) {
+      ui.readView = nview;
+      ui.readBody = body;
+      scrollNotes(0);
+    } else {
+      // A preview: whole lines while they fit, faded at the foot when there is
+      // more. Under two lines of room it is just the heading and how to read them.
+      ui.readView = null;
+      el('div', 'cal-notes-more', head, STRINGS.readNotes);
+      var first = body.firstChild && body.firstChild.lastChild;
+      var lh = first ? parseFloat(window.getComputedStyle(first).lineHeight) || 0 : 0;
+      var room = nview.clientHeight;
+      var lines = lh > 0 ? Math.floor((room + 1) / lh) : 0;
+      if (lines < 2) {
+        notes.className += ' is-squeezed';
+      } else {
+        if (body.offsetHeight > room + 1) {
+          nview.style.height = (lines * lh) + 'px';
+          notes.className += ' is-more is-clipped';
+        }
+      }
+    }
+  }
+
+  // Scrolls the open notes by dir pages (a transform; nothing reflows).
+  // Returns false at the top going up.
+  function scrollNotes(dir) {
+    if (!ui || !ui.readView || !ui.readBody) return true;
+    var rem = remPx();
+    var vh = ui.readView.clientHeight / rem;
+    var max = Math.max(0, ui.readBody.offsetHeight / rem - vh);
+    var step = Math.max(1, vh * 0.35);
+    var next = Math.max(0, Math.min(max, readTop + dir * step));
+    if (dir < 0 && readTop <= 0) return false;
+    readTop = next;
+    ui.readBody.style.transform = 'translateY(' + (-readTop) + 'rem)';
+    if (readTop < max - 0.05) ui.readView.parentNode.classList.add('is-more');
+    else ui.readView.parentNode.classList.remove('is-more');
+    return true;
+  }
+
+  function openNotes() {
+    if (view !== 'day' || !notesOf(selectedEvent())) return false;
+    reading = true;
+    readTop = 0;
+    drawStage();
+    return true;
+  }
+
+  function closeNotes() {
+    if (!reading) return false;
+    reading = false;
+    readTop = 0;
+    drawStage();
+    return true;
   }
 
   /* ---------- panel: Week ---------- */
@@ -1475,6 +1629,12 @@
   function moveInStage(dir) {
     var td = today();
     if (view === 'day') {
+      if (reading) {
+        if (dir === 'down') { scrollNotes(1); return true; }
+        if (dir === 'up') { if (!scrollNotes(-1)) closeNotes(); return true; }
+        closeNotes();
+        return true;
+      }
       if (dir === 'left' || dir === 'right') { if (setDay(selDay + (dir === 'left' ? -1 : 1))) drawStage(); return true; }
       if (!stepEvent(dir === 'up' ? -1 : 1)) return ui.tabs[view];
       drawStage();
@@ -1496,6 +1656,7 @@
   function showView(next) {
     if (view === next || !ui) return;
     view = next;
+    reading = false;
     drawStage();
   }
 
@@ -1534,6 +1695,14 @@
           });
         }
       } catch (e) { /* stays in the language it started in */ }
+      // Guest mode hides notes: draw again when it changes.
+      try {
+        if (window.HUB_GUEST && typeof window.HUB_GUEST.onChange === 'function') {
+          window.HUB_GUEST.onChange(function () {
+            try { if (guestOn()) reading = false; refresh(true); } catch (e) { warn('guest: ' + (e && e.message)); }
+          });
+        }
+      } catch (e) { /* notes follow the next draw */ }
       // Spanish for event titles arrived: draw again once per batch, not while typing.
       try {
         if (window.HUB_I18N && typeof window.HUB_I18N.onDyn === 'function') {
@@ -1602,6 +1771,7 @@
       var key = target.getAttribute('data-key') || '';
       if (key.indexOf('tab-') === 0) { showView(key.substring(4)); ctx.focus(ui.stage); return; }
       if (key === 'today') {
+        reading = false;
         selDay = today();
         selId = defaultPick(selDay);
         drawStage();
@@ -1609,15 +1779,24 @@
       }
       // OK on Week or Month opens the chosen day (a click has already picked it).
       if (target === ui.stage) {
-        if (view === 'week' || view === 'month') view = 'day';
+        if (view === 'day') {
+          if (reading) closeNotes();
+          else if (!openNotes()) drawStage();
+          return;
+        }
+        view = 'day';
         drawStage();
       }
     },
+
+    // Back while reading notes closes them; otherwise the hub closes the panel.
+    onBack: function () { return closeNotes(); },
 
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
 
     onClose: function () {
       panelOpen = false;
+      reading = false;
       ui = null;
     }
   };

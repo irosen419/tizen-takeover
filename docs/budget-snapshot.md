@@ -221,7 +221,7 @@ The four Budget lab sections are optional like the others and checked one by one
 
 ### `investments`: the portfolio
 
-Added with server 0.16.0. Sent by the budget app from its investment accounts' holdings, at least once a day (the app logs one total per date so the trend builds from the first day).
+Added with server 0.18.0. Sent by the budget app from its investment accounts' holdings, at least once a day (the app logs one total per date so the trend builds from the first day).
 
 | Field | Type | Notes |
 |---|---|---|

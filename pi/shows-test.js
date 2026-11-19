@@ -693,20 +693,20 @@ async function main() {
     assert.deepStrictEqual([u.length, u[0].e, u[199].e], [200, 60, 259], 'the cap is 200');
     // The snapshot's progress is validated; anything damaged is "no progress".
     const d = shows.cleanData({ shows: [{ name: 'A', progress: { upTo: { season: 1, number: 2, at: '2026-11-01T00:00:00Z' }, unwatched: [{ season: 1, number: 1 }, { season: 'x' }], aired: 5, seen: 9, caughtUp: true, next: { season: 1, number: 1 } } }, { name: 'B', progress: 'no' }, { name: 'C' }] });
-    assert.deepStrictEqual(d.shows[0].progress, { upTo: { season: 1, number: 2, at: '2026-11-01T00:00:00Z' }, unwatched: [{ season: 1, number: 1 }], aired: 5, seen: 5, caughtUp: true, next: { season: 1, number: 1 } });
-    [1, 2].forEach((i) => assert.deepStrictEqual(d.shows[i].progress, { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null }));
+    assert.deepStrictEqual(d.shows[0].progress, { upTo: { season: 1, number: 2, at: '2026-11-01T00:00:00Z' }, unwatched: [{ season: 1, number: 1 }], aired: 5, seen: 5, caughtUp: true, next: { season: 1, number: 1 }, left: [] });
+    [1, 2].forEach((i) => assert.deepStrictEqual(d.shows[i].progress, { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null, left: [] }));
   });
 
   await check('progress: up to, unwatch inside it, an earlier point, a later point, caught up, counts and next; saved and sent at once', async () => {
     const b = tracker(tv, { seedFile: writeSeed(tmpDir(), LIST) });
     await b.t.refresh();
     const hk = () => b.data.shows[0];
-    assert.deepStrictEqual(hk().progress, { upTo: null, unwatched: [], aired: 2, seen: 0, caughtUp: false, next: { season: 24, number: 6 } });
+    assert.deepStrictEqual(hk().progress, { upTo: null, unwatched: [], aired: 2, seen: 0, caughtUp: false, next: { season: 24, number: 6 }, left: [{ season: 24, unseen: 2, out: 2, total: 5 }] });
     assert.strictEqual(b.data.shows[2].progress.aired, 1, 'Andor: one episode out');
     // Up to S24E7: both aired episodes count; E8 (out in 2 days) does not.
     let r = b.t.upTo("Hell's Kitchen", { season: 24, number: 7 });
     assert.deepStrictEqual([r.season, r.number, r.changed], [24, 7, true]);
-    assert.deepStrictEqual(hk().progress, { upTo: { season: 24, number: 7, at: '2026-11-17T18:00:00Z' }, unwatched: [], aired: 2, seen: 2, caughtUp: true, next: null });
+    assert.deepStrictEqual(hk().progress, { upTo: { season: 24, number: 7, at: '2026-11-17T18:00:00Z' }, unwatched: [], aired: 2, seen: 2, caughtUp: true, next: null, left: [] });
     assert.deepStrictEqual(hk().upcoming.map((e) => e.watched === true), [true, false, false]);
     assert.deepStrictEqual(hk().watched, [], 'the watched list stays as it is');
     assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(b.dir, 'shows.json'), 'utf8')).shows[0].upTo, { s: 24, e: 7, at: '2026-11-17T18:00:00Z' });
@@ -760,6 +760,28 @@ async function main() {
     await b.t.refresh();
     assert.strictEqual(b.data.shows.find((x) => x.id === 'hells-kitchen').progress.caughtUp, true);
     noNames(b.logs, ["Hell's Kitchen", 'Stick', 'Andor', 'Last week']);
+  });
+
+  await check('progress.left: seasons with aired episodes not watched, a whole season out vs one still airing, capped', async () => {
+    const t = Date.parse('2026-11-19T12:00:00Z');
+    const ep = (s, e, day) => ({ season: s, number: e, airstamp: new Date(t + day * 86400000).toISOString() });
+    const eps = [ep(1, 1, -400), ep(1, 2, -399), ep(2, 1, -30), ep(2, 2, -30), ep(2, 3, -30), ep(3, 1, -2), ep(3, 2, 5), ep(3, 3, 12)];
+    // Watched up to S1E2: season 2 is out in full, season 3 has 1 of 3 out.
+    let p = shows.progressOf({ upTo: { s: 1, e: 2, at: 'x' } }, eps, t);
+    assert.deepStrictEqual(p.left, [{ season: 2, unseen: 3, out: 3, total: 3 }, { season: 3, unseen: 1, out: 1, total: 3 }]);
+    assert.deepStrictEqual([p.aired, p.seen], [6, 2]);
+    // An exception inside the up-to point brings its season back.
+    p = shows.progressOf({ upTo: { s: 3, e: 1, at: 'x' }, unwatched: [{ s: 2, e: 2 }] }, eps, t);
+    assert.deepStrictEqual(p.left, [{ season: 2, unseen: 1, out: 3, total: 3 }]);
+    assert.deepStrictEqual(shows.progressOf({ upTo: { s: 3, e: 1, at: 'x' } }, eps, t).left, []);
+    assert.deepStrictEqual(shows.progressOf(null, [], t).left, []);
+    // At most 6 seasons, the latest ones.
+    const many = [];
+    for (let s = 1; s <= 9; s++) many.push(ep(s, 1, -100 + s));
+    assert.deepStrictEqual(shows.progressOf(null, many, t).left.map((x) => x.season), [4, 5, 6, 7, 8, 9]);
+    // Cleaned for the TV: damaged rows dropped, counts kept in order.
+    const d = shows.cleanData({ shows: [{ name: 'A', progress: { aired: 4, seen: 1, left: [{ season: 2, unseen: 9, out: 3, total: 2 }, { season: 'x' }, { season: 3, unseen: 0, out: 1, total: 1 }] } }] });
+    assert.deepStrictEqual(d.shows[0].progress.left, [{ season: 2, unseen: 2, out: 2, total: 2 }]);
   });
 
   await check('episode lists: kept per show in show-episodes.json, only changed writes, read at start, dropped with the show; the TV never gets them', async () => {
@@ -851,7 +873,7 @@ async function main() {
         { number: 8, name: 'Surf & Turf', airstamp: '2026-11-19T02:00:00Z' },
         { number: 9, name: 'Later', airstamp: '2026-11-26T02:00:00Z' },
         { number: 10, name: 'Far', airstamp: '2027-02-15T02:00:00Z' }] }]);
-      assert.deepStrictEqual(r.json.progress, { upTo: null, unwatched: [], aired: 2, seen: 0, caughtUp: false, next: { season: 24, number: 6 } });
+      assert.deepStrictEqual(r.json.progress, { upTo: null, unwatched: [], aired: 2, seen: 0, caughtUp: false, next: { season: 24, number: 6 }, left: [{ season: 24, unseen: 2, out: 2, total: 5 }] });
       r = await request(h, 'GET', '/shows/episodes?id=Stick');
       assert.deepStrictEqual(r.json.seasons.map((s) => s.season), [1, 2], 'a name works too');
       r = await request(h, 'GET', '/shows/episodes?id=nope');
@@ -904,7 +926,7 @@ async function main() {
       r = await request(h, 'POST', '/api/shows/caughtup', {}, authed);
       assert.strictEqual(r.status, 400);
       r = await request(h, 'GET', '/api/status', undefined, authed);
-      assert.strictEqual(r.json.server, '0.16.0');
+      assert.strictEqual(r.json.server, '0.18.0');
       const bare = h.lines.map((l) => l.replace(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d /, ''));
       assert.ok(bare.indexOf('screen marked a show watched up to an episode') >= 0, bare.join(' | '));
       assert.ok(bare.indexOf('screen marked a show watched up to an episode (already marked)') >= 0);
@@ -928,7 +950,7 @@ async function main() {
     const v = c.t.episodes('hells-kitchen');
     assert.strictEqual(v.partial, true);
     assert.deepStrictEqual(v.seasons[0].episodes.map((e) => e.number), [7, 8, 9]);
-    assert.deepStrictEqual(v.progress, { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null });
+    assert.deepStrictEqual(v.progress, { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null, left: [] });
     assert.strictEqual(c.t.episodes('nope'), null);
     // A show on the list that was never read: partial, nothing in it.
     const e = tracker(tv, { seedFile: writeSeed(tmpDir(), LIST) });

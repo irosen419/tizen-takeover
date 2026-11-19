@@ -50,7 +50,7 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
       "nextEpisode": { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z", "runtime": 60 },
       "upcoming": [ { "season": 24, "number": 7, "name": "Hot Mess", "airstamp": "2026-11-13T02:00:00Z", "runtime": 60, "watched": true }, { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z", "runtime": 60 } ],
       "watched": [ { "season": 24, "number": 7, "at": "2026-11-13T04:10:00Z" } ],
-      "progress": { "upTo": { "season": 24, "number": 6, "at": "2026-11-13T04:00:00Z" }, "unwatched": [ { "season": 24, "number": 3 } ], "aired": 7, "seen": 6, "caughtUp": false, "next": { "season": 24, "number": 3 } },
+      "progress": { "upTo": { "season": 24, "number": 6, "at": "2026-11-13T04:00:00Z" }, "unwatched": [ { "season": 24, "number": 3 } ], "aired": 7, "seen": 6, "caughtUp": false, "next": { "season": 24, "number": 3 }, "left": [ { "season": 24, "unseen": 1, "out": 7, "total": 8 } ] },
       "returning": null
     }
   ]
@@ -75,7 +75,7 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
 | `stale`, `error` | Present when the last read failed and this is the last good copy. `error` is a code only: `timeout`, `unreachable`, `not-found`, `rate-limited`, `http-503`, `not-json` or `no-id`. |
 | `nextEpisode` | `{ season, number, name, airstamp, runtime?, watched? }` or `null`. |
 | `watched` | The newest 60 episodes marked watched: `[{ season, number, at }]`, always present (`[]` when none). |
-| `progress` | Always present: `{ upTo, unwatched, aired, seen, caughtUp, next }`. `upTo` is `{ season, number, at }` or `null`; `unwatched` the exceptions inside it, `[{ season, number }]`. `aired` counts the numbered episodes already out in the show's full list (`0` when that list is not known yet), `seen` how many of those are watched, `next` is the earliest aired episode not watched (`{ season, number }` or `null`), and `caughtUp` is `aired > 0 && seen === aired`. Recomputed on every publish and refresh, so an episode airing moves it. The TV can also work it out from the list in `GET /shows/episodes`. |
+| `progress` | Always present: `{ upTo, unwatched, aired, seen, caughtUp, next, left }`. `upTo` is `{ season, number, at }` or `null`; `unwatched` the exceptions inside it, `[{ season, number }]`. `aired` counts the numbered episodes already out in the show's full list (`0` when that list is not known yet), `seen` how many of those are watched, `next` is the earliest aired episode not watched (`{ season, number }` or `null`), and `caughtUp` is `aired > 0 && seen === aired`. `left` (server 0.17.0) lists the seasons that have aired episodes not watched, oldest first, at most 6 (the latest): `[{ season, unseen, out, total }]`, where `out` counts the season's episodes already aired and `total` every episode of it TVmaze lists (announced ones too), so `out === total` means the whole season is out. The TV's "Ready to watch" on Coming soon reads it; an older Pi sends none. Recomputed on every publish and refresh, so an episode airing moves it. The TV can also work it out from the list in `GET /shows/episodes`. |
 | `runtime` (on an episode) | TVmaze's length in minutes, when it has one. |
 | `watched` (on an episode) | `true` when that episode is marked watched. Absent otherwise. |
 | `upcoming` | Episodes from 7 days ago to 60 days ahead, at most 40, oldest first. The week view shows the days already gone dimmed as "Aired". |
@@ -138,7 +138,7 @@ By hand, with the token: `POST /api/shows/upto` `{ "show": "<name or id>", "epis
   "seasons": [
     { "season": 1, "episodes": [ { "number": 1, "name": "Spook Street", "airstamp": "2022-04-01T03:00:00Z", "runtime": 60, "watched": true } ] }
   ],
-  "progress": { "upTo": null, "unwatched": [], "aired": 0, "seen": 0, "caughtUp": false, "next": null }
+  "progress": { "upTo": null, "unwatched": [], "aired": 0, "seen": 0, "caughtUp": false, "next": null, "left": [] }
 }
 ```
 
