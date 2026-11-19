@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.30.2';
+  var BUILD = 'v0.30.3';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1851,6 +1851,10 @@
     return ctx;
   }
 
+  // The layout's one widget, when it fills the whole grid (12 by 6) and can
+  // open; null otherwise. Set by build(), opened full screen by openSolo().
+  var soloRec = null;
+
   function build() {
     var byId = pickWidgets();
     registry = byId;
@@ -1881,11 +1885,18 @@
       }
       rec.cell = cell;
       rec.tile = tile;
+      rec.entry = entry;
       applySize(rec, entry);
       rec.body = el('div', 'tile-body', tile);
       rec.index = widgets.length;
       widgets.push(rec);
       tile.addEventListener('click', onTileClick(rec));
+    }
+
+    soloRec = null;
+    if (widgets.length === 1 && widgets[0].expandable && !widgets[0].w.planned) {
+      var only = widgets[0].entry;
+      if (only && only.x === 0 && only.y === 0 && only.w === GRID_COLS && only.h === GRID_ROWS) soloRec = widgets[0];
     }
 
     for (var j = 0; j < widgets.length; j++) call(widgets[j], 'init', [widgets[j].ctx]);
@@ -1910,6 +1921,16 @@
       if (widgets[s].w.id === cfg.start) { start = s; break; }
     }
     focusHome(start);
+  }
+
+  // A one-widget layout opens straight to the widget's full screen as the hub
+  // starts (a layout change reloads the page, so this runs for each one).
+  // Back still closes it, to the tile and the layout bar above it.
+  function openSolo() {
+    if (!soloRec) return;
+    setTimeout(function () {
+      if (!open && !busy && !frameOpen && soloRec) openPanel(soloRec);
+    }, 0);
   }
 
   function drawTile(rec) {
@@ -1997,7 +2018,10 @@
   // Whether OK on a widget's tile opens straight to full screen, with no
   // small panel in between. HUB_CONFIG.widgets[id].openMode ('full' or
   // 'panel') wins over the widget's own openMode.
+  // A layout that is one widget filling the whole screen counts as 'full' too:
+  // its tile would only be a big placeholder, so the widget itself shows.
   function isDirect(w) {
+    if (soloRec && soloRec.w === w) return true;
     var c = cfg.widgets && cfg.widgets[w.id];
     var m = c && (c.openMode === 'full' || c.openMode === 'panel') ? c.openMode : w.openMode;
     return m === 'full';
@@ -3258,6 +3282,7 @@
   parkGhost();
   checkTheme();
   setupBackground();
+  openSolo();
   startLive();
   startUpdates();
   startClay();

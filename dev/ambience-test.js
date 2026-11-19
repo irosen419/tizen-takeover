@@ -148,7 +148,9 @@ async function open(o) {
   const page = await context.newPage();
   page.on('console', (m) => { if (m.type() === 'error') context.errors.push(m.text()); });
   page.on('pageerror', (e) => context.errors.push('page error: ' + e.message));
-  const layout = o.layout || [{ widget: 'ambience', x: 0, y: 0, w: 12, h: 6 }];
+  // Not the whole screen: a one-widget 12x6 layout opens straight to full
+  // screen (hub.js openSolo), and these checks start from the tile and panel.
+  const layout = o.layout || [{ widget: 'ambience', x: 0, y: 0, w: 6, h: 4 }];
   await page.addInitScript((items) => {
     try {
       if (sessionStorage.getItem('am-seeded')) return;
