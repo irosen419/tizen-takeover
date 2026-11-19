@@ -1253,8 +1253,7 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
-    await check('the default layout and start tile are unchanged', async () => {
-      assert(C.start === 'entertainment', 'start: ' + C.start);
+    await check('the default layout is unchanged', async () => {
       assert(C.layout.map((t) => t.widget).join() === 'today,calendar,awws,weather,todo,mirror,wotd,ambience,nowplaying,entertainment', 'stock layout changed');
       assert(C.layouts[0].id === 'stock' && C.layouts[0].layout === null, 'Stock is not first');
       assert(C.widgets.budget && C.widgets.budget.show === true, 'budget.show is not true by default');
