@@ -24,9 +24,9 @@
   var KEY = 'homeHub.linkTests';
   var MAX_KEPT = 50;
   var OUTCOMES = [
-    { id: 'title', label: 'Opened the title', short: 'opened the title' },
-    { id: 'app', label: 'Only opened the app', short: 'only opened the app' },
-    { id: 'nothing', label: 'Nothing', short: 'nothing happened' }
+    { id: 'title', label: 'outTitle', short: 'shortTitle' },
+    { id: 'app', label: 'outApp', short: 'shortApp' },
+    { id: 'nothing', label: 'outNothing', short: 'shortNothing' }
   ];
   var PLACEHOLDER = /<[^<>]*>/;
   // A typed id: printable, no spaces, quotes or angle brackets, at most 200.
@@ -39,7 +39,30 @@
   var WORDS = {
     stale: 'The TV helper is out of date. Unplug the TV for 30 seconds, then try again.',
     cantOpen: 'Couldn’t open: {error}',
-    lastError: 'Last error: {error}'
+    lastError: 'Last error: {error}',
+    title: 'Watch link test',
+    intro: 'Each test opens one app a different way. Come back to the hub, then say what happened. Answers go to the Pi (./hub linktests).',
+    empty: 'No recipes. Add them under widgets.entertainment.linkTests in config.js.',
+    ownId: ' (typed on this TV; empty for config.js’s)',
+    okEdit: ' (OK to edit)',
+    total: '{n} tests, numbered on the left. Same app’s tests are together.',
+    plain: 'plain open · no app control',
+    ask: 'What happened with {app}?',
+    outTitle: 'Opened the title', outApp: 'Only opened the app', outNothing: 'Nothing',
+    shortTitle: 'opened the title', shortApp: 'only opened the app', shortNothing: 'nothing happened',
+    couldNot: 'could not be tried',
+    needsId: 'needs id', looking: 'looking for the app', notInstalled: 'app not installed',
+    lastOutcome: 'last: {what}', notTried: 'not tried',
+    toastNeedsId: 'This one needs an id first: edit widgets.entertainment.linkTests in config.js.',
+    toastLooking: 'Still looking for your apps. Try again in a second.',
+    toastMissing: '{app} isn’t on this TV.',
+    toastSavedNoPi: 'Saved on this TV. The Pi couldn’t be reached ({err}); it is sent next time.',
+    toastSaved: 'Saved, and sent to the Pi.',
+    notSaved: 'Not saved: {err}.',
+    savedHere: 'Saved on this TV.',
+    about: 'OK to open · {tried} of {ready} tried',
+    badId: 'an id has no spaces, quotes or angle brackets and is at most 200 characters',
+    noEdit: 'that id can’t be changed here'
   };
 
   function word(key, vars) {
@@ -145,10 +168,10 @@
     var ed = editable();
     var ok = false;
     for (var i = 0; i < ed.length; i++) if (ed[i].name === name) ok = true;
-    if (!ok) return 'that id can’t be changed here';
+    if (!ok) return word('noEdit');
     var v = String(value === undefined || value === null ? '' : value).replace(/^\s+|\s+$/g, '');
     if (v === '') delete S.ids[name];
-    else if (!ID_RE.test(v)) return 'an id has no spaces, quotes or angle brackets and is at most 200 characters';
+    else if (!ID_RE.test(v)) return word('badId');
     else S.ids[name] = v;
     save();
     return null;
@@ -229,8 +252,8 @@
   }
 
   function outcomeText(id) {
-    for (var i = 0; i < OUTCOMES.length; i++) if (OUTCOMES[i].id === id) return OUTCOMES[i].short;
-    return id === 'error' ? 'could not be tried' : id;
+    for (var i = 0; i < OUTCOMES.length; i++) if (OUTCOMES[i].id === id) return word(OUTCOMES[i].short);
+    return id === 'error' ? word('couldNot') : id;
   }
 
   // Sends every answer the Pi hasn't got yet, oldest first.
@@ -267,7 +290,7 @@
     S.pending = null;
     save();
     sendUnsent(function (err) {
-      if (S.C) S.C.toast(err ? 'Saved on this TV. The Pi couldn’t be reached (' + err + '); it is sent next time.' : 'Saved, and sent to the Pi.', 4000);
+      if (S.C) S.C.toast(err ? word('toastSavedNoPi', { err: err }) : word('toastSaved'), 4000);
       if (S.C && S.C.isOpen()) S.C.redrawPanel();
     });
   }
@@ -288,22 +311,22 @@
   }
 
   function stateText(rec) {
-    if (rec.needsId) return 'needs id';
+    if (rec.needsId) return word('needsId');
     var app = appFor(rec);
-    if (app === undefined) return 'looking for the app';
-    if (!app) return 'app not installed';
+    if (app === undefined) return word('looking');
+    if (!app) return word('notInstalled');
     var last = lastFor(rec.id);
-    return last ? 'last: ' + outcomeText(last.outcome) : 'not tried';
+    return last ? word('lastOutcome', { what: outcomeText(last.outcome) }) : word('notTried');
   }
 
   // OK on a recipe. Returns what happened, for the tests:
   // 'needsid', 'waiting', 'missing' or 'fired'.
   function fire(rec) {
     var C = S.C;
-    if (rec.needsId) { C.toast('This one needs an id first: edit widgets.entertainment.linkTests in config.js.', 6000); return 'needsid'; }
+    if (rec.needsId) { C.toast(word('toastNeedsId'), 6000); return 'needsid'; }
     var app = appFor(rec);
-    if (app === undefined) { C.toast('Still looking for your apps. Try again in a second.', 3500); return 'waiting'; }
-    if (!app) { C.toast(rec.app + ' isn’t on this TV.', 4500); return 'missing'; }
+    if (app === undefined) { C.toast(word('toastLooking'), 3500); return 'waiting'; }
+    if (!app) { C.toast(word('toastMissing', { app: rec.app }), 4500); return 'missing'; }
     S.rowError = null;
     // A plain open has no app control: the TV's own /launch, then the question.
     if (rec.plain) {
@@ -345,17 +368,17 @@
   function renderPanel(body) {
     var root = el('div', 'lt', body);
     if (S.lastError) el('div', 'lt-lasterr', root, word('lastError', { error: S.lastError }));
-    el('div', 'lt-intro', root, 'Each test opens one app a different way. Come back to the hub, then say what happened. Answers go to the Pi (./hub linktests).');
+    el('div', 'lt-intro', root, word('intro'));
     var list = recipes();
     if (!list.length) {
-      el('div', 'lt-empty', root, 'No recipes. Add them under widgets.entertainment.linkTests in config.js.');
+      el('div', 'lt-empty', root, word('empty'));
       return;
     }
     var focusSet = false;
     var ed = editable();
     for (var e = 0; e < ed.length; e++) {
       var field = el('label', 'lt-field', root);
-      el('span', 'lt-field-name', field, ed[e].name + (ed[e].own ? ' (typed on this TV; empty for config.js’s)' : ' (OK to edit)'));
+      el('span', 'lt-field-name', field, ed[e].name + (ed[e].own ? word('ownId') : word('okEdit')));
       var box = el('input', 'lt-input f', field);
       box.setAttribute('type', 'text');
       box.setAttribute('spellcheck', 'false');
@@ -363,26 +386,26 @@
       box.setAttribute('data-key', 'lt:id:' + ed[e].name);
       box.value = ed[e].value;
     }
-    el('div', 'lt-total', root, list.length + ' tests, numbered on the left. Same app’s tests are together.');
+    el('div', 'lt-total', root, word('total', { n: list.length }));
     for (var i = 0; i < list.length; i++) {
       var rec = list[i];
       var st = stateText(rec);
-      var row = el('div', 'lt-row f' + (rec.needsId || st === 'app not installed' ? ' is-off' : ''), root);
+      var row = el('div', 'lt-row f' + (rec.needsId || st === word('notInstalled') ? ' is-off' : ''), root);
       // While its question is up the row's key changes, so the redraw puts
       // focus on the first answer rather than back on the row.
       row.setAttribute('data-key', 'lt:run:' + rec.id + (S.pending === rec.id ? ':asked' : ''));
       el('span', 'lt-num', row, String(i + 1));
       var main = el('div', 'lt-main', row);
       el('div', 'lt-name', main, rec.app + ' · ' + rec.name);
-      el('div', 'lt-detail', main, (rec.plain ? 'plain open · no app control' : shortOp(rec.op)) + (rec.uri ? ' · ' + rec.uri : '') + (rec.key ? ' · ' + rec.key + '=' + rec.val : ''));
+      el('div', 'lt-detail', main, (rec.plain ? word('plain') : shortOp(rec.op)) + (rec.uri ? ' · ' + rec.uri : '') + (rec.key ? ' · ' + rec.key + '=' + rec.val : ''));
       el('span', 'lt-state' + (rec.needsId ? ' is-needs' : ''), row, st);
       if (S.rowError && S.rowError.id === rec.id) el('div', 'lt-rowerr', main, S.rowError.text);
       if (S.pending === rec.id) {
         var ask = el('div', 'lt-ask', root);
-        el('div', 'lt-q', ask, 'What happened with ' + rec.app + '?');
+        el('div', 'lt-q', ask, word('ask', { app: rec.app }));
         var opts = el('div', 'lt-opts', ask);
         for (var j = 0; j < OUTCOMES.length; j++) {
-          var b = el('div', 'lt-opt f', opts, OUTCOMES[j].label);
+          var b = el('div', 'lt-opt f', opts, word(OUTCOMES[j].label));
           b.setAttribute('data-key', 'lt:ans:' + rec.id + ':' + OUTCOMES[j].id);
           if (j === 0) { b.setAttribute('data-autofocus', ''); focusSet = true; }
         }
@@ -408,7 +431,7 @@
     if (key.indexOf('lt:id:') !== 0) return false;
     var err = setId(key.substring(6), box.value);
     if (S.C) {
-      S.C.toast(err ? 'Not saved: ' + err + '.' : 'Saved on this TV.', err ? 6000 : 3000);
+      S.C.toast(err ? word('notSaved', { err: err }) : word('savedHere'), err ? 6000 : 3000);
       if (!err) S.C.redrawPanel();
     }
     return true;
@@ -433,7 +456,7 @@
 
   window.HUB_LINKTEST = {
     attach: attach,
-    title: function () { return 'Watch link test'; },
+    title: function () { return word('title'); },
     renderPanel: renderPanel,
     onSelect: onSelect,
     onSubmit: onSubmit,
@@ -449,7 +472,7 @@
         if (!list[i].needsId) ready++;
       }
       // Short: one line in the About strip (the list says which need an id).
-      return 'OK to open · ' + tried + ' of ' + ready + ' tried';
+      return word('about', { tried: tried, ready: ready });
     },
     _test: { isOlder: isOlder, recipes: recipes, fire: fire, record: record, setId: setId, editable: editable, state: function () { return S; }, stateText: stateText }
   };

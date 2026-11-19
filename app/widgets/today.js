@@ -50,6 +50,17 @@
     return L && typeof L.t === 'function' && typeof L.setLang === 'function' ? L : null;
   }
 
+  // A word in the hub's language: 'today.<name>' (app/i18n.js); English as given.
+  function T(key, english) {
+    var L = window.HUB_I18N;
+    try { return L && typeof L.t === 'function' ? String(L.t('today.' + key, english)) : english; } catch (e) { return english; }
+  }
+
+  function spanish() {
+    var L = window.HUB_I18N;
+    try { return !!L && typeof L.lang === 'function' && L.lang() === 'es'; } catch (e) { return false; }
+  }
+
   function save(key, value) {
     try { if (window.localStorage) localStorage.setItem(key, value); } catch (e) { /* not kept; fine */ }
   }
@@ -92,10 +103,20 @@
     var h = now.getHours();
     var mm = pad(now.getMinutes());
     if (hours === '24') return { digits: pad(h) + ':' + mm, ampm: '' };
-    return { digits: (h % 12 || 12) + ':' + mm, ampm: h < 12 ? 'AM' : 'PM' };
+    return { digits: (h % 12 || 12) + ':' + mm, ampm: (h < 12 ? T('am', 'AM') : T('pm', 'PM')).replace(/ /g, '\u00a0') };
   }
 
-  function dateText(now, opts) { return now.toLocaleDateString('en-US', opts); }
+  // The date in the hub's language. English is the browser's own en-US;
+  // Spanish comes from the hub's lists (the TV's browser may not know it):
+  // "sábado", "sáb", "19 de noviembre", "19 nov", "19 de noviembre de 2026".
+  function dateText(now, opts) {
+    if (!spanish()) return now.toLocaleDateString('en-US', opts);
+    var L = window.HUB_I18N;
+    if (opts.weekday && !opts.month) return L.dayName(now, opts.weekday === 'short');
+    var d = now.getDate();
+    if (opts.month === 'short') return d + ' ' + L.monthName(now, true);
+    return d + ' de ' + L.monthName(now, false) + (opts.year ? ' de ' + now.getFullYear() : '');
+  }
 
   function rem() {
     return parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
@@ -405,11 +426,11 @@
     }
 
     var controls = div('clock-controls', main);
-    group(controls, 'Face', [['face-digital', 'Digital', face === 'digital'], ['face-analog', 'Analog', face === 'analog']]);
+    group(controls, T('face', 'Face'), [['face-digital', T('digital', 'Digital'), face === 'digital'], ['face-analog', T('analog', 'Analog'), face === 'analog']]);
     // 12/24 only means something on the digital face; Analog leaves it
     // out (focus and the arrows simply have one group fewer).
     if (face === 'digital') {
-      group(controls, 'Clock', [['hours-12', '12-hour', hours === '12'], ['hours-24', '24-hour', hours === '24']]);
+      group(controls, T('clock', 'Clock'), [['hours-12', T('hours12', '12-hour'), hours === '12'], ['hours-24', T('hours24', '24-hour'), hours === '24']]);
     }
     // The hub's language (app/i18n.js), on both faces. Each name is in its
     // own language, so it can always be found again; only the label follows.
@@ -460,7 +481,7 @@
 
   return {
     id: 'today',
-    title: 'Clock',
+    get title() { return T('title', 'Clock'); },
     icon: 'clock',
     head: false,
 
@@ -469,7 +490,10 @@
       // A new language (picked here, or sent from the Pi): an open page
       // redraws with its label; focus stays on the same choice.
       if (I18N() && typeof I18N().onChange === 'function') {
-        I18N().onChange(function () { if (page && ctx && ctx.isOpen && ctx.isOpen()) ctx.redrawPanel(); });
+        I18N().onChange(function () {
+          try { ctx.redrawTile(); } catch (e) { /* the next draw has it */ }
+          if (page && ctx && ctx.isOpen && ctx.isOpen()) ctx.redrawPanel();
+        });
       }
     },
 
@@ -507,7 +531,7 @@
         stopTicking();
         page = null;
         body.innerHTML = '';
-        div('clock-fallback', body, 'The clock page couldn’t be shown.');
+        div('clock-fallback', body, T('broken', 'The clock page couldn’t be shown.'));
       }
     },
 

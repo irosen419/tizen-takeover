@@ -298,15 +298,24 @@
        "title": "Spanish language",
        "kind": "component",
        "status": "unverified",
-       "summary": "English or Latin American Spanish, chosen on the Clock page; one string table for the whole hub.",
+       "summary": "English or Latin American Spanish, chosen on the Clock page; every widget's fixed words, plus Ian's own text through the Pi.",
        "details": [
-        "HUB_I18N holds the Spanish strings, one section per widget, with English as the fallback and its own day and month names. Today it covers Word of the day, the Clock page, the money tiles, to-do words and the motion chips; other widgets stay in English. Choice kept in localStorage; ?lang=es tries it."
+        "HUB_I18N holds the Spanish strings, one section per widget, with English as the fallback and its own day and month names. Since PR 112 every widget's fixed words are covered (the Architecture page is still English).",
+        "HUB_I18N.dyn (app/i18n-dyn.js) shows to-dos, calendar events and AWWS tasks in Spanish: it shows English first, asks the Pi's translate service in one batch, keeps answers on the TV, and redraws. Show titles, songs and place names stay as they are. Choice kept in localStorage; ?lang=es tries it."
        ],
        "files": [
-        "app/i18n.js"
+        "app/i18n.js",
+        "(PR 112) app/i18n-dyn.js"
        ],
        "notes": [
         "Text fit (+25% for Spanish) is tested on a laptop only, not on the TV's font."
+       ],
+       "talksTo": [
+        {
+         "to": "pi.translate",
+         "label": "asks for Spanish lines",
+         "dir": "out"
+        }
        ]
       },
       {
@@ -1919,6 +1928,35 @@
      ]
     },
     {
+     "id": "pi.translate",
+     "title": "Translate service",
+     "kind": "component",
+     "status": "draft",
+     "pr": "PR 112",
+     "summary": "Turns Ian's own text (to-dos, calendar events, AWWS tasks) into Latin American Spanish when the hub is in Spanish, and remembers each line.",
+     "details": [
+      "The TV sends up to 60 lines at a time to POST /translate. Lines already known come from data/translations-es.json (up to 5000, oldest dropped); new ones go to Gemini (gemini-2.5-flash-lite) in one batched call, are checked, then saved, so each line is translated once.",
+      "Uses Ian's personal key (HUB_TRANSLATE_KEY, else GEMINI_VIDEO_GEN_KEY in pi/.env), never the AWWS key. No key means cache only. A Gemini error pauses new translations for 10 minutes. The log counts lines and never shows the text.",
+      "Usage per day (new lines, Gemini calls, tokens, estimated cost) is kept in data/translate-usage.json for 62 days; Claude reads it with the mailbox command translate.status (GET /api/translate/usage). At most 2000 new lines a day."
+     ],
+     "files": [
+      "(PR 112) pi/translate.js",
+      "(PR 112) pi/translate-test.js"
+     ],
+     "talksTo": [
+      {
+       "to": "tv.hub.i18n",
+       "label": "Spanish for typed lines",
+       "dir": "out"
+      },
+      {
+       "to": "ext.gemini.translate",
+       "label": "new lines, one batch",
+       "dir": "out"
+      }
+     ]
+    },
+    {
      "id": "pi.awws",
      "title": "AWWS snapshot checks",
      "kind": "component",
@@ -3048,6 +3086,25 @@
         "(PR 77) app/agents.js"
        ],
        "talksTo": []
+      },
+      {
+       "id": "ext.gemini.translate",
+       "title": "Hub translations",
+       "kind": "external",
+       "status": "draft",
+       "pr": "PR 112",
+       "summary": "Gemini translates new to-do, event and AWWS lines for Spanish mode, called only by the Pi's translate service.",
+       "details": [
+        "Names of people, places, shows, books and songs are kept as they are. Billed to Ian's personal Gemini key, not AWWS's."
+       ],
+       "files": [],
+       "talksTo": [
+        {
+         "to": "pi.translate",
+         "label": "Spanish lines back",
+         "dir": "out"
+        }
+       ]
       }
      ]
     },
@@ -4656,6 +4713,33 @@
     {
      "node": "tv.hub.core",
      "say": "If the bucket can't be reached, it shows the ocean picture that ships with the hub"
+    }
+   ]
+  },
+  {
+   "id": "flow.spanish-text",
+   "title": "Your to-do shows in Spanish",
+   "summary": "In Spanish mode a typed line is shown in English, translated once on the Pi, then shown in Spanish from then on.",
+   "steps": [
+    {
+     "node": "tv.widgets.todo",
+     "say": "A to-do, event or AWWS line is drawn; with no Spanish yet it shows in English"
+    },
+    {
+     "node": "tv.hub.i18n",
+     "say": "The TV gathers new lines for 0.4 s and sends one batch"
+    },
+    {
+     "node": "pi.translate",
+     "say": "The Pi answers known lines from its saved list"
+    },
+    {
+     "node": "ext.gemini.translate",
+     "say": "New lines go to Gemini in one call"
+    },
+    {
+     "node": "tv.hub.i18n",
+     "say": "The TV keeps the answers and redraws the tiles in Spanish"
     }
    ]
   }
