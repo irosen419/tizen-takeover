@@ -4,3 +4,5 @@ dev/.live-data/
 node_modules/
 art/clay/cut/
 __pycache__/
+art/clay/raw/
+art/clay/models/
