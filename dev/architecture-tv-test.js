@@ -291,7 +291,7 @@ async function checkOpenAndLoad() {
     flows: (document.querySelector('#panel .ar-chip-flows') || {}).textContent
   }));
   assert(r.boxes === 7 && r.edges === 6 && r.bars >= 7 && r.legend === 4, JSON.stringify(r));
-  assert(/^As of /.test(r.asof) && /Back/.test(r.hint) && r.crumb === 'Big picture' && /Data flows \(19\)/.test(r.flows), JSON.stringify(r));
+  assert(/^As of /.test(r.asof) && /Back/.test(r.hint) && r.crumb === 'Big picture' && /Data flows \(20\)/.test(r.flows), JSON.stringify(r));
   assert(await focusKey(page) === 'bp:cloud', 'focus starts on ' + await focusKey(page));
   // Back at the Big picture closes the widget.
   await press(page, 'Escape');
@@ -505,7 +505,7 @@ async function checkFlows() {
   let s = await st(page);
   assert(s.view === 'flows', JSON.stringify(s));
   const n = await page.evaluate(() => document.querySelectorAll('#panel .ar-frow').length);
-  assert(n === 19, n + ' flows in the list');
+  assert(n === 20, n + ' flows in the list');
   assert(await focusKey(page) === 'fl:flow.pr-to-tv', 'focus on ' + await focusKey(page));
   // Down the list, then into a flow.
   await press(page, 'ArrowDown'); await press(page, 'ArrowDown');
