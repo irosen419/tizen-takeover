@@ -44,6 +44,8 @@
     "daysLeft": 3,
     "cardDate": "2026-11-19",
     "monthDay": 16,
+    "autopayRoom": 412.6,
+    "autopayDate": "2026-11-24",
     "split": [
       { "key": "savings", "amount": 500 },
       { "key": "awws", "amount": 150 },
