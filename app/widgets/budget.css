@@ -444,5 +444,108 @@
 .bu-panel.is-full .bu-prow-auto { font-size: 1.1rem; }
 .bu-auto-note { margin-top: 0.3rem; }
 
+/* Card day receipt: one list read top to bottom. Signs in their own column, amounts right-aligned in
+   tabular figures, the bottom line under a rule and heavier. Only opacity and transform animate. */
+.bu-rrow {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.bu-rsign { flex: 0 0 auto; width: 1.4rem; font-size: 1rem; line-height: 1.35; color: var(--text-3); text-align: center; }
+.bu-rlabel { flex: 1 1 auto; min-width: 0; padding-right: 0.8rem; font-size: 1rem; line-height: 1.3; color: var(--text-2); }
+.bu-ramt {
+  flex: 0 0 auto;
+  min-width: 5.5rem;
+  font-size: 1rem;
+  line-height: 1.3;
+  text-align: right;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+  white-space: nowrap;
+}
+.bu-ramt.is-ok { color: var(--bu-ok); }
+.bu-ramt.is-under { color: var(--bu-under); }
+.bu-ramt.is-neg { color: var(--bu-neg); }
+/* the tile's three lines */
+.bu-mini { flex: 0 0 auto; margin-top: auto; padding-top: 0.5rem; }
+.bu-rrow.is-mini { padding: 0.12rem 0; }
+.bu-rrow.is-mini .bu-rlabel { font-size: 1rem; }
+.bu-rrow.is-mini .bu-ramt { font-size: 1.05rem; min-width: 4.5rem; }
+.bu-rrow.is-mini.is-total { margin-top: 0.3rem; padding-top: 0.38rem; border-top: 0.08rem solid var(--bu-hair); }
+.bu-rrow.is-mini.is-total .bu-rlabel { color: var(--text); font-weight: 600; }
+.bu-rrow.is-mini.is-total .bu-ramt { font-size: 1.3rem; font-weight: 600; }
+.bu-rcap { margin-left: 0; font-size: 1.05rem; }
+.bu-rcap.is-under { color: var(--bu-under); }
+.bu-rcap.is-neg { color: var(--bu-neg); }
+.bu-rcap.is-ok { color: var(--bu-ok); }
+/* the panel */
+.bu-rc .bu-rhead { padding: 0.1rem 0.9rem 0.5rem; margin-bottom: 0.3rem; }
+.bu-rhero { display: flex; flex-wrap: wrap; align-items: baseline; margin-top: 0.15rem; }
+.bu-rhero-word { margin-right: 0.9rem; font-size: 2.4rem; font-weight: 300; line-height: 1.25; letter-spacing: -0.01em; }
+.bu-rhero-word.is-ok { color: var(--bu-ok); }
+.bu-rhero-word.is-under { color: var(--bu-under); }
+.bu-rhero-word.is-neg { color: var(--bu-neg); }
+.bu-rhero-cap { font-size: 1.5rem; line-height: 1.3; color: var(--text-2); }
+.bu-rc .bu-rrow.f,
+.bu-rc .bu-ritem.f,
+.bu-rc .bu-rnote.f {
+  padding: 0.3rem 0.9rem;
+  margin: 0.1rem 0;
+  border-radius: 0.7rem;
+  border: var(--edge) solid transparent;
+}
+.bu-rc .bu-rrow.f.is-focused,
+.bu-rc .bu-ritem.f.is-focused,
+.bu-rc .bu-rnote.f.is-focused { background: var(--card-2); border-color: var(--focus); }
+.bu-rc .bu-rsign { font-size: 1.5rem; width: 2rem; }
+.bu-rc .bu-rlabel { font-size: 1.5rem; color: var(--text); }
+.bu-rc .bu-ramt { font-size: 1.5rem; min-width: 8rem; }
+.bu-rc .bu-rrow.is-total { margin-top: 0.5rem; padding-top: 0.7rem; border-top: 0.1rem solid var(--bu-hair); }
+.bu-rc .bu-rrow.is-total .bu-rlabel { font-weight: 600; }
+.bu-rc .bu-rrow.is-total .bu-ramt { font-size: 1.9rem; font-weight: 600; }
+.bu-rc .bu-rrow.is-total .bu-rsign { font-size: 1.9rem; }
+.bu-rc .bu-rrow.is-open { margin-bottom: 0.2rem; }
+.bu-rc .bu-pline { padding: 0 0.9rem; font-size: 1.25rem; }
+.bu-rc .bu-rhint { margin-top: 0.2rem; padding-left: 0.9rem; font-size: 1.25rem; }
+.bu-rc .bu-psec.is-after { margin-top: 0.9rem; }
+.bu-rc .bu-prow-you { margin-left: 0.4rem; font-size: 0.95rem; color: var(--text-3); }
+.bu-rc .bu-rhead .bu-pline { padding: 0; }
+/* level 2 */
+.bu-rdetail { padding-left: 2rem; }
+.bu-rdetail.is-enter {
+  -webkit-animation: bu-rise 0.18s ease-out;
+  animation: bu-rise 0.18s ease-out;
+}
+@-webkit-keyframes bu-rise { from { opacity: 0; -webkit-transform: translateY(-0.6rem); } to { opacity: 1; -webkit-transform: translateY(0); } }
+@keyframes bu-rise { from { opacity: 0; transform: translateY(-0.6rem); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .bu-rdetail.is-enter { -webkit-animation: none; animation: none; } }
+.bu-ritop { display: flex; align-items: baseline; }
+.bu-rdate { flex: 0 0 auto; width: 6rem; font-size: 1.25rem; line-height: 1.3; color: var(--text-3); white-space: nowrap; }
+.bu-rdetail .bu-rlabel { font-size: 1.5rem; }
+.bu-rdetail .bu-ramt { font-size: 1.5rem; min-width: 7.5rem; }
+.bu-rsub { margin-top: 0.15rem; padding-left: 6rem; font-size: 1.2rem; line-height: 1.35; color: var(--text-3); }
+.bu-rtag { margin-left: 0.6rem; padding: 0.05rem 0.5rem; border: 0.08rem solid var(--bu-under); border-radius: 1rem; font-size: 1rem; line-height: 1.3; color: var(--bu-under); }
+.bu-rtotal { margin-top: 0.4rem; border-top: 0.08rem solid var(--bu-hair); }
+.bu-rtotal .bu-rlabel { font-weight: 600; }
+.bu-rtotal .bu-ramt { font-weight: 600; }
+.bu-rnote { font-size: 1.5rem; line-height: 1.35; color: var(--text); }
+.bu-rnote .bu-rsub { padding-left: 0; font-size: 1.25rem; }
+.bu-rformula { margin-top: 0.4rem; font-size: 1.5rem; line-height: 1.4; color: var(--text); font-variant-numeric: tabular-nums; }
+.bu-rnote .bu-rformula + .bu-rsub { margin-top: 0.6rem; }
+
+.bu-rsubhead { margin-top: 0.7rem; font-size: 1.25rem; line-height: 1.3; color: var(--text-3); }
+.bu-rc .bu-prow.is-nodate .bu-trow-label { padding-left: 0; }
+.bu-rc .bu-rnote-low { margin-top: 0.3rem; font-size: 1.2rem; }
+.bu-rc .bu-psec .bu-pline { padding: 0; margin-top: 0.7rem; }
+
+.bu-rrow.is-mini .bu-rsign { display: none; }
+.bu-rc.is-detail { max-width: 64rem; }
+.bu-rc.is-cols .bu-pcol { flex: 1 1 0; }
+
+.bu-rc .bu-psec { padding: 0.35rem 0.9rem 0.4rem; }
+.bu-rc .bu-psec .bu-pline { margin-top: 0.4rem; }
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }
