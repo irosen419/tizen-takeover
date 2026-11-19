@@ -117,10 +117,16 @@
   100% { transform: translateX(2rem) scale(0.5); opacity: 0; }
 }
 
-/* The work loop (about 3 s): Stormlight runs down her arm into the card
-   (three dots) and rings out from her hand; Wyndle's vine curl grows
+/* The work loop (about 3 s): one steady stream of Stormlight runs down her
+   arm into the card and rings out from her hand; Wyndle's vine curl grows
    toward it once and then sways; a small bob. Calm (after a while): the
-   bob stops and the light slows. */
+   bob stops and the light slows.
+   The stream: a still, mid blue beam (soft glow + core, faint at her
+   elbow, strong at her hand), clipped; inside it a strip of soft lighter
+   surges slides toward the card, and two thin light strands twist around
+   it. Only those strips move (transform), by a whole number of their
+   repeats a cycle (three surges in 1.5 s, one helix picture in 2 s), so the loop has no
+   seam. */
 .ag-ring {
   position: absolute;
   left: -0.75rem; top: -0.25rem;
@@ -129,12 +135,54 @@
   border-radius: 50%;
   opacity: 0;
 }
-.ag-dot {
+.ag-stream {
   position: absolute;
-  left: -0.0833rem; top: -0.0833rem;
-  width: 0.1667rem; height: 0.1667rem;
-  background-color: #e8fbff;
+  left: -0.0833rem; top: -1.3333rem;
+  width: 0.1667rem; height: 1.4167rem;
+  transform-origin: 50% 100%;
+  transform: rotate(-11deg);
   opacity: 0;
+  transition: opacity 250ms ease-out;
+}
+.ag-stream b {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -0.0833rem; right: -0.0833rem;
+  background-image: linear-gradient(to bottom, rgba(58, 143, 214, 0), #3a8fd6);
+  opacity: 0.35;
+}
+.ag-stream s {
+  position: absolute;
+  top: 0; bottom: 0; left: 0; right: 0;
+  overflow: hidden;
+  background-image: linear-gradient(to bottom, rgba(88, 168, 228, 0), rgba(88, 168, 228, 0.9) 55%, #7cc2f2);
+}
+.ag-stream s i {
+  position: absolute;
+  left: 0; right: 0;
+  top: -1.5rem; height: 3rem;
+  background-image: repeating-linear-gradient(to bottom,
+    rgba(185, 232, 255, 0) 0, rgba(185, 232, 255, 0.65) 0.25rem,
+    rgba(185, 232, 255, 0) 0.5rem);
+}
+/* The two strands (soft faded gray-blue, like the rings): one pixel helix picture (6 x 24 pixels, close to the core, solid lines, the
+   strand behind the core left out where it crosses), repeated down and
+   slid with the stream, so they twist around it. */
+.ag-helix {
+  position: absolute;
+  top: 0.25rem; bottom: 0;
+  left: -0.1667rem; right: -0.1667rem;
+  overflow: hidden;
+  opacity: 0.7;
+}
+.ag-helix i {
+  position: absolute;
+  left: 0; right: 0;
+  top: -2rem; height: 3.1667rem;
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='24' shape-rendering='crispEdges'><rect x='3' y='0' width='1' height='1' fill='%23b9ccd4'/><rect x='3' y='1' width='1' height='1' fill='%23b9ccd4'/><rect x='1' y='2' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='3' y='2' width='1' height='1' fill='%23b9ccd4'/><rect x='4' y='2' width='1' height='1' fill='%23b9ccd4'/><rect x='1' y='3' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='4' y='3' width='1' height='1' fill='%23b9ccd4'/><rect x='0' y='4' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='1' y='4' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='4' y='4' width='1' height='1' fill='%23b9ccd4'/><rect x='5' y='4' width='1' height='1' fill='%23b9ccd4'/><rect x='0' y='5' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='5' y='5' width='1' height='1' fill='%23b9ccd4'/><rect x='0' y='6' width='1' height='1' fill='%23b9ccd4'/><rect x='5' y='6' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='0' y='7' width='1' height='1' fill='%23b9ccd4'/><rect x='5' y='7' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='0' y='8' width='1' height='1' fill='%23b9ccd4'/><rect x='1' y='8' width='1' height='1' fill='%23b9ccd4'/><rect x='4' y='8' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='5' y='8' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='1' y='9' width='1' height='1' fill='%23b9ccd4'/><rect x='4' y='9' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='1' y='10' width='1' height='1' fill='%23b9ccd4'/><rect x='2' y='10' width='1' height='1' fill='%23b9ccd4'/><rect x='4' y='10' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='2' y='11' width='1' height='1' fill='%23b9ccd4'/><rect x='2' y='12' width='1' height='1' fill='%23b9ccd4'/><rect x='3' y='12' width='1' height='1' fill='%23b9ccd4'/><rect x='3' y='13' width='1' height='1' fill='%23b9ccd4'/><rect x='1' y='14' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='3' y='14' width='1' height='1' fill='%23b9ccd4'/><rect x='4' y='14' width='1' height='1' fill='%23b9ccd4'/><rect x='1' y='15' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='4' y='15' width='1' height='1' fill='%23b9ccd4'/><rect x='0' y='16' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='1' y='16' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='4' y='16' width='1' height='1' fill='%23b9ccd4'/><rect x='5' y='16' width='1' height='1' fill='%23b9ccd4'/><rect x='0' y='17' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='5' y='17' width='1' height='1' fill='%23b9ccd4'/><rect x='0' y='18' width='1' height='1' fill='%23b9ccd4'/><rect x='5' y='18' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='0' y='19' width='1' height='1' fill='%23b9ccd4'/><rect x='5' y='19' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='0' y='20' width='1' height='1' fill='%23b9ccd4'/><rect x='1' y='20' width='1' height='1' fill='%23b9ccd4'/><rect x='4' y='20' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='5' y='20' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='1' y='21' width='1' height='1' fill='%23b9ccd4'/><rect x='4' y='21' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='1' y='22' width='1' height='1' fill='%23b9ccd4'/><rect x='2' y='22' width='1' height='1' fill='%23b9ccd4'/><rect x='4' y='22' width='1' height='1' fill='%2394a8b2' opacity='.8'/><rect x='2' y='23' width='1' height='1' fill='%23b9ccd4'/></svg>");
+  background-size: 0.5rem 2rem;
+  background-repeat: repeat-y;
+  image-rendering: pixelated;
 }
 .ag-vine {
   position: absolute;
@@ -163,14 +211,15 @@
 .ag-fig.is-work .ag-bob { animation: ag-bob 1500ms ease-in-out infinite alternate; }
 .ag-fig.is-work .ag-ring { animation: ag-ring 1500ms ease-out infinite; }
 .ag-fig.is-work .ag-ring + .ag-ring { animation-delay: -750ms; }
-.ag-fig.is-work .ag-dot { animation: ag-flow 1500ms linear infinite; }
-.ag-fig.is-work .ag-dot:nth-of-type(2) { animation-delay: -500ms; }
-.ag-fig.is-work .ag-dot:nth-of-type(3) { animation-delay: -1000ms; }
+.ag-fig.is-work .ag-stream { opacity: 1; }
+.ag-fig.is-work .ag-stream s i { animation: ag-stream 1500ms linear infinite; }
+.ag-fig.is-work .ag-helix i { animation: ag-helix 2000ms linear infinite; }
 .ag-fig.is-work .ag-vine { animation: ag-grow 900ms ease-out 200ms 1 forwards; }
 .ag-fig.is-work .ag-curl { animation: ag-curl 1500ms ease-in-out 1100ms infinite alternate; }
 .ag-fig.is-calm .ag-bob { animation: none; }
 .ag-fig.is-calm .ag-ring { animation-duration: 3000ms; }
-.ag-fig.is-calm .ag-dot { animation-duration: 3000ms; }
+.ag-fig.is-calm .ag-stream s i { animation-duration: 3000ms; }
+.ag-fig.is-calm .ag-helix i { animation-duration: 4000ms; }
 .ag-fig.is-calm .ag-curl { animation: none; }
 @keyframes ag-bob {
   from { transform: translate(0, 0); }
@@ -180,11 +229,13 @@
   0% { transform: scale(0.3); opacity: 0.95; }
   100% { transform: scale(1.8); opacity: 0; }
 }
-@keyframes ag-flow {
-  0% { transform: translate(-0.3333rem, -1.75rem); opacity: 0; }
-  20% { opacity: 1; }
-  85% { transform: translate(0, 0); opacity: 1; }
-  100% { transform: translate(0, 0.0833rem); opacity: 0; }
+@keyframes ag-stream {
+  from { transform: translateY(0); }
+  to { transform: translateY(1.5rem); }
+}
+@keyframes ag-helix {
+  from { transform: translateY(0); }
+  to { transform: translateY(2rem); }
 }
 @keyframes ag-grow {
   from { transform: scale(0); }
