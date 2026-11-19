@@ -697,8 +697,7 @@
          "id": "tv.widgets.entertainment.show-page",
          "title": "Show page",
          "kind": "component",
-         "status": "draft",
-         "pr": "PR (show page)",
+         "status": "unverified",
          "summary": "One page per show: every season and episode, watched marks, Watched up to here, and I'm caught up / I've seen it all.",
          "details": [
           "Opened from the round chip at the end of each Schedule row; it takes the Schedule's place and Back returns to the row. The row's check now says Mark as up to date: it marks that episode and every earlier one.",
@@ -4692,7 +4691,7 @@
   {
    "id": "flow.show-progress",
    "title": "Watched up to here reaches the Pi",
-   "summary": "Show page (draft): a binge mark on the TV becomes the show's progress on the Pi and comes back in the schedule.",
+   "summary": "Show page: a binge mark on the TV becomes the show's progress on the Pi and comes back in the schedule.",
    "steps": [
     {
      "node": "tv.widgets.entertainment.show-page",
@@ -4719,7 +4718,7 @@
  ],
  "title": "Architecture",
  "intro": "Every part of Home Hub, grouped so you can open as much or as little as you want. Tap a part for what it is, its files and what it talks to.",
- "asOf": "As of Nov 19, 2026 · main is v0.30.2 · show page is a draft",
+ "asOf": "As of Nov 19, 2026 · main is v0.31.0",
  "overview": {
   "w": 1000,
   "h": 620,
