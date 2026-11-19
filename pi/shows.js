@@ -89,6 +89,7 @@ const MAX_NAME = 80;
 const MAX_SERVICE = 24;
 const MAX_EP_NAME = 80;
 const MAX_ALSO = 4;
+const MAX_LEFT = 6;             // seasons in progress.left
 const MAX_UNWATCHED = 200;      // exceptions inside the up-to point kept per show
 const MAX_EPISODES = 800;        // episodes kept in a show's full list
 const EPISODES_NAME = 'show-episodes.json';
@@ -328,8 +329,30 @@ function progressOf(entry, eps, nowMs) {
     aired: aired.length,
     seen: seen,
     caughtUp: aired.length > 0 && seen === aired.length,
-    next: next
+    next: next,
+    left: seasonsLeft(entry, eps, nowMs)
   };
+}
+
+// The seasons with aired episodes not watched yet, for the TV's "Ready to
+// watch": [{ season, unseen, out, total }], oldest season first, at most
+// MAX_LEFT (the latest ones). out = episodes of the season already aired,
+// total = every episode of it TVmaze lists (announced ones too), so
+// out === total means the whole season is out.
+function seasonsLeft(entry, eps, nowMs) {
+  const by = {};
+  const order = [];
+  (eps || []).forEach((x) => {
+    if (!Number.isInteger(x.season) || !Number.isInteger(x.number)) return;
+    let s = by[x.season];
+    if (!s) { s = by[x.season] = { season: x.season, unseen: 0, out: 0, total: 0 }; order.push(s); }
+    s.total++;
+    if (Date.parse(x.airstamp) <= nowMs) {
+      s.out++;
+      if (!isWatched(entry, x.season, x.number)) s.unseen++;
+    }
+  });
+  return order.filter((s) => s.unseen > 0).sort((a, b) => a.season - b.season).slice(-MAX_LEFT);
 }
 
 // Marks watched on a built show (fresh or a last good copy) from its list
@@ -516,7 +539,7 @@ function cleanEp(e) {
 
 // shows[].progress as the TV gets it; anything missing or damaged becomes "no progress".
 function cleanProgress(p) {
-  const out = { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null };
+  const out = { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null, left: [] };
   if (!isObj(p)) return out;
   const num = (v) => Number.isInteger(v) && v >= 0 && v <= MAX_EP_NUM;
   const count = (v) => (Number.isInteger(v) && v >= 0 && v <= 99999 ? v : 0);
@@ -528,6 +551,13 @@ function cleanProgress(p) {
   out.seen = Math.min(count(p.seen), out.aired);
   out.caughtUp = p.caughtUp === true && out.aired > 0 && out.seen === out.aired;
   if (isObj(p.next) && num(p.next.season) && num(p.next.number)) out.next = { season: p.next.season, number: p.next.number };
+  (Array.isArray(p.left) ? p.left : []).forEach((x) => {
+    if (!isObj(x) || !num(x.season) || out.left.length >= MAX_LEFT) return;
+    const total = count(x.total);
+    const o = Math.min(count(x.out), total);
+    const unseen = Math.min(count(x.unseen), o);
+    if (unseen > 0) out.left.push({ season: x.season, unseen: unseen, out: o, total: total });
+  });
   return out;
 }
 

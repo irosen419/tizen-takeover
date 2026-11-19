@@ -728,6 +728,33 @@
          "notes": [
           "Needs Pi server 0.14.0; an older Pi shows a \"needs a newer Pi\" message on the page."
          ]
+        },
+        {
+         "id": "tv.widgets.entertainment.ready-to-watch",
+         "title": "Ready to watch",
+         "kind": "component",
+         "status": "unverified",
+         "summary": "Top of Coming soon: shows you have started that have aired episodes not marked watched, with per-season counts (\"Season 2 · all 12 out\", \"12 to watch\").",
+         "details": [
+          "A show counts once it has a Watched up to point or any episode marked; a show never touched is left out. OK on a line opens the next episode in its app; the round chip opens the show page. The Coming soon tab carries the count, and every Your shows row has the show page chip and an \"N to watch\" tag.",
+          "The per-season counts come from the snapshot (shows[].progress.left, Pi server 0.17.0). An older Pi sends only the totals, so the line says just the next episode."
+         ],
+         "files": [
+          "app/widgets/shows.js",
+          "app/widgets/shows.css",
+          "app/i18n.js",
+          "pi/shows.js"
+         ],
+         "talksTo": [
+          {
+           "to": "pi.shows",
+           "label": "progress.left in the shows snapshot",
+           "dir": "in"
+          }
+         ],
+         "notes": [
+          "Not yet seen on the TV."
+         ]
         }
        ]
       },
