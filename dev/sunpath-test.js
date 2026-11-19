@@ -437,6 +437,13 @@ async function checkSearch() {
   noErrors(page);
 }
 
+// A one-widget (12x6) layout opens as a window over its hidden tile: Back shows the tile.
+async function showSoloTile(page) {
+  await page.waitForFunction(() => window.HUB_TEST.open() === 'sunpath' && !window.HUB_TEST.busy(), null, { timeout: 5000 });
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !window.HUB_TEST.open() && !window.HUB_TEST.busy(), null, { timeout: 5000 });
+}
+
 function expectTile(t, size, when, lang, name) {
   const [cols, rows] = size;
   assert(!t.problems.length, name + ': ' + t.problems.join('; '));
@@ -468,12 +475,7 @@ async function checkTiles(lang, grow) {
     for (const size of SIZES) {
       if (when === 'today' && size[0] * size[1] > 12) continue;
       const page = await openHub({ at: at, size: size, lang: lang, grow: grow });
-      if (size[0] === 12 && size[1] === 6) {
-        // A one-widget layout opens as a window over its hidden tile: Back shows the tile.
-        await page.waitForFunction(() => window.HUB_TEST.open() === 'sunpath' && !window.HUB_TEST.busy(), null, { timeout: 5000 });
-        await page.keyboard.press('Escape');
-        await page.waitForFunction(() => !window.HUB_TEST.open() && !window.HUB_TEST.busy(), null, { timeout: 5000 });
-      }
+      if (size[0] === 12 && size[1] === 6) await showSoloTile(page);
       const t = await inspect(page, TILE, 0.85, 0.8);
       expectTile(t, size, when, lang, when + ' ' + size.join('x') + ' ' + lang + (grow ? ' +25%' : ''));
       if (size[1] >= 2 && size[0] >= 2) {
@@ -820,6 +822,7 @@ async function checkCareTile() {
     // The line where there is room (3x4), and every size without a problem.
     for (const size of [[1, 1], [2, 1], [3, 1], [3, 2], [3, 4], [6, 3], [12, 6]]) {
       const page = await openHub({ at: NOV19, size: size, lang: lang, cal: calData([WATER]) });
+      if (size[0] === 12 && size[1] === 6) await showSoloTile(page);
       const t = await inspect(page, TILE, 0.85, 0.8);
       assert(!t.problems.length, 'care tile ' + size.join('x') + ' ' + lang + ': ' + t.problems.join('; '));
       const has = lang === 'en' ? /Water plants Sat 10 AM/.test(t.text) : /Regar plantas s.b 10 a\. m\./.test(t.text);
