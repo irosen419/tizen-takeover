@@ -676,6 +676,21 @@ const COMMANDS = {
       return { message: shows.unwatchText(r), data: { season: r.season, number: r.number, changed: !!r.changed } };
     }
   },
+  // "I'm only up to S3E4" (binge) and "seen it all" (every episode out so far).
+  'shows.upto': {
+    args: { name: [V.text(80), true], episode: [V.text(12), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows/upto', { show: a.name, episode: a.episode });
+      return { message: shows.upToText(r), data: { season: r.season, number: r.number, changed: !!r.changed } };
+    }
+  },
+  'shows.caughtup': {
+    args: { name: [V.text(80), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows/caughtup', { show: a.name });
+      return { message: shows.caughtUpText(r), data: { season: r.season, number: r.number, changed: !!r.changed } };
+    }
+  },
   'shows.refresh': {
     args: {},
     run: async (a, ctx) => {

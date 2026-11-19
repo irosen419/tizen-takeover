@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.32.0';
+  var BUILD = 'v0.33.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -2804,6 +2804,21 @@
       on: wrap('on', function () { return function () {}; }),
       onStatus: wrap('onStatus', none),
       everConnected: wrap('everConnected', function () { return false; }),
+      // GET JSON from the server's screen door (the show page's episode list).
+      fetch: function (path, cb) {
+        var finished = false;
+        function done(err, data, code) {
+          if (finished) return;
+          finished = true;
+          if (typeof cb === 'function') cb(err, data, code);
+        }
+        try {
+          if (typeof L.fetch !== 'function') throw new Error('no fetch');
+          L.fetch(path, done);
+        } catch (e) {
+          setTimeout(function () { done('live updates are not available', null, 0); }, 0);
+        }
+      },
       post: function (path, body, cb) {
         var finished = false;
         function done(err, data, code) {

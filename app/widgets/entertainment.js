@@ -9,7 +9,8 @@
  * grid from either.
  *
  * Full screen is split: the apps in a narrow column (a quarter) and the
- * Schedule, always shown, in the rest (renderSplit, onMove).
+ * Schedule, always shown, in the rest (renderSplit, onMove). A show page
+ * (shows.js) takes the Schedule's place there and in the panel; Back returns.
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -735,6 +736,10 @@
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
 
     onMove: function (dir, from) {
+      if (from && window.HUB_SHOWS && HUB_SHOWS.onMove && (HUB_SHOWS.pageOpen() || inside(from, 'sh'))) {
+        var steer = HUB_SHOWS.onMove(dir, from);
+        if (steer !== undefined) return steer;
+      }
       if (!isSplit() || !from) return undefined;
       if (!inside(from, 'ent-split')) {
         // From the Full screen button (where focus stays after pressing it): Down
@@ -754,6 +759,7 @@
 
     onFocus: function (target) {
       var key = target && target.getAttribute('data-key');
+      if (key && key.indexOf('sh:') === 0 && window.HUB_SHOWS && HUB_SHOWS.onFocus) HUB_SHOWS.onFocus(target);
       if (key && key.indexOf('app:') !== 0) lastKey = key;
     },
 
@@ -779,6 +785,8 @@
     },
 
     onBack: function () {
+      // A show page open in the Schedule's place: Back returns to the Schedule.
+      if ((view === 'schedule' || view === 'grid') && window.HUB_SHOWS && HUB_SHOWS.onBack && HUB_SHOWS.pageOpen() && HUB_SHOWS.onBack()) return true;
       if (view === 'linktests' && window.HUB_LINKTEST && HUB_LINKTEST.onBack()) return true;
       if (view === 'grid') return false;
       closeList();
@@ -786,6 +794,7 @@
     },
 
     onClose: function (ctx) {
+      if (window.HUB_SHOWS && HUB_SHOWS.closePage) HUB_SHOWS.closePage();
       if (view !== 'grid') {
         view = 'grid';
         ctx.setSub(ctx.config.sub || '');

@@ -701,6 +701,32 @@
          "notes": [
           "Nothing has run on the real TV, including launchAppControl and every deep link."
          ]
+        },
+        {
+         "id": "tv.widgets.entertainment.show-page",
+         "title": "Show page",
+         "kind": "component",
+         "status": "unverified",
+         "summary": "One page per show: every season and episode, watched marks, Watched up to here, and I'm caught up / I've seen it all.",
+         "details": [
+          "Opened from the round chip at the end of each Schedule row; it takes the Schedule's place and Back returns to the row. The row's check now says Mark as up to date: it marks that episode and every earlier one.",
+          "The page asks the Pi for the show's full episode list when it opens (GET /shows/episodes) and keeps the last few on the TV. Marks go to the Pi through the same waiting queue as before (POST /shows/watched, /shows/unwatch, /shows/upto, /shows/caughtup)."
+         ],
+         "files": [
+          "app/widgets/shows.js",
+          "app/widgets/shows.css",
+          "app/i18n.js"
+         ],
+         "talksTo": [
+          {
+           "to": "pi.shows",
+           "label": "episode list and progress marks",
+           "dir": "out"
+          }
+         ],
+         "notes": [
+          "Needs Pi server 0.14.0; an older Pi shows a \"needs a newer Pi\" message on the page."
+         ]
         }
        ]
       },
@@ -2069,13 +2095,16 @@
      "summary": "A shows resource: Ian's show list looked up on TVmaze every 6 hours, for the Entertainment Schedule.",
      "details": [
       "The list lives in data/shows.json (started from a seed list). For each show the Pi asks TVmaze (public, no key) for next and past episodes, at most 20 calls per 10 s, and pushes the result. A show that fails keeps its last copy, marked stale.",
-      "Adds ./hub shows and mailbox commands shows.list, add, remove, set and refresh, plus a Watch link test whose answers the TV sends back. Log lines carry no show names or addresses."
+      "Adds ./hub shows and mailbox commands shows.list, add, remove, set and refresh, plus a Watch link test whose answers the TV sends back. Log lines carry no show names or addresses.",
+      "Progress per show is a watermark plus exceptions: upTo (everything up to and including an episode counts as watched), single watched marks after it, and unwatched exceptions before it. The snapshot carries progress (aired, seen, next, caught up) per show.",
+      "Each refresh keeps a compact list of every episode per show in data/show-episodes.json; the TV fetches one show's list when its show page opens, so the 6-hourly snapshot stays small. Server 0.14.0 adds ./hub shows upto / caughtup and mailbox shows.upto / shows.caughtup."
      ],
      "files": [
       "pi/shows.js",
       "pi/shows-seed.json",
       "pi/linktests.js",
-      "docs/shows-snapshot.md"
+      "docs/shows-snapshot.md",
+      "pi/server.js"
      ],
      "talksTo": [
       {
@@ -4742,11 +4771,38 @@
      "say": "The TV keeps the answers and redraws the tiles in Spanish"
     }
    ]
+  },
+  {
+   "id": "flow.show-progress",
+   "title": "Watched up to here reaches the Pi",
+   "summary": "Show page: a binge mark on the TV becomes the show's progress on the Pi and comes back in the schedule.",
+   "steps": [
+    {
+     "node": "tv.widgets.entertainment.show-page",
+     "say": "Ian opens a show page and presses Watched up to here on episode 3"
+    },
+    {
+     "node": "pi.server.screen",
+     "say": "The TV posts /shows/upto; it waits in a queue if the Pi is away"
+    },
+    {
+     "node": "pi.shows",
+     "say": "The Pi moves the show's watermark and saves the list"
+    },
+    {
+     "node": "pi.server.screen",
+     "say": "The shows resource is pushed with the new progress"
+    },
+    {
+     "node": "tv.widgets",
+     "say": "Schedule rows and counts skip the watched episodes"
+    }
+   ]
   }
  ],
  "title": "Architecture",
  "intro": "Every part of Home Hub, grouped so you can open as much or as little as you want. Tap a part for what it is, its files and what it talks to.",
- "asOf": "As of Nov 19, 2026 · main is v0.30.2",
+ "asOf": "As of Nov 19, 2026 · main is v0.33.0",
  "overview": {
   "w": 1000,
   "h": 620,
