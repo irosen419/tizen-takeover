@@ -1437,7 +1437,7 @@
     var rem = remPx();
     var vh = ui.readView.clientHeight / rem;
     var max = Math.max(0, ui.readBody.offsetHeight / rem - vh);
-    var step = Math.max(2, vh * 0.7);
+    var step = Math.max(1, vh * 0.35);
     var next = Math.max(0, Math.min(max, readTop + dir * step));
     if (dir < 0 && readTop <= 0) return false;
     readTop = next;
