@@ -33,8 +33,9 @@ const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
 const FRESH = iso(H.MONDAY - 60000);
 const OLD = iso(H.MONDAY - 3 * 3600000);
 const SEEN = { 'homeHub.budget.seen.v1': '["a-1042"]' };
-const GREEN = 'rgb(142, 229, 154)';
-const CORAL = 'rgb(255, 138, 128)';
+// The test page runs in the day theme, where gains and losses take the deep shades.
+const GREEN = 'rgb(23, 112, 58)';
+const CORAL = 'rgb(179, 38, 30)';
 // Any of these showing in Guest mode is a leaked dollar figure.
 const FIGURES = /\$|48,2|48\.2|30,1|30\.1|18,1|21,0|9,8|7,4|40,1|8,1|5,2|2,9|3,1|1,2|2,1|5,6/;
 

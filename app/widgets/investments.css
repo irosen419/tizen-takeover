@@ -363,4 +363,8 @@
 .iv-pwrap.is-full .iv-row { font-size: 1.35rem; }
 .iv-pwrap.is-full .iv-pgain { font-size: 1.5rem; }
 
+/* Day glass: the night greens and corals wash out on the light tile, so the
+   gain, loss and trend line take deeper shades there. */
+.theme-day.is-glass .tile:not(.is-lifted) .iv-tile { --iv-ok: #17703a; --iv-neg: #b3261e; }
+
 .css-end { top: 0; }
