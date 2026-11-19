@@ -20,6 +20,9 @@
  *     sends nothing, focus walks down the list, a line goes after 7 days or when
  *     the Pi has the episode watched, and an aired row's check toggle marks and
  *     unmarks (EN and ES, nothing clipped);
+ *   - Entertainment at full screen: the app column (counts and all) beside the live
+ *     Schedule, Left and Right between them, OK on an app and on a row, the tile and
+ *     the panel unchanged, Spanish fitting the narrow column;
  *   - service.js's /launch-control checks (run in a sandbox with a stand-in
  *     tizen object), and the new app files are plain ES5.
  */
@@ -446,7 +449,7 @@ async function main() {
       }
     });
 
-    await check('Watch link test: the added recipes are listed after the first ten, and a plain open uses /launch and still asks what happened', async () => {
+    await check('Watch link test: tests are grouped by app and numbered with a total, an answer names the app it opened, and a plain open uses /launch and still asks what happened', async () => {
       const lt = await env.newPage({});
       try {
         const v = await lt.evaluate(() => {
@@ -454,12 +457,13 @@ async function main() {
           const r = t.recipes();
           return { ids: r.map((x) => x.id), about: window.HUB_LINKTEST.aboutText(), netflixWatch: r.filter((x) => x.id === 'netflix-watch-resume')[0].val, def: r.filter((x) => x.id === 'appletv-default-op')[0].op, plain: r.filter((x) => x.plain).map((x) => x.id + ':' + x.op + ':' + x.key) };
         });
-        assert(v.ids.slice(0, 10).join() === 'prime-resume,netflix-resume,netflix-view,appletv-view,appletv-resume,appletv-fam,disney-view,disney-resume,hulu-view,peacock-view', v.ids.join());
-        assert(v.ids.slice(10, 15).join() === 'netflix-watch-resume,netflix-json-resume,netflix-default-op,appletv-resume-url,appletv-default-op', v.ids.join());
+        assert(v.ids.join() === 'prime-resume,plain-prime,netflix-resume,netflix-view,netflix-watch-resume,netflix-json-resume,netflix-default-op,plain-netflix,appletv-view,appletv-resume,appletv-fam,appletv-resume-url,appletv-default-op,plain-appletv,disney-view,disney-resume,plain-disney,hulu-view,plain-hulu,peacock-view,plain-peacock', v.ids.join());
         assert(v.ids.length === 21 && /^OK to open · 0 of \d+ tried$/.test(v.about), v.about);
         assert(v.netflixWatch === 'm=https://www.netflix.com/watch/81505776&source_type=4' && v.def === 'http://tizen.org/appcontrol/operation/default', JSON.stringify(v));
         assert(v.plain.length === 6 && v.plain.every((x) => /::undefined$/.test(x) || /:$/.test(x) || /::$/.test(x) || x.split(':')[1] === ''), v.plain.join());
         await H.openView(lt, 'linktests');
+        const nums = await lt.evaluate(() => ({ total: document.querySelector('.lt-total').textContent, nums: [].map.call(document.querySelectorAll('.lt-row .lt-num'), (n) => n.textContent) }));
+        assert(/^21 tests/.test(nums.total) && nums.nums.join() === Array.from({ length: 21 }, (_, i) => String(i + 1)).join(), JSON.stringify(nums));
         await H.focusKey(lt, 'lt:run:plain-netflix');
         const nc = env.launches.filter((x) => /launch-control/.test(x)).length;
         const nl = env.launches.length;
@@ -469,6 +473,12 @@ async function main() {
         assert(env.launches.filter((x) => /launch-control/.test(x)).length === nc, 'a plain open used an app control');
         await H.sleep(300);
         assert((await focusedKey(lt)) === 'lt:ans:plain-netflix:title', await focusedKey(lt));
+        // The answer names the app it opened (name and id on this TV).
+        await H.key(lt, 'ArrowRight');
+        await H.key(lt, 'Enter');
+        await H.until(() => lt.evaluate(() => { const d = JSON.parse(localStorage.getItem('homeHub.linkTests') || 'null'); return !!(d && d.results && d.results[0] && d.results[0].id === 'plain-netflix'); }), 3000, 'no answer kept');
+        const det = await lt.evaluate(() => JSON.parse(localStorage.getItem('homeHub.linkTests')).results[0].detail || '');
+        assert(/^opened Netflix \d+/.test(det), det);
       } finally { await lt.ctx.close(); }
     });
 
@@ -1049,6 +1059,168 @@ async function main() {
     } finally {
       await base.stop();
       await mark.stop();
+    }
+  }
+
+  {
+    // Entertainment at full screen: the apps in a column beside the Schedule.
+    const sp = await H.start();
+    const fk = (pg) => pg.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? (f.getAttribute('data-key') || 'button') : ''; });
+    const openFull = async (pg) => { await H.openGrid(pg); await H.fullScreen(pg); };
+    try {
+      await check('config.js opens Entertainment straight to full screen: no Full screen button, "Back to close", Back closes it; openMode \'panel\' in config keeps the small panel', async () => {
+        const p = await sp.newPage({ entOpen: 'config' });
+        try {
+          assert(await p.evaluate(() => window.HUB_TEST.openPanel('entertainment')), 'did not open');
+          await H.until(() => p.evaluate(() => window.HUB_TEST.open() === 'entertainment' && !window.HUB_TEST.busy()), 6000, 'not open');
+          const v = await p.evaluate(() => ({ mode: window.HUB_TEST.mode(), btn: document.querySelector('#panel .panel-btn').style.display, hint: document.querySelector('#panel .panel-hint').textContent, direct: /is-direct/.test(document.getElementById('panel').className) }));
+          assert(v.mode === 'full' && v.direct && v.btn === 'none' && v.hint === 'Back to close', JSON.stringify(v));
+          await H.key(p, 'Escape');
+          await H.until(() => p.evaluate(() => window.HUB_TEST.open() === null || window.HUB_TEST.open() === '' || !window.HUB_TEST.open()), 6000, 'Back did not close it');
+          // A config.js openMode: 'panel' keeps the small panel (the harness default).
+          const q = await sp.newPage({});
+          try {
+            await H.openGrid(q);
+            assert((await q.evaluate(() => window.HUB_TEST.mode())) === 'panel', 'panel override ignored');
+          } finally { await q.ctx.close(); }
+        } finally { await p.ctx.close(); }
+      });
+
+      await check('Full screen: the app column (with its counts) and the live Schedule are both there, the column a quarter wide, and focus starts in the Schedule', async () => {
+        const p = await sp.newPage({});
+        try {
+          await openFull(p);
+          const v = await p.evaluate(() => {
+            const body = document.querySelector('#panel .panel-body');
+            const side = document.querySelector('#panel .ent-side');
+            const main = document.querySelector('#panel .ent-main');
+            if (!side || !main) return { none: true };
+            const sr = side.getBoundingClientRect();
+            const mr = main.getBoundingClientRect();
+            const f = document.querySelector('#panel .is-focused');
+            return {
+              frac: sr.width / body.getBoundingClientRect().width,
+              items: side.querySelectorAll('.ent-item.f').length,
+              hiddenSched: side.querySelectorAll('.ent-item.is-off').length,
+              counts: [].map.call(side.querySelectorAll('.ent-count'), (n) => n.textContent).join(','),
+              tabs: main.querySelectorAll('.sh-tab').length,
+              rows: main.querySelectorAll('.sh-row').length,
+              apart: mr.left >= sr.right,
+              fit: sr.bottom <= body.getBoundingClientRect().bottom + 0.5,
+              scrollsX: body.scrollWidth > body.clientWidth + 1,
+              focus: f ? f.getAttribute('data-key') || '' : ''
+            };
+          });
+          assert(!v.none, 'no .ent-side / .ent-main');
+          assert(v.frac > 0.2 && v.frac < 0.28, 'column width ' + v.frac);
+          assert(v.items === 11 && v.hiddenSched === 1, 'items ' + v.items + ' hidden ' + v.hiddenSched);
+          assert(v.counts === '1,1,1', 'counts ' + v.counts);
+          assert(v.tabs === 4 && v.rows >= 5, 'schedule: ' + v.tabs + ' tabs, ' + v.rows + ' rows');
+          assert(v.apart && v.fit && !v.scrollsX, JSON.stringify(v));
+          // Focus stays on the Full screen button that was pressed; Down starts the Schedule.
+          assert(v.focus === '', 'focus ' + v.focus);
+          await H.key(p, 'ArrowDown');
+          assert((await fk(p)).indexOf('sh:row:paradise:') === 0, 'Down from the button went to ' + await fk(p));
+          assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+        } finally { await p.ctx.close(); }
+      });
+
+      await check('Full screen focus: Left from the Schedule goes to the column, Right back; Up and Down stay in their side; OK on an app opens it, OK on a row watches', async () => {
+        const p = await sp.newPage({});
+        try {
+          await openFull(p);
+          await H.key(p, 'ArrowDown');
+          assert((await fk(p)).indexOf('sh:row:paradise:') === 0, 'start: ' + await fk(p));
+          await H.key(p, 'ArrowLeft');
+          let k = await fk(p);
+          assert(/^item\d+$/.test(k), 'Left went to ' + k);
+          await H.key(p, 'ArrowDown');
+          const k2 = await fk(p);
+          assert(/^item\d+$/.test(k2) && k2 !== k, 'Down in the column went to ' + k2);
+          await H.key(p, 'ArrowDown', 20);
+          k = await fk(p);
+          assert(/^item\d+$/.test(k), 'Down past the last item left the column: ' + k);
+          await H.key(p, 'ArrowRight');
+          assert(/^sh:/.test(await fk(p)), 'Right went to ' + await fk(p));
+          await H.key(p, 'ArrowDown', 30);
+          assert(/^sh:/.test(await fk(p)), 'Down past the Schedule ended in the column: ' + await fk(p));
+          // OK on an app chip opens the app.
+          await H.key(p, 'ArrowLeft', 3);
+          for (let i = 0; i < 20 && (await fk(p)) !== 'item0'; i++) await H.key(p, 'ArrowUp');
+          assert((await fk(p)) === 'item0', 'could not reach the first app: ' + await fk(p));
+          const n0 = sp.launches.length;
+          await H.key(p, 'Enter');
+          await H.until(() => sp.launches.length > n0, 3000, 'OK on an app chip launched nothing');
+          assert(/^launch /.test(sp.launches[sp.launches.length - 1]), sp.launches.join(' | '));
+          // OK on a Schedule row still watches (the card, then the app).
+          await H.key(p, 'ArrowRight');
+          await H.focusKey(p, 'sh:row:paradise:');
+          const n1 = sp.launches.length;
+          await H.key(p, 'Enter');
+          await H.until(() => p.evaluate(() => !!document.querySelector('.sh-go-card')), 1500, 'no watch card');
+          await H.until(() => sp.launches.length > n1, 3500, 'OK on a row launched nothing');
+          assert(sp.launches[sp.launches.length - 1] === 'launch 3201901017640', sp.launches.join(' | '));
+          assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+        } finally { await p.ctx.close(); }
+      });
+
+      await check('The tile and the expanded panel are unchanged: no column, the grid with its labels and the Schedule item; leaving full screen brings the grid back', async () => {
+        const p = await sp.newPage({});
+        try {
+          assert(await p.evaluate(() => !document.querySelector('.ent-split') && document.querySelectorAll('#grid .ent-chip').length >= 6), 'the tile changed');
+          await H.openGrid(p);
+          const panel = () => p.evaluate(() => ({
+            split: !!document.querySelector('#panel .ent-split'),
+            grid: !!document.querySelector('#panel .panel-body > .ent-grid'),
+            items: document.querySelectorAll('#panel .ent-item.f').length,
+            sched: [].some.call(document.querySelectorAll('#panel .ent-item.f .ent-name'), (n) => n.textContent === 'Schedule'),
+            label: getComputedStyle(document.querySelector('#panel .ent-section-label')).display,
+            align: getComputedStyle(document.querySelector('#panel .ent-name')).textAlign
+          }));
+          let v = await panel();
+          assert(!v.split && v.grid && v.items === 12 && v.sched && v.label === 'none' && v.align === 'center', 'panel: ' + JSON.stringify(v));
+          await H.fullScreen(p);
+          assert((await panel()).split, 'no column at full screen');
+          await H.key(p, 'Escape');
+          await H.until(() => p.evaluate(() => window.HUB_TEST.mode() === 'panel' && !window.HUB_TEST.busy()), 4000, 'Back did not leave full screen');
+          await H.sleep(300);
+          v = await panel();
+          assert(!v.split && v.grid && v.items === 12 && v.sched, 'after full screen: ' + JSON.stringify(v));
+        } finally { await p.ctx.close(); }
+      });
+
+      await check('Spanish: the column fits, names wrap with room for accents, and nothing is wider than its box', async () => {
+        const p = await sp.newPage({ lang: 'es' });
+        try {
+          await openFull(p);
+          await p.evaluate(() => { document.querySelectorAll('#panel .ent-side .ent-name')[1].textContent = 'Televisión por suscripción ¿Dónde está?'; });
+          const v = await p.evaluate(() => {
+            const bad = [];
+            const side = document.querySelector('#panel .ent-side');
+            const body = document.querySelector('#panel .panel-body');
+            if (side.getBoundingClientRect().bottom > body.getBoundingClientRect().bottom + 0.5) bad.push('the column runs past the panel');
+            [].forEach.call(side.querySelectorAll('.ent-item.f'), (it) => {
+              const ir = it.getBoundingClientRect();
+              [].forEach.call(it.querySelectorAll('.ent-name, .ent-state'), (t) => {
+                const cs = getComputedStyle(t);
+                if (cs.display === 'none') return;
+                if (t.scrollWidth > t.clientWidth + 1) bad.push('wider than its box: ' + t.textContent);
+                if (t.getBoundingClientRect().right > ir.right + 0.5) bad.push('outside its item: ' + t.textContent);
+                if (parseFloat(cs.lineHeight) < parseFloat(cs.fontSize) * 1.25) bad.push('line height ' + cs.lineHeight + ' on ' + t.textContent);
+                if (cs.overflow !== 'visible') bad.push('overflow ' + cs.overflow);
+              });
+            });
+            if (body.scrollWidth > body.clientWidth + 1) bad.push('the body scrolls sideways');
+            const long = document.querySelectorAll('#panel .ent-side .ent-name')[1];
+            return { bad: bad, wraps: long.getBoundingClientRect().height > parseFloat(getComputedStyle(long).lineHeight) * 1.5, tab: document.querySelector('#panel .sh-tab').textContent };
+          });
+          assert(!v.bad.length, v.bad.join(' | '));
+          assert(v.wraps, 'the long name did not wrap');
+          assert(v.tab === 'Hoy', 'tab ' + v.tab);
+        } finally { await p.ctx.close(); }
+      });
+    } finally {
+      await sp.stop();
     }
   }
 

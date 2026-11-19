@@ -126,6 +126,20 @@ async function openHub(env, o) {
     storage['homeHub.layout'] = JSON.stringify(o.layout);
     storage['homeHub.layoutChoice'] = JSON.stringify({ id: 'test', piSig: '' });
   }
+  // Entertainment opens straight to full screen in config.js. Most checks are
+  // about the small panel, so they keep it ('panel') unless o.entOpen says
+  // otherwise ('config' leaves config.js alone).
+  const entOpen = o.entOpen || 'panel';
+  if (entOpen !== 'config') {
+    await page.addInitScript((m) => {
+      let v;
+      Object.defineProperty(window, 'HUB_CONFIG', {
+        configurable: true,
+        get: () => v,
+        set: (x) => { v = x; try { if (v && v.widgets && v.widgets.entertainment) v.widgets.entertainment.openMode = m; } catch (e) { /* ignore */ } }
+      });
+    }, entOpen);
+  }
   await page.addInitScript((items) => {
     try {
       if (sessionStorage.getItem('shows-seeded')) return;

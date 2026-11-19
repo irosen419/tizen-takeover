@@ -4,6 +4,7 @@
  * tile and the row's check toggle, at twice the pixels),
  * at 1920x1080 in Chicago, from the made-up show sample:
  *   node dev/shows-shots.js [dir]   (default: dev/shots)
+ *   node dev/shows-shots.js <dir> split [name]   (Entertainment full screen, EN and ES, at twice the pixels)
  * Nothing reaches the internet.
  */
 'use strict';
@@ -13,7 +14,21 @@ const fs = require('fs');
 const H = require('./shows-harness');
 
 const OUT = process.argv[2] || path.join(__dirname, 'shots');
-const ONLY = process.argv[3] || '';          // 'finish': only the "Did you finish?" pictures (at twice the pixels)
+const ONLY = process.argv[3] || '';          // 'finish': only the "Did you finish?" pictures (at twice the pixels); 'split': the Entertainment full screen (files named by argv[4], default after)
+const NAME = process.argv[4] || 'after';
+
+// Entertainment at full screen, 3840x2160: same sample, same clock, same screen. Run it on the commit before a change and on the change with a different name (before, after).
+async function splitShots(env, shot) {
+  for (const lang of ['en', 'es']) {
+    const page = await env.newPage({ lang: lang === 'es' ? 'es' : undefined, scale: 2 });
+    await H.openGrid(page);
+    await H.fullScreen(page);
+    await H.sleep(500);
+    await shot(page, NAME + (lang === 'es' ? '-es' : '') + '.png');
+    if (page.ctx.errors.length) console.log(lang + ' page errors: ' + page.ctx.errors.join(' | '));
+    await page.ctx.close();
+  }
+}
 
 // "Did you finish?": three started lines (not in order), the tile and the Schedule item with "N to check", and a row with its check toggle. 3840x2160 files.
 async function finishShots(env, shot) {
@@ -68,6 +83,12 @@ async function finishShots(env, shot) {
     shots.push(file);
   }
   try {
+    if (ONLY === 'split') {
+      await splitShots(env, shot);
+      console.log(shots.join('\n'));
+      await env.stop();
+      process.exit(0);
+    }
     if (ONLY === 'finish') {
       await finishShots(env, shot);
       console.log(shots.join('\n'));

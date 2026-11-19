@@ -432,6 +432,8 @@
 }
 .lt-row.is-focused { background: var(--card-2); border-color: var(--focus); }
 .lt-row.is-off .lt-name { color: var(--text-3); }
+.lt-num { flex: 0 0 auto; min-width: 2.2rem; margin-right: 0.6rem; font-size: 1.05rem; line-height: 1.35; font-weight: 700; color: var(--text-2); text-align: right; }
+.lt-total { margin-bottom: 0.7rem; font-size: 1rem; line-height: 1.4; font-weight: 600; color: var(--text); }
 .lt-main { flex: 1 1 auto; min-width: 0; }
 .lt-name { font-size: 1.05rem; line-height: 1.35; }
 .lt-detail { font-size: 0.85rem; line-height: 1.35; color: var(--text-3); word-break: break-all; }
@@ -554,5 +556,54 @@
 .sh-mark.is-focused .sh-mark-text { display: inline; }
 .sh-mark.is-focused .sh-mark-box { border-color: #050506; }
 .sh-mark.is-focused.is-on .sh-mark-box { background: #050506; border-color: #050506; color: #fff; }
+
+/* ---------- Entertainment at full screen: the apps beside the Schedule ---------- */
+
+/* A quarter for the apps, a list one item high each, and the Schedule (the
+   same view as the panel) in the rest. Only full screen: the panel and the
+   tile keep their own rules. Names wrap (Spanish is a quarter longer) with a
+   line height of 1.3 or more, so accents are never cut. */
+.ent-split { display: flex; align-items: flex-start; }
+.ent-side {
+  flex: 0 0 23%;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+  padding-top: 0.2rem;
+}
+.ent-main { flex: 1 1 0; min-width: 0; margin-left: 2.6rem; }
+.panel.is-full .ent-side .ent-section,
+.panel.is-full .ent-side .ent-section.is-first { display: block; margin: 0 0 0.4rem; }
+.panel.is-full .ent-side .ent-section-label { display: none; }
+.panel.is-full .ent-side .ent-item.is-off { display: none; }
+.panel.is-full .ent-side .ent-grid { margin: 0; padding-top: 0; }
+.panel.is-full .ent-side .ent-item {
+  display: flex;
+  align-items: center;
+  width: auto;
+  box-sizing: border-box;
+  margin: 0 0 0.1rem;
+  padding: 0.22rem 0.7rem;
+  border-radius: 1.1rem;
+  text-align: left;
+}
+.panel.is-full .ent-side .ent-item.is-focused { background: rgba(255, 255, 255, 0.1); }
+.panel.is-full .ent-side .ent-icon { flex: 0 0 auto; width: 2.3rem; margin: 0; }
+.panel.is-full .ent-side .ent-icon .logo-text { font-size: 1.2rem; }
+.panel.is-full .ent-side .ent-text { flex: 1 1 0; min-width: 0; margin-left: 0.9rem; }
+.panel.is-full .ent-side .ent-name {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+.panel.is-full .ent-side .ent-state { display: none; font-size: 0.8rem; line-height: 1.35; }
+.panel.is-full .ent-side .is-missing .ent-state { display: block; }
+.panel.is-full .ent-side .ent-icon .ent-count {
+  top: 0; right: 0;
+  min-width: 1.1rem; padding: 0 0.2rem; font-size: 0.75rem; line-height: 1.1rem; border-radius: 0.6rem;
+  box-shadow: 0 0 0 0.08rem var(--card);
+}
 
 .css-end { top: 0; }

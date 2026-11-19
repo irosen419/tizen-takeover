@@ -37,7 +37,9 @@
  *                                          // panel opens (the About panel's watch link test
  *                                          // asks entertainment for 'linktests'); false = no
  *     openMode: 'full',       // OK on the tile opens straight to full screen, and Back
- *                             // closes it (no small panel to shrink to)
+ *                             // closes it (no small panel to shrink to). The owner can
+ *                             // set it per widget too: HUB_CONFIG.widgets[id].openMode
+ *                             // 'full' or 'panel' wins over the widget's own.
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
  *     onStatus: function (ctx) {},         // the motion, live updates or updates status
@@ -134,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.29.15';
+  var BUILD = 'v0.29.18';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1725,12 +1727,21 @@
     panel.sub.style.display = text ? '' : 'none';
   }
 
+  // Whether OK on a widget's tile opens straight to full screen, with no
+  // small panel in between. HUB_CONFIG.widgets[id].openMode ('full' or
+  // 'panel') wins over the widget's own openMode.
+  function isDirect(w) {
+    var c = cfg.widgets && cfg.widgets[w.id];
+    var m = c && (c.openMode === 'full' || c.openMode === 'panel') ? c.openMode : w.openMode;
+    return m === 'full';
+  }
+
   function drawPanelHead() {
     var w = open.w;
     panel.icon.innerHTML = iconHTML(w.icon);
     var full = mode === 'full';
     // A widget that opens straight to full screen has no small panel to shrink to.
-    var direct = w.openMode === 'full';
+    var direct = isDirect(w);
     panel.btn.style.display = direct ? 'none' : '';
     if (direct) panel.btn.classList.remove('f'); else panel.btn.classList.add('f');
     panel.btnIcon.innerHTML = iconHTML(full ? 'shrink' : 'expand');
@@ -1750,7 +1761,7 @@
     if (!open) return;
     if (typing === undefined) typing = !!typingBox();
     // A small chip like the Full screen button, but never focusable.
-    panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : mode === 'full' && open.w.openMode !== 'full' ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
+    panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : mode === 'full' && !isDirect(open.w) ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
   }
 
   function panelFocusables() {
@@ -1862,7 +1873,7 @@
 
   function selectPanel() {
     if (!panelFocus) return;
-    if (panelFocus === panel.btn) { if (open.w.openMode !== 'full') switchMode(mode === 'full' ? 'panel' : 'full'); return; }
+    if (panelFocus === panel.btn) { if (!isDirect(open.w)) switchMode(mode === 'full' ? 'panel' : 'full'); return; }
     if (isTextBox(panelFocus)) { startTyping(panelFocus); return; }
     var target = panelFocus;
     target.classList.add('is-pressed');
@@ -1873,7 +1884,7 @@
   function backInPanel() {
     if (call(open, 'onBack', [open.ctx]) === true) return;
     // A widget that opens straight to full screen closes on Back.
-    if (mode === 'full' && open.w.openMode !== 'full') switchMode('panel');
+    if (mode === 'full' && !isDirect(open.w)) switchMode('panel');
     else closePanel();
   }
 
@@ -1997,7 +2008,7 @@
     clayHook('stop');
     open = rec;
     // openMode: 'full' (a widget's own choice) opens straight to full screen.
-    var direct = rec.w.openMode === 'full';
+    var direct = isDirect(rec.w);
     mode = direct ? 'full' : 'panel';
     busy = true;
     var fade = motion.mode === 'fade';
@@ -2185,7 +2196,7 @@
 
     function apply() {
       mode = next;
-      panelEl.className = 'panel is-shown' + (next === 'full' ? ' is-full' : '') + (rec.w.openMode === 'full' ? ' is-direct' : '');
+      panelEl.className = 'panel is-shown' + (next === 'full' ? ' is-full' : '') + (isDirect(rec.w) ? ' is-direct' : '');
       drawPanelHead();
       call(rec, 'onMode', [next, rec.ctx]);
       if (panelFocus) keepInView(panelFocus);

@@ -187,6 +187,10 @@ var HUB_CONFIG = {
      * its first letter.
      */
     entertainment: {
+      // OK on the tile opens straight to full screen (apps beside the
+      // Schedule); Back closes it. Any widget takes openMode: 'full' or
+      // 'panel' here to skip or keep the small panel in between.
+      openMode: 'full',
       sections: [
         {
           label: 'Watch',
