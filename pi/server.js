@@ -12,6 +12,9 @@
  *   POST /linktests      one watch link test answer from the About panel
  *   POST /shows/watched  the TV marks an episode watched: { id, season, number }
  *   POST /shows/unwatch  the TV takes a watched mark off an episode: { id, season, number }
+ *   POST /shows/upto     the TV marks a show watched up to an episode: { id, season, number }
+ *   POST /shows/caughtup the TV marks a show caught up (every aired episode): { id }
+ *   GET  /shows/episodes?id=<show id>  a show's seasons and episodes with watched flags and progress
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
  *                        from the TV (ambience.js): saved ids only, rate limited
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
@@ -32,6 +35,8 @@
  *   POST /api/shows/refresh   ask TVmaze about every show now and wait for it
  *   POST /api/shows/watched   { show, episode? }: mark an episode watched (none named = the earliest out and unmarked)
  *   POST /api/shows/unwatch   { show, episode }: take a watched mark off
+ *   POST /api/shows/upto      { show, episode }: watched up to and including that episode
+ *   POST /api/shows/caughtup  { show }: watched every episode aired so far
  *   GET  /api/linktests  the TV's watch link test answers (linktests.js)
  *   GET  /api/status     version, rev, connected screens, calendar summary
  *   GET  /api/log        the last log lines kept in memory (?lines=1-200,
@@ -89,7 +94,7 @@ const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 
-const SERVER_VERSION = '0.9.0';
+const SERVER_VERSION = '0.10.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1177,6 +1182,8 @@ function start(options) {
     '/api/shows/refresh': ['POST'],
     '/api/shows/watched': ['POST'],
     '/api/shows/unwatch': ['POST'],
+    '/api/shows/upto': ['POST'],
+    '/api/shows/caughtup': ['POST'],
     '/api/linktests': ['GET'],
     '/api/allsounds': ['GET'],
     '/api/ambience': ['GET'],
@@ -1356,6 +1363,20 @@ function start(options) {
           return reply(200, { ok: true, season: r.season, number: r.number, changed: r.changed, entry: r.entry, list: tracker.list() },
             (up ? 'took a watched mark off' : 'marked') + ' an episode' + (up ? '' : ' watched'));
         }
+        if (route === '/api/shows/upto' || route === '/api/shows/caughtup') {
+          const all = route === '/api/shows/caughtup';
+          if (!isObj(body) || typeof body.show !== 'string' || !body.show.trim()) throw bad(all ? 'send { "show": "name" }' : 'send { "show": "name", "episode": "S3E4" }');
+          let r;
+          if (all) {
+            r = tracker.caughtUp(body.show);
+          } else {
+            const ep = shows.parseEpisode(body.episode);
+            if (!ep) throw bad('"episode" must look like S3E4');
+            r = tracker.upTo(body.show, ep);
+          }
+          return reply(200, { ok: true, season: r.season, number: r.number, changed: r.changed, entry: r.entry, list: tracker.list() },
+            all ? 'marked a show caught up' : 'marked a show watched up to an episode');
+        }
         if (route === '/api/shows/refresh') {
           let waitTimer = null;
           const late = new Promise((r) => { waitTimer = setTimeout(() => r(null), showsWaitMs); });
@@ -1454,7 +1475,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/linktests' || route === '/shows/watched' || route === '/shows/unwatch' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/linktests' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1465,6 +1486,17 @@ function start(options) {
     }
     if (route === '/live/events') return openSse(req, res, address);
     if (route === '/live/poll') return openPoll(req, res, query, address);
+    if (route === '/shows/episodes') {
+      // One show's seasons and episodes, read by the TV when its show page
+      // opens. A plain read like /live/state: nothing is changed and nothing logged.
+      const id = query.get('id');
+      if (typeof id !== 'string' || !id.trim() || id.length > 80) {
+        return sendJson(res, 400, { ok: false, error: 'send ?id=<show id>' }, cors);
+      }
+      const v = tracker.episodes(id);
+      if (!v) return sendJson(res, 404, { ok: false, error: 'that show is not on the list' }, cors);
+      return sendJson(res, 200, Object.assign({ ok: true }, v), cors);
+    }
     // POST /todo/ops and /ambience/*. A web page on another site must not be
     // able to change the list or the lights through a browser at home, so a
     // foreign Origin is refused.
@@ -1497,6 +1529,23 @@ function start(options) {
           const r = off ? tracker.unwatch(body.id, ep) : tracker.markWatched(body.id, ep);
           sendJson(res, 200, { ok: true, changed: r.changed }, cors);
           log(off ? 'screen took a watched mark off an episode' : 'screen marked an episode watched' + (r.changed ? '' : ' (already marked)'));
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
+    }
+    if (route === '/shows/upto' || route === '/shows/caughtup') {
+      // "Watched up to here" and "caught up" from the show page. Same door as
+      // /shows/watched; the log never carries the show, the episode or an address.
+      const all = route === '/shows/caughtup';
+      return readBody(req, res, (body) => {
+        try {
+          if (!isObj(body) || typeof body.id !== 'string' || !body.id) throw bad(all ? 'send { "id": "show-id" }' : 'send { "id": "show-id", "season": 3, "number": 4 }');
+          const r = all ? tracker.caughtUp(body.id) : tracker.upTo(body.id, { season: body.season, number: body.number });
+          const out = { ok: true, changed: r.changed };
+          if (all) { out.season = r.season; out.number = r.number; }
+          sendJson(res, 200, out, cors);
+          log((all ? 'screen marked a show caught up' : 'screen marked a show watched up to an episode') + (r.changed ? '' : ' (already marked)'));
         } catch (e) {
           fail(res, e, cors);
         }
@@ -1551,7 +1600,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
   };
 
