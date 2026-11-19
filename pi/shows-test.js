@@ -926,7 +926,7 @@ async function main() {
       r = await request(h, 'POST', '/api/shows/caughtup', {}, authed);
       assert.strictEqual(r.status, 400);
       r = await request(h, 'GET', '/api/status', undefined, authed);
-      assert.strictEqual(r.json.server, '0.19.0');
+      assert.strictEqual(r.json.server, '0.20.0');
       const bare = h.lines.map((l) => l.replace(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d /, ''));
       assert.ok(bare.indexOf('screen marked a show watched up to an episode') >= 0, bare.join(' | '));
       assert.ok(bare.indexOf('screen marked a show watched up to an episode (already marked)') >= 0);
