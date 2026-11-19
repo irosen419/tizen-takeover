@@ -34,7 +34,7 @@ const mockSpotify = require('./mock-spotify');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 
 // The hub's Spanish table (app/i18n.js), read the way the TV runs it.
 const I18N_ES = (function () {

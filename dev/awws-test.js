@@ -96,7 +96,8 @@ function inspect(args) {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
   const out = [];
   const roots = document.querySelectorAll(sel);
-  function cuts(cs) { return cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none'); }
+  // A cut that is shown: "...", a line clamp, or (the redesign, app/theme.css) an edge that fades out under a mask.
+  function cuts(cs) { return cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || (cs.webkitMaskImage && cs.webkitMaskImage !== 'none'); }
   function hides(cs) { return cs.overflowX === 'hidden' || cs.overflowY === 'hidden'; }
   // The hub's panel body scrolls by script, to the focused row.
   function scrolls(cs, el) { return /auto|scroll/.test(cs.overflowY) || /auto|scroll/.test(cs.overflowX) || el.classList.contains('panel-body'); }

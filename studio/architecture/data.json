@@ -195,6 +195,11 @@
          "to": "tv.service",
          "label": "ctx.service GETs on 127.0.0.1:8095",
          "dir": "out"
+        },
+        {
+         "to": "cloud.pictures",
+         "label": "loads the day or night picture",
+         "dir": "in"
         }
        ]
       },
@@ -568,17 +573,16 @@
        "id": "tv.characters.lift",
        "title": "Lift pixel character",
        "kind": "component",
-       "status": "draft",
-       "pr": "PR 77",
+       "status": "live",
        "summary": "A pixel-art Lift (with Wyndle) glides over a tile when it gets an update, in place of the chip.",
        "details": [
         "app/agents.js holds a roster, swappable by one config value (agents: { on, who }), shown only when activity chips may run and home is quiet; the chip stays as a fallback. A figure() hook in motion.js is called from the chip lifecycle. Motion is transform on one frame plus sway; the source art has no skate cycle."
        ],
        "files": [
-        "(PR 77) app/agents.js",
-        "(PR 77) app/agents.css",
-        "(PR 77) app/agents/lift",
-        "(PR 77) docs/agents.md",
+        "app/agents.js",
+        "app/agents.css",
+        "app/agents/lift",
+        "docs/agents.md",
         "app/motion.js"
        ],
        "talksTo": [
@@ -589,7 +593,7 @@
         }
        ],
        "notes": [
-        "Real TV smoothness and the pixel look are unverified."
+        "Works on the TV (checked Nov 19). It shows only when the screen runs at full speed; a change to measure speed after the hub settles is in progress."
        ]
       },
       {
@@ -2325,7 +2329,7 @@
       }
      ],
      "notes": [
-      "Another bucket in the same account belongs to other work and is never touched."
+      "The pictures bucket (home-hub-pictures) is separate and public; the mailbox stays private. Another bucket in the same account belongs to other work and is never touched."
      ],
      "children": [
       {
@@ -2367,6 +2371,48 @@
         "pi/mailbox.js"
        ]
       }
+     ]
+    },
+    {
+     "id": "cloud.pictures",
+     "title": "R2 pictures bucket",
+     "kind": "service",
+     "status": "draft",
+     "pr": "PR 95",
+     "summary": "The public Cloudflare R2 bucket home-hub-pictures: the one home for big or growing pictures (backgrounds, clay source art, later character art), so the hub's package stays small.",
+     "details": [
+      "app/backgrounds/backgrounds.js names every picture, its title and credit, and one base address that points at the bucket. The hub shows one day picture and one night picture each day.",
+      "If the bucket can't be reached, the hub shows the ocean picture that ships with the hub, so the screen never goes blank.",
+      "One folder per kind, never overwritten: day/ and night/ (backgrounds), clay/source/v1/ (clay source sheets, live), later clay/sprites/vN/ and agents/<name>/vN/. A changed set gets a new vN folder, so older hub builds keep working.",
+      "Small art the hub needs at start (clay sprites 0.75 MB, Lift 0.05 MB) stays in the repo next to its code; a family moves to the bucket past about 5 MB.",
+      "The bucket allows the TV to read it (CORS) and sends long cache headers; the glass window over the tiles needs CORS to work.",
+      "Free tier: 10 GB stored, no download fees. The free r2.dev address is rate-limited, which is fine for two pictures a day."
+     ],
+     "files": [
+      "(PR 95) app/backgrounds/backgrounds.js",
+      "app/backgrounds/ocean.jpg",
+      "docs/asset-storage.md",
+      "art/clay/tools/fetch_source.py"
+     ],
+     "talksTo": [
+      {
+       "to": "tv.hub.core",
+       "label": "one day and one night picture a day",
+       "dir": "out"
+      },
+      {
+       "to": "studio.claude-threads",
+       "label": "threads upload new pictures",
+       "dir": "in"
+      },
+      {
+       "to": "ext.gemini.clay",
+       "label": "clay source sheets",
+       "dir": "both"
+      }
+     ],
+     "notes": [
+      "Ian chose one bucket for all growing art (Nov 19). Private reference art and photos never go here: anyone can read it."
      ]
     },
     {
@@ -2464,7 +2510,7 @@
    ],
    "id": "cloud",
    "title": "Cloud",
-   "summary": "How code reaches the TV (GitHub, jsDelivr) and how Claude reaches the Pi (the R2 mailbox)."
+   "summary": "How code reaches the TV (GitHub, jsDelivr), how Claude reaches the Pi (the R2 mailbox) and where the background pictures live (the R2 pictures bucket)."
   },
   {
    "kind": "group",
@@ -2940,16 +2986,23 @@
        "status": "live",
        "summary": "Pose sheets for Ian and Ember the clay wanderers, cut into the sprites the hub plays.",
        "details": [
-        "art/clay/tools asks Gemini for a sheet of poses, then cuts and cleans them. Raw sheets are kept in art/clay/raw, the biggest part of the repo's size."
+        "art/clay/tools asks Gemini for a sheet of poses, then cuts and cleans them. The raw sheets and model sheets (33 MB) live in the R2 pictures bucket under clay/source/v1/, not in git; fetch_source.py downloads them and checks each against source.sha256."
        ],
        "files": [
-        "art/clay/README.md"
+        "art/clay/README.md",
+        "art/clay/tools/fetch_source.py",
+        "art/clay/source.sha256"
        ],
        "talksTo": [
         {
          "to": "tv.widgets",
          "label": "sprites shipped in app/clay/",
          "dir": "out"
+        },
+        {
+         "to": "cloud.pictures",
+         "label": "source sheets kept in clay/source/v1/",
+         "dir": "both"
         }
        ]
       },
@@ -3608,7 +3661,8 @@
       }
      ],
      "notes": [
-      "Statuses come from the repo and project memory. When something lands, ships or is checked on the TV, update its status in data.json."
+      "Statuses come from the repo and project memory. When something lands, ships or is checked on the TV, update its status in data.json.",
+      "Ian's rule (Nov 19): every large architectural decision updates this map in the same thread."
      ]
     }
    ],
@@ -3889,15 +3943,22 @@
      "status": "live",
      "summary": "jsDelivr refuses GitHub packages over 150 MB, and the TV loads through jsDelivr, so size is watched weekly.",
      "details": [
-      "The goal is under 100 MB. Tracked size grew from 0 to 80 MB in two days, mostly screenshots; it was cut to about 41 MB. The clay art's raw sheets (art/) are now the biggest part."
+      "The goal is under 100 MB; jsDelivr also refuses single files over 20 MB. Tracked size was about 44 MB on Nov 19, 33 MB of it clay source sheets the TV never loads; those moved to the R2 pictures bucket, leaving about 11 MB. Everything the TV loads (app/) is about 1.7 MB.",
+      "Big or growing pictures go to the R2 pictures bucket (docs/asset-storage.md): backgrounds (PR 95) and the clay source art."
      ],
      "files": [
-      "art/clay/README.md"
+      "art/clay/README.md",
+      "docs/asset-storage.md"
      ],
      "talksTo": [
       {
        "to": "cloud.jsdelivr",
        "label": "its package size limit",
+       "dir": "out"
+      },
+      {
+       "to": "cloud.pictures",
+       "label": "big pictures live here instead",
        "dir": "out"
       }
      ]
@@ -4543,11 +4604,30 @@
      "say": "The All sounds test tile shows it, marked 'may be out of date' when stale"
     }
    ]
+  },
+  {
+   "id": "flow.background-picture",
+   "title": "Today's background picture (draft)",
+   "summary": "The hub picks today's day or night picture and loads it from the R2 bucket, or shows the ocean if it can't.",
+   "steps": [
+    {
+     "node": "tv.hub.core",
+     "say": "At start and at sunrise or sunset the hub picks today's day or night picture from backgrounds.js"
+    },
+    {
+     "node": "cloud.pictures",
+     "say": "The TV loads that picture from the public R2 bucket"
+    },
+    {
+     "node": "tv.hub.core",
+     "say": "If the bucket can't be reached, it shows the ocean picture that ships with the hub"
+    }
+   ]
   }
  ],
  "title": "Architecture",
  "intro": "Every part of Home Hub, grouped so you can open as much or as little as you want. Tap a part for what it is, its files and what it talks to.",
- "asOf": "As of Nov 17, 2026 · main is v0.29.8 · open PR: 77",
+ "asOf": "As of Nov 19, 2026 · main is v0.29.20 · open PR: 95",
  "overview": {
   "w": 1000,
   "h": 620,
@@ -4588,8 +4668,9 @@
      "GitHub, then jsDelivr:",
      "code to the TV",
      "",
-     "R2 mailbox:",
-     "commands to the Pi"
+     "R2 mailbox: Claude to Pi",
+     "R2 pictures: backgrounds,",
+     "clay art"
     ]
    },
    {
@@ -4683,7 +4764,7 @@
       95
      ]
     ],
-    "label": "app code",
+    "label": "code, pictures",
     "lx": 680,
     "ly": 84,
     "dir": "out"

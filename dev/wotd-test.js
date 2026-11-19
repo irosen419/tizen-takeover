@@ -43,7 +43,7 @@ const childProcess = require('child_process');
 const { chromium } = require('playwright');
 const clockPage = require('./clock-page');
 
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 const ZONE = 'America/Chicago';
 const argShots = process.argv.indexOf('--shots');
 const SHOTS = argShots > 0 ? process.argv[argShots + 1] : (process.env.WOTD_TEST_SHOTS || '');

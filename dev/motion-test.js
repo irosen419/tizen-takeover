@@ -42,7 +42,7 @@ const awwsSample = require('./awws-sample');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 const BUILD = /var BUILD = '([^']+)'/.exec(fs.readFileSync(path.join(ROOT, 'app', 'hub.js'), 'utf8'))[1];
 
 // The default layout with Weather and Now Playing swapped: the same widgets.
@@ -415,7 +415,8 @@ async function checkDisabled(pi) {
     const loud = await page.evaluate(() => document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge').length);
     assert(!loud, c.name + ': a ring: ' + JSON.stringify(x));
     const border = await page.evaluate(() => getComputedStyle(document.querySelector('#grid .tile.is-focused')).borderTopColor);
-    assert(/255, 255, 255(, 1)?\)/.test(border), c.name + ': the focused tile lost its border: ' + border);
+    // White at night; the day look (the test's clock is 10:40 AM) draws it in dark ink, #151b24.
+    assert(/(255, 255, 255|21, 27, 36)(, 1)?\)/.test(border), c.name + ': the focused tile lost its border: ' + border);
     await page.keyboard.press('ArrowRight');
     // Stagger: items just show.
     const items = await openEntertainment(page);
