@@ -256,6 +256,10 @@
   transform: rotate(45deg);
   vertical-align: 0.05rem;
 }
+/* "Airs live on FOX · Thu 7 PM": where a show streaming later first airs.
+   Its own quiet line, so a long channel name or the Spanish wraps, never clips. */
+.sh-air { margin-top: 0.1rem; font-size: 0.78rem; line-height: 1.4; color: var(--text-3); overflow-wrap: anywhere; }
+.panel.is-full .sh-air { font-size: 0.88rem; }
 .sh-via { display: inline-block; margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-3); white-space: nowrap; }
 .sh-chip {
   display: inline-block;
