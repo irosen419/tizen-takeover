@@ -62,10 +62,16 @@ function one(name, section) {
 const ROOM = { cap: 60, roomPerDay: 42.5, daysLeft: 9, throughDate: '2026-11-24' };
 const CARD = { date: '2026-11-19', daysAway: 3, covered: true };
 const OLD4 = ['room', 'cardDay', 'goals', 'alerts'];
-const ALL8 = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway'];
+const ALL8 = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway', 'investments'];
 const LAB = { room: 186.4, spentToday: 23.75, daysLeft: 3, cardDate: '2026-11-19', monthDay: 16 };
 const MERCH = { month: '2026-11', combined: 120, items: [{ label: 'Hilltop Grocer', mtd: 80, count: 2 }, { label: 'Riverside Fuel', mtd: 50, count: 1 }] };
 const RUNWAY = { start: 300, end: '2026-11-19', steps: [{ date: '2026-11-17', delta: 1200, kind: 'pay' }, { date: '2026-11-17', delta: -80, kind: 'bill' }, { date: '2026-11-19', delta: -415, kind: 'reserve' }] };
+const INVEST = {
+  total: 48210.55, cost: 40100, gain: 8110.55,
+  accounts: [{ label: 'Roth Contributory IRA', value: 30110.2, gain: 5200.1 }, { label: 'Individual Brokerage', value: 18100.35 }],
+  top: [{ ticker: 'VTI', name: 'Vanguard Total Stock Market ETF', value: 21000, gain: -3100.126 }, { ticker: '', name: 'Cash and money market', value: 2100.25 }],
+  history: [{ date: '2026-11-17', total: 48020.55 }, { date: '2026-11-18', total: 48100 }]
+};
 const withField = (o, k, v) => { const c = Object.assign({}, o); c[k] = v; return c; };
 
 async function main() {
@@ -91,7 +97,7 @@ async function main() {
 
   await check('a snapshot with only the first four sections is stored and shown exactly as before', () => {
     const s = sample();
-    ['lab', 'merchants', 'pace', 'runway'].forEach((k) => delete s[k]);
+    ['lab', 'merchants', 'pace', 'runway', 'investments'].forEach((k) => delete s[k]);
     const n = budget.normalizeSnapshot(s, NOW);
     assert.deepStrictEqual(n.rejected, []);
     assert.deepStrictEqual(Object.keys(n.sections), OLD4);
@@ -460,19 +466,20 @@ async function main() {
     const lines = budget.summaryLines(m.data);
     assert.ok(/^Budget snapshot sent 2026-11-16 15:10 UTC, received 2026-11-16 15:12 UTC\. [\d.]+ (KB|bytes) of 48 KB\.$/.test(lines[0]), lines[0]);
     assert.deepStrictEqual(lines.slice(1), [
-      '  room       9 days left through 2026-11-24, under the daily cap, a refund pending, as of 2026-11-16 15:05 UTC',
-      '  cardDay    2026-11-19 (in 3 days), covered, 3 transfers, 2 paychecks, as of 2026-11-16 15:05 UTC',
-      '  goals      5 goals (2 clean, 1 on pace, 1 over, 1 under), as of 2026-11-16 15:05 UTC',
-      '  alerts     1 new charge at a merchant you cut, as of 2026-11-16 15:05 UTC',
-      '  lab        2026-11-19 (3 days left), day 16 of the month, room to spare, split in 3, as of 2026-11-16 15:05 UTC',
-      '  merchants  5 merchants in 2026-11, as of 2026-11-16 15:05 UTC',
-      '  pace       14 days (13 with a cap), 2026-11-02 to 2026-11-15, as of 2026-11-16 15:05 UTC',
-      '  runway     3 steps to 2026-11-19 (0 paydays, 2 bills, 1 reserve), as of 2026-11-16 15:05 UTC'
+      '  room         9 days left through 2026-11-24, under the daily cap, a refund pending, as of 2026-11-16 15:05 UTC',
+      '  cardDay      2026-11-19 (in 3 days), covered, 3 transfers, 2 paychecks, as of 2026-11-16 15:05 UTC',
+      '  goals        5 goals (2 clean, 1 on pace, 1 over, 1 under), as of 2026-11-16 15:05 UTC',
+      '  alerts       1 new charge at a merchant you cut, as of 2026-11-16 15:05 UTC',
+      '  lab          2026-11-19 (3 days left), day 16 of the month, room to spare, split in 3, as of 2026-11-16 15:05 UTC',
+      '  merchants    5 merchants in 2026-11, as of 2026-11-16 15:05 UTC',
+      '  pace         14 days (13 with a cap), 2026-11-02 to 2026-11-15, as of 2026-11-16 15:05 UTC',
+      '  runway       3 steps to 2026-11-19 (0 paydays, 2 bills, 1 reserve), as of 2026-11-16 15:05 UTC',
+      '  investments  2 accounts, 5 holdings, 13 days of history, 2026-11-06 to 2026-11-18, as of 2026-11-16 15:05 UTC'
     ]);
     const all = JSON.stringify(lines) + JSON.stringify(budget.summaryData(m.data));
     // No label, merchant name or amount from any section, Budget lab's included.
     const s = sample();
-    const words = ['Bakery', 'Groceries', 'checking', '42.5', '310', '$', '186.4', '23.75', '498.57', '766.9', '415', '71.2'];
+    const words = ['Bakery', 'Groceries', 'checking', '42.5', '310', '$', '186.4', '23.75', '498.57', '766.9', '415', '71.2', 'Roth', 'Vanguard', '48210', '30110', '8110', '21000'];
     s.merchants.items.forEach((x) => words.push(x.label, String(x.mtd)));
     words.forEach((w) => assert.ok(all.indexOf(w) < 0, 'shows ' + w));
     const sum = budget.summaryData(m.data).sections;
@@ -494,6 +501,107 @@ async function main() {
     ]);
     const zero = budget.normalizeSnapshot(snap({ lab: withField(LAB, 'room', 0) }), NOW);
     assert.ok(/, no room, as of/.test(budget.summaryLines(budget.merge(null, zero, NOW).data)[1]));
+  });
+
+  await check('investments: the clean copy, signed gains, a blank ticker, optional parts', () => {
+    const c = one('investments', INVEST).clean;
+    assert.strictEqual(c.asOf, SENT);
+    assert.strictEqual(c.total, 48210.55);
+    assert.strictEqual(c.cost, 40100);
+    assert.strictEqual(c.gain, 8110.55);
+    assert.strictEqual(c.top[0].gain, -3100.13);
+    assert.ok(!('ticker' in c.top[1]), 'blank ticker is left out');
+    assert.ok(!('gain' in c.top[1]));
+    assert.ok(!('gain' in c.accounts[1]));
+    const min = one('investments', { total: 10, accounts: [{ label: 'IRA', value: 10 }] }).clean;
+    assert.deepStrictEqual(Object.keys(min), ['asOf', 'total', 'accounts']);
+    assert.strictEqual(one('investments', withField(INVEST, 'gain', -250.5)).clean.gain, -250.5);
+    assert.strictEqual(one('investments', withField(INVEST, 'total', 0)).clean.total, 0);
+    assert.strictEqual(one('investments', withField(INVEST, 'total', 10000000)).clean.total, 10000000);
+    assert.deepStrictEqual(one('investments', withField(INVEST, 'history', [])).clean.history, []);
+    assert.deepStrictEqual(one('investments', withField(INVEST, 'top', [])).clean.top, []);
+    const both = one('investments', withField(withField(INVEST, 'top', []), 'history', [])).clean;
+    assert.deepStrictEqual([both.top, both.history], [[], []]);
+    // Unknown fields (a quantity, an account number) are dropped, never stored.
+    const x = one('investments', withField(INVEST, 'accounts', [{ label: 'IRA', value: 5, number: '1234', qty: 9 }])).clean;
+    assert.deepStrictEqual(x.accounts, [{ label: 'IRA', value: 5 }]);
+  });
+
+  await check('investments: amounts 0 to 10,000,000, gain signed, required fields, counts', () => {
+    const err = (k, v) => one('investments', withField(INVEST, k, v)).error;
+    assert.ok(/"total" must be a number from 0 to 10,000,000/.test(err('total', -1)));
+    assert.ok(/"total" must be a number from 0 to 10,000,000/.test(err('total', 10000000.01)));
+    assert.ok(/"total" must be a number/.test(err('total', '48000')));
+    assert.ok(/"cost" must be a number from 0 to 10,000,000/.test(err('cost', -5)));
+    assert.ok(/"gain" must be a number from -10,000,000 to 10,000,000/.test(err('gain', 10000001)));
+    assert.ok(/"total" is missing/.test(one('investments', { accounts: INVEST.accounts }).error));
+    assert.ok(/"accounts" is missing/.test(one('investments', { total: 1 }).error));
+    assert.ok(/"accounts" must have at least 1 entry/.test(err('accounts', [])));
+    const six = []; for (let i = 0; i < 7; i++) six.push({ label: 'A' + i, value: 1 });
+    assert.ok(/"accounts" has 7 entries; at most 6/.test(err('accounts', six)));
+    assert.strictEqual(one('investments', withField(INVEST, 'accounts', six.slice(0, 6))).clean.accounts.length, 6);
+    assert.ok(/"value" must be a number from 0 to 10,000,000/.test(err('accounts', [{ label: 'IRA', value: -1 }])));
+    assert.ok(/"label" is missing/.test(err('accounts', [{ value: 1 }])));
+    assert.ok(/"name" is missing/.test(err('top', [{ ticker: 'VTI', value: 1 }])));
+    const nine = []; for (let i = 0; i < 9; i++) nine.push({ name: 'H' + i, value: 1 });
+    assert.ok(/"top" has 9 entries; at most 8/.test(err('top', nine)));
+    assert.strictEqual(one('investments', withField(INVEST, 'top', nine.slice(0, 8))).clean.top.length, 8);
+    assert.ok(/"gain" must be a number/.test(err('top', [{ name: 'H', value: 1, gain: 'up' }])));
+  });
+
+  await check('investments: text limits (30, 10, 40), no emails or links', () => {
+    const acc = one('investments', withField(INVEST, 'accounts', [{ label: 'L'.repeat(40), value: 1 }])).clean.accounts[0].label;
+    assert.strictEqual(Array.from(acc).length, 30);
+    assert.ok(/…$/.test(acc));
+    const top = one('investments', withField(INVEST, 'top', [{ ticker: 'T'.repeat(14), name: 'N'.repeat(60), value: 1 }])).clean.top[0];
+    assert.strictEqual(Array.from(top.ticker).length, 10);
+    assert.strictEqual(Array.from(top.name).length, 40);
+    assert.ok(/holds an email address/.test(one('investments', withField(INVEST, 'accounts', [{ label: 'me@example.com', value: 1 }])).error));
+    assert.ok(/holds a link/.test(one('investments', withField(INVEST, 'top', [{ name: 'www.example.com fund', value: 1 }])).error));
+    assert.ok(/holds a link/.test(one('investments', withField(INVEST, 'top', [{ ticker: 'VTI', name: 'See https://x.test', value: 1 }])).error));
+    assert.strictEqual(one('investments', withField(INVEST, 'top', [{ ticker: 'BRK.B', name: 'Berkshire Hathaway B', value: 1 }])).clean.top[0].ticker, 'BRK.B');
+  });
+
+  await check('investments: history is oldest first, each date once, real dates, at most 92', () => {
+    const err = (h) => one('investments', withField(INVEST, 'history', h)).error;
+    assert.ok(/"date" must come after the day before it/.test(err([{ date: '2026-11-18', total: 1 }, { date: '2026-11-18', total: 2 }])));
+    assert.ok(/"date" must come after the day before it/.test(err([{ date: '2026-11-18', total: 1 }, { date: '2026-11-17', total: 2 }])));
+    assert.ok(/"date" must be a real date/.test(err([{ date: '2026-02-30', total: 1 }])));
+    assert.ok(/"total" is missing/.test(err([{ date: '2026-11-18' }])));
+    assert.ok(/"total" must be a number from 0 to 10,000,000/.test(err([{ date: '2026-11-18', total: -3 }])));
+    const day = (i) => ({ date: new Date(Date.UTC(2026, 0, 1 + i)).toISOString().slice(0, 10), total: 100 + i });
+    const h92 = []; for (let i = 0; i < 92; i++) h92.push(day(i));
+    assert.strictEqual(one('investments', withField(INVEST, 'history', h92)).clean.history.length, 92);
+    assert.ok(/"history" has 93 entries; at most 92/.test(err(h92.concat([day(92)]))));
+  });
+
+  await check('investments: null clears it, other sections are kept, a bad one is refused by name', () => {
+    const m = budget.merge(null, budget.normalizeSnapshot(snap({ room: ROOM, investments: INVEST }), NOW), NOW);
+    assert.deepStrictEqual(m.accepted, ['room', 'investments']);
+    const m2 = budget.merge(m.data, budget.normalizeSnapshot(snap({ investments: null }), NOW), NOW);
+    assert.deepStrictEqual(m2.cleared, ['investments']);
+    assert.ok(!('investments' in m2.data));
+    assert.deepStrictEqual(m2.data.room, m.data.room);
+    // A bad investments section is rejected alone and the last good copy stays.
+    const m3 = budget.merge(m.data, budget.normalizeSnapshot(snap({ room: ROOM, investments: withField(INVEST, 'total', -1) }), NOW), NOW);
+    assert.strictEqual(m3.rejected.length, 1);
+    assert.strictEqual(m3.rejected[0].section, 'investments');
+    assert.deepStrictEqual(m3.data.investments, m.data.investments);
+    // A section already stored that no longer passes is dropped on load.
+    const broken = JSON.parse(JSON.stringify(m.data)); broken.investments.accounts = [];
+    assert.ok(!('investments' in budget.cleanResource({ rev: 1, data: broken }).data));
+  });
+
+  await check('./hub budget show for investments: counts and dates only, never a name or an amount', () => {
+    const n = budget.normalizeSnapshot(snap({ investments: INVEST }), NOW);
+    const data = budget.merge(null, n, NOW).data;
+    const lines = budget.summaryLines(data);
+    assert.strictEqual(lines[1], '  investments  2 accounts, 2 holdings, 2 days of history, 2026-11-17 to 2026-11-18, as of 2026-11-16 15:10 UTC');
+    const all = JSON.stringify(lines) + JSON.stringify(budget.summaryData(data));
+    ['Roth', 'Vanguard', 'VTI', '48210', '30110', '8110', '40100', '48020', 'Cash'].forEach((w) => assert.ok(all.indexOf(w) < 0, 'shows ' + w));
+    assert.deepStrictEqual(budget.summaryData(data).sections.investments, { asOf: SENT, accounts: 2, holdings: 2, days: 2, from: '2026-11-17', to: '2026-11-18' });
+    const none = budget.normalizeSnapshot(snap({ investments: { total: 5, accounts: [{ label: 'IRA', value: 5 }] } }), NOW);
+    assert.ok(/1 account, 0 holdings, no history yet, as of/.test(budget.summaryLines(budget.merge(null, none, NOW).data)[1]));
   });
 
   await check('set and clear texts', () => {

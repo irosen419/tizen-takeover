@@ -325,7 +325,7 @@
        "status": "unverified",
        "summary": "One switch on the Clock page that hides every money figure while guests are over.",
        "details": [
-        "When on, Earned vs spent and the budget tiles say Hidden for guests, the New charge banner never shows, budget data is dropped as it arrives, and money layouts leave the switcher. Calendars and to-dos stay."
+        "When on, Earned vs spent and the budget tiles say Hidden for guests, the New charge banner never shows, budget data is dropped as it arrives, and money layouts leave the switcher. Calendars and to-dos stay. The Investments tile is the exception: it shows percentages only (gain, shares, the trend's shape) and keeps no dollar."
        ],
        "files": [
         "app/guest.js",
@@ -341,6 +341,11 @@
         {
          "to": "tv.widgets.awws",
          "label": "hides Earned vs spent and the Glance money line",
+         "dir": "out"
+        },
+        {
+         "to": "tv.widgets.budget.investments",
+         "label": "percentages only, no dollars",
          "dir": "out"
         }
        ],
@@ -1095,6 +1100,34 @@
          ],
          "notes": [
           "To check on the TV: key-repeat timing for hold-to-speed on the slider."
+         ]
+        },
+        {
+         "id": "tv.widgets.budget.investments",
+         "title": "Investments",
+         "kind": "component",
+         "status": "draft",
+         "pr": "PR pending",
+         "summary": "Standalone tile (in no layout): the portfolio total and its gain against cost, a trend line, an allocation bar by account and the top holdings. OK opens every account and holding in place.",
+         "details": [
+          "Reads the investments section of the budget snapshot from the live line. Adapts to the tile size: total and gain, then a trend line (hidden under 2 days, with Trend starts building today), then the allocation bar and holdings. Dollar figures were approved for the TV on 2026-11-19. In Guest mode no dollar is drawn or kept: the percentages are worked out when the data arrives, then the dollars are dropped, and only percentages and the trend's shape show."
+         ],
+         "files": [
+          "app/widgets/investments.js",
+          "app/widgets/investments.css",
+          "dev/investments-test.js"
+         ],
+         "talksTo": [
+          {
+           "to": "pi.budget.investments",
+           "label": "investments section over the live line",
+           "dir": "in"
+          },
+          {
+           "to": "tv.hub.guest",
+           "label": "percentages only when guests are over",
+           "dir": "in"
+          }
          ]
         }
        ]
@@ -2058,6 +2091,29 @@
        "files": [
         "pi/budget.js",
         "docs/budget-snapshot.md"
+       ]
+      },
+      {
+       "id": "pi.budget.investments",
+       "title": "Investments section",
+       "kind": "data",
+       "status": "draft",
+       "pr": "PR pending",
+       "summary": "One more optional section: portfolio total, cost and gain, 1 to 6 accounts, up to 8 top holdings and up to 92 days of totals, in dollars up to 10,000,000.",
+       "details": [
+        "Approved for the TV on 2026-11-19 (the second exception to totals only, after the Card day receipt). Account numbers and share counts are never stored. ./hub budget show prints counts and dates only. Server 0.16.0; an older server drops the section and keeps the rest."
+       ],
+       "files": [
+        "pi/budget.js",
+        "pi/budget-test.js",
+        "docs/budget-snapshot.md"
+       ],
+       "talksTo": [
+        {
+         "to": "ext.budget-app.investments",
+         "label": "receives the section with the rest of the snapshot",
+         "dir": "in"
+        }
        ]
       }
      ]
@@ -3031,6 +3087,25 @@
         {
          "to": "pi.budget",
          "label": "extra sections in the same snapshot",
+         "dir": "out"
+        }
+       ]
+      },
+      {
+       "id": "ext.budget-app.investments",
+       "title": "Investments export",
+       "kind": "data",
+       "status": "draft",
+       "pr": "PR pending",
+       "summary": "The budget app works the portfolio out from its Plaid holdings and keeps one total per day, so the trend builds from the first day.",
+       "details": [
+        "Built in the budget repo (a separate change). Sends the investments section inside the same snapshot it already posts."
+       ],
+       "files": [],
+       "talksTo": [
+        {
+         "to": "pi.budget.investments",
+         "label": "investments section",
          "dir": "out"
         }
        ]
@@ -4527,6 +4602,29 @@
     {
      "node": "tv.widgets",
      "say": "Daily room, Card day and Goals redraw; a New charge banner names the merchant only"
+    }
+   ]
+  },
+  {
+   "id": "flow.pi-investments",
+   "title": "Investments reach the TV tile",
+   "summary": "The budget app adds the portfolio to the snapshot it already posts; the Pi checks it and the TV draws it, with percentages only in guest mode.",
+   "steps": [
+    {
+     "node": "ext.budget-app.investments",
+     "say": "The app works out the total, accounts, top holdings and one total per day"
+    },
+    {
+     "node": "pi.budget.investments",
+     "say": "The Pi checks the section: amounts up to 10,000,000, history oldest first, no emails or links"
+    },
+    {
+     "node": "pi.server.resources.budget",
+     "say": "The merged snapshot is saved and pushed on the live line"
+    },
+    {
+     "node": "tv.widgets.budget.investments",
+     "say": "The Investments tile draws total, gain, trend, allocation and holdings; in guest mode only percentages"
     }
    ]
   },

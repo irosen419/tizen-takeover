@@ -116,5 +116,37 @@
       { "date": "2026-11-18", "delta": -120, "kind": "bill" },
       { "date": "2026-11-19", "delta": -415, "kind": "reserve" }
     ]
+  },
+  "investments": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "total": 48210.55,
+    "cost": 40100,
+    "gain": 8110.55,
+    "accounts": [
+      { "label": "Roth Contributory IRA", "value": 30110.2, "gain": 5200.1 },
+      { "label": "Individual Brokerage", "value": 18100.35, "gain": 2910.45 }
+    ],
+    "top": [
+      { "ticker": "VTI", "name": "Vanguard Total Stock Market ETF", "value": 21000, "gain": 3100 },
+      { "ticker": "VXUS", "name": "Vanguard Total International Stock ETF", "value": 9800.5, "gain": 1240.75 },
+      { "ticker": "BND", "name": "Vanguard Total Bond Market ETF", "value": 7420.3, "gain": -310.2 },
+      { "ticker": "SCHD", "name": "Schwab US Dividend Equity ETF", "value": 5600, "gain": 980.4 },
+      { "ticker": "", "name": "Cash and money market", "value": 2100.25 }
+    ],
+    "history": [
+      { "date": "2026-11-06", "total": 46320.4 },
+      { "date": "2026-11-07", "total": 46510.15 },
+      { "date": "2026-11-08", "total": 46480.9 },
+      { "date": "2026-11-09", "total": 46890.0 },
+      { "date": "2026-11-10", "total": 47105.6 },
+      { "date": "2026-11-11", "total": 47010.25 },
+      { "date": "2026-11-12", "total": 47350.8 },
+      { "date": "2026-11-13", "total": 47620.1 },
+      { "date": "2026-11-14", "total": 47480.35 },
+      { "date": "2026-11-15", "total": 47790.7 },
+      { "date": "2026-11-16", "total": 47950.0 },
+      { "date": "2026-11-17", "total": 48020.55 },
+      { "date": "2026-11-18", "total": 48100.0 }
+    ]
   }
 }

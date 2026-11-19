@@ -75,6 +75,8 @@ var HUB_ICONS = (function () {
     clock: svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/>'),
     wallet: svg('<path d="M19.5 7.5V5.5a2 2 0 0 0-2-2h-12a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2H5.5"/>' +
       '<path d="M16.5 14h.01"/>'),
+    // Investments: a line climbing to the right with an arrow head.
+    trend: svg('<path d="M3.5 17.5l5.5-5.5 4 4 7.5-8"/><path d="M15 8h5.5v5.5"/>'),
     expand: svg('<path d="M14.5 3.5h6v6"/><path d="M9.5 20.5h-6v-6"/><path d="M20.5 3.5l-7 7"/><path d="M3.5 20.5l7-7"/>'),
     shrink: svg('<path d="M4.5 13.5h6v6"/><path d="M19.5 10.5h-6v-6"/><path d="M13.5 10.5l7-7"/><path d="M3.5 20.5l7-7"/>'),
     back: svg('<path d="M19.5 12h-15"/><path d="M11 18.5L4.5 12 11 5.5"/>'),
