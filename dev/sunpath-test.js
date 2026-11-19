@@ -424,6 +424,12 @@ async function checkTiles(lang, grow) {
     for (const size of SIZES) {
       if (when === 'today' && size[0] * size[1] > 12) continue;
       const page = await openHub({ at: at, size: size, lang: lang, grow: grow });
+      if (size[0] === 12 && size[1] === 6) {
+        // A one-widget layout opens as a window over its hidden tile: Back shows the tile.
+        await page.waitForFunction(() => window.HUB_TEST.open() === 'sunpath' && !window.HUB_TEST.busy(), null, { timeout: 5000 });
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => !window.HUB_TEST.open() && !window.HUB_TEST.busy(), null, { timeout: 5000 });
+      }
       const t = await inspect(page, TILE, 0.85, 0.8);
       expectTile(t, size, when, lang, when + ' ' + size.join('x') + ' ' + lang + (grow ? ' +25%' : ''));
       if (size[1] >= 2 && size[0] >= 2) {

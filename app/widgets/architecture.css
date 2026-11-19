@@ -158,7 +158,7 @@
 .ar-box-lines { margin-top: 0.1rem; font-size: 1rem; line-height: 1.35; color: var(--text-2); }
 .ar-box-bar { position: absolute; left: 0.95rem; right: 0.95rem; bottom: 0.45rem; }
 
-.ar-chips { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; height: 3.4rem; padding-top: 0.2rem; }
+.ar-chips { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; height: 3.4rem; padding-top: 0.2rem; margin-top: 0.6rem; }
 .ar-chip {
   display: inline-flex;
   align-items: center;
@@ -433,5 +433,15 @@ body:not(.motion-fade) .ar-drawer { -webkit-animation: ar-slide 180ms ease-out; 
 .ar-state-title { font-size: 2rem; font-weight: 700; line-height: 1.4; padding: 0.05rem 0; }
 .ar-state-text { margin-top: 0.6rem; max-width: 40rem; font-size: 1.3rem; line-height: 1.45; color: var(--text-2); }
 .ar-retry { margin: 1.4rem 0 0; }
+
+/* In a one-widget layout's window (hub.js is-wide: most of the screen, not
+   all of it) the Big picture boxes get a little less room: quieter text,
+   one line per paragraph, so they never run into each other. */
+.panel.is-wide .ar-box { padding: 0.45rem 0.85rem 0.95rem; }
+.panel.is-wide .ar-box-title { font-size: 1.2rem; line-height: 1.35; }
+.panel.is-wide .ar-box-lines { font-size: 0.92rem; line-height: 1.3; }
+.panel.is-wide .ar-box-para { -webkit-line-clamp: 1; }
+.panel.is-wide .ar-box-para + .ar-box-para { margin-top: 0.2rem; }
+.panel.is-wide .ar-box-bar { bottom: 0.4rem; }
 
 .css-end { top: 0; }

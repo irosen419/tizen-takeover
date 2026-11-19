@@ -47,6 +47,8 @@ body {
 }
 .cell { position: absolute; }
 .cell.is-raised { z-index: 12; }   /* the opening or closing tile, above the ghost */
+/* A one-widget layout's screen-sized tile, hidden while its window opens (hub.js openSolo). */
+.cell.is-solo-waiting { visibility: hidden; }
 
 .tile {
   position: absolute;
@@ -175,6 +177,13 @@ body {
 .ghost {
   background: var(--card);
   border-color: var(--line);
+}
+/* A one-widget layout's window for a widget made for full screen (hub.js
+   wideClass): most of the screen; hub.js sets its height. */
+.panel.is-wide,
+.ghost.is-wide {
+  width: 86%;
+  margin-left: -43%;
 }
 .panel.is-full,
 .ghost.is-full {
