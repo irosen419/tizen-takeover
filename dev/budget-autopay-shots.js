@@ -59,8 +59,21 @@ async function main() {
       await page.screenshot({ path: card });
       console.log(card);
       await H.openPanel(page, 'budget-lab');
-      await H.fullScreen(page);
-      await H.sleep(400);
+      // Up to the hub's Full screen button, checking where focus is before OK (OK on the cap would save it).
+      for (let n = 0; n < 12; n++) {
+        const on = await page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return !!f && !document.querySelector('#panel .panel-body').contains(f); });
+        if (on) break;
+        await H.key(page, 'ArrowUp');
+      }
+      await H.key(page, 'Enter');
+      await H.until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full'), 5000, 'full screen did not open');
+      await H.idle(page);
+      // OK on the way in can land on the cap and save it (the toast, "Saved $15 a day"): undo that, so the picture shows the unsaved screen.
+      await page.evaluate(() => { try { localStorage.removeItem('homeHub.budget.capPref.v1'); } catch (e) { /* none */ } });
+      await H.sleep(3500);
+      await page.evaluate((l) => window.HUB_I18N.setLang(l === 'en' ? 'es' : 'en'), LANG);
+      await page.evaluate((l) => window.HUB_I18N.setLang(l), LANG);
+      await H.sleep(600);
       const lab = path.join(OUT, NAME + '-' + LANG + '-lab.png');
       await page.screenshot({ path: lab });
       console.log(lab);
