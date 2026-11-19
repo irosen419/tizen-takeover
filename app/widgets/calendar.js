@@ -563,7 +563,10 @@
     return hm(s.h, s.m, true) + ' – ' + hm(e.h, e.m, true);
   }
 
-  function titleOf(ev) { return ev.title || STRINGS.noTitle; }
+  // Owner-typed text in the hub's language (display only; app/i18n-dyn.js).
+  function dyn(s) { return (window.HUB_I18N && window.HUB_I18N.dyn) ? window.HUB_I18N.dyn(s) : s; }
+
+  function titleOf(ev) { return ev.title ? dyn(ev.title) : STRINGS.noTitle; }
 
   /* ---------- test hook ---------- */
 
@@ -1531,6 +1534,23 @@
           });
         }
       } catch (e) { /* stays in the language it started in */ }
+      // Spanish for event titles arrived: draw again once per batch, not while typing.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onDyn === 'function') {
+          var dynTimer = null;
+          window.HUB_I18N.onDyn(function () {
+            if (dynTimer) return;
+            dynTimer = setTimeout(function () {
+              dynTimer = null;
+              try {
+                var ae = document.activeElement;
+                if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
+                refresh(true);
+              } catch (e2) { warn('translation: ' + (e2 && e2.message)); }
+            }, 120);
+          });
+        }
+      } catch (e1) { /* stays as typed */ }
       lastToday = today();
       tileSig = signature();
       shownState = stateNow();

@@ -835,7 +835,10 @@
 
   /* ---------- the models ---------- */
 
-  function titleOf(ev) { return ev.title || STRINGS.noTitle; }
+  // Owner-typed text in the hub's language (display only; app/i18n-dyn.js).
+  function dyn(s) { return (window.HUB_I18N && window.HUB_I18N.dyn) ? window.HUB_I18N.dyn(s) : s; }
+
+  function titleOf(ev) { return ev.title ? dyn(ev.title) : STRINGS.noTitle; }
 
   // Visits that haven't ended, in the next 60 days.
   function visits(info) {
@@ -981,7 +984,7 @@
         if (!ev.allDay) last = Math.min(Math.max(ev.startDay, td) + 1, td + days);
         for (var n = first; n < last; n++) {
           out.push({ key: 'e' + ev.id + '@' + n, day: n, kind: 'event', allDay: ev.allDay, s: ev.allDay ? -1 : ev.s,
-            title: titleOf(ev), cal: ev.cal, place: ev.place, now: !ev.allDay && ev.s <= t && n === td, ev: ev });
+            title: ev.title || STRINGS.noTitle, cal: ev.cal, place: ev.place, now: !ev.allDay && ev.s <= t && n === td, ev: ev });
         }
       }
     }
@@ -1260,7 +1263,7 @@
       el('span', 'aw-chip', row, opts.chip === 'long' ? STRINGS.owners[it.owner] : STRINGS.ownersShort[it.owner]);
     }
     var text = el('div', 'aw-trow-text', row);
-    el('div', 'aw-trow-title aw-cut', text, it.title);
+    el('div', 'aw-trow-title aw-cut', text, dyn(it.title));
     var meta = [];
     var dueShown = dueText(it);
     if (late) meta.push({ t: dueShown ? STRINGS.overdue + STRINGS.sep + dueShown : STRINGS.overdue, c: 'is-late' });
@@ -1295,7 +1298,7 @@
     accent(row, cal, todo);
     var text = el('div', 'aw-erow-text', row);
     el('div', 'aw-erow-when', text, when);
-    el('div', 'aw-erow-title aw-cut', text, title);
+    el('div', 'aw-erow-title aw-cut', text, dyn(title));
     return row;
   }
 
@@ -1394,7 +1397,7 @@
     var t = timeOf(ev);
     var forms = [dateText(ev.startDay, 'long') + STRINGS.sep + t, dateText(ev.startDay, 'short') + STRINGS.sep + t, dateText(ev.startDay, 'short')];
     if (ev.place) forms.unshift(forms[0] + STRINGS.sep + ev.place);
-    stripItem(root, { cal: ev.cal, title: titleOf(ev), forms: forms });
+    stripItem(root, { cal: ev.cal, title: ev.title || STRINGS.noTitle, forms: forms });
   }
 
   // A strip's one useful thing: a title and when. One line when the title
@@ -1407,9 +1410,9 @@
     var title;
     if (o.whenFirst) {
       when = el('span', 'aw-strip-when' + (o.now ? ' is-now' : ''), line);
-      title = el('span', 'aw-strip-title aw-cut', line, o.title);
+      title = el('span', 'aw-strip-title aw-cut', line, dyn(o.title));
     } else {
-      title = el('span', 'aw-strip-title aw-cut', line, o.title);
+      title = el('span', 'aw-strip-title aw-cut', line, dyn(o.title));
       when = el('span', 'aw-strip-when', line);
     }
     for (var i = 0; i < o.forms.length; i++) {
@@ -1421,7 +1424,7 @@
     accent(line, o.cal, o.todo);
     var stack = el('div', 'aw-strip-stack', line);
     var small = el('div', 'aw-strip-small' + (o.now ? ' is-now' : ''), stack);
-    el('div', 'aw-strip-title2 aw-cut', stack, o.title);
+    el('div', 'aw-strip-title2 aw-cut', stack, dyn(o.title));
     fitForms(small, o.forms);
     return null;
   }
@@ -1513,7 +1516,7 @@
         whenFirst: true, now: first.now });
       // A wide strip with room: the next items after it, while they fit whole.
       for (var k = i + 1; line && k < items.length && k < i + 4; k++) {
-        var more = el('span', 'aw-strip-extra', line, STRINGS.sep + relDay(items[k].day, td, true) + ' ' + itemWhen(items[k]) + '  ' + items[k].title);
+        var more = el('span', 'aw-strip-extra', line, STRINGS.sep + relDay(items[k].day, td, true) + ' ' + itemWhen(items[k]) + '  ' + dyn(items[k].title));
         if (overW(line)) { line.removeChild(more); break; }
       }
       return;
@@ -1545,7 +1548,7 @@
       var rows = [];
       for (var j = 0; j < mine.length; j++) {
         var r = el('div', 'aw-wd-item aw-cut' + (mine[j].now ? ' is-now' : ''));
-        r.textContent = mine[j].title;
+        r.textContent = dyn(mine[j].title);
         rows.push(r);
       }
       col.fit = { list: list, more: more, rows: rows };
@@ -1606,7 +1609,7 @@
       accent(row, it.cal, it.kind === 'todo');
       el('span', 'aw-arow-when', row, itemWhen(it));
       var text = el('div', 'aw-arow-text', row);
-      el('div', 'aw-arow-title aw-cut', text, it.title);
+      el('div', 'aw-arow-title aw-cut', text, dyn(it.title));
       // A to-do's day is in the heading already: its line says whose it is.
       var sub = it.place;
       if (it.kind === 'todo') {
@@ -1642,7 +1645,7 @@
       el('span', 'aw-strip-num', line, fmtNum(ianNow));
       var first = ianItems[0] || nowItems[0];
       // The first item may take two lines; the cut falls between lines.
-      if (first) el('span', 'aw-strip-title2 aw-cut' + (isOverdue(first) ? ' is-late' : ''), line, first.title);
+      if (first) el('span', 'aw-strip-title2 aw-cut' + (isOverdue(first) ? ' is-late' : ''), line, dyn(first.title));
       else el('span', 'aw-strip-title is-quiet', line, STRINGS.nowForYou);
       return;
     }
@@ -2803,6 +2806,23 @@
   // (the hub draws titles once).
   function watchLang(ctx, titleKey) {
     var x = I18N();
+    try {
+      if (x && typeof x.onDyn === 'function') {
+        var dynTimer = null;
+        x.onDyn(function () {
+          if (dynTimer) return;
+          dynTimer = setTimeout(function () {
+            dynTimer = null;
+            try {
+              var ae = document.activeElement;
+              if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
+              ctx.redrawTile();
+              if (ctx.isOpen()) ctx.redrawPanel();
+            } catch (e) { warn('translation: ' + (e && e.message)); }
+          }, 120);
+        });
+      }
+    } catch (e0) { /* stays as typed */ }
     if (!x || typeof x.onChange !== 'function') return;
     x.onChange(function () {
       try {
