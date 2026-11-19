@@ -40,7 +40,7 @@
 
   /* Written by node studio/build-architecture.js from studio/architecture/data.json. */
   /*ARCH-SUMMARY-BEGIN*/
-  var SUMMARY = {"asOf":"As of Nov 19, 2026 \u00b7 main is v0.33.1","counts":{"live":126,"unverified":62,"draft":6,"planned":10},"w":1000,"h":620,"boxes":[{"group":"studio","x":40,"y":40,"w":230,"h":110,"counts":{"live":17,"unverified":1,"draft":0,"planned":0}},{"group":"sched","x":40,"y":190,"w":230,"h":110,"counts":{"live":8,"unverified":4,"draft":0,"planned":0}},{"group":"cloud","x":370,"y":40,"w":260,"h":230,"counts":{"live":7,"unverified":1,"draft":2,"planned":0}},{"group":"tv","x":730,"y":40,"w":230,"h":110,"counts":{"live":26,"unverified":33,"draft":0,"planned":3}},{"group":"ext","x":40,"y":330,"w":230,"h":130,"counts":{"live":12,"unverified":10,"draft":2,"planned":7}},{"group":"pi","x":370,"y":330,"w":260,"h":130,"counts":{"live":36,"unverified":13,"draft":2,"planned":0}},{"group":"dev","x":40,"y":510,"w":920,"h":90,"counts":{"live":20,"unverified":0,"draft":0,"planned":0}}]};
+  var SUMMARY = {"asOf":"As of Nov 19, 2026 \u00b7 main is v0.33.1","counts":{"live":126,"unverified":63,"draft":6,"planned":10},"w":1000,"h":620,"boxes":[{"group":"studio","x":40,"y":40,"w":230,"h":110,"counts":{"live":17,"unverified":1,"draft":0,"planned":0}},{"group":"sched","x":40,"y":190,"w":230,"h":110,"counts":{"live":8,"unverified":4,"draft":0,"planned":0}},{"group":"cloud","x":370,"y":40,"w":260,"h":230,"counts":{"live":7,"unverified":1,"draft":2,"planned":0}},{"group":"tv","x":730,"y":40,"w":230,"h":110,"counts":{"live":26,"unverified":34,"draft":0,"planned":3}},{"group":"ext","x":40,"y":330,"w":230,"h":130,"counts":{"live":12,"unverified":10,"draft":2,"planned":7}},{"group":"pi","x":370,"y":330,"w":260,"h":130,"counts":{"live":36,"unverified":13,"draft":2,"planned":0}},{"group":"dev","x":40,"y":510,"w":920,"h":90,"counts":{"live":20,"unverified":0,"draft":0,"planned":0}}]};
   /*ARCH-SUMMARY-END*/
 
   var DATA_URL = 'widgets/architecture-data.js';
@@ -377,6 +377,32 @@
     return bar;
   }
 
+  // The bottom row (boxes below every other box, Tests, tools and docs) sits
+  // centered between the lowest box above it, as drawn, and the map's bottom,
+  // so it never runs into the Data flows row under the map. Boxes grow with
+  // their text, so this measures them rather than trusting the data's heights.
+  function centerBottomRow(map, boxes, els, rem) {
+    var i, j, low = [], above = 0;
+    for (i = 0; i < boxes.length; i++) {
+      var under = true;
+      for (j = 0; j < boxes.length; j++) {
+        if (j !== i && boxes[j].y + boxes[j].h > boxes[i].y) { under = false; break; }
+      }
+      if (under) low.push(i);
+    }
+    if (!low.length || low.length === boxes.length) return;
+    for (i = 0; i < els.length; i++) {
+      if (low.indexOf(i) < 0) above = Math.max(above, els[i].offsetTop + els[i].offsetHeight);
+    }
+    var room = map.clientHeight;
+    if (!(room > above) || !(rem > 0)) return;
+    for (i = 0; i < low.length; i++) {
+      var el = els[low[i]];
+      var top = above + Math.max(0, (room - above - el.offsetHeight) / 2);
+      el.style.top = r2(top / rem) + 'rem';
+    }
+  }
+
   function arrowHead(x, y, dx, dy, size) {
     var len = Math.sqrt(dx * dx + dy * dy) || 1;
     var ux = dx / len, uy = dy / len;
@@ -426,6 +452,7 @@
 
     // The boxes.
     var firstKey = '';
+    var boxEls = [];
     for (i = 0; i < o.boxes.length; i++) {
       var b = o.boxes[i];
       var g = byId[b.group];
@@ -452,8 +479,10 @@
         para = [];
       }
       statusBar(box, g ? counts(g) : {}, 'ar-box-bar');
+      boxEls.push(box);
       if (!firstKey) firstKey = 'bp:' + b.group;
     }
+    centerBottomRow(map, o.boxes, boxEls, rem);
 
     // The edge labels (over the lines, never over a box's text).
     for (i = 0; i < edges.length; i++) {
@@ -917,7 +946,10 @@
         overlap = Math.min(r.right, f.right) - Math.max(r.left, f.left) > 0;
       }
       if (main < 4) continue;
-      var score = main + side * (overlap ? 0.2 : 3);
+      // Anything straight ahead (overlapping on the other axis) beats what is
+      // off to the side: Down from the left column reaches the wide Tests box
+      // under it before the Data flows chip further down.
+      var score = main + side * (overlap ? 0.02 : 3);
       if (score < bestScore) { bestScore = score; best = el; }
     }
     return best;

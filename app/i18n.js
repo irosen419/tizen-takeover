@@ -49,7 +49,7 @@
     'hub.askedShow': 'Se pidió mostrar "{name}", que este hub no tiene.',
     /* The layout switcher's pills (key 'hub.layout.<id in config.js>'); a
      * layout the owner names themselves keeps its own name. */
-    'hub.layout.stock': 'Original',
+    'hub.layout.stock': 'Predeterminado',
     'hub.layout.main': 'Principal',
     'hub.layout.get-ready': 'A arreglarse',
     'hub.layout.awws-desk': 'Escritorio AWWS',
@@ -59,7 +59,7 @@
     'hub.layout.allsounds-test': 'Prueba de sonidos',
     'hub.layout.plant-wall': 'Plantas',
     'hub.layout.ambience-test': 'Prueba de ambiente',
-    'hub.layout.architecture-test': 'Prueba de arquitectura',
+    'hub.layout.architecture-test': 'Arquitectura del hub',
     /* The About strip's group and row names (key 'hub.about.<name>' with the
      * English words joined, 'This hub' = ThisHub). The values come from the
      * hub's own status lines and stay as they are. */
@@ -1120,6 +1120,14 @@
     'shows.day': 'día',
     'shows.todayChip': 'hoy',
     'shows.yourShows': 'Tus series',
+    'shows.readyHead': 'Para ver',
+    'shows.readyAll': 'Temporada {s} · los {n} disponibles',
+    'shows.readyOne': 'Ya salió la temporada {s}',
+    'shows.readyPart': 'Temporada {s} · {out} de {total} disponibles',
+    'shows.readySeasons': 'Temporadas {a}–{b}',
+    'shows.readyNext': 'Sigue: {code}',
+    'shows.toWatch': 'por ver',
+    'shows.nToWatch': '{n} por ver',
     'shows.running': 'Sigue en emisión',
     'shows.ended': 'Terminada',
     'shows.tbd': 'Sigue · sin decidir',

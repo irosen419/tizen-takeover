@@ -28,7 +28,7 @@
  *              of them beside the Day view; OK there (or a click on the
  *              event) opens them to read: Up/Down scroll, OK, Back, Left or
  *              Right close. Guest mode hides notes (app/guest.js).
- *   Guests:    an event with other people on it (Pi server 0.17.0:
+ *   Guests:    an event with other people on it (Pi server 0.18.0:
  *              guestCount and guests) says "1 guest" / "3 guests" beside its
  *              time in every view; its notes open with the count and the
  *              names. Nothing when there are none; Guest mode hides both.

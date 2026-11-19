@@ -439,6 +439,43 @@
 .sh-msg-head { font-size: 1.35rem; font-weight: 600; line-height: 1.3; }
 .sh-msg-line { margin-top: 0.5rem; font-size: 1rem; line-height: 1.4; color: var(--text-2); }
 
+/* Ready to watch: shows started and behind, at the top of Coming soon. */
+.sh-ready { margin-bottom: 0.4rem; }
+.sh-ready-head { display: flex; align-items: center; }
+.sh-ready-n,
+.sh-tab-n {
+  display: inline-block;
+  min-width: 1.15rem;
+  box-sizing: border-box;
+  margin-left: 0.45rem;
+  padding: 0 0.35rem;
+  border-radius: 0.7rem;
+  background: #7fd1ff;
+  color: #050506;
+  font-size: 0.72rem; font-weight: 700; line-height: 1.15rem;
+  letter-spacing: 0;
+  text-align: center;
+  vertical-align: 0.1em;
+}
+.sh-ready-line { overflow-wrap: anywhere; padding-bottom: 0.08rem; }
+.sh-ready-next { margin-top: 0.05rem; }
+.sh-ready-row .sh-count { flex-basis: 5.4rem; width: 5.4rem; margin-right: 0.6rem; }
+.sh-ready-row .sh-count-n { color: #7fd1ff; }
+.sh-ready-row .sh-count-word { white-space: nowrap; }
+.sh-ready-row .sh-side { flex-basis: 7rem; width: 7rem; }
+.sh-ready-row .sh-badge { width: 7rem; }
+.sh-chip.is-ready {
+  background: transparent;
+  color: #7fd1ff;
+  box-shadow: inset 0 0 0 0.06rem rgba(127, 209, 255, 0.55);
+  font-size: 0.78rem; font-weight: 600;
+  letter-spacing: 0; text-transform: none;
+  white-space: nowrap;
+}
+.sh-shows .sh-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel.is-full .sh-ready-row .sh-side { flex-basis: 8.5rem; width: 8.5rem; }
+.panel.is-full .sh-ready-row .sh-badge { width: 8.5rem; }
+
 /* Full screen: a little larger, and roomier columns. */
 .panel.is-full .sh-side { flex-basis: 8.5rem; width: 8.5rem; }
 .panel.is-full .sh-slot.is-alt { width: 10rem; }
