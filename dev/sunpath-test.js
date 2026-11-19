@@ -438,7 +438,7 @@ async function checkTiles(lang, grow) {
 
 async function checkPanels(lang, grow) {
   for (const [when, at] of [['lit', LIT], ['winter', NOV17]]) {
-    const page = await openHub({ at: at, size: [12, 6], lang: lang, grow: grow });
+    const page = await openHub({ at: at, size: [12, 5], lang: lang, grow: grow });   // 12x6 alone opens full screen by itself
     await openPanel(page);
     for (const v of ['plan', 'arc', 'table']) {
       await showView(page, v);
@@ -463,7 +463,7 @@ async function checkPanels(lang, grow) {
 }
 
 async function checkKeys() {
-  const page = await openHub({ at: LIT, size: [12, 6] });
+  const page = await openHub({ at: LIT, size: [12, 5] });
   await page.keyboard.press('Enter');
   await until(() => page.evaluate(() => window.HUB_TEST.open() === 'sunpath' && !window.HUB_TEST.busy()), 4000, 'OK did not open the panel');
   const st = () => page.evaluate(() => ({

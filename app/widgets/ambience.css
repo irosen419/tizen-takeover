@@ -107,8 +107,8 @@
   border-radius: 50%;
 }
 .am-dot.is-switch { border-radius: 0.24rem; }
-.am-dot.is-off { border: 0.14rem solid rgba(255, 255, 255, 0.34); }
-.am-dot.is-gone { border: 0.14rem solid rgba(255, 255, 255, 0.2); }
+.am-dot.is-off { border: 0.14rem solid rgba(255, 255, 255, 0.55); }
+.am-dot.is-gone { border: 0.14rem solid rgba(255, 255, 255, 0.3); }
 /* Crossed out: a light that doesn't answer. */
 .am-dot.is-gone::after {
   content: '';
@@ -116,7 +116,7 @@
   left: -0.22rem; right: -0.22rem; top: 50%;
   height: 0.14rem;
   margin-top: -0.07rem;
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.5);
   -webkit-transform: rotate(-45deg);
   transform: rotate(-45deg);
 }
@@ -133,6 +133,20 @@
 .am-dots.is-small .am-dot { width: 0.7rem; height: 0.7rem; margin-right: 0.42rem; }
 @-webkit-keyframes am-halo { from { opacity: 0.55; } to { opacity: 1; } }
 @keyframes am-halo { from { opacity: 0.55; } to { opacity: 1; } }
+
+/* Day: on light glass a pale lit bulb and a white ring both vanish. A lit
+   bulb is a solid disc in its deepened colour (--am-deep, set by
+   ambience.js) inside a dark ring; an off one is a dark empty ring; one that
+   doesn't answer is a faint ring crossed out. Filled or empty tells them
+   apart without the colour. The glow stays small: on white it only blurs. */
+.theme-day.is-glass .tile:not(.is-lifted) .am-dot.is-on {
+  background-color: var(--am-deep, #e8892c) !important;
+  box-shadow: 0 0 0 0.12rem rgba(21, 27, 36, 0.82);
+}
+.theme-day.is-glass .tile:not(.is-lifted) .am-dot.is-on .am-halo { opacity: 0.45; -webkit-animation: none; animation: none; }
+.theme-day.is-glass .tile:not(.is-lifted) .am-dot.is-off { border-color: rgba(21, 27, 36, 0.72); }
+.theme-day.is-glass .tile:not(.is-lifted) .am-dot.is-gone { border-color: rgba(21, 27, 36, 0.32); }
+.theme-day.is-glass .tile:not(.is-lifted) .am-dot.is-gone::after { background: rgba(21, 27, 36, 0.5); }
 
 /* ---------- a light's level ---------- */
 
