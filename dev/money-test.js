@@ -423,6 +423,23 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
+    await check('Guest mode on: the Investments tile (budget-lab beside it) shows percentages only, no dollar figure, no copy kept', async () => {
+      const inv = JSON.stringify({ v: 1, at: H.MONDAY, sentAt: FRESH, section: H.budgetSample.snapshot({ sentAt: FRESH }).investments });
+      const page = await env.newPage({ layout: [{ widget: 'investments', x: 0, y: 0, w: 6, h: 4 }, { widget: 'budget-room', x: 6, y: 0, w: 3, h: 2 }],
+        storage: { 'homeHub.guest.v1': 'on', 'homeHub.investments.v1': inv } });
+      try {
+        const t = await text(page, tileOf('investments'));
+        assert(/\+20\.2%/.test(t) && /62%/.test(t) && !/\$|48,2|30,1|21,0|8,1/.test(t), 'investments: ' + t);
+        assert(/Hidden for guests/.test(await text(page, tileOf('budget-room'))), 'room is not hidden');
+        const kept = await page.evaluate(() => ({ cache: localStorage.getItem('homeHub.investments.v1'), state: window.HUB_INVESTMENTS_TEST.state() }));
+        assert(kept.cache === null && kept.state.m === null, 'dollars kept: ' + JSON.stringify(kept).slice(0, 120));
+        await H.openPanel(page, 'investments');
+        const p = await text(page, '#panel .panel-body');
+        assert(/62%/.test(p) && !/\$|48,2|30,1|21,0|8,1/.test(p), 'panel: ' + p);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
     await check('Guest mode from the Clock page: On hides money at once, Off brings it back, and it is remembered', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
@@ -1320,7 +1337,7 @@ async function main() {
       try { acorn = require(p); break; } catch (e) { /* next */ }
     }
     const bad = [];
-    for (const f of ['app/widgets/budget.js', 'app/widgets/budget-lab.js', 'app/budget-lab-math.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
+    for (const f of ['app/widgets/budget.js', 'app/widgets/budget-lab.js', 'app/widgets/investments.js', 'app/budget-lab-math.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
       const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
       if (acorn) {
         try { acorn.parse(src, { ecmaVersion: 5 }); } catch (e) { bad.push(f + ': ' + e.message); }

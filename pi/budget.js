@@ -10,8 +10,11 @@
  * total per day (pace) and the runway as headroom (runway). No balances, no
  * transactions, no amounts on alerts, with one exception the owner approved on
  * 2026-11-19: cardDay.receipt, the Card day sum with the checking balance, what
- * each card owes and bill names (the TV hides it in guest mode). The budget app talks to the server on
- * the Pi itself, so none of it goes through the cloud.
+ * each card owes and bill names (the TV hides it in guest mode), and a second
+ * one approved the same day: the investments section, with the portfolio
+ * total, its accounts and top holdings in dollars (also hidden in guest mode).
+ * The budget app talks to the server on the Pi itself, so none of it goes
+ * through the cloud.
  *
  * This file only checks, merges and describes snapshots, the same way
  * awws.js does for the A World Worth Saving snapshot (and with the same text
@@ -33,7 +36,7 @@ const MAX_BYTES = 48 * 1024; // 49,152 bytes of JSON
 const MAX_FUTURE_MS = 10 * 60 * 1000;
 const MAX_AMOUNT = 1000000;
 const MAX_DAYS = 366;
-const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway'];
+const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway', 'investments'];
 const GOAL_STATES = ['clean', 'on-pace', 'over', 'under'];
 // Budget lab: where spare money on card day goes, and the runway's steps.
 const SPLIT_KEYS = ['savings', 'awws', 'buffer', 'extra'];
@@ -52,6 +55,11 @@ const MAX_SPLIT = 4;
 const MAX_COUNT = 999;
 const MAX_OUTLOOK_MONTHS = 3;
 const MAX_PAYDAYS = 3;
+// Investments: portfolio totals can run higher than a monthly budget figure.
+const MAX_INVEST = 10000000;
+const MAX_INVEST_ACCOUNTS = 6;
+const MAX_INVEST_TOP = 8;
+const MAX_INVEST_HISTORY = 92;
 // Sections that are lists; sent as a plain list or as { asOf, items }.
 const LISTS = { goals: 8, alerts: 5 };
 
@@ -80,10 +88,12 @@ function amountOf(o, k, where, required, opts) {
     return undefined;
   }
   const signed = !!(opts && opts.signed);
-  const lo = signed ? -MAX_AMOUNT : 0;
-  if (typeof v !== 'number' || !isFinite(v) || v < lo || v > MAX_AMOUNT || (opts && opts.above0 && v <= 0)) {
-    throw wrong(name + ' must be a number ' + (opts && opts.above0 ? 'more than 0 and up to 1,000,000' :
-      signed ? 'from -1,000,000 to 1,000,000' : 'from 0 to 1,000,000'), where);
+  const hi = (opts && opts.max) || MAX_AMOUNT;
+  const lo = signed ? -hi : 0;
+  const hiText = F.commas(hi);
+  if (typeof v !== 'number' || !isFinite(v) || v < lo || v > hi || (opts && opts.above0 && v <= 0)) {
+    throw wrong(name + ' must be a number ' + (opts && opts.above0 ? 'more than 0 and up to ' + hiText :
+      signed ? 'from -' + hiText + ' to ' + hiText : 'from 0 to ' + hiText), where);
   }
   // Halves round away from 0, so -12.345 is -12.35 like 12.345 is 12.35.
   return (v < 0 ? -1 : 1) * Math.round(Math.abs(v) * 100) / 100;
@@ -339,6 +349,49 @@ const CHECK = {
     };
   },
 
+  // The portfolio: the owner approved dollar figures on the TV on 2026-11-19
+  // (guest mode hides them there). Totals, accounts and top holdings, plus one
+  // total per date so the TV can draw a trend. No quantities, no account
+  // numbers, no transactions: a field not named here is dropped.
+  investments: (s) => {
+    const big = { max: MAX_INVEST };
+    const sbig = { max: MAX_INVEST, signed: true };
+    const out = {};
+    out.total = amountOf(s, 'total', '', true, big);
+    F.put(out, 'cost', amountOf(s, 'cost', '', false, big));
+    F.put(out, 'gain', amountOf(s, 'gain', '', false, sbig));
+    const accounts = F.listOf(s, 'accounts', MAX_INVEST_ACCOUNTS, '', true);
+    if (!accounts.length) throw wrong('"accounts" must have at least 1 entry');
+    out.accounts = F.eachEntry(accounts, 'account', (e, where) => {
+      const a = { label: F.textOf(e, 'label', 30, where, true), value: amountOf(e, 'value', where, true, big) };
+      F.put(a, 'gain', amountOf(e, 'gain', where, false, sbig));
+      return a;
+    });
+    const top = F.listOf(s, 'top', MAX_INVEST_TOP, '');
+    if (top !== undefined) {
+      out.top = F.eachEntry(top, 'holding', (e, where) => {
+        // A ticker may be empty (cash, a fund with no symbol): then it is left out.
+        const h = {};
+        F.put(h, 'ticker', F.textOf(e, 'ticker', 10, where));
+        h.name = F.textOf(e, 'name', 40, where, true);
+        h.value = amountOf(e, 'value', where, true, big);
+        F.put(h, 'gain', amountOf(e, 'gain', where, false, sbig));
+        return h;
+      });
+    }
+    const hist = F.listOf(s, 'history', MAX_INVEST_HISTORY, '');
+    if (hist !== undefined) {
+      let last = '';
+      out.history = F.eachEntry(hist, 'day', (e, where) => {
+        const d = { date: F.dateOf(e, 'date', where, true), total: amountOf(e, 'total', where, true, big) };
+        if (d.date <= last) throw wrong('"date" must come after the day before it (oldest first, each date once)', where);
+        last = d.date;
+        return d;
+      });
+    }
+    return out;
+  },
+
   // Headroom from this morning to card day: never checking or a card
   // balance by itself. Steps carry no names; a "label" sent is dropped.
   runway: (s) => {
@@ -491,6 +544,10 @@ function sectionCounts(name, s) {
     const n = s.days.length;
     return { days: n, capped: s.days.filter((d) => d.cap !== undefined).length, from: n ? s.days[0].date : null, to: n ? s.days[n - 1].date : null };
   }
+  if (name === 'investments') {
+    const n = s.history ? s.history.length : 0;
+    return { accounts: s.accounts.length, holdings: (s.top || []).length, days: n, from: n ? s.history[0].date : null, to: n ? s.history[n - 1].date : null };
+  }
   const c = { end: s.end, steps: s.steps.length };
   STEP_KINDS.forEach((k) => { c[k] = s.steps.filter((x) => x.kind === k).length; });
   return c;
@@ -529,6 +586,10 @@ function sectionLine(name, s) {
   if (name === 'merchants') return plural(c.merchants, 'merchant') + ' in ' + c.month;
   if (name === 'pace') {
     return c.days ? plural(c.days, 'day') + ' (' + c.capped + ' with a cap), ' + c.from + ' to ' + c.to : 'no days yet';
+  }
+  if (name === 'investments') {
+    return plural(c.accounts, 'account') + ', ' + plural(c.holdings, 'holding') + ', ' +
+      (c.days ? plural(c.days, 'day') + ' of history, ' + c.from + ' to ' + c.to : 'no history yet');
   }
   return plural(c.steps, 'step') + ' to ' + c.end + ' (' + plural(c.pay, 'payday') + ', ' + plural(c.bill, 'bill') + ', ' +
     plural(c.reserve, 'reserve') + ')';

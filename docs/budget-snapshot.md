@@ -18,7 +18,7 @@ A sample with made-up figures is in [`pi/fixtures/budget-sample.json`](../pi/fix
  The budget tiles and the banner on the TV
 ```
 
-Only totals ever leave the budget app: room per day, the card day and how it is covered, goal states, the names of merchants with a new charge, and for Budget lab the room to card day, one spending total per day, the top 5 merchants with their month-to-date totals and the runway to card day as headroom. **Never a balance, never a transaction list, never an amount on an alert**, with one exception: the Card day receipt (`cardDay.receipt`, below) carries the checking balance, what each card owes and the names of bills and planned buys. (The owner asked for the merchant names and their totals on 2026-11-17, see [Privacy for Budget lab](#privacy-for-budget-lab), and approved the receipt for the TV on 2026-11-19; guest mode on the TV hides it.) The budget app talks to the hub server on the Pi directly; nothing goes through the cloud. (The Claude mailbox also has `budget.show`, `budget.set` and `budget.clear`, for setting things up by hand; `budget.show` only ever answers with dates, counts and states.)
+Only totals ever leave the budget app: room per day, the card day and how it is covered, goal states, the names of merchants with a new charge, and for Budget lab the room to card day, one spending total per day, the top 5 merchants with their month-to-date totals and the runway to card day as headroom. **Never a balance, never a transaction list, never an amount on an alert**, with two exceptions: the Card day receipt (`cardDay.receipt`, below) carries the checking balance, what each card owes and the names of bills and planned buys, and the `investments` section (below) carries the portfolio total, each account's value and the top holdings in dollars. (The owner asked for the merchant names and their totals on 2026-11-17, see [Privacy for Budget lab](#privacy-for-budget-lab), approved the receipt for the TV on 2026-11-19, and approved the investment dollar figures for the TV the same day, see [Privacy for investments](#privacy-for-investments); guest mode on the TV hides both.) The budget app talks to the hub server on the Pi directly; nothing goes through the cloud. (The Claude mailbox also has `budget.show`, `budget.set` and `budget.clear`, for setting things up by hand; `budget.show` only ever answers with dates, counts and states.)
 
 By hand on the Pi: `./hub budget set file.json`.
 
@@ -53,7 +53,11 @@ One JSON object. `v` and `sentAt` are required. Every section is optional.
   "pace":      { "asOf": "...", "days": [ { "date": "2026-11-16", "spent": 71.2, "cap": 95.29 } ] },
   "runway":    { "asOf": "...", "start": -731, "end": "2026-12-01",
                  "steps": [ { "date": "2026-11-20", "delta": 2600, "kind": "pay" }, { "date": "2026-11-24", "delta": -120, "kind": "bill" },
-                            { "date": "2026-12-01", "delta": -415, "kind": "reserve" } ] }
+                            { "date": "2026-12-01", "delta": -415, "kind": "reserve" } ] },
+  "investments": { "asOf": "...", "total": 48210.55, "cost": 40100, "gain": 8110.55,
+                   "accounts": [ { "label": "Roth Contributory IRA", "value": 30110.2, "gain": 5200.1 } ],
+                   "top": [ { "ticker": "VTI", "name": "Vanguard Total Stock Market ETF", "value": 21000, "gain": 3100 } ],
+                   "history": [ { "date": "2026-11-18", "total": 48100 } ] }
 }
 ```
 
@@ -69,7 +73,7 @@ These are the same rules as the A World Worth Saving snapshot ([`awws-snapshot.m
 - `asOf` on a section is when its figures were worked out. Left out, the Pi fills in `sentAt`.
 - **Text** is trimmed, control characters become spaces, and text longer than its limit is cut and ends in "…". **No email addresses and no links:** a section with one is refused.
 - **Unknown fields are dropped**, at the top and inside sections. An `amount` on an alert, or a `balance` anywhere, is simply never stored.
-- **Dollar figures** are numbers, rounded to cents by the Pi, from 0 to 1,000,000 unless a field says it may be negative. The TV shows whole dollars: room rounded down, a shortfall rounded up.
+- **Dollar figures** are numbers, rounded to cents by the Pi, from 0 to 1,000,000 unless a field says it may be negative (the `investments` section allows up to 10,000,000). The TV shows whole dollars: room rounded down, a shortfall rounded up.
 - `goals` and `alerts` may be sent as the list itself (`"goals": [ ... ]`) or as `{ "asOf": "...", "items": [ ... ] }`. The Pi stores the second form.
 
 ### `room`: daily room
@@ -213,7 +217,29 @@ The headroom on card day (`start` plus every `delta`) is the same figure as `lab
 - `./hub budget show` and the mailbox's `budget.show` print counts, dates and states for these sections, never a merchant name or an amount: `merchants  5 merchants in 2026-11`, `pace  14 days (13 with a cap), 2026-11-03 to 2026-11-16`, `runway  6 steps to 2026-12-01 (1 payday, 4 bills, 1 reserve)`.
 - The snapshot only travels on the Pi itself (127.0.0.1), never through the mailbox or the cloud.
 
-The four Budget lab sections are optional like the others and checked one by one; a snapshot with only `room`, `cardDay`, `goals` and `alerts` is stored as before. A hub server older than 0.5.0 drops the four sections and keeps the rest.
+The four Budget lab sections are optional like the others and checked one by one; a snapshot with only `room`, `cardDay`, `goals` and `alerts` is stored as before. A hub server older than 0.5.0 drops the four sections and keeps the rest; one older than 0.16.0 drops `investments` the same way.
+
+### `investments`: the portfolio
+
+Added with server 0.18.0. Sent by the budget app from its investment accounts' holdings, at least once a day (the app logs one total per date so the trend builds from the first day).
+
+| Field | Type | Notes |
+|---|---|---|
+| `total` | dollars, 0 to 10,000,000 | required: the whole portfolio |
+| `cost` | dollars, 0 to 10,000,000 | optional: what was paid in (the cost basis) |
+| `gain` | dollars, may be negative, up to 10,000,000 either way | optional: `total` less `cost`; the TV shows it as +$X or -$X and as a percent of `cost` |
+| `accounts` | list, 1 to 6 | required: `{ "label": "Roth Contributory IRA", "value": 30110.2, "gain": 5200.1 }`; `label` is text, 30; `value` is dollars, 0 to 10,000,000; `gain` is optional and signed. No account numbers |
+| `top` | list, 0 to 8 | optional, biggest first: `{ "ticker": "VTI", "name": "Vanguard Total Stock Market ETF", "value": 21000, "gain": 3100 }`; `ticker` is text, 10, and may be empty or left out (cash); `name` is text, 40; `value` is dollars; `gain` is optional and signed. No share counts |
+| `history` | list, 0 to 92 | optional, oldest first, one per date, dates ascending (a repeated or earlier date refuses the section): `{ "date": "2026-11-18", "total": 48100 }`. The TV draws it as a trend line without an axis |
+
+On the TV: the Investments tile (`investments`, standalone, in no layout; add it in Layout Studio or `layout.set`). Smallest size: the total and the gain against cost (`+$8,110 · +20.2%`, green when up, coral when down). Wider: a trend line from `history` (hidden under 2 points, with "Trend starts building today"). Bigger: an allocation bar by account and the top holdings with their share of the total. A click opens it in place with every account and holding. In guest mode **no dollar figure is drawn**: only percentages (the gain percent, each account's and holding's share) and the shape of the trend. Old data (over 2 hours) dims and says "as of 9:10 AM"; with no section the tile says "Waiting for the budget app".
+
+### Privacy for investments
+
+- **Dollar figures for the portfolio total, each account and the top holdings are allowed on the TV: the owner approved them on 2026-11-19** (the second exception to "no balance", after the Card day receipt). Guest mode hides them: the TV derives the percentages it needs first and throws the dollars away before anything is stored.
+- Never account numbers, share counts, purchase dates or a transaction list. A field not named above is dropped.
+- `./hub budget show` and the mailbox's `budget.show` print counts and dates only: `investments  6 accounts, 8 holdings, 31 days of history, 2026-10-19 to 2026-11-18`.
+- The snapshot only travels on the Pi itself (127.0.0.1), never through the mailbox or the cloud.
 
 ## What the Pi keeps
 

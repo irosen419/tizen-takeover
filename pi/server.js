@@ -98,7 +98,7 @@ const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 const translate = require('./translate');
 
-const SERVER_VERSION = '0.17.0';
+const SERVER_VERSION = '0.18.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
