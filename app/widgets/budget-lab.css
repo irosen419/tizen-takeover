@@ -364,4 +364,13 @@
 .bl-ch-gap.is-even { color: var(--bu-under); }
 .bl-ch-gap.is-neg { color: var(--bu-neg); }
 
+/* Autopay days: why the figures below are worked to the autopay day. */
+.bl-autopay {
+  margin-bottom: 0.7rem;
+  font-size: 1.5rem;
+  line-height: 1.35;
+  color: var(--bu-under);
+  word-wrap: break-word;
+}
+
 .css-end { top: 0; }

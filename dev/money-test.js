@@ -304,6 +304,48 @@ async function main() {
       }
     });
 
+    await check('autopay days: short on the 1st but covered by autopay is amber with its plan rows; the room says so; still short with autopay stays coral', async () => {
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true, autopay: true }));
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const card = await text(page, tileOf('budget-card'));
+        assert(/Short \$955/.test(card) && /covered by autopay/.test(card), 'card: ' + card);
+        assert(!/Short by/.test(card), 'a coral "Short by": ' + card);
+        assert(/Nov 30\s*Sapphire Reserve\s*\$1,200/.test(card) && /Dec 7\s*Sapphire Reserve\s*\$400\s*autopay/.test(card), 'plan rows: ' + card);
+        assert(await has(page, tileOf('budget-card') + ' .bu-hero-num.is-under') && !(await has(page, tileOf('budget-card') + ' .is-neg')), 'short by autopay is not amber');
+        assert(/using autopay days/.test(await text(page, tileOf('budget-room'))), 'room: ' + await text(page, tileOf('budget-room')));
+        const lab = await text(page, tileOf('budget-lab'));
+        assert(!/short even at \$0/.test(lab), 'the lab tile says short even at $0: ' + lab);
+        noErrors(page);
+        await H.openPanel(page, 'budget-lab');
+        const p = await text(page, '#panel .panel-body');
+        assert(/Nov 30 is \$955 short, so this plan relies on autopay days through Dec 7/.test(p), 'lab header: ' + p);
+        assert(!/even at \$0 a day/.test(p) && await has(page, '#panel .bl-big'), 'lab panel: ' + p);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+      // Short with autopay too (no byAutopay): coral as before, with how short.
+      const bad = H.budgetSample.snapshot({ sentAt: FRESH, payday: true, autopay: true });
+      bad.cardDay.byAutopay = false;
+      delete bad.cardDay.plan;
+      bad.cardDay.autopayShortBy = 80;
+      bad.room.basis = 'first';
+      bad.lab.autopayRoom = -80;
+      await env.setBudget(bad);
+      const page2 = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const card = await text(page2, tileOf('budget-card'));
+        assert(/Short by \$955/.test(card) && /\$80 short even with autopay/.test(card), 'card: ' + card);
+        assert(await has(page2, tileOf('budget-card') + ' .bu-hero-num.is-neg'), 'not coral');
+        await H.openPanel(page2, 'budget-lab');
+        const p = await text(page2, '#panel .panel-body');
+        assert(/short for Dec 7 even at \$0 a day/.test(p) && /Move \$80 into checking before Dec 7/.test(p), 'lab: ' + p);
+        noErrors(page2);
+      } finally {
+        await page2.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
     /* ---------- stale ---------- */
     await check('budget data over 2 hours old and AWWS over 19 hours: "as of" under each title, and the tiles dim', async () => {
       await env.setBudget(H.budgetSample.snapshot({ sentAt: OLD }));
