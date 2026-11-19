@@ -323,6 +323,8 @@
 .sh-row.is-focused .sh-watch-play { margin-right: 0.35rem; }
 .sh-row.is-focused .sh-meta-text { white-space: normal; }
 .sh-meta-bit { white-space: nowrap; }
+/* "Streams on Prime Video" may break between its words in a narrow row. */
+.sh-meta-text .sh-meta-wrap { white-space: normal; }
 .sh-watch-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sh-watch-play {
   width: 0; height: 0;

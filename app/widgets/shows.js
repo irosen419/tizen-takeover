@@ -1268,7 +1268,7 @@
     var mt = el('span', 'sh-meta-text', meta);
     el('span', 'sh-meta-bit', mt, epCode(a.eps) + ' ·');
     mt.appendChild(document.createTextNode(' '));
-    el('span', 'sh-meta-bit', mt, dayOnly ? word('streamsOn', { service: app || a.show.service || '' }) : timeText(a.ms));
+    el('span', dayOnly ? 'sh-meta-wrap' : 'sh-meta-bit', mt, dayOnly ? word('streamsOn', { service: app || a.show.service || '' }) : timeText(a.ms));
     if (seen) {
       var wn = el('span', 'sh-note is-watched', meta);
       el('span', 'sh-check', wn);
