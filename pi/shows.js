@@ -27,7 +27,7 @@
  * correct mistakes. The snapshot gets shows[].watched and watched: true on
  * the matching upcoming / next episodes (docs/shows-snapshot.md).
  *
- * Progress beyond single episodes (server 0.12.0): an entry may also carry
+ * Progress beyond single episodes (server 0.13.0): an entry may also carry
  * upTo: { s, e, at } ("watched up to here": every numbered episode of an
  * earlier season, or of that season up to that number, counts as watched) and
  * unwatched: [{ s, e }] (at most 200 episodes inside that range that were NOT

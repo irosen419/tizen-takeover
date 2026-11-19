@@ -30,6 +30,13 @@
     }
   })();
 
+  // The words in the hub's language: 'planned.<id>.title', 'planned.<id>.text'
+  // and 'planned.note' (app/i18n.js). English (or no Spanish) keeps the text.
+  function T(key, english) {
+    var L = window.HUB_I18N;
+    try { return L && typeof L.t === 'function' ? String(L.t(key, english)) : english; } catch (e) { return english; }
+  }
+
   function el(tag, cls, text) {
     var node = document.createElement(tag);
     node.className = cls;
@@ -67,15 +74,26 @@
   }
 
   function placeholder(p) {
-    return {
+    var ctx0 = null;
+    var w = {
       id: p.id,
-      title: p.title,
       icon: p.icon,
       expandable: true,
       planned: true,
 
+      init: function (ctx) {
+        ctx0 = ctx;
+        try {
+          if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+            window.HUB_I18N.onChange(function () {
+              try { ctx0.redrawTile(); if (ctx0.isOpen()) ctx0.redrawPanel(); } catch (e) { /* the next draw has it */ }
+            });
+          }
+        } catch (e) { /* stays in the language it started in */ }
+      },
+
       renderTile: function (body, ctx) {
-        var text = el('p', 'planned-text', p.text);
+        var text = el('p', 'planned-text', T('planned.' + p.id + '.text', p.text));
         body.appendChild(text);
         var mark = el('span', 'planned-mark');
         mark.innerHTML = (window.HUB_ICONS && HUB_ICONS[p.icon]) || '';
@@ -88,14 +106,17 @@
 
       renderPanel: function (body) {
         var wrap = el('div', 'planned-panel');
-        wrap.appendChild(el('p', 'planned-lead', p.text));
-        wrap.appendChild(el('p', 'planned-note', NOTE));
+        wrap.appendChild(el('p', 'planned-lead', T('planned.' + p.id + '.text', p.text)));
+        wrap.appendChild(el('p', 'planned-note', T('planned.note', NOTE)));
         body.appendChild(wrap);
         var mark = el('span', 'planned-mark planned-mark-panel');
         mark.innerHTML = (window.HUB_ICONS && HUB_ICONS[p.icon]) || '';
         body.appendChild(mark);
       }
     };
+    // Read when the hub draws the head, so it follows the language.
+    Object.defineProperty(w, 'title', { get: function () { return T('planned.' + p.id + '.title', p.title); }, enumerable: true, configurable: true });
+    return w;
   }
 
   var list = (window.HUB_WIDGETS = window.HUB_WIDGETS || []);

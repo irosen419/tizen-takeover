@@ -290,17 +290,20 @@
     return isLead(n) ? n : COMING_UP_DAYS;
   }
 
+  // Owner-typed text in the hub's language (display only; app/i18n-dyn.js).
+  function dyn(s) { return (window.HUB_I18N && window.HUB_I18N.dyn) ? window.HUB_I18N.dyn(s) : s; }
+
   // The title as shown: without a leading calendar prefix (the saved title
   // keeps it). A title that is only a prefix shows as it is.
   function shownTitle(item) {
     var title = typeof item.title === 'string' ? item.title : '';
     var rest = tidy(title.replace(PREFIX, '').replace(TAGS, ' '));
-    return rest || title;
+    return dyn(rest || title);
   }
 
   // Notes as shown: without the machine tags.
   function shownNotes(item) {
-    return typeof item.notes === 'string' ? tidy(item.notes.replace(TAGS, ' ')) : '';
+    return typeof item.notes === 'string' ? dyn(tidy(item.notes.replace(TAGS, ' '))) : '';
   }
 
   /* ---------- store ---------- */
@@ -1426,6 +1429,24 @@
           });
         }
       } catch (e3) { /* stays in the language it started in */ }
+      // Spanish for the owner's own words arrived: draw again, once for a
+      // batch, never while the add box or an edit field has the keys.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onDyn === 'function') {
+          var dynTimer = null;
+          window.HUB_I18N.onDyn(function () {
+            if (dynTimer) return;
+            dynTimer = setTimeout(function () {
+              dynTimer = null;
+              try {
+                var ae = document.activeElement;
+                if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && C && C.isOpen()) { C.redrawTile(); return; }
+                refresh();
+              } catch (e) { /* the next redraw has them */ }
+            }, 120);
+          });
+        }
+      } catch (e4) { /* stays as typed */ }
     },
 
     renderTile: function (body, ctx) {

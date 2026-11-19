@@ -815,6 +815,22 @@ const COMMANDS = {
   },
   // Recent log lines. Always scrubbed on the Pi (addresses and names
   // replaced), so no raw log text reaches the bucket.
+  // Spanish translations (translate.js): counts, tokens and estimated cost only, never the texts.
+  'translate.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/translate/usage');
+      const money = (n) => '$' + (n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2));
+      const line = (name, d) => name + ': ' + d.lines + ' new lines, ' + d.calls + ' Gemini calls, ' +
+        (d.inTok + d.outTok) + ' tokens, about ' + money(d.cost);
+      const msg = [
+        'Translating: ' + (r.enabled ? (r.paused ? 'paused after an error' : 'on') : 'off (no key)') + '; ' + r.cached + ' lines saved; limit ' + r.cap + ' new lines a day.',
+        line('Today', r.today), line('This month', r.month), line('All time', r.all)
+      ];
+      if (r.lastError) msg.push('Last Gemini error: ' + r.lastError);
+      return { message: lines(msg), data: { enabled: r.enabled, paused: r.paused, cached: r.cached, cap: r.cap, today: r.today, month: r.month, all: r.all, lastError: r.lastError } };
+    }
+  },
   'log.tail': {
     args: { lines: [V.number(1, 200), false], errors: [V.bool(), false] },
     check: (a) => {

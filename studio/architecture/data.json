@@ -298,15 +298,24 @@
        "title": "Spanish language",
        "kind": "component",
        "status": "unverified",
-       "summary": "English or Latin American Spanish, chosen on the Clock page; one string table for the whole hub.",
+       "summary": "English or Latin American Spanish, chosen on the Clock page; every widget's fixed words, plus Ian's own text through the Pi.",
        "details": [
-        "HUB_I18N holds the Spanish strings, one section per widget, with English as the fallback and its own day and month names. Today it covers Word of the day, the Clock page, the money tiles, to-do words and the motion chips; other widgets stay in English. Choice kept in localStorage; ?lang=es tries it."
+        "HUB_I18N holds the Spanish strings, one section per widget, with English as the fallback and its own day and month names. Since PR 112 every widget's fixed words are covered (the Architecture page is still English).",
+        "HUB_I18N.dyn (app/i18n-dyn.js) shows to-dos, calendar events and AWWS tasks in Spanish: it shows English first, asks the Pi's translate service in one batch, keeps answers on the TV, and redraws. Show titles, songs and place names stay as they are. Choice kept in localStorage; ?lang=es tries it."
        ],
        "files": [
-        "app/i18n.js"
+        "app/i18n.js",
+        "(PR 112) app/i18n-dyn.js"
        ],
        "notes": [
         "Text fit (+25% for Spanish) is tested on a laptop only, not on the TV's font."
+       ],
+       "talksTo": [
+        {
+         "to": "pi.translate",
+         "label": "asks for Spanish lines",
+         "dir": "out"
+        }
        ]
       },
       {
@@ -716,7 +725,7 @@
           }
          ],
          "notes": [
-          "Needs Pi server 0.12.0; an older Pi shows a \"needs a newer Pi\" message on the page."
+          "Needs Pi server 0.13.0; an older Pi shows a \"needs a newer Pi\" message on the page."
          ]
         }
        ]
@@ -1945,6 +1954,35 @@
      ]
     },
     {
+     "id": "pi.translate",
+     "title": "Translate service",
+     "kind": "component",
+     "status": "draft",
+     "pr": "PR 112",
+     "summary": "Turns Ian's own text (to-dos, calendar events, AWWS tasks) into Latin American Spanish when the hub is in Spanish, and remembers each line.",
+     "details": [
+      "The TV sends up to 60 lines at a time to POST /translate. Lines already known come from data/translations-es.json (up to 5000, oldest dropped); new ones go to Gemini (gemini-2.5-flash-lite) in one batched call, are checked, then saved, so each line is translated once.",
+      "Uses Ian's personal key (HUB_TRANSLATE_KEY, else GEMINI_VIDEO_GEN_KEY in pi/.env), never the AWWS key. No key means cache only. A Gemini error pauses new translations for 10 minutes. The log counts lines and never shows the text.",
+      "Usage per day (new lines, Gemini calls, tokens, estimated cost) is kept in data/translate-usage.json for 62 days; Claude reads it with the mailbox command translate.status (GET /api/translate/usage). At most 2000 new lines a day."
+     ],
+     "files": [
+      "(PR 112) pi/translate.js",
+      "(PR 112) pi/translate-test.js"
+     ],
+     "talksTo": [
+      {
+       "to": "tv.hub.i18n",
+       "label": "Spanish for typed lines",
+       "dir": "out"
+      },
+      {
+       "to": "ext.gemini.translate",
+       "label": "new lines, one batch",
+       "dir": "out"
+      }
+     ]
+    },
+    {
      "id": "pi.awws",
      "title": "AWWS snapshot checks",
      "kind": "component",
@@ -2059,7 +2097,7 @@
       "The list lives in data/shows.json (started from a seed list). For each show the Pi asks TVmaze (public, no key) for next and past episodes, at most 20 calls per 10 s, and pushes the result. A show that fails keeps its last copy, marked stale.",
       "Adds ./hub shows and mailbox commands shows.list, add, remove, set and refresh, plus a Watch link test whose answers the TV sends back. Log lines carry no show names or addresses.",
       "Progress per show is a watermark plus exceptions: upTo (everything up to and including an episode counts as watched), single watched marks after it, and unwatched exceptions before it. The snapshot carries progress (aired, seen, next, caught up) per show.",
-      "Each refresh keeps a compact list of every episode per show in data/show-episodes.json; the TV fetches one show's list when its show page opens, so the 6-hourly snapshot stays small. Server 0.12.0 adds ./hub shows upto / caughtup and mailbox shows.upto / shows.caughtup."
+      "Each refresh keeps a compact list of every episode per show in data/show-episodes.json; the TV fetches one show's list when its show page opens, so the 6-hourly snapshot stays small. Server 0.13.0 adds ./hub shows upto / caughtup and mailbox shows.upto / shows.caughtup."
      ],
      "files": [
       "pi/shows.js",
@@ -3077,6 +3115,25 @@
         "(PR 77) app/agents.js"
        ],
        "talksTo": []
+      },
+      {
+       "id": "ext.gemini.translate",
+       "title": "Hub translations",
+       "kind": "external",
+       "status": "draft",
+       "pr": "PR 112",
+       "summary": "Gemini translates new to-do, event and AWWS lines for Spanish mode, called only by the Pi's translate service.",
+       "details": [
+        "Names of people, places, shows, books and songs are kept as they are. Billed to Ian's personal Gemini key, not AWWS's."
+       ],
+       "files": [],
+       "talksTo": [
+        {
+         "to": "pi.translate",
+         "label": "Spanish lines back",
+         "dir": "out"
+        }
+       ]
       }
      ]
     },
@@ -4689,6 +4746,33 @@
    ]
   },
   {
+   "id": "flow.spanish-text",
+   "title": "Your to-do shows in Spanish",
+   "summary": "In Spanish mode a typed line is shown in English, translated once on the Pi, then shown in Spanish from then on.",
+   "steps": [
+    {
+     "node": "tv.widgets.todo",
+     "say": "A to-do, event or AWWS line is drawn; with no Spanish yet it shows in English"
+    },
+    {
+     "node": "tv.hub.i18n",
+     "say": "The TV gathers new lines for 0.4 s and sends one batch"
+    },
+    {
+     "node": "pi.translate",
+     "say": "The Pi answers known lines from its saved list"
+    },
+    {
+     "node": "ext.gemini.translate",
+     "say": "New lines go to Gemini in one call"
+    },
+    {
+     "node": "tv.hub.i18n",
+     "say": "The TV keeps the answers and redraws the tiles in Spanish"
+    }
+   ]
+  },
+  {
    "id": "flow.show-progress",
    "title": "Watched up to here reaches the Pi",
    "summary": "Show page: a binge mark on the TV becomes the show's progress on the Pi and comes back in the schedule.",
@@ -4718,7 +4802,7 @@
  ],
  "title": "Architecture",
  "intro": "Every part of Home Hub, grouped so you can open as much or as little as you want. Tap a part for what it is, its files and what it talks to.",
- "asOf": "As of Nov 19, 2026 · main is v0.31.0",
+ "asOf": "As of Nov 19, 2026 · main is v0.32.0",
  "overview": {
   "w": 1000,
   "h": 620,

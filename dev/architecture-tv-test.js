@@ -516,7 +516,7 @@ async function checkFlows() {
   let s = await st(page);
   assert(s.view === 'flows', JSON.stringify(s));
   const n = await page.evaluate(() => document.querySelectorAll('#panel .ar-frow').length);
-  assert(n === 20, n + ' flows in the list');
+  assert(n === 21, n + ' flows in the list');
   assert(await focusKey(page) === 'fl:flow.pr-to-tv', 'focus on ' + await focusKey(page));
   // Down the list, then into a flow.
   await press(page, 'ArrowDown'); await press(page, 'ArrowDown');
