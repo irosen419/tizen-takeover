@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.29.18';
+  var BUILD = 'v0.29.19';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1468,15 +1468,16 @@
     ab.hideTimer = setTimeout(function () { if (!ab.on) { aboutEl.classList.remove('is-on'); aboutEl.innerHTML = ''; } }, 260);
   }
 
-  // OK in the strip: the first row shown that has an action.
+  // OK in the strip: the first row shown that has an action, or else one
+  // that gave way for room (the watch link test when the strip is full), so
+  // OK in About always opens it.
   function aboutAction() {
-    for (var i = 0; i < ab.drawn.length; i++) {
-      if (typeof ab.drawn[i].action === 'function') {
-        try { ab.drawn[i].action(); } catch (e) { toast('That didn’t work (' + (e && e.message) + ').', 4000); }
-        return true;
-      }
-    }
-    return false;
+    var pick = null;
+    for (var i = 0; i < ab.drawn.length && !pick; i++) if (typeof ab.drawn[i].action === 'function') pick = ab.drawn[i];
+    for (var j = 0; j < ABOUT_ROWS.length && !pick; j++) if (ABOUT_ROWS[j].spare && ab.dropped[ABOUT_ROWS[j].label] && typeof ABOUT_ROWS[j].action === 'function') pick = ABOUT_ROWS[j];
+    if (!pick) return false;
+    try { pick.action(); } catch (e) { toast('That didn’t work (' + (e && e.message) + ').', 4000); }
+    return true;
   }
 
   // Opens a widget's panel on one of its own views (widget hook openView).

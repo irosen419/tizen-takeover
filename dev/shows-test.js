@@ -482,6 +482,19 @@ async function main() {
       } finally { await lt.ctx.close(); }
     });
 
+    await check('Watch link test: OK in About opens it even when the About strip is full and its row gave way', async () => {
+      const lt = await env.newPage({});
+      try {
+        await lt.evaluate(() => window.HUB_TEST.about.open());
+        await H.sleep(500);
+        // A short strip: the spare row leaves at the next refresh.
+        await lt.evaluate(() => { const b = document.querySelector('#about .about-box'); b.style.maxHeight = '60px'; b.style.height = '60px'; b.style.overflow = 'hidden'; });
+        await H.until(() => lt.evaluate(() => window.HUB_TEST.about.rows().filter((r) => r.label === 'Watch link test').length === 0), 4000, 'the row did not give way');
+        await H.key(lt, 'Enter');
+        await H.until(() => lt.evaluate(() => window.HUB_TEST.open() === 'entertainment' && !window.HUB_TEST.busy() && !!document.querySelector('#panel .lt')), 6000, 'the link test did not open');
+      } finally { await lt.ctx.close(); }
+    });
+
     await check('Watch link test: the Prime id box keeps a typed id and refuses a bad one', async () => {
       const lt = await env.newPage({});
       try {
