@@ -89,7 +89,7 @@ const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 
-const SERVER_VERSION = '0.9.0';
+const SERVER_VERSION = '0.10.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;

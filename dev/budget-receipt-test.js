@@ -1,5 +1,5 @@
 /*
- * Card day receipt (prototype): node dev/budget-receipt-test.js
+ * Card day receipt: node dev/budget-receipt-test.js
  *
  * The tile is a three line receipt with no "Transfers"; OK opens the receipt
  * at full screen, each line a focusable row; OK on a line shows what is
@@ -45,6 +45,12 @@ async function main() {
     await env.setBudget(snap());
     const page = await env.newPage({ layout: LAYOUT, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
     try {
+      await check('the Pi keeps the receipt and the TV gets it with no help', async () => {
+        await env.setBudget(snap('autopay'));
+        await H.sleep(1500);
+        const r = await page.evaluate(() => { const d = window.HUB_BUDGET_TEST.store.data; return d && d.cardDay && d.cardDay.receipt; });
+        assert(r && r.lines && r.lines.length === 7 && r.bottom === -897, 'receipt did not come through the Pi: ' + JSON.stringify(r && r.bottom));
+      });
       await inject(page, snap('autopay'));
       await check('the tile is a receipt of three lines and never says Transfers', async () => {
         const t = await page.evaluate(() => document.querySelector('.cell[data-widget="budget-card"] .tile-body').textContent);
