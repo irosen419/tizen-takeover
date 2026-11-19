@@ -2389,6 +2389,43 @@
       "Untested on real hardware. Pi server 0.7.0 or later."
      ],
      "children": []
+    },
+    {
+     "id": "pi.health",
+     "title": "Weekly health report",
+     "kind": "script",
+     "status": "draft",
+     "pr": "PR (Pi health)",
+     "summary": "A script on the Pi itself (not in Docker), run every Sunday 3:15 AM by a systemd user timer, that checks the whole Pi and writes one JSON report.",
+     "details": [
+      "Checks CPU heat and throttling, under-voltage, memory and swap, disks and folder sizes, SD card errors in the kernel log, reboots without a clean shutdown, every Docker container and its restarts, user services (budget) and failed units, timers, whether each checkout under ~/code is on main and up to date with GitHub (the hourly auto-update), Wi-Fi signal and drops, the hub's log problems, data ages and translation use against the 2,000-line daily cap.",
+      "Also reads Home Assistant's own Pi sensors (System Monitor, Raspberry Pi power) with a week of history. Each finding is a flag, bad or warn, so a Claude routine only has to read and explain.",
+      "Writes data/health/latest.json, a dated copy (12 kept) and latest.txt. Scrubbed before writing: no keys, addresses, Wi-Fi names, links, entity ids or amounts. New parts (storm speaker, room lights) add a file to checks.d/ instead of changing the script."
+     ],
+     "files": [
+      "(PR (Pi health)) pi/health/pi-health.py",
+      "(PR (Pi health)) pi/health/install.sh",
+      "(PR (Pi health)) pi/health/checks.d/README.md",
+      "(PR (Pi health)) pi/health/test_pi_health.py"
+     ],
+     "talksTo": [
+      {
+       "to": "ext.ha",
+       "label": "Pi sensors and a week of history",
+       "dir": "in"
+      },
+      {
+       "to": "pi.server",
+       "label": "status, log problems, translations",
+       "dir": "in"
+      },
+      {
+       "to": "cloud.r2.health",
+       "label": "copied up by the mailbox reader",
+       "dir": "out"
+      }
+     ],
+     "children": []
     }
    ],
    "id": "pi",
@@ -2466,6 +2503,21 @@
        "files": [
         "pi/mailbox.js"
        ]
+      },
+      {
+       "id": "cloud.r2.health",
+       "title": "health/",
+       "kind": "data",
+       "status": "draft",
+       "pr": "PR (Pi health)",
+       "summary": "The weekly Pi health report: health/latest.json and one dated copy per week, kept 180 days.",
+       "details": [
+        "The Pi's mailbox reader copies data/health/latest.json here within a minute of it changing; status.json then carries a one-line summary (when, ok/warn/bad, counts). Claude reads it with curl, like status.json."
+       ],
+       "files": [
+        "(PR (Pi health)) pi/mailbox.js"
+       ],
+       "children": []
       }
      ]
     },
@@ -3478,6 +3530,25 @@
        ]
       }
      ]
+    },
+    {
+     "id": "sched.pi-health",
+     "title": "Weekly Pi health check",
+     "kind": "task",
+     "status": "planned",
+     "summary": "Proposed: a Claude routine on Sunday mornings that reads health/latest.json and tells Ian only what is out of the ordinary.",
+     "details": [
+      "Waits on Ian's yes. It would compare with last week's dated report, post nothing when all is ok, and never send Pi commands on its own."
+     ],
+     "files": [],
+     "talksTo": [
+      {
+       "to": "cloud.r2.health",
+       "label": "reads the newest report",
+       "dir": "in"
+      }
+     ],
+     "children": []
     }
    ],
    "id": "sched",
@@ -4798,11 +4869,42 @@
      "say": "Schedule rows and counts skip the watched episodes"
     }
    ]
+  },
+  {
+   "id": "flow.pi-health",
+   "title": "The weekly Pi health check",
+   "summary": "A timer on the Pi writes a scrubbed report, the mailbox reader copies it to R2, and Claude reads it.",
+   "steps": [
+    {
+     "node": "pi.health",
+     "say": "Sunday 3:15 AM a systemd timer on the Pi runs the health script"
+    },
+    {
+     "node": "ext.ha",
+     "say": "It reads Home Assistant's Pi sensors and their week of history"
+    },
+    {
+     "node": "pi.server",
+     "say": "It asks the hub for its status, log problems and translation use"
+    },
+    {
+     "node": "pi.mailbox",
+     "say": "Within a minute the mailbox reader sees the new report"
+    },
+    {
+     "node": "cloud.r2.health",
+     "say": "It lands in the bucket as health/latest.json"
+    },
+    {
+     "node": "sched.pi-health",
+     "say": "A Claude routine reads it and flags what is out of the ordinary"
+    }
+   ]
   }
  ],
  "title": "Architecture",
  "intro": "Every part of Home Hub, grouped so you can open as much or as little as you want. Tap a part for what it is, its files and what it talks to.",
- "asOf": "As of Nov 19, 2026 · main is v0.33.0",
+ "asOf": "As of Nov 19, 2026 · main is v0.33.1",
  "overview": {
   "w": 1000,
   "h": 620,
@@ -4829,7 +4931,7 @@
     "title": "Scheduled tasks",
     "lines": [
      "To-do converter, AWWS sync,",
-     "weekly code audit"
+     "weekly code and Pi audits"
     ]
    },
    {

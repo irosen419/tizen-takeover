@@ -98,7 +98,7 @@ const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 const translate = require('./translate');
 
-const SERVER_VERSION = '0.14.0';
+const SERVER_VERSION = '0.15.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1667,6 +1667,7 @@ function start(options) {
   if (mailboxCfg.configured) {
     mbox = mailbox.createMailbox({
       config: mailboxCfg, api: api, version: SERVER_VERSION, log: log,
+      healthDir: path.join(dataDir, 'health'),
       onRestart: typeof opt.onRestart === 'function' ? opt.onRestart : null,
       now: typeof opt.mailboxNow === 'function' ? opt.mailboxNow : undefined,
       s3: opt.mailboxS3, manual: opt.mailboxManual === true

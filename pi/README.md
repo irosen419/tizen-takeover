@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.14.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.15.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -157,7 +157,7 @@ Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `la
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.14.0` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.15.0` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 
@@ -538,6 +538,36 @@ Commands: `./hub allsounds status` (state, source, speaker, title and artist), `
 | `Home Assistant cannot be reached` | `HA_URL` is wrong, or Home Assistant is down | Check Home Assistant opens at that address from the Pi |
 | `nothing playing` while an Echo plays | Alexa Media Player has not caught up (it can lag 10 to 30 seconds), or the speaker is not listed in `ALLSOUNDS_ENTITIES` | Wait a moment; check the entity in Home Assistant |
 
+## Weekly health report (server 0.15.0)
+
+Once a week (Sundays at 3:15 AM Central) a script checks the whole Pi and writes one report, so Claude can tell you if anything is drifting before it breaks. It runs on the Pi itself, outside Docker, from a systemd **user** timer, so it needs no sudo.
+
+It checks: CPU temperature and throttling, under-voltage, memory and swap, disk space (and how big `pi/data`, `~/code/*`, the journal and Docker's images and volumes are), SD card or disk errors in the kernel log, reboots that came without a clean shutdown, every Docker container (running, restarts since last week, out-of-memory kills, log problem lines), your user services (the budget app) and any failed units, timers, whether each checkout under `~/code` is on its main branch and up to date with GitHub (so a stuck hourly auto-update shows), Wi-Fi signal, drops and pings, the hub's own log problems, how old the calendar, shows, budget and AWWS data are, and translation use against the 2,000-new-lines-a-day cap. If `HA_TOKEN` is set, it also reads Home Assistant's own Pi sensors (System Monitor, Raspberry Pi power) with a week of history, how many lights and speakers are unavailable, and which Home Assistant updates are waiting.
+
+Each finding is a flag, `bad` or `warn`, with a plain sentence. Where the lines are drawn is the `LIMITS` table at the top of `health/pi-health.py`.
+
+**Where it lands:** `data/health/latest.json` (the newest), one dated copy per week (the newest 12 kept) and `data/health/latest.txt` (the flags in plain lines). Within a minute the hub copies `latest.json` to the Claude mailbox bucket as `health/latest.json` and `health/YYYY-MM-DD.json` (kept 180 days), and `status.json` gains a one-line `health` summary. The hub log says, once per new report:
+
+```
+Claude mailbox: health report sent (warn, 38 KB)
+```
+
+**What it never holds:** anything from `.env`, IP or MAC addresses, the Wi-Fi name, links, email addresses, Home Assistant entity ids, budget amounts, to-do text, or what plays. The report is scrubbed once more before it is written, and its test checks that with a fake hub and Home Assistant that leak on purpose.
+
+### Set it up (once)
+
+```
+cd ~/code/tizen-takeover && git pull && pi/health/install.sh --run && cd pi && docker compose restart hub
+```
+
+`install.sh` writes `~/.config/systemd/user/pi-health.service` and `.timer`, turns the timer on, says when it runs next, and points out anything that would hide part of the picture (linger off, or your user not in the `adm`, `docker` or `video` group, each with the command that fixes it). `--run` makes a first report right away and prints its summary. After that the script itself updates with every `git pull`; the timer never needs installing again. `install.sh --remove` turns it off.
+
+By hand: `python3 health/pi-health.py` (writes the files), `--print` (prints the report, writes nothing), `--quick` (skips pings, a week of history and Docker logs).
+
+### Adding checks for new things
+
+Lights, the Bluetooth storm speaker and whatever comes next add their own check as a small executable in `health/checks.d/` that prints one JSON object; it appears under `extras` in the report and its flags join the list. The contract and an example are in `health/checks.d/README.md`.
+
 ## Run without Docker
 
 If you prefer, install Node 14 or newer (`node --version` shows yours) and run it directly:
@@ -546,7 +576,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.14.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.15.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

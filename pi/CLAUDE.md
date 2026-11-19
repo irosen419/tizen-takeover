@@ -93,6 +93,10 @@ Motion: if the TV's About panel says `extras off (slow screen)` and the owner wa
 
 Other calls: list replies `curl -sS "$B?prefix=outbox/"` (an array of `{key, ...}`); delete an object with `curl -sS -X DELETE "$B/inbox%2F$ID.json"` (only to take back a command the Pi has not picked up yet). Results are kept 7 days. No git, docker or shell commands can be sent this way, by design.
 
+### The weekly Pi health report
+
+A script on the Pi (`health/pi-health.py`, systemd user timer, Sundays 3:15 AM Central) writes a scrubbed JSON report that the hub copies to the bucket. Read it with the same curl: `curl -sS "$B/health%2Flatest.json"` (last week's: `health%2FYYYY-MM-DD.json`). `status.json` carries `health: {generated, overall, bad, warn}`. Start with `summary` and `flags` (each `{level: bad|warn, area, text}`), then the section a flag names; compare with the previous dated report for trends. The mailbox cannot run the script (no shell, by design); a fresh report on demand means asking on the Pi: `python3 health/pi-health.py`. The thresholds are `LIMITS` in the script. New checks go in `health/checks.d/` (see its README), never as secrets or addresses in the output.
+
 ## Rules
 
 - Never print, copy, echo or paste the token or the `HUB_MAILBOX_` keys, and never read `.env` aloud. `./hub` reads it for you.
