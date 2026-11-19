@@ -68,8 +68,7 @@ var HUB_CONFIG = {
      motionFx: false turns them all off; so does ?fx=off on the address. */
   motionFx: { quietTiles: true, ring: true, stagger: true, cover: true, bloom: true, activity: true, edge: true },
 
-  // The tile that has focus when the hub opens.
-  start: 'entertainment',
+  // Focus starts on the top-left tile of whatever layout is showing (app/hub.js topLeftIndex).
 
   /* Live updates: the hub server on the Raspberry Pi, which can change what
      the screen shows and keeps the to-do list (see docs/live-updates.md).

@@ -1554,9 +1554,11 @@ async function checkSwitcher() {
   const page = await newHub();
   await until(() => page.evaluate(() => !window.HUB_TEST.busy()), 4000, 'busy');
   // Up to a top tile; one more Up drops the layout bar.
-  for (let i = 0; i < 4 && (await look.focused(page)) !== 'awws' && (await look.focused(page)) !== 'calendar'; i++) await page.keyboard.press('ArrowUp');
+  // Focus starts on the top-left tile (Today); any top tile will do.
+  const TOP = ['today', 'calendar', 'awws', 'weather'];
+  for (let i = 0; i < 4 && TOP.indexOf(await look.focused(page)) < 0; i++) await page.keyboard.press('ArrowUp');
   const top = await look.focused(page);
-  assert(top === 'calendar' || top === 'awws', 'not on a top tile: ' + top);
+  assert(TOP.indexOf(top) >= 0, 'not on a top tile: ' + top);
   await playing(page, 'stroll', { seed: 11 });
   await page.keyboard.press('ArrowUp');
   const bar = () => page.evaluate(() => document.getElementById('switcher').classList.contains('is-shown'));
