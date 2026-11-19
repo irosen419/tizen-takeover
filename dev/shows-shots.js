@@ -6,6 +6,7 @@
  *   node dev/shows-shots.js [dir]   (default: dev/shots)
  *   node dev/shows-shots.js <dir> split [name]   (Entertainment full screen, EN and ES, at twice the pixels)
  *   node dev/shows-shots.js <dir> showpage   (the Schedule row's new toggle and Show page chip, the show page and its states, EN and ES, at twice the pixels)
+ *   node dev/shows-shots.js <dir> columns [before|after]   (the fixed columns: full screen This week with a row focused, full screen Coming soon, the panel's This month, EN and ES, at twice the pixels)
  * Nothing reaches the internet.
  */
 'use strict';
@@ -28,6 +29,31 @@ async function splitShots(env, shot) {
     await shot(page, NAME + (lang === 'es' ? '-es' : '') + '.png');
     if (page.ctx.errors.length) console.log(lang + ' page errors: ' + page.ctx.errors.join(' | '));
     await page.ctx.close();
+  }
+}
+
+// The fixed columns: files named <name>-week-full-, -soon-full- and -month-panel- (EN and ES).
+async function columnShots(env, shot) {
+  for (const lang of ['en', 'es']) {
+    const o = { lang: lang === 'es' ? 'es' : undefined, scale: 2 };
+    let p = await env.newPage(o);
+    await H.openSchedule(p, 'week');
+    await H.fullScreen(p);
+    await H.focusKey(p, 'sh:row:paradise:');
+    await H.sleep(300);
+    await shot(p, NAME + '-week-full-' + lang + '.png');
+    await p.ctx.close();
+    p = await env.newPage(o);
+    await H.openSchedule(p, 'soon');
+    await H.fullScreen(p);
+    await H.sleep(300);
+    await shot(p, NAME + '-soon-full-' + lang + '.png');
+    await p.ctx.close();
+    p = await env.newPage(o);
+    await H.openSchedule(p, 'month');
+    await H.sleep(300);
+    await shot(p, NAME + '-month-panel-' + lang + '.png');
+    await p.ctx.close();
   }
 }
 
@@ -153,6 +179,12 @@ async function showPageShots(env, shot) {
   try {
     if (ONLY === 'split') {
       await splitShots(env, shot);
+      console.log(shots.join('\n'));
+      await env.stop();
+      process.exit(0);
+    }
+    if (ONLY === 'columns') {
+      await columnShots(env, shot);
       console.log(shots.join('\n'));
       await env.stop();
       process.exit(0);

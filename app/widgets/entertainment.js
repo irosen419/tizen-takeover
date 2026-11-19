@@ -712,7 +712,7 @@
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
 
     onMove: function (dir, from) {
-      if (from && window.HUB_SHOWS && HUB_SHOWS.onMove && HUB_SHOWS.pageOpen()) {
+      if (from && window.HUB_SHOWS && HUB_SHOWS.onMove && (HUB_SHOWS.pageOpen() || inside(from, 'sh'))) {
         var steer = HUB_SHOWS.onMove(dir, from);
         if (steer !== undefined) return steer;
       }

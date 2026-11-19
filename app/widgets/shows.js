@@ -1124,12 +1124,13 @@
 
   function rowKey(a) { return 'sh:row:' + a.show.id + ':' + a.ms; }
 
-  function drawRow(parent, a, t, past) {
+  function drawRow(parent, a, t, past, cols) {
+    cols = cols || { alt: false, mark: false };
     var soon = a.ms > t - 5 * MIN && a.ms - t <= HOUR;
     var on = a.ms <= t && a.ms > t - 5 * MIN;
     var app = watchApp(a.show);
     var alts = alternatives(a.show);
-    var line = el('div', 'sh-line' + (alts.length ? ' has-alt' : ''), parent);
+    var line = el('div', 'sh-line', parent);
     var seen = rowWatched(a);
     var row = el('div', 'sh-row f' + (past ? ' is-past' : '') + (seen ? ' is-watched' : '') + (soon || on ? ' is-soon' : ''), line);
     row.setAttribute('data-key', rowKey(a));
@@ -1137,8 +1138,12 @@
     var info = el('div', 'sh-info', row);
     el('div', 'sh-title', info, a.show.name);
     var meta = el('div', 'sh-meta', info);
-    var bits = epCode(a.eps) + ' · ' + timeText(a.ms);
-    el('span', 'sh-meta-text', meta, bits);
+    // The code and the time each stay whole; a narrow (focused) row breaks
+    // only between them, never inside "8:00 PM".
+    var mt = el('span', 'sh-meta-text', meta);
+    el('span', 'sh-meta-bit', mt, epCode(a.eps) + ' ·');
+    mt.appendChild(document.createTextNode(' '));
+    el('span', 'sh-meta-bit', mt, timeText(a.ms));
     if (seen) {
       var wn = el('span', 'sh-note is-watched', meta);
       el('span', 'sh-check', wn);
@@ -1154,24 +1159,32 @@
     var w = el('span', 'sh-watch', side);
     el('span', 'sh-watch-play', w);
     el('span', 'sh-watch-text', w, app ? word('watchOn', { service: app }) : word('noService'));
-    if (alts.length) {
-      // A chip of its own beside the row: Right reaches it, OK opens that app.
-      var alt = el('div', 'sh-alt f' + (past ? ' is-past' : ''), line, word('alsoOn', { service: alts[0] }));
-      alt.setAttribute('data-key', 'sh:alt:' + a.show.id + ':' + a.ms + ':0');
+    // Fixed columns after the row, in a fixed order: Also on, check, show page. A column a
+    // row lacks keeps an empty slot of the same width; a column no row of the view has is left out.
+    if (cols.alt) {
+      var altSlot = el('div', 'sh-slot is-alt', line);
+      if (alts.length) {
+        // A chip of its own beside the row: Right reaches it, OK opens that app.
+        var alt = el('div', 'sh-alt f' + (past ? ' is-past' : ''), altSlot, word('alsoOn', { service: alts[0] }));
+        alt.setAttribute('data-key', 'sh:alt:' + a.show.id + ':' + a.ms + ':0');
+      }
     }
-    if (markable(a, t)) {
-      // A small check toggle at the end of an aired row, after "Also on": OK marks the episode
-      // watched, or takes the mark off.
-      var mk = el('div', 'sh-mark f' + (seen ? ' is-on' : '') + (past ? ' is-past' : ''), line);
-      mk.setAttribute('data-key', 'sh:mark:' + a.show.id + ':' + a.ms);
-      mk.setAttribute('role', 'checkbox');
-      mk.setAttribute('aria-checked', seen ? 'true' : 'false');
-      var box = el('span', 'sh-mark-box', mk);
-      el('span', 'sh-check', box);
-      el('span', 'sh-mark-text', mk, word(seen ? 'unmark' : 'markUpTo'));
+    if (cols.mark) {
+      var markSlot = el('div', 'sh-slot is-mark', line);
+      if (markable(a, t)) {
+        // A small check toggle at the end of an aired row: OK marks the episode
+        // watched, or takes the mark off.
+        var mk = el('div', 'sh-mark f' + (seen ? ' is-on' : '') + (past ? ' is-past' : ''), markSlot);
+        mk.setAttribute('data-key', 'sh:mark:' + a.show.id + ':' + a.ms);
+        mk.setAttribute('role', 'checkbox');
+        mk.setAttribute('aria-checked', seen ? 'true' : 'false');
+        var box = el('span', 'sh-mark-box', mk);
+        el('span', 'sh-check', box);
+        el('span', 'sh-mark-text', mk, word(seen ? 'unmark' : 'markUpTo'));
+      }
     }
     // The show page: a small round list icon; focused, it names itself.
-    var pg = el('div', 'sh-page f' + (past ? ' is-past' : ''), line);
+    var pg = el('div', 'sh-page f' + (past ? ' is-past' : ''), el('div', 'sh-slot is-page', line));
     pg.setAttribute('data-key', 'sh:page:' + a.show.id + ':' + a.ms);
     pg.setAttribute('role', 'button');
     var ic = el('span', 'sh-page-ic', pg);
@@ -1209,6 +1222,15 @@
 
   function drawDays(parent, groups, t) {
     var box = el('div', 'sh-days', parent);
+    // Which optional columns this view has at all (the same for every row of it).
+    var cols = { alt: false, mark: false };
+    for (var c = 0; c < groups.length; c++) {
+      for (var d = 0; d < groups[c].rows.length; d++) {
+        var cr = groups[c].rows[d];
+        if (alternatives(cr.show).length) cols.alt = true;
+        if (markable(cr, t)) cols.mark = true;
+      }
+    }
     for (var i = 0; i < groups.length; i++) {
       var g = groups[i];
       var day = el('div', 'sh-day' + (g.today ? ' is-today' : '') + (g.past ? ' is-past' : ''), box);
@@ -1217,7 +1239,7 @@
       el('div', 'sh-date-dow', date, dayName(g.ms));
       el('div', 'sh-date-day', date, dayDate(g.ms));
       var rows = el('div', 'sh-rows', day);
-      for (var j = 0; j < g.rows.length; j++) drawRow(rows, g.rows[j], t, g.past || g.rows[j].ms < t - 5 * MIN);
+      for (var j = 0; j < g.rows.length; j++) drawRow(rows, g.rows[j], t, g.past || g.rows[j].ms < t - 5 * MIN, cols);
     }
     return box;
   }
@@ -1234,7 +1256,8 @@
     var info = el('div', 'sh-card-info', card);
     el('div', 'sh-card-title', info, r.show.name);
     el('div', 'sh-card-line', info, soonText(r));
-    if (r.days !== null) {
+    if (r.days === null) el('div', 'sh-count is-blank', card);
+    else {
       var n = el('div', 'sh-count', card);
       if (r.days === 0) el('div', 'sh-count-word is-today', n, word('todayChip'));
       else {
@@ -1824,11 +1847,51 @@
     return null;
   }
 
+  // The listing's focusables (everything under the tabs), in document order.
+  function listingItems() {
+    var all = document.querySelectorAll('.sh .f');
+    var out = [];
+    for (var i = 0; i < all.length; i++) if (!/\bsh-tab\b/.test(all[i].className)) out.push(all[i]);
+    return out;
+  }
+
+  // Left and Right along a row's line go piece by piece in the line's order (row, Also on,
+  // check, show page), whatever the focused pills have grown over.
+  function lineMove(dir, from) {
+    var line = from.parentNode;
+    while (line && line.nodeType === 1 && !/\bsh-line\b/.test(line.className)) line = line.parentNode;
+    if (!line || line.nodeType !== 1) return undefined;
+    var items = line.querySelectorAll('.f');
+    var at = -1;
+    for (var i = 0; i < items.length; i++) if (items[i] === from) at = i;
+    if (at < 0) return undefined;
+    if (dir === 'right') return items[at + 1] || true;
+    return items[at - 1] || undefined;
+  }
+
+  // Down from any tab goes to the first thing of the listing below (the "Did you finish?"
+  // strip or the first row), never sideways into the apps column; Up from the first line of
+  // the listing goes back to the tab on show.
+  function listingMove(dir, from) {
+    var key = from.getAttribute('data-key') || '';
+    var items = listingItems();
+    if (!items.length) return undefined;
+    if (key.indexOf('sh:tab:') === 0) return dir === 'down' ? items[0] : undefined;
+    if (key.indexOf('sh:') !== 0 || dir !== 'up') return undefined;
+    var first = items[0].getBoundingClientRect();
+    var r = from.getBoundingClientRect();
+    if (r.top + r.height / 2 > first.bottom) return undefined;
+    return document.querySelector('.sh .sh-tab.is-on') || undefined;
+  }
+
   // Up and Down on the page go in a fixed order: back, Watch, caught up, the
   // season on show, then the episodes. Returns the node to focus, or undefined
   // for the usual move by position.
   function onMove(dir, from) {
-    if (!S.page || !from || (dir !== 'up' && dir !== 'down')) return undefined;
+    if (!from) return undefined;
+    if (!S.page && (dir === 'left' || dir === 'right')) return lineMove(dir, from);
+    if (dir !== 'up' && dir !== 'down') return undefined;
+    if (!S.page) return listingMove(dir, from);
     var key = from.getAttribute('data-key') || '';
     var sea = document.querySelector('.sh-pg-tabs .sh-tab.is-on');
     var firstEp = document.querySelector('.sh-pg-row');

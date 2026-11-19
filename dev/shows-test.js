@@ -990,9 +990,127 @@ async function main() {
           // The toggle with its Spanish label, focused, stays inside its row's line.
           await H.focusKey(p, 'sh:row:the-great-british-baking-show:');
           await H.key(p, 'ArrowRight');
-          const t = await p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); const line = f.parentNode.getBoundingClientRect(); const r = f.getBoundingClientRect(); const x = f.querySelector('.sh-mark-text'); return { key: f.getAttribute('data-key'), text: x ? x.textContent : '', inside: r.right <= line.right + 0.5, clipped: x ? x.scrollWidth > x.clientWidth + 1 : null }; });
+          const t = await p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); const line = f.closest('.sh-line').getBoundingClientRect(); const r = f.getBoundingClientRect(); const x = f.querySelector('.sh-mark-text'); return { key: f.getAttribute('data-key'), text: x ? x.textContent : '', inside: r.right <= line.right + 0.5, clipped: x ? x.scrollWidth > x.clientWidth + 1 : null }; });
           assert(t.key.indexOf('sh:mark:') === 0 && t.text === 'Marcar como al día' && t.inside && !t.clipped, JSON.stringify(t));
         } finally { await p.ctx.close(); }
+      }
+    });
+
+    // ---------- fixed columns and Down from the tabs ----------
+    for (const lang of ['en', 'es']) {
+      await check('Columns: badges, "Also on", checks and chips start at the same x on every row, aired or not, nothing overlaps (' + lang + ', panel and full screen)', async () => {
+        for (const full of [false, true]) {
+          const p = await env.newPage({ lang: lang === 'es' ? 'es' : undefined });
+          try {
+            await H.openSchedule(p, 'week');
+            if (full) await H.fullScreen(p);
+            await H.sleep(300);
+            const v = await p.evaluate(() => {
+              const out = { bad: [], rows: 0 };
+              const lefts = {};
+              const note = (k, n) => { (lefts[k] = lefts[k] || []).push(n.getBoundingClientRect().left); };
+              const rows = document.querySelectorAll('.sh-line');
+              out.rows = rows.length;
+              Array.prototype.forEach.call(rows, (line) => {
+                const side = line.querySelector('.sh-side');
+                note('side', side);
+                const b = line.querySelector('.sh-badge');
+                if (b) { note('badge', b); if (b.scrollWidth > b.clientWidth + 1 && !/ellipsis/.test(getComputedStyle(b.querySelector('.sh-badge-text')).textOverflow)) out.bad.push('badge clipped'); }
+                ['alt', 'mark', 'page'].forEach((k) => { const sl = line.querySelector('.sh-slot.is-' + k); if (sl) note('slot-' + k, sl); });
+                ['alt', 'mark', 'page'].forEach((k) => { const c = line.querySelector('.sh-slot.is-' + k + ' .f'); if (c) note('chip-' + k, c); });
+                // Left to right, the pieces never overlap.
+                const parts = [line.querySelector('.sh-info'), side].concat(['alt', 'mark', 'page'].map((k) => line.querySelector('.sh-slot.is-' + k))).filter(Boolean);
+                for (let i = 1; i < parts.length; i++) {
+                  if (parts[i - 1].getBoundingClientRect().right > parts[i].getBoundingClientRect().left + 0.5) out.bad.push('overlap ' + i);
+                }
+                const info = line.querySelector('.sh-info');
+                if (info.scrollWidth > info.clientWidth + 1) {
+                  const t = info.querySelector('.sh-title');
+                  if (t.scrollWidth <= t.clientWidth + 1) out.bad.push('meta overflows its info');
+                }
+              });
+              out.lefts = lefts;
+              Object.keys(lefts).forEach((k) => {
+                const a = lefts[k];
+                if (Math.max.apply(null, a) - Math.min.apply(null, a) > 1) out.bad.push(k + ' not aligned: ' + a.join(','));
+              });
+              out.hasAired = !!document.querySelector('.sh-row.is-past'); out.hasUpcoming = !!document.querySelector('.sh-row:not(.is-past)');
+              out.alts = document.querySelectorAll('.sh-alt').length; out.marks = document.querySelectorAll('.sh-slot.is-mark .sh-mark').length;
+              return out;
+            });
+            assert(v.bad.length === 0 && v.rows >= 4 && v.hasAired && v.hasUpcoming && v.alts >= 1 && v.marks >= 1, (full ? 'full: ' : 'panel: ') + JSON.stringify(v.bad) + ' rows ' + v.rows);
+            // Focus moving along a row does not move a column (the focused pills grow over their own slot).
+            const before = await p.evaluate(() => [].map.call(document.querySelectorAll('.sh-slot'), (n) => Math.round(n.getBoundingClientRect().left)).join(','));
+            await H.focusKey(p, 'sh:row:paradise:');
+            await H.key(p, 'ArrowRight', 2);
+            const after = await p.evaluate(() => [].map.call(document.querySelectorAll('.sh-slot'), (n) => Math.round(n.getBoundingClientRect().left)).join(','));
+            assert(before === after, 'a column moved with focus: ' + before + ' / ' + after);
+          } finally { await p.ctx.close(); }
+        }
+      });
+
+      await check('Columns: on Coming soon the status pills and the badges line up, in Spanish too, and nothing is clipped (' + lang + ')', async () => {
+        for (const full of [false, true]) {
+          const p = await env.newPage({ lang: lang === 'es' ? 'es' : undefined });
+          try {
+            await H.openSchedule(p, 'soon');
+            if (full) await H.fullScreen(p);
+            await H.sleep(300);
+            const v = await p.evaluate((full) => {
+              const bad = [];
+              const flags = [].slice.call(document.querySelectorAll('.sh-show .sh-flag'));
+              const badges = [].slice.call(document.querySelectorAll('.sh-show .sh-badge'));
+              const counts = [].slice.call(document.querySelectorAll('.sh-card .sh-count'));
+              const off = (n) => { const c = n.closest('.sh-card'); return n.getBoundingClientRect().right - c.getBoundingClientRect().right; };
+              const same = (a, k) => a.length > 1 && Math.max.apply(null, a.map(k || ((n) => n.getBoundingClientRect().left))) - Math.min.apply(null, a.map(k || ((n) => n.getBoundingClientRect().left))) <= 1;
+              if (!same(flags)) bad.push('flags');
+              if (!same(badges)) bad.push('badges');
+              const cl = counts.filter((n) => !/is-blank/.test(n.className));
+              if (cl.length > 1 && !same(cl, off)) bad.push('counts');
+              flags.forEach((f) => { if (f.scrollWidth > f.clientWidth + 1 && (full || getComputedStyle(f).textOverflow !== 'ellipsis')) bad.push('flag clipped: ' + f.textContent); });
+              badges.forEach((b) => { if (b.scrollWidth > b.clientWidth + 1) bad.push('badge clipped'); });
+              document.querySelectorAll('.sh-show').forEach((r) => {
+                const f = r.querySelector('.sh-flag'); const b = r.querySelector('.sh-badge'); const i = r.querySelector('.sh-info');
+                if (f && b && f.getBoundingClientRect().right > b.getBoundingClientRect().left + 0.5) bad.push('flag over badge');
+                if (f && i.getBoundingClientRect().right > f.getBoundingClientRect().left + 0.5) bad.push('info over flag');
+              });
+              return { bad: bad, n: flags.length };
+            }, full);
+            assert(v.bad.length === 0 && v.n >= 3, (full ? 'full: ' : 'panel: ') + JSON.stringify(v));
+          } finally { await p.ctx.close(); }
+        }
+      });
+    }
+
+    await check('Down from any tab lands in the listing (never the apps column) at full screen, in all four tabs and with "Did you finish?" first; Up from the first line returns to the tab', async () => {
+      for (const started of [undefined, SIX]) {
+        for (const tab of ['today', 'week', 'month', 'soon']) {
+          const p = await env.newPage({ started: started });
+          try {
+            await H.openSchedule(p, tab);
+            await H.fullScreen(p);
+            await H.sleep(300);
+            const at = () => p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? { key: f.getAttribute('data-key') || '', main: !!f.closest('.ent-main'), side: !!f.closest('.ent-side') } : null; });
+            const isTab = (o) => !!o && o.key.indexOf('sh:tab:') === 0;
+            const firstItem = () => p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); const items = [].filter.call(document.querySelectorAll('.sh .f'), (n) => !/\bsh-tab\b/.test(n.className)); return items[0] === f; });
+            // Focus starts on the Full screen button: Down enters the Schedule, then Up to the tab row (Up from the first line lands on the tab showing).
+            await H.key(p, 'ArrowDown');
+            for (let i = 0; i < 30 && !isTab(await at()); i++) await H.key(p, 'ArrowUp');
+            assert(isTab(await at()), 'not on a tab, viewing ' + tab);
+            assert((await at()).key === 'sh:tab:' + tab, 'Up did not land on the tab showing: ' + (await at()).key);
+            // Down from each tab in turn (Right moves along the tabs without switching).
+            for (let n = 0; n < 4; n++) {
+              const here = await at();
+              await H.key(p, 'ArrowDown');
+              const a = await at();
+              assert(a && a.main && !a.side && a.key.indexOf('sh:') === 0 && !isTab(a), 'Down from ' + here.key + ' (viewing ' + tab + (started ? ', finish strip' : '') + '): ' + JSON.stringify(a));
+              assert(await firstItem(), 'Down from ' + here.key + ' did not land on the first listing item');
+              await H.key(p, 'ArrowUp');
+              assert(isTab(await at()), 'Up from the first line did not return to a tab: ' + JSON.stringify(await at()));
+              if (n < 3) { await H.key(p, 'ArrowRight'); }
+            }
+          } finally { await p.ctx.close(); }
+        }
       }
     });
 
