@@ -26,7 +26,7 @@ const OUT = path.join(ROOT, 'docs', 'screenshots');
 const TOKEN = 'preview-token-not-a-secret-000000';
 const MORNING = Date.parse('2026-11-15T16:40:00Z');   // 10:40 AM in Chicago
 const EVENING = Date.parse('2026-11-16T03:00:00Z');   // 9:00 PM in Chicago
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'cdn.jsdelivr.net', '192.168.1.219'];
 
 let PAGE_PORT, LIVE_PORT, PAGE, LIVE, DEAD;
 let preview = null;

@@ -26,7 +26,7 @@ const clockPage = require('./clock-page');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'cdn.jsdelivr.net', '192.168.1.219'];
 
 let PAGE_PORT, SERVICE_PORT, LIVE_PORT, PAGE, LIVE;
 let dataDir;

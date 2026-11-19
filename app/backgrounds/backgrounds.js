@@ -29,7 +29,7 @@
  */
 var HUB_BACKGROUNDS = {
   base: 'https://cdn.jsdelivr.net/gh/irosen419/tizen-takeover@backgrounds/',
-  fallback: { file: 'backgrounds/ocean.jpg', title: 'Ocean (picture site unreachable)', credit: 'placeholder picture' },
+  fallback: { file: 'backgrounds/ocean.jpg', title: 'Ocean', credit: 'placeholder picture' },
   day: [
     { file: "day/cloud-sea-horizon.jpg", title: "Cloud sea horizon", credit: "NASA, public domain" },
     { file: "day/bright-cloud-horizon.jpg", title: "Bright cloud horizon", credit: "NASA, public domain" },

@@ -50,7 +50,7 @@ const childProcess = require('child_process');
 const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'cdn.jsdelivr.net', '192.168.1.219'];
 const ZONE = 'America/Chicago';
 
 // Sunday 21 June 2026, 6:10 PM in Chicago (CDT): sun on the plants.

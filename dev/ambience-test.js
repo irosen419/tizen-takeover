@@ -42,6 +42,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const OCEAN_JPG = fs.readFileSync(path.join(__dirname, '..', 'app', 'backgrounds', 'ocean.jpg'));
 const http = require('http');
 const net = require('net');
 const childProcess = require('child_process');
@@ -137,6 +138,8 @@ async function open(o) {
   await context.route(/.*/, (route) => {
     const u = new URL(route.request().url());
     const port = Number(u.port);
+    // The background pictures' host (the backgrounds branch on jsDelivr): the local ocean picture stands in.
+    if (u.hostname === 'cdn.jsdelivr.net' && /@backgrounds\//.test(u.pathname)) return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'Access-Control-Allow-Origin': '*' }, body: OCEAN_JPG });
     if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') { context.foreign.push(u.hostname); return route.abort(); }
     if (env.mockPorts.indexOf(port) >= 0) { context.foreign.push('mock lights'); return route.abort(); }
     return route.fallback();

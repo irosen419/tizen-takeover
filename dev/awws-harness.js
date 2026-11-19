@@ -20,7 +20,7 @@ const budgetSample = require('./budget-sample');
 const TOKEN = 'preview-token-not-a-secret-000000';
 // Monday 16 November 2026, 10:40 AM in Chicago.
 const MONDAY = Date.parse('2026-11-16T16:40:00Z');
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'cdn.jsdelivr.net', '192.168.1.219'];
 
 /* Spanish for the stress screenshots and checks: real words, with accents,
    most of them longer than the English. The TV itself stays English. */

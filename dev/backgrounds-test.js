@@ -28,7 +28,7 @@ const path = require('path');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
 
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'cdn.jsdelivr.net', '192.168.1.219'];
 const ZONE = 'America/Chicago';
 const PICTURE = fs.readFileSync(path.join(__dirname, '..', 'app', 'backgrounds', 'ocean.jpg'));
 

@@ -324,7 +324,7 @@ async function waitIdle(page) {
 
 function noErrors(context) {
   assert(!context.log.errors.length, 'console errors: ' + context.log.errors.join(' | '));
-  assert(!context.log.external.filter((u) => !/192\.168\.1\.219|open-meteo\.com|ipwho\.is|geojs\.io/.test(u)).length,
+  assert(!context.log.external.filter((u) => !/192\.168\.1\.219|open-meteo\.com|ipwho\.is|geojs\.io|cdn\.jsdelivr\.net\/gh\/irosen419\/tizen-takeover@backgrounds\//.test(u)).length,
     'unexpected outside requests: ' + context.log.external.join(', '));
 }
 

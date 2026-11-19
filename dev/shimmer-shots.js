@@ -35,7 +35,7 @@ const awwsSample = require('./awws-sample');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'cdn.jsdelivr.net', '192.168.1.219'];
 const AT_MS = 500;                       // the moment shown, into the sweep
 const TODOS = ['Order more activity sheets', 'Call Cedar Hollow back', 'Write to the library about the visit'];
 const ARRIVAL = 'Send the Maple Grove photos';
