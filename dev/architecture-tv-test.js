@@ -230,8 +230,8 @@ function checkFiles() {
   assert(/widgets\/architecture\.css/.test(html) && /widgets\/architecture\.js/.test(html), 'hub.html does not link the files');
   assert(!/architecture-data/.test(html), 'hub.html loads the data at boot');
   const order = fs.readFileSync(path.join(ROOT, 'dev/styles-test.js'), 'utf8');
-  assert(/widgets\/ambience\.css widgets\/architecture\.css agents\.css/.test(order), 'styles-test ORDER lacks architecture.css');
-  assert(html.indexOf('architecture.css') > html.indexOf('ambience.css') && html.indexOf('architecture.css') < html.indexOf('agents.css'), 'hub.html order differs from ORDER');
+  assert(/widgets\/ambience\.css widgets\/architecture\.css widgets\/investments\.css agents\.css/.test(order), 'styles-test ORDER lacks architecture.css');
+  assert(html.indexOf('architecture.css') > html.indexOf('ambience.css') && html.indexOf('investments.css') < html.indexOf('agents.css'), 'hub.html order differs from ORDER');
   const out = childProcess.spawnSync(process.execPath, [path.join(ROOT, 'studio/build-architecture.js'), '--check'], { encoding: 'utf8' });
   assert(out.status === 0, 'build-architecture --check: ' + out.stdout);
 }
@@ -333,7 +333,7 @@ async function checkOpenAndLoad() {
     flows: (document.querySelector('#panel .ar-chip-flows') || {}).textContent
   }));
   assert(r.boxes === 7 && r.edges === 6 && r.bars >= 7 && r.legend === 4, JSON.stringify(r));
-  assert(/^As of /.test(r.asof) && /Back/.test(r.hint) && r.crumb === 'Big picture' && /Data flows \(22\)/.test(r.flows), JSON.stringify(r));
+  assert(/^As of /.test(r.asof) && /Back/.test(r.hint) && r.crumb === 'Big picture' && /Data flows \(23\)/.test(r.flows), JSON.stringify(r));
   assert(await focusKey(page) === 'bp:cloud', 'focus starts on ' + await focusKey(page));
   // Back at the Big picture closes the widget.
   await press(page, 'Escape');
@@ -550,7 +550,7 @@ async function checkFlows() {
   let s = await st(page);
   assert(s.view === 'flows', JSON.stringify(s));
   const n = await page.evaluate(() => document.querySelectorAll('#panel .ar-frow').length);
-  assert(n === 22, n + ' flows in the list');
+  assert(n === 23, n + ' flows in the list');
   assert(await focusKey(page) === 'fl:flow.pr-to-tv', 'focus on ' + await focusKey(page));
   // Down the list, then into a flow.
   await press(page, 'ArrowDown'); await press(page, 'ArrowDown');

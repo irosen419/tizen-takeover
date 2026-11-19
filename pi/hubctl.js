@@ -72,7 +72,7 @@ const linktests = require('./linktests');
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
 const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach',
-  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'allsounds'];
+  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'allsounds'];
 
 /* ---------- settings ---------- */
 
@@ -1195,8 +1195,8 @@ const HELP = [
   'Home Hub commands (run from the pi folder):',
   '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying,',
   '                              today (the clock), awws, awws-visits, awws-agenda, awws-todo,',
-  '                              awws-reach, awws-money, budget-room, budget-card, budget-goals',
-  '                              budget-lab or allsounds (the test widget)',
+  '                              awws-reach, awws-money, budget-room, budget-card, budget-goals,',
+  '                              budget-lab, investments or allsounds (the test widget)',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
