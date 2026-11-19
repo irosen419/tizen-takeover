@@ -183,6 +183,12 @@ var HUB_CONFIG = {
        layout. New widgets are tried the same way: one layout, one widget. */
     { id: 'ambience-test', name: 'Ambience test', layout: [
       { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    /* A test layout: Architecture (app/widgets/architecture.js, the map of the
+       whole system, driven by the remote) on its own, filling the screen. The
+       three busy layouts have no free cell for a tile yet. */
+    { id: 'architecture-test', name: 'Architecture test', layout: [
+      { widget: 'architecture', x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
 
@@ -453,6 +459,13 @@ var HUB_CONFIG = {
      * the panel's note; keepOutOfSun: the one to keep out of the summer
      * evening beam.
      */
+    /*
+     * Architecture: the map of the whole system, opened with the remote (app/widgets/architecture.js).
+     * OK on its tile opens straight to full screen; Back goes up a level and closes at the Big picture.
+     * It is on the "Architecture test" layout only; the map's data loads when it is first opened.
+     */
+    architecture: { openMode: 'full' },
+
     sunpath: {
       roofAngle: 40,
       gapFeet: 2.0,

@@ -1180,6 +1180,36 @@
         "Nothing has run against real Home Assistant, WLED or the TV yet. Geeni bulbs must first appear in Home Assistant as lights."
        ],
        "children": []
+      },
+      {
+       "id": "tv.widgets.architecture",
+       "title": "Architecture",
+       "kind": "component",
+       "status": "draft",
+       "pr": "PR 105",
+       "summary": "This map on the TV: Big picture, group diagrams and a detail drawer, all driven by the remote, plus the data flows stepped one by one.",
+       "details": [
+        "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 170 KB of data (app/widgets/architecture-data.js) loads only when the widget is first opened.",
+        "The data is the same studio/architecture/data.json the Studio page draws: node studio/build-architecture.js writes both, and its --check fails when either is out of date."
+       ],
+       "files": [
+        "app/widgets/architecture.js",
+        "app/widgets/architecture.css",
+        "app/widgets/architecture-data.js",
+        "studio/build-architecture.js",
+        "dev/architecture-tv-test.js",
+        "dev/architecture-shots.js"
+       ],
+       "talksTo": [
+        {
+         "to": "studio.arch-page",
+         "label": "same data.json, copied by the build script",
+         "dir": "in"
+        }
+       ],
+       "notes": [
+        "Not yet seen on the real TV: Chrome 63 drawing of the connector lines and the drawer slide are only checked in headless Chromium."
+       ]
       }
      ]
     },
@@ -2377,8 +2407,7 @@
      "id": "cloud.pictures",
      "title": "R2 pictures bucket",
      "kind": "service",
-     "status": "draft",
-     "pr": "PR 95",
+     "status": "unverified",
      "summary": "The public Cloudflare R2 bucket home-hub-pictures: the one home for big or growing pictures (backgrounds, clay source art, later character art), so the hub's package stays small.",
      "details": [
       "app/backgrounds/backgrounds.js names every picture, its title and credit, and one base address that points at the bucket. The hub shows one day picture and one night picture each day.",
@@ -2389,7 +2418,7 @@
       "Free tier: 10 GB stored, no download fees. The free r2.dev address is rate-limited, which is fine for two pictures a day."
      ],
      "files": [
-      "(PR 95) app/backgrounds/backgrounds.js",
+      "app/backgrounds/backgrounds.js",
       "app/backgrounds/ocean.jpg",
       "docs/asset-storage.md",
       "art/clay/tools/fetch_source.py"
@@ -3641,22 +3670,29 @@
      "title": "Architecture page",
      "kind": "doc",
      "status": "unverified",
-     "summary": "This page: an expandable map of the TV, Pi, cloud, outside services, tasks and tools, drawn from the repo and project memory.",
+     "summary": "An expandable map of the TV, Pi, cloud, outside services, tasks and tools, drawn from the repo and project memory. It is in the Studio and also on the TV (the Architecture widget).",
      "details": [
       "The map lives in studio/architecture/data.json. arch.js and arch.css draw it, and node studio/build-architecture.js copies all three into the Studio file, which is published as one page.",
-      "dev/architecture-test.js fails when a link or a file path is wrong, or when a secret, address or email slips into the data."
+      "dev/architecture-test.js fails when a link or a file path is wrong, or when a secret, address or email slips into the data.",
+      "The TV widget (app/widgets/architecture.js) draws the same data.json with the remote: build-architecture.js also writes app/widgets/architecture-data.js and a small summary of status counts for the tile."
      ],
      "files": [
       "studio/architecture/data.json",
       "studio/architecture/arch.js",
       "studio/architecture/arch.css",
       "studio/build-architecture.js",
-      "dev/architecture-test.js"
+      "dev/architecture-test.js",
+      "app/widgets/architecture-data.js"
      ],
      "talksTo": [
       {
        "to": "studio.layout-studio",
        "label": "lives in the Studio as a Pages chip",
+       "dir": "out"
+      },
+      {
+       "to": "tv.widgets.architecture",
+       "label": "the same data, drawn on the TV with the remote",
        "dir": "out"
       }
      ],
@@ -4553,7 +4589,7 @@
   },
   {
    "id": "flow.pi-shows",
-   "title": "Show times reach the Schedule (draft)",
+   "title": "Show times reach the Schedule",
    "summary": "PR 72: the Pi looks up Ian's shows on TVmaze every 6 hours and pushes the schedule.",
    "steps": [
     {
@@ -4607,7 +4643,7 @@
   },
   {
    "id": "flow.background-picture",
-   "title": "Today's background picture (draft)",
+   "title": "Today's background picture",
    "summary": "The hub picks today's day or night picture and loads it from the R2 bucket, or shows the ocean if it can't.",
    "steps": [
     {
@@ -4627,7 +4663,7 @@
  ],
  "title": "Architecture",
  "intro": "Every part of Home Hub, grouped so you can open as much or as little as you want. Tap a part for what it is, its files and what it talks to.",
- "asOf": "As of Nov 19, 2026 · main is v0.29.20 · open PR: 95",
+ "asOf": "As of Nov 19, 2026 · main is v0.30.1",
  "overview": {
   "w": 1000,
   "h": 620,
