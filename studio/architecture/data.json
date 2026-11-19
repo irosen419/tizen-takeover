@@ -1019,7 +1019,7 @@
          "title": "Card day",
          "kind": "component",
          "status": "unverified",
-         "summary": "Tile: the card day date, Covered or Short, and the covering transfers. Panel: each transfer and coming paychecks.",
+         "summary": "Tile: the card day date, Covered or Short, and the covering transfers. Panel: each transfer and coming paychecks. Panel pages: the receipt and a Next 3 months outlook (the snapshot's cardDay.outlook: where the month starts, ahead or behind, and three months of paychecks, bills and spending).",
          "files": [
           "app/widgets/budget.js"
          ]
@@ -1957,7 +1957,7 @@
      "status": "unverified",
      "summary": "Checks the totals-only snapshot that the budget app on the same Pi posts locally. It never goes through the cloud.",
      "details": [
-      "Sections: daily room, card day and how it is covered, goal states, and alerts that name a merchant with a new charge (never an amount). Same text rules as the AWWS snapshot: no emails or links, unknown fields dropped, 48 KB at most.",
+      "Sections: daily room, card day and how it is covered (with its optional 3 month outlook, which the server drops on its own when invalid), goal states, and alerts that name a merchant with a new charge (never an amount). Same text rules as the AWWS snapshot: no emails or links, unknown fields dropped, 48 KB at most.",
       "./hub budget show prints dates, counts and states only, never a label or an amount. show: false under widgets.budget hides the tiles for guests."
      ],
      "files": [
