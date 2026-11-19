@@ -2,7 +2,7 @@
  * The made-up budget snapshot for the tests, the screenshots and the preview,
  * and the Spanish words for the budget tiles.
  *
- *   node dev/budget-sample.js [--covered|--short] [--negative] [--payday] | \
+ *   node dev/budget-sample.js [--covered|--short] [--negative] [--payday] [--receipt|--receipt-covered|--receipt-short] | \
  *     HUB_TOKEN=preview-token-not-a-secret-000000 node pi/hubctl.js budget set -
  *
  * prints the sample (pi/fixtures/budget-sample.json) with sentAt one minute
@@ -31,11 +31,15 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * payment plan, the room says basis "autopay", the lab sends autopayRoom and
  * autopayDate), payday (a 14 day window to card day on Nov 30 with a
  * payday on Nov 20 inside it, for the runway chart: its runway ends at
- * lab.room to the cent), pace ('fresh', 'over' or a number: the streak) }.
+ * lab.room to the cent), pace ('fresh', 'over' or a number: the streak), receipt
+ * (cardDay.receipt, the Card day receipt: 'autopay' short on Dec 1 and covered by
+ * autopay, 'covered', or 'short' even with autopay, $312 more; every figure made up) }.
  */
 function snapshot(opts) {
   opts = opts || {};
   const s = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+  // The fixture carries a receipt for the Pi's tests; the TV's samples ask for one with opts.receipt.
+  if (s.cardDay) delete s.cardDay.receipt;
   if (opts.sentAt) s.sentAt = opts.sentAt;
   if (opts.short) {
     s.cardDay.covered = false;
@@ -96,6 +100,7 @@ function snapshot(opts) {
     s.lab.autopayRoom = 215.8;
     s.lab.autopayDate = '2026-12-07';
   }
+  if (opts.receipt) applyReceipt(s, opts.receipt === true ? 'autopay' : opts.receipt);
   if (opts.pace !== undefined) {
     // The pace streak: 'fresh' (no capped day logged yet, no streak),
     // 'over' (yesterday went over), or a number of days under in a row
@@ -114,6 +119,75 @@ function snapshot(opts) {
   // Section times follow sentAt, so an old snapshot is old all through.
   for (const k of SECTIONS) if (s[k]) s[k].asOf = s.sentAt;
   return s;
+}
+
+/*
+ * The Card day receipt (prototype), the budget app's own lines in its order:
+ * Checking now 5210, Bills before Dec 1 -160, Cards today pending included
+ * -4247, Recurring charges on the cards before Dec 1 -190, Bills from Dec 1
+ * to payday Dec 3 -1450, Planned buys -60 = Left to spend -897. 'covered'
+ * has 2000 more in checking; 'short' has the autopay plan short too, $312
+ * less in checking. The cards owe 4437 in all (balance + pending 4247, the
+ * recurring charges 190): that is the figure the old tile showed as a bare
+ * "From checking".
+ */
+function applyReceipt(s, kind) {
+  const extra = kind === 'covered' ? 2000 : kind === 'short' ? -312 : 0;
+  // amount = balance + pending (what the card owes today); coming = recurring charges before card day.
+  const cards = [
+    { label: 'Sapphire Reserve', bal: 1602, pending: 87, coming: 82, autopay: '2026-12-07', pay: 874, auto: 897 },
+    { label: 'Sapphire Preferred', bal: 1388, pending: 64, coming: 48, autopay: '2026-12-08', pay: 1500, auto: 0 },
+    { label: 'Freedom Unlimited', bal: 540, pending: 0, coming: 60, autopay: '2026-12-09', pay: 600, auto: 0 },
+    { label: 'Prime Visa', bal: 566, pending: 0, coming: 0, autopay: '2026-11-24', pay: 0, auto: 566 }
+  ];
+  cards.forEach((c) => { c.amount = c.bal + c.pending; });
+  const checking = 5210 + extra;
+  const bottom = checking - 160 - 4247 - 190 - 1450 - 60;
+  if (kind === 'covered') { cards[0].pay = 1771; cards[0].auto = 0; }
+  if (kind === 'short') { cards[0].pay -= 312; cards[0].auto += 312; }
+  s.cardDay.date = '2026-12-01';
+  s.cardDay.daysAway = 15;
+  s.cardDay.paychecks = ['2026-12-03', '2026-12-17'];
+  delete s.cardDay.transfers;
+  delete s.cardDay.shortBy;
+  delete s.cardDay.byAutopay;
+  delete s.cardDay.autopayShortBy;
+  delete s.cardDay.plan;
+  s.cardDay.covered = bottom >= 0;
+  const first = [0, 1, 2].filter((n) => cards[n].pay > 0).map((n) => ({ label: cards[n].label, date: '2026-12-01', amount: cards[n].pay, kind: 'first' }));
+  const later = cards.filter((c) => c.auto > 0).map((c) => ({ label: c.label, date: c.autopay, amount: c.auto, kind: 'autopay' }));
+  s.cardDay.plan = bottom < 0 ? first.concat(later) : first;
+  if (bottom < 0) {
+    s.cardDay.shortBy = -bottom;
+    s.cardDay.byAutopay = kind !== 'short';
+    if (kind === 'short') s.cardDay.autopayShortBy = 312;
+  }
+  s.cardDay.receipt = {
+    asOf: '2026-11-16T12:08:00Z',
+    next: { date: '2026-12-03', amount: 3595 },
+    lines: [
+      { key: 'checking', label: 'Checking now', amount: checking },
+      { key: 'paychecks', label: 'Paychecks before Dec 1', amount: 0, items: [] },
+      { key: 'billsBefore', label: 'Bills before Dec 1', amount: -160, items: [
+        { label: 'Phone', date: '2026-11-22', amount: 85, new: true },
+        { label: 'Internet', date: '2026-11-27', amount: 75 }
+      ] },
+      { key: 'cardsToday', label: 'Cards today, pending included', amount: -4247, items: cards },
+      { key: 'cardCharges', label: 'Recurring charges on the cards before Dec 1', amount: -190, items: [
+        { label: 'Streaming Plus', date: '2026-11-21', amount: 18, note: 'Sapphire Reserve' },
+        { label: 'Gym', date: '2026-11-28', amount: 64, note: 'Sapphire Reserve' },
+        { label: 'Meal kit', date: '2026-11-30', amount: 48, note: 'Sapphire Preferred' },
+        { label: 'News site', date: '2026-11-23', amount: 15, note: 'Freedom Unlimited' },
+        { label: 'Photo software', date: '2026-11-29', amount: 45, note: 'Freedom Unlimited' }
+      ] },
+      { key: 'billsAfter', label: 'Bills from Dec 1 to payday Dec 3', amount: -1450, items: [
+        { label: 'Rent', date: '2026-12-01', amount: 1450 }
+      ] },
+      { key: 'buys', label: 'Planned buys', amount: -60, items: [{ label: 'Headphones', amount: 60 }] }
+    ],
+    bottom: bottom
+  };
+  if (bottom > 0) s.cardDay.receipt.perDay = Math.round(bottom / 17);
 }
 
 /* Spanish for the stress checks: most words run longer than the English. */
@@ -185,6 +259,7 @@ if (require.main === module) {
   const args = process.argv.slice(2);
   const s = snapshot({ sentAt: new Date(Date.now() - 60000).toISOString().replace(/\.\d+Z$/, 'Z'),
     short: args.indexOf('--short') >= 0, shortFirst: args.indexOf('--short-first') >= 0 || args.indexOf('--autopay') >= 0,
-    autopay: args.indexOf('--autopay') >= 0, negative: args.indexOf('--negative') >= 0, payday: args.indexOf('--payday') >= 0 });
+    autopay: args.indexOf('--autopay') >= 0, negative: args.indexOf('--negative') >= 0,
+    receipt: args.indexOf('--receipt-covered') >= 0 ? 'covered' : args.indexOf('--receipt-short') >= 0 ? 'short' : args.indexOf('--receipt') >= 0 ? 'autopay' : false, payday: args.indexOf('--payday') >= 0 });
   process.stdout.write(JSON.stringify(s, null, 2) + '\n');
 }

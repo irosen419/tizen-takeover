@@ -123,7 +123,7 @@ Besides single episodes, the owner can say "I'm up to S3E4" (a binge) or "I've s
 - **Caught up** sets `upTo` to the latest numbered episode that has already aired (from the show's full list, else from the snapshot's episodes) and clears `unwatched`. It answers 400 when nothing has aired.
 - **Mark watched** on an episode inside `upTo` (one that is in `unwatched`) takes it out of `unwatched`; outside it adds it to `watched`. **Unwatch** inside `upTo` adds it to `unwatched` (and takes it off `watched` if it was there).
 
-By hand, with the token: `POST /api/shows/upto` `{ "show": "<name or id>", "episode": "S3E4" }` and `POST /api/shows/caughtup` `{ "show": "<name or id>" }`; `./hub shows upto "<name>" S3E4`, `./hub shows caughtup "<name>"`, and the mailbox's `shows.upto {name, episode}` and `shows.caughtup {name}` do the same. Needs server 0.10.0.
+By hand, with the token: `POST /api/shows/upto` `{ "show": "<name or id>", "episode": "S3E4" }` and `POST /api/shows/caughtup` `{ "show": "<name or id>" }`; `./hub shows upto "<name>" S3E4`, `./hub shows caughtup "<name>"`, and the mailbox's `shows.upto {name, episode}` and `shows.caughtup {name}` do the same. Needs server 0.12.0.
 
 ## The show page
 
@@ -143,7 +143,7 @@ By hand, with the token: `POST /api/shows/upto` `{ "show": "<name or id>", "epis
 ```
 
 - `seasons` and their `episodes` are sorted ascending. Only numbered episodes are listed. `runtime` is present when TVmaze has one; `watched: true` only on watched episodes. `progress` is as in the snapshot, computed now. `checkedAt` is when the show was last read well, or `null`.
-- `partial: true` (absent otherwise) means the Pi has no full list for the show yet (not read since 0.10.0 started, or TVmaze not reached): `seasons` then holds only the episodes the snapshot has (the week back to 60 days ahead), and `progress.aired` is `0`.
+- `partial: true` (absent otherwise) means the Pi has no full list for the show yet (not read since 0.12.0 started, or TVmaze not reached): `seasons` then holds only the episodes the snapshot has (the week back to 60 days ahead), and `progress.aired` is `0`.
 - An id that is not on the list answers 404 `{ ok: false, error }`; no `id` answers 400.
 - The Pi keeps the lists in `data/show-episodes.json` (`{ v: 1, shows: { "<show id>": [ { season, number, name, airstamp, runtime? } ] } }`, numbered episodes only, at most 800 per show, written only when one changes, dropped with the show). They come from the `GET /shows/<id>/episodes` call every refresh already makes. In sample mode (`HUB_SHOWS=sample`) the lists come from an optional `episodes` array on a show in `pi/fixtures/shows-sample.json`, moved to today like the rest, and are never part of the snapshot.
 

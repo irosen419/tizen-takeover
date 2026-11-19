@@ -717,7 +717,7 @@
           }
          ],
          "notes": [
-          "Needs Pi server 0.10.0; an older Pi shows a \"needs a newer Pi\" message on the page."
+          "Needs Pi server 0.12.0; an older Pi shows a \"needs a newer Pi\" message on the page."
          ]
         }
        ]
@@ -2060,7 +2060,7 @@
       "The list lives in data/shows.json (started from a seed list). For each show the Pi asks TVmaze (public, no key) for next and past episodes, at most 20 calls per 10 s, and pushes the result. A show that fails keeps its last copy, marked stale.",
       "Adds ./hub shows and mailbox commands shows.list, add, remove, set and refresh, plus a Watch link test whose answers the TV sends back. Log lines carry no show names or addresses.",
       "Progress per show is a watermark plus exceptions: upTo (everything up to and including an episode counts as watched), single watched marks after it, and unwatched exceptions before it. The snapshot carries progress (aired, seen, next, caught up) per show.",
-      "Each refresh keeps a compact list of every episode per show in data/show-episodes.json; the TV fetches one show's list when its show page opens, so the 6-hourly snapshot stays small. Server 0.10.0 adds ./hub shows upto / caughtup and mailbox shows.upto / shows.caughtup."
+      "Each refresh keeps a compact list of every episode per show in data/show-episodes.json; the TV fetches one show's list when its show page opens, so the 6-hourly snapshot stays small. Server 0.12.0 adds ./hub shows upto / caughtup and mailbox shows.upto / shows.caughtup."
      ],
      "files": [
       "pi/shows.js",

@@ -19,7 +19,31 @@
       { "label": "From savings", "amount": 125 },
       { "label": "Side work", "amount": 60 }
     ],
-    "paychecks": ["2026-11-20", "2026-12-04"]
+    "paychecks": ["2026-11-20", "2026-12-04"],
+    "receipt": {
+      "asOf": "2026-11-16T15:05:00Z",
+      "next": { "date": "2026-11-20", "amount": 3595 },
+      "perDay": 143,
+      "lines": [
+        { "key": "checking", "label": "Checking now", "amount": 4200 },
+        { "key": "paychecks", "label": "Paychecks before card day", "amount": 0, "items": [] },
+        { "key": "billsBefore", "label": "Bills before card day", "amount": -160, "items": [
+          { "label": "Phone", "amount": 85, "date": "2026-11-17", "new": true },
+          { "label": "Internet", "amount": 75, "date": "2026-11-18" }
+        ] },
+        { "key": "cardsToday", "label": "Cards today, pending included", "amount": -2100, "items": [
+          { "label": "Blue Card", "amount": 1300, "bal": 1250, "pending": 50, "coming": 0, "autopay": "2026-11-27", "pay": 1300, "auto": 0 },
+          { "label": "Green Card", "amount": 800, "bal": 800, "pending": 0, "coming": 0, "autopay": "2026-11-24", "pay": 800, "auto": 0 }
+        ] },
+        { "key": "billsAfter", "label": "Bills from card day to payday", "amount": -1450, "items": [
+          { "label": "Rent", "amount": 1450, "date": "2026-11-19" }
+        ] },
+        { "key": "buys", "label": "Planned buys", "amount": -60, "items": [
+          { "label": "Headphones", "amount": 60 }
+        ] }
+      ],
+      "bottom": 430
+    }
   },
   "goals": {
     "asOf": "2026-11-16T15:05:00Z",

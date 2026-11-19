@@ -161,6 +161,7 @@
 
   var widgets = [];       // [{ w, ctx, cell, tile, body, subEl, expandable }]
   var homeIndex = -1;     // focused tile
+  var FOCUS_KEEP_MS = 60000; // a layout arriving within this of a key press or click leaves focus alone
   var open = null;        // the widget record whose panel is open
   var mode = null;        // 'panel' | 'full' | null
   var busy = false;       // a transition is running; keys are ignored
@@ -1314,10 +1315,13 @@
     for (var k = 0; k < widgets.length; k++) {
       var entry = at[widgets[k].w.id];
       placeCell(widgets[k].cell, entry);
+      widgets[k].entry = entry;
       if (applySize(widgets[k], entry)) resized.push(widgets[k]);
     }
     layoutKey = key;
     measureHome();
+    // Back to the top-left tile, unless the remote was used just now.
+    if (new Date().getTime() - lastInputAt > FOCUS_KEEP_MS) focusHome(topLeftIndex());
     placeGlass();
     clayHook('layout');
     agentsHook('stop');
@@ -1851,6 +1855,10 @@
     return ctx;
   }
 
+  // The layout's one widget, when it fills the whole grid (12 by 6) and can
+  // open; null otherwise. Set by build(), opened full screen by openSolo().
+  var soloRec = null;
+
   function build() {
     var byId = pickWidgets();
     registry = byId;
@@ -1881,11 +1889,18 @@
       }
       rec.cell = cell;
       rec.tile = tile;
+      rec.entry = entry;
       applySize(rec, entry);
       rec.body = el('div', 'tile-body', tile);
       rec.index = widgets.length;
       widgets.push(rec);
       tile.addEventListener('click', onTileClick(rec));
+    }
+
+    soloRec = null;
+    if (widgets.length === 1 && widgets[0].expandable && !widgets[0].w.planned) {
+      var only = widgets[0].entry;
+      if (only && only.x === 0 && only.y === 0 && only.w === GRID_COLS && only.h === GRID_ROWS) soloRec = widgets[0];
     }
 
     for (var j = 0; j < widgets.length; j++) call(widgets[j], 'init', [widgets[j].ctx]);
@@ -1903,13 +1918,32 @@
       }
     } catch (e) { /* titles stay in the language they started in */ }
 
-    var start = -1;
-    for (var s = 0; s < widgets.length; s++) {
-      if (!widgets[s].expandable) continue;
-      if (start === -1) start = s;
-      if (widgets[s].w.id === cfg.start) { start = s; break; }
+    focusHome(topLeftIndex());
+  }
+
+  // The tile that gets focus when the hub opens or a layout arrives: the
+  // top-left one (smallest y on the grid, then smallest x), skipping static
+  // tiles. -1 when nothing can take focus.
+  function topLeftIndex() {
+    var best = -1;
+    for (var i = 0; i < widgets.length; i++) {
+      var e = widgets[i].entry;
+      if (!widgets[i].expandable || !e) continue;
+      if (best === -1) { best = i; continue; }
+      var b = widgets[best].entry;
+      if (e.y < b.y || (e.y === b.y && e.x < b.x)) best = i;
     }
-    focusHome(start);
+    return best;
+  }
+
+  // A one-widget layout opens straight to the widget's full screen as the hub
+  // starts (a layout change reloads the page, so this runs for each one).
+  // Back still closes it, to the tile and the layout bar above it.
+  function openSolo() {
+    if (!soloRec) return;
+    setTimeout(function () {
+      if (!open && !busy && !frameOpen && soloRec) openPanel(soloRec);
+    }, 0);
   }
 
   function drawTile(rec) {
@@ -1997,7 +2031,10 @@
   // Whether OK on a widget's tile opens straight to full screen, with no
   // small panel in between. HUB_CONFIG.widgets[id].openMode ('full' or
   // 'panel') wins over the widget's own openMode.
+  // A layout that is one widget filling the whole screen counts as 'full' too:
+  // its tile would only be a big placeholder, so the widget itself shows.
   function isDirect(w) {
+    if (soloRec && soloRec.w === w) return true;
     var c = cfg.widgets && cfg.widgets[w.id];
     var m = c && (c.openMode === 'full' || c.openMode === 'panel') ? c.openMode : w.openMode;
     return m === 'full';
@@ -3262,6 +3299,8 @@
 
   window.HUB_TEST.fx = function () { return fxCall('state') || null; };
   window.HUB_TEST.focusRect = function () { return focusRect(); };
+  window.HUB_TEST.setFocusKeepMs = function (ms) { FOCUS_KEEP_MS = ms; };
+  window.HUB_TEST.focused = function () { return homeIndex >= 0 && widgets[homeIndex] ? widgets[homeIndex].w.id : null; };
 
   /* ---------- start ---------- */
 
@@ -3273,6 +3312,7 @@
   parkGhost();
   checkTheme();
   setupBackground();
+  openSolo();
   startLive();
   startUpdates();
   startClay();

@@ -7,7 +7,11 @@
  *                  below zero.
  *   budget-card    Card day: when the card is due, "Covered" (green) or
  *                  "Short by $X" (coral), the transfers that cover it and the
- *                  next paycheck.
+ *                  next paycheck. When the snapshot carries cardDay.receipt
+ *                  (a prototype, docs/budget-snapshot.md says nothing of it
+ *                  yet) the tile is a 3 line receipt, the panel the whole
+ *                  receipt (OK on a row opens that row's items in place, Back
+ *                  returns) and nothing says "Transfers".
  *   budget-goals   Goals: one bar per goal, colored by its state (clean, on
  *                  pace, over, under).
  *   The banner     "New charge: <label>" across the top when a charge posts
@@ -93,6 +97,56 @@
     autoPay: 'autopay',
     autoShortNote: '{n} short even with autopay',
     autoShortNoteShort: '{n} short with autopay',
+    // Card day receipt, the budget app's own lines: one list read top to bottom, each with a sign.
+    // {d} is card day, {e} the day the next paycheck lands (both short dates)
+    receipt: {
+      lines: {
+        checking: 'Checking now',
+        paychecks: 'Paychecks before {d}',
+        billsBefore: 'Bills before {d}',
+        cardsToday: 'Cards today, pending included',
+        cardCharges: 'Recurring charges on the cards before {d}',
+        billsAfter: 'Bills from {d} to payday {e}',
+        billsAfterNo: 'Bills from {d} to the next payday',
+        buys: 'Planned buys'
+      },
+      bottom: 'Left to spend',
+      bottomNote: 'What checking will hold just before your {e} paycheck, after the bills and paying today’s card balances in full. Every new charge comes out of it.',
+      bottomNoteNo: 'What checking will hold just before your next paycheck, after the bills and paying today’s card balances in full. Every new charge comes out of it.',
+      miniBills: 'Cards and bills to {e}',
+      miniBillsNo: 'Cards and bills to the next payday',
+      heroLeft: '{n} left to spend',
+      heroDay: 'about {n} a day',
+      heroShort: 'Short {n} on {d}',
+      heroShortPlain: 'Short {n}',
+      heroByAutopay: 'covered by autopay',
+      heroEven: 'even with autopay',
+      noPay: 'None before {d}. Next: {n}',
+      noPayNext: 'None before {d}',
+      planHead: 'Payment plan',
+      payOn: 'Pay on {d}',
+      leaveFor: 'Leave for autopay',
+      planNote: 'A plan to read, nothing here pays a card or moves money.',
+      okHint: 'OK for details',
+      backHint: 'Back to the receipt',
+      nextPay: 'Next paycheck {d} · {n}',
+      checkingNote: 'Available balance, pending debits already out.',
+      checkingAsOf: 'As of {t} sync.',
+      payNote: 'The smallest of the last three deposits.',
+      buysNote: 'Edit them on the budget site.',
+      newTag: 'new',
+      total: 'Total',
+      owesBal: 'Balance {n}',
+      owesPending: 'pending {n}',
+      owesComing: 'plus {n} in recurring charges before {d}',
+      cardAutopay: 'Autopay {d}',
+      cardNoAutopay: 'No autopay day',
+      cardPays: 'You pay {n} on {d}',
+      cardAuto: 'Autopay takes {n}',
+      formula: 'Checking, plus paychecks, less bills, cards, charges and buys:',
+      onCard: 'on {card}',
+      empty: 'Nothing here.'
+    },
     // Daily room, when its figure is worked from the autopay days
     usingAutopay: 'using autopay days',
     usingAutopayShort: 'autopay days',
@@ -501,6 +555,7 @@
 
   // Guest mode: forget the budget here and on this TV's storage.
   function dropData() {
+    S.rcOpen = null;
     S.data = null;
     S.fromCache = false;
     saveCache();
@@ -738,11 +793,264 @@
     // The days away, from the date itself once the TV's day has moved on.
     var left = day - td;
     if (c.away === null || left !== c.away) c.away = Math.max(0, left);
+    c.rc = receiptData(s, c);
     c.tone = c.covered ? 'is-ok' : c.byAuto ? 'is-under' : 'is-neg';
     var wordText = c.byAuto ? STRINGS.autoWord : STRINGS.shortBy;
     c.word = c.covered ? STRINGS.covered : fill(wordText, { n: cash(c.short || 0) });
     if (!c.covered && c.short === null) c.word = fill(wordText, { n: '' }).replace(/\s+$/, '');
     return c;
+  }
+
+
+  /* ---------- Card day receipt ---------- */
+
+  var RC_KEYS = ['checking', 'paychecks', 'billsBefore', 'cardsToday', 'cardCharges', 'billsAfter', 'buys'];
+
+  function itemData(it) {
+    if (!it || typeof it !== 'object' || !str(it.label) || num(it.amount) === null) return null;
+    var o = { label: str(it.label), amount: it.amount, day: dayFromText(it.date), isNew: it.new === true, note: str(it.note) };
+    var f = ['bal', 'pending', 'coming', 'pay', 'auto'];
+    for (var i = 0; i < f.length; i++) o[f[i]] = num(it[f[i]]);
+    o.autoDay = dayFromText(it.autopay);
+    return o;
+  }
+
+  // The receipt, or null when it is missing or its lines do not add up to the bottom line.
+  function receiptData(s, c) {
+    var r = s.receipt;
+    if (!r || typeof r !== 'object' || !isArr(r.lines) || num(r.bottom) === null) return null;
+    var out = { lines: [], bottom: r.bottom, next: null, asOf: parseIso(r.asOf), perDay: num(r.perDay) };
+    var sum = 0;
+    for (var i = 0; i < r.lines.length; i++) {
+      var ln = r.lines[i];
+      if (!ln || RC_KEYS.indexOf(ln.key) < 0 || num(ln.amount) === null) continue;
+      var items = [];
+      var its = isArr(ln.items) ? ln.items : [];
+      for (var j = 0; j < its.length; j++) { var d = itemData(its[j]); if (d) items.push(d); }
+      sum += ln.amount;
+      out.lines.push({ key: ln.key, amount: ln.amount, items: items });
+    }
+    if (!out.lines.length || out.lines[0].key !== 'checking' || Math.abs(sum - out.bottom) > 0.01) return null;
+    var nx = r.next && typeof r.next === 'object' ? r.next : null;
+    var nd = nx ? dayFromText(nx.date) : null;
+    if (nd !== null) out.next = { day: nd, amount: num(nx.amount) };
+    return out;
+  }
+
+  function rcLabel(line, c, rc) {
+    var R = STRINGS.receipt;
+    var key = line.key === 'billsAfter' && !rc.next ? 'billsAfterNo' : line.key;
+    return fill(R.lines[key], { d: dateText(c.day, 'short'), e: rc.next ? dateText(rc.next.day, 'short') : '' });
+  }
+
+  function rcBottomLabel() { return STRINGS.receipt.bottom; }
+
+  function rcBottomNote(rc) {
+    var R = STRINGS.receipt;
+    return rc.next ? fill(R.bottomNote, { e: dateText(rc.next.day, 'short') }) : R.bottomNoteNo;
+  }
+
+  // Tile words: the hero and the small word beside it.
+  function rcHero(c) {
+    var R = STRINGS.receipt;
+    if (c.covered) {
+      return { word: fill(R.heroLeft, { n: cash(c.rc.bottom) }), cap: c.rc.perDay !== null ? fill(R.heroDay, { n: cash(c.rc.perDay) }) : '' };
+    }
+    if (c.byAuto) return { word: fill(R.heroShort, { n: cash(c.short || 0), d: dateText(c.day, 'short') }), cap: R.heroByAutopay };
+    return { word: fill(R.heroShortPlain, { n: cash(c.autoShort !== null ? c.autoShort : (c.short || 0)) }), cap: R.heroEven };
+  }
+
+  function rcNextText(c, form) {
+    var R = STRINGS.receipt;
+    if (!c.rc.next) return '';
+    var amt = c.rc.next.amount === null ? '' : cash(c.rc.next.amount);
+    var m = fill(R.nextPay, { d: dateText(c.rc.next.day, form || 'long'), n: amt });
+    return amt ? m : fill(STRINGS.nextPay, { d: dateText(c.rc.next.day, form || 'long') });
+  }
+
+  // One line of the receipt: sign, words, amount. Signs have their own column, amounts right-aligned.
+  function rcRow(sign, label, amount, tone, cls) {
+    var row = el('div', 'bu-rrow' + (cls ? ' ' + cls : ''));
+    el('span', 'bu-rsign', row, sign);
+    el('span', 'bu-rlabel', row, label);
+    el('span', 'bu-ramt' + (tone ? ' ' + tone : ''), row, amount);
+    return row;
+  }
+
+  function rcSign(line, i) {
+    if (i === 0) return '';
+    return line.key === 'paychecks' ? '+' : STRINGS.minus;
+  }
+
+  // The mini receipt on the tile: three lines.
+  function rcMini(parent, c) {
+    var R = STRINGS.receipt;
+    var rc = c.rc;
+    var e = rc.next ? dateText(rc.next.day, 'short') : '';
+    var box = el('div', 'bu-mini', parent);
+    box.appendChild(rcRow('', R.lines.checking, cash(rc.lines[0].amount), '', 'is-mini'));
+    box.appendChild(rcRow('', rc.next ? fill(R.miniBills, { e: e }) : R.miniBillsNo, cash(rc.bottom - rc.lines[0].amount), '', 'is-mini'));
+    box.appendChild(rcRow('', R.bottom, cash(rc.bottom), c.tone, 'is-mini is-total'));
+    return box;
+  }
+
+  /* level 2: what one line is made of */
+
+  function rcDetailItems(line, c, rc, panel) {
+    var R = STRINGS.receipt;
+    var i;
+    function itemRow(it, n) {
+      var row = el('div', 'bu-ritem f');
+      row.setAttribute('data-key', 'rd-' + n);
+      var top = el('div', 'bu-ritop', row);
+      el('span', 'bu-rdate', top, it.day !== null ? dateText(it.day, 'short') : '');
+      var lab = el('span', 'bu-rlabel', top, it.label);
+      if (it.isNew) el('span', 'bu-rtag', lab, R.newTag);
+      el('span', 'bu-ramt', top, cash(Math.abs(it.amount)));
+      return row;
+    }
+    if (line.key === 'checking') {
+      var txt = R.checkingNote;
+      if (!isNaN(rc.asOf)) txt += ' ' + fill(R.checkingAsOf, { t: hm(rc.asOf) });
+      var cn = el('div', 'bu-rnote f', panel, txt);
+      cn.setAttribute('data-key', 'rd-0');
+      return;
+    }
+    if (line.key === 'paychecks' && !line.items.length) {
+      var np = rc.next ? fill(R.noPay, { d: dateText(c.day, 'short'), n: dateText(rc.next.day, 'long') }) : fill(R.noPayNext, { d: dateText(c.day, 'short') });
+      var nn = el('div', 'bu-rnote f', panel, np);
+      nn.setAttribute('data-key', 'rd-0');
+      return;
+    }
+    if (!line.items.length) {
+      var ne = el('div', 'bu-rnote f', panel, R.empty);
+      ne.setAttribute('data-key', 'rd-0');
+      return;
+    }
+    for (i = 0; i < line.items.length; i++) {
+      var it = line.items[i];
+      var row = itemRow(it, i);
+      if (line.key === 'cardsToday') {
+        var parts = [fill(R.owesBal, { n: cash(it.bal !== null ? it.bal : it.amount) })];
+        if (it.pending) parts.push(fill(R.owesPending, { n: cash(it.pending) }));
+        if (it.coming) parts.push(fill(R.owesComing, { n: cash(it.coming), d: dateText(c.day, 'short') }));
+        el('div', 'bu-rsub', row, parts.join(STRINGS.sep));
+        var two = [it.autoDay !== null ? fill(R.cardAutopay, { d: dateText(it.autoDay, 'short') }) : R.cardNoAutopay];
+        if (it.pay) two.push(fill(R.cardPays, { n: cash(it.pay), d: dateText(c.day, 'short') }));
+        if (it.auto) two.push(fill(R.cardAuto, { n: cash(it.auto) }));
+        el('div', 'bu-rsub', row, two.join(STRINGS.sep));
+      } else if (line.key === 'paychecks') {
+        el('div', 'bu-rsub', row, R.payNote);
+      } else if (line.key === 'cardCharges' && it.note) {
+        el('div', 'bu-rsub', row, fill(R.onCard, { card: it.note }));
+      } else if (it.note) {
+        el('div', 'bu-rsub', row, it.note);
+      }
+      panel.appendChild(row);
+    }
+    var tot = el('div', 'bu-ritem bu-rtotal f', panel);
+    tot.setAttribute('data-key', 'rd-total');
+    var tt = el('div', 'bu-ritop', tot);
+    el('span', 'bu-rdate', tt, '');
+    el('span', 'bu-rlabel', tt, R.total);
+    el('span', 'bu-ramt', tt, cash(Math.abs(line.amount)));
+    if (line.key === 'buys') el('div', 'bu-rsub', tot, R.buysNote);
+  }
+
+  function rcDetailBottom(c, rc, panel) {
+    var R = STRINGS.receipt;
+    var f = el('div', 'bu-rnote f', panel);
+    f.setAttribute('data-key', 'rd-0');
+    el('div', 'bu-rsub', f, R.formula);
+    var terms = '';
+    for (var i = 0; i < rc.lines.length; i++) {
+      var a = rc.lines[i].amount;
+      if (i > 0 && a === 0) continue;
+      terms += (i === 0 ? '' : ' ' + (rc.lines[i].key === 'paychecks' ? '+' : STRINGS.minus) + ' ') + cash(Math.abs(a));
+    }
+    el('div', 'bu-rformula', f, terms + ' = ' + cash(rc.bottom));
+    el('div', 'bu-rsub', f, rcBottomNote(rc));
+  }
+
+  function setBackHint() {
+    var h = document.querySelector('#panel .panel-hint');
+    if (h) h.textContent = STRINGS.receipt.backHint;
+  }
+
+  function rcPanel(root, ctx, full, c) {
+    var R = STRINGS.receipt;
+    var rc = c.rc;
+    var wrap = el('div', 'bu-pwrap bu-rc' + (full ? ' is-full is-cols' : '') + (S.rcOpen ? ' is-detail' : '') + (staleAt() ? ' is-stale' : ''), root);
+    var detail = S.rcOpen;
+    var line = null;
+    var idx = -1;
+    var i;
+    if (detail) {
+      if (detail === 'bottom') { line = { key: 'bottom', amount: rc.bottom, items: [] }; idx = rc.lines.length; } else {
+        for (i = 0; i < rc.lines.length; i++) if (rc.lines[i].key === detail) { line = rc.lines[i]; idx = i; }
+      }
+      if (!line) { S.rcOpen = null; detail = null; }
+    }
+    var colA = el('div', 'bu-pcol', wrap);
+    var colB = full && !detail ? el('div', 'bu-pcol', wrap) : null;
+    var hh = rcHero(c);
+    if (detail) {
+      var head = line.key === 'bottom' ? rcRow('=', rcBottomLabel(rc), cash(rc.bottom), c.tone, 'is-total is-open f') :
+        rcRow(rcSign(line, idx), rcLabel(line, c, rc), cash(Math.abs(line.amount)), '', 'is-open f');
+      head.setAttribute('data-key', 'rc-' + line.key);
+      colA.appendChild(head);
+      var box = el('div', 'bu-rdetail' + (S.rcFresh ? ' is-enter' : ''), colA);
+      if (line.key === 'bottom') rcDetailBottom(c, rc, box); else rcDetailItems(line, c, rc, box);
+      S.rcFresh = false;
+      // The hub writes its own Back hint after this draw.
+      setTimeout(setBackHint, 0);
+      return;
+    }
+    // At full screen the headline sits over the plan, so the whole receipt fits on the left.
+    var top = el('div', 'bu-rhead', colB || colA);
+    el('div', 'bu-pline', top, fill(STRINGS.cardOn, { d: dateText(c.day, 'long') }) + STRINGS.sep + awayText(c));
+    var hb = el('div', 'bu-rhero', top);
+    el('span', 'bu-rhero-word ' + c.tone, hb, hh.word);
+    if (hh.cap) el('span', 'bu-rhero-cap', hb, hh.cap);
+    for (i = 0; i < rc.lines.length; i++) {
+      var ln = rc.lines[i];
+      var row = rcRow(rcSign(ln, i), rcLabel(ln, c, rc), cash(Math.abs(ln.amount)), '', 'f');
+      row.setAttribute('data-key', 'rc-' + ln.key);
+      if (S.rcBack ? S.rcBack === ln.key : i === 0) row.setAttribute('data-autofocus', '');
+      colA.appendChild(row);
+    }
+    var tot = rcRow('=', rcBottomLabel(rc), cash(rc.bottom), c.tone, 'is-total f');
+    tot.setAttribute('data-key', 'rc-bottom');
+    if (S.rcBack === 'bottom') tot.setAttribute('data-autofocus', '');
+    colA.appendChild(tot);
+    el('div', 'bu-pline is-quiet bu-rnote-low', colA, rcBottomNote(rc));
+    var side = colB || colA;
+    if (c.plan.length) {
+      var pls = el('div', 'bu-psec f' + (colB ? '' : ' is-after'), side);
+      pls.setAttribute('data-key', 'plan');
+      el('div', 'bu-label', pls, R.planHead);
+      var firsts = [];
+      var laters = [];
+      for (var n = 0; n < c.plan.length; n++) (c.plan[n].auto ? laters : firsts).push(c.plan[n]);
+      if (firsts.length) {
+        el('div', 'bu-rsubhead', pls, fill(R.payOn, { d: dateText(c.day, 'short') }));
+        for (i = 0; i < firsts.length; i++) pls.appendChild(planRow(firsts[i], 'pay'));
+      }
+      laters.sort(function (a, b) { return a.day - b.day; });
+      if (laters.length) {
+        el('div', 'bu-rsubhead', pls, R.leaveFor);
+        for (i = 0; i < laters.length; i++) pls.appendChild(planRow(laters[i], 'auto'));
+      }
+      el('div', 'bu-pline is-quiet', pls, R.planNote);
+    }
+    var nxt = rcNextText(c, 'long');
+    if (nxt) {
+      var ps = el('div', 'bu-psec f', side);
+      ps.setAttribute('data-key', 'pay');
+      el('div', 'bu-pline', ps, nxt);
+    }
+    el('div', 'bu-pline is-quiet bu-rhint', side, R.okHint);
+    S.rcBack = null;
   }
 
   function awayText(c) {
@@ -770,12 +1078,13 @@
   }
 
   // One payment of the plan: its day, the card and the amount ("autopay" after it when left for the card's day).
-  function planRow(p) {
-    var row = el('div', 'bu-trow bu-prow');
-    el('span', 'bu-prow-date', row, dateText(p.day, 'short'));
+  function planRow(p, mode) {
+    var row = el('div', 'bu-trow bu-prow' + (mode === 'pay' ? ' is-nodate' : ''));
+    // The receipt's plan: "Pay on Dec 1" rows have no date of their own.
+    if (mode !== 'pay') el('span', 'bu-prow-date', row, dateText(p.day, 'short'));
     el('span', 'bu-trow-label bu-cut', row, p.label);
     var v = el('span', 'bu-trow-value', row, cash(p.amount));
-    if (p.auto) el('span', 'bu-prow-auto', v, STRINGS.autoPay);
+    if (p.auto && !mode) el('span', 'bu-prow-auto', v, STRINGS.autoPay);
     return row;
   }
 
@@ -824,6 +1133,21 @@
       }
       return;
     }
+    if (c.rc) {
+      var rh = rcHero(c);
+      var rwhen = el('div', 'bu-when', root);
+      var hr = hero(root, rh.word, rh.cap, c.tone, 'is-word');
+      var rcap = hr.capEl;
+      fitForms(rwhen, whenForms(c));
+      fitHero(hr, '');
+      if (rcap && rcap.parentNode) rcap.className += ' bu-rcap ' + c.tone;
+      var mini = rcMini(root, c);
+      // Short on height: the heading's caption goes first, then the middle line.
+      if (overH(root) && rcap && rcap.parentNode) rcap.parentNode.removeChild(rcap);
+      if (overH(root)) mini.removeChild(mini.childNodes[1]);
+      if (size.cols < 3) mini.className += ' is-tight';
+      return;
+    }
     // The payment plan takes the list's place when there is one; the transfers stay in the panel.
     var usePlan = c.plan.length > 0;
     var wide = size.width === 'wide' && (usePlan || c.transfers.length > 0);
@@ -859,6 +1183,7 @@
   function cardPanel(root, ctx, full) {
     var c = shown() ? cardData() : null;
     if (!c) return panelMessage(root, emptyState());
+    if (c.rc) return rcPanel(root, ctx, full, c);
     var wrap = el('div', 'bu-pwrap' + (full ? ' is-full is-cols' : '') + (staleAt() ? ' is-stale' : ''), root);
     var colA = el('div', 'bu-pcol', wrap);
     var colB = full ? el('div', 'bu-pcol', wrap) : colA;
@@ -1105,7 +1430,7 @@
 
   /* ---------- registering ---------- */
 
-  function real(id, titleKey, drawTile, drawPanel) {
+  function real(id, titleKey, drawTile, drawPanel, extra) {
     var w = {
       id: id,
       icon: 'wallet',
@@ -1133,6 +1458,7 @@
       onMode: function (mode, ctx) { ctx.redrawPanel(); },
       onStatus: function () { try { refreshAll(); } catch (e) { /* next change tries again */ } }
     };
+    if (extra) for (var xk in extra) if (extra.hasOwnProperty(xk)) w[xk] = extra[xk];
     // Read when the hub draws the tile head, so it follows the language.
     Object.defineProperty(w, 'title', { get: function () { return STRINGS.titles[titleKey]; }, enumerable: true, configurable: true });
     Object.defineProperty(w, 'shortTitle', { get: function () { return (STRINGS.titlesShort || {})[titleKey] || ''; }, enumerable: true, configurable: true });
@@ -1216,6 +1542,28 @@
 
   var list = (window.HUB_WIDGETS = window.HUB_WIDGETS || []);
   list.push(real('budget-room', 'room', roomTile, roomPanel));
-  list.push(real('budget-card', 'card', cardTile, cardPanel));
+  list.push(real('budget-card', 'card', cardTile, cardPanel, {
+    // Level 2 of the receipt: OK on a line opens its items, Back returns to the receipt.
+    onSelect: function (target, ctx) {
+      var k = (target && target.getAttribute('data-key')) || '';
+      if (k.indexOf('rc-') !== 0 || S.rcOpen) return;
+      S.rcOpen = k.substring(3);
+      S.rcBack = S.rcOpen;
+      S.rcFresh = true;
+      ctx.redrawPanel();
+    },
+    onBack: function (ctx) {
+      if (!S.rcOpen) return false;
+      S.rcOpen = null;
+      ctx.redrawPanel();
+      return true;
+    },
+    onClose: function () { S.rcOpen = null; S.rcBack = null; }
+  }));
+  // The receipt is a page, not a glance: OK on the tile opens it at full screen (Back closes).
+  Object.defineProperty(list[list.length - 1], 'openMode', {
+    get: function () { var c = shown() ? cardData() : null; return c && c.rc ? 'full' : undefined; },
+    enumerable: true, configurable: true
+  });
   list.push(real('budget-goals', 'goals', goalsTile, goalsPanel));
 })();
