@@ -80,7 +80,7 @@ async function openHub(opts) {
     const url = new URL(route.request().url());
     // No weather either, so the look follows the plain 7 AM to 6 PM clock.
     if (BLOCKED_HOSTS.indexOf(url.hostname) >= 0 || url.pathname === '/fetch') return route.abort();
-    if (/\/backgrounds\/backgrounds\.js$/.test(url.pathname)) return route.fulfill({ contentType: 'application/javascript', body: MANIFEST });
+    if (/\/backgrounds\/backgrounds\.js$/.test(url.pathname)) return route.fulfill({ contentType: 'application/javascript', body: opts.manifest || MANIFEST });
     const m = /\/backgrounds\/test\/(\w+\.jpg)$/.exec(url.pathname);
     if (m) {
       if ((opts.failFiles || []).indexOf(m[1]) >= 0) return route.fulfill({ status: 404, body: 'no' });
@@ -162,6 +162,13 @@ const CHECKS = [
     await sleep(500);
     assert((await backdrop(p)) === '', 'a picture with background \'\'');
     assert(!(await p.evaluate(() => document.body.classList.contains('has-picture'))), 'has-picture with no picture');
+  }],
+  ['the manifest base is put before a relative file, not before a full address', async () => {
+    const p = await openHub({ query: '&theme=day&bg=day/1', manifest: MANIFEST.replace('{ day:', '{ base: "backgrounds/", day:').replace(/file: "backgrounds\/test\//g, 'file: "test/') });
+    await expectBackdrop(p, 'd1', 'base + test/d1.jpg');
+    const q = await openHub({ query: '&theme=night&bg=night/0', manifest: MANIFEST.replace('{ day:', '{ base: "nowhere/", day:').replace('file: "backgrounds/test/n0.jpg"', 'file: "' + PAGE + '/backgrounds/test/n0.jpg"') });
+    await expectBackdrop(q, 'n0', 'a full address ignores base');
+    assert(await q.evaluate(() => document.body.classList.contains('is-glass')), 'no glass for a full address');
   }],
   ['About: the Picture row says title and credit', async () => {
     const p = await openHub({ query: '&theme=day&bg=day/1' });

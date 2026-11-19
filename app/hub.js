@@ -826,12 +826,20 @@
     var n = dayNumber();
     var m = /^(day|night)\/(\d+)$/.exec(readQuery('bg') || '');
     if (m && m[1] === look) n = parseInt(m[2], 10);
-    return list[n % list.length] || null;
+    var pick = list[n % list.length];
+    if (!pick) return null;
+    // HUB_BACKGROUNDS.base is put before a file that isn't a full address.
+    var file = String(pick.file || '');
+    if (!/^https?:\/\//i.test(file)) file = String(lists.base || '') + file;
+    return { file: file, title: pick.title || '', credit: pick.credit || '' };
   }
 
   // Loads a picture, then calls done(img), or done(null) if it fails.
   function loadPicture(pic, done) {
     var img = new Image();
+    // A picture from another site (a jsDelivr branch) must ask to be read, or
+    // the canvas copies for the glass would be blocked.
+    if (/^https?:\/\//i.test(pic.file)) img.crossOrigin = 'anonymous';
     img.onload = function () { done(img); };
     img.onerror = function () { done(null); };
     img.src = pic.file;
