@@ -44,6 +44,72 @@
 .bu-solo-num.is-ok { color: var(--bu-ok); }
 .bu-solo-num.is-neg { color: var(--bu-neg); }
 
+/* Outcome under the cap: one line, colored by the result. */
+.bl-oline.is-ok { color: var(--bu-ok); }
+.bl-oline.is-even { color: var(--bu-under); }
+.bl-oline.is-neg { color: var(--bu-neg); }
+
+/* The streak box: small, bordered, pinned to the bottom of the tile. Quiet
+   with no streak; the count turns green once one runs. */
+.bl-sbox {
+  flex: 0 0 auto;
+  margin-top: auto;
+  padding: 0.45rem 0.7rem 0.5rem;
+  border: 0.06rem solid var(--bu-hair);
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.04);
+  min-width: 0;
+}
+.bl-sbox.is-on { border-color: rgba(142, 229, 154, 0.35); }
+.bl-stop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+.bl-scount {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--bu-ok);
+}
+.bl-pips { flex: 0 0 auto; margin-left: 0.6rem; white-space: nowrap; line-height: 1; }
+.bl-pip {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-left: 0.25rem;
+  border-radius: 50%;
+  background: var(--bu-hair);
+}
+.bl-pip.is-lit { background: var(--bu-ok); }
+.bl-stay,
+.bl-sy {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.bl-sbox.is-on .bl-stay { margin-top: 0.1rem; }
+.bl-sy { font-size: 0.9rem; color: var(--text-3); }
+
+/* Day theme (light glass): the budget's pastel green, amber and coral are
+   made for the dark tile, so this tile takes darker inks of the same hues
+   and a dark hairline for the box. */
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .bl-tile {
+  --bu-ok: #2c8a48;
+  --bu-under: #9a6c00;
+  --bu-neg: #b8352f;
+  --bu-hair: rgba(21, 27, 36, 0.16);
+}
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .bl-sbox { background: rgba(255, 255, 255, 0.35); }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .bl-sbox.is-on { border-color: rgba(44, 138, 72, 0.4); }
+
 /* ---------- panel: read from the couch ----------
    The panel opens straight at full screen (openMode: 'full'), so the type
    is sized for a TV across a room: nothing in it is under 1.5rem (36 px at

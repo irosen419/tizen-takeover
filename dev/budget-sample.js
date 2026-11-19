@@ -31,7 +31,7 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * payment plan, the room says basis "autopay", the lab sends autopayRoom and
  * autopayDate), payday (a 14 day window to card day on Nov 30 with a
  * payday on Nov 20 inside it, for the runway chart: its runway ends at
- * lab.room to the cent) }.
+ * lab.room to the cent), pace ('fresh', 'over' or a number: the streak) }.
  */
 function snapshot(opts) {
   opts = opts || {};
@@ -95,6 +95,20 @@ function snapshot(opts) {
     s.room.basis = 'autopay';
     s.lab.autopayRoom = 215.8;
     s.lab.autopayDate = '2026-12-07';
+  }
+  if (opts.pace !== undefined) {
+    // The pace streak: 'fresh' (no capped day logged yet, no streak),
+    // 'over' (yesterday went over), or a number of days under in a row
+    // ending yesterday (Nov 15), with a day over just before them.
+    const days = [];
+    const n = typeof opts.pace === 'number' ? opts.pace : 0;
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(Date.UTC(2026, 10, 15 - i)).toISOString().slice(0, 10);
+      if (opts.pace === 'fresh') { days.push({ date: d, spent: 52.4 }); continue; }
+      const under = opts.pace === 'over' ? i > 0 && i % 3 !== 0 : i < n;
+      days.push({ date: d, spent: under ? 48.5 : 81.2, cap: 64.5 });
+    }
+    s.pace.days = days;
   }
   if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
