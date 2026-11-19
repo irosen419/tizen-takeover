@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.36.0';
+  var BUILD = 'v0.36.1';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -563,6 +563,15 @@
     var rem = remPx();
     var W = window.innerWidth;
     var H = window.innerHeight;
+    // A one-widget layout's window for a widget made for full screen (the
+    // Architecture map): most of the screen, the picture showing round it.
+    if (rec && rec === soloRec && wantsFull(rec.w)) {
+      var sw = Math.round(W * 0.86);
+      var sh = Math.round(H * 0.84);
+      var sl = Math.round((W - sw) / 2);
+      var st = Math.round((H - sh) / 2);
+      return { left: sl, top: st, width: sw, height: sh, right: sl + sw, bottom: st + sh };
+    }
     var w = 46 * rem;
     var h = 26 * rem;
     var fit = rec && rec.w && panelFit.hasOwnProperty(rec.w.id) ? panelFit[rec.w.id] : null;
@@ -1869,7 +1878,7 @@
   }
 
   // The layout's one widget, when it fills the whole grid (12 by 6) and can
-  // open; null otherwise. Set by build(), opened full screen by openSolo().
+  // open; null otherwise. Set by build(), opened as a window by openSolo().
   var soloRec = null;
 
   function build() {
@@ -1915,6 +1924,9 @@
       var only = widgets[0].entry;
       if (only && only.x === 0 && only.y === 0 && only.w === GRID_COLS && only.h === GRID_ROWS) soloRec = widgets[0];
     }
+    // Its screen-sized tile stays hidden until the window first closes, so the
+    // hub never shows it on the way in (see openSolo).
+    if (soloRec) soloRec.cell.classList.add('is-solo-waiting');
 
     for (var j = 0; j < widgets.length; j++) call(widgets[j], 'init', [widgets[j].ctx]);
     for (var k = 0; k < widgets.length; k++) drawTile(widgets[k]);
@@ -1949,13 +1961,16 @@
     return best;
   }
 
-  // A one-widget layout opens straight to the widget's full screen as the hub
-  // starts (a layout change reloads the page, so this runs for each one).
-  // Back still closes it, to the tile and the layout bar above it.
+  // A one-widget layout opens straight into the widget as a window (the
+  // small panel, Full screen one press away) as the hub starts: one fade in
+  // place, with no tile shown first and no move from it (a layout change
+  // reloads the page, so this runs for each one). Back closes the window to
+  // the tile, and Up from there opens the layout bar.
   function openSolo() {
     if (!soloRec) return;
     setTimeout(function () {
-      if (!open && !busy && !frameOpen && soloRec) openPanel(soloRec);
+      if (!open && !busy && !frameOpen && soloRec) openPanel(soloRec, 'solo');
+      else if (soloRec) soloRec.cell.classList.remove('is-solo-waiting');
     }, 0);
   }
 
@@ -2044,10 +2059,21 @@
   // Whether OK on a widget's tile opens straight to full screen, with no
   // small panel in between. HUB_CONFIG.widgets[id].openMode ('full' or
   // 'panel') wins over the widget's own openMode.
-  // A layout that is one widget filling the whole screen counts as 'full' too:
-  // its tile would only be a big placeholder, so the widget itself shows.
+  // A layout that is one widget filling the whole screen opens as a window
+  // (see openSolo), with Full screen one press away, whatever its openMode.
   function isDirect(w) {
-    if (soloRec && soloRec.w === w) return true;
+    if (soloRec && soloRec.w === w) return false;
+    return wantsFull(w);
+  }
+
+  // ' is-wide' for a one-widget layout's window when the widget is made for
+  // full screen (its width; panelRect gives its height), else ''.
+  function wideClass(rec) {
+    return rec && rec === soloRec && wantsFull(rec.w) ? ' is-wide' : '';
+  }
+
+  // The widget's own (or config.js's) openMode is 'full'.
+  function wantsFull(w) {
     var c = cfg.widgets && cfg.widgets[w.id];
     var m = c && (c.openMode === 'full' || c.openMode === 'panel') ? c.openMode : w.openMode;
     return m === 'full';
@@ -2319,7 +2345,7 @@
    * Transform and opacity transitions run on the compositor, so the build
    * doesn't stop them.
    */
-  function openPanel(rec) {
+  function openPanel(rec, how) {
     if (busy || open || !rec.expandable) return;
     closeAbout();                          // a panel the Pi opens goes over it: close it first
     clayHook('stop');
@@ -2329,7 +2355,9 @@
     var direct = isDirect(rec.w);
     mode = direct ? 'full' : 'panel';
     busy = true;
-    var fade = motion.mode === 'fade';
+    // A one-widget layout's window fades in where it rests: its tile is the
+    // whole screen, so a move from it would read as a second step.
+    var fade = motion.mode === 'fade' || how === 'solo';
     var push = motion.mode === 'push';
     var ms = fade ? 140 : push ? 320 : 260;
     var T = rec.home || rectOf(rec.tile);
@@ -2345,7 +2373,7 @@
     // The panel is as tall as its content. The first time a widget opens,
     // its content is built here, before anything moves, and measured; after
     // that the height is known and the build waits for the first frame.
-    panelEl.className = 'panel is-shown' + (direct ? ' is-full is-direct' : '');
+    panelEl.className = 'panel is-shown' + (direct ? ' is-full is-direct' : wideClass(rec));
     panelEl.style.transition = 'none';
     panelEl.style.opacity = '0';
     panelEl.style.transform = IDENTITY;
@@ -2380,7 +2408,7 @@
     // Start state, then one style flush, then the transitions (FLIP).
     panelEl.style.transform = fade ? IDENTITY : panelStart(T, P);
     ghostEl.style.transition = 'none';
-    ghostEl.className = 'ghost' + (direct ? ' is-full' : '');
+    ghostEl.className = 'ghost' + (direct ? ' is-full' : wideClass(rec));
     ghostEl.style.transform = fade ? IDENTITY : flip(T, P);
     ghostEl.style.opacity = fade ? '0' : '1';
     scrimEl.className = 'scrim is-shown';
@@ -2456,6 +2484,7 @@
       parkGhost();
       clearTile(rec);
       rec.tile.style.visibility = '';
+      rec.cell.classList.remove('is-solo-waiting');
       settleOthers();
       if (panelFocus) panelFocus.classList.remove('is-focused');
       panelFocus = null;
@@ -2469,8 +2498,9 @@
       layoutChance();
     }
 
-    if (motion.mode === 'fade' || mode === 'full') {
+    if (motion.mode === 'fade' || mode === 'full' || rec === soloRec) {
       // From full screen everything just fades; there is no tile-sized box to shrink to cleanly.
+      // A one-widget layout's window fades too: its tile is the whole screen.
       // (A shared picture, the Now Playing cover, flies back to the tile.)
       if (mode === 'full') fxCall('shareTo', [fxCall('shareFrom', [panel.body]), rec.body, true]);
       setOpacity(panelEl, 0, 140);
@@ -2515,14 +2545,14 @@
 
     function apply() {
       mode = next;
-      panelEl.className = 'panel is-shown' + (next === 'full' ? ' is-full' : '') + (isDirect(rec.w) ? ' is-direct' : '');
+      panelEl.className = 'panel is-shown' + (next === 'full' ? ' is-full' : wideClass(rec)) + (isDirect(rec.w) ? ' is-direct' : '');
       drawPanelHead();
       call(rec, 'onMode', [next, rec.ctx]);
       if (panelFocus) keepInView(panelFocus);
     }
 
     function sizeGhost() {
-      ghostEl.className = 'ghost' + (next === 'full' ? ' is-full' : '');
+      ghostEl.className = 'ghost' + (next === 'full' ? ' is-full' : wideClass(rec));
       sizeBoxes(next === 'full' ? null : panelRect(rec));
     }
 
