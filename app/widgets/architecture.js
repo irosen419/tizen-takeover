@@ -443,7 +443,14 @@
       div('ar-box-title', head, b.title);
       var lines = [];
       for (k = 0; k < b.lines.length; k++) if (b.lines[k]) lines.push(b.lines[k]);
-      div('ar-box-lines', box, lines.join(' '));
+      // The box's lines, split into paragraphs at each empty line; each
+      // paragraph wraps to the box and is clamped to two lines.
+      var bl = div('ar-box-lines', box), para = [];
+      for (k = 0; k <= b.lines.length; k++) {
+        if (k < b.lines.length && b.lines[k]) { para.push(b.lines[k]); continue; }
+        if (para.length) div('ar-box-para', bl, para.join(' '));
+        para = [];
+      }
       statusBar(box, g ? counts(g) : {}, 'ar-box-bar');
       if (!firstKey) firstKey = 'bp:' + b.group;
     }
@@ -618,6 +625,10 @@
       card.style.width = r2(cardW) + 'rem';
       card.style.height = cardH + 'rem';
       cardMarkup(card, node);
+      // A title that wraps to two lines leaves room for one summary line,
+      // so the summary never shows a half-cut line.
+      var tt = card.querySelector('.ar-card-title');
+      if (tt && tt.offsetHeight > rem * 1.2 * 1.4 * 1.5) card.className += ' is-wrap';
       if (!firstKey) firstKey = 'g:' + node.id;
     }
     return { first: firstKey, canvas: canvas, clip: cwrap, height: H };
