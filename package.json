@@ -1,7 +1,7 @@
 {
   "name": "tizen-takeover",
   "appName": "Home Hub",
-  "version": "0.34.1",
+  "version": "0.34.2",
   "description": "A custom home screen for a Samsung Tizen TV, run as a TizenBrew app module.",
   "packageType": "app",
   "appPath": "app/index.html",

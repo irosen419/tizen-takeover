@@ -250,8 +250,9 @@
        "status": "unverified",
        "summary": "A glassy pill bar from the top to switch saved layouts, plus layouts pushed from the Pi.",
        "details": [
-        "Up on a top tile drops a pill bar (Stock, Main, Get ready, AWWS desk, AWWS one screen, AWWS money, Budget); Left/Right move, OK applies, Back or Down closes. The pick is kept in localStorage with the Pi layout's signature, so a newer layout set on the Pi wins.",
-        "A layout from the Pi (live resource layout) moves tiles in place when the same widgets stay, otherwise reloads once."
+        "Up on a top tile drops a pill bar (Default, Main, Get ready, AWWS desk, AWWS one screen, AWWS money, Budget); Left/Right move, OK applies, Back or Down closes. The pick is kept in localStorage with the Pi layout's signature, so a newer layout set on the Pi wins.",
+        "A layout from the Pi (live resource layout) moves tiles in place when the same widgets stay, otherwise reloads once.",
+        "A layout of one widget over the whole grid (Hub architecture, Plant wall) opens straight into that widget as a window in one fade, with no tile shown first; a widget made for full screen gets a window over most of the screen. The built-in layout is called Default."
        ],
        "files": [
         "app/hub.js",

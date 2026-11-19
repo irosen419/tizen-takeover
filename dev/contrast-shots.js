@@ -8,7 +8,7 @@
  *
  *   ambience-<day|night>[-es]-<tag>.png   the Ambience tile (3x2), cropped
  *   clock-<day|night>-<tag>.png           the analog Clock tile (3x2), cropped
- *   arch-solo-<tag>.png                   the "Architecture test" layout as it starts
+ *   arch-solo-<tag>.png                   the "Hub architecture" layout as it starts
  *   arch-tile-<tag>.png                   the Architecture tile at 6x3 (its counts)
  *
  * "-es" is the hub in Spanish with every Ambience text 25% longer (accents
@@ -136,7 +136,7 @@ async function main() {
       await page.context().close();
     }
 
-    // The Architecture test layout: one widget, the whole screen.
+    // The Hub architecture layout: one widget, the whole screen.
     let page = await open({ layout: [{ widget: 'architecture', x: 0, y: 0, w: 12, h: 6 }], theme: 'day' });
     await sleep(800);
     await page.screenshot({ path: path.join(OUT, 'arch-solo-' + TAG + '.png') });
