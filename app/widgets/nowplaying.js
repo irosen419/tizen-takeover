@@ -144,6 +144,14 @@
 
   /* ---------- what to show ---------- */
 
+
+  // The hub's language (Spanish in app/i18n.js under 'nowplaying.*').
+  function T(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') { try { return String(L.t(key, english, vars)); } catch (e) { /* English below */ } }
+    return String(english).replace(/\{(\w+)\}/g, function (all, n) { return vars && vars.hasOwnProperty(n) ? String(vars[n]) : all; });
+  }
+
   // The words and the picture for the data and the line to the Pi now.
   // kind: playing, paused, idle, signin, off, error, offline, waiting, update.
   function view() {
@@ -151,26 +159,26 @@
     var liveState = 'off';
     try { liveState = live ? live.status().state : 'off'; } catch (e) { liveState = 'off'; }
     var d = data;
-    var v = { kind: 'waiting', track: null, label: 'Now playing', title: '', sub: '', hint: '', dim: false, device: '', shuffle: false, repeat: 'off', moving: false };
+    var v = { kind: 'waiting', track: null, label: T('nowplaying.label.now', 'Now playing'), title: '', sub: '', hint: '', dim: false, device: '', shuffle: false, repeat: 'off', moving: false };
 
     if (!live || liveState === 'off') {
       v.kind = 'update';
-      v.title = 'Live updates are off';
-      v.hint = 'Now Playing needs the Pi. Check HUB_CONFIG.live in config.js.';
+      v.title = T('nowplaying.liveOff', 'Live updates are off');
+      v.hint = T('nowplaying.liveOffHint', 'Now Playing needs the Pi. Check HUB_CONFIG.live in config.js.');
       return fromCache(v);
     }
     if (liveState !== 'live' && !(d && liveState === 'connecting')) {
       v.kind = liveState === 'connecting' || liveState === 'quiet' || liveState === 'off' ? 'waiting' : 'offline';
       if (liveState === 'lost') v.kind = 'offline';
-      v.label = v.kind === 'offline' ? 'Last played' : 'Now playing';
-      v.title = v.kind === 'offline' ? 'Can’t reach the Pi' : 'Waiting for the Pi';
-      v.hint = v.kind === 'offline' ? 'What is playing shows again when the Pi is back.' : 'Now Playing comes from the Pi.';
+      v.label = v.kind === 'offline' ? T('nowplaying.label.last', 'Last played') : T('nowplaying.label.now', 'Now playing');
+      v.title = v.kind === 'offline' ? T('nowplaying.offline', 'Can’t reach the Pi') : T('nowplaying.waiting', 'Waiting for the Pi');
+      v.hint = v.kind === 'offline' ? T('nowplaying.offlineHint', 'What is playing shows again when the Pi is back.') : T('nowplaying.waitingHint', 'Now Playing comes from the Pi.');
       return fromCache(v);
     }
     if (!d) {
       v.kind = 'update';
-      v.title = 'The Pi needs an update';
-      v.hint = 'On the Pi: git pull, then docker compose restart hub.';
+      v.title = T('nowplaying.update', 'The Pi needs an update');
+      v.hint = T('nowplaying.updateHint', 'On the Pi: git pull, then docker compose restart hub.');
       return fromCache(v);
     }
 
@@ -180,7 +188,7 @@
     v.repeat = d.repeat || 'off';
     if (d.state === 'playing' || d.state === 'paused') {
       v.kind = d.state;
-      v.label = d.state === 'playing' ? 'Now playing' : 'Paused';
+      v.label = d.state === 'playing' ? T('nowplaying.label.now', 'Now playing') : T('nowplaying.label.paused', 'Paused');
       v.moving = d.state === 'playing';
       return v;
     }
@@ -188,34 +196,34 @@
       v.kind = 'idle';
       v.dim = true;
       if (v.track) {
-        v.label = 'Last played';
+        v.label = T('nowplaying.label.last', 'Last played');
       } else {
         v.label = 'Spotify';
-        v.title = 'Nothing playing';
-        v.hint = 'Start something on Spotify and it shows up here.';
+        v.title = T('nowplaying.idle', 'Nothing playing');
+        v.hint = T('nowplaying.idleHint', 'Start something on Spotify and it shows up here.');
       }
       return v;
     }
     if (d.state === 'signin') {
       v.kind = 'signin';
       v.label = 'Spotify';
-      v.title = 'Not connected yet';
-      v.hint = 'Connect it once from the Pi: ./hub spotify login';
+      v.title = T('nowplaying.signin', 'Not connected yet');
+      v.hint = T('nowplaying.signinHint', 'Connect it once from the Pi: ./hub spotify login');
       return v;
     }
     if (d.state === 'error') {
       v.kind = 'error';
       v.dim = true;
-      v.label = v.track ? 'Last played' : 'Spotify';
-      v.title = v.track ? '' : 'Can’t reach Spotify';
-      v.hint = d.problem || 'Spotify could not be reached. It keeps trying.';
+      v.label = v.track ? T('nowplaying.label.last', 'Last played') : 'Spotify';
+      v.title = v.track ? '' : T('nowplaying.cantReach', 'Can’t reach Spotify');
+      v.hint = d.problem || T('nowplaying.errorHint', 'Spotify could not be reached. It keeps trying.');
       return v;
     }
     // off: the Pi has no Spotify settings.
     v.kind = 'off';
     v.label = 'Spotify';
-    v.title = 'Not set up';
-    v.hint = d.problem || 'Add the Spotify ID and secret to pi/.env on the Pi.';
+    v.title = T('nowplaying.off', 'Not set up');
+    v.hint = d.problem || T('nowplaying.offHint', 'Add the Spotify ID and secret to pi/.env on the Pi.');
     return v;
   }
 
@@ -224,7 +232,7 @@
     if (!v.track && cached && cached.track) {
       v.track = cached.track;
       v.dim = true;
-      if (v.kind === 'offline' || v.kind === 'update') v.label = 'Last played';
+      if (v.kind === 'offline' || v.kind === 'update') v.label = T('nowplaying.label.last', 'Last played');
     }
     return v;
   }
@@ -290,7 +298,7 @@
   function shortLabel(card, v) {
     var t = card.head && card.head.querySelector('.np-label-text');
     if (!t || t.scrollWidth <= t.clientWidth + 1) return;
-    if (v.kind === 'playing') t.textContent = 'Playing';
+    if (v.kind === 'playing') t.textContent = T('nowplaying.label.playing', 'Playing');
   }
 
   function eq(parent, v) {
@@ -388,7 +396,7 @@
         card.artist = el('div', 'np-artist', text, v.track.artist || v.track.album || '');
         if (v.kind === 'error' || v.kind === 'offline' || v.kind === 'update') {
           // The reason, small, under the last song.
-          card.note = el('div', 'np-note', text, v.kind === 'error' ? 'Spotify can’t be reached' : v.title);
+          card.note = el('div', 'np-note', text, v.kind === 'error' ? T('nowplaying.cantBeReached', 'Spotify can’t be reached') : v.title);
         }
       } else {
         card.title = el('div', 'np-title', text, v.title);
@@ -491,14 +499,14 @@
     var head = el('div', 'np-label', info);
     eq(head, v);
     el('span', 'np-label-text', head, v.label);
-    if (v.kind === 'offline') el('span', 'np-tag', head, 'Offline');
+    if (v.kind === 'offline') el('span', 'np-tag', head, T('nowplaying.tagOffline', 'Offline'));
 
     if (hasSong) {
       page.title = el('div', 'np-title', info, v.track.title);
       page.artist = el('div', 'np-artist', info, v.track.artist || '');
-      page.album = el('div', 'np-album', info, v.track.album || (v.track.kind === 'episode' ? 'Podcast' : ''));
+      page.album = el('div', 'np-album', info, v.track.album || (v.track.kind === 'episode' ? T('nowplaying.podcast', 'Podcast') : ''));
       if (v.kind === 'error' || v.kind === 'offline' || v.kind === 'update') {
-        page.note = el('div', 'np-note', info, v.kind === 'error' ? (v.hint || 'Spotify can’t be reached') : v.title + '. ' + v.hint);
+        page.note = el('div', 'np-note', info, v.kind === 'error' ? (v.hint || T('nowplaying.cantBeReached', 'Spotify can’t be reached')) : v.title + '. ' + v.hint);
       }
     } else {
       page.title = el('div', 'np-title', info, v.title);
@@ -515,11 +523,11 @@
       page.fill = el('div', 'np-fill', page.bar);
       var chips = el('div', 'np-chips', foot);
       page.chips = chips;
-      if (v.device) el('span', 'np-chip', chips, 'On ' + v.device);
-      if (v.shuffle) el('span', 'np-chip', chips, 'Shuffle');
-      if (v.repeat === 'track') el('span', 'np-chip', chips, 'Repeat one');
-      else if (v.repeat === 'context') el('span', 'np-chip', chips, 'Repeat');
-      if (v.track.explicit) el('span', 'np-chip', chips, 'Explicit');
+      if (v.device) el('span', 'np-chip', chips, T('nowplaying.chipOn', 'On {device}', { device: v.device }));
+      if (v.shuffle) el('span', 'np-chip', chips, T('nowplaying.chipShuffle', 'Shuffle'));
+      if (v.repeat === 'track') el('span', 'np-chip', chips, T('nowplaying.chipRepeatOne', 'Repeat one'));
+      else if (v.repeat === 'context') el('span', 'np-chip', chips, T('nowplaying.chipRepeat', 'Repeat'));
+      if (v.track.explicit) el('span', 'np-chip', chips, T('nowplaying.chipExplicit', 'Explicit'));
     } else if (hasSong && v.kind === 'idle') {
       el('div', 'np-chips', foot);
     }
@@ -765,7 +773,7 @@
 
   return {
     id: 'nowplaying',
-    title: 'Now Playing',
+    get title() { return T('nowplaying.title', 'Now Playing'); },
     icon: 'music',
     head: false,
     activity: 'nowplaying',    // its activity kind, "New song" (app/motion.js)
@@ -782,6 +790,15 @@
         ctx.live.onStatus(safe(function () { refresh(false); }));
       }
       timer = setInterval(safe(tick), 1000);
+      // A language change: the words are drawn again.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+          window.HUB_I18N.onChange(safe(function () {
+            ctx.redrawTile();
+            if (ctx.isOpen && ctx.isOpen()) ctx.redrawPanel();
+          }));
+        }
+      } catch (e) { /* the words change at the next draw */ }
     }),
 
     renderTile: function (body, ctx) {
@@ -801,7 +818,7 @@
         if (window.console && console.warn) console.warn('Now Playing page: ' + (e && e.message));
         page = null;
         body.innerHTML = '';
-        el('div', 'np-fallback', body, 'Now Playing couldn’t be shown.');
+        el('div', 'np-fallback', body, T('nowplaying.broken', 'Now Playing couldn’t be shown.'));
         safe(vizSync)();
       }
     },

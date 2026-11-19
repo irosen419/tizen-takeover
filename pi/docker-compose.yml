@@ -29,6 +29,9 @@ services:
     command: node server.js
     environment:
       - TZ=${HUB_TIMEZONE:-America/Chicago}
+      # Spanish for the owner's own text (translate.js). Set either in .env; empty means off.
+      - HUB_TRANSLATE_KEY=${HUB_TRANSLATE_KEY:-}
+      - GEMINI_VIDEO_GEN_KEY=${GEMINI_VIDEO_GEN_KEY:-}
     restart: unless-stopped
     init: true
     logging:

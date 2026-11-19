@@ -70,6 +70,9 @@
  * what plays on Spotify comes from spotify.js, and the room's lights
  * (Home Assistant, and the plant wall's WLED) from ambience.js.
  *
+ *   POST /api/translate  { to: "es", texts: [...] } -> { map } (translate.js; the TV uses POST /translate)
+ *   GET  /api/translate/usage -> lines, Gemini calls, tokens and estimated cost today, this month, in all
+ *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
 'use strict';
@@ -88,8 +91,9 @@ const linktests = require('./linktests');
 const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
+const translate = require('./translate');
 
-const SERVER_VERSION = '0.11.0';
+const SERVER_VERSION = '0.12.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -203,7 +207,7 @@ function loadSettings(file) {
   const fromFile = readEnvFile(file);
   const out = Object.assign({}, fromFile);
   Object.keys(process.env).forEach((k) => {
-    if (/^(HUB_|CALENDAR_|SPOTIFY_|HA_|ALLSOUNDS_|WLED_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
+    if (/^(HUB_|CALENDAR_|SPOTIFY_|HA_|ALLSOUNDS_|WLED_|GEMINI_VIDEO_GEN_KEY$)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
   });
   return out;
 }
@@ -1183,7 +1187,9 @@ function start(options) {
     '/api/ambience/scene': ['POST'],
     '/api/ambience/light': ['POST'],
     '/api/ambience/mood': ['POST'],
-    '/api/ambience/config': ['GET', 'POST']
+    '/api/ambience/config': ['GET', 'POST'],
+    '/api/translate': ['POST'],
+    '/api/translate/usage': ['GET']
   };
 
   function statusBody() {
@@ -1260,6 +1266,16 @@ function start(options) {
         if (ROUTES[route].indexOf(method) < 0) {
           return reply(405, { ok: false, error: 'use ' + ROUTES[route].join(' or ') + ' for ' + route });
         }
+        if (route === '/api/translate') {
+          const texts = translate.checkRequest(body);
+          translator.translate(texts).then((r) => {
+            const out = { ok: true, map: r.map };
+            if (r.disabled) out.disabled = true;
+            reply(200, out);
+          }).catch(failed);
+          return undefined;
+        }
+        if (route === '/api/translate/usage') return reply(200, Object.assign({ ok: true }, translator.info()));
         if (route === '/api/status') return reply(200, statusBody());
         if (route === '/api/log') return reply(200, logBody(query));
         if (route === '/api/calendar') {
@@ -1433,7 +1449,7 @@ function start(options) {
       req.resume(); // no body is needed
       return run(undefined);
     }
-    readBody(req, res, run, route === '/api/awws' || route === '/api/budget' ? AWWS_BODY_LIMIT : BODY_LIMIT);
+    readBody(req, res, run, route === '/api/awws' || route === '/api/budget' || route === '/api/translate' ? AWWS_BODY_LIMIT : BODY_LIMIT);
     return undefined;
   }
 
@@ -1454,7 +1470,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/linktests' || route === '/shows/watched' || route === '/shows/unwatch' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/shows/watched' || route === '/shows/unwatch' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1471,6 +1487,11 @@ function start(options) {
     const origin = req.headers.origin;
     if (origin && origins.indexOf(origin) < 0) {
       return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    }
+    if (route === '/translate') {
+      return readBody(req, res, (body) => {
+        api('POST', '/api/translate', body).then((r) => sendJson(res, r.status, r.body, cors));
+      }, AWWS_BODY_LIMIT);
     }
     if (route === '/linktests') {
       return readBody(req, res, (body) => {
@@ -1551,7 +1572,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
   };
 
@@ -1582,6 +1603,12 @@ function start(options) {
   }
 
   /* --- listeners --- */
+
+  /* --- Spanish for the owner's own text (translate.js) --- */
+  const translator = translate.createTranslator({
+    dataDir: dataDir, log: log, call: opt.translateCall,
+    key: opt.translateKey !== undefined ? opt.translateKey : ''
+  });
 
   /* --- the Claude mailbox (mailbox.js) --- */
 
@@ -1735,6 +1762,7 @@ if (require.main === module) {
     timezone: env.HUB_TIMEZONE || '',
     refreshMinutes: env.CALENDAR_REFRESH_MINUTES || '',
     mailboxEnv: env,
+    translateKey: env.HUB_TRANSLATE_KEY || env.GEMINI_VIDEO_GEN_KEY || '',
     spotifyEnv: env,
     // TVmaze for the show schedule. HUB_SHOWS=off stops the lookups;
     // HUB_SHOWS=sample shows the made-up sample instead (for trying the TV).

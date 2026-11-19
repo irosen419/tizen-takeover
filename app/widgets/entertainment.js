@@ -26,6 +26,20 @@
   var lastKey = null;       // last focused item, so reopening lands on it
   var gridCache = null;     // the grid's DOM, built once: { grid, nodes: [{ item, node, state }] }
 
+  /* ---------- the hub's language ---------- */
+
+  // Key 'entertainment.<name>' (app/i18n.js); the English is the second
+  // argument. Words that come from config.js (section names, small lines,
+  // item names) use 'entertainment.cfg.<the English>', so the config stays
+  // English; brand names have no Spanish and show as they are.
+  function T(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') { try { return String(L.t('entertainment.' + key, english, vars)); } catch (e) { /* English */ } }
+    return String(english).replace(/\{(\w+)\}/g, function (all, name) { return vars && vars[name] !== undefined ? vars[name] : all; });
+  }
+
+  function cfgWord(english) { return english ? T('cfg.' + english, english) : english; }
+
   /* ---------- small DOM helpers ---------- */
 
   function el(tag, cls, text) {
@@ -188,10 +202,10 @@
   function stateOf(item) {
     var cfg = item.cfg;
     if (cfg.kind === 'schedule' && window.HUB_SHOWS) return { text: HUB_SHOWS.entry().sub, missing: false };
-    if (cfg.kind !== 'app') return { text: cfg.sub || '', missing: false };
-    if (item.appId) return { text: cfg.sub || '', missing: false };
-    if (!apps) return { text: lookupFailed ? 'Couldn’t check' : 'Looking for it', missing: false };
-    return { text: 'Not installed', missing: true };
+    if (cfg.kind !== 'app') return { text: cfgWord(cfg.sub || ''), missing: false };
+    if (item.appId) return { text: cfgWord(cfg.sub || ''), missing: false };
+    if (!apps) return { text: lookupFailed ? T('couldntCheck', 'Couldn’t check') : T('looking', 'Looking for it'), missing: false };
+    return { text: T('notInstalled', 'Not installed'), missing: true };
   }
 
   /* ---------- app lookup ---------- */
@@ -262,7 +276,7 @@
       if (attempt < 25) return setTimeout(function () { loadApps(attempt + 1); }, 800);
       lookupFailed = true;
       refresh();
-      C.toast('Couldn’t read the app list (' + err + '). Try closing and reopening the hub.', 6000);
+      C.toast(T('toastAppList', 'Couldn’t read the app list ({why}). Try closing and reopening the hub.', { why: err }), 6000);
     });
   }
 
@@ -319,7 +333,7 @@
   function launchById(id, label) {
     function viaService() {
       C.service('/launch?id=' + encodeURIComponent(id), 8000, function (err) {
-        if (err) { unbloom(); C.toast('Couldn’t open ' + label + ' (' + err + ').', 5000); }
+        if (err) { unbloom(); C.toast(T('toastOpen', 'Couldn’t open {name} ({why}).', { name: label, why: err }), 5000); }
       });
     }
     if (C.hasTizen) {
@@ -339,7 +353,7 @@
       handled = true;
       try { ws.close(); } catch (e) { /* ignore */ }
       unbloom();
-      C.toast('TizenBrew didn’t answer, so ' + label + ' couldn’t open.', 5000);
+      C.toast(T('toastTbSilent', 'TizenBrew didn’t answer, so {name} couldn’t open.', { name: label }), 5000);
     }, 7000);
 
     try {
@@ -347,7 +361,7 @@
     } catch (e) {
       clearTimeout(timer);
       unbloom();
-      return C.toast('Couldn’t reach TizenBrew.', 4000);
+      return C.toast(T('toastTbReach', 'Couldn’t reach TizenBrew.'), 4000);
     }
 
     ws.onopen = function () { ws.send(JSON.stringify({ type: 4, payload: false })); };
@@ -366,7 +380,7 @@
       }
       handled = true;
       clearTimeout(timer);
-      if (!mod) { unbloom(); return C.toast(label + ' isn’t added in TizenBrew.', 4000); }
+      if (!mod) { unbloom(); return C.toast(T('toastTbMissing', '{name} isn’t added in TizenBrew.', { name: label }), 4000); }
 
       // Same two steps TizenBrew's own menu takes when you pick a module.
       C.registerKeys(mod.keys);
@@ -378,30 +392,30 @@
       handled = true;
       clearTimeout(timer);
       unbloom();
-      C.toast('Couldn’t reach TizenBrew.', 4000);
+      C.toast(T('toastTbReach', 'Couldn’t reach TizenBrew.'), 4000);
     };
   }
 
   function pressInputKey(tc) {
-    C.toast('Switching to ' + (tc.sub || tc.label) + '. If the TV asks, choose Allow.', 6000);
+    C.toast(T('toastSwitching', 'Switching to {name}. If the TV asks, choose Allow.', { name: cfgWord(tc.sub || tc.label) }), 6000);
     C.service('/key?k=' + encodeURIComponent(tc.key), 170000, function (err) {
-      if (err) C.toast('Couldn’t switch input. ' + err, 15000);
+      if (err) C.toast(T('toastSwitchFail', 'Couldn’t switch input. {why}', { why: err }), 15000);
     });
   }
 
   function callWebhook(tc) {
-    if (!tc.url) return C.toast(tc.hint || (tc.label + ' has no webhook address yet. Add one in config.js.'), 8000);
-    C.toast((tc.busy || 'Working on it') + '…', 4000);
+    if (!tc.url) return C.toast(tc.hint ? cfgWord(tc.hint) : T('toastNoWebhook', '{name} has no webhook address yet. Add one in config.js.', { name: tc.label }), 8000);
+    C.toast((tc.busy ? cfgWord(tc.busy) : T('workingOnIt', 'Working on it')) + '…', 4000);
     C.service('/webhook?url=' + encodeURIComponent(tc.url), 15000, function (err) {
-      if (err) C.toast('Couldn’t reach Home Assistant. ' + err, 10000);
+      if (err) C.toast(T('toastHa', 'Couldn’t reach Home Assistant. {why}', { why: err }), 10000);
     });
   }
 
   function activate(item) {
     var tc = item.cfg;
     if (tc.kind === 'app') {
-      if (!apps) return C.toast('Still looking for your apps. Try again in a second.');
-      if (!item.appId) return C.toast(tc.label + ' isn’t on this TV. Open All apps to see what is.', 4500);
+      if (!apps) return C.toast(T('toastStillLooking', 'Still looking for your apps. Try again in a second.'));
+      if (!item.appId) return C.toast(T('toastNotOnTv', '{name} isn’t on this TV. Open All apps to see what is.', { name: tc.label }), 4500);
       return launchById(item.appId, tc.label);
     }
     if (tc.kind === 'tizentube') return openTizenBrewModule(/tizentube/i, tc.label);
@@ -421,8 +435,8 @@
   }
 
   function openView(name, item) {
-    if (name === 'schedule' && !window.HUB_SHOWS) return C.toast('The schedule didn’t load. Try closing and reopening the hub.', 5000);
-    if (name === 'linktests' && !window.HUB_LINKTEST) return C.toast('The watch link test didn’t load.', 5000);
+    if (name === 'schedule' && !window.HUB_SHOWS) return C.toast(T('toastNoSchedule', 'The schedule didn’t load. Try closing and reopening the hub.'), 5000);
+    if (name === 'linktests' && !window.HUB_LINKTEST) return C.toast(T('toastNoLinkTest', 'The watch link test didn’t load.'), 5000);
     view = name;
     if (item) lastKey = item.key;
     C.setSub(viewTitle(name));
@@ -439,10 +453,10 @@
   /* ---------- all apps list ---------- */
 
   function openList(item) {
-    if (!apps) return C.toast('Still looking for your apps. Try again in a second.');
+    if (!apps) return C.toast(T('toastStillLooking', 'Still looking for your apps. Try again in a second.'));
     view = 'list';
     lastKey = item.key;
-    C.setSub('All apps');
+    C.setSub(T('allApps', 'All apps'));
     C.redrawPanel();
   }
 
@@ -466,7 +480,7 @@
       row.setAttribute('data-name', sorted[i].name || sorted[i].id);
       if (i === 0) row.setAttribute('data-autofocus', '');
       row.appendChild(el('span', 'ent-row-name', sorted[i].name || sorted[i].id));
-      row.appendChild(el('span', 'ent-row-id', sorted[i].id + (sorted[i].hidden ? ' (hidden)' : '')));
+      row.appendChild(el('span', 'ent-row-id', sorted[i].id + (sorted[i].hidden ? ' (' + T('hidden', 'hidden') + ')' : '')));
       list.appendChild(row);
     }
     body.appendChild(list);
@@ -483,7 +497,7 @@
     var nodes = [];
     for (var s = 0; s < sections.length; s++) {
       var sec = el('div', 'ent-section' + (s === 0 ? ' is-first' : ''));
-      sec.appendChild(el('div', 'ent-section-label', sections[s].label));
+      sec.appendChild(el('div', 'ent-section-label', cfgWord(sections[s].label)));
       for (var i = 0; i < sections[s].items.length; i++) {
         var item = sections[s].items[i];
         var node = el('div', 'ent-item f');
@@ -494,7 +508,7 @@
         node.appendChild(iconWrap);
         // Name and state in one box: a column beside the icon at full screen.
         var text = el('div', 'ent-text');
-        text.appendChild(el('div', 'ent-name', item.cfg.label));
+        text.appendChild(el('div', 'ent-name', cfgWord(item.cfg.label)));
         var state = el('div', 'ent-state');
         text.appendChild(state);
         node.appendChild(text);
@@ -617,11 +631,8 @@
 
   /* ---------- widget ---------- */
 
-  return {
+  var widget = {
     id: 'entertainment',
-    title: 'Entertainment',
-    // Only when "Entertainment" doesn't fit its tile on one line (hub.js).
-    shortTitle: 'Apps',
     icon: 'tv',
     expandable: true,
     stagger: '.ent-item',     // the icons arrive one by one as the panel opens
@@ -629,6 +640,19 @@
     init: function (ctx) {
       C = ctx;
       buildItems();
+      // A language change: the grid's words are built again, the tile and an open panel drawn again.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+          window.HUB_I18N.onChange(function () {
+            try {
+              gridCache = null;
+              if (C.isOpen()) C.setSub(view === 'list' ? T('allApps', 'All apps') : view === 'grid' ? C.config.sub || '' : viewTitle(view));
+              C.redrawTile();
+              if (C.isOpen()) C.redrawPanel();
+            } catch (e) { /* the next draw has it */ }
+          });
+        }
+      } catch (e) { /* stays in the language it started in */ }
       if (window.HUB_SHOWS) {
         try {
           HUB_SHOWS.attach(ctx, host);
@@ -768,4 +792,9 @@
       }
     }
   };
+  // Read when the hub draws the head, so they follow the language.
+  Object.defineProperty(widget, 'title', { get: function () { return T('title', 'Entertainment'); }, enumerable: true, configurable: true });
+  // Only when "Entertainment" doesn't fit its tile on one line (hub.js).
+  Object.defineProperty(widget, 'shortTitle', { get: function () { return T('short', 'Apps'); }, enumerable: true, configurable: true });
+  return widget;
 })());
