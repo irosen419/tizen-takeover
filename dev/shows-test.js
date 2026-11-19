@@ -23,6 +23,9 @@
  *   - Entertainment at full screen: the app column (counts and all) beside the live
  *     Schedule, Left and Right between them, OK on an app and on a row, the tile and
  *     the panel unchanged, Spanish fitting the narrow column;
+ *   - the Show page: the row's "Mark as up to date" and page chip, the page (header, bar, buttons, season pills,
+ *     episodes), single marks, "Watched up to here", caught up, ended wording, Back to the row's chip, EN and ES,
+ *     its states (partial, unreachable, cached, an old Pi), and watched following the Pi's progress;
  *   - service.js's /launch-control checks (run in a sandbox with a stand-in
  *     tizen object), and the new app files are plain ES5.
  */
@@ -41,6 +44,7 @@ let failed = 0;
 function assert(ok, text) { if (!ok) throw new Error(text); }
 
 async function check(name, fn) {
+  if (process.env.ONLY && !new RegExp(process.env.ONLY).test(name)) return;
   const t = Date.now();
   try {
     await fn();
@@ -884,8 +888,11 @@ async function main() {
       } finally { await p.ctx.close(); await unmarkAll(); }
     });
 
-    await check('The check toggle: after "Also on", marks and unmarks an aired row (the unmark reaches the Pi), none on a row still to come', async () => {
-      const p = await env.newPage({});
+    await check('The check toggle: "Mark as up to date" after "Also on" marks the row and every earlier episode (POST /shows/upto); marked, it says "Mark as not watched" and takes only that episode off; the Show page chip follows it; none on a row still to come', async () => {
+      // Its own Pi: an up-to mark can not be taken back with the shared one's helpers.
+      const own = await H.start();
+      const ownShow = async (id) => (await getJson(own.LIVE + '/live/state')).resources.shows.data.shows.filter((x) => x.id === id)[0];
+      const p = await own.newPage({});
       try {
         const posts = postsOf(p);
         await H.openSchedule(p, 'week');
@@ -893,36 +900,39 @@ async function main() {
         await p.evaluate(() => { const d = JSON.parse(localStorage.getItem('homeHub.shows.v1')); d.shows.forEach((s) => { if (s.id === 'the-great-british-baking-show') s.alsoOn = ['Hulu']; }); window.HUB_SHOWS._test.setData(d); });
         await H.sleep(500);
         assert(await p.evaluate(() => !document.querySelector('[data-key^="sh:mark:paradise:"]') && !!document.querySelector('[data-key^="sh:mark:slow-horses:"]') && !document.querySelector('[data-key^="sh:mark:the-pitt:"]')), 'toggles on the wrong rows');
+        // The Show page chip is on every row, aired or not.
+        assert(await p.evaluate(() => document.querySelectorAll('.sh-row').length === document.querySelectorAll('.sh-page').length), 'a chip per row');
         await H.focusKey(p, 'sh:row:the-great-british-baking-show:');
         await H.key(p, 'ArrowRight');
         assert((await focusedKey(p)).indexOf('sh:alt:the-great-british-baking-show:') === 0, 'Right goes to Also on first: ' + await focusedKey(p));
         await H.key(p, 'ArrowRight');
         const mk = await focusedKey(p);
         assert(mk.indexOf('sh:mark:the-great-british-baking-show:') === 0, 'then the toggle: ' + mk);
+        assert(await p.evaluate(() => document.querySelector('#panel .is-focused .sh-mark-text').textContent) === 'Mark as up to date', 'label');
         await H.key(p, 'ArrowRight');
-        assert(await focusedKey(p) === mk, 'Right past the toggle moved');
+        const chip = await focusedKey(p);
+        assert(chip.indexOf('sh:page:the-great-british-baking-show:') === 0, 'then the Show page chip: ' + chip);
+        assert(await p.evaluate(() => document.querySelector('#panel .is-focused .sh-page-text').textContent) === 'Show page', 'chip label');
+        await H.key(p, 'ArrowRight');
+        assert(await focusedKey(p) === chip, 'Right past the chip moved');
         await H.key(p, 'ArrowLeft');
-        assert((await focusedKey(p)).indexOf('sh:alt:') === 0, 'Left from the toggle');
-        await H.key(p, 'ArrowRight');
-        // OK: marked on the Pi, row dimmed with its check, toggle on; focus stays on the toggle.
-        const m0 = env.logs.filter((l) => /screen took a watched mark off an episode/.test(l)).length;
+        assert(await focusedKey(p) === mk, 'Left from the chip');
         await H.key(p, 'Enter');
-        await H.until(() => piMarked('the-great-british-baking-show', 9), 4000, 'the Pi never marked it');
-        await H.until(() => p.evaluate(() => { const r = document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"]'); return /is-watched/.test(r.className); }), 3000, 'the row is not watched');
+        await H.until(async () => { const pr = (await ownShow('the-great-british-baking-show')).progress; return pr.upTo && pr.upTo.number === 9; }, 4000, 'the Pi never marked it up to here');
+        await H.until(() => p.evaluate(() => /is-watched/.test(document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"]').className)), 3000, 'the row is not watched');
         let st = await p.evaluate(() => { const t = document.querySelector('[data-key^="sh:mark:the-great-british-baking-show:"]'); return { on: /is-on/.test(t.className), aria: t.getAttribute('aria-checked'), text: t.querySelector('.sh-mark-text').textContent, focused: /is-focused/.test(t.className) }; });
         assert(st.on && st.aria === 'true' && st.text === 'Mark as not watched' && st.focused, JSON.stringify(st));
-        assert(JSON.stringify(posts) === '["/shows/watched"]', JSON.stringify(posts));
-        // OK again: the mark comes off, and the Pi hears it on its own door.
+        assert(JSON.stringify(posts) === '["/shows/upto"]', JSON.stringify(posts));
+        // OK again: only this episode comes off, on the Pi's unwatch door.
         await H.key(p, 'Enter');
-        await H.until(async () => !(await piMarked('the-great-british-baking-show', 9)), 4000, 'the Pi kept the mark');
-        await H.until(() => p.evaluate(() => { const r = document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"]'); return !/is-watched/.test(r.className); }), 3000, 'the row stayed watched');
+        await H.until(async () => (await ownShow('the-great-british-baking-show')).progress.unwatched.length === 1, 4000, 'the Pi kept the mark');
+        await H.until(() => p.evaluate(() => !/is-watched/.test(document.querySelector('[data-key^="sh:row:the-great-british-baking-show:"]').className)), 3000, 'the row stayed watched');
         st = await p.evaluate(() => { const t = document.querySelector('[data-key^="sh:mark:the-great-british-baking-show:"]'); return { on: /is-on/.test(t.className), aria: t.getAttribute('aria-checked'), text: t.querySelector('.sh-mark-text').textContent }; });
-        assert(!st.on && st.aria === 'false' && st.text === 'Mark as watched', JSON.stringify(st));
-        assert(JSON.stringify(posts) === '["/shows/watched","/shows/unwatch"]', JSON.stringify(posts));
-        assert(env.logs.filter((l) => /screen took a watched mark off an episode$/.test(l)).length === m0 + 1, 'no unwatch line in the Pi log');
-        assert(await p.evaluate(() => window.HUB_SHOWS.availability().Netflix === 1), 'the count did not come back');
+        assert(!st.on && st.aria === 'false' && st.text === 'Mark as up to date', JSON.stringify(st));
+        assert(JSON.stringify(posts) === '["/shows/upto","/shows/unwatch"]', JSON.stringify(posts));
+        assert(own.logs.filter((l) => /screen took a watched mark off an episode$/.test(l)).length === 1, 'no unwatch line in the Pi log');
         assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
-      } finally { await p.ctx.close(); await unmarkAll(); }
+      } finally { await p.ctx.close(); await own.stop(); }
     });
 
     await check('Spanish: the strip, the buttons and the toggle fit at panel and full screen widths, wrap instead of clipping, and keep room for ¿ É ñ', async () => {
@@ -981,9 +991,322 @@ async function main() {
           await H.focusKey(p, 'sh:row:the-great-british-baking-show:');
           await H.key(p, 'ArrowRight');
           const t = await p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); const line = f.parentNode.getBoundingClientRect(); const r = f.getBoundingClientRect(); const x = f.querySelector('.sh-mark-text'); return { key: f.getAttribute('data-key'), text: x ? x.textContent : '', inside: r.right <= line.right + 0.5, clipped: x ? x.scrollWidth > x.clientWidth + 1 : null }; });
-          assert(t.key.indexOf('sh:mark:') === 0 && t.text === 'Marcar como visto' && t.inside && !t.clipped, JSON.stringify(t));
+          assert(t.key.indexOf('sh:mark:') === 0 && t.text === 'Marcar como al día' && t.inside && !t.clipped, JSON.stringify(t));
         } finally { await p.ctx.close(); }
       }
+    });
+
+    // ---------- the show page ----------
+    const pgText = (p, sel) => p.evaluate((q) => { const n = document.querySelector(q); return n ? n.textContent : null; }, sel);
+    const pgPosts = (p) => { const out = []; p.on('request', (r) => { if (r.method() === 'POST' && /\/shows\//.test(r.url())) out.push(r.url().replace(/^.*:\d+/, '') + ' ' + (r.postData() || '')); }); return out; };
+    // The row of a show, then Right until its Show page chip.
+    const toChip = async (p, id) => {
+      if ((await focusedKey(p)).indexOf('sh:page:' + id + ':') === 0) return;
+      await H.focusKey(p, 'sh:row:' + id + ':');
+      for (let i = 0; i < 4 && (await focusedKey(p)).indexOf('sh:page:' + id + ':') !== 0; i++) await H.key(p, 'ArrowRight');
+      assert((await focusedKey(p)).indexOf('sh:page:' + id + ':') === 0, 'no chip: ' + await focusedKey(p));
+    };
+    // Full screen, the Slow Horses row's chip, OK: the show page.
+    const openPg = async (p, id) => {
+      await H.openGrid(p);
+      await H.fullScreen(p);
+      await H.sleep(400);
+      await toChip(p, id || 'slow-horses');
+      await H.key(p, 'Enter');
+      await H.until(() => p.evaluate(() => !!document.querySelector('.sh-pg-ep')), 5000, 'the show page did not fill');
+      await H.sleep(300);
+    };
+    const WATCHED12 = { upTo: [['slow-horses', 4, 6]], watched: [['slow-horses', 5, 1], ['slow-horses', 5, 2]] };
+    const pgEnv = await H.start(WATCHED12);
+    try {
+      const ps = async (id) => (await getJson(pgEnv.LIVE + '/live/state')).resources.shows.data.shows.filter((x) => x.id === id)[0];
+
+      await check('The Show page chip opens the show page in the Schedule\'s place (apps stay on the left): header, progress bar, buttons, season pills, episodes', async () => {
+        const p = await pgEnv.newPage({});
+        try {
+          await openPg(p);
+          const v = await p.evaluate(() => {
+            const q = (s) => document.querySelector(s);
+            const all = (s) => [].map.call(document.querySelectorAll(s), (n) => n.textContent);
+            return {
+              side: !!q('#panel .ent-side .ent-item'), tabs: !!q('#panel .sh-tab[data-key="sh:tab:week"]'),
+              title: q('.sh-pg-title').textContent, meta: q('.sh-pg-meta').textContent.replace(/\s+/g, ' ').trim(),
+              prog: q('.sh-pg-prog-text').textContent, segs: [].map.call(document.querySelectorAll('.sh-pg-seg'), (n) => /is-on/.test(n.className) ? 'w' : /is-out/.test(n.className) ? 'a' : 'f').join(''),
+              btns: all('.sh-pg-btn'), pills: all('.sh-pg-tabs .sh-tab'), back: q('.sh-pg-back').textContent,
+              eps: all('.sh-pg-ep').map((t) => t.replace(/\s+/g, ' ').trim()),
+              marks: [].map.call(document.querySelectorAll('.sh-pg-ep'), (n) => !!n.querySelector('.sh-mark')).join(','),
+              focus: document.querySelector('#panel .is-focused').getAttribute('data-key')
+            };
+          });
+          assert(v.side && !v.tabs, 'the page should replace the Schedule: ' + JSON.stringify(v));
+          assert(v.title === 'Slow Horses' && /Apple TV/.test(v.meta) && /Still running/.test(v.meta) && /5 seasons/.test(v.meta), v.meta);
+          assert(v.back === 'Schedule', v.back);
+          assert(v.prog === 'Season 5 · 2 of 6 watched' && v.segs === 'wwaaff', v.prog + ' ' + v.segs);
+          assert(JSON.stringify(v.btns) === '["Watch S5 E3","I’m caught up"]', JSON.stringify(v.btns));
+          assert(v.pills.length === 5 && v.pills[0] === 'S1' && /^S5/.test(v.pills[4]) && /2\/6/.test(v.pills[4]), JSON.stringify(v.pills));
+          assert(await p.evaluate(() => document.querySelectorAll('.sh-pg-tick').length === 4), 'seasons 1 to 4 are done');
+          assert(v.eps.length === 6 && v.eps[0].indexOf('E1Cold OpenAired Oct 26') === 0 && /Watched/.test(v.eps[1]) && /Airs Nov 23/.test(v.eps[4]), JSON.stringify(v.eps));
+          assert(v.marks === 'true,true,true,true,false,false', v.marks);
+          assert(v.focus === 'sh:pg:watch', v.focus);
+          assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+        } finally { await p.ctx.close(); }
+      });
+
+      await check('Season pills: Left and Right move, OK switches the list; the default season holds the next episode', async () => {
+        const p = await pgEnv.newPage({});
+        try {
+          await openPg(p);
+          await H.focusKey(p, 'sh:pg:season:5');
+          await H.key(p, 'ArrowLeft');
+          assert(await focusedKey(p) === 'sh:pg:season:4', await focusedKey(p));
+          await H.key(p, 'Enter');
+          await H.sleep(300);
+          const v = await p.evaluate(() => ({ prog: document.querySelector('.sh-pg-prog-text').textContent, n: document.querySelectorAll('.sh-pg-ep').length, first: document.querySelector('.sh-pg-ep').textContent.replace(/\s+/g, ' ').trim(), focus: document.querySelector('#panel .is-focused').getAttribute('data-key') }));
+          assert(v.prog === 'Season 4 · 6 of 6 watched' && v.n === 6 && /^E1Rain Check/.test(v.first) && v.focus === 'sh:pg:season:4', JSON.stringify(v));
+        } finally { await p.ctx.close(); }
+      });
+
+      await check('Back (and the Schedule chip) returns to the Schedule with focus on that row\'s page chip, at full screen and in the panel', async () => {
+        const p = await pgEnv.newPage({});
+        try {
+          await openPg(p);
+          await H.key(p, 'Escape');
+          await H.sleep(400);
+          assert(await p.evaluate(() => !document.querySelector('.sh-pg') && !!document.querySelector('.sh-tab[data-key="sh:tab:week"]') && window.HUB_TEST.mode() === 'full'), 'Back should only close the page');
+          assert((await focusedKey(p)).indexOf('sh:page:slow-horses:') === 0, await focusedKey(p));
+          await H.key(p, 'Enter');
+          await H.until(() => p.evaluate(() => !!document.querySelector('.sh-pg-ep')), 4000, 'page');
+          await H.focusKey(p, 'sh:pg:back');
+          await H.key(p, 'Enter');
+          await H.sleep(400);
+          assert((await focusedKey(p)).indexOf('sh:page:slow-horses:') === 0, 'chip: ' + await focusedKey(p));
+        } finally { await p.ctx.close(); }
+        const q = await pgEnv.newPage({});
+        try {
+          await H.openSchedule(q, 'week');
+          await toChip(q, 'paradise');
+          await H.key(q, 'Enter');
+          await H.until(() => q.evaluate(() => !!document.querySelector('.sh-pg-ep')), 4000, 'panel page');
+          assert(await q.evaluate(() => !document.querySelector('.sh-tabs .sh-tab[data-key="sh:tab:week"]') && window.HUB_TEST.mode() === 'panel'), 'the panel shows the page in the Schedule\'s place');
+          await H.key(q, 'Escape');
+          await H.sleep(400);
+          assert(await q.evaluate(() => !!document.querySelector('.sh-tab[data-key="sh:tab:week"]') && window.HUB_TEST.open() === 'entertainment'), 'Back returns to the Schedule');
+          assert((await focusedKey(q)).indexOf('sh:page:paradise:') === 0, await focusedKey(q));
+        } finally { await q.ctx.close(); }
+      });
+
+      await check('Marks on the page: one episode (watched, then off), "Watched up to here" (the chip appears with the row\'s controls), "I\'m caught up" (done, OK does nothing); each redraws at once and reaches the Pi', async () => {
+        const p = await pgEnv.newPage({});
+        try {
+          const posts = pgPosts(p);
+          await openPg(p);
+          await H.focusKey(p, 'sh:pg:ep:5:4');
+          await H.key(p, 'ArrowRight');
+          assert(await focusedKey(p) === 'sh:pg:mark:5:4', await focusedKey(p));
+          assert(await pgText(p, '#panel .is-focused .sh-mark-text') === 'Mark as watched', 'label');
+          // The chip is only there while this row or its controls are focused.
+          assert(await p.evaluate(() => document.querySelectorAll('.sh-pg-upto.f').length === 1 && getComputedStyle(document.querySelector('.sh-pg-ep.is-in .sh-pg-upto')).display !== 'none'), 'one chip');
+          await H.key(p, 'Enter');
+          await H.until(async () => (await ps('slow-horses')).upcoming.some((e) => e.number === 4 && e.watched), 4000, 'the Pi never marked E4');
+          assert(posts.join('|') === '/shows/watched {"id":"slow-horses","season":5,"number":4}', posts.join('|'));
+          await H.sleep(500);
+          let v = await p.evaluate(() => ({ prog: document.querySelector('.sh-pg-prog-text').textContent, watch: document.querySelector('.sh-pg-btn').textContent, focus: document.querySelector('#panel .is-focused').getAttribute('data-key'), on: /is-on/.test(document.querySelector('[data-key="sh:pg:mark:5:4"]').className) }));
+          assert(v.prog === 'Season 5 · 3 of 6 watched' && v.watch === 'Watch S5 E3' && v.on && v.focus === 'sh:pg:mark:5:4', JSON.stringify(v));
+          // Off again.
+          await H.key(p, 'Enter');
+          await H.until(async () => !(await ps('slow-horses')).upcoming.some((e) => e.number === 4 && e.watched), 4000, 'the Pi kept E4');
+          await H.sleep(400);
+          assert(await pgText(p, '.sh-pg-prog-text') === 'Season 5 · 2 of 6 watched', 'back to 2');
+          // Up to here on E3: everything before it, E3 included.
+          await H.focusKey(p, 'sh:pg:ep:5:3');
+          await H.key(p, 'ArrowRight', 2);
+          assert(await focusedKey(p) === 'sh:pg:upto:5:3' && await pgText(p, '#panel .is-focused') === 'Watched up to here', await focusedKey(p));
+          await H.key(p, 'Enter');
+          await H.until(async () => { const u = (await ps('slow-horses')).progress.upTo; return u && u.season === 5 && u.number === 3; }, 4000, 'the Pi never took the up to mark');
+          assert(posts[posts.length - 1] === '/shows/upto {"id":"slow-horses","season":5,"number":3}', posts[posts.length - 1]);
+          await H.sleep(500);
+          v = await p.evaluate(() => ({ prog: document.querySelector('.sh-pg-btn').textContent, ticks: document.querySelectorAll('.sh-pg-tick').length, season5: document.querySelector('.sh-pg-tabs .is-on').textContent, focus: document.querySelector('#panel .is-focused').getAttribute('data-key') }));
+          assert(v.prog === 'Watch S5 E4' && v.ticks === 4 && /3\/6/.test(v.season5) && v.focus === 'sh:pg:upto:5:3', JSON.stringify(v));
+          // Catch up: E4 is the last one out.
+          await H.focusKey(p, 'sh:pg:caught');
+          await H.key(p, 'Enter');
+          await H.until(async () => (await ps('slow-horses')).progress.caughtUp === true, 4000, 'the Pi never caught up');
+          assert(posts[posts.length - 1] === '/shows/caughtup {"id":"slow-horses"}', posts[posts.length - 1]);
+          await H.sleep(500);
+          v = await p.evaluate(() => ({ btns: [].map.call(document.querySelectorAll('.sh-pg-btn'), (n) => n.textContent), done: /is-done/.test(document.querySelector('.sh-pg-btn').className), prog: document.querySelector('.sh-pg-prog-text').textContent }));
+          assert(JSON.stringify(v.btns) === '["You’re caught up"]' && v.done && v.prog === 'Season 5 · 4 of 6 watched', JSON.stringify(v));
+          const n = posts.length;
+          await H.key(p, 'Enter');
+          await H.sleep(400);
+          assert(posts.length === n, 'OK on the done button must do nothing');
+          assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+        } finally { await p.ctx.close(); }
+      });
+    } finally { await pgEnv.stop(); }
+
+    await check('Ended show says "I\'ve seen it all", then "Seen it all"; caught up from the Schedule row too', async () => {
+      const own = await H.start();
+      const p = await own.newPage({});
+      try {
+        const posts = pgPosts(p);
+        await H.openGrid(p);
+        await H.fullScreen(p);
+        await p.evaluate(() => { const d = JSON.parse(localStorage.getItem('homeHub.shows.v1')); d.shows.forEach((s) => { if (s.id === 'andor') { s.running = false; s.status = 'Ended'; } }); window.HUB_SHOWS._test.setData(d); window.HUB_SHOWS._test.openPage('andor'); });
+        await H.until(() => p.evaluate(() => !!document.querySelector('.sh-pg-ep')), 5000, 'andor');
+        const v = await p.evaluate(() => ({ btns: [].map.call(document.querySelectorAll('.sh-pg-btn'), (n) => n.textContent), meta: document.querySelector('.sh-pg-meta').textContent, focus: document.querySelector('#panel .is-focused').getAttribute('data-key') }));
+        assert(/Ended/.test(v.meta) && v.btns[v.btns.length - 1] === 'I’ve seen it all', JSON.stringify(v));
+        await H.focusKey(p, 'sh:pg:caught');
+        await H.key(p, 'Enter');
+        await H.until(() => p.evaluate(() => /Seen it all/.test(document.querySelector('.sh-pg-btn:last-child').textContent)), 5000, 'not seen it all');
+        assert(posts.some((x) => /^\/shows\/caughtup \{"id":"andor"\}$/.test(x)), posts.join('|'));
+        const v2 = await p.evaluate(() => ({ btns: [].map.call(document.querySelectorAll('.sh-pg-btn'), (n) => n.textContent), prog: document.querySelector('.sh-pg-prog-text').textContent }));
+        assert(JSON.stringify(v2.btns) === '["Seen it all"]' && /^All \d+ episodes watched$/.test(v2.prog), JSON.stringify(v2));
+      } finally { await p.ctx.close(); await own.stop(); }
+    });
+
+    await check('Show page states: loading, "Only recent episodes so far", Pi unreachable (the cached list still draws), a Pi without the route or without progress', async () => {
+      // Partial: the Pi has no full list for the show.
+      const part = await env.newPage({});
+      try {
+        await part.route(/\/shows\/episodes/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, id: 'paradise', checkedAt: null, partial: true, seasons: [{ season: 2, episodes: [{ number: 3, name: 'Sunrise', airstamp: '2026-11-13T02:00:00Z', runtime: 55 }, { number: 4, name: 'Dusk', airstamp: '2026-11-25T02:00:00Z' }] }], progress: { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null } }) }));
+        await openPg(part, 'paradise');
+        assert(await pgText(part, '.sh-pg-note') === 'Only recent episodes so far', 'partial note');
+        assert(await part.evaluate(() => document.querySelectorAll('.sh-pg-ep').length === 2), 'two rows');
+      } finally { await part.ctx.close(); }
+      // Unreachable, first with nothing cached, then cached.
+      const lost = await env.newPage({});
+      try {
+        await lost.route(/\/shows\/episodes/, (r) => r.abort());
+        await openPgOnly(lost, 'slow-horses');
+        await H.until(() => lost.evaluate(() => !!document.querySelector('.sh-msg')), 5000, 'message');
+        const m = await lost.evaluate(() => document.querySelector('.sh-msg-head').textContent);
+        assert(m === 'Can’t reach the Pi', m);
+        await lost.unroute(/\/shows\/episodes/);
+        await H.key(lost, 'Escape');
+        await H.sleep(300);
+        await toChip(lost, 'slow-horses');
+        await H.key(lost, 'Enter');
+        await H.until(() => lost.evaluate(() => !!document.querySelector('.sh-pg-ep')), 5000, 'it never recovered');
+        await H.key(lost, 'Escape');
+        await H.sleep(300);
+        await lost.route(/\/shows\/episodes/, (r) => r.abort());
+        await toChip(lost, 'slow-horses');
+        await H.key(lost, 'Enter');
+        await H.until(() => lost.evaluate(() => !!document.querySelector('.sh-pg-ep')), 5000, 'the cached list was not drawn');
+        await H.sleep(500);
+        assert(await lost.evaluate(() => !document.querySelector('.sh-msg') && document.querySelectorAll('.sh-pg-ep').length === 6), 'cache');
+        const keys = await lost.evaluate(() => Object.keys(localStorage).filter((k) => k.indexOf('homeHub.showEps.v1.') === 0));
+        assert(keys.indexOf('homeHub.showEps.v1.slow-horses') >= 0, keys.join(','));
+      } finally { await lost.ctx.close(); }
+      // Old Pi: 404 on the route, and a 200 without progress.
+      for (const reply of [{ status: 404, body: { ok: false, error: 'not found' } }, { status: 200, body: { ok: true, seasons: [{ season: 1, episodes: [{ number: 1, name: 'x', airstamp: '2020-01-01T00:00:00Z' }] }] } }]) {
+        const old = await env.newPage({});
+        try {
+          await old.route(/\/shows\/episodes/, (r) => r.fulfill({ status: reply.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(reply.body) }));
+          await openPgOnly(old, 'slow-horses');
+          await H.until(() => old.evaluate(() => !!document.querySelector('.sh-msg')), 5000, 'old message');
+          const m = await old.evaluate(() => document.querySelector('.sh-msg-head').textContent);
+          assert(m === 'Show page needs a newer Pi', reply.status + ': ' + m);
+          assert(await old.evaluate(() => !!document.querySelector('.sh-pg-back')), 'a way back');
+        } finally { await old.ctx.close(); }
+      }
+      // The same words in Spanish.
+      const es = await env.newPage({ lang: 'es' });
+      try {
+        await es.route(/\/shows\/episodes/, (r) => r.fulfill({ status: 404, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
+        await openPgOnly(es, 'slow-horses');
+        await H.until(() => es.evaluate(() => !!document.querySelector('.sh-msg')), 5000, 'old message es');
+        assert(await pgText(es, '.sh-msg-head') === 'La página de la serie necesita una Pi más nueva', 'es old');
+      } finally { await es.ctx.close(); }
+      async function openPgOnly(p, id) {
+        await H.openGrid(p);
+        await H.fullScreen(p);
+        await H.sleep(300);
+        await toChip(p, id);
+        await H.key(p, 'Enter');
+        await H.sleep(300);
+      }
+    });
+
+    await check('Show page in Spanish: words, dates, and nothing wider than its box (focused chip and toggle too)', async () => {
+      const own = await H.start(WATCHED12);
+      const p = await own.newPage({ lang: 'es' });
+      try {
+        await openPg(p);
+        const v = await p.evaluate(() => ({
+          prog: document.querySelector('.sh-pg-prog-text').textContent, btns: [].map.call(document.querySelectorAll('.sh-pg-btn'), (n) => n.textContent),
+          pills: [].map.call(document.querySelectorAll('.sh-pg-tabs .sh-tab'), (n) => n.textContent), back: document.querySelector('.sh-pg-back').textContent,
+          meta: document.querySelector('.sh-pg-meta').textContent, ep: document.querySelectorAll('.sh-pg-ep')[1].textContent.replace(/\s+/g, ' ').trim(), future: document.querySelectorAll('.sh-pg-ep')[4].textContent.replace(/\s+/g, ' ').trim()
+        }));
+        assert(v.prog === 'Temporada 5 · 2 de 6 vistos' && JSON.stringify(v.btns) === '["Ver T5 E3","Estoy al día"]', JSON.stringify(v));
+        assert(v.pills[0] === 'T1' && /Sigue en emisión/.test(v.meta) && /5 temporadas/.test(v.meta) && v.back === 'Programación', JSON.stringify(v));
+        assert(/^E2Dead DropEmitido el 2 nov/.test(v.ep) && /Visto/.test(v.ep) && /^E5Hello GoodbyeSe emite el 23 nov$/.test(v.future), v.ep + ' | ' + v.future);
+        // A long title and the focused chips: nothing wider than its box.
+        await p.evaluate(() => { document.querySelectorAll('.sh-pg-ep-title')[2].textContent = 'El increíble caso de la niña que perdió su ñandú ¿Quién lo sabe? Éxito total de la temporada'; });
+        for (const k of ['sh:pg:watch', 'sh:pg:caught', 'sh:pg:ep:5:3']) {
+          await H.focusKey(p, k);
+          if (k.indexOf('ep') > 0) await H.key(p, 'ArrowRight');
+          const f = await p.evaluate(() => {
+            const bad = [];
+            const body = document.querySelector('#panel .panel-body');
+            if (body.scrollWidth > body.clientWidth + 1) bad.push('the body scrolls sideways');
+            const root = document.querySelector('.sh-pg').getBoundingClientRect();
+            [].forEach.call(document.querySelectorAll('.sh-pg-btn, .sh-pg-back, .sh-pg-tabs .sh-tab, .sh-pg-upto.f, .sh-mark.is-focused, .sh-pg-prog-text, .sh-pg-meta'), (n) => {
+              const r = n.getBoundingClientRect();
+              if (!r.width) return;
+              if (r.right > root.right + 0.5) bad.push('outside the page: ' + n.textContent);
+              if (n.scrollWidth > n.clientWidth + 1) bad.push('clipped: ' + n.textContent);
+              const cs = getComputedStyle(n);
+              if (parseFloat(cs.lineHeight) < parseFloat(cs.fontSize) * 1.25) bad.push('line height on ' + n.textContent);
+            });
+            [].forEach.call(document.querySelectorAll('.sh-pg-ep'), (ep) => {
+              const er = ep.getBoundingClientRect();
+              [].forEach.call(ep.querySelectorAll('.f'), (n) => { if (n.getBoundingClientRect().right > er.right + 0.5) bad.push('control past its row: ' + n.textContent); });
+            });
+            return bad;
+          });
+          assert(!f.length, k + ': ' + f.join(' | '));
+        }
+        assert(await p.evaluate(() => { const t = document.querySelectorAll('.sh-pg-ep-title')[2]; return t.scrollWidth >= t.clientWidth && getComputedStyle(t).textOverflow === 'ellipsis'; }), 'long titles end in an ellipsis');
+        assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+      } finally { await p.ctx.close(); await own.stop(); }
+    });
+
+    await check('Watched follows the Pi\'s progress (up to here minus exceptions) and marks on their way: "Did you finish?" drops covered episodes; upto and caughtup survive in the outbox', async () => {
+      const state = (await getJson(env.LIVE + '/live/state')).resources.shows.data;
+      const out = [{ op: 'upto', showId: 'the-pitt', season: 2, number: 3 }, { op: 'caughtup', showId: 'andor' }, { op: 'upto', showId: 'x' }, { op: 'bogus', showId: 'y', season: 1, number: 1 }];
+      const p = await env.newPage({ live: 'http://127.0.0.1:1', waitLive: false, storage: { 'homeHub.shows.v1': JSON.stringify(state), 'homeHub.watch.out.v1': JSON.stringify(out) } });
+      try {
+        await H.sleep(500);
+        const r = await p.evaluate(() => {
+          const T = window.HUB_SHOWS._test;
+          const pend = T.pendingOut();
+          const d = JSON.parse(localStorage.getItem('homeHub.shows.v1'));
+          const sh = d.shows.filter((s) => s.id === 'slow-horses')[0];
+          const air = Date.parse('2026-11-01T00:00:00Z');
+          const a = { upto2: T.pendingMark('the-pitt', 2, 2, air), upto4: T.pendingMark('the-pitt', 2, 4, air), caughtOld: T.pendingMark('andor', 1, 1, air), caughtFuture: T.pendingMark('andor', 1, 1, Date.now() + 86400000 * 30) };
+          // The Pi's own progress: up to S4E6 with S4E2 an exception.
+          sh.progress = { upTo: { season: 4, number: 6 }, unwatched: [{ season: 4, number: 2 }], aired: 0, seen: 0, caughtUp: false, next: null };
+          sh.watched = [{ season: 5, number: 1 }]; sh.upcoming = []; sh.nextEpisode = null;
+          const base = [T.isWatchedEp(sh, 3, 1), T.isWatchedEp(sh, 4, 2), T.isWatchedEp(sh, 4, 6), T.isWatchedEp(sh, 5, 1), T.isWatchedEp(sh, 5, 2)];
+          return { n: pend.length, ops: pend.map((x) => x.op).join(','), a: a, base: base };
+        });
+        assert(r.n === 2 && r.ops === 'upto,caughtup', JSON.stringify(r));
+        assert(r.a.upto2 === 'watched' && r.a.upto4 === '' && r.a.caughtOld === 'watched' && r.a.caughtFuture === '', JSON.stringify(r.a));
+        // The Pi's progress, with no mark of this show on its way.
+        assert(JSON.stringify(r.base) === '[true,false,true,true,false]', JSON.stringify(r.base));
+        // finishLines: a started episode covered by the progress goes by itself.
+        const lines = await p.evaluate(() => {
+          const d = JSON.parse(localStorage.getItem('homeHub.shows.v1'));
+          const sh = d.shows.filter((s) => s.id === 'the-great-british-baking-show')[0];
+          sh.progress = { upTo: { season: 16, number: 9 }, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null };
+          sh.watched = []; sh.upcoming.forEach((e) => { delete e.watched; });
+          localStorage.setItem('homeHub.watch.v1', JSON.stringify([{ showId: 'the-great-british-baking-show', season: 16, number: 8, startedAt: Date.now() - 3600000 }, { showId: 'the-great-british-baking-show', season: 16, number: 10, startedAt: Date.now() - 3600000 }]));
+          window.HUB_SHOWS._test.setData(d);
+          return window.HUB_SHOWS._test.finishLines(Date.now()).map((l) => l.rec.number);
+        });
+        assert(JSON.stringify(lines) === '[10]', JSON.stringify(lines));
+      } finally { await p.ctx.close(); }
     });
 
   } finally {

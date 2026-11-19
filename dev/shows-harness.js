@@ -61,8 +61,26 @@ function sampleWith(dir, watched) {
   return file;
 }
 
+// The sample's shows as the owner's list too (a seed file), so the Pi accepts marks for them
+// and knows their episode lists, like a Pi with these shows added.
+// watched ([[id, season, number], ...]) and upTo ([[id, season, number], ...]) go into the list entries too,
+// which is where the Pi keeps progress (the episode route and the progress counts read them).
+function seedFor(dir, opts) {
+  const raw = JSON.parse(fs.readFileSync(SAMPLE, 'utf8'));
+  const file = path.join(dir, 'sample-seed.json');
+  const at = '2026-11-17T20:00:00Z';
+  const shows = raw.shows.map((x) => {
+    const e = { name: x.name, service: x.service };
+    (opts.watched || []).forEach((w) => { if (w[0] === x.id) (e.watched = e.watched || []).push({ s: w[1], e: w[2], at: at }); });
+    (opts.upTo || []).forEach((w) => { if (w[0] === x.id) e.upTo = { s: w[1], e: w[2], at: at }; });
+    return e;
+  });
+  fs.writeFileSync(file, JSON.stringify({ shows: shows }));
+  return file;
+}
+
 /*
- * opts: { at (UTC ms), shows: 'sample' | 'none' (a Pi that sends no shows), watched: [[id, season, number], ...] }.
+ * opts: { at (UTC ms), upTo ([[id, season, number], ...]), shows: 'sample' | 'none' (a Pi that sends no shows), watched: [[id, season, number], ...] }.
  * Returns { PAGE, LIVE, pi, logs, newPage(o), stop(), launches }.
  */
 async function start(opts) {
@@ -85,7 +103,7 @@ async function start(opts) {
   env.pi = server.start({
     port: env.LIVE_PORT, host: '127.0.0.1', token: TOKEN, origins: [env.PAGE], dataDir: env.dataDir,
     log: (s) => env.logs.push(s), now: () => new Date(env.at),
-    shows: opts.shows === 'none' ? undefined : { sampleFile: sampleWith(env.dataDir, opts.watched) }
+    shows: opts.shows === 'none' ? undefined : { sampleFile: sampleWith(env.dataDir, opts.watched), seedFile: seedFor(env.dataDir, opts) }
   });
   await env.pi.ready;
   await until(() => getOk(env.PAGE + '/'), 10000, 'the preview did not start');
@@ -205,6 +223,15 @@ async function focusKey(page, want) {
   throw new Error('could not focus ' + want);
 }
 
+// The show's row, then Right until its Show page chip.
+async function focusChip(page, id) {
+  const at = () => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') || '' : ''; });
+  if ((await at()).indexOf('sh:page:' + id + ':') === 0) return;
+  await focusKey(page, 'sh:row:' + id + ':');
+  for (let i = 0; i < 4 && (await at()).indexOf('sh:page:' + id + ':') !== 0; i++) await key(page, 'ArrowRight');
+  if ((await at()).indexOf('sh:page:' + id + ':') !== 0) throw new Error('could not reach the chip of ' + id);
+}
+
 const openSchedule = (page, tab) => openView(page, 'schedule', tab);
 
 async function key(page, k, n) {
@@ -218,4 +245,4 @@ async function openGrid(page) {
   await sleep(400);
 }
 
-module.exports = { start, openView, openGrid, fullScreen, focusKey, openSchedule, key, sleep, until, TUESDAY, TZ, TOKEN, SAMPLE };
+module.exports = { focusChip, start, openView, openGrid, fullScreen, focusKey, openSchedule, key, sleep, until, TUESDAY, TZ, TOKEN, SAMPLE };

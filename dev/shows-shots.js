@@ -5,6 +5,7 @@
  * at 1920x1080 in Chicago, from the made-up show sample:
  *   node dev/shows-shots.js [dir]   (default: dev/shots)
  *   node dev/shows-shots.js <dir> split [name]   (Entertainment full screen, EN and ES, at twice the pixels)
+ *   node dev/shows-shots.js <dir> showpage   (the Schedule row's new toggle and Show page chip, the show page and its states, EN and ES, at twice the pixels)
  * Nothing reaches the internet.
  */
 'use strict';
@@ -73,6 +74,73 @@ async function finishShots(env, shot) {
   await r.ctx.close();
 }
 
+// The show page: Slow Horses with E1 and E2 of season 5 watched, Andor (ended). 3840x2160 files.
+async function showPageShots(env, shot) {
+  const rowClip = { x: 535, y: 150, width: 1345, height: 125 };
+  const headClip = { x: 535, y: 120, width: 1345, height: 330 };
+  for (const lang of ['en', 'es']) {
+    const opt = { lang: lang === 'es' ? 'es' : undefined, scale: 2 };
+    const page = await env.newPage(opt);
+    await H.openGrid(page);
+    await H.fullScreen(page);
+    await H.sleep(500);
+    await H.focusKey(page, 'sh:row:the-great-british-baking-show:');
+    await H.key(page, 'ArrowRight', 1);
+    await H.sleep(250);
+    await shot(page, 'row-toggle-' + lang + '.png', rowClip);
+    await H.key(page, 'ArrowRight', 1);
+    await H.sleep(250);
+    await shot(page, 'row-showpage-' + lang + '.png', rowClip);
+    if (page.ctx.errors.length) console.log(lang + ' page errors: ' + page.ctx.errors.join(' | '));
+    await page.ctx.close();
+
+    // Slow Horses: seasons 1 to 4 and E1, E2 of season 5 watched. A Pi of its own per language, since the pictures mark things.
+    const mark = await H.start({ upTo: [['slow-horses', 4, 6]], watched: [['slow-horses', 5, 1], ['slow-horses', 5, 2]] });
+    try {
+      const p = await mark.newPage(opt);
+      await H.openGrid(p);
+      await H.fullScreen(p);
+      await H.sleep(500);
+      await H.focusChip(p, 'slow-horses');
+      await H.key(p, 'Enter');
+      await H.sleep(900);
+      await H.focusKey(p, 'sh:pg:ep:5:3');
+      await H.key(p, 'ArrowRight', 2);
+      await H.sleep(300);
+      await shot(p, 'show-page-' + lang + '.png');
+      // I'm caught up, pressed: the header with the done button.
+      await H.focusKey(p, 'sh:pg:caught');
+      await H.key(p, 'Enter');
+      await H.sleep(1200);
+      await shot(p, 'show-page-caughtup-' + lang + '.png', headClip);
+      if (p.ctx.errors.length) console.log(lang + ' page errors: ' + p.ctx.errors.join(' | '));
+      await p.ctx.close();
+    } finally {
+      await mark.stop();
+    }
+
+    // Andor, ended: "I've seen it all", pressed.
+    const end = await H.start();
+    try {
+      const a = await end.newPage(opt);
+      await H.openGrid(a);
+      await H.fullScreen(a);
+      await H.sleep(500);
+      await a.evaluate(() => { const d = JSON.parse(localStorage.getItem('homeHub.shows.v1')); d.shows.forEach((s) => { if (s.id === 'andor') { s.running = false; s.status = 'Ended'; } }); window.HUB_SHOWS._test.setData(d); });
+      await H.sleep(300);
+      await a.evaluate(() => window.HUB_SHOWS._test.openPage('andor'));
+      await H.sleep(900);
+      await H.focusKey(a, 'sh:pg:caught');
+      await H.key(a, 'Enter');
+      await H.sleep(1200);
+      await shot(a, 'show-page-ended-' + lang + '.png', headClip);
+      await a.ctx.close();
+    } finally {
+      await end.stop();
+    }
+  }
+}
+
 (async function () {
   fs.mkdirSync(OUT, { recursive: true });
   const env = await H.start();
@@ -85,6 +153,12 @@ async function finishShots(env, shot) {
   try {
     if (ONLY === 'split') {
       await splitShots(env, shot);
+      console.log(shots.join('\n'));
+      await env.stop();
+      process.exit(0);
+    }
+    if (ONLY === 'showpage') {
+      await showPageShots(env, shot);
       console.log(shots.join('\n'));
       await env.stop();
       process.exit(0);

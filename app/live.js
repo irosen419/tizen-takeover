@@ -14,6 +14,7 @@
  *   HUB_LIVE.onCommand(fn)     fn(type, data), once per command
  *   HUB_LIVE.onStatus(fn)      fn(status) when the state or its text changes
  *   HUB_LIVE.post(path, body, cb)   POST JSON; cb(err, data, httpStatus)
+ *   HUB_LIVE.fetch(path, cb)        GET JSON from the server's screen door; cb(err, data, httpStatus)
  *   HUB_LIVE.everConnected()   this browser has reached the server at least once
  *
  * States: off, quiet (never reached from this browser), connecting, live,
@@ -521,6 +522,20 @@
     });
   }
 
+  // A plain read of one of the server's screen routes (GET /shows/episodes?id=...).
+  function fetchJson(path, cb) {
+    cb = typeof cb === 'function' ? cb : function () {};
+    if (!started || !server) {
+      setTimeout(function () { cb('live updates are off', null, 0); }, 0);
+      return;
+    }
+    request('GET', server + path, null, POST_MS, false, function (kind, data, code) {
+      if (kind === 'ok' && data) return cb(null, data, code);
+      if (kind === 'net') return cb('not reachable', null, code);
+      cb((data && data.error) || ('HTTP ' + code), data, code);
+    });
+  }
+
   window.HUB_LIVE = {
     version: VERSION,
     start: start,
@@ -532,6 +547,7 @@
     onCommand: function (fn) { if (typeof fn === 'function') commandListeners.push(fn); },
     onStatus: function (fn) { if (typeof fn === 'function') statusListeners.push(fn); },
     post: post,
+    fetch: fetchJson,
     everConnected: seen
   };
 })();

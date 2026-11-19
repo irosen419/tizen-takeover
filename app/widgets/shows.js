@@ -62,6 +62,9 @@
   var DEFAULT_ALIASES = { 'Hulu': 'Disney+' };
   var WATCH_KEY = 'homeHub.watch.v1';        // started episodes: [{ showId, season, number, startedAt }]
   var OUT_KEY = 'homeHub.watch.out.v1';      // marks on their way to the Pi: [{ op, showId, season, number }]
+  var EPS_KEY = 'homeHub.showEps.v1.';       // a show page's episode list, per show id (kept for at most EPS_KEEP shows)
+  var EPS_INDEX = 'homeHub.showEps.index.v1';
+  var EPS_KEEP = 6;
   var FINISH_KEEP = 7 * DAY;                 // an unanswered "Did you finish?" line goes after this
   var FINISH_MAX = 20;                       // started episodes kept
 
@@ -123,6 +126,26 @@
     startedYesterday: 'yesterday',
     markWatched: 'Mark as watched',
     unmark: 'Mark as not watched',
+    markUpTo: 'Mark as up to date',
+    showPage: 'Show page',
+    seasonsN: '{n} seasons',
+    seasonsOne: '1 season',
+    seasonLine: 'Season {s} · {w} of {n} watched',
+    allLine: 'All {n} episodes watched',
+    watchNext: 'Watch {code}',
+    caughtUp: 'I’m caught up',
+    seenAll: 'I’ve seen it all',
+    caughtDone: 'You’re caught up',
+    seenDone: 'Seen it all',
+    seasonPill: 'S{s}',
+    epNum: 'E{e}',
+    upToHere: 'Watched up to here',
+    airedOn: 'Aired {d}',
+    airsOn: 'Airs {d}',
+    pgDate: '{mon} {d}',
+    pgDateYear: '{date}, {year}',
+    minutes: '{n} min',
+    partial: 'Only recent episodes so far',
     notInstalled: '{service} isn’t on this TV.',
     noApp: 'No app is set for {name}. Give it one on the Pi: ./hub shows add "{name}" --service Netflix',
     stillLooking: 'Still looking for your apps. Try again in a second.',
@@ -134,6 +157,8 @@
       lost: { head: 'Can’t reach the Pi', line: '{live}. The schedule fills in as soon as the Pi answers again.' },
       old: { head: 'Schedule needs a newer Pi', line: 'The hub server on the Pi doesn’t send shows yet. Update it (pi/README.md), then restart it.' },
       loading: { head: 'Loading…', line: '' },
+      pageLost: { head: 'Can’t reach the Pi', line: 'The episode list fills in as soon as the Pi answers again.' },
+      pageOld: { head: 'Show page needs a newer Pi', line: 'The hub server on the Pi doesn’t send episode lists yet. Update it (pi/README.md), then restart it.' },
       empty: { head: 'No shows on the list yet', line: 'Add one on the Pi: ./hub shows add "Stick" --service "Apple TV"' },
       waiting: { head: 'Looking the shows up', line: 'The Pi asks TVmaze about each show. It takes a few seconds.' },
       error: { head: 'TVmaze couldn’t be reached', line: 'The Pi tries again every 6 hours, or now with ./hub shows refresh.' }
@@ -155,6 +180,8 @@
     'Paramount+': { color: '#2a7fff', match: ['Paramount+', 'Paramount Plus'] }
   };
 
+  var LIST_SVG = '<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9 7h11M9 12h11M9 17h11"/><circle cx="4.5" cy="7" r="0.6" fill="currentColor"/><circle cx="4.5" cy="12" r="0.6" fill="currentColor"/><circle cx="4.5" cy="17" r="0.6" fill="currentColor"/></svg>';
+
   var POSTER_COLORS = ['#26404a', '#4a2630', '#2f3a52', '#4a3b22', '#2d4632', '#3e2e4f', '#4b3226', '#24424a'];
 
   var S = {
@@ -164,6 +191,8 @@
     fromCache: false,
     tab: 'week',
     soonSeen: {},
+    page: null,       // the open show page: { id, season, inEp, back }
+    backKey: null,    // the page chip focus returns to when the show page closes
     focusKey: null,   // where focus goes on the next drawing (after a "Did you finish?" answer)
     timer: null,
     listeners: []
@@ -362,26 +391,58 @@
     return out;
   }
 
+  // Is (season, number) inside a watched-up-to point { season, number }?
+  function coversUp(up, season, number) {
+    if (!up || typeof up.season !== 'number' || typeof up.number !== 'number') return false;
+    if (typeof season !== 'number' || typeof number !== 'number') return false;
+    return season < up.season || (season === up.season && number <= up.number);
+  }
+
+  function inPairs(list, season, number) {
+    if (!isArr(list)) return false;
+    for (var i = 0; i < list.length; i++) if (list[i] && list[i].season === season && list[i].number === number) return true;
+    return false;
+  }
+
   // Watched as the Pi says, unless a mark from this TV is still on its way
   // (then that wins, so a row answers at once). show may be left out.
   function epWatched(show, ep) {
     if (!ep) return false;
     if (show && typeof ep.season === 'number' && typeof ep.number === 'number') {
-      var p = pendingMark(show.id, ep.season, ep.number);
+      var p = pendingMark(show.id, ep.season, ep.number, parseIso(ep.airstamp));
       if (p) return p === 'watched';
+      if (ep.watched === true) return true;
+      return baseWatched(show, ep.season, ep.number);
     }
     return ep.watched === true;
   }
 
-  // The same for an episode named by numbers (it may be gone from upcoming: then the Pi's watched list says).
-  function isWatchedEp(show, season, number) {
-    var p = pendingMark(show.id, season, number);
-    if (p) return p === 'watched';
-    var eps = (isArr(show.upcoming) ? show.upcoming : []).concat(show.nextEpisode ? [show.nextEpisode] : []);
-    for (var i = 0; i < eps.length; i++) if (eps[i] && eps[i].season === season && eps[i].number === number && eps[i].watched === true) return true;
-    var w = isArr(show.watched) ? show.watched : [];
-    for (var j = 0; j < w.length; j++) if (w[j] && w[j].season === season && w[j].number === number) return true;
+  // The Pi's answer for an episode named by numbers, from the snapshot's lists
+  // and its progress (up to here, minus the exceptions inside it).
+  function baseWatched(show, season, number) {
+    if (inPairs(show.watched, season, number)) return true;
+    var pr = show.progress;
+    if (pr && typeof pr === 'object' && coversUp(pr.upTo, season, number) && !inPairs(pr.unwatched, season, number)) return true;
     return false;
+  }
+
+  function snapEps(show) {
+    return (isArr(show.upcoming) ? show.upcoming : []).concat(show.nextEpisode ? [show.nextEpisode] : []);
+  }
+
+  // The same for an episode named by numbers (it may be gone from upcoming: then the Pi's watched list and progress say).
+  function isWatchedEp(show, season, number) {
+    var eps = snapEps(show);
+    var air = null;
+    for (var i = 0; i < eps.length; i++) {
+      if (eps[i] && eps[i].season === season && eps[i].number === number) {
+        if (air === null) air = parseIso(eps[i].airstamp);
+        if (eps[i].watched === true && !pendingMark(show.id, season, number, air)) return true;
+      }
+    }
+    var p = pendingMark(show.id, season, number, air);
+    if (p) return p === 'watched';
+    return baseWatched(show, season, number);
   }
 
   // True when every episode of a row is marked watched.
@@ -703,7 +764,9 @@
     if (isArr(list)) {
       for (var i = 0; i < list.length; i++) {
         var r = list[i];
-        if (r && (r.op === 'watched' || r.op === 'unwatch') && typeof r.showId === 'string' && typeof r.season === 'number' && typeof r.number === 'number') {
+        if (!r || typeof r.showId !== 'string') continue;
+        if (r.op === 'caughtup') O.list.push({ op: r.op, showId: r.showId });
+        else if ((r.op === 'watched' || r.op === 'unwatch' || r.op === 'upto') && typeof r.season === 'number' && typeof r.number === 'number') {
           O.list.push({ op: r.op, showId: r.showId, season: r.season, number: r.number });
         }
       }
@@ -716,19 +779,27 @@
     store(OUT_KEY, JSON.stringify(list));
   }
 
-  function outKey(r) { return r.showId + '|' + r.season + '|' + r.number; }
+  function outKey(r) { return r.op === 'caughtup' ? r.showId + '|caughtup' : r.showId + '|' + r.season + '|' + r.number; }
 
-  // 'watched', 'unwatch' or '' for an episode with a mark still on its way.
-  function pendingMark(showId, season, number) {
+  // 'watched', 'unwatch' or '' for an episode with a mark still on its way,
+  // in the order the marks were made: a single mark on it, a "watched up to
+  // here" at or after it, or "caught up" when it has aired (airMs).
+  function pendingMark(showId, season, number, airMs) {
     var list = loadOut();
+    var res = '';
     for (var i = 0; i < list.length; i++) {
-      if (list[i].showId === showId && list[i].season === season && list[i].number === number) return list[i].op;
+      var r = list[i];
+      if (r.showId !== showId) continue;
+      if (r.op === 'caughtup') { if (typeof airMs === 'number' && airMs <= now() + 5 * MIN) res = 'watched'; }
+      else if (r.season === season && r.number === number) res = r.op === 'unwatch' ? 'unwatch' : 'watched';
+      else if (r.op === 'upto' && coversUp(r, season, number)) res = 'watched';
     }
-    return '';
+    return res;
   }
 
+  // op: watched, unwatch, upto (season and number) or caughtup (neither).
   function queueMark(op, showId, season, number) {
-    var rec = { op: op, showId: showId, season: season, number: number };
+    var rec = op === 'caughtup' ? { op: op, showId: showId } : { op: op, showId: showId, season: season, number: number };
     var out = [];
     var list = loadOut();
     for (var i = 0; i < list.length; i++) if (outKey(list[i]) !== outKey(rec)) out.push(list[i]);
@@ -744,22 +815,81 @@
     saveOut(out);
   }
 
+  // The latest numbered episode that has aired, from the snapshot and the
+  // show page's list: { season, number } or null.
+  function latestAired(showId, show) {
+    var best = null;
+    var t = now() + 5 * MIN;
+    function see(e) {
+      var ms = parseIso(e && e.airstamp);
+      if (ms === null || ms > t || typeof e.season !== 'number' || typeof e.number !== 'number') return;
+      if (!best || e.season > best.season || (e.season === best.season && e.number > best.number)) best = { season: e.season, number: e.number };
+    }
+    var list = show ? snapEps(show) : [];
+    for (var i = 0; i < list.length; i++) see(list[i]);
+    var d = epsGet(showId);
+    var fl = d ? flatEps(d) : [];
+    for (var j = 0; j < fl.length; j++) see(fl[j]);
+    return best;
+  }
+
+  function isoNow() { return new Date(now()).toISOString(); }
+
+  // A mark in the copy of the Pi's data this TV holds (the snapshot's show):
+  // op watched, unwatch or upto.
+  function applyToShow(show, op, season, number) {
+    var pr = show.progress && typeof show.progress === 'object' ? show.progress : null;
+    var eps = snapEps(show);
+    var w = isArr(show.watched) ? show.watched : [];
+    var i;
+    if (op === 'upto') {
+      var up = { season: season, number: number };
+      var old = pr && pr.upTo;
+      for (i = 0; i < eps.length; i++) {
+        if (!eps[i]) continue;
+        if (coversUp(up, eps[i].season, eps[i].number)) eps[i].watched = true;
+        else if (old && coversUp(old, eps[i].season, eps[i].number) && !inPairs(w, eps[i].season, eps[i].number)) delete eps[i].watched;
+      }
+      var keep = [];
+      for (i = 0; i < w.length; i++) if (!coversUp(up, w[i].season, w[i].number)) keep.push(w[i]);
+      show.watched = keep;
+      if (!pr) pr = show.progress = { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null };
+      pr.upTo = { season: season, number: number, at: isoNow() };
+      pr.unwatched = [];
+      return;
+    }
+    var on = op === 'watched';
+    for (i = 0; i < eps.length; i++) {
+      if (eps[i] && eps[i].season === season && eps[i].number === number) { if (on) eps[i].watched = true; else delete eps[i].watched; }
+    }
+    var out = [];
+    for (var j = 0; j < w.length; j++) if (!(w[j].season === season && w[j].number === number)) out.push(w[j]);
+    if (pr && coversUp(pr.upTo, season, number)) {
+      var ex = [];
+      var u = isArr(pr.unwatched) ? pr.unwatched : [];
+      for (var k = 0; k < u.length; k++) if (!(u[k].season === season && u[k].number === number)) ex.push(u[k]);
+      if (!on) ex.push({ season: season, number: number });
+      pr.unwatched = ex;
+    } else if (on) out.push({ season: season, number: number, at: isoNow() });
+    show.watched = out;
+  }
+
   // Puts a mark into the copy of the Pi's data this TV holds, so the row
-  // shows it before the Pi's own update arrives.
+  // and the show page show it before the Pi's own update arrives.
   function applyMark(rec) {
     var show = validData(S.data) ? findShow(rec.showId) : null;
-    if (!show) return;
-    var on = rec.op === 'watched';
-    var eps = (isArr(show.upcoming) ? show.upcoming : []).concat(show.nextEpisode ? [show.nextEpisode] : []);
-    for (var i = 0; i < eps.length; i++) {
-      if (eps[i] && eps[i].season === rec.season && eps[i].number === rec.number) { if (on) eps[i].watched = true; else delete eps[i].watched; }
+    var op = rec.op;
+    var season = rec.season;
+    var number = rec.number;
+    if (op === 'caughtup') {
+      var cu = latestAired(rec.showId, show);
+      if (!cu) return;
+      op = 'upto';
+      season = cu.season;
+      number = cu.number;
     }
-    var w = isArr(show.watched) ? show.watched : [];
-    var out = [];
-    for (var j = 0; j < w.length; j++) if (!(w[j].season === rec.season && w[j].number === rec.number)) out.push(w[j]);
-    if (on) out.push({ season: rec.season, number: rec.number, at: new Date(now()).toISOString() });
-    show.watched = out;
-    saveCache();
+    applyToEps(rec.showId, show, op, season, number);
+    if (show) { applyToShow(show, op, season, number); saveCache(); }
   }
 
   // Tells the Pi about every mark waiting: POST /shows/watched or
@@ -776,13 +906,16 @@
     if (O.sending[k]) return;
     O.sending[k] = true;
     try {
-      Lv.post(rec.op === 'watched' ? '/shows/watched' : '/shows/unwatch', { id: rec.showId, season: rec.season, number: rec.number }, function (err, data, code) {
+      var route = { watched: '/shows/watched', unwatch: '/shows/unwatch', upto: '/shows/upto', caughtup: '/shows/caughtup' }[rec.op];
+      var body = rec.op === 'caughtup' ? { id: rec.showId } : { id: rec.showId, season: rec.season, number: rec.number };
+      Lv.post(route, body, function (err, data, code) {
         O.sending[k] = false;
         // Kept for the next try while the Pi can't be reached; dropped when it refuses.
         if (!err || code === 400 || code === 404) {
           removeOut(rec);
           if (!err) applyMark(rec);
           changed();
+          if (!err) refetchPageSoon();
         }
       });
     } catch (e) { O.sending[k] = false; warn('telling the Pi', e); }
@@ -896,6 +1029,7 @@
     saveCache();
     changed(before !== null && before !== JSON.stringify(d.shows));
     flushOut();
+    refetchPageSoon();
   }
 
   function changed() {
@@ -1034,8 +1168,15 @@
       mk.setAttribute('aria-checked', seen ? 'true' : 'false');
       var box = el('span', 'sh-mark-box', mk);
       el('span', 'sh-check', box);
-      el('span', 'sh-mark-text', mk, word(seen ? 'unmark' : 'markWatched'));
+      el('span', 'sh-mark-text', mk, word(seen ? 'unmark' : 'markUpTo'));
     }
+    // The show page: a small round list icon; focused, it names itself.
+    var pg = el('div', 'sh-page f' + (past ? ' is-past' : ''), line);
+    pg.setAttribute('data-key', 'sh:page:' + a.show.id + ':' + a.ms);
+    pg.setAttribute('role', 'button');
+    var ic = el('span', 'sh-page-ic', pg);
+    ic.innerHTML = LIST_SVG;
+    el('span', 'sh-page-text', pg, word('showPage'));
     return row;
   }
 
@@ -1167,6 +1308,8 @@
 
   // The whole Schedule in the panel body.
   function renderPanel(body) {
+    if (S.page && findShow(S.page.id)) { renderPage(body); return; }
+    S.page = null;
     var t = now();
     var root = el('div', 'sh', body);
     var st = state();
@@ -1222,6 +1365,12 @@
     S.focusKey = null;
     if (!want && fins.length) want = fins[0];
     if (want) pick = want;
+    // Back from a show page: the chip it was opened from.
+    if (S.backKey) {
+      var chips = root.querySelectorAll('.sh-page');
+      for (var c = 0; c < chips.length; c++) if (chips[c].getAttribute('data-key') === S.backKey) pick = chips[c];
+      S.backKey = null;
+    }
     if (pick) pick.setAttribute('data-autofocus', '');
   }
 
@@ -1236,6 +1385,11 @@
     var key = (target && target.getAttribute('data-key')) || '';
     if (key.indexOf('sh:') !== 0) return false;
     var p = key.split(':');
+    if (p[1] === 'pg') return selectPage(p);
+    if (p[1] === 'page') {
+      if (findShow(p[2])) openPage(p[2], key);
+      return true;
+    }
     if (p[1] === 'tab') {
       if (TABS.indexOf(p[2]) >= 0 && p[2] !== S.tab) {
         S.tab = p[2];
@@ -1257,7 +1411,18 @@
       for (var i = 0; i < ups.length; i++) if (parseIso(ups[i].airstamp) === ms) eps.push(ups[i]);
     }
     if (p[1] === 'mark') {
-      toggleRow(show, eps, now());
+      var t0 = now();
+      var a0 = { show: show, eps: eps };
+      if (rowWatched(a0)) toggleRow(show, eps, t0);
+      else {
+        // Not watched yet: this episode and every earlier one.
+        var last = null;
+        for (var q = 0; q < eps.length; q++) {
+          var qm = parseIso(eps[q].airstamp);
+          if (qm !== null && qm <= t0 + 5 * MIN && typeof eps[q].season === 'number' && typeof eps[q].number === 'number') last = eps[q];
+        }
+        if (last) queueMark('upto', show.id, last.season, last.number);
+      }
       changed();
       return true;
     }
@@ -1266,6 +1431,424 @@
     watch(show, eps, other);
     return true;
   }
+
+
+  /* ---------- the show page ---------- */
+
+  /* A show's full list of episodes, from GET /shows/episodes?id= on the Pi:
+     { ok, id, checkedAt, partial?, seasons: [{ season, episodes: [{ number,
+     name, airstamp, runtime?, watched? }] }], progress }. Kept per show in
+     localStorage (the last EPS_KEEP shows) and drawn at once, then refreshed.
+     Marks change this copy as well as the snapshot, so the page answers
+     before the Pi does. */
+  var EPS = {};
+  var P = { seq: 0, state: '', timer: null };
+
+  function validEps(d) {
+    return !!d && typeof d === 'object' && isArr(d.seasons) && !!d.progress && typeof d.progress === 'object';
+  }
+
+  function epsGet(id) {
+    if (EPS.hasOwnProperty(id)) return EPS[id];
+    var d = null;
+    try { d = JSON.parse(load(EPS_KEY + id) || 'null'); } catch (e) { d = null; }
+    EPS[id] = validEps(d) ? d : null;
+    return EPS[id];
+  }
+
+  function epsPut(id, d) {
+    EPS[id] = d;
+    var idx = [];
+    try { idx = JSON.parse(load(EPS_INDEX) || '[]'); } catch (e) { idx = []; }
+    if (!isArr(idx)) idx = [];
+    var keep = [];
+    for (var i = 0; i < idx.length; i++) if (idx[i] !== id) keep.push(idx[i]);
+    keep.push(id);
+    while (keep.length > EPS_KEEP) {
+      var gone = keep.shift();
+      delete EPS[gone];
+      try { if (window.localStorage) localStorage.removeItem(EPS_KEY + gone); } catch (e2) { /* ignore */ }
+    }
+    store(EPS_INDEX, JSON.stringify(keep));
+    store(EPS_KEY + id, JSON.stringify(d));
+  }
+
+  // Every numbered episode: [{ season, number, name, airstamp, runtime, ms, watched }], in order.
+  function flatEps(d) {
+    var out = [];
+    for (var i = 0; i < d.seasons.length; i++) {
+      var sea = d.seasons[i];
+      if (!sea || typeof sea.season !== 'number' || !isArr(sea.episodes)) continue;
+      for (var j = 0; j < sea.episodes.length; j++) {
+        var e = sea.episodes[j];
+        if (!e || typeof e.number !== 'number') continue;
+        out.push({ season: sea.season, number: e.number, name: e.name, airstamp: e.airstamp, runtime: e.runtime, ms: parseIso(e.airstamp), watched: e.watched === true, ref: e });
+      }
+    }
+    return out;
+  }
+
+  // One episode of the page: watched as marked, a mark on its way winning.
+  function pgWatched(id, e) {
+    var p = pendingMark(id, e.season, e.number, e.ms);
+    if (p) return p === 'watched';
+    return e.watched;
+  }
+
+  function isOut(e, t) { return e.ms !== null && e.ms <= t + 5 * MIN; }
+
+  // A mark in the page's own copy of the list, and the counts that go with it.
+  function applyToEps(id, show, op, season, number) {
+    var d = epsGet(id);
+    if (!d) return;
+    var fl = flatEps(d);
+    var pr = d.progress;
+    var w = show && isArr(show.watched) ? show.watched : [];
+    var i;
+    if (op === 'upto') {
+      var up = { season: season, number: number };
+      var old = pr.upTo;
+      for (i = 0; i < fl.length; i++) {
+        if (coversUp(up, fl[i].season, fl[i].number)) fl[i].ref.watched = true;
+        else if (old && coversUp(old, fl[i].season, fl[i].number) && !inPairs(w, fl[i].season, fl[i].number)) delete fl[i].ref.watched;
+      }
+      pr.upTo = { season: season, number: number, at: isoNow() };
+      pr.unwatched = [];
+    } else {
+      var on = op === 'watched';
+      for (i = 0; i < fl.length; i++) if (fl[i].season === season && fl[i].number === number) { if (on) fl[i].ref.watched = true; else delete fl[i].ref.watched; }
+      if (coversUp(pr.upTo, season, number)) {
+        var ex = [];
+        var u = isArr(pr.unwatched) ? pr.unwatched : [];
+        for (var k = 0; k < u.length; k++) if (!(u[k].season === season && u[k].number === number)) ex.push(u[k]);
+        if (!on) ex.push({ season: season, number: number });
+        pr.unwatched = ex;
+      }
+    }
+    var t = now();
+    var aired = 0;
+    var seen = 0;
+    var next = null;
+    fl = flatEps(d);
+    for (i = 0; i < fl.length; i++) {
+      if (!isOut(fl[i], t)) continue;
+      aired++;
+      if (fl[i].watched) seen++;
+      else if (!next) next = { season: fl[i].season, number: fl[i].number };
+    }
+    if (!d.partial) pr.aired = aired;
+    pr.seen = seen;
+    pr.next = next;
+    pr.caughtUp = aired > 0 && seen === aired;
+    epsPut(id, d);
+  }
+
+  function fetchEps(id) {
+    var Lv = S.C && S.C.live;
+    var had = !!epsGet(id);
+    var seq = ++P.seq;
+    P.state = had ? 'ok' : 'loading';
+    function done(state) {
+      if (seq !== P.seq || !S.page || S.page.id !== id) return;
+      P.state = state;
+      if (S.C) S.C.redrawPanel();
+    }
+    if (!Lv || typeof Lv.fetch !== 'function') { setTimeout(function () { done(had ? 'ok' : 'lost'); }, 0); return; }
+    try {
+      Lv.fetch('/shows/episodes?id=' + encodeURIComponent(id), function (err, data, code) {
+        if (!err && validEps(data)) { epsPut(id, data); return done('ok'); }
+        if (!err) return done(epsGet(id) ? 'ok' : 'old');
+        if (code === 404) {
+          // A show that is gone from the list: back to the Schedule. Anything else on a 404 is a Pi without the route.
+          if (/not on the list/.test(String(err)) && seq === P.seq && S.page && S.page.id === id) { closePage(); return; }
+          return done(epsGet(id) ? 'ok' : 'old');
+        }
+        done(epsGet(id) ? 'ok' : 'lost');
+      });
+    } catch (e) { warn('reading the episodes', e); done(had ? 'ok' : 'lost'); }
+  }
+
+  // After a mark or a new snapshot: ask again shortly (one call for a burst).
+  function refetchPageSoon() {
+    if (!S.page) return;
+    clearTimeout(P.timer);
+    P.timer = setTimeout(function () { if (S.page) fetchEps(S.page.id); }, 250);
+  }
+
+  function openPage(id, backKey) {
+    S.page = { id: id, season: null, inEp: null, back: backKey || null };
+    fetchEps(id);
+    if (S.C) S.C.redrawPanel();
+  }
+
+  function closePage() {
+    if (!S.page) return false;
+    S.backKey = S.page.back;
+    S.page = null;
+    P.seq++;
+    clearTimeout(P.timer);
+    if (S.C) S.C.redrawPanel();
+    return true;
+  }
+
+  // The page's first episode still to watch that has aired: { season, number, name, airstamp } or null.
+  function nextToWatch(id, fl, t) {
+    for (var i = 0; i < fl.length; i++) if (isOut(fl[i], t) && !pgWatched(id, fl[i])) return fl[i];
+    return null;
+  }
+
+  function pickSeason(id, fl, t) {
+    var nx = nextToWatch(id, fl, t);
+    if (nx) return nx.season;
+    var last = null;
+    for (var i = 0; i < fl.length; i++) if (isOut(fl[i], t)) last = fl[i].season;
+    return last !== null ? last : (fl.length ? fl[fl.length - 1].season : null);
+  }
+
+  function pgDate(ms, t) {
+    var d = new Date(ms);
+    var text = word('pgDate', { mon: monName(ms), d: d.getDate() });
+    return d.getFullYear() === new Date(t).getFullYear() ? text : word('pgDateYear', { date: text, year: d.getFullYear() });
+  }
+
+  function pgBtn(parent, key, cls, text, glyph) {
+    var b = el('div', 'sh-pg-btn f' + (cls ? ' ' + cls : ''), parent);
+    b.setAttribute('data-key', key);
+    b.setAttribute('role', 'button');
+    el('span', glyph === 'play' ? 'sh-watch-play' : 'sh-check', b);
+    el('span', 'sh-pg-btn-text', b, text);
+    return b;
+  }
+
+  function renderPage(body) {
+    var pg = S.page;
+    var show = findShow(pg.id);
+    var t = now();
+    var d = epsGet(pg.id);
+    var fl = d ? flatEps(d) : [];
+    if (pg.season === null && fl.length) pg.season = pickSeason(pg.id, fl, t);
+    var root = el('div', 'sh sh-pg', body);
+    var top = el('div', 'sh-pg-top', root);
+    var back = el('div', 'sh-pg-back f', top);
+    // While the list is still coming, the chip has a key of its own, so focus moves to Watch when it arrives.
+    back.setAttribute('data-key', fl.length ? 'sh:pg:back' : 'sh:pg:back:wait');
+    back.setAttribute('role', 'button');
+    el('span', 'sh-pg-back-arrow', back);
+    el('span', 'sh-pg-back-text', back, word('title'));
+
+    var head = el('div', 'sh-pg-head', root);
+    poster(head, show);
+    var info = el('div', 'sh-pg-info', head);
+    el('div', 'sh-pg-title', info, show.name);
+    var meta = el('div', 'sh-pg-meta', info);
+    badge(meta, watchApp(show));
+    el('span', 'sh-pg-meta-text', meta, statusText(show));
+    var nSeasons = 0;
+    for (var q = 0; q < fl.length; q++) if (q === 0 || fl[q].season !== fl[q - 1].season) nSeasons++;
+    if (nSeasons) {
+      el('span', 'sh-pg-dot', meta, '·');
+      el('span', 'sh-pg-meta-text', meta, nSeasons === 1 ? word('seasonsOne') : word('seasonsN', { n: nSeasons }));
+    }
+    var firstFocus = null;
+    if (!fl.length) {
+      var st = P.state === 'old' || P.state === 'lost' ? 'page' + cap(P.state) : 'loading';
+      var w = stateWords(st);
+      var msg = el('div', 'sh-msg', root);
+      el('div', 'sh-msg-head', msg, w.head);
+      if (w.line) el('div', 'sh-msg-line', msg, w.line);
+      back.setAttribute('data-autofocus', '');
+      return;
+    }
+    // The season on show, with one bar segment per episode.
+    var inSeason = [];
+    var total = 0;
+    var airedAll = 0;
+    var seenAll = 0;
+    for (var a = 0; a < fl.length; a++) {
+      total++;
+      if (isOut(fl[a], t)) { airedAll++; if (pgWatched(pg.id, fl[a])) seenAll++; }
+      if (fl[a].season === pg.season) inSeason.push(fl[a]);
+    }
+    var seenIn = 0;
+    for (var b = 0; b < inSeason.length; b++) if (pgWatched(pg.id, inSeason[b])) seenIn++;
+    var allSeen = airedAll > 0 && seenAll === airedAll && airedAll === total;
+    var prog = el('div', 'sh-pg-prog', info);
+    el('div', 'sh-pg-prog-text', prog, allSeen ? word('allLine', { n: total }) : word('seasonLine', { s: pg.season, w: seenIn, n: inSeason.length }));
+    var segs = el('div', 'sh-pg-segs', prog);
+    for (var c = 0; c < inSeason.length; c++) {
+      var on = pgWatched(pg.id, inSeason[c]);
+      el('span', 'sh-pg-seg' + (on ? ' is-on' : isOut(inSeason[c], t) ? ' is-out' : ''), segs);
+    }
+    // The two buttons.
+    var ended = show.running === false;
+    var acts = el('div', 'sh-pg-acts', head);
+    var nx = nextToWatch(pg.id, fl, t);
+    var caught = airedAll > 0 && !nx;
+    if (nx) {
+      var wb = pgBtn(acts, 'sh:pg:watch', 'is-main', word('watchNext', { code: word('code', { s: nx.season, e: nx.number }) }), 'play');
+      firstFocus = wb;
+    }
+    var cb = pgBtn(acts, 'sh:pg:caught', caught ? 'is-done' : '', caught ? word(ended ? 'seenDone' : 'caughtDone') : word(ended ? 'seenAll' : 'caughtUp'));
+    if (!firstFocus) firstFocus = cb;
+
+    // Season pills.
+    var seasons = [];
+    for (var e0 = 0; e0 < fl.length; e0++) {
+      var sx = seasons.length ? seasons[seasons.length - 1] : null;
+      if (!sx || sx.n !== fl[e0].season) { sx = { n: fl[e0].season, all: 0, seen: 0 }; seasons.push(sx); }
+      sx.all++;
+      if (pgWatched(pg.id, fl[e0])) sx.seen++;
+    }
+    var tabs = el('div', 'sh-tabs sh-pg-tabs', el('div', 'sh-pg-seasons', root));
+    for (var f = 0; f < seasons.length; f++) {
+      var sel = seasons[f].n === pg.season;
+      var pill = el('div', 'sh-tab f' + (sel ? ' is-on' : ''), tabs, word('seasonPill', { s: seasons[f].n }));
+      pill.setAttribute('data-key', 'sh:pg:season:' + seasons[f].n);
+      if (sel) el('span', 'sh-pg-frac', pill, seasons[f].seen + '/' + seasons[f].all);
+      else if (seasons[f].all > 0 && seasons[f].seen === seasons[f].all) el('span', 'sh-pg-tick', pill);
+    }
+    if (d.partial) el('div', 'sh-pg-note', root, word('partial'));
+    // The episodes.
+    var list = el('div', 'sh-pg-eps', root);
+    for (var g = 0; g < inSeason.length; g++) {
+      var ep = inSeason[g];
+      var out = isOut(ep, t);
+      var seen = out && pgWatched(pg.id, ep);
+      var ek = ep.season + ':' + ep.number;
+      var isIn = pg.inEp === ek;
+      var item = el('div', 'sh-pg-ep' + (isIn ? ' is-in' : ''), list);
+      item.setAttribute('data-ep', ek);
+      var row = el('div', 'sh-pg-row f' + (seen ? ' is-seen' : '') + (out ? '' : ' is-future'), item);
+      row.setAttribute('data-key', 'sh:pg:ep:' + ek);
+      el('div', 'sh-pg-num', row, word('epNum', { e: ep.number }));
+      var ei = el('div', 'sh-pg-ep-info', row);
+      el('div', 'sh-pg-ep-title', ei, ep.name || word('epNum', { e: ep.number }));
+      var em = el('div', 'sh-pg-ep-meta', ei);
+      var line = ep.ms === null ? '' : word(out ? 'airedOn' : 'airsOn', { d: pgDate(ep.ms, t) });
+      if (ep.runtime) line += (line ? ' · ' : '') + word('minutes', { n: ep.runtime });
+      el('span', 'sh-pg-ep-meta-text', em, line);
+      if (seen) {
+        var wn = el('span', 'sh-note is-watched', em);
+        el('span', 'sh-pg-dot', wn, '·');
+        el('span', 'sh-check', wn);
+        el('span', 'sh-note-text', wn, word('watched'));
+      }
+      if (out) {
+        var mk = el('div', 'sh-mark f' + (seen ? ' is-on' : ''), item);
+        mk.setAttribute('data-key', 'sh:pg:mark:' + ek);
+        mk.setAttribute('role', 'checkbox');
+        mk.setAttribute('aria-checked', seen ? 'true' : 'false');
+        el('span', 'sh-check', el('span', 'sh-mark-box', mk));
+        el('span', 'sh-mark-text', mk, word(seen ? 'unmark' : 'markWatched'));
+        var up = el('div', 'sh-pg-upto' + (isIn ? ' f' : ''), item, word('upToHere'));
+        up.setAttribute('data-key', 'sh:pg:upto:' + ek);
+        up.setAttribute('role', 'button');
+      } else {
+        el('span', 'sh-mark-gap', item);
+      }
+    }
+    // Opening the page lands on Watch (or I'm caught up).
+    if (firstFocus) firstFocus.setAttribute('data-autofocus', '');
+  }
+
+  // OK on something of the show page (key parts p: sh, pg, what, ...).
+  function selectPage(p) {
+    var pg = S.page;
+    if (!pg) return true;
+    var show = findShow(pg.id);
+    if (!show) return true;
+    var what = p[2];
+    if (what === 'back') { closePage(); return true; }
+    var d = epsGet(pg.id);
+    var fl = d ? flatEps(d) : [];
+    var t = now();
+    if (what === 'season') {
+      pg.season = Number(p[3]);
+      pg.inEp = null;
+      if (S.C) S.C.redrawPanel();
+      return true;
+    }
+    if (what === 'watch') {
+      var nx = nextToWatch(pg.id, fl, t);
+      if (nx) watch(show, [{ season: nx.season, number: nx.number, name: nx.name, airstamp: nx.airstamp }], null);
+      return true;
+    }
+    if (what === 'caught') {
+      var airedAny = false;
+      for (var i = 0; i < fl.length; i++) if (isOut(fl[i], t)) airedAny = true;
+      if (airedAny && nextToWatch(pg.id, fl, t)) { queueMark('caughtup', show.id); changed(); }
+      return true;
+    }
+    var s = Number(p[3]);
+    var n = Number(p[4]);
+    if (what === 'mark') {
+      var cur = null;
+      for (var j = 0; j < fl.length; j++) if (fl[j].season === s && fl[j].number === n) cur = fl[j];
+      if (!cur) return true;
+      queueMark(pgWatched(pg.id, cur) ? 'unwatch' : 'watched', show.id, s, n);
+      changed();
+      return true;
+    }
+    if (what === 'upto') { queueMark('upto', show.id, s, n); changed(); }
+    return true;
+  }
+
+  // Focus moved: the episode whose controls are in use shows its "Watched up to here" chip.
+  function onFocus(target) {
+    var pg = S.page;
+    if (!pg || !target) return;
+    var key = target.getAttribute('data-key') || '';
+    var p = key.split(':');
+    var ek = p[1] === 'pg' && (p[2] === 'ep' || p[2] === 'mark' || p[2] === 'upto') ? p[3] + ':' + p[4] : null;
+    if (ek === pg.inEp) return;
+    pg.inEp = ek;
+    var items = document.querySelectorAll('.sh-pg-ep');
+    for (var i = 0; i < items.length; i++) {
+      var on = ek !== null && items[i].getAttribute('data-ep') === ek;
+      var cls = items[i].className.replace(/\s*\bis-in\b/, '');
+      items[i].className = on ? cls + ' is-in' : cls;
+      var up = items[i].querySelector('.sh-pg-upto');
+      if (up) up.className = 'sh-pg-upto' + (on ? ' f' : '') + (up === target ? ' is-focused' : '');
+    }
+  }
+
+  function pgNode(key) {
+    var all = document.querySelectorAll('.sh-pg .f');
+    for (var i = 0; i < all.length; i++) if (all[i].getAttribute('data-key') === key) return all[i];
+    return null;
+  }
+
+  // Up and Down on the page go in a fixed order: back, Watch, caught up, the
+  // season on show, then the episodes. Returns the node to focus, or undefined
+  // for the usual move by position.
+  function onMove(dir, from) {
+    if (!S.page || !from || (dir !== 'up' && dir !== 'down')) return undefined;
+    var key = from.getAttribute('data-key') || '';
+    var sea = document.querySelector('.sh-pg-tabs .sh-tab.is-on');
+    var firstEp = document.querySelector('.sh-pg-row');
+    var watchBtn = pgNode('sh:pg:watch');
+    var caught = pgNode('sh:pg:caught');
+    if (key === 'sh:pg:back') return dir === 'down' ? (watchBtn || caught || sea || undefined) : undefined;
+    if (key === 'sh:pg:watch') return dir === 'down' ? (caught || sea || undefined) : pgNode('sh:pg:back') || undefined;
+    if (key === 'sh:pg:caught') return dir === 'down' ? (sea || undefined) : (watchBtn || pgNode('sh:pg:back') || undefined);
+    if (key.indexOf('sh:pg:season:') === 0) return dir === 'down' ? (firstEp || undefined) : (caught || watchBtn || pgNode('sh:pg:back') || undefined);
+    var p = key.split(':');
+    if (p[1] === 'pg' && (p[2] === 'ep' || p[2] === 'mark' || p[2] === 'upto')) {
+      // Up and Down keep to the same column of controls, episode by episode.
+      var items = document.querySelectorAll('.sh-pg-ep');
+      var at = -1;
+      for (var i = 0; i < items.length; i++) if (items[i].getAttribute('data-ep') === p[3] + ':' + p[4]) at = i;
+      if (at < 0) return undefined;
+      var to = items[at + (dir === 'down' ? 1 : -1)];
+      if (!to) return dir === 'up' ? (sea || undefined) : true;
+      var want = p[2] === 'ep' ? '.sh-pg-row' : '.sh-mark';
+      return to.querySelector(want) || to.querySelector('.sh-pg-row');
+    }
+    return undefined;
+  }
+
+  // Back on the show page: to the Schedule.
+  function onBack() { return closePage(); }
 
   /* ---------- hooking in ---------- */
 
@@ -1308,6 +1891,11 @@
     availability: function () { return S.data && state() === 'data' ? availability(S.data, now()) : {}; },
     renderPanel: renderPanel,
     onSelect: onSelect,
+    onFocus: onFocus,
+    onMove: onMove,
+    onBack: onBack,
+    closePage: function () { S.page = null; S.backKey = null; P.seq++; },
+    pageOpen: function () { return !!S.page; },
     state: state,
     // For the tests (dev/shows-test.js): the pure parts and the state.
     _test: {
@@ -1315,6 +1903,8 @@
       noteStarted: noteStarted, started: loadStarted, finishLines: finishLines, startedText: startedText, rowWatched: rowWatched, pendingOut: function () { return loadOut().slice(); }, flushOut: flushOut,
       ladder: ladder, watch: watch, watchApp: watchApp, viaApp: viaApp, alternatives: alternatives, availability: availability, timeText: timeText, epCode: epCode, rangeText: rangeText, word: word,
       weekStart: weekStart, monthEnd: monthEnd, setData: function (d) { S.data = d; S.fromCache = false; changed(); },
+      openPage: function (id) { openPage(id, null); },
+      pageState: function () { return P.state; }, epsCached: function (id) { return epsGet(id); }, pendingMark: pendingMark, isWatchedEp: isWatchedEp,
       tab: function (t) { if (t) S.tab = t; return S.tab; }
     }
   };
