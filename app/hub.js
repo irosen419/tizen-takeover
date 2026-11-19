@@ -879,7 +879,13 @@
     var pic = pictureFor(theme.look || wantedTheme().look);
     if (!pic) return;
     loadPicture(pic, function (img) {
-      if (img) applyPicture(pic, img); // else keep the plain dark look
+      if (img) return applyPicture(pic, img);
+      // The picture's host can't be reached: the manifest's fallback (a file
+      // next to hub.html), else the plain dark look.
+      var fb = cfg.background === 'auto' && window.HUB_BACKGROUNDS ? window.HUB_BACKGROUNDS.fallback : null;
+      if (!fb || !fb.file || fb.file === pic.file) return;
+      var alt = { file: String(fb.file), title: fb.title || '', credit: fb.credit || '' };
+      loadPicture(alt, function (img2) { if (img2) applyPicture(alt, img2); });
     });
   }
 
