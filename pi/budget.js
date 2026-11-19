@@ -36,6 +36,10 @@ const GOAL_STATES = ['clean', 'on-pace', 'over', 'under'];
 // Budget lab: where spare money on card day goes, and the runway's steps.
 const SPLIT_KEYS = ['savings', 'awws', 'buffer', 'extra'];
 const STEP_KINDS = ['pay', 'bill', 'reserve'];
+// Card day's payment plan (autopay days): when a payment goes out.
+const PLAN_KINDS = ['first', 'autopay'];
+const BASES = ['first', 'autopay'];
+const MAX_PLAN = 6;
 const MAX_MERCHANTS = 5;
 const MAX_PACE_DAYS = 31;
 const MAX_STEPS = 40;
@@ -91,6 +95,8 @@ const CHECK = {
     out.cap = amountOf(s, 'cap', '', true, { above0: true });
     out.roomPerDay = amountOf(s, 'roomPerDay', '', true, { signed: true });
     F.put(out, 'roomIfRefund', amountOf(s, 'roomIfRefund', '', false, { signed: true }));
+    // Which card day plan the room is worked from; left out means "first".
+    if (field(s, 'basis') !== undefined) out.basis = F.choiceOf(s, 'basis', BASES, '');
     out.daysLeft = F.wholeOf(s, 'daysLeft', '', true, { max: MAX_DAYS });
     out.throughDate = F.dateOf(s, 'throughDate', '', true);
     return out;
@@ -104,6 +110,29 @@ const CHECK = {
     const short = amountOf(s, 'shortBy', '', false);
     if (short !== undefined && out.covered) throw wrong('"shortBy" is only for a card day that is not covered ("covered": false)');
     F.put(out, 'shortBy', short);
+    // Autopay days: a short card day can still be covered when the cards
+    // wait for their own autopay dates. Only said when it is not covered.
+    const by = field(s, 'byAutopay');
+    if (by !== undefined) {
+      if (out.covered) throw wrong('"byAutopay" is only for a card day that is not covered ("covered": false)');
+      out.byAutopay = F.boolOf(s, 'byAutopay', '');
+    }
+    const autoShort = amountOf(s, 'autopayShortBy', '', false);
+    if (autoShort !== undefined) {
+      if (out.byAutopay !== false) throw wrong('"autopayShortBy" is only for a card day that is not covered by autopay ("byAutopay": false)');
+      out.autopayShortBy = autoShort;
+    }
+    // The payments to make, in date order. These amounts are payments the
+    // owner asked to see, never what a card owes.
+    const plan = F.listOf(s, 'plan', MAX_PLAN, '');
+    if (plan !== undefined) {
+      out.plan = F.eachEntry(plan, 'payment', (e, where) => ({
+        label: F.textOf(e, 'label', 24, where, true),
+        date: F.dateOf(e, 'date', where, true),
+        amount: amountOf(e, 'amount', where, true),
+        kind: F.choiceOf(e, 'kind', PLAN_KINDS, where)
+      }));
+    }
     const transfers = F.listOf(s, 'transfers', 6, '');
     if (transfers !== undefined) {
       out.transfers = F.eachEntry(transfers, 'transfer', (e, where) => ({
@@ -152,6 +181,10 @@ const CHECK = {
     out.daysLeft = F.wholeOf(s, 'daysLeft', '', true, { max: MAX_DAYS });
     out.cardDate = F.dateOf(s, 'cardDate', '', true);
     out.monthDay = F.wholeOf(s, 'monthDay', '', true, { min: 1, max: 31 });
+    // The room when the cards wait for their autopay days, same morning
+    // basis as "room", and the day that plan is worked to.
+    F.put(out, 'autopayRoom', amountOf(s, 'autopayRoom', '', false, { signed: true }));
+    F.put(out, 'autopayDate', F.dateOf(s, 'autopayDate', '', false));
     const split = F.listOf(s, 'split', MAX_SPLIT, '');
     if (split !== undefined) {
       const seen = Object.create(null);
@@ -334,7 +367,7 @@ function sectionCounts(name, s) {
     return { daysLeft: s.daysLeft, throughDate: s.throughDate, state: s.roomPerDay < 0 ? 'negative' : s.roomPerDay < s.cap ? 'under' : 'at', refund: s.roomIfRefund !== undefined };
   }
   if (name === 'cardDay') {
-    return { date: s.date, daysAway: s.daysAway, covered: s.covered, transfers: (s.transfers || []).length, paychecks: (s.paychecks || []).length };
+    return { date: s.date, daysAway: s.daysAway, covered: s.covered, byAutopay: s.byAutopay === true, payments: (s.plan || []).length, transfers: (s.transfers || []).length, paychecks: (s.paychecks || []).length };
   }
   if (name === 'goals') {
     const c = { goals: s.items.length };
@@ -372,8 +405,8 @@ function sectionLine(name, s) {
     return plural(c.daysLeft, 'day') + ' left through ' + c.throughDate + ', ' + st + (c.refund ? ', a refund pending' : '');
   }
   if (name === 'cardDay') {
-    return c.date + ' (in ' + plural(c.daysAway, 'day') + '), ' + (c.covered ? 'covered' : 'not covered') + ', ' +
-      plural(c.transfers, 'transfer') + ', ' + plural(c.paychecks, 'paycheck');
+    return c.date + ' (in ' + plural(c.daysAway, 'day') + '), ' + (c.covered ? 'covered' : c.byAutopay ? 'covered by autopay' : 'not covered') + ', ' +
+      (c.payments ? plural(c.payments, 'payment') + ', ' : '') + plural(c.transfers, 'transfer') + ', ' + plural(c.paychecks, 'paycheck');
   }
   if (name === 'goals') {
     const parts = GOAL_STATES.filter((st) => c[st]).map((st) => c[st] + ' ' + st.replace('-', ' '));
@@ -452,6 +485,7 @@ module.exports = {
   GOAL_STATES: GOAL_STATES,
   SPLIT_KEYS: SPLIT_KEYS,
   STEP_KINDS: STEP_KINDS,
+  PLAN_KINDS: PLAN_KINDS,
   normalizeSnapshot: normalizeSnapshot,
   merge: merge,
   emptyData: emptyData,

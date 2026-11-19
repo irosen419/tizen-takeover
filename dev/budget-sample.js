@@ -25,7 +25,11 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * $0 a day leaves card day short; a number sets the room, default -137.40; with
  * payday the runway still ends at the room), under (room under the cap; the default), atCap,
  * noRefund, goals (a list to use instead), alerts (a list), only [section
- * names to keep], payday (a 14 day window to card day on Nov 30 with a
+ * names to keep], shortFirst (card day is short on the 1st by this many dollars, default
+ * 954.2, with the lab room at the same figure below zero: the "before" state of the
+ * autopay days), autopay (on top of shortFirst: cardDay says byAutopay with its
+ * payment plan, the room says basis "autopay", the lab sends autopayRoom and
+ * autopayDate), payday (a 14 day window to card day on Nov 30 with a
  * payday on Nov 20 inside it, for the runway chart: its runway ends at
  * lab.room to the cent) }.
  */
@@ -64,9 +68,33 @@ function snapshot(opts) {
     // day. With payday the runway still ends at lab.room to the cent.
     const room = typeof opts.shortZero === 'number' ? opts.shortZero : -137.4;
     s.lab.room = room;
+    delete s.lab.autopayRoom;
+    delete s.lab.autopayDate;
     s.cardDay.covered = false;
     s.cardDay.shortBy = -room;
     if (opts.payday) s.runway.start = Math.round((room - (-120 + 2400 - 95 - 64.5 - 415)) * 100) / 100;
+  }
+  if (opts.shortFirst || opts.autopay) {
+    const by = typeof opts.shortFirst === 'number' ? opts.shortFirst : 954.2;
+    s.cardDay.covered = false;
+    s.cardDay.shortBy = by;
+    delete s.cardDay.plan;
+    delete s.lab.autopayRoom;
+    delete s.lab.autopayDate;
+    s.lab.room = -by;
+    if (opts.payday) s.runway.start = Math.round((-by - (-120 + 2400 - 95 - 64.5 - 415)) * 100) / 100;
+  }
+  if (opts.autopay) {
+    s.cardDay.byAutopay = true;
+    s.cardDay.plan = [
+      { label: 'Sapphire Reserve', date: '2026-11-30', amount: 1200, kind: 'first' },
+      { label: 'Sapphire Reserve', date: '2026-12-07', amount: 400, kind: 'autopay' },
+      { label: 'Sapphire Preferred', date: '2026-12-08', amount: 1500, kind: 'autopay' },
+      { label: 'Freedom Unlimited', date: '2026-12-09', amount: 950, kind: 'autopay' }
+    ];
+    s.room.basis = 'autopay';
+    s.lab.autopayRoom = 215.8;
+    s.lab.autopayDate = '2026-12-07';
   }
   if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
@@ -142,6 +170,7 @@ module.exports = { snapshot, SPANISH, FIXTURE };
 if (require.main === module) {
   const args = process.argv.slice(2);
   const s = snapshot({ sentAt: new Date(Date.now() - 60000).toISOString().replace(/\.\d+Z$/, 'Z'),
-    short: args.indexOf('--short') >= 0, negative: args.indexOf('--negative') >= 0, payday: args.indexOf('--payday') >= 0 });
+    short: args.indexOf('--short') >= 0, shortFirst: args.indexOf('--short-first') >= 0 || args.indexOf('--autopay') >= 0,
+    autopay: args.indexOf('--autopay') >= 0, negative: args.indexOf('--negative') >= 0, payday: args.indexOf('--payday') >= 0 });
   process.stdout.write(JSON.stringify(s, null, 2) + '\n');
 }

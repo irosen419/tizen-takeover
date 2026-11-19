@@ -551,6 +551,42 @@ check('runway chart: none without an equation, a runway, or for another card day
   assert.strictEqual(L.runwayChart(RUNWAY_B, null), null);
 });
 
+/* ---------- autopay days ---------- */
+
+check('autopay: short on the 1st with a positive autopayRoom, the cap screen runs from it', () => {
+  const r = run({ lab: lab(-954.2, { autopayRoom: 1400, autopayDate: '2026-12-07' }) });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.R, 1400);
+  assert.strictEqual(r.c0, 100);
+  assert.strictEqual(r.covered, true);
+  assert.strictEqual(r.short, 0);
+  assert.notStrictEqual(r.move && r.move.kind, 'moveMoney');
+  same(r.autopay, { firstShort: 955, date: '2026-12-07' });
+});
+
+check('autopay: both rooms negative, the move money screen with the autopay shortfall', () => {
+  const r = run({ lab: lab(-954.2, { autopayRoom: -80.5, autopayDate: '2026-12-07' }) });
+  assert.strictEqual(r.R, -80.5);
+  assert.strictEqual(r.c0, 0);
+  assert.strictEqual(r.covered, false);
+  same(r.move, { kind: 'moveMoney', amount: 81 });
+  same(r.autopay, { firstShort: 955, date: '2026-12-07' });
+});
+
+check('autopay: ignored when the room is not below zero, or no autopayRoom is sent', () => {
+  const a = run({ lab: lab(500, { autopayRoom: 90, autopayDate: '2026-12-07' }) });
+  assert.strictEqual(a.R, 500);
+  assert.strictEqual(a.autopay, null);
+  const b = run({ lab: lab(-20) });
+  assert.strictEqual(b.R, -20);
+  assert.strictEqual(b.autopay, null);
+  const c = run({ lab: lab(-20, { autopayRoom: 'lots' }) });
+  assert.strictEqual(c.R, -20);
+  assert.strictEqual(c.autopay, null);
+  const d = run({ lab: lab(-20, { autopayRoom: 140 }) });
+  same(d.autopay, { firstShort: 20, date: null });
+});
+
 check('broken data never throws', () => {
   const junk = [undefined, null, 'x', 3, {}, { room: 'a' }, { room: 5, daysLeft: -1 }];
   junk.forEach((j) => {

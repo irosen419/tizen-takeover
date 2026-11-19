@@ -149,6 +149,54 @@ async function main() {
     assert.ok(/"paychecks" must be a real date like 2026-12-01 \(paycheck 2\)/.test(one('cardDay', Object.assign({}, CARD, { paychecks: ['2026-11-20', 'Friday'] })).error));
   });
 
+  await check('cardDay autopay days: byAutopay, autopayShortBy and the payment plan', () => {
+    const short = Object.assign({}, CARD, { covered: false, shortBy: 954.2 });
+    const plan = [
+      { label: 'Sapphire Reserve', date: '2026-12-01', amount: 1200, kind: 'first' },
+      { label: 'Sapphire Reserve', date: '2026-12-07', amount: 400.004, kind: 'autopay', note: 'dropped' }
+    ];
+    const ok = one('cardDay', Object.assign({}, short, { byAutopay: true, plan: plan })).clean;
+    assert.strictEqual(ok.byAutopay, true);
+    assert.strictEqual(ok.shortBy, 954.2);
+    assert.deepStrictEqual(ok.plan[1], { label: 'Sapphire Reserve', date: '2026-12-07', amount: 400, kind: 'autopay' });
+    assert.strictEqual(one('cardDay', Object.assign({}, short, { byAutopay: false, autopayShortBy: 120.5 })).clean.autopayShortBy, 120.5);
+    // Left out stays left out: a snapshot from the old budget app is unchanged.
+    const old = one('cardDay', short).clean;
+    assert.ok(!('byAutopay' in old) && !('plan' in old) && !('autopayShortBy' in old));
+    // Refused: byAutopay on a covered card day (true or false), autopayShortBy without byAutopay false.
+    assert.ok(/"byAutopay" is only for a card day that is not covered/.test(one('cardDay', Object.assign({}, CARD, { byAutopay: true })).error));
+    assert.ok(/"byAutopay" is only for a card day that is not covered/.test(one('cardDay', Object.assign({}, CARD, { byAutopay: false })).error));
+    assert.ok(/"byAutopay" must be true or false/.test(one('cardDay', Object.assign({}, short, { byAutopay: 'yes' })).error));
+    assert.ok(/"autopayShortBy" is only for/.test(one('cardDay', Object.assign({}, short, { byAutopay: true, autopayShortBy: 5 })).error));
+    assert.ok(/"autopayShortBy" is only for/.test(one('cardDay', Object.assign({}, short, { autopayShortBy: 5 })).error));
+    assert.ok(/"autopayShortBy" must be a number/.test(one('cardDay', Object.assign({}, short, { byAutopay: false, autopayShortBy: -1 })).error));
+    // Plan rows: at most 6, each field checked, the covered case may carry a plan.
+    const row = plan[0];
+    assert.ok(/"plan" has 7 entries; at most 6/.test(one('cardDay', Object.assign({}, CARD, { plan: [row, row, row, row, row, row, row] })).error));
+    assert.strictEqual(one('cardDay', Object.assign({}, CARD, { plan: [row, row, row, row, row, row] })).clean.plan.length, 6);
+    assert.ok(/"kind" must be first or autopay \(payment 1\)/.test(one('cardDay', Object.assign({}, CARD, { plan: [withField(row, 'kind', 'later')] })).error));
+    assert.ok(/"date" must be a real date like 2026-12-01 \(payment 1\)/.test(one('cardDay', Object.assign({}, CARD, { plan: [withField(row, 'date', 'Dec 1')] })).error));
+    assert.ok(/"amount" is missing \(payment 1\)/.test(one('cardDay', Object.assign({}, CARD, { plan: [{ label: 'x', date: '2026-12-01', kind: 'first' }] })).error));
+    assert.ok(/"amount" must be a number from 0 to 1,000,000 \(payment 1\)/.test(one('cardDay', Object.assign({}, CARD, { plan: [withField(row, 'amount', -3)] })).error));
+    assert.ok(/"label" is missing \(payment 1\)/.test(one('cardDay', Object.assign({}, CARD, { plan: [{ date: '2026-12-01', amount: 1, kind: 'first' }] })).error));
+    assert.strictEqual(one('cardDay', Object.assign({}, CARD, { plan: [withField(row, 'label', 'A card with a very long name indeed')] })).clean.plan[0].label.length, 24);
+    assert.ok(/holds a link/.test(one('cardDay', Object.assign({}, CARD, { plan: [withField(row, 'label', 'https://x')] })).error));
+  });
+
+  await check('room.basis and lab.autopayRoom / autopayDate', () => {
+    assert.strictEqual(one('room', Object.assign({}, ROOM, { basis: 'autopay' })).clean.basis, 'autopay');
+    assert.strictEqual(one('room', Object.assign({}, ROOM, { basis: 'first' })).clean.basis, 'first');
+    assert.ok(!('basis' in one('room', ROOM).clean));
+    assert.ok(/"basis" must be first or autopay/.test(one('room', Object.assign({}, ROOM, { basis: 'short' })).error));
+    const lab = one('lab', Object.assign({}, LAB, { room: -954.2, autopayRoom: 61.255, autopayDate: '2026-12-07' })).clean;
+    assert.strictEqual(lab.autopayRoom, 61.26);
+    assert.strictEqual(lab.autopayDate, '2026-12-07');
+    assert.strictEqual(one('lab', Object.assign({}, LAB, { autopayRoom: -20 })).clean.autopayRoom, -20);
+    assert.ok(!('autopayRoom' in one('lab', LAB).clean));
+    assert.ok(/"autopayRoom" must be a number/.test(one('lab', Object.assign({}, LAB, { autopayRoom: 'lots' })).error));
+    assert.ok(/"autopayDate" must be a real date/.test(one('lab', Object.assign({}, LAB, { autopayDate: 'Dec 7' })).error));
+  });
+
   await check('goals: a plain list or { items }; states; pct 0 to 100; at most 8', () => {
     const g = { label: 'Groceries', state: 'on-pace', text: '$214 of $400', pct: 53.54 };
     const a = one('goals', [g]).clean;

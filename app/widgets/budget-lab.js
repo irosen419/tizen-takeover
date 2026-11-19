@@ -129,6 +129,10 @@
     heroOnTrackShort: 'On track at {cap}/day',
     heroShort: '{d}: short by {n}',
     heroShortShort: 'Short by {n}',
+    // Autopay days: the 1st is short, the cards wait for their own autopay day
+    autoHead: '{d} is {n} short, so this plan relies on autopay days through {a}',
+    autoHeadNoDate: '{d} is {n} short, so this plan relies on autopay days',
+    autoHeadShort: '{d} is short, using autopay days',
     // Reference lines
     refCalc: 'Calculated {n} a day',
     refSaved: 'Saved {n} a day',
@@ -245,6 +249,19 @@
     var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof s === 'string' ? s : '');
     if (!m) return '';
     return fill(STRINGS.dateShort, { mon: STRINGS.monthsShort[+m[2] - 1], d: +m[3] });
+  }
+
+  // The day the plan is worked to: card day, or the autopay day when the 1st is short.
+  function dueDate(r) {
+    return r.autopay && r.autopay.date ? r.autopay.date : r.cardDate;
+  }
+
+  // The plain header when the 1st is short and the plan relies on autopay days.
+  function autopayForms(r) {
+    var a = r.autopay;
+    if (!a) return [];
+    var o = { d: dateText(r.cardDate), n: cash(a.firstShort), a: dateText(a.date) };
+    return [a.date ? fill(STRINGS.autoHead, o) : fill(STRINGS.autoHeadNoDate, o), fill(STRINGS.autoHeadNoDate, o), fill(STRINGS.autoHeadShort, o)];
   }
 
   function overH(node) { return node.scrollHeight > node.clientHeight + 1; }
@@ -378,7 +395,7 @@
     var mv = r.move;
     var M = STRINGS.moves;
     if (!mv) return [];
-    var d = dateText(r.cardDate);
+    var d = dateText(dueDate(r));
     if (mv.kind === 'moveMoney') {
       return [fill(M.moveMoney, { n: cash(mv.amount), d: d }), fill(M.moveMoneyShort, { n: cash(mv.amount), d: d })];
     }
@@ -407,7 +424,7 @@
   // The card day outcome: { forms (long first), tone }.
   function outcomeView(r) {
     if (r.ok) {
-      var d = dateText(r.cardDate);
+      var d = dateText(dueDate(r));
       if (!r.covered) return { forms: [fill(STRINGS.outcomeShort, { d: d, n: cash(r.short) }), fill(STRINGS.shortShort, { n: cash(r.short) })], tone: 'is-neg' };
       var spare = MATH().wholeDown(r.keep);
       if (spare > 0) return { forms: [fill(STRINGS.outcomeSpare, { d: d, n: cash(spare) }), fill(STRINGS.spareShort, { n: cash(spare) })], tone: 'is-ok' };
@@ -573,7 +590,7 @@
   // The result under the big number as [long, short]: "Dec 1: covered, $214
   // spare" (green) or "Dec 1: short by $120" (coral).
   function heroForms(r) {
-    var d = dateText(r.cardDate);
+    var d = dateText(dueDate(r));
     if (!r.covered) {
       return [fill(STRINGS.heroShort, { d: d, n: cash(r.short) }), fill(STRINGS.heroShortShort, { n: cash(r.short) })];
     }
@@ -748,7 +765,7 @@
       // The long form is picked for the widest figure this slider can show, so
       // a key press never makes the line longer than its box.
       var m = MATH();
-      var d = dateText(r.cardDate);
+      var d = dateText(dueDate(r));
       var wide = [fill(STRINGS.heroSpare, { d: d, n: cash(Math.max(0, m.wholeDown(r.R))) }), fill(STRINGS.heroShort, { d: d, n: cash(m.wholeUp(r.capMax * r.D)) }), fill(STRINGS.heroOnTrack, { d: d, cap: cash(m.wholeDown(r.capMax)) })];
       for (i = 0; i < wide.length; i++) {
         refs.result.textContent = wide[i];
@@ -805,7 +822,7 @@
   // Short even at $0 a day: the message, the one action, and why there is no
   // slider. Nothing here takes focus: there is nothing to change.
   function drawShort(col, r, refs) {
-    var d = dateText(r.cardDate);
+    var d = dateText(dueDate(r));
     var amount = cash(r.move.amount);
     var box = el('div', 'bl-short', col);
     el('div', 'bl-short-head is-neg', box, fill(STRINGS.shortHead, { n: amount, d: d }));
@@ -1109,6 +1126,12 @@
     var colA = el('div', 'bu-pcol', wrap);
     var colB = full ? el('div', 'bu-pcol', wrap) : null;
     var refs = { full: full, short: short };
+    if (r.ok && r.autopay) {
+      var ah = el('div', 'bl-autopay', colA);
+      refs.autopay = ah;
+      fitForms(ah, autopayForms(r));
+      ah.style.display = '';
+    }
 
     if (short) {
       drawShort(colA, r, refs);
@@ -1129,7 +1152,8 @@
     chartStop();
     var left = colA;
     var right = colB || colA;
-    if (colB && r.ok) drawChart(colB, r, refs);
+    // The runway is worked to the 1st, not to the autopay days, so with autopay days there is no chart.
+    if (colB && r.ok && !r.autopay) drawChart(colB, r, refs);
     if (short) {
       drawPace(left, r, refs, true);
       drawMerchants(right, r, refs, true);
