@@ -12,6 +12,7 @@
  *   streak3   three days under in a row
  *   streak12  twelve days under in a row
  *   short     short even at $0 a day
+ *   autopay   short on card day, covered by waiting for autopay days
  *
  * The picture is the tile's own box. Needs Playwright and port 8095 free.
  * Nothing reaches the internet; every figure is made up.
@@ -38,7 +39,8 @@ const CASES = [
   { name: 'over', opts: { payday: true, pace: 'over' } },
   { name: 'streak3', opts: { payday: true, pace: 3 } },
   { name: 'streak12', opts: { payday: true, pace: 12 } },
-  { name: 'short', opts: { payday: true, pace: 'fresh', shortZero: true } }
+  { name: 'short', opts: { payday: true, pace: 'fresh', shortZero: true } },
+  { name: 'autopay', opts: { payday: true, pace: 'fresh', autopay: true } }
 ];
 
 async function main() {

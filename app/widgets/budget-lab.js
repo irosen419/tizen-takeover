@@ -106,6 +106,8 @@
     tileShortWord: 'short',
     tileKeeps: 'Keeps {d} covered',
     tileKeepsShort: 'Covered',
+    tileAuto: '{d} is short, using autopay days',
+    tileAutoShort: 'Using autopay days',
     streakDays: '{n} days under',
     streakDay: '{n} day under',
     stayToday: 'Stay under {cap} today',
@@ -521,6 +523,12 @@
   // The line under it: the card day outcome, without repeating the cap.
   function tileOutcome(r) {
     if (r.ok && r.move && r.move.kind === 'moveMoney') return null;
+    // Short on card day itself, covered only by waiting for autopay days: say
+    // so (amber), never a plain "covered".
+    if (r.ok && r.autopay && r.covered) {
+      var ao = { d: dateText(r.cardDate) };
+      return { forms: [fill(STRINGS.tileAuto, ao), STRINGS.tileAutoShort], tone: 'is-even' };
+    }
     // On track ($0 spare by construction) stays amber, as before: not "plenty".
     if (r.ok && onTrack(r)) {
       var d = dateText(dueDate(r));

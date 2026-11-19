@@ -306,6 +306,8 @@
     'budgetLab.tileShortWord': 'faltan',
     'budgetLab.tileKeeps': 'Cubre el pago del {d}',
     'budgetLab.tileKeepsShort': 'Cubierto',
+    'budgetLab.tileAuto': 'Falta para el {d}: pago automático',
+    'budgetLab.tileAutoShort': 'Con pago automático',
     'budgetLab.streakDays': '{n} días bajo el tope',
     'budgetLab.streakDay': '{n} día bajo el tope',
     'budgetLab.stayToday': 'Quédate bajo {cap} hoy',
