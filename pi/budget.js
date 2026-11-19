@@ -50,6 +50,8 @@ const MAX_PACE_DAYS = 31;
 const MAX_STEPS = 40;
 const MAX_SPLIT = 4;
 const MAX_COUNT = 999;
+const MAX_OUTLOOK_MONTHS = 3;
+const MAX_PAYDAYS = 3;
 // Sections that are lists; sent as a plain list or as { asOf, items }.
 const LISTS = { goals: 8, alerts: 5 };
 
@@ -160,6 +162,32 @@ function receiptOf(r) {
 
 /* ---------- the sections ---------- */
 
+// cardDay.outlook: where the month starts (behind or ahead of the plan), the
+// 3 month average of daily spending and up to 3 months of totals.
+function checkOutlook(o) {
+  if (!isObj(o)) throw wrong('"outlook" must be an object');
+  const out = {};
+  const st = F.objectOf(o, 'start', '', true);
+  out.start = {
+    date: F.dateOf(st, 'date', 'start', true),
+    behind: amountOf(st, 'behind', 'start', true),
+    ahead: amountOf(st, 'ahead', 'start', true)
+  };
+  out.dailyAverage = amountOf(o, 'dailyAverage', '', true);
+  out.averageMonths = F.wholeOf(o, 'averageMonths', '', true, { min: 1, max: 12 });
+  const months = F.listOf(o, 'months', MAX_OUTLOOK_MONTHS, '', true);
+  if (!months.length) throw wrong('"months" is empty');
+  out.months = F.eachEntry(months, 'month', (e, where) => {
+    const m = { month: F.monthOf(e, 'month', where, true) };
+    m.days = F.wholeOf(e, 'days', where, true, { min: 28, max: 31 });
+    const pd = F.listOf(e, 'paydays', MAX_PAYDAYS, where, true);
+    m.paydays = pd.map((v, n) => F.dateOf({ d: v }, 'd', where + ', payday ' + (n + 1), true, 'paydays'));
+    ['paycheck', 'bills', 'cardRecurring', 'planned'].forEach((k) => { m[k] = amountOf(e, k, where, true); });
+    return m;
+  });
+  return out;
+}
+
 const CHECK = {
   room: (s) => {
     const out = {};
@@ -219,6 +247,11 @@ const CHECK = {
     // names, which the owner approved for the TV (guest mode hides it there).
     const receipt = F.objectOf(s, 'receipt', '');
     if (receipt !== undefined) out.receipt = receiptOf(receipt);
+    // The next 3 months outlook. A bad outlook is dropped on its own: the
+    // rest of card day is still good.
+    if (field(s, 'outlook') !== undefined) {
+      try { out.outlook = checkOutlook(s.outlook); } catch (e) { /* dropped */ }
+    }
     return out;
   },
 
@@ -442,7 +475,7 @@ function sectionCounts(name, s) {
     return { daysLeft: s.daysLeft, throughDate: s.throughDate, state: s.roomPerDay < 0 ? 'negative' : s.roomPerDay < s.cap ? 'under' : 'at', refund: s.roomIfRefund !== undefined };
   }
   if (name === 'cardDay') {
-    return { date: s.date, daysAway: s.daysAway, covered: s.covered, byAutopay: s.byAutopay === true, payments: (s.plan || []).length, transfers: (s.transfers || []).length, paychecks: (s.paychecks || []).length };
+    return { date: s.date, daysAway: s.daysAway, covered: s.covered, byAutopay: s.byAutopay === true, payments: (s.plan || []).length, transfers: (s.transfers || []).length, paychecks: (s.paychecks || []).length, outlook: s.outlook ? s.outlook.months.length : 0 };
   }
   if (name === 'goals') {
     const c = { goals: s.items.length };

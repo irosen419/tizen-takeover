@@ -100,6 +100,7 @@ On the TV: the room per day, big; amber when it is under the cap, coral below ze
 | `plan` | list, at most 6 | optional: `{ "label": "Sapphire Reserve", "date": "2026-12-01", "amount": 1200, "kind": "first" }`; `label` is text, 24; `date` is the day of the payment; `amount` is dollars, the payment itself; `kind` is `first` (paid by hand on card day) or `autopay` (left for the card's autopay day, which can be before card day too). In date order |
 
 | `receipt` | object | optional: the Card day sum, line by line, as the budget site shows it (below) |
+| `outlook` | object | optional: the next 3 months (server 0.13.0). `start`: `{ "date", "behind", "ahead" }` (the day the outlook starts from; `behind` and `ahead` are dollars from 0 to 1,000,000; an ahead start is a cushion the savings start from). `dailyAverage`: dollars, the average daily spending. `averageMonths`: whole number 1 to 12 (3). `months`: 1 to 3 of `{ "month": "2026-12", "days": 28 to 31, "paydays": [dates, at most 3], "paycheck", "bills", "cardRecurring", "planned" }` (the four are dollars). Anything wrong in `outlook` drops the outlook only; the rest of card day is kept |
 
 The `plan` amounts are payments the owner asked to see. Outside `receipt`, they are the one exception to "no balance": never what a card owes in any other form.
 
