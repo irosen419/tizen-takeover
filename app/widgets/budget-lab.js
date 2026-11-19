@@ -5,10 +5,14 @@
  * cut sliders, Put it somewhere, and the pace), and at full screen the runway
  * chart on the right.
  *
- * Tile: the streak big ("8 days under", green; "Over yesterday", coral), then
- * "Yesterday $71 of $95", then the one suggested move. A tall tile adds the
- * card day outcome ("Dec 1: Covered, $214 spare"). Strip: "8 days under ·
- * $71 of $95". One column: the number.
+ * Tile: today's daily cap big ("$146 a day"), or, when even $0 a day leaves
+ * card day short, the shortfall in coral ("$138 short for Nov 30"). Under it
+ * the card day outcome ("Keeps Nov 30 covered", "Nov 30: Covered, $214
+ * spare"), then the suggested move only when card day is short. At the
+ * bottom, a small bordered streak box: with no streak just "Stay under $146
+ * today" (and yesterday, quiet); with one, "3 days under" in green, a row of
+ * seven dots (one lit per day, up to seven) and "Stay under $146 today to
+ * make it 4". Strip: "$146 a day · 3 days under". One column: the cap.
  *
  * Every figure comes from app/budget-lab-math.js (HUB_BUDGET_LAB_MATH): this
  * file has no arithmetic of its own, only the words, the drawing and the
@@ -96,6 +100,18 @@
       keepStreakShort: 'Stay under {cap} today',
       skipOne: '{move} · skip one {merchant} run'
     },
+    // The tile: today's cap big, the streak in a small box at the bottom
+    tileADay: 'a day',
+    tileShortFor: 'short for {d}',
+    tileShortWord: 'short',
+    tileKeeps: 'Keeps {d} covered',
+    tileKeepsShort: 'Covered',
+    tileAuto: '{d} is short, using autopay days',
+    tileAutoShort: 'Using autopay days',
+    streakDays: '{n} days under',
+    streakDay: '{n} day under',
+    stayToday: 'Stay under {cap} today',
+    stayMakeIt: 'Stay under {cap} today to make it {n}',
     // The card day outcome
     outcomeSpare: '{d}: Covered, {n} spare',
     outcomeZero: '{d}: Covered, nothing to spare',
@@ -377,11 +393,6 @@
     return { num: num, caps: [unit, STRINGS.under], unit: unit, tone: 'is-ok' };
   }
 
-  function streakForms(v) {
-    if (v.word) return v.words;
-    return [v.num + ' ' + v.unit, v.num + ' ' + STRINGS.under, v.num];
-  }
-
   function yesterdayForms(r) {
     var y = r.yesterday;
     if (!y) return [];
@@ -487,20 +498,6 @@
     return box;
   }
 
-  function fitStreak(box, v) {
-    if (v.word) {
-      // A word too long for the line takes its short form before it shrinks.
-      if (overW(box.numEl) && v.words[1]) box.numEl.textContent = v.words[1];
-      fitWidth(box.numEl);
-      return;
-    }
-    fitWidth(box.numEl);
-    var cap = box.capEl;
-    if (!cap) return;
-    if (overW(cap) || cap.offsetLeft <= box.numEl.offsetLeft + 1) cap.textContent = STRINGS.under;
-    if (overW(cap)) box.removeChild(cap);
-  }
-
   // A line of up to two lines: the long form when it fits, else the short.
   function twoLines(parent, cls, forms) {
     var node = el('div', cls, parent);
@@ -511,6 +508,92 @@
     return node;    // the last form, cut at the end of its second line
   }
 
+  // The big figure: today's cap, or the shortfall when no cap covers card day.
+  // { num, caps (long first), tone }
+  function capView(r) {
+    var mv = r.move;
+    if (r.ok && mv && mv.kind === 'moveMoney') {
+      var d = dateText(dueDate(r));
+      return { num: cash(mv.amount), caps: [fill(STRINGS.tileShortFor, { d: d }), STRINGS.tileShortWord], tone: 'is-neg' };
+    }
+    if (!r.ok) return null;
+    return { num: down(r.cap), caps: [STRINGS.tileADay], tone: '' };
+  }
+
+  // The line under it: the card day outcome, without repeating the cap.
+  function tileOutcome(r) {
+    if (r.ok && r.move && r.move.kind === 'moveMoney') return null;
+    // Short on card day itself, covered only by waiting for autopay days: say
+    // so (amber), never a plain "covered".
+    if (r.ok && r.autopay && r.covered) {
+      var ao = { d: dateText(r.cardDate) };
+      return { forms: [fill(STRINGS.tileAuto, ao), STRINGS.tileAutoShort], tone: 'is-even' };
+    }
+    // On track ($0 spare by construction) stays amber, as before: not "plenty".
+    if (r.ok && onTrack(r)) {
+      var d = dateText(dueDate(r));
+      return { forms: [fill(STRINGS.tileKeeps, { d: d }), STRINGS.tileKeepsShort], tone: 'is-even' };
+    }
+    return outcomeView(r);
+  }
+
+  // The move, only when card day needs one (the streak box covers the rest).
+  function tileMoveForms(r) {
+    var k = r.move && r.move.kind;
+    // The big figure already says how short, so moveMoney takes its short form.
+    if (k === 'moveMoney') return moveForms(r).slice(1);
+    return k === 'skipMerchant' || k === 'spendLess' ? moveForms(r) : [];
+  }
+
+  // Today's cap for "Stay under", or null when no cap covers card day.
+  function stayCap(r) {
+    var mv = r.move;
+    if (mv && (mv.kind === 'newStreak' || mv.kind === 'keepStreak')) return cash(mv.cap);
+    if (!r.ok || (mv && mv.kind === 'moveMoney')) return null;
+    return down(r.cap);
+  }
+
+  function streakCount(s) {
+    var n = s.full ? fill(STRINGS.full, { n: s.count }) : String(s.count);
+    return fill(s.count === 1 && !s.full ? STRINGS.streakDay : STRINGS.streakDays, { n: n });
+  }
+
+  // The small bordered box at the bottom: the streak when there is one, and
+  // always the plain "Stay under $X today". Null when there is nothing to say.
+  function streakBox(root, r) {
+    var s = r.streak;
+    var cap = stayCap(r);
+    if (!s.count && cap === null) return null;
+    var box = el('div', 'bl-sbox' + (s.count ? ' is-on' : ''), root);
+    if (s.count) {
+      var top = el('div', 'bl-stop', box);
+      var cnt = el('span', 'bl-scount', top, streakCount(s));
+      var pips = el('span', 'bl-pips', top);
+      for (var i = 0; i < 7; i++) el('span', 'bl-pip' + (i < s.count ? ' is-lit' : ''), pips);
+      box.countEl = cnt;
+      box.pipsEl = pips;
+    }
+    if (cap !== null) {
+      var forms = s.count && !s.full ? [fill(STRINGS.stayMakeIt, { cap: cap, n: s.count + 1 })] : [];
+      forms.push(fill(STRINGS.stayToday, { cap: cap }));
+      box.stayEl = el('div', 'bl-stay', box);
+      box.stayForms = forms;
+    }
+    if (!s.count) {
+      var yf = yesterdayForms(r);
+      if (yf.length) { box.yEl = el('div', 'bl-sy', box); box.yForms = yf; }
+    }
+    return box;
+  }
+
+  function fitBox(box) {
+    if (!box) return;
+    if (box.pipsEl && overW(box.pipsEl.parentNode)) box.pipsEl.parentNode.removeChild(box.pipsEl);
+    if (box.countEl) fitForms(box.countEl, [box.countEl.textContent]);
+    if (box.stayEl) fitForms(box.stayEl, box.stayForms);
+    if (box.yEl) fitForms(box.yEl, box.yForms);
+  }
+
   function drawTile(body, ctx) {
     var size = sizeOf(ctx);
     var root = el('div', 'bu-tile bl-tile', body);
@@ -518,7 +601,12 @@
     ctx.setTileSub(r ? asOf() : '');
     if (!r) return tileMessage(root, size, emptyKey());
     if (stale()) root.className += ' is-stale';
-    var v = streakView(r);
+    var v = capView(r);
+    if (!v) {
+      // No card day result (no payday yet): the streak alone, as before.
+      var sv = streakView(r);
+      v = { num: sv.word ? (sv.words[1] || sv.word) : sv.num, caps: sv.word ? [] : sv.caps, tone: sv.tone };
+    }
 
     if (size.cols === 1) {
       root.className += ' bu-solo';
@@ -533,30 +621,35 @@
       root.className += ' bu-strip';
       var line = el('div', 'bu-strip-line', root);
       var head = el('span', 'bl-strip-head' + (v.tone ? ' ' + v.tone : ''), line);
-      fitForms(head, streakForms(v));
+      var heads = v.caps.length ? [v.num + ' ' + v.caps[v.caps.length - 1], v.num] : [v.num];
+      fitForms(head, heads);
       head.style.display = '';
-      if (size.cols >= 4) {
-        var rest = el('span', 'bu-strip-rest', line);
-        // "8 days under · $71 of $95": yesterday in its shortest form.
-        var yf = yesterdayForms(r);
-        var y = yf.length ? yf[yf.length - 1] : '';
-        if (!y || !fitForms(rest, [STRINGS.sep + y])) line.removeChild(rest);
+      if (size.cols >= 4 && r.streak.count) {
+        var rest = el('span', 'bu-strip-rest is-ok', line);
+        if (!fitForms(rest, [STRINGS.sep + streakCount(r.streak)])) line.removeChild(rest);
       }
-      if (overW(line)) fitForms(head, streakForms(v).slice(1));
+      if (overW(line)) fitForms(head, [v.num]);
       return;
     }
 
-    var hero = streakHero(root, v);
-    var yl = r.yesterday ? el('div', 'bu-line bl-yline', root) : null;
-    var mf = moveForms(r);
+    var hero = el('div', 'bu-hero bl-cap', root);
+    hero.numEl = el('span', 'bu-hero-num' + (v.tone ? ' ' + v.tone : ''), hero, v.num);
+    hero.capEl = v.caps.length ? el('span', 'bu-hero-cap', hero, v.caps[0]) : null;
+    var out = tileOutcome(r);
+    var ol = out ? el('div', 'bu-line bl-oline ' + out.tone, root) : null;
+    var mf = tileMoveForms(r);
     var move = mf.length ? twoLines(root, 'bl-move', mf) : null;
-    var out = size.tier === 'tall' ? outcomeView(r) : null;
-    var foot = out ? el('div', 'bu-foot bl-foot ' + out.tone, root) : null;
-    fitStreak(hero, v);
-    if (yl) fitForms(yl, yesterdayForms(r));
-    if (foot) fitForms(foot, out.forms);
-    trim(root, [yl, move, foot]);
-    if (move && move.parentNode && overH(root)) root.removeChild(move);
+    var box = streakBox(root, r);
+
+    fitWidth(hero.numEl);
+    if (hero.capEl) {
+      if (overW(hero.capEl) && v.caps[1]) hero.capEl.textContent = v.caps[1];
+      if (overW(hero.capEl)) hero.removeChild(hero.capEl);
+    }
+    if (ol) fitForms(ol, out.forms);
+    fitBox(box);
+    // Too tall: drop yesterday, then the move, then the outcome line.
+    trim(root, [ol, move, box && box.yEl]);
   }
 
   /* ---------- the panel ---------- */

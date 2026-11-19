@@ -276,7 +276,7 @@ async function main() {
         const titles = await text(page, IDS.map(titleOf).join(', '));
         assert(titles === 'Ganado y gastado | Margen diario | Pago de tarjeta | Metas | Laboratorio', 'titles: ' + titles);
         const l = await text(page, tileOf('budget-lab'));
-        assert(/día bajo el tope/.test(l) && /Ayer \$41 de \$65/.test(l) && /Quédate bajo \$62 hoy/.test(l) && /19 nov: vas bien con \$62 al día/.test(l) && !/sobran \$0/.test(l), 'lab: ' + l);
+        assert(/\$62al día/.test(l) && /Cubre el pago del 19 nov/.test(l) && /1 día bajo el tope/.test(l) && /Quédate bajo \$62 hoy/.test(l) && !/sobran \$0/.test(l), 'lab: ' + l);
         const m = await text(page, tileOf('awws-money'));
         assert(/neto/.test(m) && /−\$575/.test(m) && /\$1,265/.test(m) && /ganado/.test(m) && /gastado/.test(m), 'money: ' + m);
         assert(/Próxima transferencia: 1 dic/.test(m), 'no Spanish date for the next transfer: ' + m);
