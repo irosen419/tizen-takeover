@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.30.3';
+  var BUILD = 'v0.30.5';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -161,6 +161,7 @@
 
   var widgets = [];       // [{ w, ctx, cell, tile, body, subEl, expandable }]
   var homeIndex = -1;     // focused tile
+  var FOCUS_KEEP_MS = 60000; // a layout arriving within this of a key press or click leaves focus alone
   var open = null;        // the widget record whose panel is open
   var mode = null;        // 'panel' | 'full' | null
   var busy = false;       // a transition is running; keys are ignored
@@ -1314,10 +1315,13 @@
     for (var k = 0; k < widgets.length; k++) {
       var entry = at[widgets[k].w.id];
       placeCell(widgets[k].cell, entry);
+      widgets[k].entry = entry;
       if (applySize(widgets[k], entry)) resized.push(widgets[k]);
     }
     layoutKey = key;
     measureHome();
+    // Back to the top-left tile, unless the remote was used just now.
+    if (new Date().getTime() - lastInputAt > FOCUS_KEEP_MS) focusHome(topLeftIndex());
     placeGlass();
     clayHook('layout');
     agentsHook('stop');
@@ -1914,13 +1918,22 @@
       }
     } catch (e) { /* titles stay in the language they started in */ }
 
-    var start = -1;
-    for (var s = 0; s < widgets.length; s++) {
-      if (!widgets[s].expandable) continue;
-      if (start === -1) start = s;
-      if (widgets[s].w.id === cfg.start) { start = s; break; }
+    focusHome(topLeftIndex());
+  }
+
+  // The tile that gets focus when the hub opens or a layout arrives: the
+  // top-left one (smallest y on the grid, then smallest x), skipping static
+  // tiles. -1 when nothing can take focus.
+  function topLeftIndex() {
+    var best = -1;
+    for (var i = 0; i < widgets.length; i++) {
+      var e = widgets[i].entry;
+      if (!widgets[i].expandable || !e) continue;
+      if (best === -1) { best = i; continue; }
+      var b = widgets[best].entry;
+      if (e.y < b.y || (e.y === b.y && e.x < b.x)) best = i;
     }
-    focusHome(start);
+    return best;
   }
 
   // A one-widget layout opens straight to the widget's full screen as the hub
@@ -3271,6 +3284,8 @@
 
   window.HUB_TEST.fx = function () { return fxCall('state') || null; };
   window.HUB_TEST.focusRect = function () { return focusRect(); };
+  window.HUB_TEST.setFocusKeepMs = function (ms) { FOCUS_KEEP_MS = ms; };
+  window.HUB_TEST.focused = function () { return homeIndex >= 0 && widgets[homeIndex] ? widgets[homeIndex].w.id : null; };
 
   /* ---------- start ---------- */
 
