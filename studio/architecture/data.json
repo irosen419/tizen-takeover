@@ -1185,8 +1185,7 @@
        "id": "tv.widgets.architecture",
        "title": "Architecture",
        "kind": "component",
-       "status": "draft",
-       "pr": "PR 105",
+       "status": "unverified",
        "summary": "This map on the TV: Big picture, group diagrams and a detail drawer, all driven by the remote, plus the data flows stepped one by one.",
        "details": [
         "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 170 KB of data (app/widgets/architecture-data.js) loads only when the widget is first opened.",
