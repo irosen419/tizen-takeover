@@ -8,6 +8,9 @@
  *   tile    the Budget layout (the same one dev/budget-autopay-shots.js takes)
  *   panel   the Card day panel, OK on the tile
  *   bills   level 2 on "Bills from Dec 1 until the Dec 2 paycheck"
+ *   outlook      the "Next 3 months" page (Right on the receipt); the panel scene shows its tab strip
+ *   outlook-guest the outlook page with Guest mode switched on while it is open (no amounts)
+ *   outlook-try  the same with the daily amount at $90 (Down four times)
  *   cards   level 2 on "Cards today, pending included"
  *
  * The clock is the harness's (Monday 16 November 2026, 10:40 AM in Chicago),
@@ -43,7 +46,7 @@ const LAYOUT = [
 function snapshot() {
   const file = arg('--snapshot');
   const s = file ? JSON.parse(fs.readFileSync(file, 'utf8'))
-    : H.budgetSample.snapshot({ sentAt: FRESH, payday: true, receipt: KIND });
+    : H.budgetSample.snapshot({ sentAt: FRESH, payday: true, receipt: KIND, outlook: arg('--outlook-kind') || true });
   s.sentAt = FRESH;
   Object.keys(s).forEach((k) => { if (s[k] && typeof s[k] === 'object' && s[k].asOf) s[k].asOf = FRESH; });
   return s;
@@ -64,6 +67,15 @@ async function main() {
           await page.screenshot({ path: file });
         } else {
           if (!await page.evaluate(() => window.HUB_TEST.open())) await H.openPanel(page, 'budget-card');
+          if (scene === 'outlook' || scene === 'outlook-try' || scene === 'outlook-guest') {
+            await H.key(page, 'ArrowRight');
+            await H.sleep(400);
+            if (scene === 'outlook-try') {
+              for (let n = 0; n < 4; n++) { await H.key(page, 'ArrowDown'); await H.sleep(150); }
+            }
+            if (scene === 'outlook-guest') await page.evaluate(() => window.HUB_GUEST.set(true));
+            await H.sleep(500);
+          }
           if (scene === 'bills' || scene === 'cards') {
             const want = scene === 'bills' ? 'rc-billsAfter' : 'rc-cardsToday';
             for (let n = 0; n < 10; n++) {
