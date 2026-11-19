@@ -360,7 +360,7 @@ async function main() {
           const fired = needs.map((id) => T.fire(list.filter((r) => r.id === id)[0]));
           return { n: list.length, needs: needs, fired: fired, prime: list[0].val, states: Array.prototype.map.call(document.querySelectorAll('#panel .lt-state.is-needs'), (s) => s.textContent) };
         });
-        assert(v.n === 21, 'recipes: ' + v.n);
+        assert(v.n === 27, 'recipes: ' + v.n);
         assert(v.needs.join(',') === 'disney-view,disney-resume,hulu-view,peacock-view', v.needs.join(','));
         assert(v.fired.every((f) => f === 'needsid'), v.fired.join(','));
         assert(v.states.length === 4 && v.states.every((s) => s === 'needs id'), v.states.join(','));
@@ -454,13 +454,13 @@ async function main() {
           const r = t.recipes();
           return { ids: r.map((x) => x.id), about: window.HUB_LINKTEST.aboutText(), netflixWatch: r.filter((x) => x.id === 'netflix-watch-resume')[0].val, def: r.filter((x) => x.id === 'appletv-default-op')[0].op, plain: r.filter((x) => x.plain).map((x) => x.id + ':' + x.op + ':' + x.key) };
         });
-        assert(v.ids.join() === 'prime-resume,plain-prime,netflix-resume,netflix-view,netflix-watch-resume,netflix-json-resume,netflix-default-op,plain-netflix,appletv-view,appletv-resume,appletv-fam,appletv-resume-url,appletv-default-op,plain-appletv,disney-view,disney-resume,plain-disney,hulu-view,plain-hulu,peacock-view,plain-peacock', v.ids.join());
-        assert(v.ids.length === 21 && /^OK to open · 0 of \d+ tried$/.test(v.about), v.about);
+        assert(v.ids.join() === 'prime-resume,prime-2step-gti,prime-2step-gti-noenter,plain-prime,netflix-resume,netflix-view,netflix-watch-resume,netflix-json-resume,netflix-default-op,netflix-2step-dial,netflix-2step-watch,netflix-2step-title,netflix-pi-dial-cold,plain-netflix,appletv-view,appletv-resume,appletv-fam,appletv-resume-url,appletv-default-op,plain-appletv,disney-view,disney-resume,plain-disney,hulu-view,plain-hulu,peacock-view,plain-peacock', v.ids.join());
+        assert(v.ids.length === 27 && /^OK to open · 0 of \d+ tried$/.test(v.about), v.about);
         assert(v.netflixWatch === 'm=https://www.netflix.com/watch/81505776&source_type=4' && v.def === 'http://tizen.org/appcontrol/operation/default', JSON.stringify(v));
         assert(v.plain.length === 6 && v.plain.every((x) => /::undefined$/.test(x) || /:$/.test(x) || /::$/.test(x) || x.split(':')[1] === ''), v.plain.join());
         await H.openView(lt, 'linktests');
         const nums = await lt.evaluate(() => ({ total: document.querySelector('.lt-total').textContent, nums: [].map.call(document.querySelectorAll('.lt-row .lt-num'), (n) => n.textContent) }));
-        assert(/^21 tests/.test(nums.total) && nums.nums.join() === Array.from({ length: 21 }, (_, i) => String(i + 1)).join(), JSON.stringify(nums));
+        assert(/^27 tests/.test(nums.total) && nums.nums.join() === Array.from({ length: 27 }, (_, i) => String(i + 1)).join(), JSON.stringify(nums));
         await H.focusKey(lt, 'lt:run:plain-netflix');
         const nc = env.launches.filter((x) => /launch-control/.test(x)).length;
         const nl = env.launches.length;
@@ -476,6 +476,99 @@ async function main() {
         await H.until(() => lt.evaluate(() => { const d = JSON.parse(localStorage.getItem('homeHub.linkTests') || 'null'); return !!(d && d.results && d.results[0] && d.results[0].id === 'plain-netflix'); }), 3000, 'no answer kept');
         const det = await lt.evaluate(() => JSON.parse(localStorage.getItem('homeHub.linkTests')).results[0].detail || '');
         assert(/^opened Netflix \d+/.test(det), det);
+      } finally { await lt.ctx.close(); }
+    });
+
+    await check('Watch link test: Pi rows say what the Pi will do, wait for an id, post /tvremote/run on OK, ask the question, and say what went wrong', async () => {
+      const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, POST', 'content-type': 'application/json' };
+      const lt = await env.newPage({});
+      const posts = [];
+      let reply = { status: 200, body: { ok: true, started: true, paired: false } };
+      try {
+        await lt.route(/\/tvremote\/run/, (r) => {
+          const req = r.request();
+          if (req.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: CORS });
+          posts.push(JSON.parse(req.postData()));
+          return r.fulfill({ status: reply.status, headers: CORS, body: JSON.stringify(reply.body) });
+        });
+        await H.openView(lt, 'linktests');
+        const detail = (id) => lt.evaluate((k) => { const e = document.querySelector('[data-key^="lt:run:' + k + '"] .lt-detail'); return e ? e.textContent : null; }, id);
+        assert((await detail('netflix-2step-dial')) === 'via the Pi · open, wait 10 s, Enter, DIAL Netflix', await detail('netflix-2step-dial'));
+        assert((await detail('netflix-2step-watch')) === 'via the Pi · open, wait 10 s, Enter, deep link', await detail('netflix-2step-watch'));
+        assert((await detail('netflix-pi-dial-cold')) === 'via the Pi · DIAL Netflix', await detail('netflix-pi-dial-cold'));
+        assert((await detail('prime-2step-gti-noenter')) === 'via the Pi · open, wait 10 s, deep link', await detail('prime-2step-gti-noenter'));
+        // The text wraps instead of clipping.
+        const wraps = await lt.evaluate(() => { const e = document.querySelector('[data-key^="lt:run:netflix-2step-dial"] .lt-detail'); const cs = getComputedStyle(e); return cs.whiteSpace !== 'nowrap' && cs.textOverflow !== 'ellipsis'; });
+        assert(wraps, 'the detail line does not wrap');
+        // The id is filled in from linkTests.ids; a missing one says "needs id" and posts nothing.
+        const v = await lt.evaluate(() => {
+          const T = window.HUB_LINKTEST._test;
+          const ids = window.HUB_CONFIG.widgets.entertainment.linkTests.ids;
+          const r = T.recipes().filter((x) => x.id === 'netflix-2step-title')[0];
+          const out = { payload: r.pi.payload, needs: r.needsId };
+          const keep = ids.netflixTitle;
+          ids.netflixTitle = '<id>';
+          const r2 = T.recipes().filter((x) => x.id === 'netflix-2step-title')[0];
+          out.needs2 = r2.needsId;
+          out.fired = T.fire(r2);
+          ids.netflixTitle = keep;
+          const g = T.recipes().filter((x) => x.id === 'prime-2step-gti')[0];
+          out.gti = g.pi.payload;
+          return out;
+        });
+        assert(v.payload === 'm=https://www.netflix.com/title/81505776&source_type=4' && v.needs === false && v.needs2 === true && v.fired === 'needsid', JSON.stringify(v));
+        assert(v.gti === '{"values":"amzn1.dv.gti.50f41028-8256-4293-9d0d-14556b501136"}', v.gti);
+        assert(posts.length === 0, 'posted for a row that needs an id');
+        // OK posts to the Pi with the app id found on this TV, and the question comes up.
+        const launches = env.launches.length;
+        await H.focusKey(lt, 'lt:run:netflix-2step-dial');
+        await H.key(lt, 'Enter');
+        await H.until(() => posts.length === 1, 3000, 'nothing posted');
+        const b = posts[0];
+        assert(b.id === 'netflix-2step-dial' && b.appId === '3201907018807' && b.link === 'dial' && b.dialApp === 'Netflix' &&
+          b.payload === 'm=https://www.netflix.com/watch/81505776&source_type=4' && b.open === undefined, JSON.stringify(b));
+        assert(env.launches.length === launches, 'the TV launched something itself: ' + env.launches.slice(launches).join(' | '));
+        await H.until(async () => (await focusedKey(lt)) === 'lt:ans:netflix-2step-dial:title', 3000, 'no question: ' + await focusedKey(lt));
+        assert((await toastText(lt)) === 'The Pi is opening Netflix. If the TV asks to allow “Home Hub Pi”, choose Allow. Come back here after.', await toastText(lt));
+        // The answer carries the Pi op and the link.
+        await H.key(lt, 'Enter');
+        await H.until(() => lt.evaluate(() => { const d = JSON.parse(localStorage.getItem('homeHub.linkTests') || 'null'); return !!(d && d.results && d.results[0] && d.results[0].id === 'netflix-2step-dial' && d.results[0].sent); }), 3000, 'no answer kept');
+        const kept = await lt.evaluate(() => JSON.parse(localStorage.getItem('homeHub.linkTests')).results[0]);
+        assert(kept.op === 'pi two-step (dial)' && kept.data === 'm=https://www.netflix.com/watch/81505776&source_type=4' && kept.outcome === 'title', JSON.stringify(kept));
+        const pi = await getJson(env.LIVE + '/api/linktests', H.TOKEN);
+        const got = (pi.data || pi).results || pi.results;
+        assert(got[0].id === 'netflix-2step-dial' && got[0].op === 'pi two-step (dial)', JSON.stringify(got[0]));
+        // A cold row sends only what it set.
+        await H.focusKey(lt, 'lt:run:netflix-pi-dial-cold');
+        await H.key(lt, 'Enter');
+        await H.until(() => posts.length === 2, 3000, 'second post missing');
+        assert(posts[1].open === false && posts[1].enter === false && posts[1].waitOpen === 0 && posts[1].link === 'dial', JSON.stringify(posts[1]));
+        await H.key(lt, 'Escape');
+        // The Pi says no: recorded as an error, said on the row, no question.
+        reply = { status: 409, body: { ok: false, error: 'A TV remote run is already going (x). Wait for it to finish.' } };
+        await H.focusKey(lt, 'lt:run:prime-2step-gti');
+        await H.key(lt, 'Enter');
+        await H.until(async () => (await lt.evaluate(() => { const e = document.querySelector('[data-key^="lt:run:prime-2step-gti"] .lt-rowerr'); return e ? e.textContent : ''; })) !== '', 3000, 'no error on the row');
+        const err = await lt.evaluate(() => document.querySelector('[data-key^="lt:run:prime-2step-gti"] .lt-rowerr').textContent);
+        assert(err === 'The Pi couldn’t start it: A TV remote run is already going (x). Wait for it to finish.', err);
+        const last = await lt.evaluate(() => JSON.parse(localStorage.getItem('homeHub.linkTests')).results[0]);
+        assert(last.id === 'prime-2step-gti' && last.outcome === 'error' && /already going/.test(last.detail), JSON.stringify(last));
+        assert(!(await lt.evaluate(() => !!document.querySelector('.lt-ask'))), 'a question came up after an error');
+      } finally { await lt.ctx.close(); }
+    });
+
+
+    await check('Watch link test: with live updates off, a Pi row says so and records an error', async () => {
+      const lt = await env.newPage({ live: 'off' });
+      try {
+        await H.openView(lt, 'linktests');
+        await H.focusKey(lt, 'lt:run:netflix-2step-dial');
+        await H.key(lt, 'Enter');
+        await H.until(() => lt.evaluate(() => !!document.querySelector('[data-key^="lt:run:netflix-2step-dial"] .lt-rowerr')), 3000, 'no message');
+        const err = await lt.evaluate(() => document.querySelector('[data-key^="lt:run:netflix-2step-dial"] .lt-rowerr').textContent);
+        assert(/Live updates are off/.test(err), err);
+        const last = await lt.evaluate(() => JSON.parse(localStorage.getItem('homeHub.linkTests')).results[0]);
+        assert(last.outcome === 'error' && last.id === 'netflix-2step-dial', JSON.stringify(last));
       } finally { await lt.ctx.close(); }
     });
 

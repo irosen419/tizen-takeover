@@ -32,6 +32,8 @@
  *   ./hub shows watched "Stick" [S3E4]   mark an episode watched (none named: the earliest out and unmarked)
  *   ./hub shows unwatch "Stick" S3E4     take a watched mark off
  *   ./hub linktests                  the TV's watch link test answers
+ *   ./hub tvremote                   the TV remote from the Pi: paired or not, the last run
+ *   ./hub tvremote run '<json>'      a two-step launch (see pi/README.md)
  *   ./hub spotify status             is Spotify connected, and what is playing
  *   ./hub spotify login              connect Spotify (once): a link to open, then paste the address back
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
@@ -66,6 +68,7 @@ const awws = require('./awws');
 const budget = require('./budget');
 const shows = require('./shows');
 const linktests = require('./linktests');
+const tvremote = require('./tvremote');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
@@ -680,6 +683,24 @@ async function linktestsCommand() {
   linktests.lines(r.data).forEach(say);
 }
 
+async function tvremoteCommand(args) {
+  if (!args.length || args[0] === 'status') {
+    const r = await call('GET', '/api/tvremote');
+    tvremote.lines(r).forEach(say);
+    return;
+  }
+  if (args[0] === 'run') {
+    const text = args[1] === '-' ? fs.readFileSync(0, 'utf8') : args.slice(1).join(' ');
+    if (!text || !text.trim()) stop('Give the run as JSON, for example: ./hub tvremote run \'{"id":"x","appId":"3201907018807","link":"none"}\'');
+    let spec;
+    try { spec = JSON.parse(text); } catch (e) { stop('That is not valid JSON.'); }
+    const r = await call('POST', '/api/tvremote/run', spec);
+    say('Started' + (r.paired ? '' : '; the TV will ask to allow "Home Hub Pi" (choose Allow on the TV)') + '. See how it went with ./hub tvremote.');
+    return;
+  }
+  stop('Use ./hub tvremote (status) or ./hub tvremote run \'<json>\'. Run ./hub help for examples.');
+}
+
 /* ---------- budget snapshot ---------- */
 
 // The lines for ./hub budget show: times in the hub's time zone, no amounts.
@@ -1211,6 +1232,8 @@ const HELP = [
   '  ./hub shows watched "Stick" S3E4   mark an episode watched by hand (S3E4 left out: the earliest out and unmarked);',
   '                              the TV marks them when you answer "Did you finish?"; ./hub shows unwatch "Stick" S3E4 takes one off',
   '  ./hub linktests             what the TV\'s watch link test found (About panel on the TV)',
+  '  ./hub tvremote              the TV remote from the Pi: paired or not, and the last run\'s steps',
+  '  ./hub tvremote run \'<json>\'   a two-step launch: open the app, Enter, then a link (see README.md)',
   '  ./hub spotify status        is Spotify connected, and what is playing',
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
@@ -1261,6 +1284,7 @@ async function main(argv) {
   if (cmd === 'budget') return budgetCommand(rest);
   if (cmd === 'shows') return showsCommand(rest);
   if (cmd === 'linktests') return linktestsCommand(rest);
+  if (cmd === 'tvremote') return tvremoteCommand(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'log') return logCommand(rest);

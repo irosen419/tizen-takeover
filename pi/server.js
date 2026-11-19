@@ -10,6 +10,7 @@
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
  *   POST /linktests      one watch link test answer from the About panel
+ *   POST /tvremote/run   start a two-step launch from the Pi (tvremote.js): { id, appId, ... }
  *   POST /shows/watched  the TV marks an episode watched: { id, season, number }
  *   POST /shows/unwatch  the TV takes a watched mark off an episode: { id, season, number }
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
@@ -33,6 +34,8 @@
  *   POST /api/shows/watched   { show, episode? }: mark an episode watched (none named = the earliest out and unmarked)
  *   POST /api/shows/unwatch   { show, episode }: take a watched mark off
  *   GET  /api/linktests  the TV's watch link test answers (linktests.js)
+ *   GET  /api/tvremote   the TV remote from the Pi: paired or not, last run and its steps (tvremote.js)
+ *   POST /api/tvremote/run   start a run, the same body as POST /tvremote/run
  *   GET  /api/status     version, rev, connected screens, calendar summary
  *   GET  /api/log        the last log lines kept in memory (?lines=1-200,
  *                        ?errors=1 for problems only, ?scrub=1 hides addresses
@@ -85,11 +88,12 @@ const mailbox = require('./mailbox');
 const spotify = require('./spotify');
 const shows = require('./shows');
 const linktests = require('./linktests');
+const tvremote = require('./tvremote');
 const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 
-const SERVER_VERSION = '0.8.0';
+const SERVER_VERSION = '0.9.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -609,6 +613,10 @@ function start(options) {
     } catch (e) { /* logging must never break a request */ }
   };
   const startedAt = Date.now();
+
+  // The TV's remote from the Pi (tvremote.js). HUB_TV_REMOTE_IP (opt.tvRemoteIp)
+  // names the TV; otherwise the address its screen calls from.
+  const remote = tvremote.create(Object.assign({ dataDir: dataDir, log: log, host: opt.tvRemoteIp || '' }, isObj(opt.tvremote) ? opt.tvremote : {}));
 
   let state = loadState(dataDir, log);
   const sse = new Set();      // { res, since, address }
@@ -1178,6 +1186,8 @@ function start(options) {
     '/api/shows/watched': ['POST'],
     '/api/shows/unwatch': ['POST'],
     '/api/linktests': ['GET'],
+    '/api/tvremote': ['GET'],
+    '/api/tvremote/run': ['POST'],
     '/api/allsounds': ['GET'],
     '/api/ambience': ['GET'],
     '/api/ambience/scene': ['POST'],
@@ -1370,6 +1380,11 @@ function start(options) {
           }).catch(failed);
           return undefined;
         }
+        if (route === '/api/tvremote') return reply(200, Object.assign({ ok: true }, remote.status()));
+        if (route === '/api/tvremote/run') {
+          const r = remote.run(body);
+          return reply(200, { ok: true, started: true, paired: r.paired }, 'tvremote run started');
+        }
         if (route === '/api/linktests') {
           const l = state.resources.linktests;
           return reply(200, { ok: true, rev: l.rev, data: l.data });
@@ -1454,11 +1469,12 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/linktests' || route === '/shows/watched' || route === '/shows/unwatch' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/linktests' || route === '/tvremote/run' || route === '/shows/watched' || route === '/shows/unwatch' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
     if (route === '/live/state') {
+      remote.seen(address, true); // a first guess at the TV's address, for the mailbox
       return sendJson(res, 200, {
         ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev, resources: state.resources
       }, cors);
@@ -1480,6 +1496,21 @@ function start(options) {
           changeResource('linktests', linktests.addResult(state.resources.linktests.data, r));
           sendJson(res, 200, { ok: true, rev: state.rev }, cors);
           log('screen sent a watch link test answer (' + r.outcome + ')');
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
+    }
+    if (route === '/tvremote/run') {
+      // The TV asks the Pi to open an app, press Enter and send a link, since
+      // the TV refuses key presses it sends to itself. The TV's address is
+      // this request's. The run goes on after the reply; nothing about it
+      // (link, app id, address) reaches the log here (tvremote.js logs steps).
+      return readBody(req, res, (body) => {
+        try {
+          remote.seen(address);
+          const r = remote.run(body, remote.address() || undefined);
+          sendJson(res, 200, { ok: true, started: true, paired: r.paired }, cors);
         } catch (e) {
           fail(res, e, cors);
         }
@@ -1551,7 +1582,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/tvremote/run': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
   };
 
@@ -1728,6 +1759,7 @@ if (require.main === module) {
     token: env.HUB_TOKEN || '',
     port: env.HUB_PORT || DEFAULT_PORT,
     tvIps: env.HUB_TV_IPS || '',
+    tvRemoteIp: env.HUB_TV_REMOTE_IP || '',
     origins: env.HUB_ORIGINS || '',
     tunnelPort: env.HUB_TUNNEL_PORT || null,
     dataDir: env.HUB_DATA_DIR || 'data',
