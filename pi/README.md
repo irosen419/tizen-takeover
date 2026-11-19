@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.16.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.17.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 

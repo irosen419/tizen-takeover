@@ -1734,6 +1734,85 @@ async function main() {
     }
   }
 
+  await check('Ready to watch on Coming soon: only shows started and behind, per-season lines, the count on the tab, Down reaches the cards, OK watches the next episode, the chips open show pages; Spanish fits', async () => {
+    const own = await H.start({ upTo: [['slow-horses', 3, 6], ['andor', 1, 12], ['paradise', 1, 8], ['the-great-british-baking-show', 16, 99]] });
+    const errs = pageErrors;
+    try {
+      const p = await own.newPage({});
+      try {
+        await H.openSchedule(p, 'soon');
+        const v = await p.evaluate(() => ({
+          head: document.querySelector('.sh-ready-head').textContent,
+          tab: document.querySelector('.sh-tab[data-key="sh:tab:soon"]').textContent,
+          rows: [].map.call(document.querySelectorAll('.sh-ready-row'), (r) => r.getAttribute('data-key') + '|' + r.querySelector('.sh-ready-line').textContent + '|' + ((r.querySelector('.sh-ready-next') || {}).textContent || '') + '|' + r.querySelector('.sh-count').textContent),
+          chips: [].map.call(document.querySelectorAll('.sh-ready .sh-page, .sh-shows .sh-page'), (n) => n.getAttribute('data-key')).length,
+          shows: document.querySelectorAll('.sh-shows .sh-show').length,
+          tags: [].map.call(document.querySelectorAll('.sh-shows .sh-chip.is-ready'), (n) => n.textContent)
+        }));
+        // Baking Show is caught up (up to past the last aired), so it is not listed; shows never started are not either.
+        assert(v.head === 'Ready to watch3' && v.tab === 'Coming soon3', JSON.stringify(v));
+        assert(JSON.stringify(v.rows) === JSON.stringify([
+          'sh:ready:andor|Season 2 · all 12 out|Up next: S2 E1|12to watch',
+          'sh:ready:paradise|Season 2 · 5 of 8 out|Up next: S2 E1|5to watch',
+          'sh:ready:slow-horses|Seasons 4–5|Up next: S4 E1|10to watch']), JSON.stringify(v.rows));
+        assert(v.chips === 3 + v.shows && JSON.stringify(v.tags) === '["10 to watch","5 to watch","12 to watch"]', JSON.stringify(v));
+        // Down: the three lines, then the Coming soon cards, then Your shows.
+        const at = () => p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') || '' : ''; });
+        await H.focusKey(p, 'sh:ready:andor');
+        const keys = [];
+        for (let i = 0; i < 4; i++) { await H.key(p, 'ArrowDown'); keys.push(await at()); }
+        assert(JSON.stringify(keys) === '["sh:ready:paradise","sh:ready:slow-horses","sh:soon:the-bear","sh:soon:severance"]', JSON.stringify(keys));
+        // OK on a line: its app opens and the next episode is the one started.
+        await H.focusKey(p, 'sh:ready:slow-horses');
+        const before = own.launches.length;
+        await H.key(p, 'Enter');
+        await H.until(() => own.launches.length > before, 3500, 'no launch from Ready to watch');
+        const started = await p.evaluate(() => JSON.parse(localStorage.getItem('homeHub.watch.v1') || '[]'));
+        assert(started.length === 1 && started[0].showId === 'slow-horses' && started[0].season === 4 && started[0].number === 1, JSON.stringify(started));
+        assert(errs(p).length === 0, errs(p).join(' | '));
+      } finally { await p.ctx.close(); }
+      // The chip on a line opens that show's page; Back returns to the chip.
+      const q = await own.newPage({});
+      try {
+        await H.openSchedule(q, 'soon');
+        await H.focusKey(q, 'sh:ready:andor');
+        await H.key(q, 'ArrowRight');
+        assert(await q.evaluate(() => document.querySelector('#panel .is-focused').getAttribute('data-key')) === 'sh:page:andor:ready', 'Right from the line is its chip');
+        await H.key(q, 'Enter');
+        await H.until(() => q.evaluate(() => !!document.querySelector('.sh-pg-title') && /Andor/.test(document.querySelector('.sh-pg-title').textContent)), 4000, 'the show page did not open');
+        await H.key(q, 'Escape');
+        await H.until(() => q.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return !!f && f.getAttribute('data-key') === 'sh:page:andor:ready'; }), 4000, 'Back did not return to the chip');
+        assert(errs(q).length === 0, errs(q).join(' | '));
+      } finally { await q.ctx.close(); }
+      // Spanish, full screen: the words, and no line wider than its box.
+      const e = await own.newPage({ lang: 'es' });
+      try {
+        await H.openSchedule(e, 'soon');
+        await H.fullScreen(e);
+        const w = await e.evaluate(() => ({
+          head: document.querySelector('.sh-ready-head').textContent,
+          lines: [].map.call(document.querySelectorAll('.sh-ready-line, .sh-ready-next, .sh-ready-row .sh-count-word'), (n) => n.textContent),
+          over: [].filter.call(document.querySelectorAll('.sh-ready-line, .sh-ready-next, .sh-ready-row .sh-title, .sh-ready-row .sh-count-word, .sh-chip.is-ready'), (n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent)
+        }));
+        assert(w.head === 'Para ver3' && w.lines.indexOf('Temporada 2 · los 12 disponibles') >= 0 && w.lines.indexOf('Temporada 2 · 5 de 8 disponibles') >= 0 && w.lines.indexOf('Temporadas 4–5') >= 0 && w.lines.indexOf('Sigue: T4 E1') >= 0 && w.lines.indexOf('por ver') >= 0, JSON.stringify(w));
+        assert(!w.over.length, 'clipped: ' + JSON.stringify(w.over));
+        assert(errs(e).length === 0, errs(e).join(' | '));
+      } finally { await e.ctx.close(); }
+    } finally { await own.stop(); }
+  });
+
+  await check('No Ready to watch when nothing is started: no group, no count on the tab', async () => {
+    const own = await H.start();
+    try {
+      const p = await own.newPage({});
+      try {
+        await H.openSchedule(p, 'soon');
+        const v = await p.evaluate(() => ({ ready: !!document.querySelector('.sh-ready'), n: !!document.querySelector('.sh-tab-n'), chips: document.querySelectorAll('.sh-shows .sh-page').length }));
+        assert(!v.ready && !v.n && v.chips > 0, JSON.stringify(v));
+      } finally { await p.ctx.close(); }
+    } finally { await own.stop(); }
+  });
+
   await check('The new and changed app files are plain ES5', () => {
     let acorn = null;
     for (const p of ['acorn', '/opt/node-tools/node_modules/acorn', '/usr/local/lib/node_modules_global/acorn']) {

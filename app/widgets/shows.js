@@ -6,8 +6,11 @@
  * own time zone, 12 or 24 hours like the Clock tile.
  *
  * Four views: Today, This week (Monday to Sunday, the days gone dimmed),
- * This month (today to the month's end) and Coming soon (seasons coming
- * back, and every show marked still running or ended). OK on an episode
+ * This month (today to the month's end) and Coming soon ("Ready to watch":
+ * shows started and behind, with how many episodes are out and not marked;
+ * then seasons coming back, and every show marked still running or ended,
+ * each with its show page chip). The Coming soon tab carries how many shows
+ * are ready to watch. OK on an episode
  * opens its app ("Watch on Hulu"), through a ladder per service: a deep link
  * when one is known (none yet; the watch link test in the About panel is
  * finding out which work), otherwise the app itself and a toast saying what
@@ -106,6 +109,14 @@
     day: 'day',
     todayChip: 'today',
     yourShows: 'Your shows',
+    readyHead: 'Ready to watch',
+    readyAll: 'Season {s} · all {n} out',
+    readyOne: 'Season {s} is out',
+    readyPart: 'Season {s} · {out} of {total} out',
+    readySeasons: 'Seasons {a}–{b}',
+    readyNext: 'Up next: {code}',
+    toWatch: 'to watch',
+    nToWatch: '{n} to watch',
     running: 'Still running',
     ended: 'Ended',
     tbd: 'Still running · undecided',
@@ -607,6 +618,56 @@
     return out;
   }
 
+  // Shows started and not caught up, with aired episodes not marked watched
+  // ("Ready to watch" on Coming soon): [{ show, n, left, next }], by title.
+  // Started = a "watched up to" point or any episode marked; a show never
+  // touched is not listed (a long-running show would say "300 to watch").
+  // left is the Pi's per-season counts (progress.left, server 0.17.0);
+  // an older Pi sends none, and then only the total and the next episode show.
+  function readyList(d) {
+    var out = [];
+    var list = showsOf(d);
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      var pr = s.progress;
+      if (!pr || typeof pr !== 'object' || pr.caughtUp === true) continue;
+      var started = !!pr.upTo || pr.seen > 0 || (isArr(s.watched) && s.watched.length > 0);
+      if (!started) continue;
+      var left = [];
+      var n = 0;
+      var raw = isArr(pr.left) ? pr.left : [];
+      for (var j = 0; j < raw.length; j++) {
+        var x = raw[j];
+        if (x && typeof x.season === 'number' && typeof x.unseen === 'number' && x.unseen > 0) { left.push(x); n += x.unseen; }
+      }
+      if (!left.length) n = Math.max(0, (pr.aired || 0) - (pr.seen || 0));
+      if (n <= 0) continue;
+      out.push({ show: s, n: n, left: left, next: pr.next && typeof pr.next.season === 'number' ? pr.next : null });
+    }
+    out.sort(function (a, b) {
+      var x = nameKey(a.show.name);
+      var y = nameKey(b.show.name);
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
+    return out;
+  }
+
+  function readyFor(d, id) {
+    var list = readyList(d);
+    for (var i = 0; i < list.length; i++) if (list[i].show.id === id) return list[i];
+    return null;
+  }
+
+  // "Season 2 · all 12 out", "Season 5 · 4 of 6 out", "Seasons 4–5".
+  function readyText(r) {
+    if (!r.left.length) return '';
+    if (r.left.length > 1) return word('readySeasons', { a: r.left[0].season, b: r.left[r.left.length - 1].season });
+    var l = r.left[0];
+    if (typeof l.total === 'number' && typeof l.out === 'number' && l.out < l.total) return word('readyPart', { s: l.season, out: l.out, total: l.total });
+    if (l.out === 1) return word('readyOne', { s: l.season });
+    return word('readyAll', { s: l.season, n: l.out });
+  }
+
   // What a view shows: { tab, range, groups, empty, soon }.
   function view(d, tab, t) {
     var from = dayStart(t);
@@ -614,7 +675,7 @@
     var range;
     if (tab === 'today') { to = addDays(from, 1); range = longDay(t); }
     else if (tab === 'month') { to = monthEnd(t); range = monthTitle(t); }
-    else if (tab === 'soon') { return { tab: tab, range: '', groups: [], soon: returning(d, t), shows: showsOf(d) }; }
+    else if (tab === 'soon') { return { tab: tab, range: '', groups: [], soon: returning(d, t), shows: showsOf(d), ready: readyList(d) }; }
     else { tab = 'week'; from = weekStart(t); to = addDays(from, 7); range = rangeText(from, to); }
     var groups = groupByDay(airings(d, from, to), t);
     return { tab: tab, range: range, groups: groups, soon: returning(d, t), from: from, to: to };
@@ -978,6 +1039,11 @@
       if (!pr) pr = show.progress = { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null };
       pr.upTo = { season: season, number: number, at: isoNow() };
       pr.unwatched = [];
+      leftAfter(pr, function (l) {
+        if (l.season < season) return 0;
+        if (l.season > season) return l.unseen;
+        return Math.max(0, Math.min(l.unseen, (l.out || 0) - number));
+      });
       return;
     }
     var on = op === 'watched';
@@ -994,6 +1060,27 @@
       pr.unwatched = ex;
     } else if (on) out.push({ season: season, number: number, at: isoNow() });
     show.watched = out;
+    // One more seen in its season (a mark taken off waits for the Pi's count).
+    if (on && pr) leftAfter(pr, function (l) { return l.season === season ? Math.max(0, l.unseen - 1) : l.unseen; });
+  }
+
+  // The per-season counts (progress.left) after a mark, until the Pi sends
+  // its own: f(season) -> its new unseen count; seen and caughtUp follow.
+  function leftAfter(pr, f) {
+    if (!isArr(pr.left) || !pr.left.length) return;
+    var keep = [];
+    var gone = 0;
+    for (var i = 0; i < pr.left.length; i++) {
+      var l = pr.left[i];
+      var u = f(l);
+      gone += l.unseen - u;
+      if (u > 0) keep.push({ season: l.season, unseen: u, out: l.out, total: l.total });
+    }
+    pr.left = keep;
+    if (typeof pr.seen === 'number' && typeof pr.aired === 'number') {
+      pr.seen = Math.min(pr.aired, pr.seen + gone);
+      pr.caughtUp = pr.aired > 0 && pr.seen === pr.aired;
+    }
   }
 
   // Puts a mark into the copy of the Pi's data this TV holds, so the row
@@ -1413,8 +1500,51 @@
     return word('running');
   }
 
+  // The small round show page chip at the end of a line (as on the Schedule rows).
+  function pageChip(line, id, key) {
+    var pg = el('div', 'sh-page f', el('div', 'sh-slot is-page', line));
+    pg.setAttribute('data-key', 'sh:page:' + id + ':' + key);
+    pg.setAttribute('role', 'button');
+    var ic = el('span', 'sh-page-ic', pg);
+    ic.innerHTML = LIST_SVG;
+    el('span', 'sh-page-text', pg, word('showPage'));
+    return pg;
+  }
+
+  // "Ready to watch": one line per show behind, OK watches the next episode.
+  function drawReady(parent, list) {
+    if (!list.length) return;
+    var wrap = el('div', 'sh-ready', parent);
+    var head = el('div', 'sh-soon-head sh-ready-head', wrap);
+    el('span', '', head, word('readyHead'));
+    el('span', 'sh-ready-n', head, String(list.length));
+    for (var i = 0; i < list.length; i++) {
+      var r = list[i];
+      var line = el('div', 'sh-line', wrap);
+      var row = el('div', 'sh-show sh-ready-row f', line);
+      row.setAttribute('data-key', 'sh:ready:' + r.show.id);
+      poster(row, r.show);
+      var info = el('div', 'sh-info', row);
+      el('div', 'sh-title', info, r.show.name);
+      // What is out, then the next episode on its own quiet line, so the
+      // Spanish (about a quarter longer) never cuts either.
+      var what = readyText(r);
+      var nextText = r.next ? word('readyNext', { code: word('code', { s: r.next.season, e: r.next.number }) }) : '';
+      el('div', 'sh-meta sh-ready-line', info, what || nextText);
+      if (what && nextText) el('div', 'sh-air sh-ready-next', info, nextText);
+      var n = el('div', 'sh-count sh-ready-count', row);
+      el('div', 'sh-count-n', n, String(r.n));
+      el('div', 'sh-count-word', n, word('toWatch'));
+      var side = el('div', 'sh-side', row);
+      badge(side, watchApp(r.show));
+      pageChip(line, r.show.id, 'ready');
+    }
+  }
+
   function drawSoonView(parent, v, t) {
     var wrap = el('div', 'sh-soonview', parent);
+    drawReady(wrap, v.ready || []);
+    if (v.ready && v.ready.length) el('div', 'sh-soon-head', wrap, word('soonHead'));
     if (v.soon.length) {
       var cards = el('div', 'sh-cards is-list', wrap);
       for (var i = 0; i < v.soon.length; i++) drawSoonCard(cards, v.soon[i]);
@@ -1425,7 +1555,8 @@
     var list = el('div', 'sh-shows', wrap);
     for (var j = 0; j < v.shows.length; j++) {
       var s = v.shows[j];
-      var row = el('div', 'sh-show f' + (s.running === false ? ' is-ended' : ''), list);
+      var sl = el('div', 'sh-line', list);
+      var row = el('div', 'sh-show f' + (s.running === false ? ' is-ended' : ''), sl);
       row.setAttribute('data-key', 'sh:show:' + s.id);
       poster(row, s);
       var info = el('div', 'sh-info', row);
@@ -1433,10 +1564,14 @@
       var line = '';
       var next = nextFor(s, t);
       if (next) line = word('nextLine', { code: epCode([next.ep]), when: whenText(next.ms, t, next.ep.dayOnly) });
-      el('div', 'sh-meta', info, line || (s.checkedAt ? '' : (s.error || '')));
+      var meta = el('div', 'sh-meta', info);
+      el('span', 'sh-meta-text', meta, line || (s.checkedAt ? '' : (s.error || '')));
+      var rd = readyFor(S.data, s.id);
+      if (rd) el('span', 'sh-chip is-ready', meta, word('nToWatch', { n: rd.n }));
       var side = el('div', 'sh-side', row);
       el('span', 'sh-flag' + (s.running === false ? ' is-ended' : ' is-running'), side, s.checkedAt ? statusText(s) : '…');
       badge(side, watchApp(s));
+      pageChip(sl, s.id, 'show');
     }
   }
 
@@ -1470,6 +1605,9 @@
     for (var i = 0; i < TABS.length; i++) {
       var b = el('div', 'sh-tab f' + (TABS[i] === S.tab ? ' is-on' : ''), tabs, word('tabs.' + TABS[i]));
       b.setAttribute('data-key', 'sh:tab:' + TABS[i]);
+      // Coming soon carries how many shows are ready to watch, so they are found from any tab.
+      var nr = TABS[i] === 'soon' && st === 'data' ? readyList(S.data).length : 0;
+      if (nr) el('span', 'sh-tab-n', b, String(nr));
       if (TABS[i] === S.tab && st !== 'data') b.setAttribute('data-autofocus', '');
     }
     if (st !== 'data') {
@@ -1583,6 +1721,11 @@
       }
       changed();
       return true;
+    }
+    if (p[1] === 'ready') {
+      // The next episode not watched, as a row the started list can hold.
+      var rd = readyFor(S.data, show.id);
+      if (rd && rd.next) eps.push({ season: rd.next.season, number: rd.next.number, airstamp: isoOf(now() - MIN) });
     }
     var other = null;
     if (p[1] === 'alt') other = alternatives(show)[Number(p[4]) || 0] || null;
@@ -1985,6 +2128,17 @@
   }
 
   // The listing's focusables (everything under the tabs), in document order.
+  function lineOf(node) {
+    var n = node;
+    while (n && n.nodeType === 1 && !/\bsh-line\b/.test(n.className)) n = n.parentNode;
+    return n && n.nodeType === 1 ? n : node;
+  }
+
+  function inReady(node) {
+    for (var n = node; n && n.nodeType === 1; n = n.parentNode) if (/\bsh-ready\b/.test(n.className)) return true;
+    return false;
+  }
+
   function listingItems() {
     var all = document.querySelectorAll('.sh .f');
     var out = [];
@@ -2014,6 +2168,28 @@
     var items = listingItems();
     if (!items.length) return undefined;
     if (key.indexOf('sh:tab:') === 0) return dir === 'down' ? items[0] : undefined;
+    // Down from "Ready to watch" (its rows are wide, the Coming soon cards
+    // below are half width): the next line in reading order, never past the cards.
+    if (dir === 'down' && inReady(from)) {
+      var line = lineOf(from);
+      var seen = false;
+      for (var j = 0; j < items.length; j++) {
+        if (items[j] === from) { seen = true; continue; }
+        if (seen && lineOf(items[j]) !== line) return items[j];
+      }
+      return true;
+    }
+    // Down from a Coming soon card or a "Did you finish?" button: the first thing
+    // below it in reading order, so the half-width cards lead into the rows, not
+    // into the column of show page chips at the far right.
+    if (dir === 'down' && (key.indexOf('sh:soon:') === 0 || key.indexOf('sh:fin:') === 0)) {
+      var fr = from.getBoundingClientRect();
+      for (var k = 0; k < items.length; k++) {
+        if (items[k] === from) continue;
+        if (items[k].getBoundingClientRect().top >= fr.bottom - 1) return items[k];
+      }
+      return undefined;
+    }
     if (key.indexOf('sh:') !== 0 || dir !== 'up') return undefined;
     var first = items[0].getBoundingClientRect();
     var r = from.getBoundingClientRect();
