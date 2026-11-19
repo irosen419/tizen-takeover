@@ -345,6 +345,56 @@ async function checkDetection(pi) {
   await page.context().close();
 }
 
+// A new build keeps a clean push result (timed again later) but not a step-down,
+// and nothing is timed in the first minute after a load.
+async function checkSettle(pi) {
+  const page = await open({ pi: pi });
+  const state = () => page.evaluate(() => window.HUB_TEST.motionState());
+  const reloadWith = async (rec) => {
+    await page.evaluate((r) => localStorage.setItem('homeHub.motion', JSON.stringify(r)), rec);
+    await page.reload();
+    await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0);
+  };
+  // An older build's clean push: push at once, extras on, timed again later.
+  await reloadWith({ mode: 'push', build: 'v0.0.1', fps: 61, at: Date.now() });
+  let s = await state();
+  assert(s.mode === 'push' && s.measuring, 'an older clean push: ' + JSON.stringify(s));
+  assert((await fx(page)).speed === 'ok', 'extras off after an older clean push');
+  // An older build's step-down: back to the top rung, timed again.
+  await reloadWith({ mode: 'expand', build: 'v0.0.1', fps: 50, measuring: true, at: Date.now() });
+  s = await state();
+  assert(s.mode === 'push' && s.measuring, 'an older step-down kept: ' + JSON.stringify(s));
+  // This build's step-down still holds (for its day).
+  await reloadWith({ mode: 'expand', build: BUILD, fps: 50, at: Date.now() });
+  assert((await state()).mode === 'expand', 'this build\'s step-down was dropped');
+  // In the first minute: opening and closing a panel is not timed.
+  await reloadWith({ mode: 'push', build: 'v0.0.1', fps: 61, at: Date.now() });
+  await idle(page);
+  for (let i = 0; i < 2; i++) {
+    await page.keyboard.press('Enter');
+    await sleep(900);
+    await page.keyboard.press('Escape');
+    await sleep(900);
+  }
+  s = await state();
+  assert(s.runs === 0 && s.measuring, 'timed while settling: ' + JSON.stringify(s));
+  noErrors(page);
+  await page.context().close();
+  // With ?settle=0 the same opens are timed.
+  const now = await open({ pi: pi, query: 'settle=0' });
+  await idle(now);
+  for (let i = 0; i < 2; i++) {
+    await now.keyboard.press('Enter');
+    await sleep(900);
+    await now.keyboard.press('Escape');
+    await sleep(900);
+  }
+  s = await now.evaluate(() => window.HUB_TEST.motionState());
+  assert(s.runs > 0 || !s.measuring, 'not timed with settle=0: ' + JSON.stringify(s));
+  noErrors(now);
+  await now.context().close();
+}
+
 async function checkDisabled(pi) {
   const cases = [
     { name: 'fade', o: { query: 'motion=fade' }, why: 'fade' },
@@ -449,7 +499,7 @@ async function checkQuiet(pi) {
       });
       return out;
     });
-    const want = ['ambiance', 'awws', 'calendar', 'mirror', 'nowplaying'];
+    const want = ['ambience', 'awws', 'calendar', 'mirror', 'nowplaying'];
     assert(JSON.stringify(info.dormant.sort()) === JSON.stringify(want), lang + ': quiet tiles ' + JSON.stringify(info.dormant));
     assert(!info.problems.length, lang + ': ' + info.problems.join(' | '));
     if (lang === 'es') {
@@ -465,9 +515,10 @@ async function checkQuiet(pi) {
     const t = document.querySelector('.cell[data-widget="nowplaying"] .tile');
     return t && !t.classList.contains('is-dormant');
   }), 6000, 'Now Playing stayed quiet with a song');
-  const d = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.tile.is-dormant'), (t) => t.parentNode.getAttribute('data-widget')).sort());
-  assert(JSON.stringify(d) === JSON.stringify(['ambiance', 'mirror']) || JSON.stringify(d) === JSON.stringify(['ambiance', 'calendar', 'mirror']) ||
-    JSON.stringify(d) === JSON.stringify(['ambiance', 'awws', 'calendar', 'mirror']) || JSON.stringify(d) === JSON.stringify(['ambiance', 'awws', 'mirror']),
+  // Ambience may be live or waiting, depending on whether its lights answered yet.
+  const d = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.tile.is-dormant'), (t) => t.parentNode.getAttribute('data-widget')).filter((w) => w !== 'ambience').sort());
+  assert(JSON.stringify(d) === JSON.stringify(['mirror']) || JSON.stringify(d) === JSON.stringify(['calendar', 'mirror']) ||
+    JSON.stringify(d) === JSON.stringify(['awws', 'calendar', 'mirror']) || JSON.stringify(d) === JSON.stringify(['awws', 'mirror']),
     'quiet with the Pi: ' + JSON.stringify(d));
   noErrors(page);
 }
@@ -1096,6 +1147,7 @@ async function main() {
   await check('16. Motion timing: one stall does not step down, three janky runs do, a step-down lasts a day', () => checkDetection(pi));
   await check('16. Activity chips: a to-do whose notes change on the Pi adds one chip; the first list, an unchanged list and a tick add none', () => checkActivityTodoEdit(pi));
   await check('17. Auto stepped down to expand at 60 fps or more: chips, the accent edge and its light still run, the ring does not; the Motion row says so', () => checkLightStepped(pi));
+  await check('18. A new build keeps a clean push (not a step-down); nothing is timed in the first minute after a load', () => checkSettle(pi));
 }
 
 main().catch((e) => {

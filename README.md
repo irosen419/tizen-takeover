@@ -90,7 +90,7 @@ With glass on and a picture behind, the tiles have two looks (`app/theme.css`): 
 - `'push'`: the widget grows into the middle of the screen and the other tiles slide aside and shrink into a ring around it.
 - `'expand'`: the widget grows over a dimmed screen.
 - `'fade'`: a plain fade, the lightest on slow TVs.
-- `'auto'` (the default) starts with push and times it on the TV. If push stutters twice, it drops to expand and times that; if expand stutters twice, it drops to fade for good. Three smooth runs keep the current one. The result is remembered until the next version of the hub.
+- `'auto'` (the default) starts with push and times it on the TV. Nothing is timed in the first minute after the page loads, while the TV is still busy starting up (`?settle=<ms>` changes that, for tests). If push stutters in three runs, it drops to expand and times that; if expand does too, it drops to fade. Three smooth runs keep the current one. A step-down lasts a day, and only for this version of the hub. A smooth push is kept by the next version (extras stay on) and timed again once the TV has settled.
 
 Set `motion: 'fade'` (or `'expand'`) to pick one yourself. On a laptop, `?motion=push`, `?motion=expand`, `?motion=fade` or `?motion=auto` at the end of the address does the same for one visit.
 

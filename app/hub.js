@@ -345,6 +345,11 @@
   var HITCH_MAX = 3;                    // stalls (or more) that make a run janky
   var FREEZE_MS = 400;                  // one gap this long is a freeze by itself
   var JANKY_RUNS = 3;                   // janky runs in a row that step down
+  // No timing in the first minute after the page loads: the TV is still
+  // busy starting up (scripts, pictures, the first live data), and runs
+  // timed then read a fast TV as slow. ?settle=<ms> changes it (tests).
+  var SETTLE_MS = 60 * 1000;
+  var loadedAt = Date.now();
 
   var motion = {
     mode: 'push',         // what runs now: 'push' | 'expand' | 'fade'
@@ -368,7 +373,14 @@
       var raw = window.localStorage && localStorage.getItem(MOTION_KEY);
       if (!raw) return null;
       var data = JSON.parse(raw);
-      if (!data || data.build !== BUILD || !isMode(data.mode)) return null;
+      if (!data || !isMode(data.mode)) return null;
+      // A new build keeps a good result (the top rung, timed clean): it
+      // stays on and is timed again once the TV has settled. Anything else
+      // from an older build starts over from the top rung.
+      if (data.build !== BUILD) {
+        if (data.mode !== LADDER[0] || data.measuring) return null;
+        return { mode: data.mode, fps: data.fps || 0, measuring: true, carried: true };
+      }
       // A step-down is only for a day: after that the top rung is timed
       // again, so a few stalls can't lock extras off for good.
       if (data.mode !== LADDER[0] && data.at && Date.now() - data.at > RETRY_MS) return null;
@@ -393,6 +405,8 @@
       return;
     }
     motion.source = 'auto';
+    var settle = parseInt(readQuery('settle'), 10);
+    if (settle >= 0) SETTLE_MS = settle;
     var stored = loadStored();
     if (stored) {
       motion.mode = stored.mode;
@@ -430,6 +444,7 @@
   // thread during the transition (building the panel), or null.
   function startSampling() {
     if (!motion.measuring || motion.mode === 'fade' || !window.requestAnimationFrame) return function () {};
+    if (Date.now() - loadedAt < SETTLE_MS) return function () {};
     var times = [];
     var running = true;
     var rung = motion.mode;
@@ -661,6 +676,10 @@
       motion.fps = 0; motion.worst = 0; motion.worstJanky = 0; motion.clean = []; motion.janky = [];
       for (var i = 0; i < runs.length; i++) { if (motion.measuring) recordRun(runs[i], null); }
       return { mode: motion.mode, measuring: motion.measuring, fps: motion.fps, worst: motion.worst, status: motionStatus() };
+    },
+    // The timing as it stands: { mode, measuring, runs } (runs: clean + janky timed at this rung).
+    motionState: function () {
+      return { mode: motion.mode, measuring: motion.measuring, runs: motion.clean.length + motion.janky.length };
     },
     panelRect: function () { return panelRect(open); },
     homeRects: function () {
