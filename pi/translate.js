@@ -8,7 +8,7 @@
  *
  * Every translation is kept in data/translations-es.json, so a string is
  * translated once, ever. New strings go to Google Gemini in ONE batched call
- * (gemini-2.5-flash-lite). The texts are private: they are never written to
+ * (gemini-3.5-flash-lite). The texts are private: they are never written to
  * the log, only counts. After a Gemini error the server leaves Gemini alone
  * for 10 minutes and answers from the cache only.
  *
@@ -24,18 +24,21 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-const MODEL = 'gemini-2.5-flash-lite';
+const MODEL = 'gemini-3.5-flash-lite'; // 2.5 Flash-Lite answers 403 to new keys
 const HOST = 'generativelanguage.googleapis.com';
 const MAX_TEXTS = 60;
 const MAX_TEXT = 500;
 const MAX_CACHE = 5000;
-// Gemini 2.5 Flash-Lite list price in US dollars per million tokens (Nov 2026; check
-// ai.google.dev/pricing if it looks off). Used only for the estimate in the usage report.
-const PRICE_IN = 0.10;
-const PRICE_OUT = 0.40;
+// Gemini 3.5 Flash-Lite paid-tier list price in US dollars per million tokens
+// (Nov 2026, from OpenRouter and pricepertoken.com; check ai.google.dev/pricing if it
+// looks off). Thinking tokens bill as output. Used only for the usage report's estimate.
+const PRICE_IN = 0.30;
+const PRICE_OUT = 2.50;
 const USAGE_FILE = 'translate-usage.json';
 const USAGE_DAYS = 62;
 const MAX_NEW_PER_DAY = 2000; // new lines sent to Gemini per day; the /translate route has no token, so this caps the cost
+// After a failed call: wait 1 minute, then 2, 4, 8, at most 10; a good answer resets it.
+const BACKOFF_FIRST_MS = 60 * 1000;
 const BACKOFF_MS = 10 * 60 * 1000;
 const CALL_TIMEOUT_MS = 20000;
 const FILE = 'translations-es.json';
@@ -82,11 +85,22 @@ function parseAnswer(text, count) {
 
 // One request to Gemini. Resolves to the answer's text. Errors say the HTTP
 // status only (the reply body could echo the private texts).
+// Thinking is asked to be minimal (it bills as output); if the model refuses that
+// setting (HTTP 400), the call is made once more without it.
 function geminiCall(key, items) {
+  return geminiOnce(key, items, true).catch((e) => {
+    if (e && e.message === 'Gemini HTTP 400') return geminiOnce(key, items, false);
+    throw e;
+  });
+}
+
+function geminiOnce(key, items, lowThinking) {
+  const generationConfig = { temperature: 0.2, responseMimeType: 'application/json' };
+  if (lowThinking) generationConfig.thinkingConfig = { thinkingLevel: 'minimal' };
   const payload = JSON.stringify({
     systemInstruction: { parts: [{ text: PROMPT }] },
     contents: [{ role: 'user', parts: [{ text: JSON.stringify(items) }] }],
-    generationConfig: { temperature: 0.2, responseMimeType: 'application/json' }
+    generationConfig: generationConfig
   });
   return new Promise((resolve, reject) => {
     const req = https.request({
@@ -125,6 +139,7 @@ function createTranslator(opt) {
   const cache = new Map(); // english -> spanish, oldest first
   const inflight = new Map(); // english -> Promise<string|null>
   let pausedUntil = 0;
+  let backoff = 0; // the current wait after a failure; 0 after a good answer
   let lastErrorAt = 0;
   let day = '';
   let newToday = 0;
@@ -205,15 +220,17 @@ function createTranslator(opt) {
       const a = typeof answer === 'string' ? { text: answer, inTok: 0, outTok: 0 } : (answer || {});
       const spanish = parseAnswer(a.text, items.length);
       remember(items, spanish);
+      backoff = 0;
       count(items.length, a.inTok || 0, a.outTok || 0);
       log('translate: ' + asked + ' asked, ' + cached + ' cached, ' + items.length + ' new (Gemini ' + (now() - started) + ' ms, ' +
         (a.inTok || 0) + ' + ' + (a.outTok || 0) + ' tokens)');
       return spanish;
     }).catch((e) => {
-      pausedUntil = now() + BACKOFF_MS;
+      backoff = backoff ? Math.min(backoff * 2, BACKOFF_MS) : BACKOFF_FIRST_MS;
+      pausedUntil = now() + backoff;
       lastErrorAt = now();
       log('translate: Gemini failed (' + (e && e.message ? e.message : 'error') + '), ' + asked + ' asked, ' + cached + ' cached, ' +
-        items.length + ' not translated, pausing 10 min');
+        items.length + ' not translated, pausing ' + Math.round(backoff / 60000) + ' min');
       return null;
     });
     items.forEach((k, i) => {
@@ -273,4 +290,4 @@ function createTranslator(opt) {
   return { translate: translate, info: info, size: () => cache.size };
 }
 
-module.exports = { MAX_NEW_PER_DAY, USAGE_FILE, PRICE_IN, PRICE_OUT, createTranslator, checkRequest, parseAnswer, MAX_TEXTS, MAX_TEXT, MAX_CACHE, BACKOFF_MS, MODEL, FILE };
+module.exports = { MAX_NEW_PER_DAY, USAGE_FILE, PRICE_IN, PRICE_OUT, createTranslator, checkRequest, parseAnswer, MAX_TEXTS, MAX_TEXT, MAX_CACHE, BACKOFF_MS, BACKOFF_FIRST_MS, MODEL, FILE };

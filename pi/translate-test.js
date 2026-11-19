@@ -57,7 +57,7 @@ function post(port, route, body) {
     assert.strictEqual(ra.map.A, 'xA'); assert.strictEqual(rb.map.B, 'xB');
     assert.strictEqual(calls.length, 2); assert.deepStrictEqual(calls[1], ['B']);
   });
-  await check('bad answers are not cached; errors pause Gemini for 10 minutes', async () => {
+  await check('bad answers are not cached; errors pause Gemini (1 minute first)', async () => {
     let clock = 1000; let n = 0; let mode = 'short';
     const t = translate.createTranslator({ dataDir: tmp(), now: () => clock, log: () => {}, call: (items) => {
       n++;
@@ -73,6 +73,22 @@ function post(port, route, body) {
     r = await t.translate(['A']); assert.strictEqual(r.map.A, 'okA'); assert.strictEqual(n, 2);
     mode = 'throw'; clock += 1;
     r = await t.translate(['Z']); assert.deepStrictEqual(r.map, {}); assert(t.info().paused);
+  });
+  await check('the pause grows 1, 2, 4, 8, 10 minutes and resets after a good answer', async () => {
+    let clock = 0; let fail = true; const lines = [];
+    const t = translate.createTranslator({ dataDir: tmp(), now: () => clock, log: (l) => lines.push(l), call: (items) =>
+      (fail ? Promise.reject(new Error('Gemini HTTP 403')) : Promise.resolve(JSON.stringify(items.map((s) => 'ES:' + s)))) });
+    const waits = [];
+    for (let i = 0; i < 5; i++) {
+      await t.translate(['x' + i]);
+      waits.push(Number(/pausing (\d+) min$/.exec(lines[lines.length - 1])[1]));
+      clock += translate.BACKOFF_MS + 1;
+    }
+    assert.deepStrictEqual(waits, [1, 2, 4, 8, 10]);
+    fail = false; await t.translate(['ok']);
+    fail = true; clock += 1; await t.translate(['again']);
+    assert(/pausing 1 min$/.test(lines[lines.length - 1]), lines[lines.length - 1]);
+    assert.strictEqual(translate.MODEL, 'gemini-3.5-flash-lite');
   });
   await check('the cache is capped, oldest dropped', async () => {
     const t = translate.createTranslator({ dataDir: tmp(), log: () => {}, call: fake([]), maxNewPerDay: 100000 });

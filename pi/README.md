@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.19.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.20.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -159,7 +159,7 @@ Server 0.18.0 keeps one more optional section, `investments` (the portfolio tota
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.19.0` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.20.0` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 
@@ -236,15 +236,15 @@ The server asks Home Assistant how the lights are every 10 seconds while a TV is
 | Log `ambience: a screen sent commands too fast (asked it to slow down)` | Someone held a button down | Nothing: the TV waits and tries again |
 ## Spanish for your own text (server 0.12.0)
 
-In Spanish mode the TV shows your to-dos, calendar events and AWWS task lines in Spanish. It sends new lines to `POST /translate`; the Pi answers lines it already knows from `data/translations-es.json` (up to 5000) and sends new ones to Gemini (`gemini-2.5-flash-lite`) in one batch, so each line is translated once. Show titles, songs and place names are kept as they are.
+In Spanish mode the TV shows your to-dos, calendar events and AWWS task lines in Spanish. It sends new lines to `POST /translate`; the Pi answers lines it already knows from `data/translations-es.json` (up to 5000) and sends new ones to Gemini (`gemini-3.5-flash-lite`; 2.5 Flash-Lite refuses new keys with HTTP 403) in one batch, so each line is translated once. Show titles, songs and place names are kept as they are.
 
-It uses `HUB_TRANSLATE_KEY` from `.env`, or else `GEMINI_VIDEO_GEN_KEY` (your personal key; `GEMINI_API_KEY` is never used). With neither set, the TV simply stays in English for those lines. At most 2000 new lines a day go to Gemini, and an error pauses it for 10 minutes. The log counts lines and never shows the text, for example:
+It uses `HUB_TRANSLATE_KEY` from `.env`, or else `GEMINI_VIDEO_GEN_KEY` (your personal key; `GEMINI_API_KEY` is never used). With neither set, the TV simply stays in English for those lines. At most 2000 new lines a day go to Gemini. After an error it waits 1 minute, then 2, 4, 8 and at most 10, and a good answer resets the wait. The log counts lines and never shows the text, for example:
 
 ```
 translate: 4 asked, 1 cached, 3 new (Gemini 812 ms, 210 + 95 tokens)
 ```
 
-To see what it costs, Claude sends the mailbox command `translate.status` (or call `GET /api/translate/usage` with the token): new lines, Gemini calls, tokens and an estimated dollar cost for today, this month and all time, from `data/translate-usage.json` (62 days kept). The estimate uses Flash-Lite's list price ($0.10 per million tokens in, $0.40 out; `PRICE_IN`/`PRICE_OUT` in `translate.js`); Google's billing page is the real number.
+To see what it costs, Claude sends the mailbox command `translate.status` (or call `GET /api/translate/usage` with the token): new lines, Gemini calls, tokens and an estimated dollar cost for today, this month and all time, from `data/translate-usage.json` (62 days kept). The estimate uses Flash-Lite's list price ($0.30 per million tokens in, $2.50 out, thinking counted as out; `PRICE_IN`/`PRICE_OUT` in `translate.js`); Google's billing page is the real number.
 
 ## TV shows (the Schedule)
 
@@ -578,7 +578,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.19.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.20.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 
