@@ -11,6 +11,7 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
   - `alsoOn`: up to 4 other apps that carry it. The TV offers each as "Also on ...".
   - `via`: the app the show is billed through and opened in, such as `Prime Video` for HBO Max through Prime Video Channels.
   - `tvmazeId`: filled in by the first lookup and kept.
+  - `watched`: optional, the episodes marked watched: `[{ s, e, at }]` (season, episode, when it was marked; at most 400 per show, the oldest go first). Never written by hand: the TV marks them, `./hub shows watched|unwatch` and the mailbox correct them.
   Change it with `./hub shows add|remove`, the mailbox (`shows.add`, `shows.remove`, `shows.set`) or `POST /api/shows`.
 - **TVmaze** (`https://api.tvmaze.com`, public, no key). Per show and refresh:
   - `GET /singlesearch/shows?q=<name>`, only until the id is known;
@@ -43,8 +44,9 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
       "tvmazeId": 1234,
       "checkedAt": "2026-11-17T12:00:00Z",
       "stale": false,
-      "nextEpisode": { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z" },
-      "upcoming": [ { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z" } ],
+      "nextEpisode": { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z", "runtime": 60 },
+      "upcoming": [ { "season": 24, "number": 7, "name": "Hot Mess", "airstamp": "2026-11-13T02:00:00Z", "runtime": 60, "watched": true }, { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z", "runtime": 60 } ],
+      "watched": [ { "season": 24, "number": 7, "at": "2026-11-13T04:10:00Z" } ],
       "returning": null
     }
   ]
@@ -67,7 +69,10 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
 | `status`, `running` | TVmaze's status (`Running`, `Ended`, `To Be Determined`, `In Development`), and whether that means it continues. The TV shows "Still running" or "Ended". |
 | `checkedAt` | When this show was last read well, or `null` if never. |
 | `stale`, `error` | Present when the last read failed and this is the last good copy. `error` is a code only: `timeout`, `unreachable`, `not-found`, `rate-limited`, `http-503`, `not-json` or `no-id`. |
-| `nextEpisode` | `{ season, number, name, airstamp }` or `null`. |
+| `nextEpisode` | `{ season, number, name, airstamp, runtime?, watched? }` or `null`. |
+| `watched` | The newest 60 episodes marked watched: `[{ season, number, at }]`, always present (`[]` when none). |
+| `runtime` (on an episode) | TVmaze's length in minutes, when it has one. |
+| `watched` (on an episode) | `true` when that episode is marked watched. Absent otherwise. |
 | `upcoming` | Episodes from 7 days ago to 60 days ahead, at most 40, oldest first. The week view shows the days already gone dimmed as "Aired". |
 | `returning` | A season coming back: `{ season, label, date, airstamp }` (`date` and `airstamp` `null` when there is no date yet), or `null`. The Coming soon strip shows these with a day count. |
 
@@ -79,6 +84,8 @@ At most 40 shows. Episode names are cut at 80 characters, service names at 24.
 
 - The Schedule lives in Entertainment. Its tabs are Today, This week, This month and Coming soon, with rows grouped by day.
   - Today has a lit edge, and so does an episode airing within the hour ("in 35 min").
+  - A watched episode is dimmed, with a small check and "Watched" (Spanish "Visto"), and is skipped by the tile's counts; a show whose aired episodes are all watched does not count toward its app's badge.
+  - Episodes opened with OK go on a "Did you finish?" list at the top of the panel (Watched / Not yet per line, kept 7 days), and the Entertainment tile says "N to check" while it has lines. Every aired row ends in a small check that marks or unmarks it.
   - Each row has a tiny lettered poster, the title, "S3 E4 · 9:00 PM" and the service badge.
   - The focused row shows "Watch on X"; OK opens that app (no deep link) after a centered card for about 1.8 s: "X opens on its home screen" over "Search for: <show>"; OK or Back launches at once.
   - A show that is also on another app gets an "Also on Hulu" chip beside its row. Right reaches the chip, and OK on it opens that app instead.
@@ -95,6 +102,12 @@ At most 40 shows. Episode names are cut at 80 characters, service names at 24.
   - waiting for the first TVmaze read;
   - TVmaze unreachable.
 
+## Watched episodes
+
+The TV marks an episode when the person says so: "Watched" on a line of the Schedule's "Did you finish?" strip, or the check at the end of an aired row (how it works: README.md, Schedule). It tells the Pi with `POST /shows/watched` (no token: the screen door, like `/linktests`; a web page on another site is refused) and the body `{ "id": "hells-kitchen", "season": 24, "number": 7 }`. The Pi answers `{ ok, changed }`, stores `{ s, e, at }` in the show's list entry in `data/shows.json`, and pushes the new snapshot. No TVmaze call. Marking an episode already marked changes nothing. The check on a row that is already marked takes the mark off with `POST /shows/unwatch`, the same body and answer (`changed` is `false` when there was no mark).
+
+By hand, with the token: `POST /api/shows/watched` and `POST /api/shows/unwatch` with `{ "show": "<name or id>", "episode": "S3E4" }` (`episode` may be left out on `watched`: the earliest episode out in the last week and not yet marked). `./hub shows watched "<name>" [S3E4]`, `./hub shows unwatch "<name>" S3E4`, and the mailbox's `shows.watched {name, episode?}` and `shows.unwatch {name, episode}` do the same. Needs server 0.8.0.
+
 ## Logs
 
 The Pi's log never names a show or carries a link. It holds counts and codes only:
@@ -102,3 +115,6 @@ The Pi's log never names a show or carries a link. It holds counts and codes onl
 - `shows refresh: 4 of 4 shows read`
 - `shows refresh: 3 of 4 shows read, 1 failed (timeout)`
 - `shows changed: 4 shows (rev 58)`
+- `screen marked an episode watched` (and `screen marked an episode watched (already marked)`), when the TV marks one
+- `screen took a watched mark off an episode`, when the TV takes one off (no show, episode, address or token in either line)
+- `control POST /api/shows/watched -> 200 marked an episode watched` and `control POST /api/shows/unwatch -> 200 took a watched mark off an episode`, from the control API (the usual `control ...` line, with the route, the status and a generic note)

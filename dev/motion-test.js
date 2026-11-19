@@ -253,7 +253,9 @@ async function openEntertainment(page) {
       if (performance.now() - t0 < 900) requestAnimationFrame(look);
       else window.__items = seen;
     })();
-    window.HUB_TEST.openPanel('entertainment');
+    // These checks are about the small panel; config.js opens Entertainment
+    // straight to full screen.
+    window.HUB_CONFIG.widgets.entertainment.openMode = 'panel'; window.HUB_TEST.openPanel('entertainment');
   });
   await sleep(1000);
   return page.evaluate(() => window.__items);
@@ -624,7 +626,7 @@ async function checkCover(pi) {
 async function checkBloom(pi) {
   const page = await open({ pi: pi, query: 'motion=push' });
   await idle(page);
-  await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
+  await page.evaluate(() => { window.HUB_CONFIG.widgets.entertainment.openMode = 'panel'; window.HUB_TEST.openPanel('entertainment'); });
   await idle(page);
   await sleep(600);
   await launchFirstApp(page);
@@ -949,7 +951,7 @@ async function checkActivityClay(pi) {
   assert(!seen.length, 'a chip during a scene: ' + JSON.stringify(seen));
   await page.evaluate(() => window.HUB_TEST.clay.stop());
   // With a panel open, also none (the home screen is covered).
-  await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
+  await page.evaluate(() => { window.HUB_CONFIG.widgets.entertainment.openMode = 'panel'; window.HUB_TEST.openPanel('entertainment'); });
   await idle(page);
   await postTodo(pi, 'Behind a panel ' + Date.now());
   await sleep(800);

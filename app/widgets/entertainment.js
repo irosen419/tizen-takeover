@@ -7,6 +7,9 @@
  * item; drawn by app/widgets/shows.js) and the watch link test (opened from
  * the About panel; drawn by app/widgets/linktest.js). Back returns to the
  * grid from either.
+ *
+ * Full screen is split: the apps in a narrow column (a quarter) and the
+ * Schedule, always shown, in the rest (renderSplit, onMove).
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -70,14 +73,14 @@
   var CHIP_GAP = 0.6;       // rem, like .ent-chip's margin-right
   var STRIP_GAP = 0.5;
 
-  function chipFit(body, ctx) {
+  function chipFit(body, ctx, taken) {
     var size = ctx && ctx.size ? ctx.size() : null;
     var rem = parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 24;
     var strip = !!size && size.tier === 'strip';
     var chip = (strip ? STRIP_CHIP : size && size.width === 'narrow' ? NARROW_CHIP : MIN_CHIP) * rem;
     var gap = (strip ? STRIP_GAP : CHIP_GAP) * rem;
     var w = body.clientWidth;
-    var h = body.clientHeight;
+    var h = body.clientHeight - (taken || 0);
     if (!w) {
       // Not laid out (hidden): guess from the grid, 80rem by 45rem.
       var cols = size ? size.cols : 6;
@@ -123,6 +126,27 @@
     var old = logo.querySelector('.ent-count');
     if (old) logo.removeChild(old);
     if (n) logo.appendChild(el('span', 'ent-count', String(n)));
+  }
+
+  // How many started episodes wait for "Did you finish?" in the Schedule: the
+  // tile and the Schedule item say "N to check".
+  function toCheck() {
+    try { return window.HUB_SHOWS && typeof HUB_SHOWS.toCheck === 'function' ? HUB_SHOWS.toCheck() || 0 : 0; } catch (e) { return 0; }
+  }
+
+  // The tile's "N to check": a small pill above the logos, or, where there is
+  // no room for words (a strip, a tile under three columns), only the count in a dot
+  // in the body's corner. Returns the height the pill takes from the logos.
+  function putCheck(body, size) {
+    var n = toCheck();
+    if (!n) return 0;
+    var text = '';
+    try { text = HUB_SHOWS.checkText(); } catch (e) { text = ''; }
+    var dot = !size || size.tier === 'strip' || size.cols < 3;
+    var pill = el('span', 'ent-check' + (dot ? ' is-dot' : ''), dot ? String(n) : text);
+    if (dot) pill.setAttribute('title', text);
+    body.insertBefore(pill, body.firstChild);
+    return dot ? 0 : pill.offsetHeight + parseFloat(getComputedStyle(pill).marginBottom || '0');
   }
 
   // The tile's order: apps with something to watch first (most first), the
@@ -286,6 +310,7 @@
   var host = {
     findApp: function (match) { return findApp(match); },
     appsReady: function () { return !!apps; },
+    apps: function () { return apps ? apps.slice() : null; },
     launch: function (id, label) { launchById(id, label); },
     launchControl: function (c, cb) { launchControl(c, cb); },
     matchFor: matchFor
@@ -467,9 +492,12 @@
         node.icon = iconWrap;
         iconWrap.appendChild(logoEl(item.cfg));
         node.appendChild(iconWrap);
-        node.appendChild(el('div', 'ent-name', item.cfg.label));
+        // Name and state in one box: a column beside the icon at full screen.
+        var text = el('div', 'ent-text');
+        text.appendChild(el('div', 'ent-name', item.cfg.label));
         var state = el('div', 'ent-state');
-        node.appendChild(state);
+        text.appendChild(state);
+        node.appendChild(text);
         sec.appendChild(node);
         nodes.push({ item: item, node: node, state: state });
       }
@@ -479,21 +507,107 @@
     return gridCache;
   }
 
-  function renderGrid(body) {
+  // Full screen shows the apps in a narrow column beside the Schedule, which
+  // is always there (split = true). The panel and the tile are not touched.
+  function isSplit() {
+    return !!window.HUB_SHOWS && (view === 'grid' || view === 'schedule') && !!C && C.isOpen() && C.mode() === 'full';
+  }
+
+  function renderGrid(body, split) {
     var cache = buildGrid();
     var avail = availability();
     for (var i = 0; i < cache.nodes.length; i++) {
       var n = cache.nodes[i];
       var st = stateOf(n.item);
       // Resetting the class also drops focus and press marks from last time.
-      n.node.className = 'ent-item f' + (st.missing ? ' is-missing' : '');
+      // In the column the Schedule item has no use (the Schedule is beside it):
+      // hidden and not focusable.
+      n.node.className = 'ent-item' + (split && n.item.cfg.kind === 'schedule' ? ' is-off' : ' f') + (st.missing ? ' is-missing' : '');
       if (n.state.textContent !== st.text) n.state.textContent = st.text;
-      var cnt = n.item.cfg.kind === 'app' && avail.hasOwnProperty(n.item.cfg.label) ? avail[n.item.cfg.label] : 0;
+      var cnt = n.item.cfg.kind === 'app' && avail.hasOwnProperty(n.item.cfg.label) ? avail[n.item.cfg.label] : n.item.cfg.kind === 'schedule' ? toCheck() : 0;
       putBadge(n.node.icon.firstChild, cnt);
-      if (n.item.key === lastKey) n.node.setAttribute('data-autofocus', '');
+      if (n.item.key === lastKey && !split) n.node.setAttribute('data-autofocus', '');
       else n.node.removeAttribute('data-autofocus');
     }
     body.appendChild(cache.grid);
+  }
+
+  // Full screen: the app column (a quarter) and the Schedule (the rest).
+  function renderSplit(body) {
+    var wrap = el('div', 'ent-split');
+    var side = el('div', 'ent-side');
+    var main = el('div', 'ent-main');
+    wrap.appendChild(side);
+    wrap.appendChild(main);
+    body.appendChild(wrap);
+    renderGrid(side, true);
+    HUB_SHOWS.renderPanel(main);
+  }
+
+  function inside(node, cls) {
+    while (node && node.nodeType === 1) {
+      if (node.className && (' ' + node.className + ' ').indexOf(' ' + cls + ' ') >= 0) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  function list(root) {
+    var out = [];
+    var all = root ? root.querySelectorAll('.f') : [];
+    for (var i = 0; i < all.length; i++) out.push(all[i]);
+    return out;
+  }
+
+  // Left and Right cross between the column and the Schedule; Up and Down
+  // stay in their own side.
+  function splitMove(dir, from) {
+    var wrap = from.parentNode;
+    while (wrap && !(wrap.className && /\bent-split\b/.test(wrap.className))) wrap = wrap.parentNode;
+    if (!wrap) return undefined;
+    var side = wrap.querySelector('.ent-side');
+    var main = wrap.querySelector('.ent-main');
+    var inSide = inside(from, 'ent-side');
+    var fr = from.getBoundingClientRect();
+    var cy = fr.top + fr.height / 2;
+    var mine = list(inSide ? side : main);
+    if (dir === 'right' && inSide) return nearest(list(main), cy) || true;
+    if (dir === 'left' && !inSide) {
+      // Only from the leftmost thing of its line (a first tab, a row); a
+      // button or chip with something to its left goes there first.
+      for (var j = 0; j < mine.length; j++) {
+        if (mine[j] === from) continue;
+        var q = mine[j].getBoundingClientRect();
+        if (q.left < fr.left - 1 && q.top < fr.bottom - 1 && q.bottom > fr.top + 1) return undefined;
+      }
+      return nearest(list(side), cy) || true;
+    }
+    if (dir === 'left' || (dir === 'right' && inSide)) return true;
+    if (inSide) {
+      var at = mine.indexOf(from);
+      if (dir === 'down') return at < mine.length - 1 ? mine[at + 1] : true;
+      return at > 0 ? mine[at - 1] : undefined;   // Up from the first: the Full screen button
+    }
+    if (dir === 'down') {
+      // The last of the Schedule stays put (nothing of the column is "below").
+      for (var i = 0; i < mine.length; i++) {
+        if (mine[i] === from) continue;
+        if (mine[i].getBoundingClientRect().top >= cy) return undefined;
+      }
+      return true;
+    }
+    return undefined;
+  }
+
+  function nearest(nodes, cy) {
+    var best = null;
+    var bestD = 1e9;
+    for (var i = 0; i < nodes.length; i++) {
+      var r = nodes[i].getBoundingClientRect();
+      var d = Math.abs(r.top + r.height / 2 - cy);
+      if (d < bestD) { bestD = d; best = nodes[i]; }
+    }
+    return best;
   }
 
   // Builds the grid ahead of time, while nothing else is going on.
@@ -521,11 +635,11 @@
           var tileSig = null;
           HUB_SHOWS.onChange(function () {
             // Redrawn only when its line or counts change (logos are slow to draw).
-            var sig = HUB_SHOWS.tileLine() + '|' + JSON.stringify(availability());
+            var sig = HUB_SHOWS.tileLine() + '|' + JSON.stringify(availability()) + '|' + toCheck();
             var changed = sig !== tileSig;
             if (changed) { tileSig = sig; C.redrawTile(); }
             // The grid's badges follow the counts; redrawn only when they change.
-            if (C.isOpen() && (view === 'schedule' || (view === 'grid' && changed))) C.redrawPanel();
+            if (C.isOpen() && (view === 'schedule' || (view === 'grid' && (changed || isSplit())))) C.redrawPanel();
           });
         } catch (e) { /* the grid works without it */ }
       }
@@ -539,7 +653,9 @@
     renderTile: function (body, ctx) {
       C = ctx;
       tileSub();
-      var fit = chipFit(body, ctx);
+      var size = ctx && ctx.size ? ctx.size() : null;
+      var taken = putCheck(body, size);
+      var fit = chipFit(body, ctx, taken);
       // As many logos as fit, the last one "+N" when there are more.
       var room = fit.perRow * fit.rows;
       if (room < 2 && items.length > 1) {
@@ -584,10 +700,25 @@
     },
 
     renderPanel: function (body) {
+      if (isSplit()) { renderSplit(body); return; }
       if (view === 'list' && apps) renderList(body);
       else if (view === 'schedule' && window.HUB_SHOWS) { C.setSub(viewTitle(view)); HUB_SHOWS.renderPanel(body); }
       else if (view === 'linktests' && window.HUB_LINKTEST) { C.setSub(viewTitle(view)); HUB_LINKTEST.renderPanel(body); }
       else { view = 'grid'; renderGrid(body); }
+    },
+
+    // Full screen and back: the column and Schedule, or the grid.
+    onMode: function (mode, ctx) { ctx.redrawPanel(); },
+
+    onMove: function (dir, from) {
+      if (!isSplit() || !from) return undefined;
+      if (!inside(from, 'ent-split')) {
+        // From the Full screen button (where focus stays after pressing it): Down
+        // lands where the Schedule would start, not on the row nearest the button.
+        var start = dir === 'down' ? document.querySelector('.ent-main .f[data-autofocus]') : null;
+        return start || undefined;
+      }
+      return splitMove(dir, from);
     },
 
     // The About panel's "Watch link test" opens it here (hub.js openWidgetView).

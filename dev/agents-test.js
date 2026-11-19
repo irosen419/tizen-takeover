@@ -523,7 +523,7 @@ async function check6(pi) {
     .filter((a) => a.effect && a.effect.getTiming && a.effect.getTiming().iterations === Infinity)
     .map((a) => a.animationName + ':' + a.effect.getTiming().duration));
   const names = loop.map((x) => x.split(':')[0]).sort().join();
-  assert(names === 'ag-bob,ag-curl,ag-flow,ag-flow,ag-flow,ag-ring,ag-ring', 'work loop: ' + names);
+  assert(names === 'ag-bob,ag-curl,ag-helix,ag-ring,ag-ring,ag-stream', 'work loop: ' + names);
   assert(loop.every((x) => Number(x.split(':')[1]) >= 1500), 'a fast loop: ' + loop.join());
   const changes = await page.evaluate(() => new Promise((resolve) => {
     let n = 0;

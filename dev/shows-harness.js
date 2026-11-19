@@ -46,8 +46,23 @@ function getOk(url) {
   });
 }
 
+// The sample, with some episodes marked watched: watched is [[show id, season, number], ...].
+function sampleWith(dir, watched) {
+  if (!watched || !watched.length) return SAMPLE;
+  const raw = JSON.parse(fs.readFileSync(SAMPLE, 'utf8'));
+  watched.forEach((w) => {
+    const s = raw.shows.find((x) => x.id === w[0]);
+    if (!s) throw new Error('no such sample show: ' + w[0]);
+    s.watched = (s.watched || []).concat([{ season: w[1], number: w[2], at: '2026-11-17T20:00:00Z' }]);
+    (s.upcoming || []).concat(s.nextEpisode ? [s.nextEpisode] : []).forEach((e) => { if (e.season === w[1] && e.number === w[2]) e.watched = true; });
+  });
+  const file = path.join(dir, 'sample-watched.json');
+  fs.writeFileSync(file, JSON.stringify(raw));
+  return file;
+}
+
 /*
- * opts: { at (UTC ms), shows: 'sample' | 'none' (a Pi that sends no shows) }.
+ * opts: { at (UTC ms), shows: 'sample' | 'none' (a Pi that sends no shows), watched: [[id, season, number], ...] }.
  * Returns { PAGE, LIVE, pi, logs, newPage(o), stop(), launches }.
  */
 async function start(opts) {
@@ -70,7 +85,7 @@ async function start(opts) {
   env.pi = server.start({
     port: env.LIVE_PORT, host: '127.0.0.1', token: TOKEN, origins: [env.PAGE], dataDir: env.dataDir,
     log: (s) => env.logs.push(s), now: () => new Date(env.at),
-    shows: opts.shows === 'none' ? undefined : { sampleFile: SAMPLE }
+    shows: opts.shows === 'none' ? undefined : { sampleFile: sampleWith(env.dataDir, opts.watched) }
   });
   await env.pi.ready;
   await until(() => getOk(env.PAGE + '/'), 10000, 'the preview did not start');
@@ -86,10 +101,10 @@ async function start(opts) {
 }
 
 /*
- * o: { lang: 'es', hours: '24', live ('off' or an address), storage {}, layout [...] }.
+ * o: { lang: 'es', hours: '24', live ('off' or an address), storage {}, layout [...], scale (deviceScaleFactor, 1), started [[show id, season, number, hours ago], ...] }.
  */
 async function openHub(env, o) {
-  const context = await env.browser.newContext({ viewport: { width: 1920, height: 1080 }, timezoneId: TZ });
+  const context = await env.browser.newContext({ viewport: { width: 1920, height: 1080 }, timezoneId: TZ, deviceScaleFactor: o.scale || 1 });
   context.errors = [];
   await context.route(/.*/, (route) => {
     const u = route.request().url();
@@ -105,9 +120,25 @@ async function openHub(env, o) {
   const storage = Object.assign({}, o.storage || {});
   if (o.lang) storage['homeHub.lang'] = o.lang;
   if (o.hours) storage['homeHub.clock.hours'] = o.hours;
+  // started: [[show id, season, number, hours ago], ...] -> the hub's started list ("Did you finish?").
+  if (o.started) storage['homeHub.watch.v1'] = JSON.stringify(o.started.map((r) => ({ showId: r[0], season: r[1], number: r[2], startedAt: new Date(o.at || env.at).getTime() - r[3] * 3600000 })));
   if (o.layout) {
     storage['homeHub.layout'] = JSON.stringify(o.layout);
     storage['homeHub.layoutChoice'] = JSON.stringify({ id: 'test', piSig: '' });
+  }
+  // Entertainment opens straight to full screen in config.js. Most checks are
+  // about the small panel, so they keep it ('panel') unless o.entOpen says
+  // otherwise ('config' leaves config.js alone).
+  const entOpen = o.entOpen || 'panel';
+  if (entOpen !== 'config') {
+    await page.addInitScript((m) => {
+      let v;
+      Object.defineProperty(window, 'HUB_CONFIG', {
+        configurable: true,
+        get: () => v,
+        set: (x) => { v = x; try { if (v && v.widgets && v.widgets.entertainment) v.widgets.entertainment.openMode = m; } catch (e) { /* ignore */ } }
+      });
+    }, entOpen);
   }
   await page.addInitScript((items) => {
     try {
@@ -165,7 +196,8 @@ async function focusKey(page, want) {
       const k = await at();
       if (k.indexOf(want) === 0) return true;
       // On the row's "Also on" chip: Left is the row itself.
-      if (k.indexOf('sh:alt:') === 0 && want.indexOf('sh:row:') === 0 && k.slice(7).indexOf(want.slice(7)) === 0) await key(page, 'ArrowLeft');
+      if ((k.indexOf('sh:alt:') === 0 || k.indexOf('sh:mark:') === 0) && want.indexOf('sh:row:') === 0 && k.slice(k.indexOf(':', 3) + 1).indexOf(want.slice(7)) === 0) await key(page, 'ArrowLeft');
+      else if (k.indexOf('sh:mark:') === 0 && want.indexOf('sh:row:') === 0) await key(page, 'ArrowLeft', 2);
       else await key(page, dir);
     }
   }

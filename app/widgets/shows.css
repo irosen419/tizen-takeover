@@ -33,6 +33,39 @@
    the logo's corner rather than over the edge. */
 .tile-wn .ent-count { top: 0.1rem; right: 0.1rem; min-width: 1.2rem; font-size: 0.75rem; line-height: 1.2rem; }
 
+/* "N to check": started episodes waiting for an answer in the Schedule. A
+   pill above the logos; in a strip or a one-column tile only the count, in a
+   dot like the logos' counts, in the body's corner. */
+.ent-check {
+  align-self: flex-start;
+  margin: 0 0 0.5rem;
+  padding: 0.12rem 0.7rem;
+  border-radius: 1rem;
+  box-sizing: border-box;
+  max-width: 100%;
+  background: rgba(127, 209, 255, 0.16);
+  border: 0.08rem solid rgba(127, 209, 255, 0.55);
+  color: #7fd1ff;
+  font-size: 0.85rem; font-weight: 600; line-height: 1.4;
+  white-space: nowrap;
+}
+.ent-check.is-dot {
+  position: absolute;
+  top: 0; left: 0;
+  z-index: 3;
+  min-width: 1.35rem;
+  margin: 0;
+  padding: 0 0.3rem;
+  background: #7fd1ff;
+  border: 0;
+  border-radius: 0.7rem;
+  color: #050506;
+  font-weight: 700;
+  line-height: 1.35rem;
+  text-align: center;
+  box-shadow: 0 0 0 0.12rem var(--card);
+}
+
 /* ---------- the card before an app opens (no deep link) ---------- */
 
 .sh-go-card {
@@ -165,6 +198,9 @@
 .sh-show.is-focused { background: var(--card-2); border-color: var(--focus); }
 .sh-row.is-past { opacity: 0.55; }
 .sh-row.is-past.is-focused { opacity: 1; }
+/* Watched: dimmed like an aired one, with a small check and "Watched". */
+.sh-row.is-watched { opacity: 0.55; }
+.sh-row.is-watched.is-focused { opacity: 1; }
 /* On within the hour: the accent edge on its left. */
 .sh-row.is-soon { box-shadow: inset 0.2rem 0 0 #7fd1ff; }
 
@@ -210,6 +246,16 @@
 .sh-meta-text { white-space: nowrap; margin-right: 0.6rem; }
 .sh-note { display: inline-block; color: var(--text-3); white-space: nowrap; }
 .sh-note.is-live { color: #7fd1ff; font-weight: 600; }
+.sh-note.is-watched { color: var(--text-2); }
+.sh-check {
+  display: inline-block;
+  width: 0.28rem; height: 0.55rem;
+  margin: 0 0.5rem 0.12rem 0.2rem;
+  border-right: 0.12rem solid currentColor;
+  border-bottom: 0.12rem solid currentColor;
+  transform: rotate(45deg);
+  vertical-align: 0.05rem;
+}
 .sh-via { display: inline-block; margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-3); white-space: nowrap; }
 .sh-chip {
   display: inline-block;
@@ -386,6 +432,8 @@
 }
 .lt-row.is-focused { background: var(--card-2); border-color: var(--focus); }
 .lt-row.is-off .lt-name { color: var(--text-3); }
+.lt-num { flex: 0 0 auto; min-width: 2.2rem; margin-right: 0.6rem; font-size: 1.05rem; line-height: 1.35; font-weight: 700; color: var(--text-2); text-align: right; }
+.lt-total { margin-bottom: 0.7rem; font-size: 1rem; line-height: 1.4; font-weight: 600; color: var(--text); }
 .lt-main { flex: 1 1 auto; min-width: 0; }
 .lt-name { font-size: 1.05rem; line-height: 1.35; }
 .lt-detail { font-size: 0.85rem; line-height: 1.35; color: var(--text-3); word-break: break-all; }
@@ -418,5 +466,144 @@
 
 /* The About panel's one button. */
 .about-row.is-action .about-value { color: #7fd1ff; }
+
+/* "Did you finish?": a calm list above the days. One line per started
+   episode, the words wrapping rather than being cut; the two buttons on the
+   right, the focused one drawn like the "Also on" chip. Spanish runs about a
+   quarter longer: nothing here has a fixed width or a one-line clip, and
+   line heights stay at 1.3 or more so ¿ É ñ never touch an edge. */
+.sh-fin {
+  margin: 0 0 0.8rem;
+  padding: 0.55rem 0.7rem 0.45rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 0.06rem solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+.sh-fin-head {
+  margin: 0 0 0.3rem;
+  font-size: 0.75rem; font-weight: 600; line-height: 1.5;
+  letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-2);
+}
+.sh-fin-line {
+  display: flex;
+  align-items: center;
+  padding: 0.3rem 0;
+  border-top: 0.06rem solid var(--line);
+}
+.sh-fin-head + .sh-fin-line { border-top-color: transparent; }
+.sh-fin-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.05rem 0;
+  font-size: 1.05rem; line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+.sh-fin-name { font-weight: 600; color: var(--text); }
+.sh-fin-btns { flex: 0 0 auto; display: flex; align-items: center; margin-left: 0.8rem; }
+.sh-fin-btn {
+  flex: 0 1 auto;
+  max-width: 11rem;
+  margin-left: 0.4rem;
+  padding: 0.28rem 0.85rem;
+  border-radius: 1.2rem;
+  border: var(--edge) solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 0.95rem; line-height: 1.4;
+  text-align: center;
+  color: var(--text-2);
+  white-space: normal;
+  cursor: pointer;
+}
+.sh-fin-btn.is-focused { border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
+
+/* The check toggle at the end of an aired row: a small round box; focused,
+   it names what OK does. */
+.sh-mark {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-left: 0.4rem;
+  padding: 0.22rem 0.35rem;
+  border-radius: 1.2rem;
+  border: var(--edge) solid transparent;
+  font-size: 0.85rem; line-height: 1.4;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.sh-mark.is-past { opacity: 0.55; }
+.sh-mark-box {
+  flex: 0 0 auto;
+  display: block;
+  box-sizing: border-box;
+  width: 1.5rem; height: 1.5rem;
+  border-radius: 50%;
+  border: 0.12rem solid rgba(255, 255, 255, 0.4);
+  text-align: center;
+}
+.sh-mark-box .sh-check {
+  display: none;
+  margin: 0;
+  width: 0.3rem; height: 0.6rem;
+  vertical-align: top;
+  position: relative; top: 0.12rem;
+}
+.sh-mark.is-on .sh-mark-box { background: #7fd1ff; border-color: #7fd1ff; color: #050506; }
+.sh-mark.is-on .sh-mark-box .sh-check { display: inline-block; }
+.sh-mark-text { display: none; margin: 0 0.45rem 0 0.5rem; white-space: nowrap; }
+.sh-mark.is-focused { opacity: 1; border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
+.sh-mark.is-focused .sh-mark-text { display: inline; }
+.sh-mark.is-focused .sh-mark-box { border-color: #050506; }
+.sh-mark.is-focused.is-on .sh-mark-box { background: #050506; border-color: #050506; color: #fff; }
+
+/* ---------- Entertainment at full screen: the apps beside the Schedule ---------- */
+
+/* A quarter for the apps, a list one item high each, and the Schedule (the
+   same view as the panel) in the rest. Only full screen: the panel and the
+   tile keep their own rules. Names wrap (Spanish is a quarter longer) with a
+   line height of 1.3 or more, so accents are never cut. */
+.ent-split { display: flex; align-items: flex-start; }
+.ent-side {
+  flex: 0 0 23%;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+  padding-top: 0.2rem;
+}
+.ent-main { flex: 1 1 0; min-width: 0; margin-left: 2.6rem; }
+.panel.is-full .ent-side .ent-section,
+.panel.is-full .ent-side .ent-section.is-first { display: block; margin: 0 0 0.4rem; }
+.panel.is-full .ent-side .ent-section-label { display: none; }
+.panel.is-full .ent-side .ent-item.is-off { display: none; }
+.panel.is-full .ent-side .ent-grid { margin: 0; padding-top: 0; }
+.panel.is-full .ent-side .ent-item {
+  display: flex;
+  align-items: center;
+  width: auto;
+  box-sizing: border-box;
+  margin: 0 0 0.1rem;
+  padding: 0.22rem 0.7rem;
+  border-radius: 1.1rem;
+  text-align: left;
+}
+.panel.is-full .ent-side .ent-item.is-focused { background: rgba(255, 255, 255, 0.1); }
+.panel.is-full .ent-side .ent-icon { flex: 0 0 auto; width: 2.3rem; margin: 0; }
+.panel.is-full .ent-side .ent-icon .logo-text { font-size: 1.2rem; }
+.panel.is-full .ent-side .ent-text { flex: 1 1 0; min-width: 0; margin-left: 0.9rem; }
+.panel.is-full .ent-side .ent-name {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+.panel.is-full .ent-side .ent-state { display: none; font-size: 0.8rem; line-height: 1.35; }
+.panel.is-full .ent-side .is-missing .ent-state { display: block; }
+.panel.is-full .ent-side .ent-icon .ent-count {
+  top: 0; right: 0;
+  min-width: 1.1rem; padding: 0 0.2rem; font-size: 0.75rem; line-height: 1.1rem; border-radius: 0.6rem;
+  box-shadow: 0 0 0 0.08rem var(--card);
+}
 
 .css-end { top: 0; }

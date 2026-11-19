@@ -439,6 +439,14 @@ async function checkBudgetLayout() {
   await waitIdle(page);
   await page.keyboard.press('ArrowDown');
   assert((await look.focused(page)) === 'budget-lab', 'Down from Daily room: ' + (await look.focused(page)));
+  // OK on the lab opens full screen at once (no small panel); one Back closes it.
+  await page.keyboard.press('Enter');
+  await until(async () => (await look.open(page)) === 'budget-lab', 4000, 'the lab did not open');
+  await waitIdle(page);
+  const mode = await page.evaluate(() => window.HUB_TEST.mode());
+  assert(mode === 'full', 'Budget lab opened as ' + mode);
+  await page.keyboard.press('Escape');
+  await until(async () => (await look.open(page)) === null, 4000, 'one Back did not close the lab');
   await setLayout(null);
   noErrors(context);
 }
@@ -468,7 +476,7 @@ async function main() {
   await check('4. A layout waits while a panel is open, then applies', checkWaitsForPanel);
   await check('5. A new set of widgets reloads once; the reset reloads once more', checkReload);
   await check('6. A layout that cannot be saved does not reload in a loop', checkNoLoop);
-  await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, Goals 4 x 3, Calendar, no gaps', checkBudgetLayout);
+  await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, Goals 4 x 3, Calendar, no gaps, OK opens it full screen', checkBudgetLayout);
 }
 
 main().catch((e) => {

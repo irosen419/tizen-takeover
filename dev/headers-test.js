@@ -121,6 +121,10 @@ async function pushPage(env, o) {
   await p.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0);
   await H.until(() => p.evaluate(() => window.HUB_LIVE && window.HUB_LIVE.status().state === 'live'), 10000, 'not live');
   await H.until(() => p.evaluate(() => !window.HUB_TEST.busy()), 5000, 'busy');
+  // These checks measure the small panel, and Entertainment uses it as a
+  // sample; config.js opens Entertainment straight to full screen, so keep
+  // its small panel here.
+  await p.evaluate(() => { const w = window.HUB_CONFIG && window.HUB_CONFIG.widgets; if (w && w.entertainment) w.entertainment.openMode = 'panel'; });
   await H.sleep(900);
   return p;
 }
@@ -382,22 +386,23 @@ function edgeOn(p, id) {
       assert(a.height === b.height && b.ghost === b.height, 'back from full screen: ' + JSON.stringify([a, b]));
     });
 
-    await check('Budget lab panel: 26rem at most and it scrolls to the merchants; its section heads are one line each, English, Spanish and +25%', async () => {
+    await check('Budget lab panel: opens at full screen and scrolls to the merchants; its section heads are one line each, English, Spanish and +25%', async () => {
       for (const v of [{ lang: 'en' }, { lang: 'es' }, { lang: 'es', grow: true }]) {
         const p = await page(env, { layout: LAYOUTS.budget, lang: v.lang, grow: v.grow });
         const where = v.lang + (v.grow ? ' +25%' : '');
         try {
           await H.openPanel(p, 'budget-lab');
           const f = await panelFit(p);
-          assert(Math.abs(f.height - f.max) <= 1 && f.overflow, where + ': the panel does not cap and scroll: ' + JSON.stringify(f));
+          const win = await p.evaluate(() => [window.innerWidth, window.innerHeight]);
+          assert(f.height === win[1] && f.ghost === win[1] && f.overflow && f.hintChip, where + ': not full screen with room to scroll: ' + JSON.stringify(f));
           // Down to the first merchant: the panel body scrolls it into view.
-          for (let i = 0; i < 3; i++) await H.key(p, 'ArrowDown');
+          await H.key(p, 'ArrowDown');
           const r = await p.evaluate(() => {
             const body = document.querySelector('#panel .panel-body');
             const b = body.getBoundingClientRect();
             const f = document.querySelector('#panel .is-focused');
             const fr = f.getBoundingClientRect();
-            const heads = Array.prototype.map.call(document.querySelectorAll('#panel .bl-msec > .bu-label, #panel .bl-dest > .bu-label, #panel .bl-pace > .bu-label'), (n) => {
+            const heads = Array.prototype.map.call(document.querySelectorAll('#panel .bl-msec > .bu-label, #panel .bl-dest > .bu-label, #panel .bl-chart-head'), (n) => {
               const cs = getComputedStyle(n);
               return { t: n.textContent, lines: Math.round(n.offsetHeight / parseFloat(cs.lineHeight)), lh: parseFloat(cs.lineHeight) / parseFloat(cs.fontSize),
                 cut: n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1 };
