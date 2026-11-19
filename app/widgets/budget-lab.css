@@ -27,6 +27,7 @@
 }
 .tile-h3 .bl-move { font-size: 1.1rem; }
 .bl-foot.is-ok { color: var(--bu-ok); }
+.bl-foot.is-even { color: var(--bu-under); }
 .bl-foot.is-neg { color: var(--bu-neg); }
 
 .bl-strip-head {
@@ -83,6 +84,7 @@
 }
 .bl-head-state { color: var(--text); }
 .bl-head-state.is-ok { color: var(--bu-ok); }
+.bl-head-state.is-even { color: var(--bu-under); }
 .bl-head-state.is-neg { color: var(--bu-neg); }
 .bl-note {
   padding: 0.15rem 1.4rem 0;
@@ -176,6 +178,7 @@
   white-space: nowrap;
 }
 .bl-result.is-ok { color: var(--bu-ok); }
+.bl-result.is-even { color: var(--bu-under); }
 .bl-result.is-neg { color: var(--bu-neg); }
 
 /* The calculated and the saved cap, small, under the hero. */
@@ -358,6 +361,7 @@
   color: var(--text);
 }
 .bl-ch-gap.is-ok { color: var(--bu-ok); }
+.bl-ch-gap.is-even { color: var(--bu-under); }
 .bl-ch-gap.is-neg { color: var(--bu-neg); }
 
 .css-end { top: 0; }

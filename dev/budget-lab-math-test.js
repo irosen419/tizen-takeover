@@ -130,6 +130,17 @@ check('B: R = 1,334 gives c0 = 95.29 and keeps exactly 0 (covered, nothing to sp
   assert.strictEqual(r.capMax, 196, 'max(2 c0, c0 + 100) in whole dollars');
 });
 
+check('B: the zero spare case the widget calls on track: covered, whole spare 0, R above 0, at the calculated cap and just under it', () => {
+  const r = run();
+  assert.strictEqual(r.covered && L.wholeDown(r.keep) === 0 && r.R > 0, true);
+  const under = run({ session: { mode: 'cap', cap: 95.28, keep: null, cuts: {} } });
+  assert.strictEqual(under.covered, true);
+  assert.strictEqual(L.wholeDown(under.keep), 0, 'a cap a cent under 95.29 still rounds to $0 spare: ' + under.keep);
+  const real = run({ session: { mode: 'cap', cap: 80, keep: null, cuts: {} } });
+  assert.strictEqual(L.wholeDown(real.keep) > 0, true, 'real spare is not the zero case');
+  assert.strictEqual(run({ lab: lab(-9.54) }).covered, false, 'short stays short');
+});
+
 check('B: cap $80 keeps $214, savings 214 of 500, monthly $1,120 vs $1,334, gap -$214', () => {
   const r = run({ session: { mode: 'cap', cap: 80, keep: null, cuts: {} } });
   assert.strictEqual(r.keep, 214);

@@ -24,7 +24,7 @@
  *     rows (label on its own line over the track) and "A dónde va" at panel
  *     and full screen, plain and 25% longer, line height 1.25 or more; the
  *     runway chart at full screen ("Recorrido hasta el 30 nov", the legend,
- *     Spanish weekdays, the gap "Cubierto, sin sobrante", "Faltan $13"),
+ *     Spanish weekdays, the gap "Vas bien, sobran $0", "Faltan $13"),
  *     every label inside the chart, apart from the others, accents whole;
  *   - a language change (HUB_I18N.setLang) redraws the tiles, their titles
  *     and an open panel, and back to English;
@@ -275,7 +275,7 @@ async function main() {
         const titles = await text(page, IDS.map(titleOf).join(', '));
         assert(titles === 'Ganado y gastado | Margen diario | Pago de tarjeta | Metas | Laboratorio', 'titles: ' + titles);
         const l = await text(page, tileOf('budget-lab'));
-        assert(/día bajo el tope/.test(l) && /Ayer \$41 de \$65/.test(l) && /Quédate bajo \$62 hoy/.test(l) && /19 nov: cubierto/.test(l), 'lab: ' + l);
+        assert(/día bajo el tope/.test(l) && /Ayer \$41 de \$65/.test(l) && /Quédate bajo \$62 hoy/.test(l) && /19 nov: vas bien con \$62 al día/.test(l) && !/sobran \$0/.test(l), 'lab: ' + l);
         const m = await text(page, tileOf('awws-money'));
         assert(/neto/.test(m) && /−\$575/.test(m) && /\$1,265/.test(m) && /ganado/.test(m) && /gastado/.test(m), 'money: ' + m);
         assert(/Próxima transferencia: 1 dic/.test(m), 'no Spanish date for the next transfer: ' + m);
@@ -423,7 +423,7 @@ async function main() {
           assert(/Recorrido/.test(c.head) && (long || /30 nov/.test(c.head)), 'head: ' + c.head);
           assert(/Margen/.test(c.legend) && /Gasto/.test(c.legend), 'legend: ' + c.legend);
           assert(c.labels.indexOf('lun') >= 0 && c.labels.indexOf('20 nov') >= 0 && c.labels.indexOf('30 nov') >= 0, 'labels: ' + c.labels.join(' | '));
-          assert(/Cubierto/.test(c.gap) && /sobran/.test(c.gap), 'gap: ' + c.gap);
+          assert(/Vas bien, sobran \$0/.test(c.gap.replace(/[^\x20-\x7e]/g, '')) && !/Cubierto/.test(c.gap), 'gap: ' + c.gap);
           const fk = () => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
           for (let i = 0; i < 4 && !/^(cap|reset|cut-\d+)$/.test(await fk() || ''); i++) await H.key(page, 'ArrowDown');
           for (let i = 0; i < 16 && (await fk()) !== 'cap'; i++) await H.key(page, 'ArrowUp');
@@ -447,7 +447,7 @@ async function main() {
         try {
           await H.openPanel(page, 'budget-lab');
           let p = await text(page, '#panel .panel-body');
-          assert(/Mantén/.test(p) && /◀ ▶/.test(p) && /cambiar/.test(p) && /Calculado\S* \$62/.test(p) && /cubierto/i.test(p), 'covered: ' + p.slice(0, 300));
+          assert(/Mantén/.test(p) && /◀ ▶/.test(p) && /cambiar/.test(p) && /Calculado\S* \$62/.test(p) && /bien con \$62/i.test(p.replace(/[^\x20-\x7e]/g, '')), 'covered: ' + p.slice(0, 300));
           const o = await page.evaluate(() => {
             const out = [];
             const body = document.querySelector('#panel .panel-body').getBoundingClientRect();
