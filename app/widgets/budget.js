@@ -46,6 +46,7 @@
     titlesShort: { room: 'Room', card: 'Card', goals: 'Goals' },
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
     // {dow} short weekday, {mon} short month, {d} day
     dateLong: '{dow}, {mon} {d}',
     dateShort: '{mon} {d}',
@@ -145,7 +146,40 @@
       cardAuto: 'Autopay takes {n}',
       formula: 'Checking, plus paychecks, less bills, cards, charges and buys:',
       onCard: 'on {card}',
-      empty: 'Nothing here.'
+      empty: 'Nothing here.',
+      // The next 3 months page (sample data). {d} short date, {n} a figure, {m} a month name
+      outlook: {
+        tabReceipt: 'Receipt',
+        tabOutlook: 'Next {n} months',
+        tabHint: '◀ ▶',
+        headOn: 'Back on top by {d}',
+        headBehind: 'Still behind by {d}',
+        headAhead: 'Ahead all {n} months',
+        subCatch: 'Your {o} {m} paycheck catches you up. After that, about {n} a month you could save.',
+        subAhead: 'About {n} a month you could save.',
+        subBehind: 'Try a lower daily amount.',
+        ordWord: '{n}{s}',
+        ordSfx: 'st|nd|rd|th',
+        start: 'Starting {d}: {n} behind',
+        startAhead: 'Starting {d}: even',
+        paychecks: 'Paychecks',
+        bills: 'Bills from checking',
+        cards: 'Card spending, paid on the 1st after',
+        buys: 'Planned buys',
+        left: 'Left over this month',
+        save: 'Could move to savings',
+        saveNote: 'after catching up {n}',
+        pill: '{n} paychecks',
+        lever: 'Everyday spending: {n} a day, your average for the last {m} months',
+        leverOther: 'Everyday spending: {n} a day, you average {a}',
+        leverHint: '▲ ▼ try another amount',
+        moreSave: 'At {n} a day you could save {m} more a month',
+        lessSave: 'At {n} a day you would save {m} less a month',
+        legOk: 'ahead / can save',
+        legNeg: 'behind',
+        legPill: 'a month with an extra paycheck',
+        legNote: 'A forecast, not a promise. Nothing here pays or moves money.'
+      }
     },
     // Daily room, when its figure is worked from the autopay days
     usingAutopay: 'using autopay days',
@@ -556,6 +590,8 @@
   // Guest mode: forget the budget here and on this TV's storage.
   function dropData() {
     S.rcOpen = null;
+    S.rcPage = 'receipt';
+    S.olDaily = null;
     S.data = null;
     S.fromCache = false;
     saveCache();
@@ -794,6 +830,7 @@
     var left = day - td;
     if (c.away === null || left !== c.away) c.away = Math.max(0, left);
     c.rc = receiptData(s, c);
+    c.ol = c.rc ? outlookData(s) : null;
     c.tone = c.covered ? 'is-ok' : c.byAuto ? 'is-under' : 'is-neg';
     var wordText = c.byAuto ? STRINGS.autoWord : STRINGS.shortBy;
     c.word = c.covered ? STRINGS.covered : fill(wordText, { n: cash(c.short || 0) });
@@ -835,6 +872,185 @@
     var nd = nx ? dayFromText(nx.date) : null;
     if (nd !== null) out.next = { day: nd, amount: num(nx.amount) };
     return out;
+  }
+
+  /* ---------- Card day, next 3 months (sample data, a forecast) ---------- */
+
+  var OL_STEP = 5;
+  var OL_MAX = 500;
+
+  // The outlook as sent, or null when it is not well formed.
+  function outlookData(s) {
+    var o = s.outlook;
+    if (!o || typeof o !== 'object' || !isArr(o.months) || !o.months.length || !o.start || typeof o.start !== 'object') return null;
+    var out = { startDay: dayFromText(o.start.date), behind: num(o.start.behind), avg: num(o.dailyAverage), avgMonths: num(o.averageMonths), months: [] };
+    if (out.startDay === null || out.behind === null || out.avg === null) return null;
+    for (var i = 0; i < o.months.length; i++) {
+      var m = o.months[i];
+      var mm = m && /^(\d{4})-(\d{2})$/.exec(str(m.month));
+      if (!mm || num(m.days) === null || !isArr(m.paydays) || num(m.paycheck) === null || num(m.bills) === null ||
+          num(m.cardRecurring) === null) return null;
+      var pd = [];
+      for (var j = 0; j < m.paydays.length; j++) { var d = dayFromText(m.paydays[j]); if (d !== null) pd.push(d); }
+      out.months.push({ idx: +mm[2] - 1, days: m.days, paydays: pd, paycheck: m.paycheck, bills: m.bills, cardRecurring: m.cardRecurring,
+        planned: num(m.planned) || 0, end: dayFromText(mm[1] + '-' + mm[2] + '-' + (m.days < 10 ? '0' : '') + m.days) });
+    }
+    if (out.avgMonths === null) out.avgMonths = out.months.length;
+    return out;
+  }
+
+  /*
+   * The math, pure (no DOM): each month's paychecks, bills, card spending (recurring + daily x days), planned
+   * buys, what is left over, and what could move to savings once the starting gap is caught up. The catch-up
+   * day is the first payday at which the position (minus the gap, plus every paycheck so far, less the
+   * month's outflows, which come out at the start of the month) is back at zero. Never caught up: catchDay
+   * is null and endDay is the last day of the window.
+   */
+  function outlookCalc(o, daily) {
+    var pos = -o.behind;
+    var caught = null;
+    var out = { months: [], catchDay: null, catchMonth: -1, catchNth: 0, endDay: o.months[o.months.length - 1].end, avgSave: 0, behind: o.behind };
+    var i;
+    for (i = 0; i < o.months.length; i++) {
+      var m = o.months[i];
+      var paychecks = m.paycheck * m.paydays.length;
+      var card = m.cardRecurring + daily * m.days;
+      var left = paychecks - m.bills - card - m.planned;
+      var run = pos - m.bills - card - m.planned;
+      for (var j = 0; j < m.paydays.length; j++) {
+        run += m.paycheck;
+        if (!caught && o.behind > 0 && run >= 0) { caught = { day: m.paydays[j], month: i, nth: j + 1 }; }
+      }
+      var end = pos + left;
+      var save = end > 0 ? Math.min(left, end) : 0;
+      out.months.push({ idx: m.idx, days: m.days, paydayCount: m.paydays.length, paychecks: paychecks, bills: m.bills, card: card, planned: m.planned,
+        left: left, save: Math.max(0, save), note: pos < 0 && end > 0 ? -pos : 0 });
+      pos = end;
+    }
+    if (caught) { out.catchDay = caught.day; out.catchMonth = caught.month; out.catchNth = caught.nth; }
+    var from = o.behind > 0 ? (caught ? caught.month + 1 : out.months.length) : 0;
+    if (from >= out.months.length && caught) from = out.months.length - 1;
+    var sum = 0;
+    var n = 0;
+    for (i = from; i < out.months.length; i++) { sum += out.months[i].save; n++; }
+    out.avgSave = n ? sum / n : 0;
+    return out;
+  }
+
+  function olDaily(o) { return S.olDaily === null || S.olDaily === undefined ? o.avg : S.olDaily; }
+
+  function olStep(c, dir) {
+    var d = olDaily(c.ol) + (dir === 'up' ? OL_STEP : -OL_STEP);
+    S.olDaily = Math.max(0, Math.min(OL_MAX, d));
+  }
+
+  function olOrd(n) {
+    var O = STRINGS.receipt.outlook;
+    var sf = O.ordSfx.split('|');
+    var k = n % 100 >= 11 && n % 100 <= 13 ? 3 : n % 10 === 1 ? 0 : n % 10 === 2 ? 1 : n % 10 === 3 ? 2 : 3;
+    return fill(O.ordWord, { n: n, s: sf[k] || '' });
+  }
+
+  function olTabs(root, page, n) {
+    var O = STRINGS.receipt.outlook;
+    var bar = el('div', 'bu-tabs', root);
+    el('span', 'bu-tab' + (page === 'receipt' ? ' is-on' : ''), bar, O.tabReceipt);
+    el('span', 'bu-tab' + (page === 'outlook' ? ' is-on' : ''), bar, fill(O.tabOutlook, { n: n }));
+    el('span', 'bu-tabhint', bar, O.tabHint);
+  }
+
+  function olCells(row, vals, cls) {
+    for (var i = 0; i < vals.length; i++) {
+      var cell = el('span', 'bu-ramt bu-ocell' + (cls ? ' ' + cls : ''), row);
+      if (typeof vals[i] === 'string') cell.textContent = vals[i]; else vals[i](cell);
+    }
+  }
+
+  function olRow(sign, label, vals, cls, tones) {
+    var row = el('div', 'bu-rrow bu-orow' + (cls ? ' ' + cls : ''));
+    el('span', 'bu-rsign', row, sign);
+    el('span', 'bu-rlabel', row, label);
+    for (var i = 0; i < vals.length; i++) {
+      var cell = el('span', 'bu-ramt bu-ocell' + (tones && tones[i] ? ' ' + tones[i] : ''), row);
+      if (typeof vals[i] === 'string') cell.textContent = vals[i]; else vals[i](cell);
+    }
+    return row;
+  }
+
+  function olPage(root, c) {
+    var O = STRINGS.receipt.outlook;
+    var o = c.ol;
+    var daily = olDaily(o);
+    var r = outlookCalc(o, daily);
+    var wrap = el('div', 'bu-pwrap bu-rc bu-ol' + (staleAt() ? ' is-stale' : ''), root);
+    var nm = o.months.length;
+    var i;
+    // Headline and its line
+    var tone;
+    var head;
+    var sub;
+    if (o.behind <= 0) {
+      tone = 'is-ok'; head = fill(O.headAhead, { n: nm }); sub = fill(O.subAhead, { n: cash(r.avgSave) });
+    } else if (r.catchDay !== null) {
+      tone = 'is-ok'; head = fill(O.headOn, { d: dateText(r.catchDay, 'short') });
+      sub = fill(O.subCatch, { o: olOrd(r.catchNth), m: STRINGS.months[r.months[r.catchMonth].idx], n: cash(r.avgSave) });
+    } else {
+      tone = 'is-under'; head = fill(O.headBehind, { d: dateText(r.endDay, 'short') }); sub = O.subBehind;
+    }
+    var top = el('div', 'bu-rhead', wrap);
+    el('div', 'bu-rhero-word ' + tone, top, head);
+    el('div', 'bu-rhero-cap bu-ol-sub', top, sub);
+    if (o.behind > 0) el('div', 'bu-ol-start is-neg', wrap, fill(O.start, { d: dateText(o.startDay, 'short'), n: cash(o.behind) }));
+    else el('div', 'bu-ol-start is-ok', wrap, fill(O.startAhead, { d: dateText(o.startDay, 'short') }));
+    // The table
+    var tbl = el('div', 'bu-otable', wrap);
+    var hd = el('div', 'bu-rrow bu-orow bu-ohead', tbl);
+    el('span', 'bu-rsign', hd, '');
+    el('span', 'bu-rlabel', hd, '');
+    for (i = 0; i < r.months.length; i++) el('span', 'bu-ramt bu-ocell', hd, STRINGS.months[r.months[i].idx]);
+    function col(fn) { var a = []; for (var k = 0; k < r.months.length; k++) a.push(fn(r.months[k])); return a; }
+    var pay = col(function (m) {
+      if (m.paydayCount < 3) return cash(m.paychecks);
+      return function (cell) { el('span', 'bu-opill', cell, fill(O.pill, { n: m.paydayCount })); cell.appendChild(document.createTextNode(cash(m.paychecks))); };
+    });
+    tbl.appendChild(olRow('+', O.paychecks, pay));
+    tbl.appendChild(olRow(STRINGS.minus, O.bills, col(function (m) { return cash(m.bills); })));
+    tbl.appendChild(olRow(STRINGS.minus, O.cards, col(function (m) { return cash(m.card); })));
+    tbl.appendChild(olRow(STRINGS.minus, O.buys, col(function (m) { return cash(m.planned); })));
+    tbl.appendChild(olRow('=', O.left, col(function (m) { return (m.left > 0 ? '+' : '') + cash(m.left); }), 'is-total',
+      col(function (m) { return m.left >= 0 ? 'is-ok' : 'is-neg'; })));
+    tbl.appendChild(olRow('', O.save, col(function (m) {
+      return function (cell) {
+        el('span', 'bu-osave', cell, cash(m.save));
+        if (m.note) el('span', 'bu-onote', cell, fill(O.saveNote, { n: cash(m.note) }));
+      };
+    }), 'is-save', col(function (m) { return m.save > 0 ? 'is-ok' : ''; })));
+    // The lever
+    var lev = el('div', 'bu-olever f', wrap);
+    lev.setAttribute('data-key', 'ol-lever');
+    lev.setAttribute('data-autofocus', '');
+    var same = Math.round(daily) === Math.round(o.avg);
+    var lt = same ? fill(O.lever, { n: cash(daily), m: nm }) : fill(O.leverOther, { n: cash(daily), a: cash(o.avg) });
+    var lrow = el('div', 'bu-olever-top', lev);
+    el('span', 'bu-olever-text', lrow, lt);
+    el('span', 'bu-olever-hint', lrow, O.leverHint);
+    if (!same) {
+      var days = 0;
+      for (i = 0; i < o.months.length; i++) days += o.months[i].days;
+      var diff = Math.round((o.avg - daily) * days / o.months.length);
+      el('div', 'bu-olever-more ' + (diff >= 0 ? 'is-ok' : 'is-neg'), lev,
+        fill(diff >= 0 ? O.moreSave : O.lessSave, { n: cash(daily), m: cash(Math.abs(diff)) }));
+    }
+    // The legend
+    var lg = el('div', 'bu-olegend', wrap);
+    var li = el('div', 'bu-olegend-row', lg);
+    el('span', 'bu-odot is-ok', li);
+    el('span', 'bu-olegend-t', li, O.legOk);
+    el('span', 'bu-odot is-neg', li);
+    el('span', 'bu-olegend-t', li, O.legNeg);
+    el('span', 'bu-opill', li, fill(O.pill, { n: 3 }));
+    el('span', 'bu-olegend-t', li, '= ' + O.legPill);
+    el('div', 'bu-olegend-row', lg, O.legNote);
   }
 
   function rcLabel(line, c, rc) {
@@ -980,6 +1196,10 @@
   function rcPanel(root, ctx, full, c) {
     var R = STRINGS.receipt;
     var rc = c.rc;
+    if (c.ol && !S.rcOpen) {
+      olTabs(root, S.rcPage === 'outlook' ? 'outlook' : 'receipt', c.ol.months.length);
+      if (S.rcPage === 'outlook') return olPage(root, c);
+    }
     var wrap = el('div', 'bu-pwrap bu-rc' + (full ? ' is-full is-cols' : '') + (S.rcOpen ? ' is-detail' : '') + (staleAt() ? ' is-stale' : ''), root);
     var detail = S.rcOpen;
     var line = null;
@@ -1534,6 +1754,8 @@
     STRINGS: EN,
     strings: function () { return STRINGS; },
     store: S,
+    outlookCalc: outlookCalc,
+    outlookData: outlookData,
     refresh: function () { refreshAll(); updateBanner(); },
     seen: function () { return seenList().slice(); }
   };
@@ -1552,13 +1774,24 @@
       S.rcFresh = true;
       ctx.redrawPanel();
     },
+    // The receipt's pages: Right opens "Next 3 months", Left returns; Up/Down on it change the daily amount.
+    onMove: function (dir, from, ctx) {
+      var c = shown() ? cardData() : null;
+      if (!c || !c.rc || !c.ol || S.rcOpen) return undefined;
+      if (S.rcPage === 'outlook') {
+        if (dir === 'left') { S.rcPage = 'receipt'; S.rcBack = null; ctx.redrawPanel(); } else if (dir === 'up' || dir === 'down') { olStep(c, dir); ctx.redrawPanel(); }
+        return true;
+      }
+      if (dir === 'right') { S.rcPage = 'outlook'; ctx.redrawPanel(); return true; }
+      return undefined;
+    },
     onBack: function (ctx) {
       if (!S.rcOpen) return false;
       S.rcOpen = null;
       ctx.redrawPanel();
       return true;
     },
-    onClose: function () { S.rcOpen = null; S.rcBack = null; }
+    onClose: function () { S.rcOpen = null; S.rcBack = null; S.rcPage = 'receipt'; S.olDaily = null; }
   }));
   // The receipt is a page, not a glance: OK on the tile opens it at full screen (Back closes).
   Object.defineProperty(list[list.length - 1], 'openMode', {

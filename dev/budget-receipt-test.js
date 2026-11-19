@@ -111,6 +111,44 @@ async function main() {
         assert(/Hidden for guests/.test(t) && !/Checking now|5,210/.test(t), t);
         await page.evaluate(() => window.HUB_GUEST.set(false));
       });
+      await check('outlook math: catch-up day, behind case, savings', async () => {
+        await inject(page, snap('autopay', (x) => { x.cardDay = x.cardDay; }));
+        const r = await page.evaluate((o) => {
+          const t = window.HUB_BUDGET_TEST; const d = t.outlookData({ outlook: o });
+          const a = t.outlookCalc(d, 110); const b = t.outlookCalc(d, 400);
+          return { catch: a.catchDay, cm: a.catchMonth, nth: a.catchNth, left: a.months.map((m) => m.left), save: a.months.map((m) => m.save), note: a.months[0].note, bCatch: b.catchDay };
+        }, H.budgetSample.snapshot({ receipt: 'autopay', outlook: true }).cardDay.outlook);
+        assert(r.catch !== null && r.cm === 0 && r.nth === 3, JSON.stringify(r));
+        assert(r.left[0] === 4713 && r.left[1] === 1178 && r.left[2] === 1508, JSON.stringify(r.left));
+        assert(r.save[0] === 2630 && r.note === 2083 && r.save[1] === 1178, JSON.stringify(r.save));
+        assert(r.bCatch === null, 'never caught up at $400 a day');
+      });
+      await check('outlook page: Right opens it, Down changes the daily amount, Left returns, Guest hides it', async () => {
+        await inject(page, snap('autopay', (x) => { x.cardDay.outlook = H.budgetSample.snapshot({ receipt: 'autopay', outlook: true }).cardDay.outlook; }));
+        await H.openPanel(page, 'budget-card');
+        let t = await panelText(page);
+        assert(/Next 3 months/.test(t) && /Checking now/.test(t), 'tab strip on the receipt');
+        await H.key(page, 'ArrowRight'); await H.sleep(400);
+        t = await panelText(page);
+        assert(/Back on top by Dec 30/.test(t) && /\$110 a day/.test(t), t);
+        await H.key(page, 'ArrowDown'); await H.sleep(300);
+        t = await panelText(page);
+        assert(/\$105 a day/.test(t) && /save \$150 more a month/.test(t), t);
+        await H.key(page, 'ArrowLeft'); await H.sleep(400);
+        assert(/Checking now/.test(await panelText(page)), 'back on the receipt');
+        await H.key(page, 'ArrowRight'); await H.sleep(300);
+        await page.evaluate(() => window.HUB_GUEST.set(true)); await H.sleep(400);
+        t = await panelText(page);
+        assert(/Hidden for guests/.test(t) && !/\$/.test(t), t);
+        await page.evaluate(() => window.HUB_GUEST.set(false)); await H.sleep(300);
+        while (await page.evaluate(() => window.HUB_TEST.open())) { await H.key(page, 'Escape'); await H.sleep(400); }
+      });
+      await check('no outlook in the snapshot: no tab strip', async () => {
+        await inject(page, snap('autopay'));
+        await H.openPanel(page, 'budget-card');
+        assert(!/Next 3 months/.test(await panelText(page)), 'strip shown');
+        while (await page.evaluate(() => window.HUB_TEST.open())) { await H.key(page, 'Escape'); await H.sleep(400); }
+      });
       assert(!H.errorsOf(page, false).length, 'console: ' + H.errorsOf(page, false).join(' | '));
     } finally { await page.ctx.close(); }
     const es = await env.newPage({ layout: LAYOUT, lang: 'es', storage: { 'homeHub.lang': 'es', 'homeHub.budget.seen.v1': '["a-1042"]' } });

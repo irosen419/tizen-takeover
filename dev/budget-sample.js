@@ -2,7 +2,7 @@
  * The made-up budget snapshot for the tests, the screenshots and the preview,
  * and the Spanish words for the budget tiles.
  *
- *   node dev/budget-sample.js [--covered|--short] [--negative] [--payday] [--receipt|--receipt-covered|--receipt-short] | \
+ *   node dev/budget-sample.js [--covered|--short] [--negative] [--payday] [--receipt|--receipt-covered|--receipt-short] [--outlook] | \
  *     HUB_TOKEN=preview-token-not-a-secret-000000 node pi/hubctl.js budget set -
  *
  * prints the sample (pi/fixtures/budget-sample.json) with sentAt one minute
@@ -34,7 +34,8 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * lab.room to the cent), receipt (the Card day receipt prototype: 'autopay'
  * short on Dec 1 and covered by autopay, 'covered', or 'short' even with
  * autopay, $312 more; cardDay.receipt is NOT in the Pi's validator yet, so it is
- * injected into the TV: see dev/budget-receipt-shots.js) }.
+ * injected into the TV: see dev/budget-receipt-shots.js), outlook (true adds
+ * cardDay.outlook, the "Next 3 months" page; needs receipt) }.
  */
 function snapshot(opts) {
   opts = opts || {};
@@ -100,6 +101,7 @@ function snapshot(opts) {
     s.lab.autopayDate = '2026-12-07';
   }
   if (opts.receipt) applyReceipt(s, opts.receipt === true ? 'autopay' : opts.receipt);
+  if (opts.outlook && s.cardDay) applyOutlook(s);
   if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
   for (const k of SECTIONS) if (s[k]) s[k].asOf = s.sentAt;
@@ -175,6 +177,24 @@ function applyReceipt(s, kind) {
   if (bottom > 0) s.cardDay.receipt.perDay = Math.round(bottom / 17);
 }
 
+/*
+ * The Card day "Next 3 months" page (prototype): only the inputs; the TV works out the rest. Paychecks of
+ * 3595 every 14 days (three in December), bills 2412 a month, 190 a month of recurring card charges, 60 of
+ * planned buys in December, the last 3 months averaging 110 a day of everyday card spending, 2083 behind on Dec 1.
+ */
+function applyOutlook(s) {
+  s.cardDay.outlook = {
+    start: { date: '2026-12-01', behind: 2083 },
+    dailyAverage: 110,
+    averageMonths: 3,
+    months: [
+      { month: '2026-12', days: 31, paydays: ['2026-12-02', '2026-12-16', '2026-12-30'], paycheck: 3595, bills: 2412, cardRecurring: 190, planned: 60 },
+      { month: '2027-01', days: 31, paydays: ['2027-01-13', '2027-01-27'], paycheck: 3595, bills: 2412, cardRecurring: 190, planned: 0 },
+      { month: '2027-02', days: 28, paydays: ['2027-02-10', '2027-02-24'], paycheck: 3595, bills: 2412, cardRecurring: 190, planned: 0 }
+    ]
+  };
+}
+
 /* Spanish for the stress checks: most words run longer than the English. */
 const SPANISH = {
   titles: { room: 'Margen diario', card: 'Día de la tarjeta', goals: 'Metas' },
@@ -245,6 +265,6 @@ if (require.main === module) {
   const s = snapshot({ sentAt: new Date(Date.now() - 60000).toISOString().replace(/\.\d+Z$/, 'Z'),
     short: args.indexOf('--short') >= 0, shortFirst: args.indexOf('--short-first') >= 0 || args.indexOf('--autopay') >= 0,
     autopay: args.indexOf('--autopay') >= 0, negative: args.indexOf('--negative') >= 0,
-    receipt: args.indexOf('--receipt-covered') >= 0 ? 'covered' : args.indexOf('--receipt-short') >= 0 ? 'short' : args.indexOf('--receipt') >= 0 ? 'autopay' : false, payday: args.indexOf('--payday') >= 0 });
+    outlook: args.indexOf('--outlook') >= 0, receipt: args.indexOf('--receipt-covered') >= 0 ? 'covered' : args.indexOf('--receipt-short') >= 0 ? 'short' : args.indexOf('--receipt') >= 0 ? 'autopay' : false, payday: args.indexOf('--payday') >= 0 });
   process.stdout.write(JSON.stringify(s, null, 2) + '\n');
 }
