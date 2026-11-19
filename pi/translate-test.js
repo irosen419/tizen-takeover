@@ -75,13 +75,21 @@ function post(port, route, body) {
     r = await t.translate(['Z']); assert.deepStrictEqual(r.map, {}); assert(t.info().paused);
   });
   await check('the cache is capped, oldest dropped', async () => {
-    const t = translate.createTranslator({ dataDir: tmp(), log: () => {}, call: fake([]) });
+    const t = translate.createTranslator({ dataDir: tmp(), log: () => {}, call: fake([]), maxNewPerDay: 100000 });
     for (let i = 0; i < translate.MAX_CACHE / 50 + 2; i++) {
       const items = []; for (let j = 0; j < 50; j++) items.push('t' + i + '_' + j);
       await t.translate(items.slice(0, 50));
     }
     assert.strictEqual(t.size(), translate.MAX_CACHE);
     assert.strictEqual((await t.translate(['t0_0'])).map['t0_0'], 'ES:t0_0'); // re-translated, so it was dropped
+  });
+  await check('a daily limit caps new lines sent to Gemini', async () => {
+    const calls = []; const lines = [];
+    const t = translate.createTranslator({ dataDir: tmp(), log: (l) => lines.push(l), call: fake(calls), maxNewPerDay: 3 });
+    let r = await t.translate(['a1', 'a2']); assert.strictEqual(r.map.a1, 'ES:a1');
+    r = await t.translate(['a1', 'b1', 'b2']); assert.deepStrictEqual(r.map, { a1: 'ES:a1' });
+    assert.strictEqual(calls.length, 1);
+    assert(lines.some((l) => l === 'translate: 3 asked, 1 cached, 2 not translated (daily limit)'));
   });
   await check('no key: cache hits only, disabled', async () => {
     const dir = tmp();

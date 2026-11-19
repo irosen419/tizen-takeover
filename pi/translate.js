@@ -29,6 +29,7 @@ const HOST = 'generativelanguage.googleapis.com';
 const MAX_TEXTS = 60;
 const MAX_TEXT = 500;
 const MAX_CACHE = 5000;
+const MAX_NEW_PER_DAY = 2000; // new lines sent to Gemini per day; the /translate route has no token, so this caps the cost
 const BACKOFF_MS = 10 * 60 * 1000;
 const CALL_TIMEOUT_MS = 20000;
 const FILE = 'translations-es.json';
@@ -118,6 +119,9 @@ function createTranslator(opt) {
   const inflight = new Map(); // english -> Promise<string|null>
   let pausedUntil = 0;
   let lastErrorAt = 0;
+  let day = '';
+  let newToday = 0;
+  const maxNew = opt.maxNewPerDay || MAX_NEW_PER_DAY;
 
   try {
     const j = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -189,11 +193,17 @@ function createTranslator(opt) {
       return Promise.resolve({ map: map, disabled: true });
     }
     const fresh = misses.filter((s) => !inflight.has(s));
+    const today = new Date(now()).toISOString().slice(0, 10);
+    if (today !== day) { day = today; newToday = 0; }
     if (fresh.length) {
-      if (now() < pausedUntil) {
+      if (newToday + fresh.length > maxNew) {
+        log('translate: ' + texts.length + ' asked, ' + (texts.length - misses.length) + ' cached, ' + fresh.length + ' not translated (daily limit)');
+        fresh.length = 0;
+      } else if (now() < pausedUntil) {
         log('translate: ' + texts.length + ' asked, ' + (texts.length - misses.length) + ' cached, ' + fresh.length + ' not translated (paused)');
         fresh.length = 0;
       } else {
+        newToday += fresh.length;
         fetchBatch(fresh, texts.length, texts.length - misses.length);
       }
     }
@@ -210,4 +220,4 @@ function createTranslator(opt) {
   return { translate: translate, info: info, size: () => cache.size };
 }
 
-module.exports = { createTranslator, checkRequest, parseAnswer, MAX_TEXTS, MAX_TEXT, MAX_CACHE, BACKOFF_MS, MODEL, FILE };
+module.exports = { MAX_NEW_PER_DAY, createTranslator, checkRequest, parseAnswer, MAX_TEXTS, MAX_TEXT, MAX_CACHE, BACKOFF_MS, MODEL, FILE };
