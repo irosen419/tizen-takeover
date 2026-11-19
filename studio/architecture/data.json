@@ -1107,7 +1107,7 @@
          "title": "Investments",
          "kind": "component",
          "status": "draft",
-         "pr": "PR pending",
+         "pr": "PR 119",
          "summary": "Standalone tile (in no layout): the portfolio total and its gain against cost, a trend line, an allocation bar by account and the top holdings. OK opens every account and holding in place.",
          "details": [
           "Reads the investments section of the budget snapshot from the live line. Adapts to the tile size: total and gain, then a trend line (hidden under 2 days, with Trend starts building today), then the allocation bar and holdings. Dollar figures were approved for the TV on 2026-11-19. In Guest mode no dollar is drawn or kept: the percentages are worked out when the data arrives, then the dollars are dropped, and only percentages and the trend's shape show."
@@ -2098,7 +2098,7 @@
        "title": "Investments section",
        "kind": "data",
        "status": "draft",
-       "pr": "PR pending",
+       "pr": "PR 119",
        "summary": "One more optional section: portfolio total, cost and gain, 1 to 6 accounts, up to 8 top holdings and up to 92 days of totals, in dollars up to 10,000,000.",
        "details": [
         "Approved for the TV on 2026-11-19 (the second exception to totals only, after the Card day receipt). Account numbers and share counts are never stored. ./hub budget show prints counts and dates only. Server 0.16.0; an older server drops the section and keeps the rest."
@@ -3096,7 +3096,7 @@
        "title": "Investments export",
        "kind": "data",
        "status": "draft",
-       "pr": "PR pending",
+       "pr": "PR 119",
        "summary": "The budget app works the portfolio out from its Plaid holdings and keeps one total per day, so the trend builds from the first day.",
        "details": [
         "Built in the budget repo (a separate change). Sends the investments section inside the same snapshot it already posts."
