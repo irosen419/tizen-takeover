@@ -448,7 +448,7 @@ async function checkQuiet(pi) {
       });
       return out;
     });
-    const want = ['ambiance', 'awws', 'calendar', 'mirror', 'nowplaying'];
+    const want = ['ambience', 'awws', 'calendar', 'mirror', 'nowplaying'];
     assert(JSON.stringify(info.dormant.sort()) === JSON.stringify(want), lang + ': quiet tiles ' + JSON.stringify(info.dormant));
     assert(!info.problems.length, lang + ': ' + info.problems.join(' | '));
     if (lang === 'es') {
@@ -464,9 +464,10 @@ async function checkQuiet(pi) {
     const t = document.querySelector('.cell[data-widget="nowplaying"] .tile');
     return t && !t.classList.contains('is-dormant');
   }), 6000, 'Now Playing stayed quiet with a song');
-  const d = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.tile.is-dormant'), (t) => t.parentNode.getAttribute('data-widget')).sort());
-  assert(JSON.stringify(d) === JSON.stringify(['ambiance', 'mirror']) || JSON.stringify(d) === JSON.stringify(['ambiance', 'calendar', 'mirror']) ||
-    JSON.stringify(d) === JSON.stringify(['ambiance', 'awws', 'calendar', 'mirror']) || JSON.stringify(d) === JSON.stringify(['ambiance', 'awws', 'mirror']),
+  // Ambience may be live or waiting, depending on whether its lights answered yet.
+  const d = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.tile.is-dormant'), (t) => t.parentNode.getAttribute('data-widget')).filter((w) => w !== 'ambience').sort());
+  assert(JSON.stringify(d) === JSON.stringify(['mirror']) || JSON.stringify(d) === JSON.stringify(['calendar', 'mirror']) ||
+    JSON.stringify(d) === JSON.stringify(['awws', 'calendar', 'mirror']) || JSON.stringify(d) === JSON.stringify(['awws', 'mirror']),
     'quiet with the Pi: ' + JSON.stringify(d));
   noErrors(page);
 }

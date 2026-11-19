@@ -355,8 +355,9 @@
         root.title = v.msg;
         return;
       }
-      var msg = el('div', 'am-msg', root, v.msg);
-      var hint = layout === 'strip' ? null : el('div', 'am-hint', root, v.hint);
+      // Waiting for the Pi: the hub's one quiet line (style.css, body.fx-quiet).
+      var msg = el('div', 'am-msg' + (dormant ? ' hub-quiet-line' : ''), root, v.msg);
+      var hint = layout === 'strip' ? null : el('div', 'am-hint' + (dormant ? ' hub-quiet-hide' : ''), root, v.hint);
       fitBlocks(body, [hint], [msg]);
       return;
     }
