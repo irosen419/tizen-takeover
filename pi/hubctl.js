@@ -17,6 +17,8 @@
  *   ./hub todo notes <id or exact title> "Oat, not dairy"   (or --clear)
  *   ./hub todo done <id or exact title>
  *   ./hub todo remove <id or exact title>
+ *   ./hub grocery add "Milk" "Eggs"    (one item per quoted name, up to 20)
+ *   ./hub grocery list | done <id or name> | remove <id or name> | clear
  *   ./hub calendar status            each calendar, and the next event
  *   ./hub calendar refresh           read the calendars again now
  *   ./hub layout show                the home-screen tile layout
@@ -80,6 +82,7 @@ const shows = require('./shows');
 const linktests = require('./linktests');
 const tvremote = require('./tvremote');
 const news = require('./news');
+const grocery = require('./grocery');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
@@ -1324,6 +1327,10 @@ const HELP = [
   '  ./hub todo notes "Buy milk" "Oat, not dairy"   set the notes of a to-do (--clear removes them)',
   '  ./hub todo done "Buy milk"  tick a to-do, by id or exact title',
   '  ./hub todo remove "Buy milk"',
+  '  ./hub grocery add "Milk" "Eggs"   add to the grocery list (one quoted name per item, up to 20)',
+  '  ./hub grocery list          the grocery list with ids, items to get first',
+  '  ./hub grocery done "Milk"   tick an item, by id or name; ./hub grocery remove "Milk" takes it off',
+  '  ./hub grocery clear         drop every ticked item',
   '  ./hub calendar status       each calendar, and the next event',
   '  ./hub calendar refresh      read the calendars again now (after adding an event)',
   '  ./hub layout show           the home-screen tile layout',
@@ -1372,6 +1379,84 @@ const HELP = [
   '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
   '  ./hub token                 create the password in pi/.env (only once)'
 ].join('\n');
+
+/* ---------- grocery (shared with mailbox.js) ---------- */
+
+const MAX_GROCERY_ADD = 20;
+
+function quoted(names) {
+  return names.map((n) => '"' + n + '"').join(', ');
+}
+
+function groceryCounts(items) {
+  const left = items.filter((i) => !i.done).length;
+  return { left: left, ticked: items.length - left };
+}
+
+function groceryListLines(items) {
+  const c = groceryCounts(items);
+  if (!items.length) return grocery.listLines(items);
+  const sorted = items.filter((i) => !i.done).concat(items.filter((i) => i.done));
+  return [c.left + ' to get, ' + c.ticked + ' ticked.'].concat(grocery.listLines(sorted));
+}
+
+// Adds names (already split, one item each). Returns { message, data }.
+async function groceryAdd(callFn, list) {
+  const names = [];
+  list.forEach((n) => { if (!names.some((m) => m.toLowerCase() === n.toLowerCase())) names.push(n); });
+  const before = (await callFn('GET', '/api/grocery')).items || [];
+  const already = names.filter((n) => { const m = grocery.match(before, n.trim()); return m && !m.done; });
+  const r = await callFn('POST', '/api/grocery/ops', { ops: names.map((n) => ({ op: 'add', name: n })) });
+  const items = r.items || [];
+  const added = names.filter((n) => already.indexOf(n) < 0);
+  const parts = [];
+  if (added.length) parts.push('Added ' + quoted(added) + ' to the grocery list.');
+  if (already.length) parts.push('Already on it: ' + quoted(already) + '.');
+  parts.push(groceryCounts(items).left + ' to get.');
+  return { message: parts.join(' '), data: { added: added.length, already: already.length, left: groceryCounts(items).left } };
+}
+
+// sub: done or remove. what: an id or exact name (any case).
+async function groceryChange(callFn, sub, what) {
+  const items = (await callFn('GET', '/api/grocery')).items || [];
+  const item = grocery.match(items, what);
+  if (!item) stop('No grocery item has the id or name "' + what + '". Run ./hub grocery list to see them.');
+  const op = sub === 'done' ? { op: 'check', id: item.id, done: true } : { op: 'remove', id: item.id };
+  await callFn('POST', '/api/grocery/ops', { ops: [op] });
+  return { message: (sub === 'done' ? 'Ticked "' : 'Removed "') + item.name + '" on the grocery list.', data: { id: item.id, name: item.name } };
+}
+
+async function groceryClear(callFn) {
+  const before = (await callFn('GET', '/api/grocery')).items || [];
+  const n = groceryCounts(before).ticked;
+  if (!n) return { message: 'No ticked grocery items to clear.', data: { cleared: 0 } };
+  await callFn('POST', '/api/grocery/ops', { ops: [{ op: 'clear' }] });
+  return { message: 'Cleared ' + n + ' ticked grocery ' + (n === 1 ? 'item' : 'items') + '.', data: { cleared: n } };
+}
+
+async function groceryCmd(args) {
+  const sub = args[0];
+  const rest = args.slice(1);
+  if (sub === 'add') {
+    const names = rest.map((w) => w.trim()).filter(Boolean);
+    if (!names.length) stop('Say what to add, for example: ./hub grocery add "Milk" "Eggs"');
+    if (names.length > MAX_GROCERY_ADD) stop('At most ' + MAX_GROCERY_ADD + ' items at a time.');
+    say((await groceryAdd(call, names)).message);
+    return;
+  }
+  if (sub === 'list') {
+    groceryListLines((await call('GET', '/api/grocery')).items || []).forEach(say);
+    return;
+  }
+  if (sub === 'done' || sub === 'remove') {
+    const what = rest.join(' ').trim();
+    if (!what) stop('Say which item, by its id or name. Run ./hub grocery list to see them.');
+    say((await groceryChange(call, sub, what)).message);
+    return;
+  }
+  if (sub === 'clear') { say((await groceryClear(call)).message); return; }
+  stop('Use one of: grocery add, grocery list, grocery done, grocery remove, grocery clear. Run ./hub help for examples.');
+}
 
 /* ---------- main ---------- */
 
@@ -1422,6 +1507,7 @@ async function main(argv) {
     return;
   }
   if (cmd === 'todo') return todo(rest);
+  if (cmd === 'grocery') return groceryCmd(rest);
   if (cmd === 'calendar') return calendar(rest);
   if (cmd === 'layout') return layout(rest);
   if (cmd === 'awws') return awwsCommand(rest);
@@ -1456,6 +1542,11 @@ module.exports = {
   newsPlay: newsPlay,
   newsText: newsText,
   matchItem: matchItem,
+  MAX_GROCERY_ADD: MAX_GROCERY_ADD,
+  groceryListLines: groceryListLines,
+  groceryAdd: groceryAdd,
+  groceryChange: groceryChange,
+  groceryClear: groceryClear,
   todoAddText: todoAddText,
   todoListLines: todoListLines,
   todoChangeText: todoChangeText,

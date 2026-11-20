@@ -139,12 +139,14 @@ async function main() {
 
   await check('address classifier: private and loopback addresses allowed', () => {
     ['10.1.2.3', '172.16.0.1', '172.31.255.255', '192.168.1.20', '169.254.9.9', '127.0.0.1',
-      '::1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'fe80::1%eth0', '::ffff:192.168.1.5', '::ffff:127.0.0.1', '::ffff:10.0.0.1']
+      '::1', 'fc00::1', 'fd12:3456::1', 'fe80::1', 'fe80::1%eth0', '::ffff:192.168.1.5', '::ffff:127.0.0.1', '::ffff:10.0.0.1',
+      '100.64.0.1', '100.101.102.103', '100.127.255.254', '::ffff:100.100.1.1', 'fd7a:115c:a1e0::1']
       .forEach((a) => assert.strictEqual(hubServer.isPrivateAddress(a), true, a));
   });
 
   await check('address classifier: public addresses refused', () => {
-    ['8.8.8.8', '172.15.0.1', '172.32.0.1', '192.169.0.1', '1.1.1.1', '2001:db8::1', '::ffff:8.8.8.8', '', 'nonsense', '::', '999.1.1.1']
+    ['8.8.8.8', '172.15.0.1', '172.32.0.1', '192.169.0.1', '1.1.1.1', '2001:db8::1', '::ffff:8.8.8.8', '', 'nonsense', '::', '999.1.1.1',
+      '100.63.255.255', '100.128.0.1']
       .forEach((a) => assert.strictEqual(hubServer.isPrivateAddress(a), false, a));
   });
 
@@ -213,7 +215,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.25.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.26.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -234,7 +236,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.25.0');
+    assert.strictEqual(r.json.server, '0.26.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -526,7 +528,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.25.0');
+    assert.strictEqual(r.json.server, '0.26.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);

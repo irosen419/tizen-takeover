@@ -1481,7 +1481,49 @@
     'agents.offUnknown': 'desactivado (no hay un personaje llamado {who})',
     'agents.offChips': 'desactivado (los avisos están apagados)',
     'agents.offFailed': 'desactivado (no cargaron las imágenes; se reintenta en 10 min)',
-    'agents.tile': 'un mosaico'
+    'agents.tile': 'un mosaico',
+
+    /* ---- The touch app for phones and tablets (app/touch.js); the TV never
+     * loads it. Menu rows are big, so these may run long, but the header
+     * words ('touch.menu', 'touch.live', 'touch.offline') stay short. */
+    'touch.menu': 'Menú',
+    'touch.back': 'Volver al menú',
+    'touch.sectionHere': 'En esta pantalla',
+    'touch.sectionTv': 'En la TV',
+    'touch.tvOnly': 'Solo en la TV',
+    'touch.tvOnlyHint': 'Ábrelo en la TV. La vista táctil llegará más adelante.',
+    'touch.live': 'En vivo',
+    'touch.offline': 'Sin conexión',
+    'touch.connecting': 'Conectando…',
+    'touch.retry': 'Reintentar',
+    'touch.tvNote': 'Esta es la app para teléfono y tableta. La TV usa Home Hub directamente.',
+    'touch.name.architecture': 'Arquitectura',
+
+    /* ---- Groceries (app/widgets/grocery.js, touch view). Item names are
+     * what people type and stay as typed. */
+    'grocery.title': 'Lista del súper',
+    'grocery.toGet': 'por comprar',
+    'grocery.summary': '{n} por comprar',
+    'grocery.inCart': 'En el carrito',
+    'grocery.addLabel': 'Agregar a la lista',
+    'grocery.addPlaceholder': 'Leche, huevos, pan',
+    'grocery.addButton': 'Agregar',
+    'grocery.addHint': 'Con comas agregas varios a la vez.',
+    'grocery.already': 'Ya está en la lista: {names}',
+    'grocery.again': 'Volver a comprar',
+    'grocery.clear': 'Quitar marcados',
+    'grocery.tick': 'Marcar {name}',
+    'grocery.untick': 'Desmarcar {name}',
+    'grocery.remove': 'Quitar {name}',
+    'grocery.removed': 'Se quitó {name}',
+    'grocery.undo': 'Deshacer',
+    'grocery.emptyTitle': 'No falta nada',
+    'grocery.emptyText': 'Agrega arriba lo que necesites o pídele a Claude que lo agregue.',
+    'grocery.allDone': 'Todo está en el carrito',
+    'grocery.saveFailed': 'No se guardó: {why}',
+    'grocery.offline': 'No se puede conectar con el hub. Se muestra la última lista; los cambios no se guardarán.',
+    'grocery.loading': 'Cargando la lista…',
+    'grocery.tooLong': 'Máximo {n} caracteres por artículo'
   };
 
   var DAYS = {

@@ -40,6 +40,7 @@ const linktests = require('./linktests');
 const tvremote = require('./tvremote');
 const news = require('./news');
 const echo = require('./echo');
+const grocery = require('./grocery');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -427,6 +428,23 @@ function oneOfIdOrTitle(a) {
   if (has('id') === has('title')) throw argError('give "id" or "title" (exactly one)');
 }
 
+function oneOfIdOrName(a) {
+  const has = (k) => a[k] !== undefined;
+  if (has('id') === has('name')) throw argError('give "id" or "name" (exactly one)');
+}
+
+// grocery.done and grocery.remove: a miss answers ok: false, never a throw.
+function groceryChange(sub) {
+  return async (a, ctx) => {
+    try {
+      return await hubctl.groceryChange(ctx.call, sub, a.id !== undefined ? a.id : a.name);
+    } catch (e) {
+      if (e instanceof hubctl.Stop) return { ok: false, message: e.message };
+      throw e;
+    }
+  };
+}
+
 function todoChange(sub) {
   return async (args, ctx) => {
     const r = await ctx.call('GET', '/api/todo');
@@ -576,6 +594,26 @@ const COMMANDS = {
       return { message: hubctl.todoLeadText(after), data: { id: after.id, title: after.title, lead: hubctl.leadOf(after) } };
     }
   },
+  'grocery.add': {
+    args: {
+      items: [(name, v) => {
+        V.list(hubctl.MAX_GROCERY_ADD)(name, v);
+        if (!v.length) throw argError('"items" is empty');
+        return v.map((n, i) => text('items[' + i + ']', grocery.MAX_NAME, n));
+      }, true]
+    },
+    run: (a, ctx) => hubctl.groceryAdd(ctx.call, a.items)
+  },
+  'grocery.list': {
+    args: {},
+    run: async (a, ctx) => {
+      const items = (await ctx.call('GET', '/api/grocery')).items || [];
+      return { message: lines(hubctl.groceryListLines(items)), data: { items: items.map((i) => ({ id: i.id, name: i.name, done: i.done })) } };
+    }
+  },
+  'grocery.done': { args: { id: [V.text(40), false], name: [V.text(grocery.MAX_NAME), false] }, check: oneOfIdOrName, run: groceryChange('done') },
+  'grocery.remove': { args: { id: [V.text(40), false], name: [V.text(grocery.MAX_NAME), false] }, check: oneOfIdOrName, run: groceryChange('remove') },
+  'grocery.clear': { args: {}, run: (a, ctx) => hubctl.groceryClear(ctx.call) },
   'calendar.status': {
     args: {},
     run: async (a, ctx) => {

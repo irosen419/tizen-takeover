@@ -1,0 +1,27 @@
+<!doctype html>
+<!--
+  Home Hub on a phone, tablet or computer: the touch app. The Pi serves it at
+  http://<Pi>:8097/ (pi/server.js, read only from app/). The TV never loads
+  this page: its loader is index.html and hub.html. ?as=phone|tablet|tv picks
+  the shape by hand; ?lang=es tries Spanish for one load.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#050506">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Home Hub</title>
+  <link rel="stylesheet" href="touch.css">
+</head>
+<body class="touch">
+  <div id="touch-root" class="t-root" aria-live="off"></div>
+  <noscript><p class="t-noscript">Home Hub needs JavaScript.</p></noscript>
+  <script src="config.js"></script>
+  <script src="i18n.js"></script>
+  <script src="widgets/grocery.js"></script>
+  <script src="touch.js"></script>
+</body>
+</html>
