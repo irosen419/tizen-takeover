@@ -729,7 +729,7 @@ function expandEvents(parsed, opts) {
     };
   };
 
-  function push(uid, key, txt, allDay, a, b) {
+  function push(uid, key, txt, allDay, a, b, rec) {
     let ev;
     if (allDay) {
       if (!(a < w.toDay && b > w.fromDay)) return;
@@ -745,13 +745,14 @@ function expandEvents(parsed, opts) {
       ev._sort = a;
     }
     if (seen.has(ev.id)) return;
+    if (rec) ev._rec = true; // repeating; only the to-do converter reads it, shareNotes drops it
     seen.add(ev.id);
     out.push(ev);
   }
 
-  function pushOne(uid, key, txt, t) {
-    if (t.allDay) push(uid, key, txt, true, t.day, t.day + t.days);
-    else push(uid, key, txt, false, t.ms, endOf(t, t.day, t.ms));
+  function pushOne(uid, key, txt, t, rec) {
+    if (t.allDay) push(uid, key, txt, true, t.day, t.day + t.days, rec);
+    else push(uid, key, txt, false, t.ms, endOf(t, t.day, t.ms), rec);
   }
 
   function endOf(t, day, ms) {
@@ -776,7 +777,7 @@ function expandEvents(parsed, opts) {
       if (status === 'CANCELLED') return;
       const t = readTiming(props, tz);
       if (!t) { skipped++; return; }
-      pushOne(uid, key, words(props), t);
+      pushOne(uid, key, words(props), t, true);
       return;
     }
     if (status === 'CANCELLED') return;
@@ -814,8 +815,8 @@ function expandEvents(parsed, opts) {
       done.add(key);
       if (ex.has(key) || mv.has(key)) return;
       if (!t.allDay && (ex.has('D' + day) || mv.has('D' + day))) return;
-      if (t.allDay) push(m.uid, key, txt, true, day, day + t.days);
-      else push(m.uid, key, txt, false, ms, endOf(t, day, ms));
+      if (t.allDay) push(m.uid, key, txt, true, day, day + t.days, true);
+      else push(m.uid, key, txt, false, ms, endOf(t, day, ms), true);
     };
     const onDay = (day) => {
       if (day < skipBefore) return; // long before the window, nothing to show
@@ -863,6 +864,17 @@ function sortEvents(list) {
 function eventStartMs(ev, tz) {
   if (ev.allDay) return toUtc(parseDayText(ev.start), 0, tz);
   return Date.parse(ev.start);
+}
+
+// The calendar day (YYYY-MM-DD, hub time zone) an event starts on, or null.
+function eventDay(ev, tz) {
+  if (ev.allDay) return parseDayText(ev.start) === null ? null : ev.start;
+  const ms = Date.parse(ev.start);
+  return isFinite(ms) ? dayText(wallDay(ms, tz)) : null;
+}
+
+function dayOfMs(ms, tz) {
+  return wallDay(ms, tz);
 }
 
 function inWindow(ev, w) {
@@ -1223,7 +1235,7 @@ function createReader(o) {
     cals.forEach((c) => {
       if (!c.ok && (c.lastGood === null || t - c.lastGood > KEEP_FAILED_MS)) c.events = [];
       c.events = c.events.filter((e) => inWindow(e, w));
-      all = all.concat(c.events);
+      all = all.concat(typeof o.hide === 'function' ? c.events.filter((e) => !o.hide(e)) : c.events);
     });
     all.forEach((e) => { e._sort = eventStartMs(e, tz); });
     sortEvents(all);
@@ -1254,6 +1266,7 @@ function createReader(o) {
   }
 
   async function readAll() {
+    let fresh = []; // events read just now (not kept from an earlier round)
     for (const c of cals) {
       if (closed) return null;
       const r = await fetchFeed(c.cfg.url, {
@@ -1273,6 +1286,7 @@ function createReader(o) {
             c.ok = true;
             c.error = '';
             c.events = res.events;
+            fresh = fresh.concat(res.events);
             c.skipped = res.skipped;
             c.lastGood = t;
             if (c.loggedError) log('calendar ' + c.cfg.name + ': can be read again');
@@ -1290,6 +1304,9 @@ function createReader(o) {
       }
     }
     const t = now();
+    if (typeof o.convert === 'function' && fresh.length) {
+      try { o.convert(fresh, t); } catch (e) { log('calendar: the to-do converter failed'); }
+    }
     const data = assemble(t);
     lastRefresh = t;
     const changed = !sameData(data, o.current());
@@ -1340,6 +1357,10 @@ module.exports = {
   MAX_EVENTS: MAX_EVENTS,
   MAX_INSTANCES: MAX_INSTANCES,
   parseIcs: parseIcs,
+  eventDay: eventDay,
+  dayOfMs: dayOfMs,
+  dayText: dayText,
+  parseDayText: parseDayText,
   expandEvents: expandEvents,
   parseRrule: parseRrule,
   zonedToUtc: zonedToUtc,
