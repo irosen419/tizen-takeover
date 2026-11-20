@@ -46,6 +46,7 @@ const MAX_SIZE = 30;
 const MAX_LINE = 60; // a grocery item's name
 const MISS_MS = 24 * 60 * 60 * 1000;
 const MAX_MISSES = 5000;
+const REFILL_BUDGET_MS = 12000; // one refill lookup in all
 const REFILL_MS = 6 * 60 * 60 * 1000; // a saved web item missing a brand or picture is looked up again at most this often
 const TIMEOUT_MS = 6000;
 const BUDGET_MS = 20000; // one lookup in all, queue waits included (the phone gives up at 25 s)
@@ -576,13 +577,16 @@ function createCatalog(options) {
 
   // old: the saved item a rescan fills in (only its empty fields change).
   async function webLookup(key, old) {
-    const deadline = clock() + budgetMs;
+    // A refill keeps the phone waiting less: a saved item is already shown.
+    const deadline = clock() + (old ? Math.min(budgetMs, REFILL_BUDGET_MS) : budgetMs);
     // A change while we waited (a manual entry, another fill) wins.
     const changed = () => (old ? get(key) !== old : !!get(key));
     const oldPic = !!(old && old.image && imageFile(key));
     const said = {}; // source id -> 'none' | 'skipped' | 'error'
     for (let i = 0; i < sources.length; i++) {
       const src = sources[i];
+      // UPCitemdb's 100 a day are not spent on a saved item's picture alone.
+      if (old && old.brand && src.id === 'upcitemdb') continue;
       const r = await ask(src, key, deadline);
       if (r.found) {
         if (changed()) return get(key);
