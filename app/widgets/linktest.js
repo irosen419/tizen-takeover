@@ -557,7 +557,7 @@
     var C = S.C;
     var Lv = C.live;
     if (!Lv || typeof Lv.post !== 'function') { record(rec, 'error', word('piOff')); showError(rec, word('piOff')); return 'fired'; }
-    var body = { id: rec.id, appId: app.id };
+    var body = { id: rec.id, appId: app.id, appName: rec.app };
     for (var k in rec.pi) if (rec.pi.hasOwnProperty(k)) body[k] = rec.pi[k];
     Lv.post('/tvremote/run', body, function (err) {
       if (err) {
