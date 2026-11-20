@@ -946,6 +946,15 @@ function start(options) {
     }, note.join(', ')];
   }
 
+  // POST /api/awws/resync and the TV's POST /awws/resync: "sync now". Only
+  // stores the time it was asked (awws.js requestResync); the routine that
+  // reads the board checks for it. Nothing about it reaches the log but a word.
+  function awwsResync() {
+    const r = awws.requestResync(state.resources.awws.data, Date.now());
+    if (r.changed) changeResource('awws', r.data);
+    return r;
+  }
+
   function opsAndReply(res, body, extra) {
     if (!isObj(body)) throw bad('the body must be a JSON object');
     const items = applyOps(todoItems(), body.ops, Date.now());
@@ -1320,6 +1329,7 @@ function start(options) {
     '/api/todo/ops': ['POST'],
     '/api/layout': ['GET', 'POST'],
     '/api/awws': ['GET', 'POST'],
+    '/api/awws/resync': ['POST'],
     '/api/budget': ['GET', 'POST'],
     '/api/status': ['GET'],
     '/api/log': ['GET'],
@@ -1491,6 +1501,10 @@ function start(options) {
           const a = state.resources.awws;
           return reply(200, { ok: true, rev: a.rev, data: a.data, tz: calTz });
         }
+        if (route === '/api/awws/resync') {
+          const r = awwsResync();
+          return reply(200, { ok: true, requestedAt: r.requestedAt, already: r.already, changed: r.changed }, r.already ? 'sync already asked for' : 'sync asked for');
+        }
         if (route === '/api/awws') {
           const answer = postSnapshot('awws', awws, body);
           return reply(200, answer[0], answer[1]);
@@ -1652,7 +1666,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/echo/run' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/echo/run' || route === '/awws/resync' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1710,6 +1724,18 @@ function start(options) {
           remote.seen(address);
           const r = remote.run(body, remote.address() || undefined);
           sendJson(res, 200, { ok: true, started: true, paired: r.paired }, cors);
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
+    }
+    if (route === '/awws/resync') {
+      // The TV's "Sync now" button. No body is read.
+      return readBody(req, res, () => {
+        try {
+          const r = awwsResync();
+          sendJson(res, 200, { ok: true, requestedAt: r.requestedAt, already: r.already }, cors);
+          log(r.already ? 'screen asked for a sync (already waiting)' : 'screen asked for a sync');
         } catch (e) {
           fail(res, e, cors);
         }
@@ -1808,7 +1834,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/awws/resync': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
     '/echo/run': 1
   };

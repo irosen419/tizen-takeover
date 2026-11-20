@@ -126,6 +126,11 @@
     reachScans1: '1 flier scan',
     notSynced: 'Not synced yet',
     soon: 'Soon',
+    syncName: 'Sync now',
+    syncLast: 'Last sync {t}',
+    syncAsked: 'Asked {t}. Waiting for the next check',
+    syncSending: 'Asking the Pi…',
+    syncFail: 'Could not ask the Pi',
     views: { visits: 'Next visit', agenda: 'This week', todo: 'To-do board', reach: 'Reach' },
     // This week
     nothingToday: 'Nothing today',
@@ -275,7 +280,7 @@
   var HOUR = 60 * MIN;
   var DAY = 24 * HOUR;
   var CAL_STALE = 30 * MIN;
-  var SNAP_STALE = 19 * HOUR;   // the sync runs at 7:12 AM and 1:12 PM Central; the overnight gap is 18 hours
+  var SNAP_STALE = 31 * HOUR;   // the sync runs once a day (7:12 AM Central) and on request; a day plus 7 hours of slack for a late or skipped run
   var VISIT_DAYS = 60;
   var FALLBACK_TZ = 'America/Chicago';
   var OWNERS = ['ian', 'claude', 'both'];
@@ -2612,6 +2617,34 @@
 
   /* ---------- the Glance panel: a launcher ---------- */
 
+  // "Sync now": asks the Pi for a fresh board snapshot (POST /awws/resync).
+  // The Pi only notes the request; the routine that reads the board sends the
+  // snapshot at its next check, which clears the note.
+  function syncRow(list) {
+    var r = el('div', 'aw-lrow f', list);
+    r.setAttribute('data-key', 'sync');
+    el('div', 'aw-lrow-name', r, STRINGS.syncName);
+    var asked = snapReady(S.snap) && S.snap.resync && S.snap.resync.requestedAt ? parseIso(S.snap.resync.requestedAt) : NaN;
+    var t;
+    if (S.syncState === 'sending') t = STRINGS.syncSending;
+    else if (S.syncState === 'failed') t = STRINGS.syncFail;
+    else if (!isNaN(asked)) t = fill(STRINGS.syncAsked, { t: whenAt(asked) });
+    else if (snapReady(S.snap)) t = fill(STRINGS.syncLast, { t: whenAt(parseIso(S.snap.sentAt)) });
+    else t = STRINGS.notSynced;
+    el('div', 'aw-lrow-status aw-cut', r, t);
+  }
+
+  function askSync(ctx) {
+    var L = live();
+    if (!L || typeof L.post !== 'function' || S.syncState === 'sending') return;
+    S.syncState = 'sending';
+    ctx.redrawPanel();
+    L.post('/awws/resync', {}, function (err) {
+      S.syncState = err ? 'failed' : '';
+      try { ctx.redrawPanel(); } catch (e) { /* closed meanwhile */ }
+    });
+  }
+
   function launcher(root, ctx, opts) {
     var vinfo = calFor('visits');
     var info = calFor('all');
@@ -2666,6 +2699,7 @@
     var soon = ['outreach', 'pipeline'];
     if (showMoney()) soon.push('money');
     el('div', 'aw-ldiv', list);
+    syncRow(list);
     for (var k = 0; k < soon.length; k++) {
       var f = figure(soon[k]);
       // Money is built (its own tile, Earned vs spent): a quiet figure, no Soon tag.
@@ -2727,6 +2761,7 @@
       onSelect: function (target, ctx) {
         var ps = pstate(ctx.id);
         var key = (target && target.getAttribute('data-key')) || '';
+        if (key === 'sync' && ctx.id === 'awws') { askSync(ctx); return; }
         var m = /^(?:go|q)-(visits|agenda|todo|reach)$/.exec(key);
         if (m && ctx.id === 'awws') {
           ps.view = m[1];

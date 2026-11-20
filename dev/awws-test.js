@@ -198,7 +198,7 @@ async function main() {
         try {
           await H.openPanel(page, 'awws');
           const rows = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .aw-lrow.f'), (n) => n.getAttribute('data-key')));
-          assert(rows.join() === 'go-visits,go-agenda,go-todo,go-reach', 'launcher rows: ' + rows.join());
+          assert(rows.join() === 'go-visits,go-agenda,go-todo,go-reach,sync', 'launcher rows: ' + rows.join());
           const money = await text(page, '#panel .aw-lrow');
           assert(/Money|Dinero/.test(money) && /\$1[,.]841/.test(money), 'no money line with showMoney true (the default): ' + money);
           // Soon rows take no focus, so the whole list must fit without scrolling.

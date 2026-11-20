@@ -638,7 +638,11 @@ async function awwsCommand(args) {
     say(awws.clearText(r));
     return;
   }
-  stop('Use one of: awws show, awws set <file.json|->, awws clear. Run ./hub help for examples.');
+  if (sub === 'resync') {
+    say(awws.resyncText(await call('POST', '/api/awws/resync', {})));
+    return;
+  }
+  stop('Use one of: awws show, awws set <file.json|->, awws clear, awws resync. Run ./hub help for examples.');
 }
 
 /* ---------- TV show schedule ---------- */
@@ -1327,6 +1331,7 @@ const HELP = [
   '  ./hub layout reset          back to the layout in app/config.js',
   '  ./hub awws show             the A World Worth Saving snapshot: when sent, size, sections',
   '  ./hub awws set file.json    store a snapshot (- reads it from input; see docs/awws-snapshot.md)',
+  '  ./hub awws resync           ask for a sync now (the routine that reads the board picks it up)',
   '  ./hub awws clear            remove it; the TV tiles say "Not synced yet"',
   '  ./hub budget show           the budget snapshot: when sent, size, sections (no amounts)',
   '  ./hub budget set file.json  store a budget snapshot (- reads it from input; see docs/budget-snapshot.md)',
