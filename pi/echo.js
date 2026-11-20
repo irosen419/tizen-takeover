@@ -432,6 +432,7 @@ function createController(o) {
     stop: (key) => transport('stop', key),
     labels: labelsCopy, clearLabel: clearLabel, setBase: setBase,
     targetKeys: () => targets.map((t) => t.key),
+    targets: () => targets.map((t) => ({ key: t.key, entity: t.entity, group: t.group === true })),
     configured: !!cfg.configured
   };
 }
