@@ -466,6 +466,35 @@ async function main() {
       } finally { await lt.ctx.close(); }
     });
 
+    await check('Watch link test: with no tizen on the page, the App probe asks service.js (/probe) and posts its answer', async () => {
+      const lt = await env.newPage({});
+      try {
+        await H.openView(lt, 'linktests');
+        const posts = await lt.evaluate(() => {
+          try { delete window.tizen; } catch (e) { window.tizen = undefined; }
+          const C = window.HUB_LINKTEST._test.state().C;
+          const sent = [];
+          const asked = [];
+          const origPost = C.live.post;
+          const origService = C.service;
+          C.live.post = function (path, body, cb) { sent.push(body.result); cb(null); };
+          C.service = function (path, ms, cb) {
+            asked.push(path);
+            if (path !== '/probe') return origService.apply(this, arguments);
+            cb(null, { ok: true, hasMeta: true, hasFind: true,
+              apps: [{ id: 'dp.app', name: 'Disney+', meta: [{ key: 'http://samsung.com/tv/metadata/use.preview', value: 'endpoint_URL=https://e/p' }] }, { id: 'x.plain', name: 'Calc', meta: [] }],
+              ops: { 'http://samsung.com/appcontrol/operation/eden_resume': [{ id: 'dp.app', name: 'Disney+' }] } });
+          };
+          const r = window.HUB_LINKTEST._test.probe();
+          return new Promise((res) => setTimeout(() => { C.live.post = origPost; C.service = origService; res({ r: r, asked: asked, sent: sent }); }, 300));
+        });
+        assert(posts.r === 'service' && posts.asked.indexOf('/probe') >= 0, JSON.stringify(posts));
+        assert(posts.sent.map((x) => x.id).join() === 'probe-01,probe-ops', JSON.stringify(posts.sent));
+        assert(/use\.preview=endpoint_URL=https:\/\/e\/p/.test(posts.sent[0].op) && /^dp\.app eden_resume/.test(posts.sent[0].detail), JSON.stringify(posts.sent[0]));
+        assert(/eden_resume: dp\.app/.test(posts.sent[1].op), JSON.stringify(posts.sent[1]));
+      } finally { await lt.ctx.close(); }
+    });
+
     await check('Watch link test: OK fires through /launch-control, the answer is kept and reaches the Pi', async () => {
       const lt = await env.newPage({});
       try {
@@ -623,7 +652,7 @@ async function main() {
         await H.until(() => posts.length === 1, 3000, 'nothing posted');
         const b = posts[0];
         assert(b.id === 'netflix-2step-dial' && b.appId === '3201907018807' && b.link === 'dial' && b.dialApp === 'Netflix' &&
-          b.payload === 'm=https://www.netflix.com/watch/81505776&source_type=4' && b.open === undefined, JSON.stringify(b));
+          b.payload === 'm=https://www.netflix.com/watch/81505776&source_type=4' && b.open === undefined && b.appName === 'Netflix', JSON.stringify(b));
         assert(env.launches.length === launches, 'the TV launched something itself: ' + env.launches.slice(launches).join(' | '));
         await H.until(async () => (await focusedKey(lt)) === 'lt:ans:netflix-2step-dial:title', 3000, 'no question: ' + await focusedKey(lt));
         assert((await toastText(lt)) === 'The Pi is opening Netflix. If the TV asks to allow “Home Hub Pi”, choose Allow. Come back here after.', await toastText(lt));

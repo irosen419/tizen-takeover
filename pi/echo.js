@@ -54,9 +54,9 @@ const APPS = {
   tunein: { label: 'TuneIn', hidden: false, query: 'required', title: '' },
   kera: { label: 'TuneIn', hidden: false, query: 'no', title: 'KERA 90.1' },
   news: { label: 'Alexa news', hidden: true, query: 'no', title: '' },
-  // Asked for by name: NPR's hourly five-minute newscast (server 0.24.1).
+  // Asked for by name: NPR's hourly five-minute newscast (server 0.24.2).
   npr: { label: 'NPR', hidden: true, query: 'no', title: '' },
-  // Spotify on an Echo: what it played last, or a search (server 0.24.1).
+  // Spotify on an Echo: what it played last, or a search (server 0.24.2).
   spotify: { label: 'Spotify', hidden: false, query: 'optional', title: '' }
 };
 const APP_KEYS = Object.keys(APPS);

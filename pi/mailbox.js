@@ -763,7 +763,7 @@ const COMMANDS = {
   },
   'tvremote.run': {
     args: {
-      id: [V.text(40), true], appId: [V.text(60), true],
+      id: [V.text(40), true], appId: [V.text(60), true], appName: [V.text(40), false],
       open: [V.bool(), false], waitOpen: [V.number(0, 30), false], enter: [V.bool(), false], waitAfter: [V.number(0, 30), false],
       link: [V.oneOf(['deeplink', 'dial', 'none']), false], payload: [V.text(300), false], dialApp: [V.oneOf(tvremote.DIAL_APPS), false]
     },
