@@ -28,12 +28,13 @@ const crypto = require('crypto');
 
 const REMOTE_NAME = 'Home Hub Pi';
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
-const APP_RE = /^[A-Za-z0-9._]{1,60}$/;
+const APP_RE = /^[A-Za-z0-9._-]{1,60}$/;
+const NAME_RE = /^[A-Za-z0-9 .+&'_-]{1,40}$/;
 const HOST_RE = /^[A-Za-z0-9.-]{1,100}$/;
 const KEYS = ['KEY_ENTER', 'KEY_RETURN'];
 const DIAL_APPS = ['Netflix', 'YouTube'];
 const LINKS = ['deeplink', 'dial', 'none'];
-const SPEC_KEYS = ['id', 'appId', 'open', 'waitOpen', 'enter', 'waitAfter', 'link', 'payload', 'dialApp'];
+const SPEC_KEYS = ['id', 'appId', 'appName', 'open', 'waitOpen', 'enter', 'waitAfter', 'link', 'payload', 'dialApp'];
 const MAX_PAYLOAD = 300;
 const MAX_WAIT = 30;
 const MAX_FRAME = 1024 * 1024;
@@ -77,10 +78,12 @@ function normalizeSpec(raw) {
     if (SPEC_KEYS.indexOf(k) < 0) throw bad('"' + k + '" is not something a run takes (use ' + SPEC_KEYS.join(', ') + ')');
   });
   if (typeof raw.id !== 'string' || !ID_RE.test(raw.id)) throw bad('"id" must be 1 to 40 of A-Z, a-z, 0-9, "_" or "-"');
-  if (typeof raw.appId !== 'string' || !APP_RE.test(raw.appId)) throw bad('"appId" must be 1 to 60 of A-Z, a-z, 0-9, "." or "_"');
+  if (typeof raw.appId !== 'string' || !APP_RE.test(raw.appId)) throw bad('"appId" must be 1 to 60 of A-Z, a-z, 0-9, ".", "_" or "-"');
+  if (raw.appName !== undefined && raw.appName !== null && (typeof raw.appName !== 'string' || !NAME_RE.test(raw.appName))) throw bad('"appName" must be 1 to 40 letters, digits, spaces or . + & \' _ -');
   const spec = {
     id: raw.id,
     appId: raw.appId,
+    appName: typeof raw.appName === 'string' ? raw.appName : '',
     open: flag('open', raw.open, DEFAULTS.open),
     waitOpen: num('waitOpen', raw.waitOpen, DEFAULTS.waitOpen),
     enter: flag('enter', raw.enter, DEFAULTS.enter),
@@ -285,6 +288,7 @@ function create(options) {
   const connectMs = typeof opt.connectMs === 'number' ? opt.connectMs : 8000;
   const dialMs = typeof opt.dialMs === 'number' ? opt.dialMs : 8000;
   const keyGapMs = typeof opt.keyGapMs === 'number' ? opt.keyGapMs : 250;
+  const findMs = typeof opt.findMs === 'number' ? opt.findMs : 5000;
   const wait = typeof opt.sleep === 'function' ? opt.sleep : sleepMs;
   const fixedHost = typeof opt.host === 'string' && HOST_RE.test(opt.host) ? opt.host : '';
 
@@ -418,6 +422,28 @@ function create(options) {
     });
   }
 
+  // The remote channel's id for an installed app, by name ('' when not found).
+  async function findApp(conn, name) {
+    conn.send({ method: 'ms.channel.emit', params: { event: 'ed.installedApp.get', to: 'host' } });
+    const end = Date.now() + findMs;
+    const want = name.toLowerCase();
+    for (;;) {
+      const left = end - Date.now();
+      if (left <= 0) return '';
+      const msg = await conn.next(left);
+      if (!msg || msg.event !== 'ed.installedApp.get') continue;
+      const list = msg.data && Array.isArray(msg.data.data) ? msg.data.data : [];
+      let hit = null;
+      list.forEach((a) => {
+        const n = a && typeof a.name === 'string' ? a.name.toLowerCase() : '';
+        if (!a || typeof a.appId !== 'string' || !APP_RE.test(a.appId)) return;
+        if (n === want) hit = hit && hit.exact ? hit : { id: a.appId, exact: true };
+        else if (!hit && n.indexOf(want) === 0) hit = { id: a.appId, exact: false };
+      });
+      return hit ? hit.id : '';
+    }
+  }
+
   /* --- the sequence --- */
 
   async function execute(spec, host, rec) {
@@ -434,6 +460,16 @@ function create(options) {
       if (needsWs) {
         await step(rec, 'connect', async () => { await line(); return paired() ? 'paired' : 'connected'; });
         if (fails()) return;
+      }
+      // The id the TV's own app list gives (org.tizen.netflix-app, say) is not
+      // always the one the remote channel launches by (11101200001), so ask
+      // the TV's remote for its installed apps and take the id under that name.
+      if (spec.appName && (spec.open || spec.link === 'deeplink')) {
+        await step(rec, 'find', async () => {
+          const found = await findApp(await line(), spec.appName);
+          if (found) { spec.appId = found; return 'found by name'; }
+          return 'not in the TV\'s list; kept the hub\'s id';
+        });
       }
       if (spec.open) {
         await step(rec, 'open', async () => { (await line()).send(appEvent(spec.appId)); return 'sent'; });
@@ -457,7 +493,7 @@ function create(options) {
 
   // The log line: what was done, in words, with no link, payload or token.
   function summary(spec, rec) {
-    const names = { open: 'opened app', enter: 'Enter', deeplink: 'deep link' };
+    const names = { open: 'opened app', enter: 'Enter', deeplink: 'deep link', find: 'found app' };
     const parts = [];
     rec.steps.forEach((s) => {
       if (s.step === 'wait') return;

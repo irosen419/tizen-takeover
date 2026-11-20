@@ -97,7 +97,14 @@ async function fakeTv(mode) {
         const data = Buffer.alloc(len);
         for (let i = 0; i < len; i++) data[i] = buf[head + 4 + i] ^ mask[i % 4];
         buf = buf.slice(head + 4 + len);
-        if (opcode === 1) { tv.got.push(JSON.parse(data.toString('utf8'))); tv.at.push(Date.now()); }
+        if (opcode === 1) {
+          const m = JSON.parse(data.toString('utf8'));
+          tv.got.push(m); tv.at.push(Date.now());
+          if (m.params && m.params.event === 'ed.installedApp.get') {
+            const b = Buffer.from(JSON.stringify({ event: 'ed.installedApp.get', data: { data: [{ appId: '3201512006785', name: 'Prime Video' }, { appId: '11101200001', name: 'Netflix' }] } }));
+            sock.write(Buffer.concat([Buffer.from([0x81, 126, b.length >> 8, b.length & 255]), b]));
+          }
+        }
         else if (opcode === 10) tv.pongs++;
         else if (opcode === 8) { tv.closed++; sock.end(); }
       }
@@ -319,6 +326,20 @@ async function main() {
       assert.ok(r.tv.at[2] - r.tv.at[1] >= 35, 'waited about 2 x 20 ms: ' + (r.tv.at[2] - r.tv.at[1]));
       assert.ok(r.lines.some((l) => /^tvremote: netflix-2step-watch: opened app \(ok\), Enter \(ok\), deep link \(ok\)$/.test(r.lines.join('|').split('|').pop())) || /opened app \(ok\), Enter \(ok\), deep link \(ok\)/.test(r.lines.join('|')), r.lines.join('|'));
       assert.ok(r.lines.join('').indexOf('netflix.com') < 0, 'the link is in the log');
+    } finally { await r.close(); }
+  });
+
+  await check('a hyphenated TV app id is taken, and the app is found by name in the TV remote\'s list', async () => {
+    const r = await rig('allow');
+    try {
+      const rec = await r.remote.run({ id: 'netflix-2step-dial', appId: 'org.tizen.netflix-app', appName: 'Netflix', link: 'none', enter: false, waitOpen: 0 }).done;
+      assert.strictEqual(rec.ok, true, JSON.stringify(rec));
+      assert.deepStrictEqual(rec.steps.map((s) => s.step), ['connect', 'find', 'open']);
+      assert.strictEqual(r.tv.got[0].params.event, 'ed.installedApp.get');
+      assert.strictEqual(r.tv.got[1].params.data.appId, '11101200001');
+      const miss = await r.remote.run({ id: 'x2', appId: 'org.tizen.netflix-app', appName: 'Nope', link: 'none', enter: false, waitOpen: 0 }).done;
+      assert.strictEqual(miss.ok, true);
+      assert.strictEqual(r.tv.got[r.tv.got.length - 1].params.data.appId, 'org.tizen.netflix-app');
     } finally { await r.close(); }
   });
 

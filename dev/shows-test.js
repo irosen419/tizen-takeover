@@ -652,7 +652,7 @@ async function main() {
         await H.until(() => posts.length === 1, 3000, 'nothing posted');
         const b = posts[0];
         assert(b.id === 'netflix-2step-dial' && b.appId === '3201907018807' && b.link === 'dial' && b.dialApp === 'Netflix' &&
-          b.payload === 'm=https://www.netflix.com/watch/81505776&source_type=4' && b.open === undefined, JSON.stringify(b));
+          b.payload === 'm=https://www.netflix.com/watch/81505776&source_type=4' && b.open === undefined && b.appName === 'Netflix', JSON.stringify(b));
         assert(env.launches.length === launches, 'the TV launched something itself: ' + env.launches.slice(launches).join(' | '));
         await H.until(async () => (await focusedKey(lt)) === 'lt:ans:netflix-2step-dial:title', 3000, 'no question: ' + await focusedKey(lt));
         assert((await toastText(lt)) === 'The Pi is opening Netflix. If the TV asks to allow “Home Hub Pi”, choose Allow. Come back here after.', await toastText(lt));
