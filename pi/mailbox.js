@@ -37,6 +37,7 @@ const awws = require('./awws');
 const budget = require('./budget');
 const shows = require('./shows');
 const linktests = require('./linktests');
+const tvremote = require('./tvremote');
 const news = require('./news');
 const echo = require('./echo');
 
@@ -750,6 +751,28 @@ const COMMANDS = {
     run: async (a, ctx) => {
       const r = await ctx.call('GET', '/api/linktests');
       return { message: lines(linktests.lines(r.data)), data: { results: ((r.data && r.data.results) || []).slice(0, 40) } };
+    }
+  },
+  // The TV's remote from the Pi (tvremote.js). The status leaves out the TV's address.
+  'tvremote.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/tvremote');
+      return { message: lines(tvremote.lines(r)), data: { paired: !!r.paired, running: !!r.running, last: r.last || null } };
+    }
+  },
+  'tvremote.run': {
+    args: {
+      id: [V.text(40), true], appId: [V.text(60), true],
+      open: [V.bool(), false], waitOpen: [V.number(0, 30), false], enter: [V.bool(), false], waitAfter: [V.number(0, 30), false],
+      link: [V.oneOf(['deeplink', 'dial', 'none']), false], payload: [V.text(300), false], dialApp: [V.oneOf(tvremote.DIAL_APPS), false]
+    },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/tvremote/run', a);
+      return {
+        message: 'Started ' + a.id + ' on the TV' + (r.paired ? '' : '; the TV will ask to allow "Home Hub Pi" (choose Allow)') + '. Read the steps with tvremote.status in about 30 seconds.',
+        data: { started: true, paired: !!r.paired }
+      };
     }
   },
   status: {
