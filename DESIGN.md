@@ -33,7 +33,7 @@ Plain ES5. No CSS grid, no flex gap, no `oklch()`, no `dvh`, no filters. `mask-i
 - No uppercase-with-tracking labels. Money keeps `$1,265`; names from outside (merchants, goals) stay as sent.
 
 ## Loader and CSS rules
-- Every CSS file ends with `.css-end { top: 0; }` and is listed in `dev/styles-test.js` `ORDER` (and linked in `app/index.html`). A broken or short stylesheet is refetched; the marker is how the loader knows it arrived whole.
+- Every CSS file ends with `.css-end { top: 0; }` and is listed in `dev/styles-test.js` `ORDER` (and linked in `app/hub.html`). A broken or short stylesheet is refetched; the marker is how the loader knows it arrived whole.
 - `theme.css` loads last and overrides `style.css` (e.g. title size/weight).
 - Large pictures live in the R2 bucket, not the repo.
 
