@@ -15,6 +15,7 @@
  *   POST /shows/upto     the TV marks a show watched up to an episode: { id, season, number }
  *   POST /shows/caughtup the TV marks a show caught up (every aired episode): { id }
  *   GET  /shows/episodes?id=<show id>  a show's seasons and episodes with watched flags and progress
+ *   POST /echo/run       the Echo controls from the TV (soundctl.js): presets only, rate limited
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
  *                        from the TV (ambience.js): saved ids only, rate limited
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
@@ -102,7 +103,7 @@ const allsounds = require('./allsounds');
 const echo = require('./echo');
 const translate = require('./translate');
 
-const SERVER_VERSION = '0.22.3';
+const SERVER_VERSION = '0.23.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -738,6 +739,7 @@ function start(options) {
   sounds = allsounds.createWatcher(Object.assign({}, asOpt, {
     config: allsounds.configFromEnv(opt.allsoundsEnv || {}),
     log: log,
+    targets: () => echoCtl.targets(),
     labels: () => echoCtl.labels(),
     clearLabel: (id, reason) => echoCtl.clearLabel(id, reason),
     setBase: (id, sig) => echoCtl.setBase(id, sig),
@@ -1023,6 +1025,64 @@ function start(options) {
       body: { ok: r.ok === true, message: r.message, echo: echoCtl.status() },
       note: r.ok ? action : (r.problem || 'failed')
     }));
+  }
+
+  /* --- Echo controls from the TV: POST /echo/run (SCREEN API) --- */
+
+  // The TV holds no secret and may only press presets: no search text, no
+  // tunein, and a speaker only by its key. Nothing the TV sends reaches the
+  // log (only the action and the speaker's key do, from echo.js), and
+  // neither a Home Assistant address nor the token is in the reply.
+  const SCREEN_ECHO_FIELDS = ['action', 'target', 'app', 'level', 'step'];
+  const SCREEN_ECHO_APPS = ['audible', 'pandora', 'amazon-music', 'kera', 'news'];
+  const echoScreenMax = Number.isInteger(opt.echoScreenMax) && opt.echoScreenMax > 0 ? opt.echoScreenMax : 6;
+  const echoStamps = [];
+  let echoSlowLogged = false;
+
+  // A token-less rate limit for screens: 6 presses in 5 seconds.
+  function echoScreenAllowed() {
+    const t = Date.now();
+    while (echoStamps.length && t - echoStamps[0] >= 5000) echoStamps.shift();
+    if (echoStamps.length >= echoScreenMax) {
+      if (!echoSlowLogged) { echoSlowLogged = true; log('echo: a screen sent commands too fast (asked it to slow down)'); }
+      return false;
+    }
+    echoSlowLogged = false;
+    echoStamps.push(t);
+    return true;
+  }
+
+  function echoRun(body) {
+    const refuse = (why) => ({ status: 400, body: { ok: false, error: why } });
+    if (!isObj(body)) return Promise.resolve(refuse('send { "action": "pause", "target": "show" }'));
+    const keys = Object.keys(body);
+    for (let i = 0; i < keys.length; i++) if (SCREEN_ECHO_FIELDS.indexOf(keys[i]) < 0) return Promise.resolve(refuse('unknown field'));
+    if (typeof body.action !== 'string' || ECHO_ACTIONS.indexOf(body.action) < 0) return Promise.resolve(refuse('"action" must be one of: ' + ECHO_ACTIONS.join(', ')));
+    let target;
+    if (body.target !== undefined) {
+      if (typeof body.target !== 'string' || echoCtl.targetKeys().indexOf(body.target) < 0) return Promise.resolve(refuse('unknown target'));
+      target = body.target;
+    }
+    const a = body.action;
+    let run;
+    if (a === 'start') {
+      if (body.level !== undefined || body.step !== undefined) return Promise.resolve(refuse('"level" and "step" go with "volume"'));
+      if (typeof body.app !== 'string' || SCREEN_ECHO_APPS.indexOf(body.app) < 0) return Promise.resolve(refuse('"app" must be one of: ' + SCREEN_ECHO_APPS.join(', ')));
+      run = () => echoCtl.start(body.app, target);
+    } else if (a === 'volume') {
+      if (body.app !== undefined) return Promise.resolve(refuse('"app" goes with "start"'));
+      const hasStep = body.step !== undefined;
+      const hasLevel = body.level !== undefined;
+      if (hasStep === hasLevel) return Promise.resolve(refuse('send "step" (up or down) or "level" (0 to 100)'));
+      const v = hasStep ? body.step : body.level;
+      if (hasStep && v !== 'up' && v !== 'down') return Promise.resolve(refuse('"step" must be up or down'));
+      if (hasLevel && (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 100)) return Promise.resolve(refuse('"level" must be a whole number from 0 to 100'));
+      run = () => echoCtl.volume(v, target);
+    } else {
+      if (body.app !== undefined || body.level !== undefined || body.step !== undefined) return Promise.resolve(refuse('"app", "level" and "step" do not go with "' + a + '"'));
+      run = () => echoCtl[a](target);
+    }
+    return run().then((r) => ({ status: 200, body: { ok: r.ok === true, message: String(r.message || '') } }));
   }
 
   /* --- push line --- */
@@ -1577,7 +1637,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/echo/run' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1658,6 +1718,16 @@ function start(options) {
         }
       });
     }
+    if (route === '/echo/run') {
+      if (!echoScreenAllowed()) {
+        req.resume();
+        return sendJson(res, 429, { ok: false, error: 'slow down' }, cors);
+      }
+      readBody(req, res, (body) => {
+        echoRun(body).then((a) => sendJson(res, a.status, a.body, cors), () => sendJson(res, 500, { ok: false, error: 'the server had a problem' }, cors));
+      });
+      return undefined;
+    }
     if (route.indexOf('/ambience/') === 0) {
       // The TV holds no secret: it may only name ids from the saved
       // settings, and not too fast. Nothing about it is logged here (the
@@ -1708,7 +1778,8 @@ function start(options) {
 
   const SCREEN_ROUTES = {
     '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
-    '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
+    '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
+    '/echo/run': 1
   };
 
   function handler(door) {

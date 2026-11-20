@@ -981,6 +981,8 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
 
     // app/widgets/allsounds.js (v0.28.16): a test widget, only on the "All sounds test" layout. Drawn here as a placeholder.
     allsounds:     { title: 'All sounds',            sub: 'Test: what plays on any speaker (Echo through Home Assistant, or Spotify)' },
+    // app/widgets/soundctl.js (v0.39.0): All sounds plus Echo buttons; a test widget, only on the "Sound control test" layout.
+    soundctl:      { title: 'Sound control',         sub: 'Test: All sounds with Echo buttons (play, pause, next, volume, stop, a few quick starts)' },
     // app/widgets/sunpath.js (v0.29.2): when direct sun reaches the plant wall; alone on the "Plants" layout.
     sunpath:       { title: 'Plant sun',             sub: 'When direct sun reaches the plant wall, with the room from above and the seasons' },
     // app/widgets/architecture.js (v0.30.1): the Architecture map on the TV, driven by the remote; alone on the "Hub architecture" layout.
@@ -1031,6 +1033,10 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     // v0.28.16: one test widget filling the screen.
     { id: 'allsounds-test', name: 'All sounds test', layout: [
       { id: 'allsounds', x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    // v0.39.0: Sound control alone, to try it.
+    { id: 'soundctl-test', name: 'Sound control test', layout: [
+      { id: 'soundctl', x: 0, y: 0, w: 12, h: 6 }
     ] },
     { id: 'plant-wall', name: 'Plants', layout: [
       { id: 'sunpath', x: 0, y: 0, w: 12, h: 6 }
@@ -1519,6 +1525,10 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     allsounds: plannedEntry({ en: 'All sounds', es: 'Todo lo que suena' },
       { en: 'Test widget: what plays on any speaker, an Echo through Home Assistant or Spotify, with the app’s name and the speaker. Only on the “All sounds test” layout.',
         es: 'Widget de prueba: lo que suena en cualquier altavoz, un Echo a través de Home Assistant o Spotify, con el nombre de la app y del altavoz. Solo en el diseño «All sounds test».' }),
+    // Built on the TV as a test widget (v0.39.0); drawn here with the placeholder look only.
+    soundctl: plannedEntry({ en: 'Sound control', es: 'Control de sonido' },
+      { en: 'Test widget: All sounds with buttons for the Echo speakers (play or pause, next, volume, stop, a few quick starts). Only on the “Sound control test” layout.',
+        es: 'Widget de prueba: Todo lo que suena con botones para los altavoces Echo (reproducir o pausa, siguiente, volumen, detener, unos inicios rápidos). Solo en el diseño «Sound control test».' }),
     // Built on the TV (v0.30.1, app/widgets/architecture.js): drawn here with the placeholder look; the cells below say what it really shows.
     architecture: plannedEntry({ en: 'Architecture', es: 'Arquitectura' },
       { en: 'The map of the whole system on the remote: Big picture, group diagrams, a detail drawer and the data flows. Only on the “Hub architecture” layout.',
@@ -1581,7 +1591,7 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
   })();
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'sunpath', 'ambience', 'ambiance', 'mirror', 'allsounds', 'architecture'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'sunpath', 'ambience', 'ambiance', 'mirror', 'allsounds', 'soundctl', 'architecture'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -2110,7 +2120,7 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
     'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
-    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', 'budget-lab': 'wallet', allsounds: 'music', sunpath: 'plantsun', architecture: 'sitemap' };
+    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', 'budget-lab': 'wallet', allsounds: 'music', soundctl: 'music', sunpath: 'plantsun', architecture: 'sitemap' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';

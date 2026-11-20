@@ -173,6 +173,11 @@ var HUB_CONFIG = {
     { id: 'allsounds-test', name: 'All sounds test', layout: [
       { widget: 'allsounds',     x: 0, y: 0, w: 12, h: 6 }
     ] },
+    /* A test layout: Sound control (app/widgets/soundctl.js, All sounds plus
+       the Echo controls) on its own, filling the screen. */
+    { id: 'soundctl-test', name: 'Sound control test', layout: [
+      { widget: 'soundctl',      x: 0, y: 0, w: 12, h: 6 }
+    ] },
     // Plant sun alone, to try it out (a new widget gets a layout of its own first).
     { id: 'plant-wall', name: 'Plants', layout: [
       { widget: 'sunpath',       x: 0, y: 0, w: 12, h: 6 }

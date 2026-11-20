@@ -81,7 +81,7 @@ const news = require('./news');
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
 const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach',
-  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'allsounds'];
+  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'allsounds', 'soundctl'];
 
 /* ---------- settings ---------- */
 
@@ -1283,7 +1283,7 @@ const HELP = [
   '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying,',
   '                              today (the clock), awws, awws-visits, awws-agenda, awws-todo,',
   '                              awws-reach, awws-money, budget-room, budget-card, budget-goals,',
-  '                              budget-lab, investments or allsounds (the test widget)',
+  '                              budget-lab, investments, allsounds or soundctl (the test widgets)',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',

@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.22.3, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.23.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -169,7 +169,7 @@ Server 0.18.0 keeps one more optional section, `investments` (the portfolio tota
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.22.3` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.23.0` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 
@@ -576,7 +576,7 @@ Commands: `./hub allsounds status` (state, source, speaker, title and artist), `
 
 **Not tested yet (written from how AMP is documented):** the spoken commands on the `everywhere` group, whether AMP's `custom` voice commands include "pause" and "resume" for Audible, and the exact words AMP needs for Pandora and Amazon Music with no query.
 
-**Limits and the log.** At most 10 commands in 10 seconds (`Too many Echo commands; wait a few seconds.`). The log gets fixed words and target keys only, never a query, a speaker's name or a title: `echo: started Audible on show`, `echo: pause on dot (voice)`, `echo: volume on show`, `echo: label cleared on show (other playback)` (also `(timeout)`, `(stop)`), `echo: Home Assistant refused the token (401)`. The control API is `GET /api/echo` and `POST /api/echo` (`{ action, target?, app?, query?, level? }`); the TV cannot reach it. The mailbox commands are `echo.status`, `echo.start`, `echo.pause`, `echo.resume`, `echo.next`, `echo.stop` and `echo.volume`.
+**Limits and the log.** At most 10 commands in 10 seconds (`Too many Echo commands; wait a few seconds.`). The log gets fixed words and target keys only, never a query, a speaker's name or a title: `echo: started Audible on show`, `echo: pause on dot (voice)`, `echo: volume on show`, `echo: label cleared on show (other playback)` (also `(timeout)`, `(stop)`), `echo: Home Assistant refused the token (401)`. The control API is `GET /api/echo` and `POST /api/echo` (`{ action, target?, app?, query?, level? }`); the TV cannot reach it. The Sound control widget (hub v0.39.0, server 0.23.0) uses its own screen route instead, `POST /echo/run` (`{ action, target?, app?, level?, step? }`): presets only (`audible`, `pandora`, `amazon-music`, `kera`, `news`; no `tunein`, no query, unknown fields refused), `volume` takes `step: "up"|"down"` or `level` 0 to 100, a foreign Origin gets 403, more than 6 presses in 5 seconds gets 429, and the reply is only `{ ok, message }` (no address or token). The mailbox commands are `echo.status`, `echo.start`, `echo.pause`, `echo.resume`, `echo.next`, `echo.stop` and `echo.volume`.
 
 ## Weekly health report (server 0.15.0)
 
@@ -616,7 +616,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.22.3 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.23.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

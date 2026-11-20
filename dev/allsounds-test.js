@@ -274,7 +274,7 @@ async function main() {
     const s = await open(pi, TEST_LAYOUT);
     await waitKind(s.page, 'playing', 'Morning Edition');
     const cfg = await s.page.evaluate(() => window.HUB_CONFIG.layouts.map((l) => l.name));
-    assert(cfg.join('|') === 'Default|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|All sounds test|Plants|Ambience test|Hub architecture', 'layouts: ' + cfg.join(', '));
+    assert(cfg.join('|') === 'Default|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|All sounds test|Sound control test|Plants|Ambience test|Hub architecture', 'layouts: ' + cfg.join(', '));
     // A one-widget layout opens straight into its window: Back to its tile, then Up.
     if (TEST_LAYOUT.length === 1 && TEST_LAYOUT[0].w === 12 && TEST_LAYOUT[0].h === 6) {
       await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'allsounds' && !window.HUB_TEST.busy()), 5000, 'the one-widget layout did not open');

@@ -68,6 +68,27 @@ function request(port, method, p, token) {
   });
 }
 
+function rawPost(port, p, body, origin, token) {
+  return new Promise((resolve, reject) => {
+    const text = JSON.stringify(body);
+    const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(text) };
+    if (origin) headers.Origin = origin;
+    if (token) headers.Authorization = 'Bearer ' + token;
+    const req = http.request({ host: '127.0.0.1', port: port, method: 'POST', path: p, headers: headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const t = Buffer.concat(chunks).toString('utf8');
+        let json = null;
+        try { json = JSON.parse(t); } catch (e) { /* not JSON */ }
+        resolve({ status: res.statusCode, text: t, json: json });
+      });
+    });
+    req.on('error', reject);
+    req.end(text);
+  });
+}
+
 function entity(id, state, attrs, minutesAgo) {
   return {
     entity_id: 'media_player.' + id, state: state, attributes: attrs || {},
@@ -185,7 +206,7 @@ async function main() {
     const inferred = allsounds.cleanData(allsounds.pickActive([allsounds.readEntity(entity('l', 'playing', { media_title: 'x', entity_picture: 'https://content-images.p-cdn.com/secret-path/x.jpg' }))]));
     assert.strictEqual(inferred.source, 'Pandora');
     assert.ok(inferred.source.length <= 30);
-    assert.deepStrictEqual(Object.keys(inferred).sort(), ['album', 'art', 'artist', 'device', 'from', 'problem', 'source', 'stale', 'started', 'state', 'title', 'v']);
+    assert.deepStrictEqual(Object.keys(inferred).sort(), ['album', 'art', 'artist', 'device', 'echos', 'from', 'problem', 'source', 'stale', 'started', 'state', 'target', 'title', 'v']);
     ['p-cdn', 'secret-path'].forEach((bad) => assert.ok(JSON.stringify(Object.assign({}, inferred, { art: '' })).indexOf(bad) < 0, bad + ' leaked beyond the picture address'));
   });
 
@@ -739,6 +760,110 @@ async function main() {
     const ours = logs.concat(allLogs).filter((l) => /^allsounds:/.test(l));
     assert.ok(ours.length > 5, 'some lines were logged');
     ours.forEach((l) => assert.ok(FIXED.some((re) => re.test(l)), 'not a fixed line: ' + l));
+  });
+
+  await check('echos: one per Echo target (volume, state, hub app), the group from its members, target, strict cleaning', async () => {
+    const ECHO_ENV = Object.assign({}, HA_ENV);
+    const h = await start({ echoEnv: ECHO_ENV });
+    ha.set('amazonmusic');
+    await h.allsounds.poll();
+    let d = (await live(h)).data;
+    assert.deepStrictEqual(d.echos.map((e) => e.key), ['show', 'dot', 'everywhere']);
+    const show = d.echos[0];
+    assert.deepStrictEqual([show.name, show.state, show.volume, show.app], ["Ian's Echo Show", 'playing', 40, '']);
+    assert.deepStrictEqual([d.echos[1].state, d.echos[1].volume], ['idle', 40]);
+    assert.deepStrictEqual([d.echos[2].name, d.echos[2].state, d.echos[2].volume, d.echos[2].app], ['Everywhere', 'playing', -1, '']);
+    assert.strictEqual(d.target, 'show');
+    assert.strictEqual(d.v, 1);
+    // Paused: the group says paused; nothing playing: idle; an unlisted speaker is off.
+    ha.set('npr');
+    await h.allsounds.poll();
+    d = (await live(h)).data;
+    assert.deepStrictEqual([d.echos[0].state, d.echos[2].state, d.target], ['idle', 'idle', '']);
+    // The hub's label shows as the app.
+    const lbl = await rawPost(h.port, '/api/echo', { action: 'start', app: 'audible', target: 'show' }, null, TOKEN);
+    assert.strictEqual(lbl.json.ok, true);
+    await h.allsounds.poll();
+    d = (await live(h)).data;
+    assert.deepStrictEqual([d.echos[0].app, d.echos[0].state, d.target], ['Audible', 'playing', 'show']);
+    // The living room house has no show or dot: both are off, group idle.
+    ha.set('radio');
+    await h.allsounds.poll();
+    d = (await live(h)).data;
+    assert.ok(d.echos.length === 3 && d.echos[0].state !== undefined);
+    // Strict cleaning.
+    const c = allsounds.cleanData({ state: 'idle', echos: [
+      { key: 'ok-1', name: 'N'.repeat(90), state: 'weird', volume: 250, app: 'A'.repeat(50), extra: 1 },
+      { key: 'Bad Key', name: 'x' }, { key: 'ok-1', name: 'dup' }, { key: 'v', name: 'v', volume: 'loud' }, null, 5
+    ].concat(Array.from({ length: 12 }, (_, i) => ({ key: 'k' + i, name: 'n' }))), target: 'a b' });
+    assert.strictEqual(c.echos.length, 8);
+    assert.deepStrictEqual(Object.keys(c.echos[0]).sort(), ['app', 'key', 'name', 'state', 'volume']);
+    assert.deepStrictEqual([c.echos[0].state, c.echos[0].volume, c.echos[0].name.length <= 60, c.echos[0].app.length <= 30], ['off', 100, true, true]);
+    assert.strictEqual(c.echos[1].volume, -1);
+    assert.strictEqual(c.target, '');
+    assert.deepStrictEqual(allsounds.cleanData({ state: 'notset', echos: [{ key: 'a', name: 'a' }] }).echos, []);
+    assert.deepStrictEqual(allsounds.notsetData().echos, []);
+    await stop(h);
+    // Not set up: no echos.
+    const n = await start({ allsoundsEnv: {}, echoEnv: {} });
+    assert.deepStrictEqual((await live(n)).data.echos, []);
+    await stop(n);
+  });
+
+  await check('POST /echo/run from a screen: presets only, origins, rate limit, the reply carries no address or token, the log no names', async () => {
+    const h = await start({ echoEnv: HA_ENV, origins: ['http://tv.test'], echoScreenMax: 100 });
+    ha.set('amazonmusic');
+    ha.services.length = 0;
+    const post = (body, origin) => rawPost(h.port, '/echo/run', body, origin || 'http://tv.test');
+    let r = await post({ action: 'pause', target: 'show' });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.ok, true);
+    assert.deepStrictEqual(Object.keys(r.json).sort(), ['message', 'ok']);
+    assert.deepStrictEqual(ha.services.map((x) => [x.service, x.body.entity_id]), [['media_pause', 'media_player.ian_s_echo_show']]);
+    r = await post({ action: 'start', app: 'kera', target: 'dot' });
+    assert.strictEqual(r.json.ok, true);
+    assert.strictEqual(ha.services[1].body.media_content_id, 'KERA 90.1');
+    r = await post({ action: 'volume', step: 'up' });
+    assert.strictEqual(r.json.ok, true);
+    assert.strictEqual(ha.services[2].service, 'volume_up');
+    r = await post({ action: 'volume', level: 35, target: 'show' });
+    assert.strictEqual(ha.services[3].body.volume_level, 0.35);
+    const n = ha.services.length;
+    const refused = [
+      { action: 'start', app: 'pandora', query: 'jazz' }, { action: 'start', app: 'tunein' }, { action: 'start', app: 'tunein', query: 'x' },
+      { action: 'pause', query: 'x' }, { action: 'volume', level: 101 }, { action: 'volume', level: -1 }, { action: 'volume', level: 4.5 },
+      { action: 'volume', level: '40' }, { action: 'volume', step: 'sideways' }, { action: 'volume' }, { action: 'volume', step: 'up', level: 3 },
+      { action: 'pause', target: 'garage' }, { action: 'pause', target: 7 }, { action: 'explode' }, { action: 'start' }, { action: 'start', app: 'audible', step: 'up' },
+      { action: 'pause', app: 'audible' }, { action: 'stop', url: 'http://x' }, [], 'pause'
+    ];
+    for (const b of refused) {
+      const x = await post(b);
+      assert.strictEqual(x.status, 400, JSON.stringify(b) + ' answered ' + x.status);
+      assert.strictEqual(x.json.ok, false);
+    }
+    assert.strictEqual(ha.services.length, n, 'a refused request reached Home Assistant');
+    // Another site's page is refused.
+    const bad = await post({ action: 'pause' }, 'http://evil.test');
+    assert.strictEqual(bad.status, 403);
+    assert.strictEqual(ha.services.length, n);
+    // GET is not allowed.
+    assert.strictEqual((await request(h.port, 'GET', '/echo/run')).status, 405);
+    // Home Assistant refusing is a 200 with ok false and no address in it.
+    ha.serviceStatus = 500;
+    r = await post({ action: 'next', target: 'show' });
+    ha.serviceStatus = 0;
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.ok, false);
+    [ha.token, ha.url, '127.0.0.1:' + ha.url.split(':').pop(), 'media_player'].forEach((x) => assert.ok(JSON.stringify(r.json).indexOf(x) < 0, 'the reply has ' + x));
+    await stop(h);
+    // Too fast: the rate limit answers 429 (6 in 5 seconds).
+    const h2 = await start({ echoEnv: HA_ENV, origins: ['http://tv.test'] });
+    let got429 = 0;
+    for (let i = 0; i < 9; i++) { const x = await rawPost(h2.port, '/echo/run', { action: 'volume', step: 'down' }, 'http://tv.test'); if (x.status === 429) got429++; }
+    assert.ok(got429 >= 3, 'no 429 after a burst: ' + got429);
+    await stop(h2);
+    const text = allLogs.join('\n');
+    ['Ian', 'Echo Show', 'KERA 90.1', 'jazz', 'media_player', ha.token, ha.url].forEach((x) => assert.ok(text.indexOf(x) < 0, 'the log has "' + x + '"'));
   });
 
   await ha.close();
