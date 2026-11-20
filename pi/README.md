@@ -83,7 +83,7 @@ From server 0.21.0 and hub v0.37.0 the TV can play audio:
 - `./hub stop`: stops it.
 - `./hub news`: plays the newest **NPR News Now** newscast, NPR's five minute summary that is posted every hour. The Pi reads NPR's public feed (`https://feeds.npr.org/500005/podcast.xml`, no account or key), picks the newest episode by date, follows NPR's tracking redirects (prfx.byspotify.com, podtrac) to the MP3 itself and sends that final address as `play` (if the redirects can't be followed in 8 s it sends the feed's address and the TV tries); the terminal says which one, for example `NPR News Now, 7pm ET, November 19. Sent. 1 screen showed it.` The code is `news.js`; tests are `node pi/news-test.js`.
 
-The hub has to be open (`./hub status` shows the screen). The TV's browser may refuse to start sound that no key press asked for. To get ahead of that, the first key press after the hub loads plays a silent blip, which unlocks sound for later plays. If the TV still refuses, the hub shows "Press any button on the remote to start the sound", and the next key press within 10 minutes starts it (no need to send it again).
+The hub has to be open (`./hub status` shows the screen). The TV's browser may refuse to start sound that no key press asked for. To get ahead of that, the first key press after the hub loads plays a silent blip, which unlocks sound for later plays. If the TV still refuses, the hub shows "Press any button on the remote to start the sound", and the next key press within 10 minutes starts it (no need to send it again). Switching layouts loads the hub afresh; sound that was playing carries on from where it was (hub v0.38.4). The All sounds test widget shows what the TV itself plays first, with "Living room TV" as the speaker.
 
 ### To-do notes
 

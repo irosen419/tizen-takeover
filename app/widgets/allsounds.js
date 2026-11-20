@@ -114,6 +114,25 @@
     var d = data;
     var v = { kind: 'waiting', song: false, label: '', title: '', sub: '', album: '', source: '', device: '', art: '', msg: '', hint: '' };
 
+    // Sound the TV itself plays (./hub play, ./hub news) comes first: the
+    // hub knows it directly, with or without the Pi.
+    var tv = null;
+    try { tv = window.HUB_AUDIO && typeof window.HUB_AUDIO.now === 'function' ? window.HUB_AUDIO.now() : null; } catch (e) { tv = null; }
+    if (tv && tv.state) {
+      v.kind = tv.state === 'playing' ? 'playing' : 'paused';
+      v.song = true;
+      v.label = v.kind === 'playing' ? T('playing', 'Now playing') : T('paused', 'Paused');
+      // "NPR News Now, 8pm ET, November 19": the show as the title, the
+      // rest on the line below, like a song and its artist.
+      var full = str(tv.title, 200);
+      var cut = full.indexOf(', ');
+      v.title = (cut > 0 ? full.substring(0, cut) : full) || T('tvSound', 'Sound on the TV');
+      v.sub = cut > 0 ? full.substring(cut + 2) : '';
+      v.device = T('tv', 'Living room TV');
+      v.note = tv.state === 'waiting' ? T('tvWaiting', 'Press any button to start it') : '';
+      return v;
+    }
+
     if (!live || liveState === 'off') {
       v.kind = 'update';
       v.msg = T('liveOff', 'Live updates are off');
@@ -473,6 +492,9 @@
         }));
         ctx.live.onStatus(safe(function () { refresh(false); }));
       }
+      try {
+        if (window.HUB_AUDIO && typeof window.HUB_AUDIO.onChange === 'function') window.HUB_AUDIO.onChange(safe(function () { refresh(false); }));
+      } catch (e) { /* the TV's own sound simply doesn't show */ }
       try {
         var L = window.HUB_I18N;
         if (L && typeof L.onChange === 'function') L.onChange(safe(onLang));

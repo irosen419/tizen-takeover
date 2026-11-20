@@ -598,6 +598,19 @@ async function checkPlay() {
   await page.keyboard.press('Shift');
   await until(() => playing(page), 5000, 'the key press did not start it');
   await until(async () => (await look.toast(page)) === 'Playing: NPR News Now, 7pm ET', 3000, 'no Playing toast');
+  // A layout switch loads the page afresh: the sound carries on from where it
+  // was. This browser refuses sound on a fresh page until a key (the real TV
+  // let ./hub news play straight away), so here it waits for one key press.
+  await sleep(1500);
+  await page.reload();
+  await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 10000 });
+  await until(async () => (await look.toast(page)) === 'Press any button on the remote to start the sound', 5000, 'the sound was not picked up again after the page loaded afresh');
+  assert(JSON.stringify(await page.evaluate(() => window.HUB_AUDIO.now())) === JSON.stringify({ state: 'waiting', title: 'NPR News Now, 7pm ET' }), 'HUB_AUDIO.now() while waiting');
+  await page.keyboard.press('Shift');
+  await until(() => playing(page), 5000, 'the sound did not carry on after the page loaded afresh');
+  await until(() => page.evaluate(() => window.__hubAudio.currentTime > 1), 4000, 'it started again from the beginning');
+  assert(JSON.stringify(await page.evaluate(() => window.HUB_AUDIO.now())) === JSON.stringify({ state: 'playing', title: 'NPR News Now, 7pm ET' }), 'HUB_AUDIO.now() after the reload');
+  await until(async () => (await look.state(page)) === 'live', 10000, 'not live after the reload');
   r = await command('stop');
   assert(r.delivered === 1, 'stop: ' + JSON.stringify(r));
   await until(() => page.evaluate(() => window.__hubAudio.paused && !window.__hubAudio.getAttribute('src')), 3000, 'stop did not stop it');
