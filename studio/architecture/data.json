@@ -3138,7 +3138,7 @@
      "summary": "Five Google calendars, read by the Pi through each calendar's secret iCal address and shown in the Pi's time zone.",
      "details": [
       "The five are Ian, Ember, Health, A World Worth Saving and School Visits, each with an optional color in pi/.env. The secret addresses are keys to the calendars, so they are never shown or logged. The Pi parses them itself, repeats included, from yesterday to 60 days ahead.",
-      "The same calendars are reached a second way by the to-do converter, through the Google Calendar connector in a Claude thread."
+      "The to-do converter (pi/todoconvert.js) reads the same events inside each refresh, on the Pi."
      ],
      "files": [
       "pi/calendar.js",
@@ -3539,14 +3539,14 @@
      "title": "To-do converter",
      "kind": "task",
      "status": "live",
-     "summary": "Runs at 6:41 AM and 6:41 PM Central: turns Google Calendar 'TODO' events into hub to-dos through the mailbox.",
+     "summary": "Runs inside the Pi's calendar refresh (no Claude task): turns Google Calendar 'TODO' events into hub to-dos.",
      "details": [
-      "It fires into its own long-lived thread, not a fresh session, because fresh sessions get no Google Calendar connector. Title prefix sets the level: 'TODO!:' must, 'TODO:' optional, 'TODO~:' coming up. It sends todo.add, with notes from the event description.",
-      "Writes: one mailbox note per new to-do, then the Pi's to-do list. A plain 'TODO:' event is deleted after converting; '!' and '~' events stay on the calendar."
+      "Pi code (pi/todoconvert.js), run on every calendar refresh, about every 5 minutes. Title prefix sets the level: 'TODO!:' must, 'TODO:' optional, 'TODO~:' coming up (a trailing number is its lead in days). Notes come from the event description.",
+      "Writes: the Pi's to-do list and a small ledger (data/todo-converter.json) so nothing is added twice. Nothing is deleted in Google: a converted plain 'TODO:' event is hidden from the hub calendar; '!' and '~' events stay visible."
      ],
      "files": [
-      "pi/mailbox.js",
-      "pi/CLAUDE.md"
+      "pi/todoconvert.js",
+      "pi/calendar.js"
      ],
      "talksTo": [
       {
@@ -3556,7 +3556,7 @@
       },
       {
        "to": "cloud.r2",
-       "label": "drops todo.add notes",
+       "label": "no longer used (was todo.add notes)",
        "dir": "out"
       }
      ],
@@ -4590,7 +4590,7 @@
     },
     {
      "node": "sched.todo-convert",
-     "say": "From the cloud: at 6:41 AM and PM a task turns TODO: calendar events into todo.add notes"
+     "say": "On the Pi: each calendar refresh turns TODO: events into to-dos and hides the plain ones"
     },
     {
      "node": "pi.mailbox",
@@ -5203,7 +5203,7 @@
     "h": 110,
     "title": "Scheduled tasks",
     "lines": [
-     "To-do converter, AWWS sync,",
+     "AWWS sync (the to-do converter now runs on the Pi),",
      "weekly code and Pi audits"
     ]
    },
