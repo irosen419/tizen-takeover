@@ -71,13 +71,18 @@ function create(o) {
     }
   }
 
-  const keyOf = (ev, date) => 'cal:ics-' + ev.id + '@' + date;
+  // A one-off event keeps its key when it is moved to another day; a repeating
+// one needs the day (each occurrence is its own to-do).
+const keyOf = (ev, date) => 'cal:ics-' + ev.id + (ev._rec ? '@' + date : '');
+  const knownKey = (ev, date) => has(keyOf(ev, date)) || has('cal:ics-' + ev.id + '@' + date) || has('cal:ics-' + ev.id);
+  const has = (k) => Object.prototype.hasOwnProperty.call(keys, k);
+  let lastFailed = 0;
 
   // True for a converted TODO: event, so the calendar view skips it.
   function hides(ev) {
     if (!ev || !/^TODO:/.test(ev.title || '')) return false;
     const d = calendar.eventDay(ev, tz);
-    return d !== null && Object.prototype.hasOwnProperty.call(keys, keyOf(ev, d));
+    return d !== null && knownKey(ev, d);
   }
 
   // events: freshly read events (with e.notes text and e._rec). Adds what is
@@ -95,8 +100,8 @@ function create(o) {
     const adds = [];
     events.forEach((ev) => {
       const p = parseTitle(ev.title);
-      if (!p || ev.guestCount) return;
-      if (p.kind === 'optional' && ev._rec) return;
+      if (!p) return;
+      if (p.kind === 'optional' && (ev._rec || ev.guestCount)) return;
       const date = calendar.eventDay(ev, tz);
       if (date === null) return;
       const away = calendar.parseDayText(date) - today;
@@ -104,34 +109,36 @@ function create(o) {
       if (away < 0 || away > lead) return;
       const key = keyOf(ev, date);
       const title = cut(p.kind === 'optional' ? p.text : (p.kind === 'must' ? 'TODO!: ' : 'TODO~: ') + p.text, MAX_TITLE);
-      if (keys[key] || have.has(key) || have.has(date + '\n' + title)) { count.seen++; return; }
+      const same = date + '\n' + title;
+      if (knownKey(ev, date) || have.has(key) || have.has(same)) { count.seen++; return; }
+      have.add(key); have.add(same); // the same event in two calendars, or twice in one feed
       const tail = ' [' + key + ']';
       const raw = { title: title, due: date, level: p.kind, notes: '' };
       if (p.kind === 'passive' && p.lead !== null) raw.lead = p.lead;
       const desc = String(ev.notes || '').replace(/\s+/g, ' ').trim();
       raw.notes = (cut(desc, MAX_NOTES - tail.length) + tail).trim();
-      adds.push({ raw: raw, key: key, kind: p.kind });
+      adds.push({ raw: raw, key: key, kind: p.kind, date: date });
     });
     if (adds.length) {
       let ok = false;
       try { ok = o.add(adds.map((a) => a.raw)) === true; } catch (e) { ok = false; }
       if (ok) {
-        const day = calendar.dayText(today);
-        adds.forEach((a) => { keys[a.key] = day; count[a.kind]++; });
+        adds.forEach((a) => { keys[a.key] = a.date; count[a.kind]++; });
       } else count.failed = adds.length;
     }
     // Forget old keys (their events are long gone).
     const old = calendar.dayText(today - KEEP_DAYS);
     let pruned = false;
     Object.keys(keys).forEach((k) => {
-      const d = k.slice(k.lastIndexOf('@') + 1);
-      if (d < old) { delete keys[k]; pruned = true; }
+      if (String(keys[k]) < old) { delete keys[k]; pruned = true; }
     });
     if (adds.length || pruned) save();
-    if (adds.length) {
+    // A full list fails every refresh: say so once, not every 5 minutes.
+    if (adds.length && !(count.failed && count.failed === lastFailed)) {
       log('Calendar to-dos: must ' + count.must + ' added, optional ' + count.optional + ' added, passive ' +
         count.passive + ' added, ' + count.seen + ' already converted, ' + count.failed + ' failed');
     }
+    lastFailed = count.failed;
     return count;
   }
 

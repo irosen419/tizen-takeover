@@ -78,7 +78,7 @@ async function main() {
     const milk = by('Buy milk');
     assert.strictEqual(milk.level, 'optional');
     assert.strictEqual(milk.due, '2026-11-21');
-    assert.ok(/^Oat, not dairy \[cal:ics-[a-z0-9]+@2026-11-21\]$/.test(milk.notes), milk.notes);
+    assert.ok(/^Oat, not dairy \[cal:ics-[a-z0-9]+\]$/.test(milk.notes), milk.notes);
     const shot = by('TODO!: Take weekly shot');
     assert.strictEqual(shot.level, 'must');
     assert.strictEqual(shot.due, '2026-11-20');
@@ -102,6 +102,17 @@ async function main() {
     assert.strictEqual(items.length, 0);
     assert.strictEqual(n.seen, 3);
     assert.strictEqual(logs.length, 0); // nothing new: no log line
+  });
+
+  await check('guests only block TODO:; a moved one-off event is not converted twice; same event in two calendars once', () => {
+    const base = { id: 'x1', title: 'TODO!: Call vet', start: '2026-11-20', end: '2026-11-21', allDay: true, guestCount: 1 };
+    const items = [];
+    const c = make(tmp(), items);
+    c.convert([base, Object.assign({}, base, { id: 'x2', guestCount: 0, title: 'TODO: Milk' }), Object.assign({}, base, { id: 'x3', guestCount: 0, title: 'TODO: Milk' })], NOW);
+    assert.deepStrictEqual(items.map((i) => i.title).sort(), ['Milk', 'TODO!: Call vet']);
+    items.length = 0;
+    c.convert([Object.assign({}, base, { start: '2026-11-21', end: '2026-11-22' })], NOW);
+    assert.strictEqual(items.length, 0);
   });
 
   await check('does not duplicate a to-do already there (same title and due, or same mark)', () => {
