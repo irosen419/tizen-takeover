@@ -159,6 +159,7 @@
     cross: 'M7 7l10 10M17 7L7 17',
     plus: 'M12 5v14M5 12h14',
     camera: 'M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.5-2h5.6l1.5 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z M12 10a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z',
+    edit: 'M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z M14.5 7.5l3 3',
     bars: 'M5 6v12 M8 6v12 M10.5 6v12 M14 6v12 M16.5 6v12 M19 6v12',
     basket: 'M4 9h16l-1.6 9.2a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8z M8.5 9l3.5-5 3.5 5 M9.5 13v3 M14.5 13v3'
   };
@@ -203,7 +204,9 @@
   function productOf(ctx, upc) {
     if (!upc) return null;
     var all = ctx.products ? ctx.products() || {} : {};
-    return all[upc] || scanned[upc] || null;
+    var mine = scanned[upc], pi = all[upc];
+    if (mine && (!pi || (mine.updatedAt || 0) >= (pi.updatedAt || 0))) return mine;
+    return pi || mine || null;
   }
 
   function renderTouch(host, ctx) {
@@ -370,8 +373,10 @@
       }
       var text = el('span', 'gx-text');
       text.appendChild(el('span', 'gx-name', item.name));
+      // A scanned row always has a second line: "Brand · size", or a hint to add the brand.
       var sub = p ? [p.brand, p.size].filter(function (x) { return x; }).join(' · ') : '';
-      if (sub) text.appendChild(el('span', 'gx-sub', sub));
+      if (sub && p.brand) text.appendChild(el('span', 'gx-sub', sub));
+      else if (item.upc) text.appendChild(el('span', 'gx-sub is-missing', sub ? sub + ' · ' + T('grocery.noBrand', 'no brand yet') : T('grocery.noBrand', 'no brand yet')));
       tick.appendChild(text);
       var del = el('button', 'gx-del');
       del.type = 'button';
@@ -384,6 +389,16 @@
         showToast(item.name);
       });
       li.appendChild(tick);
+      if (item.upc && p && !item.pending && root.HUB_SCAN) {
+        var edit = el('button', 'gx-edit');
+        edit.type = 'button';
+        edit.setAttribute('aria-label', T('grocery.editItem', 'Edit {name}', { name: item.name }));
+        edit.appendChild(icon('edit'));
+        edit.addEventListener('click', function () {
+          root.HUB_SCAN.open(ctx, { edit: p, returnFocus: edit, onSaved: function (saved) { scanned[saved.upc] = saved; if (ctx.refresh) ctx.refresh(); } });
+        });
+        li.appendChild(edit);
+      }
       li.appendChild(del);
       rows[item.id] = li;
       return li;

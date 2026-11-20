@@ -1569,6 +1569,11 @@
     'scan.saving': 'Guardando…',
     'scan.saveFailed': 'No se guardó: {why}',
     'scan.cancel': 'Cancelar',
+    'scan.editTitle': 'Corregir los datos',
+    'scan.editText': 'Agrega la marca o una foto; la lista se actualiza.',
+    'scan.editHead': 'Editar producto',
+    'grocery.noBrand': 'aún sin marca',
+    'grocery.editItem': 'Editar {name}',
     /* The TV tile and panel (same file; English there). */
     'grocery.titleShort': 'Súper',
     'grocery.left': 'quedan {n}',

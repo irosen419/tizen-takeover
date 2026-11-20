@@ -208,6 +208,8 @@
       // Any other call to the Pi (product lookup, save): resolves to its JSON.
       call: request,
       products: function () { return store.products; },
+      // Draws again now and asks the Pi for its newest copy.
+      refresh: function () { refresh(); poll(); },
       reduced: reduced
     };
     var inst = w.renderTouch(host, ctx) || {};
