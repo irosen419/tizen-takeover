@@ -648,6 +648,14 @@ async function main() {
       } finally { await lt.ctx.close(); }
     });
 
+    await check('Apps: Samsung placeholders (an id ending in "dummy") never stand for an app: Apple TV is the real one', async () => {
+      const lt = await env.newPage({});
+      try {
+        const v = await lt.evaluate(() => { const h = window.HUB_LINKTEST._test.state().host; return { a: h.findApp(['Apple TV', 'Apple TV+']), d: h.apps().filter((x) => /dummy$/.test(x.id)).length }; });
+        assert(v.d === 1 && v.a && v.a.id === '3201807016597', JSON.stringify(v));
+      } finally { await lt.ctx.close(); }
+    });
+
     await check('Watch link test: the Prime id box keeps a typed id and refuses a bad one', async () => {
       const lt = await env.newPage({});
       try {

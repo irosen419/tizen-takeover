@@ -77,7 +77,7 @@ Run `./hub help` for every command.
 
 ## Sound on the TV
 
-From server 0.23.0 and hub v0.37.0 the TV can play audio:
+From server 0.21.0 and hub v0.37.0 the TV can play audio:
 
 - `./hub play https://example.com/doorbell.mp3 --title "Doorbell"`: the TV plays it and shows `Playing: Doorbell`. Any http or https audio address the TV's browser can play (MP3 is safest). A new `play` replaces what was playing.
 - `./hub stop`: stops it.
@@ -169,7 +169,7 @@ Server 0.18.0 keeps one more optional section, `investments` (the portfolio tota
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.22.1` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.22.2` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 
@@ -580,7 +580,7 @@ Commands: `./hub allsounds status` (state, source, speaker, title and artist), `
 
 **Targets.** `show`, `dot` and `everywhere` (Alexa's group of all speakers) by default; the first is used when `--on` is left out. To use other speakers, set `ECHO_TARGETS` in `.env` as `key=media_player.id` pairs (key: letters a-z, digits and `-`, up to 20 characters; up to 8; the first is the default), for example `ECHO_TARGETS=show=media_player.ian_s_echo_show,dot=media_player.ian_s_echo_dot,everywhere=media_player.everywhere`, then `docker compose restart hub`. A target called `everywhere` (or `media_player.everywhere`) is a group: one call goes to it, and every other target counts as a member of it.
 
-**What "All sounds" shows.** Amazon does not tell AMP what Audible or the news is playing, and AMP keeps the last song's title. So when the hub starts something, it remembers that (a label in `data/echo.json`, mode 600, no query saved) and All sounds shows `Audible` (or `Alexa news`) on that speaker with no title and "started by the hub", instead of the stale song. There is no book title or chapter: Amazon does not send one. For Pandora, Amazon Music and TuneIn the real title shows as usual and the label only supplies the app's name (and `KERA 90.1` for the first seconds). Started on `everywhere`, the device reads "Everywhere".
+**What "All sounds" shows.** Amazon does not tell AMP what Audible or the news is playing, and AMP keeps the last song's title. So when the hub starts something, it remembers that (a label in `data/echo.json`, mode 600, no query saved) and All sounds shows `Audible` (or `Alexa news`) on that speaker with no title and "started by the hub", instead of the stale song. On Ian's Echo Show (2026-11-20) Alexa Media Player does report an Audible book: its title, the author as `By ...` and the cover. All sounds then names it Audible (server 0.22.1) and keeps those details with the "started" line (0.22.2); only a stale song is hidden. An Echo still claiming Spotify "playing" while Spotify itself says paused counts as paused (0.22.2). For Pandora, Amazon Music and TuneIn the real title shows as usual and the label only supplies the app's name (and `KERA 90.1` for the first seconds). Started on `everywhere`, the device reads "Everywhere".
 
 **When the label clears.** On `./hub echo stop`; when something else clearly starts on that speaker (a new picture or title, Spotify, another app); after 6 hours; and for Pandora, Amazon Music and TuneIn when the speaker has been idle for 10 minutes.
 
