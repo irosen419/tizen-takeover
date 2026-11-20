@@ -685,7 +685,7 @@
   }
 
   var CAL_SKIP = { updatedAt: true };
-  var SNAP_SKIP = { sentAt: true, receivedAt: true, asOf: true };
+  var SNAP_SKIP = { sentAt: true, receivedAt: true, asOf: true, resync: true };
 
   function onCal(d) {
     if (!validCal(d)) return;

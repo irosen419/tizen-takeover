@@ -152,7 +152,9 @@ def board_snapshot():
             it['done'] = True
             it['doneAt'] = iso(d)
         if it['title']:
-            items.append((SEC[sec], bool(r.get('done')), r.get('order', 999), it))
+            order = r.get('order')
+            order = order if isinstance(order, (int, float)) and not isinstance(order, bool) else 999
+            items.append((SEC[sec], bool(r.get('done')), order, it))
     items.sort(key=lambda x: (x[0], x[1], x[2]))
     items = [x[3] for x in items][:200]
 

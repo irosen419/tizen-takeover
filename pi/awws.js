@@ -503,6 +503,12 @@ function merge(current, normalized, nowMs) {
       data[k] = cur[k];
     }
   });
+  // A waiting "Sync now" is answered only by a snapshot that carries the board
+  // (todos) and was built after the request; a money-only or older one keeps it.
+  const rs = isObj(cur.resync) && isTime(field(cur.resync, 'requestedAt')) ? cur.resync : null;
+  if (rs && !(has(sent, 'todos') && sent.todos !== null && Date.parse(normalized.sentAt) >= Date.parse(rs.requestedAt))) {
+    data.resync = { requestedAt: rs.requestedAt };
+  }
   const bytes = bytesOf(data);
   if (bytes > MAX_BYTES) {
     throw bad('with this snapshot the Pi would hold ' + sizeText(bytes) + ' (' + commas(bytes) + ' bytes); at most 48 KB (49,152 bytes). Nothing was stored');
@@ -512,8 +518,8 @@ function merge(current, normalized, nowMs) {
 }
 
 // A manual "sync now": remembers when it was asked, next to the sections
-// (not inside the snapshot: a new snapshot always clears it, because merge()
-// builds the stored data without it). Asking again while one is waiting keeps
+// (not inside the snapshot). merge() clears it when a snapshot with the board
+// (todos), built after the request, is stored. Asking again while one is waiting keeps
 // the first time. Returns { data, changed, requestedAt, already }.
 function requestResync(current, nowMs) {
   const now = typeof nowMs === 'number' ? nowMs : Date.now();
