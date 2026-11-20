@@ -8,5 +8,11 @@
   "hubPage": "app/hub.html",
   "serviceFile": "service.js",
   "keys": [],
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "test": "node dev/run-affected.js",
+    "test:full": "node dev/run-affected.js --full",
+    "version:check": "node dev/bump.js --check",
+    "bump": "node dev/bump.js"
+  }
 }
