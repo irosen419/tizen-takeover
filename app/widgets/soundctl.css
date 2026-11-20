@@ -329,46 +329,91 @@
   text-overflow: ellipsis;
 }
 .sc-rbody { flex: 1 1 0; min-width: 0; }
+.sc-rlabel.is-wrap { white-space: normal; font-size: 0.92rem; line-height: 1.3; letter-spacing: 0.03em; max-height: 3.9em; word-wrap: break-word; }
 
-/* The speaker picker: one rounded track, the chosen segment filled with a
-   tinted neutral, the focused one ringed in white. A dot only for a speaker
-   that is playing. */
-.sc-row-spk .sc-rbody { display: flex; }
+/* The speaker picker: one rounded track of segments with two lines each (the
+   name, and under it what plays or "Paused" / "Idle" / "Off"). Three states
+   that never mix: SELECTED is a solid tinted fill with bright text, the others
+   are transparent with dimmer text, FOCUSED is the white ring (a segment can
+   be both). A green dot only for a speaker that is playing. */
+.sc-row-spk .sc-rbody { display: flex; align-items: center; }
 .sc-seg {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 100%;
   display: flex;
-  padding: 0.18rem;
+  padding: 0.1rem;
   border-radius: 2rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 0.05rem solid rgba(255, 255, 255, 0.12);
+  border: 0.05rem solid rgba(255, 255, 255, 0.1);
 }
 .sc-spk {
   flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
-  padding: 0.3rem 1.05rem 0.35rem;
+  padding: 0.1rem 0.8rem 0.15rem 0.7rem;
   border: var(--edge) solid transparent;
   border-radius: 2rem;
-  font-size: 1.05rem;
-  line-height: 1.35;
+  background: transparent;
   color: var(--text-2);
   white-space: nowrap;
 }
-.sc-spk.is-sel { background: rgba(214, 224, 240, 0.16); color: var(--text); }
-.sc-spk.is-focused { border-color: var(--focus); color: var(--text); }
-.sc-spk-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-spk.is-sel { background: rgba(120, 170, 235, 0.34); color: #fff; }
+.sc-spk.is-focused { border-color: var(--focus); color: #fff; }
+.sc-spk-tx { flex: 0 1 auto; min-width: 0; max-width: 12.5rem; display: flex; flex-direction: column; }
+.sc-spk-name { display: block; min-width: 0; font-size: 1.05rem; line-height: 1.25; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-spk-sub { display: block; min-width: 0; font-size: 0.85rem; line-height: 1.25; opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-spk.is-sel .sc-spk-sub { opacity: 0.95; }
 .sc-dot {
   flex: 0 0 auto;
   display: block;
-  width: 0.6rem;
-  height: 0.6rem;
-  margin-right: 0.55rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.45rem;
   border-radius: 50%;
-  background: #78c896;
+  background: transparent;
 }
+.sc-dot.is-on { background: #78c896; }
+/* Which speaker the page shows, in words, beside the picker. */
+.sc-showing {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 0.9rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  max-height: 2.6em;
+  color: var(--text-2);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  word-wrap: break-word;
+}
+
+/* Everywhere: one row for each speaker where the song would be. */
+.sc-main.is-members { display: block; }
+.sc-members { width: 100%; }
+.sc-mrow { display: flex; align-items: center; height: 3.1rem; margin-bottom: 0.2rem; min-width: 0; }
+.sc-mrow:last-child { margin-bottom: 0; }
+.sc-members .sc-art-mini { flex: 0 0 auto; width: 2.6rem; height: 2.6rem; margin-right: 0.9rem; }
+.sc-members .sc-art-mini .sc-face { border-radius: 0.5rem; }
+.sc-mtext { flex: 1 1 0; min-width: 0; }
+.sc-mname { font-size: 1.1rem; line-height: 1.3; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-mdetail { font-size: 0.92rem; line-height: 1.3; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-mstate { flex: 0 0 auto; width: 6.4rem; padding: 0 0.6rem; font-size: 0.92rem; line-height: 1.3; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.sc-mstate.sc-st-playing { color: #78c896; }
+.sc-mrow.is-off .sc-mname, .sc-mrow.is-off .sc-mdetail { color: var(--text-2); }
+.sc-mctl { flex: 0 0 auto; width: 13.2rem; display: flex; align-items: center; justify-content: flex-end; }
+.sc-mt { width: 2.2rem; height: 2.2rem; margin-right: 0.6rem; }
+.sc-mt .sc-tc-icon { width: 1.1rem; height: 1.1rem; }
+.sc-mstep { height: 2.2rem; padding: 0 0.25rem; }
+.sc-mstep .sc-sb { width: 1.8rem; height: 1.8rem; }
+.sc-mstep .sc-vol { min-width: 3.1rem; font-size: 1rem; }
+.sc-members.is-compact .sc-mrow { height: 2.6rem; margin-bottom: 0.1rem; }
+.sc-members.is-compact .sc-art-mini { width: 2.1rem; height: 2.1rem; }
+.sc-members.is-compact .sc-mt, .sc-members.is-compact .sc-mstep { height: 2rem; }
+.sc-members.is-compact .sc-mt { width: 2rem; }
+.sc-members.is-lean .sc-art-mini, .sc-members.is-lean .sc-mdetail { display: none; }
+.sc-members.is-lean .sc-mrow { height: 2.3rem; }
 
 /* The transport: circles over their captions. */
 .sc-trans { display: flex; flex-direction: row; align-items: flex-start; }
@@ -471,8 +516,11 @@
 .sc-ctl.is-tight { margin-top: 0.6rem; padding-top: 0.6rem; }
 .sc-ctl.is-tight .sc-drow { margin-bottom: 0.4rem; }
 .sc-ctl.is-tight .sc-drow:last-child { margin-bottom: 0; }
-.sc-ctl.is-tighter .sc-tbox { height: 2.9rem; }
-.sc-ctl.is-tighter .sc-tc-main { width: 2.9rem; height: 2.9rem; }
+.sc-ctl.is-tighter { margin-top: 0.4rem; padding-top: 0.45rem; }
+.sc-ctl.is-tighter .sc-drow { margin-bottom: 0.3rem; }
+.sc-ctl.is-tighter .sc-drow:last-child { margin-bottom: 0; }
+.sc-ctl.is-tighter .sc-tbox { height: 2.8rem; }
+.sc-ctl.is-tighter .sc-tc-main { width: 2.8rem; height: 2.8rem; }
 .sc-ctl.is-tighter .sc-tc-next,
 .sc-ctl.is-tighter .sc-tc-stop { width: 2.3rem; height: 2.3rem; }
 .sc-ctl.is-tighter .sc-step { height: 2.3rem; }
@@ -486,7 +534,20 @@
 .panel.is-full .sc-ctl { margin-top: 1.4rem; padding-top: 1.2rem; }
 .panel.is-full .sc-drow { margin-bottom: 1rem; }
 .panel.is-full .sc-rlabel { width: 9rem; font-size: 1.05rem; }
-.panel.is-full .sc-spk { font-size: 1.3rem; padding: 0.45rem 1.4rem 0.5rem; }
+.panel.is-full .sc-spk { padding: 0.3rem 1.3rem 0.35rem 1.1rem; }
+.panel.is-full .sc-spk-name { font-size: 1.3rem; }
+.panel.is-full .sc-spk-tx { max-width: 16rem; }
+.panel.is-full .sc-spk-sub { font-size: 1rem; }
+.panel.is-full .sc-showing { font-size: 1.05rem; }
+.panel.is-full .sc-mrow { height: 4rem; }
+.panel.is-full .sc-members .sc-art-mini { width: 3.3rem; height: 3.3rem; }
+.panel.is-full .sc-mname { font-size: 1.4rem; }
+.panel.is-full .sc-mdetail, .panel.is-full .sc-mstate { font-size: 1.1rem; }
+.panel.is-full .sc-mctl { width: 17rem; }
+.panel.is-full .sc-mt { width: 2.9rem; height: 2.9rem; }
+.panel.is-full .sc-mstep { height: 2.9rem; }
+.panel.is-full .sc-mstep .sc-sb { width: 2.3rem; height: 2.3rem; }
+.panel.is-full .sc-mstep .sc-vol { font-size: 1.2rem; }
 .panel.is-full .sc-tbox { height: 5rem; }
 .panel.is-full .sc-tc-main { width: 5rem; height: 5rem; }
 .panel.is-full .sc-tc-main .sc-tc-icon { width: 2.3rem; height: 2.3rem; }

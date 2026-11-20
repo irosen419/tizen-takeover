@@ -361,6 +361,13 @@
     'soundctl.errHa': 'Home Assistant rechazó la solicitud',
     'soundctl.errBusy': 'Demasiadas pulsaciones. Prueba en un momento.',
     'soundctl.errPi': 'No se pudo conectar con la Pi. No cambió nada.',
+    'soundctl.off': 'Apagado',
+    'soundctl.stPlaying': 'Sonando',
+    'soundctl.stIdle': 'Inactivo',
+    'soundctl.nPlaying': '{n} sonando',
+    'soundctl.allSpeakers': 'Todos los altavoces',
+    'soundctl.showing': 'Mostrando {name}',
+    'soundctl.showingAll': 'Todos los altavoces',
     'soundctl.hintSpeaker': 'OK controla este altavoz',
     'soundctl.hintQuick': 'OK lo inicia en {device}',
 

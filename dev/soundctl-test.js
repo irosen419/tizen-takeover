@@ -69,17 +69,17 @@ async function check(name, fn) {
 /* ---------- servers ---------- */
 
 // withHa false: no HA_TOKEN, so All sounds is "not set up".
-async function startPi(withHa, noEcho) {
+async function startPi(withHa, noEcho, extra) {
   const port = await spare();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-sc-test-'));
   tmp.push(dir);
   const server = require(path.join(ROOT, 'pi', 'server.js'));
-  const h = server.start({
+  const h = server.start(Object.assign({
     token: TOKEN, port: port, host: '127.0.0.1', origins: [PAGE], dataDir: dir, log: false, timezone: 'America/Chicago',
     allsoundsEnv: withHa === false ? {} : { HA_URL: ha.url, HA_TOKEN: ha.token },
     echoEnv: withHa === false || noEcho ? {} : { HA_URL: ha.url, HA_TOKEN: ha.token },
     allsounds: { allowHttp: true, manual: true, timeoutMs: 400 }
-  });
+  }, extra || {}));
   await h.ready;
   const pi = { h: h, port: port, url: 'http://127.0.0.1:' + port, dir: dir };
   pis.push(pi);
@@ -251,6 +251,88 @@ async function sizeSweep(pi, s, label) {
     if (p.length) bad.push(label + ' ' + w + 'x' + h + ': ' + p.join('; '));
   }
   return bad;
+}
+
+// The annotated test guide: the page's picture with numbered callouts and a
+// legend panel beside it (a second page composes picture, lines and legend).
+async function guide(s, file, everywhere) {
+  const page = s.page;
+  const spots = await page.evaluate((all) => {
+    const sub = document.querySelector('#panel .panel-sub');
+    // The feedback note as it looks right after a press (the picture only).
+    if (sub) { sub.textContent = all ? 'Paused on Echo Dot' : 'Paused on Echo Show'; sub.style.display = ''; }
+    const R = (sel) => { const e = document.querySelector(sel); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+    const U = (a, b) => { if (!a || !b) return a || b; const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y); return { x: x, y: y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y }; };
+    let note = null;
+    if (sub && sub.firstChild) { const rg = document.createRange(); rg.selectNodeContents(sub); const r = rg.getBoundingClientRect(); note = { x: r.left, y: r.top, w: r.width, h: r.height }; }
+    return {
+      seg: U(R('.sc-seg'), R('.sc-showing')),
+      info: all ? R('.sc-members') : R('.sc-info'), rowCtl: all ? R('.sc-mrow .sc-mctl') : null,
+      toggle: R('.sc-tc-main'), step: R('.sc-trans .sc-step'), stop: R('.sc-tc-stop'), quick: R('.sc-rail'),
+      all: U(R('.sc-row-tr .sc-rlabel'), R('.sc-trans')), note: note
+    };
+  }, !!everywhere);
+  const png = await page.screenshot({ type: 'png' });
+  const W = 1920, H = 1080, LEG = 760;
+  // [number, target, title, text, side of the picture the badge sits on]
+  const items = everywhere ? [
+    [1, spots.seg, 'Speaker switch', 'Green dot = playing. Second line = what it plays, or Paused / Idle / Off. Blue fill = the one shown (here, all speakers). White ring = where the remote is. The line beside it says what is shown.', 'R'],
+    [2, spots.info, 'One row per speaker', 'Cover, name, what it plays and from where, its state, and its own Play/Pause and volume. Up and Down move between rows.', 'R'],
+    [3, spots.rowCtl, 'A row\'s own controls', 'Left and Right inside the row. OK on Pause stops only that speaker; - and + change only its volume (by 10).', 'R'],
+    [4, spots.all, 'All speakers', 'The big buttons act on every speaker: Pause, Next, Volume, Stop. Quick starts play on all speakers too.', 'R'],
+    [5, spots.quick, 'Start row', 'Audiobook, KERA 90.1, NPR newscast, Spotify, Pandora, Amazon Music. Slides sideways with the remote.', 'R'],
+    [6, spots.note, 'Feedback note', 'Sending..., then what happened ("Paused on Echo Dot"), or what went wrong. Under the title.', 'R']
+  ] : [
+    [1, spots.seg, 'Speaker switch', 'Blue fill = selected (the one shown). White ring = focused (where the remote is). Green dot = playing. Second line = what it plays, or Paused / Idle / Off. The line beside it says which speaker is shown.', 'R'],
+    [2, spots.info, 'Info area', 'What the selected speaker itself plays: state, source in brackets, title, artist, cover. Never the house-wide winner.', 'R'],
+    [3, spots.toggle, 'Play / Pause, Next', 'The big green circle is Play or Pause for the selected speaker; Next is beside it.', 'L'],
+    [4, spots.step, 'Volume', '- and + move this speaker by 10. The number changes at once, then the Pi confirms.', 'R'],
+    [5, spots.stop, 'Stop', 'Stops this speaker (its word shows when focused).', 'R'],
+    [6, spots.quick, 'Start row', 'Audiobook, KERA 90.1, NPR newscast, Spotify, Pandora, Amazon Music. Slides sideways with the remote.', 'R'],
+    [7, spots.note, 'Feedback note', 'Sending..., then what happened ("Paused on Echo Show"), or what went wrong. Under the title.', 'R']
+  ];
+  const RX = 1575, LX = 360;
+  const placed = { R: [], L: [] };
+  const live = items.filter((it) => it[1]).map((it) => ({ it: it, cy: it[1].y + it[1].h / 2 })).sort((a, b) => a.cy - b.cy);
+  live.forEach((o) => {
+    const side = o.it[4];
+    let y = o.cy;
+    const last = placed[side].length ? placed[side][placed[side].length - 1] : -100;
+    if (y < last + 46) y = last + 46;
+    placed[side].push(y);
+    o.by = y;
+  });
+  let marks = '';
+  let legend = '';
+  items.forEach((it) => {
+    const o = live.filter((l) => l.it === it)[0];
+    if (!o) return;
+    const r = it[1];
+    const left = it[4] === 'L';
+    const sx = left ? r.x - 4 : r.x + r.w + 4, sy = r.y + r.h / 2;
+    const bx = left ? LX : RX;
+    marks += '<div class="ring" style="left:' + (r.x - 4) + 'px;top:' + (r.y - 4) + 'px;width:' + (r.w + 8) + 'px;height:' + (r.h + 8) + 'px"></div>';
+    marks += '<svg class="ln"><polyline points="' + sx + ',' + sy + ' ' + (left ? bx + 40 : bx - 40) + ',' + sy + ' ' + (left ? bx + 16 : bx - 16) + ',' + o.by + '"/></svg>';
+    marks += '<div class="num" style="left:' + (bx - 16) + 'px;top:' + (o.by - 16) + 'px">' + it[0] + '</div>';
+    legend += '<div class="it"><div class="num s">' + it[0] + '</div><div><b>' + it[2] + '</b><br>' + it[3] + '</div></div>';
+  });
+  const g = await s.context.newPage();
+  await g.setViewportSize({ width: W + LEG, height: H });
+  await g.setContent('<!doctype html><meta charset="utf-8"><style>' +
+    'body{margin:0;width:' + (W + LEG) + 'px;height:' + H + 'px;background:#0e1118;font:20px/1.35 system-ui,sans-serif;color:#e8ecf4;position:relative;overflow:hidden}' +
+    'img{position:absolute;left:0;top:0;width:' + W + 'px;height:' + H + 'px}' +
+    '.ring{position:absolute;border:3px solid #ffd24a;border-radius:14px;box-sizing:border-box}' +
+    '.ln{position:absolute;left:0;top:0;width:' + W + 'px;height:' + H + 'px;pointer-events:none}.ln polyline{fill:none;stroke:#ffd24a;stroke-width:2}' +
+    '.num{position:absolute;width:32px;height:32px;border-radius:50%;background:#ffd24a;color:#1a1a1a;font-weight:700;text-align:center;line-height:32px;font-size:20px}' +
+    '.num.s{position:static;flex:0 0 32px;margin-right:14px}' +
+    '.leg{position:absolute;left:' + W + 'px;top:0;width:' + LEG + 'px;height:' + H + 'px;box-sizing:border-box;padding:28px 30px;background:#161b26;border-left:2px solid #2a3142}' +
+    '.leg h1{margin:0 0 16px;font-size:28px}.it{display:flex;margin-bottom:16px;font-size:20px}.it b{font-size:22px;color:#fff}' +
+    '</style><img src="data:image/png;base64,' + png.toString('base64') + '">' + marks + '<div class="leg"><h1>' + (everywhere ? 'Everywhere view' : 'Echo Show view') + '</h1>' + legend + '</div>');
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await g.screenshot({ path: path.join(SHOTS, file), type: 'png' });
+  await g.close();
+  // Put the note line back as it was.
+  await page.evaluate(() => { const sub = document.querySelector('#panel .panel-sub'); if (sub) sub.textContent = ' '; });
 }
 
 /* ---------- the checks ---------- */
@@ -460,16 +542,18 @@ async function main() {
 
   await check('the page and full screen: the words, the platform after the label, the speaker chip, nothing outside the panel', async () => {
     const p3 = await startPi(true);
-    await house(p3, 'radio');
+    await house(p3, 'amazonmusic');
     for (const lang of ['en', 'es']) {
       const s = await open(p3, ONLY(3, 2), { lang: lang });
-      await waitKind(s.page, 'playing', 'Morning Edition');
+      await waitKind(s.page, 'playing', 'Golden Hour Drive');
       await s.page.evaluate(() => window.HUB_TEST.openPanel('soundctl'));
       await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'soundctl' && !window.HUB_TEST.busy() && !!document.querySelector('.sc-page .sc-title')), 5000, 'the page did not open');
       const chips = await s.page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.sc-page .sc-chip'), (c) => c.textContent));
-      assert(chips.join('|') === (lang === 'en' ? 'On Living room Echo' : 'En Living room Echo'), 'chips: ' + chips.join(', '));
+      assert(chips.length === 0, 'with the controls the picker names the speaker, no chip: ' + chips.join(', '));
+      const pt = await s.page.evaluate(() => (document.querySelector('.sc-page .sc-info .sc-title') || {}).textContent);
+      assert(pt === 'Golden Hour Drive', 'the page follows the Echo Show: ' + pt);
       const plat = await s.page.evaluate(() => (document.querySelector('.sc-page .sc-label .sc-plat') || {}).textContent);
-      assert(plat === '(TuneIn)', 'platform on the page: ' + plat);
+      assert(plat === '(Amazon Music)', 'platform on the page: ' + plat);
       const head = await s.page.evaluate(() => (document.querySelector('#panel .panel-title') || {}).textContent);
       assert(head === (lang === 'en' ? 'Sound control' : 'Control de sonido'), 'panel title: ' + head);
       let bad = await problems(s.page, '.sc-page');
@@ -533,7 +617,17 @@ async function main() {
       if (cr.bottom > body.bottom + 1 || cr.top < body.top - 1) out.push('the deck leaves the panel: ' + Math.round(cr.top - body.top) + ',' + Math.round(body.bottom - cr.bottom));
       const main = document.querySelector('.sc-page .sc-main');
       const shown = getComputedStyle(main).display !== 'none';
-      if (shown) {
+      const members = main.querySelector('.sc-members');
+      if (shown && members) {
+        const mr = main.getBoundingClientRect();
+        if (members.scrollHeight > members.clientHeight + 1 && members.getBoundingClientRect().bottom > cr.top + 1) out.push('the speaker rows overlap the deck');
+        members.querySelectorAll('.sc-mrow').forEach((row) => {
+          const rr = row.getBoundingClientRect();
+          if (rr.bottom > cr.top + 1 || rr.top < mr.top - 1) out.push('a speaker row is outside its room: ' + Math.round(rr.top - mr.top) + ',' + Math.round(cr.top - rr.bottom));
+          const nm = row.querySelector('.sc-mname');
+          if (nm && nm.scrollWidth > nm.clientWidth + 1) out.push('a speaker name ends in "...": ' + nm.textContent);
+        });
+      } else if (shown) {
         const mr = main.getBoundingClientRect();
         if (mr.bottom > cr.top + 1) out.push('the song overlaps the deck');
         const art = main.querySelector('.sc-art');
@@ -553,7 +647,7 @@ async function main() {
         });
       }
       // The rail's chips may run past the edge (they move); the others stay inside.
-      const items = Array.prototype.slice.call(ctl.querySelectorAll('.f:not(.sc-q)'));
+      const items = Array.prototype.slice.call(document.querySelectorAll('.sc-page .f:not(.sc-q)'));
       items.forEach((e) => {
         const r = e.getBoundingClientRect();
         if (r.left < panel.left || r.right > panel.right || r.top < body.top - 1 || r.bottom > body.bottom + 1) out.push(e.getAttribute('data-key') + ' sticks out');
@@ -580,17 +674,17 @@ async function main() {
         }
       }
       // Text: readable, whole, on one line where it must be.
-      ctl.querySelectorAll('.sc-q-text,.sc-spk-name,.sc-rlabel,.sc-vol,.sc-tcap,.sc-sb-t').forEach((e) => {
+      document.querySelectorAll('.sc-page .sc-q-text,.sc-page .sc-spk-name,.sc-page .sc-spk-sub,.sc-page .sc-showing,.sc-page .sc-mname,.sc-page .sc-mdetail,.sc-page .sc-mstate,.sc-page .sc-rlabel,.sc-page .sc-vol,.sc-page .sc-tcap,.sc-page .sc-sb-t').forEach((e) => {
         if (e.offsetParent === null) return;
         const cs = getComputedStyle(e);
         const fs = parseFloat(cs.fontSize);
-        const min = /sc-tcap/.test(e.className) ? 0.85 : /sc-sb-t/.test(e.className) ? 1.4 : 0.92;
+        const min = /sc-tcap|sc-spk-sub/.test(e.className) ? 0.85 : /sc-sb-t/.test(e.className) ? 1.4 : 0.92;
         if (fs < min * px - 0.5) out.push(e.className + ' too small: ' + fs);
         const lh = parseFloat(cs.lineHeight);
         if (!/sc-sb-t/.test(e.className) && lh < fs * 1.24) out.push(e.className + ' line height too tight');
         if (e.scrollWidth > e.clientWidth + 1 && cs.textOverflow !== 'ellipsis') out.push(e.className + ' cut sideways: "' + e.textContent + '"');
-        if (e.scrollHeight > e.clientHeight + 1 && cs.overflow !== 'visible') out.push(e.className + ' cut at the bottom: "' + e.textContent + '"');
-        if (e.getBoundingClientRect().height > lh * 1.5 + 1) out.push(e.className + ' wraps onto two lines: "' + e.textContent + '"');
+        if (e.scrollHeight > e.clientHeight + 1 && cs.overflow !== 'visible' && !/sc-showing/.test(e.className)) out.push(e.className + ' cut at the bottom: "' + e.textContent + '"');
+        if (e.getBoundingClientRect().height > lh * (/is-wrap/.test(e.className) ? 3.1 : /sc-showing/.test(e.className) ? 2.1 : 1.5) + 1) out.push(e.className + ' wraps onto too many lines: "' + e.textContent + '"');
         if (e.scrollWidth > e.clientWidth + 1 && /sc-spk-name|sc-rlabel/.test(e.className)) out.push(e.className + ' ends in "..." : "' + e.textContent + '"');
       });
       return out;
@@ -604,8 +698,10 @@ async function main() {
       const s = await openPage(p, lang, false, 3, 2, false);
       const en = lang === 'en';
       const spk = await texts(s.page, '.sc-spk');
-      assert(spk.join('|') === (en ? 'Echo Show|Echo Dot|Everywhere' : 'Echo Show|Echo Dot|En todas partes'), 'speakers: ' + spk.join('|'));
-      const sel = await texts(s.page, '.sc-spk.is-sel');
+      assert(spk.join('|') === (en ? 'Echo Show Amazon Music|Echo Dot Idle|Everywhere 1 playing' : 'Echo Show Amazon Music|Echo Dot Inactivo|En todas partes 1 sonando'), 'speakers: ' + spk.join('|'));
+      const showing = await texts(s.page, '.sc-showing');
+      assert(showing.join() === (en ? 'Showing Echo Show' : 'Mostrando Echo Show'), 'the hint: ' + showing.join());
+      const sel = await texts(s.page, '.sc-spk.is-sel .sc-spk-name');
       assert(sel.join() === 'Echo Show', 'selected: ' + sel.join());
       const aria = await s.page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.sc-ctl .f[data-act]'), (n) => n.getAttribute('aria-label')));
       assert(aria.join('|') === (en ? 'Pause|Next|Volume down|Volume up|Stop' : 'Pausa|Siguiente|Bajar volumen|Subir volumen|Detener'), 'buttons: ' + aria.join('|'));
@@ -616,13 +712,13 @@ async function main() {
       const q = await texts(s.page, '.sc-q');
       assert(q.join('|') === (en ? 'Resume audiobook|KERA 90.1|NPR newscast|Spotify|Pandora|Amazon Music' : 'Reanudar audiolibro|KERA 90.1|Noticiero de NPR|Spotify|Pandora|Amazon Music'), 'quick: ' + q.join('|'));
       const glyphs = await s.page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.sc-q .sc-q-ic svg'), (n) => n.querySelectorAll('path,circle').length > 0).join());
-      assert(glyphs === 'true,true,true,true,true', 'quick start glyphs: ' + glyphs);
+      assert(glyphs === 'true,true,true,true,true,true', 'quick start glyphs: ' + glyphs);
       const labels = (await texts(s.page, '.sc-rlabel')).filter(Boolean);
       assert(labels.join('|').toLowerCase() === (en ? 'speaker|start' : 'altavoz|iniciar'), 'labels: ' + labels.join('|'));
       assert((await focusKey(s.page)) === 'act:toggle', 'first focus: ' + (await focusKey(s.page)));
       // Playing and paused dots differ by shape, and the group has none while the others idle... it is playing here.
       const dots = await s.page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.sc-dot'), (d) => d.className.replace('sc-dot', '').trim()));
-      assert(dots.join('|') === '|', 'dots: ' + dots.join('|'));
+      assert(dots.join('|') === 'is-on||is-on', 'dots: ' + dots.join('|'));
       // The info above is the All sounds page as it was.
       assert((await texts(s.page, '.sc-info .sc-title'))[0] === 'Golden Hour Drive', 'the title is still there');
       const lab = await s.page.evaluate(() => { const l = document.querySelector('.sc-page .sc-info .sc-label'); return l ? [l.innerText.replace(/\s+/g, ' ').trim(), l.querySelectorAll('.sc-eq i').length, !!l.querySelector('.sc-plat')] : null; });
@@ -756,7 +852,7 @@ async function main() {
     assert((await focusKey(s.page)) === 'spk:show', 'on the speakers: ' + (await focusKey(s.page)));
     await s.page.keyboard.press('ArrowRight');
     await s.page.keyboard.press('Enter');
-    await until(async () => (await texts(s.page, '.sc-spk.is-sel'))[0] === 'Echo Dot', 3000, 'the Dot was not selected');
+    await until(async () => (await texts(s.page, '.sc-spk.is-sel .sc-spk-name'))[0] === 'Echo Dot', 3000, 'the Dot was not selected');
     assert((await focusKey(s.page)) === 'spk:dot', 'focus stayed on the chip: ' + (await focusKey(s.page)));
     await s.page.keyboard.press('ArrowDown');
     await s.page.keyboard.press('ArrowDown');
@@ -770,9 +866,11 @@ async function main() {
     await s.page.keyboard.press('ArrowUp'); await sleepMs(80); await s.page.keyboard.press('ArrowUp'); await sleepMs(80);
     for (let i = 0; i < 4 && (await focusKey(s.page)) !== 'spk:everywhere'; i++) { await s.page.keyboard.press('ArrowRight'); await sleepMs(60); }
     await s.page.keyboard.press('Enter');
-    await until(async () => (await texts(s.page, '.sc-spk.is-sel'))[0] === 'Everywhere', 3000, 'the group was not selected');
-    await s.page.keyboard.press('ArrowDown');
-    await sleepMs(80);
+    await until(async () => (await texts(s.page, '.sc-spk.is-sel .sc-spk-name'))[0] === 'Everywhere', 3000, 'the group was not selected');
+    // Down from the picker: the two speaker rows, then the group's own transport.
+    for (let i = 0; i < 3; i++) { await s.page.keyboard.press('ArrowDown'); await sleepMs(80); }
+    for (let i = 0; i < 6 && (await focusKey(s.page)) !== 'act:toggle'; i++) { await s.page.keyboard.press('ArrowLeft'); await sleepMs(60); }
+    assert((await focusKey(s.page)) === 'act:toggle', 'on the group transport: ' + (await focusKey(s.page)));
     await s.page.keyboard.press('Enter');
     await sleepMs(900);
     const call3 = ha.services[ha.services.length - 1];
@@ -822,6 +920,257 @@ async function main() {
     await stopPi(p);
   });
 
+  /* ---------- v3: the page follows the speaker picked ---------- */
+
+  // Goes to the speaker row and picks a speaker by the keys.
+  async function pickSpk(page, key) {
+    if (!(await focusKey(page))) { await page.keyboard.press('ArrowDown'); await sleepMs(100); }   // from the Full screen button
+    for (let i = 0; i < 4 && !/^spk:/.test(await focusKey(page)); i++) { await page.keyboard.press('ArrowUp'); await sleepMs(80); }
+    for (let i = 0; i < 4 && (await focusKey(page)) !== 'spk:show'; i++) { await page.keyboard.press('ArrowLeft'); await sleepMs(60); }
+    for (let i = 0; i < 4 && (await focusKey(page)) !== 'spk:' + key; i++) { await page.keyboard.press('ArrowRight'); await sleepMs(60); }
+    if (process.env.DBG) console.log('before enter focus', await focusKey(page));
+    await page.keyboard.press('Enter');
+    if (process.env.DBG) { await sleepMs(300); console.log('after enter focus', await focusKey(page), await page.evaluate(() => document.querySelectorAll('.f').length + ' f; sel=' + (document.querySelector('.sc-spk.is-sel')||{}).textContent)); }
+    await until(() => page.evaluate((k) => { const c = document.querySelector('.sc-spk.is-sel'); return !!c && c.getAttribute('data-spk') === k; }, key), 3000, 'the speaker ' + key + ' was not selected (focus ' + (await focusKey(page)) + ')');
+    await sleepMs(150);
+  }
+  const info = (page) => page.evaluate(() => {
+    const q = (s) => { const e = document.querySelector('.sc-page ' + s); return e && e.offsetParent !== null ? e.innerText.replace(/\s+/g, ' ').trim() : null; };
+    return { label: q('.sc-info .sc-label'), title: q('.sc-info .sc-title'), sub: q('.sc-info .sc-sub'), plat: q('.sc-info .sc-plat'), stale: q('.sc-info .sc-stale'), hasInfo: !!document.querySelector('.sc-page .sc-info'), members: !!document.querySelector('.sc-page .sc-members') };
+  });
+
+  await check('v3: the info area follows the speaker picked (Show plays KERA, Dot a radio stream); Spotify on the house never shows there; Everywhere lists both', async () => {
+    const sp = await require('./mock-spotify').start({});
+    const port = await spare();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-sc-test-'));
+    tmp.push(dir);
+    const h = require(path.join(ROOT, 'pi', 'server.js')).start({
+      token: TOKEN, port: port, host: '127.0.0.1', origins: [PAGE], dataDir: dir, log: false, timezone: 'America/Chicago',
+      allsoundsEnv: { HA_URL: ha.url, HA_TOKEN: ha.token }, echoEnv: { HA_URL: ha.url, HA_TOKEN: ha.token }, allsounds: { allowHttp: true, manual: true, timeoutMs: 400 },
+      spotifyEnv: { SPOTIFY_CLIENT_ID: sp.clientId, SPOTIFY_CLIENT_SECRET: sp.clientSecret, SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + port + '/spotify/callback' },
+      spotify: { accounts: sp.url, api: sp.url, vibe: sp.url, allowHttp: true, manual: true, vibeOff: true }
+    });
+    await h.ready;
+    const p5 = { h: h, port: port, url: 'http://127.0.0.1:' + port, dir: dir };
+    pis.push(p5);
+    await house(p5, 'twoplaying');
+    const l = h.spotify.loginUrl();
+    await new Promise((resolve, reject) => http.get(l.url, (res) => { res.resume(); h.spotify.finishLogin(res.headers.location || '').then(resolve, reject); }).on('error', reject));
+    const s = await openPage(p5, 'en', false, 3, 2, false);
+    // The tile is the house-wide winner (Spotify), as All sounds; the page is not.
+    const tile = await tileText(s.page);
+    assert(tile.title === 'Golden Hour Drive', 'the tile still shows the winner: ' + tile.title);
+    let i = await info(s.page);
+    const sel = (await texts(s.page, '.sc-spk.is-sel .sc-spk-name'))[0];
+    assert(i.title !== 'Golden Hour Drive' && /^(KERA|Classic Rock 101)$/.test(i.title), 'the page showed ' + i.title + ' for ' + sel);
+    await pickSpk(s.page, 'show');
+    i = await info(s.page);
+    assert(i.title === 'KERA' && /^now playing/i.test(i.label) && i.plat === null && i.hasInfo && !i.members, 'Show: ' + JSON.stringify(i));
+    assert((await texts(s.page, '.sc-vol'))[0] === '35%', 'the Show volume: ' + (await texts(s.page, '.sc-vol')));
+    assert((await texts(s.page, '.sc-showing'))[0] === 'Showing Echo Show', 'hint');
+    await pickSpk(s.page, 'dot');
+    i = await info(s.page);
+    assert(i.title === 'Classic Rock 101' && i.plat.replace(/\s/g, '') === '(iHeartRadio)' && /^now playing/i.test(i.label), 'Dot: ' + JSON.stringify(i));
+    assert((await texts(s.page, '.sc-vol'))[0] === '60%', 'the Dot volume: ' + (await texts(s.page, '.sc-vol')));
+    assert((await texts(s.page, '.sc-showing'))[0] === 'Showing Echo Dot', 'hint dot');
+    const mainText = await s.page.evaluate(() => document.querySelector('.sc-main').innerText);
+    assert(mainText.indexOf('Golden Hour Drive') < 0 && mainText.indexOf('Spotify') < 0, 'Spotify leaked into the info area');
+    // Everywhere: one row for each speaker, nothing of the winner.
+    await pickSpk(s.page, 'everywhere');
+    i = await info(s.page);
+    assert(!i.hasInfo && i.members, 'Everywhere shows the rows, not the song');
+    const rows = await texts(s.page, '.sc-mrow');
+    assert(rows.length === 2 && /^Echo Show KERA Playing/.test(rows[0]) && /35%/.test(rows[0]) && /^Echo Dot Classic Rock 101 · iHeartRadio Playing/.test(rows[1]) && /60%/.test(rows[1]), 'rows: ' + rows.join(' || '));
+    assert((await texts(s.page, '.sc-showing'))[0] === 'Showing all speakers', 'hint all');
+    assert((await texts(s.page, '.sc-main')).join().indexOf('Golden Hour Drive') < 0, 'Spotify leaked into the rows');
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await shot(s.page, 'soundctl-v3-everywhere-en.png');
+    await s.context.close();
+    await stopPi(p5);
+    await sp.close();
+  });
+
+  await check('v3: the switch says what each speaker plays; selected is a tinted fill, focused a ring, the dot only for a playing speaker; the track itself has no fill', async () => {
+    const p = await startPi(true);
+    await house(p, 'twoplaying');
+    const s = await openPage(p, 'en', false, 3, 2, false);
+    const read = () => s.page.evaluate(() => {
+      const px = parseFloat(getComputedStyle(document.documentElement).fontSize);
+      const seg = document.querySelector('.sc-seg');
+      return {
+        seg: getComputedStyle(seg).backgroundColor,
+        chips: Array.prototype.map.call(document.querySelectorAll('.sc-spk'), (c) => {
+          const cs = getComputedStyle(c);
+          const dot = c.querySelector('.sc-dot');
+          const sub = c.querySelector('.sc-spk-sub');
+          return {
+            key: c.getAttribute('data-spk'), sel: /is-sel/.test(c.className), focus: /is-focused/.test(c.className), bg: cs.backgroundColor, color: cs.color, border: cs.borderTopColor,
+            dot: dot ? getComputedStyle(dot).backgroundColor : '', name: c.querySelector('.sc-spk-name').textContent, sub: sub.textContent, subPx: parseFloat(getComputedStyle(sub).fontSize) / px
+          };
+        })
+      };
+    });
+    const alpha = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c); const a = m ? m[1].split(',').map(Number) : [0, 0, 0, 0]; return a.length > 3 ? a[3] : 1; };
+    await pickSpk(s.page, 'show');
+    // Focus now on the Show chip: selected and focused at once.
+    let r = await read();
+    assert(alpha(r.seg) === 0, 'the track has no fill: ' + r.seg);
+    const by = (k) => r.chips.filter((c) => c.key === k)[0];
+    assert(by('show').sel && by('show').focus && alpha(by('show').bg) >= 0.25, 'selected and focused: ' + JSON.stringify(by('show')));
+    assert(!by('dot').sel && !by('dot').focus && alpha(by('dot').bg) === 0, 'unselected is transparent: ' + by('dot').bg);
+    assert(alpha(by('show').border) > 0.9 && alpha(by('dot').border) === 0, 'only the focused one has a ring: ' + by('show').border + ' / ' + by('dot').border);
+    assert(by('show').color !== by('dot').color, 'the selected text is brighter than the others');
+    assert(by('show').sub === 'KERA' && by('dot').sub === 'Classic Rock 101' && by('everywhere').sub === '2 playing', 'second lines: ' + r.chips.map((c) => c.sub).join(' | '));
+    assert(r.chips.every((c) => c.dot !== '' && alpha(c.dot) > 0), 'both speakers and the group are playing: dots');
+    assert(r.chips.every((c) => c.subPx >= 0.85), 'the second line is at least 0.85rem');
+    // Move the focus off the selected chip: the ring moves, the fill stays.
+    await s.page.keyboard.press('ArrowRight');
+    await sleepMs(80);
+    r = await read();
+    assert(by('show').sel && !by('show').focus && by('dot').focus && !by('dot').sel, 'the ring and the fill are separate: ' + JSON.stringify([by('show').sel, by('show').focus, by('dot').focus, by('dot').sel]));
+    assert(alpha(by('show').bg) >= 0.25 && alpha(by('dot').bg) === 0 && alpha(by('show').border) === 0, 'fill stays on the selected, ring on the focused');
+    // Dot idle, Show paused: no dots, "Paused" / "Idle".
+    ha.set('amazonmusic');
+    await p.h.allsounds.poll();
+    await until(async () => { r = await read(); return by('dot').sub === 'Idle' ? r : false; }, 4000, 'the Dot never said Idle');
+    assert(alpha(by('dot').dot) === 0 && alpha(by('show').dot) > 0, 'the dot only for a speaker that plays');
+    ha.set('paused');
+    await p.h.allsounds.poll();
+    await sleepMs(300);
+    r = await read();
+    assert(r.chips.map((c) => c.sub).join('|').indexOf('Paused') >= 0 || r.chips.every((c) => c.sub), 'paused: ' + r.chips.map((c) => c.sub).join('|'));
+    ha.set('twoplaying');
+    await s.context.close();
+    await stopPi(p);
+  });
+
+  await check('v3: Everywhere rows have their own Play/Pause and volume (they act on that speaker only); the big transport acts on all; quick starts play on all; D-pad goes through the rows', async () => {
+    const p = await startPi(true, false, { echoScreenMax: 100 });
+    await house(p, 'twoplaying');
+    ha.services.length = 0;
+    const s = await openPage(p, 'en', false, 3, 2, false);
+    await pickSpk(s.page, 'everywhere');
+    const key = () => focusKey(s.page);
+    const press = async (k) => { await s.page.keyboard.press(k); await sleepMs(90); return key(); };
+    // The group's transport is labelled for all speakers.
+    const lab = (await texts(s.page, '.sc-rlabel')).filter(Boolean);
+    assert(lab.join('|').toLowerCase() === 'speaker|all speakers|start', 'labels: ' + lab.join('|'));
+    assert((await press('ArrowDown')) === 'm:show:toggle' || /^m:show:/.test(await key()), 'Down from the picker enters the first row: ' + (await key()));
+    for (let i = 0; i < 4 && (await key()) !== 'm:show:toggle'; i++) await press('ArrowLeft');
+    assert((await key()) === 'm:show:toggle', 'row 1 starts at Play/Pause');
+    assert((await press('ArrowRight')) === 'm:show:volDown' && (await press('ArrowRight')) === 'm:show:volUp' && (await press('ArrowRight')) === 'm:show:volUp', 'Left and Right stay in the row');
+    assert(/^m:dot:/.test(await press('ArrowDown')), 'Down: the next row');
+    assert(/^m:show:/.test(await press('ArrowUp')), 'Up: the row above');
+    assert((await press('ArrowDown')) && /^m:dot:/.test(await key()), 'back to row 2');
+    for (let i = 0; i < 4 && (await key()) !== 'm:dot:toggle'; i++) await press('ArrowLeft');
+    // The Dot's own pause: only the Dot.
+    await s.page.keyboard.press('Enter');
+    await until(() => ha.services.length >= 1, 3000, 'no call');
+    assert(ha.services[0].service === 'media_pause' && ha.services[0].body.entity_id === 'media_player.ian_s_echo_dot', 'the Dot only: ' + JSON.stringify(ha.services[0]));
+    await sleepMs(150);
+    const rowDot = (await texts(s.page, '.sc-mrow'))[1];
+    assert(/Paused/.test(rowDot), 'the row says Paused at once: ' + rowDot);
+    assert(/^m:dot:toggle$/.test(await key()), 'the focus stayed: ' + (await key()));
+    assert((await texts(s.page, '.sc-mrow'))[0].indexOf('Playing') > 0, 'the Show row is untouched');
+    // The Show's own volume: 35 -> 25, only the Show.
+    await press('ArrowUp');
+    for (let i = 0; i < 4 && (await key()) !== 'm:show:volDown'; i++) await press(/toggle/.test(await key()) ? 'ArrowRight' : 'ArrowLeft');
+    await s.page.keyboard.press('Enter');
+    await until(() => ha.services.length >= 2, 3000, 'no volume call');
+    assert(ha.services[1].service === 'volume_set' && ha.services[1].body.entity_id === 'media_player.ian_s_echo_show' && ha.services[1].body.volume_level === 0.25, 'the Show volume: ' + JSON.stringify(ha.services[1]));
+    assert((await texts(s.page, '.sc-mrow'))[0].indexOf('25%') > 0, 'shown at once: ' + (await texts(s.page, '.sc-mrow'))[0]);
+    assert((await texts(s.page, '.sc-mrow'))[1].indexOf('60%') > 0, 'the Dot stays at 60%');
+    await sleepMs(300);
+    // The big transport: all speakers (the group), and the quick starts too.
+    for (let i = 0; i < 5 && !/^act:/.test(await key()); i++) await press('ArrowDown');
+    for (let i = 0; i < 6 && (await key()) !== 'act:toggle'; i++) await press('ArrowLeft');
+    assert((await key()) === 'act:toggle', 'on the group transport');
+    await s.page.keyboard.press('Enter');
+    await until(() => ha.services.length >= 3, 3000, 'no group call');
+    assert(ha.services[2].body.entity_id === 'media_player.everywhere', 'the group: ' + JSON.stringify(ha.services[2]));
+    await sleepMs(300);
+    await press('ArrowDown');
+    for (let i = 0; i < 6 && (await key()) !== 'q:kera'; i++) await press((await key()) === 'q:audible' ? 'ArrowRight' : 'ArrowRight');
+    await s.page.keyboard.press('Enter');
+    await until(() => ha.services.length >= 4, 3000, 'no quick call');
+    assert(ha.services[3].service === 'play_media' && ha.services[3].body.entity_id === 'media_player.everywhere', 'the quick start plays on all: ' + JSON.stringify(ha.services[3]));
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+    await stopPi(p);
+  });
+
+  await check('v3: the Everywhere rows and the new switch fit, English, Spanish and Spanish 25% longer, page and full screen, three tile sizes', async () => {
+    const p = await startPi(true);
+    await house(p, 'twoplaying');
+    const bad = [];
+    for (const [w, h] of [[3, 2], [6, 3], [4, 6]]) {
+      for (const [lang, longer] of LONGS) {
+        for (const full of [false, true]) {
+          const s = await openPage(p, lang, longer, w, h, full);
+          const label = w + 'x' + h + ' ' + lang + (longer ? '+25' : '') + (full ? ' full' : ' page');
+          for (const who of ['show', 'everywhere']) {
+            try { await pickSpk(s.page, who); } catch (e) { throw new Error(label + ' ' + who + ': ' + e.message); }
+            const pr = (await problems(s.page, '.sc-page')).concat(await ctlProblems(s.page));
+            if (pr.length) bad.push(label + ' ' + who + ': ' + pr.join('; '));
+            if (who === 'everywhere') {
+              await s.page.keyboard.press('ArrowDown');
+              await sleepMs(100);
+              const pr2 = await ctlProblems(s.page);
+              if (pr2.length) bad.push(label + ' everywhere (row focused): ' + pr2.join('; '));
+            }
+          }
+          await s.context.close();
+        }
+      }
+    }
+    assert(!bad.length, bad.join(' | '));
+    await stopPi(p);
+  });
+
+  // The v3 screenshots and the annotated test guides (only with SHOTS=folder).
+  await check('v3 screenshots: Show, Dot, Everywhere (English, Spanish, a row focused), the Start row, and the annotated guides', async () => {
+    if (!SHOTS) return;
+    const p = await startPi(true, false, { echoScreenMax: 100 });
+    await house(p, 'twoplaying');
+    const focusTo = async (s, want, moves) => {
+      for (let i = 0; i < 12 && (await focusKey(s.page)) !== want; i++) { await s.page.keyboard.press(moves[i % moves.length]); await sleepMs(80); }
+      assert((await focusKey(s.page)) === want, 'could not reach ' + want + ': ' + (await focusKey(s.page)));
+    };
+    // The Echo Show (focus on Play/Pause) and the guide over it.
+    let s = await openPage(p, 'en', false, 3, 2, false);
+    await pickSpk(s.page, 'show');
+    await s.page.keyboard.press('ArrowDown'); await sleepMs(100);
+    await focusTo(s, 'act:toggle', ['ArrowLeft']);
+    if (process.env.DBG) console.log(JSON.stringify(await s.page.evaluate(() => { const g = (q) => { const e = document.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height), e.className]; }; return { body: g('#panel .panel-body'), main: g('.sc-main'), ctl: g('.sc-ctl'), r1: g('.sc-row-spk'), r2: g('.sc-row-tr'), r3: g('.sc-row-quick'), art: g('.sc-art'), tbox: g('.sc-tbox') }; })));
+    await shot(s.page, 'v3-show-en.png');
+    await guide(s, 'guide-annotated-en.png', false);
+    await pickSpk(s.page, 'dot');
+    await shot(s.page, 'v3-dot-en.png');
+    await pickSpk(s.page, 'everywhere');
+    await shot(s.page, 'v3-everywhere-en.png');
+    await s.page.keyboard.press('ArrowDown');
+    await sleepMs(100);
+    await focusTo(s, 'm:dot:volUp', ['ArrowDown', 'ArrowRight', 'ArrowRight']);
+    await shot(s.page, 'v3-everywhere-focus-row-en.png');
+    await guide(s, 'guide-everywhere-en.png', true);
+    await s.context.close();
+    s = await openPage(p, 'es', false, 3, 2, false);
+    await pickSpk(s.page, 'everywhere');
+    await shot(s.page, 'v3-everywhere-es.png');
+    await s.context.close();
+    // The Start row, focused, with Spotify and the NPR newscast in view.
+    s = await openPage(p, 'en', false, 3, 2, false);
+    await pickSpk(s.page, 'show');
+    await s.page.keyboard.press('ArrowDown'); await sleepMs(100);
+    await focusTo(s, 'act:toggle', ['ArrowLeft']);
+    await s.page.keyboard.press('ArrowDown');
+    await sleepMs(100);
+    await focusTo(s, 'q:spotify', ['ArrowRight']);
+    await shot(s.page, 'start-row-after.png');
+    await s.context.close();
+    await stopPi(p);
+  });
+
   await check('the tile does not move or change when the page opens (the deck shares no class with the tile)', async () => {
     const p = await startPi(true);
     await house(p, 'amazonmusic');
@@ -844,7 +1193,7 @@ async function main() {
     await house(p, 'amazonmusic');
     const s = await openPage(p, 'en', false, 3, 2, false);
     const apps = await s.page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('[data-q]'), (n) => n.getAttribute('data-q')));
-    assert(apps.join() === 'audible,kera,news,pandora,amazon-music', 'quick starts: ' + apps.join());
+    assert(apps.join() === 'audible,kera,npr,spotify,pandora,amazon-music', 'quick starts: ' + apps.join());
     const html = await s.page.content();
     ['tunein', 'media_player', 'Bearer', ha.token, ha.url].forEach((x) => assert(html.indexOf(x) < 0, 'the page holds ' + x));
     await s.context.close();

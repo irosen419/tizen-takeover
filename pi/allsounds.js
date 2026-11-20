@@ -36,7 +36,14 @@
  *            else any paused, else idle); volume 0 to 100, or -1 when
  *            unknown (always for the group); app is the hub label's app
  *            ("Audible") when the hub started something there, else ''.
- *            [] when Home Assistant is not set up or not answering.
+ *            [] when Home Assistant is not set up or not answering. Each entry
+ *            also says what that speaker itself plays: source (30), title
+ *            (200), artist (120), art (an https address or ''), started (the
+ *            hub started it), all '' / false unless the speaker is playing
+ *            or paused; and group true for the group entry, which carries none
+ *            of them (the TV builds it from the members). A signed-in Spotify
+ *            that plays or pauses on a device with that Echo's name fills the
+ *            entry with Spotify's track, fresher than Alexa Media Player's.
  *   target   the key of the Echo target whose entity is shown (from 'echo'), or ''
  *   started  true when the hub itself started it (echo.js: "Audible on Ian's
  *            Echo Show"); only for an Echo that is playing or paused. A hub
@@ -129,20 +136,26 @@ function notsetData() {
 }
 
 // The speakers list rebuilt from known fields only (at most 8, no repeats).
-function cleanEchos(list) {
+function cleanEchos(list, allowHttp) {
   const out = [];
   if (!Array.isArray(list)) return out;
   for (let i = 0; i < list.length && out.length < MAX_ECHOS; i++) {
     const e = list[i];
     if (!isObj(e) || typeof e.key !== 'string' || !KEY_RE.test(e.key) || out.some((x) => x.key === e.key)) continue;
     const v = Number(e.volume);
-    out.push({
+    const o = {
       key: e.key,
       name: cleanText(e.name, 60) || e.key,
       state: ECHO_STATES.indexOf(e.state) >= 0 ? e.state : 'off',
       volume: typeof e.volume === 'number' && isFinite(v) ? (v < 0 ? -1 : Math.min(100, Math.round(v))) : -1,
-      app: cleanText(e.app, 30)
-    });
+      app: cleanText(e.app, 30),
+      group: e.group === true,
+      source: cleanText(e.source, 30), title: cleanText(e.title, 200), artist: cleanText(e.artist, 120),
+      art: cleanArt(e.art, allowHttp), started: e.started === true
+    };
+    // Only a speaker that plays or is paused has anything of its own to say.
+    if (o.group || (o.state !== 'playing' && o.state !== 'paused')) { o.source = ''; o.title = ''; o.artist = ''; o.art = ''; o.started = false; }
+    out.push(o);
   }
   return out;
 }
@@ -160,7 +173,7 @@ function cleanData(d, allowHttp) {
     problem: PROBLEMS.indexOf(d.problem) >= 0 ? d.problem : '',
     stale: d.stale === true,
     started: d.started === true,
-    echos: cleanEchos(d.echos),
+    echos: cleanEchos(d.echos, allowHttp),
     target: typeof d.target === 'string' && KEY_RE.test(d.target) ? d.target : ''
   };
   // Playing with nothing known (TuneIn on an Echo sends no title, artist,
@@ -404,7 +417,7 @@ function pickActive(list, targets) {
 // seen this time; lbl: the hub's labels (entity id -> label). A speaker Home
 // Assistant did not list is "off". The group (everywhere) is worked out from
 // the others, so it needs no entity of its own.
-function buildEchos(targets, recs, lbl) {
+function buildEchos(targets, recs, lbl, allowHttp) {
   const out = [];
   const list = (Array.isArray(targets) ? targets : []).filter((t) => isObj(t) && KEY_RE.test(str(t.key))).slice(0, MAX_ECHOS);
   const members = [];
@@ -415,16 +428,43 @@ function buildEchos(targets, recs, lbl) {
     const e = {
       key: t.key,
       name: rec ? rec.device : cleanText(t.key.charAt(0).toUpperCase() + t.key.slice(1), 60),
-      state: rec ? rec.state : 'off', volume: rec ? rec.volume : -1, app: l ? cleanText(l.label, 30) : ''
+      state: rec ? rec.state : 'off', volume: rec ? rec.volume : -1, app: l ? cleanText(l.label, 30) : '',
+      source: rec ? rec.source : '', title: rec ? rec.title : '', artist: rec ? rec.artist : '',
+      art: rec ? rec.art : '', started: !!rec && rec.started === true
     };
     members.push(e);
   });
   list.forEach((t) => {
     if (!t.group) { out.push(members.filter((m) => m.key === t.key)[0]); return; }
-    const some = (s) => members.some((m) => m.state === s);
-    out.push({ key: t.key, name: 'Everywhere', state: some('playing') ? 'playing' : some('paused') ? 'paused' : 'idle', volume: -1, app: '' });
+    out.push({ key: t.key, name: 'Everywhere', state: 'idle', volume: -1, app: '', group: true });
   });
-  return cleanEchos(out);
+  return groupStates(cleanEchos(out, allowHttp));
+}
+
+// The group's state from its members (playing if any plays, else paused if
+// any pauses, else idle).
+function groupStates(list) {
+  const members = list.filter((e) => !e.group);
+  const some = (s) => members.some((m) => m.state === s);
+  return list.map((e) => (e.group ? Object.assign({}, e, { state: some('playing') ? 'playing' : some('paused') ? 'paused' : 'idle' }) : e));
+}
+
+// Spotify (the signed-in account, so fresher than Alexa Media Player) playing
+// or paused on a device with an Echo's name: that Echo's entry gets Spotify's
+// track and state. list: from buildEchos; np: the nowplaying data.
+function withSpotifyEchos(list, np, allowHttp) {
+  if (!Array.isArray(list) || !list.length || !isObj(np) || (np.state !== 'playing' && np.state !== 'paused') || !isObj(np.track) || !isObj(np.device)) return list;
+  const dev = cleanText(np.device.name, 60).toLowerCase();
+  if (!dev) return list;
+  const t = np.track;
+  const out = list.map((e) => {
+    if (e.group || e.name.toLowerCase() !== dev) return e;
+    return Object.assign({}, e, {
+      state: np.state, source: 'Spotify', title: cleanText(t.title, 200), artist: cleanText(t.artist, 120),
+      art: cleanArt(t.artSmall || t.art, allowHttp), started: false
+    });
+  });
+  return groupStates(cleanEchos(out, allowHttp));
 }
 
 // Spotify's "nowplaying" data (spotify.js) as an All sounds picture, or null
@@ -552,7 +592,7 @@ function createWatcher(o) {
     const h = house || notsetData();
     const m = merge(h, fromSpotify(np, allowHttp));
     // The speaker list is the house's whoever wins; the target only when an Echo is shown.
-    const next = cleanData(Object.assign({}, m, { echos: h.state === 'notset' || h.state === 'error' ? [] : echoList }), allowHttp);
+    const next = cleanData(Object.assign({}, m, { echos: h.state === 'notset' || h.state === 'error' ? [] : withSpotifyEchos(echoList, np, allowHttp) }), allowHttp);
     const prev = cleanData(o.current(), allowHttp);
     if (signature(prev) === signature(next)) return null;
     note(next);
@@ -645,7 +685,7 @@ function createWatcher(o) {
         const rec = read(e);
         if (rec) recs[rec.id] = rec;
       });
-      echoList = buildEchos(targets, recs, lbl);
+      echoList = buildEchos(targets, recs, lbl, allowHttp);
       house = pickActive(seen, targets);
       return { ok: true, changed: put() };
     }, (e) => fail(e && e.kind === 'timeout' ? 'timeout' : e && e.kind === 'reply' ? 'reply' : 'network'));
@@ -737,6 +777,7 @@ module.exports = {
   staleEcho: staleEcho,
   pickActive: pickActive,
   buildEchos: buildEchos,
+  withSpotifyEchos: withSpotifyEchos,
   cleanEchos: cleanEchos,
   fromSpotify: fromSpotify,
   merge: merge,

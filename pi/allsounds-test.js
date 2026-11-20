@@ -797,7 +797,7 @@ async function main() {
       { key: 'Bad Key', name: 'x' }, { key: 'ok-1', name: 'dup' }, { key: 'v', name: 'v', volume: 'loud' }, null, 5
     ].concat(Array.from({ length: 12 }, (_, i) => ({ key: 'k' + i, name: 'n' }))), target: 'a b' });
     assert.strictEqual(c.echos.length, 8);
-    assert.deepStrictEqual(Object.keys(c.echos[0]).sort(), ['app', 'key', 'name', 'state', 'volume']);
+    assert.deepStrictEqual(Object.keys(c.echos[0]).sort(), ['app', 'art', 'artist', 'group', 'key', 'name', 'source', 'started', 'state', 'title', 'volume']);
     assert.deepStrictEqual([c.echos[0].state, c.echos[0].volume, c.echos[0].name.length <= 60, c.echos[0].app.length <= 30], ['off', 100, true, true]);
     assert.strictEqual(c.echos[1].volume, -1);
     assert.strictEqual(c.target, '');
@@ -864,6 +864,54 @@ async function main() {
     await stop(h2);
     const text = allLogs.join('\n');
     ['Ian', 'Echo Show', 'KERA 90.1', 'jazz', 'media_player', ha.token, ha.url].forEach((x) => assert.ok(text.indexOf(x) < 0, 'the log has "' + x + '"'));
+  });
+
+  await check('echos carry what each speaker plays (source, title, artist, art, started); Spotify on a same-named device wins; the group carries none; strict cleaning', async () => {
+    const h = await start({ echoEnv: HA_ENV });
+    ha.set('twoplaying');
+    await h.allsounds.poll();
+    let d = (await live(h)).data;
+    const [show, dot, group] = d.echos;
+    assert.deepStrictEqual([show.key, show.state, show.source, show.title, show.volume, show.started, show.group], ['show', 'playing', '', 'KERA', 35, false, false]);
+    assert.ok(/\/art\/radio\.svg$/.test(show.art), 'the Show keeps its picture: ' + show.art);
+    assert.deepStrictEqual([dot.key, dot.state, dot.source, dot.title, dot.volume, dot.art], ['dot', 'playing', 'iHeartRadio', 'Classic Rock 101', 60, 'https://i.iheart.com/v3/re/new_assets/radio.png']);
+    assert.deepStrictEqual([group.group, group.state, group.source, group.title, group.artist, group.art, group.started, group.volume], [true, 'playing', '', '', '', '', false, -1]);
+    // The hub started Audible on the Show: its label and "started" show on that entry only.
+    const r = await rawPost(h.port, '/api/echo', { action: 'start', app: 'audible', target: 'show' }, null, TOKEN);
+    assert.strictEqual(r.json.ok, true);
+    await h.allsounds.poll();
+    d = (await live(h)).data;
+    assert.deepStrictEqual([d.echos[0].started, d.echos[0].source, d.echos[0].app, d.echos[1].started], [true, 'Audible', 'Audible', false]);
+    // Idle and off speakers have nothing of their own.
+    ha.set('npr');
+    await h.allsounds.poll();
+    d = (await live(h)).data;
+    assert.deepStrictEqual([d.echos[1].state, d.echos[1].title, d.echos[1].source, d.echos[1].art], ['idle', '', '', '']);
+    // Spotify (signed in) playing on a device named like the Dot: the Dot's entry is Spotify's.
+    ha.set('twoplaying');
+    const np = { state: 'playing', device: { name: "IAN'S ECHO DOT" }, track: { title: 'Spot Song', artist: 'Spot Artist', album: 'A', art: 'https://i.scdn.co/image/abc', artSmall: 'https://i.scdn.co/image/abc' } };
+    const list = allsounds.buildEchos([{ key: 'show', entity: 'media_player.ian_s_echo_show', group: false }, { key: 'dot', entity: 'media_player.ian_s_echo_dot', group: false }, { key: 'everywhere', entity: 'media_player.everywhere', group: true }],
+      { 'media_player.ian_s_echo_show': allsounds.readEntity(mockHa.entities('twoplaying', ha.url).filter((e) => e.entity_id === 'media_player.ian_s_echo_show')[0], true),
+        'media_player.ian_s_echo_dot': allsounds.readEntity(mockHa.entities('twoplaying', ha.url).filter((e) => e.entity_id === 'media_player.ian_s_echo_dot')[0], true) }, {}, true);
+    const sp = allsounds.withSpotifyEchos(list, np, true);
+    assert.deepStrictEqual([sp[1].source, sp[1].title, sp[1].artist, sp[1].art, sp[1].state, sp[0].source], ['Spotify', 'Spot Song', 'Spot Artist', 'https://i.scdn.co/image/abc', 'playing', '']);
+    const paused = allsounds.withSpotifyEchos(list, Object.assign({}, np, { state: 'paused' }), true);
+    assert.deepStrictEqual([paused[1].state, paused[2].state], ['paused', 'playing'], 'the group follows its members');
+    assert.strictEqual(allsounds.withSpotifyEchos(list, Object.assign({}, np, { state: 'idle' }), true)[1].source, 'iHeartRadio', 'idle Spotify changes nothing');
+    assert.strictEqual(allsounds.withSpotifyEchos(list, Object.assign({}, np, { device: { name: 'Someone else' } }), true)[1].source, 'iHeartRadio');
+    // Strict cleaning: caps, art only https, nothing for a speaker that does not play, nothing for the group.
+    const c = allsounds.cleanData({ state: 'idle', echos: [
+      { key: 'a', name: 'A', state: 'playing', source: 'S'.repeat(50), title: 'T'.repeat(300), artist: 'R'.repeat(200), art: 'javascript:alert(1)', started: 'yes', volume: 10 },
+      { key: 'b', name: 'B', state: 'playing', art: 'https://x.test/p.jpg', started: true },
+      { key: 'c', name: 'C', state: 'idle', source: 'X', title: 'Y', art: 'https://x.test/p.jpg', started: true },
+      { key: 'g', name: 'Everywhere', state: 'playing', group: true, title: 'Z', source: 'Q' }
+    ] });
+    assert.deepStrictEqual([c.echos[0].source.length <= 30, c.echos[0].title.length <= 200, c.echos[0].artist.length <= 120, c.echos[0].art, c.echos[0].started], [true, true, true, '', false]);
+    assert.deepStrictEqual([c.echos[1].art, c.echos[1].started], ['https://x.test/p.jpg', true]);
+    assert.deepStrictEqual([c.echos[2].source, c.echos[2].title, c.echos[2].art, c.echos[2].started], ['', '', '', false]);
+    assert.deepStrictEqual([c.echos[3].group, c.echos[3].source, c.echos[3].title], [true, '', '']);
+    assert.deepStrictEqual(Object.keys(c.echos[0]).sort(), ['app', 'art', 'artist', 'group', 'key', 'name', 'source', 'started', 'state', 'title', 'volume']);
+    await stop(h);
   });
 
   await ha.close();
