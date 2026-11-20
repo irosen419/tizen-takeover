@@ -39,6 +39,10 @@ function standIn() {
     if (req.url === '/feed.xml') { res.writeHead(200, { 'content-type': 'application/rss+xml' }); res.end(XML); return; }
     if (req.url === '/moved') { res.writeHead(302, { location: '/feed.xml' }); res.end(); return; }
     if (req.url === '/loop') { res.writeHead(302, { location: '/loop' }); res.end(); return; }
+    if (req.url === '/track/a') { res.writeHead(302, { location: '/track/b' }); res.end(); return; }
+    if (req.url === '/track/b') { res.writeHead(301, { location: '/audio/seven.mp3?x=1' }); res.end(); return; }
+    if (req.url === '/audio/seven.mp3?x=1') { res.writeHead(206, { 'content-type': 'audio/mpeg' }); res.end('I'); return; }
+    if (req.url === '/track/dead') { res.writeHead(302, { location: '/gone.mp3' }); res.end(); return; }
     if (req.url === '/empty.xml') { res.writeHead(200); res.end('<rss><channel></channel></rss>'); return; }
     res.writeHead(500); res.end('down');
   });
@@ -99,6 +103,12 @@ async function main() {
     } finally {
       if (before === undefined) delete process.env.NEWS_FEED_URL; else process.env.NEWS_FEED_URL = before;
     }
+  });
+  await check('resolveAudio() follows the tracking redirects to the MP3; a loop or dead end keeps the first address', async () => {
+    assert.strictEqual(await news.resolveAudio(feed.base + '/track/a'), feed.base + '/audio/seven.mp3?x=1');
+    assert.strictEqual(await news.resolveAudio(feed.base + '/loop'), feed.base + '/loop');
+    assert.strictEqual(await news.resolveAudio(feed.base + '/track/dead'), feed.base + '/track/dead');
+    assert.strictEqual(await news.resolveAudio('http://127.0.0.1:1/nothing.mp3'), 'http://127.0.0.1:1/nothing.mp3');
   });
   await feed.close();
 

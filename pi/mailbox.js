@@ -482,7 +482,7 @@ const COMMANDS = {
     run: async (args, ctx) => {
       let ep;
       try {
-        ep = await news.latest();
+        ep = await news.latestPlayable();
       } catch (e) {
         return { message: 'Could not read the NPR News Now feed: ' + (e && e.message) + '.', ok: false };
       }
