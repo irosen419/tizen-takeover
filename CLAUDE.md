@@ -7,6 +7,7 @@ Custom home screen for Ian's Samsung Tizen TV (TizenBrew module, loaded from jsD
 - `service.js` helper on the TV (localhost:8095). `pi/` server, `./hub` CLI, mailbox, tests. `studio/` Layout Studio. `dev/` tests and screenshot scripts.
 
 ## Rules
+- Design reference: DESIGN.md and docs/design-tokens.css.
 - Never push or merge `main` without Ian's say-so (project memory has the standing merge go-ahead). Work on your branch, open a PR.
 - One thread per PR. Stop near 40M tokens; hand off in 15 lines or fewer.
 - Be succinct. Anything Ian must copy goes in a fenced block (he reads on a phone).
