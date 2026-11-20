@@ -682,7 +682,13 @@
       '<i class="fx-act-note"><svg viewBox="0 0 34 34">' +
       '<ellipse cx="13.5" cy="24.5" rx="5.6" ry="4.3" transform="rotate(-20 13.5 24.5)" fill="#cfeeff"/>' +
       '<rect x="17.2" y="5" width="2.6" height="20" rx="1.2" fill="#cfeeff"/>' +
-      '<path d="M18.5 5 C21 10 28 10 27 18 C25.5 13.5 22.5 12.5 18.5 12 Z" fill="#7fd1ff"/></svg></i>' }
+      '<path d="M18.5 5 C21 10 28 10 27 18 C25.5 13.5 22.5 12.5 18.5 12 Z" fill="#7fd1ff"/></svg></i>' },
+    // The grocery list (app/widgets/grocery.js): someone else (a phone,
+    // Claude) added an item. Its words are in that widget's i18n section;
+    // the to-do pencil writing a line.
+    { kind: 'grocery', en: 'New on the list', key: 'grocery.activity', working: null, figure: null, icon:
+      '<i class="fx-act-line"></i>' +
+      '<i class="fx-act-pen"><svg viewBox="0 0 34 34"><path d="M6 22 L22 6 L27 11 L11 27 L5 28 Z" fill="#cfeeff"/></svg></i>' }
   ];
 
   // kind -> { icon, key, label, working, workingKey, noWork, figure }, built

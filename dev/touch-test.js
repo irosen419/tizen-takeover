@@ -251,14 +251,14 @@ async function main() {
       await page.ctx.close();
     });
 
-    await check('files: touch.css ends with .css-end; grocery.js logic is plain ES5; the TV pages never load the touch files', async () => {
+    await check('files: touch.css ends with .css-end; grocery.js is plain ES5; the TV pages never load touch.js or touch.css', async () => {
       const css = fs.readFileSync(path.join(ROOT, 'app/touch.css'), 'utf8');
       assert(/\.css-end \{ top: 0; \}\s*$/.test(css), 'touch.css end marker');
       const js = fs.readFileSync(path.join(ROOT, 'app/widgets/grocery.js'), 'utf8');
       assert(!/=>|`|\b(let|const|class)\s/.test(js), 'grocery.js is not ES5');
       ['index.html', 'hub.html'].forEach((f) => {
         const html = fs.readFileSync(path.join(ROOT, 'app', f), 'utf8');
-        assert(!/touch\.(js|css)|widgets\/grocery/.test(html), f + ' loads a touch file');
+        assert(!/touch\.(js|css)/.test(html), f + ' loads a touch file');
       });
     });
   } finally {

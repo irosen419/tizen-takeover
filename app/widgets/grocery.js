@@ -1,18 +1,36 @@
 /*
  * Groceries: the grocery list kept on the Pi (pi/grocery.js, resource
- * "grocery"). Two parts:
+ * "grocery"). Three parts:
  *
  *   window.HUB_GROCERY   shared logic, no DOM: sort, counts, the add-box
  *                        parser and a local copy of the Pi's ops (for the
  *                        optimistic update). Node can require this file too.
- *   renderTouch(el, ctx) the phone and tablet view (app/touch.js). No TV tile
- *                        yet: the TV does not load this file (PR 2 adds one).
+ *   renderTouch(el, ctx) the phone and tablet view (app/touch.js).
+ *   the TV tile          renderTile / renderPanel (app/hub.js loads this file
+ *                        and app/widgets/grocery.css; the touch app never
+ *                        loads that CSS, and the TV never loads touch.css).
  *
  * ctx (from app/touch.js): t(key, english, vars), data() -> { items } or null
  * before the first answer, status() -> 'loading' | 'ok' | 'offline',
  * send(ops, optimisticData, done(err)), reduced() -> true for less motion.
  * Item names are what people typed: never translated, never logged.
- * Plain ES5: the logic may run on the TV later.
+ * Plain ES5 throughout: the TV's browser is Chromium 63 class.
+ *
+ * On the TV the Pi's copy is the only copy (nothing in localStorage): the
+ * list comes over the live line (ctx.live 'grocery', app/live.js) and each
+ * change is posted to the Pi's POST /grocery/ops (the same route as the
+ * touch app; server 0.26.1 answers the TV's preflight). A change shows at
+ * once (applyLocal over the Pi's list), the Pi's answer replaces it, and a
+ * change the Pi refuses or never gets is taken back with a toast. Nothing is
+ * queued for later: the phone may have changed the list meanwhile.
+ *
+ *   tile, 1 column  the count left to get
+ *   tile, strip     "3 left · Milk" (the next item)
+ *   tile, 2+ rows   the count big, then the first items that fit (to get
+ *                   first, ticked ones dimmed), "+N more" and the cart count
+ *   panel           an Add box (commas add several), "To get" rows (OK
+ *                   ticks; Right moves to the row's Remove, OK twice
+ *                   removes), "In the cart" with Clear ticked
  */
 (function (root) {
   'use strict';
@@ -407,13 +425,523 @@
     return c.left ? t('grocery.summary', '{n} to get', { n: c.left }) : t('grocery.emptyTitle', 'Nothing to get');
   }
 
-  (root.HUB_WIDGETS = root.HUB_WIDGETS || []).push({
+  /* ---------- the TV tile and panel ---------- */
+
+  function tr(k, english, vars) {
+    var L = root.HUB_I18N;
+    if (L && typeof L.t === 'function') {
+      try { return String(L.t(k, english, vars)); } catch (e) { /* English below */ }
+    }
+    return String(english).replace(/\{(\w+)\}/g, function (all, n) {
+      return vars && Object.prototype.hasOwnProperty.call(vars, n) ? String(vars[n]) : all;
+    });
+  }
+
+  function svgHTML(name) {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + PATHS[name] + '"/></svg>';
+  }
+
+  // The TV's state. server: the Pi's last list (null before the first one);
+  // pending: changes posted and not yet answered, drawn over it.
+  var tv = {
+    C: null, server: null, serverRev: -1, pending: [], panel: null,
+    armed: null, armedAt: 0, redrawLater: false, ownAdds: {}, fitTimer: null, fitH: 0, fitCount: 0
+  };
+
+  function live() { return tv.C && tv.C.live ? tv.C.live : null; }
+
+  function liveState() {
+    var L = live();
+    try { return L ? (L.status() || {}).state || 'off' : 'off'; } catch (e) { return 'off'; }
+  }
+
+  function cleanItems(list) {
+    var out = [];
+    if (!(list instanceof Array)) return null;
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i];
+      if (it && typeof it.id === 'string' && typeof it.name === 'string') out.push(it);
+    }
+    return out;
+  }
+
+  // What the TV shows: the Pi's list with the changes on their way applied.
+  // A new item's temporary id is its name, so its row keeps one key until
+  // the Pi gives it a real id.
+  function view() {
+    if (!tv.server) return null;
+    var list = tv.server;
+    for (var i = 0; i < tv.pending.length; i++) list = applyLocal(list, tv.pending[i].ops, tv.pending[i].at);
+    var out = [];
+    for (var j = 0; j < list.length; j++) {
+      out.push(list[j].pending ? copy(list[j], { id: 'new:' + key(list[j].name) }) : list[j]);
+    }
+    return out;
+  }
+
+  function addBox() { return tv.panel ? tv.panel.querySelector('input.gt-input') : null; }
+  function typing() { var b = addBox(); return !!b && document.activeElement === b; }
+
+  // Redraws the tile, and the open panel unless someone is typing in its Add
+  // box (then once the typing stops).
+  function refresh() {
+    var C = tv.C;
+    if (!C) return;
+    C.redrawTile();
+    if (!C.isOpen()) return;
+    if (typing()) { tv.redrawLater = true; return; }
+    C.redrawPanel();
+  }
+
+  // An item someone else added (the phone, Claude) is news: the tile's
+  // arrival chip. Never for the first list, a tick, or this TV's own adds.
+  function isNews(before, after) {
+    var had = {}, i, now = new Date().getTime();
+    for (i = 0; i < before.length; i++) had[before[i].id] = 1;
+    for (i = 0; i < after.length; i++) {
+      var it = after[i];
+      if (it.done || had[it.id]) continue;
+      var own = tv.ownAdds[key(it.name)];
+      if (own && now - own < 60000) continue;
+      return true;
+    }
+    return false;
+  }
+
+  function takeServer(items, rev, fromLive) {
+    var list = cleanItems(items);
+    if (!list) return;
+    if (typeof rev === 'number') {
+      if (rev < tv.serverRev) return;
+      tv.serverRev = rev;
+    }
+    var before = tv.server;
+    tv.server = list;
+    if (fromLive && before && tv.C && typeof tv.C.activity === 'function' && isNews(before, list)) {
+      try { tv.C.activity('grocery'); } catch (e) { /* the rows just show */ }
+    }
+    refresh();
+  }
+
+  function why(err, code) {
+    if (!code) return tr('grocery.tvUnreachable', 'the Pi didn’t answer');
+    return String(err || ('HTTP ' + code));
+  }
+
+  // Posts ops to the Pi. Shown at once; the Pi's answer replaces the view, a
+  // refusal or no answer takes the change back with a toast.
+  function send(ops) {
+    var L = live();
+    var C = tv.C;
+    if (!tv.server) return;
+    if (!L || typeof L.post !== 'function') {
+      if (C) C.toast(tr('grocery.saveFailed', 'That didn’t save: {why}', { why: tr('grocery.tvUnreachable', 'the Pi didn’t answer') }), 4500);
+      return;
+    }
+    var entry = { ops: ops, at: new Date().getTime() };
+    tv.pending.push(entry);
+    refresh();
+    L.post('/grocery/ops', { ops: ops }, function (err, data, code) {
+      var at = tv.pending.indexOf(entry);
+      if (at >= 0) tv.pending.splice(at, 1);
+      try {
+        if (!err && data && data.items instanceof Array) {
+          takeServer(data.items, typeof data.rev === 'number' ? data.rev : undefined, false);
+          return;
+        }
+        if (window.console && console.warn) console.warn('Groceries: the Pi did not take a change (' + (code || 'no answer') + ')');
+        if (C) C.toast(tr('grocery.saveFailed', 'That didn’t save: {why}', { why: why(err, code) }), 4500);
+      } catch (e) { /* drawn below */ }
+      refresh();
+    });
+  }
+
+  function div(cls, parent, text) {
+    var n = el('div', cls, text);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  function sizeOf(ctx) {
+    try { return ctx.size() || {}; } catch (e) { return {}; }
+  }
+
+  /* --- the tile --- */
+
+  function tileRow(item, parent) {
+    var r = div('gt-trow' + (item.done ? ' is-done' : '') + (item.pending ? ' is-pending' : ''), parent);
+    var box = el('span', 'gt-tbox');
+    if (item.done) box.innerHTML = svgHTML('check');
+    r.appendChild(box);
+    r.appendChild(el('span', 'gt-tname', item.name));
+    return r;
+  }
+
+  function footText(c, hidden) {
+    var parts = [];
+    if (hidden) parts.push(tr('grocery.more', '+{n} more', { n: hidden }));
+    if (c.ticked) parts.push(tr('grocery.inCartN', '{n} in the cart', { n: c.ticked }));
+    if (liveState() !== 'live' && live()) parts.push(tr('grocery.notLive', 'Not live'));
+    return parts.join(' · ');
+  }
+
+  // Rows leave from the bottom until the foot line fits inside the body.
+  function fitRows(body, list, foot, rows, c) {
+    var limit = body.getBoundingClientRect().bottom;
+    var shown = rows.length;
+    while (shown > 0 && foot.getBoundingClientRect().bottom > limit + 0.5) {
+      shown -= 1;
+      list.removeChild(rows[shown]);
+      foot.textContent = footText(c, c.total - shown);
+    }
+    if (!shown) list.style.display = 'none';
+  }
+
+  function refitSoon(body) {
+    tv.fitH = body.clientHeight;
+    if (tv.fitTimer) clearTimeout(tv.fitTimer);
+    tv.fitTimer = setTimeout(function () {
+      tv.fitTimer = null;
+      try {
+        var h = body.clientHeight;
+        if (h && Math.abs(h - tv.fitH) > 1 && tv.fitCount < 2 && tv.C) { tv.fitCount += 1; tv.C.redrawTile(); } else tv.fitCount = 0;
+      } catch (e) { tv.fitCount = 0; }
+    }, 400);
+  }
+
+  function renderTile(body, ctx) {
+    body.innerHTML = '';
+    var s = sizeOf(ctx);
+    var tier = s.tier || 'standard';
+    var one = s.cols === 1;
+    var box = div('gt-tile gt-tile-' + tier + (one ? ' gt-tile-one' : ''), body);
+    var items = view();
+    if (!items) {
+      box.className += ' hub-dormant';
+      var wait = live() && liveState() !== 'off' ? tr('grocery.loading', 'Loading the list…') : tr('grocery.noPi', 'The list lives on the Pi');
+      div('gt-msg', box, one ? '–' : wait);
+      return;
+    }
+    var all = sorted(items);
+    var c = counts(all);
+    if (one) {
+      div('gt-one-num', box, String(c.left));
+      return;
+    }
+    if (tier === 'strip') {
+      var line = div('gt-strip', box);
+      if (!c.total) { line.appendChild(el('span', 'gt-strip-word', tr('grocery.listEmpty', 'List is empty'))); return; }
+      if (!c.left) { line.appendChild(el('span', 'gt-strip-word', tr('grocery.allDone', 'All in the cart'))); return; }
+      line.appendChild(el('span', 'gt-strip-num', tr('grocery.left', '{n} left', { n: c.left })));
+      line.appendChild(el('span', 'gt-strip-dot', '·'));
+      line.appendChild(el('span', 'gt-strip-next gt-tname', all[0].name));
+      return;
+    }
+    var hero = div('gt-hero', box);
+    if (!c.total) {
+      hero.appendChild(el('span', 'gt-hero-word', tr('grocery.listEmpty', 'List is empty')));
+      div('gt-hint', box, tr('grocery.tvEmptyHint', 'Open it to add, or add from a phone.'));
+      return;
+    }
+    if (!c.left) {
+      hero.appendChild(el('span', 'gt-hero-word', tr('grocery.allDone', 'All in the cart')));
+    } else {
+      hero.appendChild(el('span', 'gt-hero-num', String(c.left)));
+      hero.appendChild(el('span', 'gt-hero-cap', tr('grocery.toGet', 'to get')));
+    }
+    var list = div('gt-tlist', box);
+    var rows = [];
+    for (var i = 0; i < all.length; i++) rows.push(tileRow(all[i], list));
+    var foot = div('gt-foot', box, footText(c, 0));
+    fitRows(body, list, foot, rows, c);
+    if (!foot.textContent) foot.style.display = 'none';
+    refitSoon(body);
+  }
+
+  /* --- the panel --- */
+
+  function panelRow(item, parent) {
+    var row = div('gt-row' + (item.done ? ' is-done' : '') + (item.pending ? ' is-pending' : ''), parent);
+    var main = div('gt-main f', row);
+    main.setAttribute('data-key', 'item:' + item.id);
+    main.setAttribute('role', 'button');
+    main.setAttribute('aria-label', item.done ? tr('grocery.untick', 'Untick {name}', { name: item.name }) : tr('grocery.tick', 'Tick {name}', { name: item.name }));
+    var tick = el('span', 'gt-box');
+    tick.innerHTML = svgHTML('check');
+    main.appendChild(tick);
+    main.appendChild(el('span', 'gt-name', item.name));
+    var del = div('gt-del f', row);
+    del.setAttribute('data-key', 'del:' + item.id);
+    del.setAttribute('role', 'button');
+    del.setAttribute('aria-label', tr('grocery.remove', 'Remove {name}', { name: item.name }));
+    var pill = el('span', 'gt-pill');
+    pill.appendChild(el('span', 'gt-pill-label', tr('grocery.removeBtn', 'Remove')));
+    pill.appendChild(el('span', 'gt-pill-armed', tr('grocery.removeArmed', 'OK again to remove')));
+    del.appendChild(pill);
+    var ic = el('span', 'gt-del-ic');
+    ic.innerHTML = svgHTML('cross');
+    del.appendChild(ic);
+    if (tv.armed === item.id) del.className += ' is-armed';
+    return row;
+  }
+
+  function section(parent, cls, label, n) {
+    var sec = div('gt-sec ' + cls, parent);
+    var head = div('gt-sec-head', sec);
+    head.appendChild(el('span', 'gt-sec-name', label));
+    head.appendChild(el('span', 'gt-sec-count', String(n)));
+    return { sec: sec, head: head };
+  }
+
+  function renderPanel(body, ctx) {
+    body.innerHTML = '';
+    tv.panel = body;
+    var full = ctx.mode() === 'full';
+    var box = div('gt-panel' + (full ? ' is-full' : ''), body);
+    var items = view();
+    if (!items) {
+      ctx.setSub('');
+      var wait = live() && liveState() !== 'off' ? tr('grocery.loading', 'Loading the list…') : tr('grocery.noPi', 'The list lives on the Pi');
+      div('gt-msg gt-panel-msg hub-dormant', box, wait);
+      return;
+    }
+    var all = sorted(items);
+    var c = counts(all);
+    var sub = c.left ? tr('grocery.summary', '{n} to get', { n: c.left }) : tr('grocery.allDone', 'All in the cart');
+    if (!c.total) sub = tr('grocery.listEmpty', 'List is empty');
+    if (liveState() !== 'live') sub += ' · ' + tr('grocery.notLive', 'Not live');
+    ctx.setSub(sub);
+
+    var add = div('gt-add', box);
+    var plus = el('span', 'gt-add-icon');
+    plus.innerHTML = svgHTML('plus');
+    add.appendChild(plus);
+    var input = el('input', 'f gt-input');
+    input.setAttribute('type', 'text');
+    input.setAttribute('data-key', 'add');
+    input.setAttribute('maxlength', '400');
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocapitalize', 'sentences');
+    input.setAttribute('spellcheck', 'false');
+    input.setAttribute('placeholder', tr('grocery.addPlaceholder', 'Milk, eggs, bread'));
+    input.setAttribute('aria-label', tr('grocery.addLabel', 'Add to the list'));
+    if (!c.left) input.setAttribute('data-autofocus', '');
+    input.addEventListener('blur', function () {
+      if (!tv.redrawLater) return;
+      tv.redrawLater = false;
+      setTimeout(function () {
+        try { if (tv.C && tv.C.isOpen() && !typing()) tv.C.redrawPanel(); } catch (e) { /* ignore */ }
+      }, 0);
+    }, false);
+    add.appendChild(input);
+    var hint = el('span', 'gt-add-hint');
+    hint.appendChild(el('span', 'gt-hint-ok', tr('grocery.hintOk', 'OK to type')));
+    hint.appendChild(el('span', 'gt-hint-typing', tr('grocery.hintTyping', 'Commas add several')));
+    add.appendChild(hint);
+    add.appendChild(el('span', 'gt-add-frame'));
+
+    var left = [], done = [], i;
+    for (i = 0; i < all.length; i++) (all[i].done ? done : left).push(all[i]);
+    var s1 = section(box, 'gt-sec-left', tr('grocery.secLeft', 'To get'), left.length);
+    if (!left.length) div('gt-empty', s1.sec, c.total ? tr('grocery.allDone', 'All in the cart') : tr('grocery.listEmpty', 'List is empty'));
+    for (i = 0; i < left.length; i++) {
+      var r = panelRow(left[i], s1.sec);
+      if (i === 0) r.firstChild.setAttribute('data-autofocus', '');
+    }
+    if (done.length) {
+      var s2 = section(box, 'gt-sec-done', tr('grocery.inCart', 'In the cart'), done.length);
+      var clear = el('span', 'gt-clear f', tr('grocery.clear', 'Clear ticked'));
+      clear.setAttribute('data-key', 'clear');
+      clear.setAttribute('role', 'button');
+      s2.head.appendChild(clear);
+      for (i = 0; i < done.length; i++) panelRow(done[i], s2.sec);
+    }
+  }
+
+  /* --- the remote --- */
+
+  function byKey(k) {
+    if (!tv.panel) return null;
+    var list = tv.panel.querySelectorAll('.f');
+    for (var i = 0; i < list.length; i++) if (list[i].getAttribute('data-key') === k) return list[i];
+    return null;
+  }
+
+  function idOf(k, prefix) { return k && k.indexOf(prefix) === 0 ? k.substring(prefix.length) : null; }
+
+  function findItem(id) {
+    var items = view() || [];
+    for (var i = 0; i < items.length; i++) if (items[i].id === id) return items[i];
+    return null;
+  }
+
+  function mains() {
+    var list = tv.panel ? tv.panel.querySelectorAll('.gt-main') : [];
+    var out = [];
+    for (var i = 0; i < list.length; i++) out.push(list[i]);
+    return out;
+  }
+
+  function disarm() {
+    if (tv.armed === null) return;
+    var d = byKey('del:' + tv.armed);
+    if (d) d.className = d.className.replace(/\s*is-armed/g, '');
+    tv.armed = null;
+  }
+
+  // Where focus goes once a row leaves: the row that takes its place, else
+  // the one before it, else the Add box.
+  function keyAfter(id) {
+    var list = mains(), keys = [], at = -1;
+    for (var i = 0; i < list.length; i++) {
+      var k = list[i].getAttribute('data-key');
+      if (k === 'item:' + id) at = keys.length;
+      else keys.push(k);
+    }
+    if (at < 0) return 'add';
+    if (at < keys.length) return keys[at];
+    return at > 0 ? keys[at - 1] : 'add';
+  }
+
+  function onSelect(target, ctx) {
+    var k = target.getAttribute('data-key') || '';
+    var id = idOf(k, 'item:');
+    if (k !== 'del:' + tv.armed) disarm();
+    if (id !== null) {
+      if (id.indexOf('new:') === 0) return;
+      var item = findItem(id);
+      if (item) send([{ op: 'check', id: id, done: !item.done }]);
+      return;
+    }
+    id = idOf(k, 'del:');
+    if (id !== null) {
+      if (id.indexOf('new:') === 0) return;
+      var now = new Date().getTime();
+      if (tv.armed !== id) {
+        tv.armed = id;
+        tv.armedAt = now;
+        target.className += ' is-armed';
+        return;
+      }
+      // A held OK repeats; the second press has to be a new one.
+      if (now - tv.armedAt < 400) return;
+      tv.armed = null;
+      var next = keyAfter(id);
+      send([{ op: 'remove', id: id }]);
+      var node = byKey(next) || byKey('add');
+      if (node) ctx.focus(node);
+      return;
+    }
+    if (k === 'clear') {
+      send([{ op: 'clear' }]);
+      var n2 = byKey('add');
+      if (n2) ctx.focus(n2);
+    }
+  }
+
+  function onSubmit(target, ctx) {
+    if (target.getAttribute('data-key') !== 'add') return;
+    var p = parseAdd(target.value, view() || []);
+    if (p.tooLong.length) { ctx.toast(tr('grocery.tooLong', 'At most {n} characters per item', { n: MAX_NAME }), 4500); return; }
+    target.value = '';
+    if (p.already.length) ctx.toast(tr('grocery.already', 'Already on the list: {names}', { names: p.already.join(', ') }), 4500);
+    if (!p.names.length) { refresh(); return; }
+    var now = new Date().getTime(), ops = [];
+    for (var i = 0; i < p.names.length && i < 20; i++) {
+      tv.ownAdds[key(p.names[i])] = now;
+      ops.push({ op: 'add', name: p.names[i] });
+    }
+    send(ops);
+  }
+
+  // Up and Down walk one list: the Add box, the rows to get, Clear ticked,
+  // the rows in the cart (from a row's Remove too, so Down never jumps to the
+  // next Remove). Right from a row goes to its Remove, Left back. Down from
+  // the head's Full screen button goes to the Add box. Up from the Add box
+  // is left to the hub (to the head).
+  function stops() {
+    var out = [], b = addBox(), c = byKey('clear');
+    if (b) out.push(b);
+    var list = mains();
+    for (var i = 0; i < list.length; i++) {
+      if (c && list[i].parentNode.parentNode.className.indexOf('gt-sec-done') >= 0 && out.indexOf(c) < 0) out.push(c);
+      out.push(list[i]);
+    }
+    if (c && out.indexOf(c) < 0) out.push(c);
+    return out;
+  }
+
+  function has(node, cls) { return !!node && typeof node.className === 'string' && (' ' + node.className + ' ').indexOf(' ' + cls + ' ') >= 0; }
+
+  function onMove(dir, from, ctx) {
+    if (!tv.panel || !from) return undefined;
+    if (!tv.panel.contains(from)) return dir === 'down' ? addBox() || undefined : undefined;
+    var isDel = has(from, 'gt-del'), isMain = has(from, 'gt-main');
+    if (dir === 'left' || dir === 'right') {
+      if (isDel && dir === 'left') { disarm(); return from.parentNode.querySelector('.gt-main') || true; }
+      if (isMain && dir === 'right') return from.parentNode.querySelector('.gt-del') || true;
+      return isDel || isMain ? true : undefined;
+    }
+    disarm();
+    var list = stops();
+    var at = list.indexOf(isDel ? from.parentNode.querySelector('.gt-main') : from);
+    if (at < 0) return undefined;
+    if (dir === 'up') return at > 0 ? list[at - 1] : undefined;
+    return at < list.length - 1 ? list[at + 1] : true;
+  }
+
+  var tvWidget = {
     id: 'grocery',
-    title: 'Groceries',
     titleKey: 'grocery.title',
-    icon: PATHS.basket,
+    icon: 'basket',               // HUB_ICONS (app/icons.js) on the TV
+    touchIcon: PATHS.basket,      // a path for app/touch.js
     resource: 'grocery',
     summary: summary,
-    renderTouch: renderTouch
-  });
+    renderTouch: renderTouch,
+    expandable: true,
+    activity: 'grocery',
+    stagger: '.gt-add, .gt-sec',
+
+    init: function (ctx) {
+      tv.C = ctx;
+      var L = ctx.live;
+      if (L) {
+        try {
+          var d = L.get('grocery');
+          if (d && d.items) takeServer(d.items, undefined, false);
+          L.on('grocery', function (data, rev) {
+            if (data && data.items) takeServer(data.items, rev, true);
+          });
+        } catch (e) { /* the tile says it waits */ }
+      }
+      var I = root.HUB_I18N;
+      if (I && typeof I.onChange === 'function') {
+        I.onChange(function () {
+          try {
+            if (typeof ctx.retitle === 'function') ctx.retitle();
+            refresh();
+          } catch (e) { /* next draw */ }
+        });
+      }
+    },
+    renderTile: renderTile,
+    renderPanel: renderPanel,
+    onSelect: onSelect,
+    onSubmit: onSubmit,
+    onMove: onMove,
+    onMode: function (mode, ctx) { ctx.redrawPanel(); },
+    onStatus: function (ctx) { ctx.redrawTile(); },
+    onClose: function () { disarm(); tv.panel = null; tv.redrawLater = false; }
+  };
+  try {
+    Object.defineProperty(tvWidget, 'title', { get: function () { return tr('grocery.title', 'Groceries'); }, enumerable: true, configurable: true });
+    Object.defineProperty(tvWidget, 'shortTitle', { get: function () { return tr('grocery.titleShort', 'Grocery'); }, enumerable: true, configurable: true });
+  } catch (e) {
+    tvWidget.title = 'Groceries';
+  }
+
+  // For the tests (dev/grocery-test.js).
+  root.HUB_GROCERY_TV = { state: tv, view: view };
+
+  (root.HUB_WIDGETS = root.HUB_WIDGETS || []).push(tvWidget);
 })(typeof window !== 'undefined' ? window : this);
