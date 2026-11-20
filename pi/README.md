@@ -848,3 +848,13 @@ To restore, stop the server, copy the file back to `data/state.json`, and start 
 - The Claude mailbox keys (`HUB_MAILBOX_ACCESS_KEY_ID`, `HUB_MAILBOX_SECRET_ACCESS_KEY`) are only in `.env` too, and are never logged or written to the bucket. If one leaks, delete the token in Cloudflare ("If a key leaks" above).
 - Log lines that leave the Pi (the mailbox's `log.tail`) are scrubbed first: no IP addresses, calendar names, Spotify name, bucket name or R2 host. `./hub log` on the Pi shows them as they are, like `docker compose logs`.
 - If you think it leaked, delete the `HUB_TOKEN=` line from `.env`, run `./hub token`, and restart the server.
+
+## Shortcuts on the Pi (`pi/aliases.sh`)
+
+One-time setup, then open a new shell:
+
+```sh
+echo '[ -f ~/code/tizen-takeover/pi/aliases.sh ] && . ~/code/tizen-takeover/pi/aliases.sh' >> ~/.bashrc
+```
+
+`hubup` (pull, restart hub, then budget, then status), `hubrestart` (hub only), `budgetrestart`, `hubstat`, `hublog [--errors]`, `hubhub <any ./hub command>`, `hubdocker <compose args>`. Nothing runs by itself; each runs only when typed.
