@@ -444,7 +444,7 @@
   // The TV's state. server: the Pi's last list (null before the first one);
   // pending: changes posted and not yet answered, drawn over it.
   var tv = {
-    C: null, server: null, serverRev: -1, pending: [], panel: null,
+    C: null, server: null, serverRev: -1, epoch: null, pending: [], panel: null,
     armed: null, armedAt: 0, redrawLater: false, ownAdds: {}, fitTimer: null, fitH: 0, fitCount: 0
   };
 
@@ -512,7 +512,11 @@
     var list = cleanItems(items);
     if (!list) return;
     if (typeof rev === 'number') {
-      if (rev < tv.serverRev) return;
+      var ep = '';
+      try { ep = String((tv.C && tv.C.live && tv.C.live.status().epoch) || ''); } catch (e) { /* no epoch */ }
+      // A new epoch (the Pi's state was recreated) restarts the revs.
+      if (ep === tv.epoch && rev < tv.serverRev) { refresh(); return; }
+      tv.epoch = ep;
       tv.serverRev = rev;
     }
     var before = tv.server;
@@ -546,7 +550,8 @@
       if (at >= 0) tv.pending.splice(at, 1);
       try {
         if (!err && data && data.items instanceof Array) {
-          takeServer(data.items, typeof data.rev === 'number' ? data.rev : undefined, false);
+          // The answer's rev is the whole state's, not this list's: never compare it.
+          takeServer(data.items, undefined, false);
           return;
         }
         if (window.console && console.warn) console.warn('Groceries: the Pi did not take a change (' + (code || 'no answer') + ')');
