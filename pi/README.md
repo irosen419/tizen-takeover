@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.23.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.24.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -83,7 +83,7 @@ From server 0.21.0 and hub v0.37.0 the TV can play audio:
 - `./hub stop`: stops it.
 - `./hub news`: plays the newest **NPR News Now** newscast, NPR's five minute summary that is posted every hour. The Pi reads NPR's public feed (`https://feeds.npr.org/500005/podcast.xml`, no account or key), picks the newest episode by date, follows NPR's tracking redirects (prfx.byspotify.com, podtrac) to the MP3 itself and sends that final address as `play` (if the redirects can't be followed in 8 s it sends the feed's address and the TV tries); the terminal says which one, for example `NPR News Now, 7pm ET, November 19. Sent. 1 screen showed it.` The code is `news.js`; tests are `node pi/news-test.js`.
 
-The hub has to be open (`./hub status` shows the screen). The TV's browser may refuse to start sound that no key press asked for. To get ahead of that, the first key press after the hub loads plays a silent blip, which unlocks sound for later plays. If the TV still refuses, the hub shows "Press any button on the remote to start the sound", and the next key press within 10 minutes starts it (no need to send it again).
+The hub has to be open (`./hub status` shows the screen). The TV's browser may refuse to start sound that no key press asked for. To get ahead of that, the first key press after the hub loads plays a silent blip, which unlocks sound for later plays. If the TV still refuses, the hub shows "Press any button on the remote to start the sound", and the next key press within 10 minutes starts it (no need to send it again). Switching layouts loads the hub afresh; sound that was playing carries on from where it was (hub v0.38.5). The All sounds test widget shows what the TV itself plays first, with "Living room TV" as the speaker.
 
 ### To-do notes
 
@@ -169,7 +169,7 @@ Server 0.18.0 keeps one more optional section, `investments` (the portfolio tota
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.23.0` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.24.0` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 
@@ -286,6 +286,18 @@ The log names no show. It only counts, for example `shows refresh: 4 of 4 shows 
 ### Watch link test answers
 
 The TV's About panel has a **Watch link test**: each recipe tries one way of opening a title straight in an app (Prime Video, Netflix, Apple TV, Disney+...). You answer "Opened the title", "Only opened the app" or "Nothing". The TV sends each answer here, and the Pi keeps the last 100. `./hub linktests` lists them, newest first, so a Claude thread can see which deep links work on this TV.
+
+### TV remote from the Pi (two-step launch)
+
+The TV refuses remote key presses it sends to itself, so some Watch link test rows ("Open, Enter, then ...") ask the Pi to press the keys. The Pi talks to the TV's remote-control WebSocket (`wss://<tv>:8002`, or `ws://<tv>:8001` if that does not connect) under the name "Home Hub Pi" (`tvremote.js`, server 0.23.0). A run opens the app, waits about 10 seconds, presses Enter (the default profile), waits about 5 seconds, then sends the title link while the app is already running, either as a deep link or by DIAL (HTTP POST to `http://<tv>:8080/ws/apps/Netflix`). Then you answer the usual "Opened the title / Only opened the app / Nothing".
+
+**One-time Allow prompt.** The first run makes the TV show a prompt to allow "Home Hub Pi": press Allow on the remote within 30 seconds. The TV answers with a token, which the Pi keeps in `data/tvremote.json` (readable by you only, never in a log, never sent anywhere). If the TV said no, allow it under Settings > General > External Device Manager > Device Connection Manager > Device List, then try again.
+
+**The TV's address** comes from the screen's own request, or set `HUB_TV_REMOTE_IP=192.168.1.x` in `.env` to name it (needed for runs from the mailbox before the TV has talked to the Pi). One run at a time.
+
+- `./hub tvremote` says whether the Pi is paired and shows the last run's steps (what was sent, how long each took). `./hub tvremote run '{"id":"x","appId":"3201907018807","link":"dial","dialApp":"Netflix","payload":"m=..."}'` starts one by hand. The mailbox has `tvremote.status` and `tvremote.run` with the same fields (`open`, `waitOpen`, `enter`, `waitAfter`, `link` = `deeplink`, `dial` or `none`, `payload`, `dialApp`).
+- The log says only what was done, for example `tvremote: netflix-2step-dial: opened app (ok), Enter (ok), DIAL Netflix -> HTTP 201`; never the link or the token.
+- Tests: `node pi/tvremote-test.js` (a fake TV and a fake DIAL port).
 
 ### After pulling this change
 
@@ -576,7 +588,7 @@ Commands: `./hub allsounds status` (state, source, speaker, title and artist), `
 
 **Not tested yet (written from how AMP is documented):** the spoken commands on the `everywhere` group, whether AMP's `custom` voice commands include "pause" and "resume" for Audible, and the exact words AMP needs for Pandora and Amazon Music with no query.
 
-**Limits and the log.** At most 10 commands in 10 seconds (`Too many Echo commands; wait a few seconds.`). The log gets fixed words and target keys only, never a query, a speaker's name or a title: `echo: started Audible on show`, `echo: pause on dot (voice)`, `echo: volume on show`, `echo: label cleared on show (other playback)` (also `(timeout)`, `(stop)`), `echo: Home Assistant refused the token (401)`. The control API is `GET /api/echo` and `POST /api/echo` (`{ action, target?, app?, query?, level? }`); the TV cannot reach it. The Sound control widget (hub v0.39.0, server 0.23.0) uses its own screen route instead, `POST /echo/run` (`{ action, target?, app?, level?, step? }`): presets only (`audible`, `pandora`, `amazon-music`, `kera`, `news`; no `tunein`, no query, unknown fields refused), `volume` takes `step: "up"|"down"` or `level` 0 to 100, a foreign Origin gets 403, more than 6 presses in 5 seconds gets 429, and the reply is only `{ ok, message }` (no address or token). The mailbox commands are `echo.status`, `echo.start`, `echo.pause`, `echo.resume`, `echo.next`, `echo.stop` and `echo.volume`.
+**Limits and the log.** At most 10 commands in 10 seconds (`Too many Echo commands; wait a few seconds.`). The log gets fixed words and target keys only, never a query, a speaker's name or a title: `echo: started Audible on show`, `echo: pause on dot (voice)`, `echo: volume on show`, `echo: label cleared on show (other playback)` (also `(timeout)`, `(stop)`), `echo: Home Assistant refused the token (401)`. The control API is `GET /api/echo` and `POST /api/echo` (`{ action, target?, app?, query?, level? }`); the TV cannot reach it. The Sound control widget (hub v0.39.0, server 0.24.0) uses its own screen route instead, `POST /echo/run` (`{ action, target?, app?, level?, step? }`): presets only (`audible`, `pandora`, `amazon-music`, `kera`, `news`; no `tunein`, no query, unknown fields refused), `volume` takes `step: "up"|"down"` or `level` 0 to 100, a foreign Origin gets 403, more than 6 presses in 5 seconds gets 429, and the reply is only `{ ok, message }` (no address or token). The mailbox commands are `echo.status`, `echo.start`, `echo.pause`, `echo.resume`, `echo.next`, `echo.stop` and `echo.volume`.
 
 ## Weekly health report (server 0.15.0)
 
@@ -616,7 +628,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.23.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.24.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

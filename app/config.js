@@ -366,6 +366,21 @@ var HUB_CONFIG = {
             op: 'http://tizen.org/appcontrol/operation/default', key: 'PAYLOAD', val: '{"values":"{appleFoundation}"}' },
           // No app control at all: the TV's plain /launch, to see whether the
           // matched app id itself opens.
+          // Two-step launch, driven by the Pi (the TV refuses its own key
+          // presses): open the app, wait, Enter (the default profile), wait,
+          // then the link while the app is running. Waits default to 10 s and 5 s.
+          { id: 'netflix-2step-dial', app: 'Netflix', name: 'Open, Enter, then DIAL watch link',
+            pi: { link: 'dial', dialApp: 'Netflix', payload: 'm=https://www.netflix.com/watch/{netflixTitle}&source_type=4' } },
+          { id: 'netflix-2step-watch', app: 'Netflix', name: 'Open, Enter, then deep link (watch url)',
+            pi: { link: 'deeplink', payload: 'm=https://www.netflix.com/watch/{netflixTitle}&source_type=4' } },
+          { id: 'netflix-2step-title', app: 'Netflix', name: 'Open, Enter, then deep link (title url)',
+            pi: { link: 'deeplink', payload: 'm=https://www.netflix.com/title/{netflixTitle}&source_type=4' } },
+          { id: 'netflix-pi-dial-cold', app: 'Netflix', name: 'DIAL watch link only (no open first)',
+            pi: { open: false, enter: false, waitOpen: 0, waitAfter: 0, link: 'dial', dialApp: 'Netflix', payload: 'm=https://www.netflix.com/watch/{netflixTitle}&source_type=4' } },
+          { id: 'prime-2step-gti', app: 'Prime Video', name: 'Open, Enter, then deep link (GTI)',
+            pi: { link: 'deeplink', payload: '{"values":"{primeGti}"}' } },
+          { id: 'prime-2step-gti-noenter', app: 'Prime Video', name: 'Open, then deep link (GTI), no Enter',
+            pi: { enter: false, link: 'deeplink', payload: '{"values":"{primeGti}"}' } },
           { id: 'plain-netflix', app: 'Netflix', name: 'Plain open', plain: true },
           { id: 'plain-appletv', app: 'Apple TV', name: 'Plain open', plain: true },
           { id: 'plain-prime', app: 'Prime Video', name: 'Plain open', plain: true },

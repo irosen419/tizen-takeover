@@ -1223,7 +1223,8 @@
        "summary": "Shows any audio playing at home, Spotify first, otherwise what an Echo reports through Home Assistant.",
        "details": [
         "The Pi reads Home Assistant's Alexa Media Player states and folds in Spotify into an allsounds resource. Tracks that may have ended get a may be out of date label. Tried in its own one-widget test layout.",
-        "When the hub started what plays (Echo controls), it shows the app and the speaker with a quiet 'Started from the hub' line (hub v0.38.0)."
+        "When the hub started what plays (Echo controls), it shows the app and the speaker with a quiet 'Started from the hub' line (hub v0.38.0).",
+        "Sound the TV plays itself (./hub play, ./hub news) comes first, with 'Living room TV' as the speaker, the show as the title and the rest (8pm ET, November 19) below it. The hub tells the widget directly through window.HUB_AUDIO, so it needs no Pi round trip (hub v0.38.5)."
        ],
        "files": [
         "app/widgets/allsounds.js"
@@ -1237,6 +1238,35 @@
        ],
        "notes": [
         "Audible, NPR briefings and skills are not reported by the Echo. Real attribute names and TV rendering unverified."
+       ]
+      },
+      {
+       "id": "tv.widgets.soundctl",
+       "title": "Sound control",
+       "kind": "component",
+       "status": "draft",
+       "pr": "PR 127",
+       "summary": "A copy of All sounds whose page adds Echo controls: a speaker switch, Play/Pause, Next, a volume stepper, Stop and quick starts.",
+       "details": [
+        "The tile looks the same as All sounds. The page adds a speaker switch (Echo Show, Echo Dot, Everywhere), a round Play/Pause, Next, a volume stepper (− 40% +), Stop and one-press starts: Resume audiobook, KERA 90.1, News briefing, Pandora and Amazon Music. All sounds stays untouched as the backup.",
+        "Presses go to the Pi as POST /echo/run with presets only (no search text from the TV). The speakers' state and volume come back in the allsounds resource (echos, target), so the page follows within seconds. Tried alone in the 'Sound control test' layout (hub v0.39.0)."
+       ],
+       "files": [
+        "app/widgets/soundctl.js",
+        "app/widgets/soundctl.css",
+        "dev/soundctl-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.echo",
+         "label": "Echo presses (POST /echo/run)",
+         "dir": "out"
+        },
+        {
+         "to": "pi.allsounds",
+         "label": "allsounds resource with the speakers' state",
+         "dir": "in"
+        }
        ]
       },
       {
@@ -1632,7 +1662,8 @@
         "This is what makes 'TV off' safe: a command reaches 0 screens and the sender is told 'no screen is listening'. Only the poll fallback remembers commands, for 10 s, at most 20.",
         "say can carry 'hub:working <kind> <seconds>', which the TV turns into a quiet working chip on a tile instead of showing text. The Pi passes it on unchanged.",
         "play {url (http or https, up to 2048 characters), title?} has the TV play that audio through one reused audio element; stop ends it. ./hub news fetches the newest NPR News Now newscast (pi/news.js reads its public feed, a new one every hour), follows its tracking redirects to the MP3 and sends that address as play. Server 0.21.0; the redirects from server 0.22.3.",
-        "Autoplay: the first key press after the hub loads plays a silent blip to unlock sound; a play the TV still refuses waits up to 10 minutes for the next key press. Hub v0.38.2."
+        "Autoplay: the first key press after the hub loads plays a silent blip to unlock sound; a play the TV still refuses waits up to 10 minutes for the next key press. Hub v0.38.2.",
+        "A layout switch loads the page afresh; sound playing then carries on from the second it was at if the page is back within a minute (a note in sessionStorage). Hub v0.38.5."
        ],
        "files": [
         "pi/server.js",
@@ -2265,7 +2296,8 @@
      "details": [
       "./hub echo and the mailbox's echo.* commands POST Home Assistant services with HA_TOKEN: media_player.play_media (an Alexa custom command such as 'resume my book on Audible', a TuneIn or Amazon Music search, or the Alexa.FlashBriefing.Play sequence), media_pause, media_play, media_next_track and volume_set. Targets: the Echo Show, the Echo Dot and the Everywhere group (ECHO_TARGETS in pi/.env). Server 0.22.0.",
       "When the hub starts an app, the Pi notes which app, which Echo and when (data/echo.json). All sounds then shows 'Audible on Ian's Echo Show' with 'Started from the hub' instead of Alexa's stale title. The note clears when something else clearly starts on that Echo, on stop, or after 6 hours. No book title or chapter.",
-      "Audible and the news briefing are not media players Alexa Media Player can drive, so pause, resume, skip and stop on them are sent as Alexa voice commands. Log lines name only the target key and the app, never a search or a speaker's name."
+      "Audible and the news briefing are not media players Alexa Media Player can drive, so pause, resume, skip and stop on them are sent as Alexa voice commands. Log lines name only the target key and the app, never a search or a speaker's name.",
+      "From server 0.24.0 the TV's Sound control page sends presses on the screen API, POST /echo/run: presets only, origin-checked, 6 presses in 5 s. allsounds carries echos (each speaker's state and volume) and target for it."
      ],
      "files": [
       "pi/echo.js",
@@ -2288,6 +2320,11 @@
        "to": "pi.allsounds",
        "label": "what the hub started, for the All sounds label",
        "dir": "out"
+      },
+      {
+       "to": "tv.widgets.soundctl",
+       "label": "takes presses from the Sound control page",
+       "dir": "in"
       }
      ],
      "notes": [
