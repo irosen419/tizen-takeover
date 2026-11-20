@@ -46,6 +46,8 @@ const MAX_SIZE = 30;
 const MAX_LINE = 60; // a grocery item's name
 const MISS_MS = 24 * 60 * 60 * 1000;
 const MAX_MISSES = 5000;
+const REFILL_BUDGET_MS = 12000; // one refill lookup in all
+const REFILL_MS = 6 * 60 * 60 * 1000; // a saved web item missing a brand or picture is looked up again at most this often
 const TIMEOUT_MS = 6000;
 const BUDGET_MS = 20000; // one lookup in all, queue waits included (the phone gives up at 25 s)
 const DNS_MS = 3000;
@@ -439,6 +441,7 @@ function createCatalog(options) {
 
   let products = {};
   const misses = new Map(); // key -> time the miss expires
+  const refills = new Map(); // key -> time a saved item may be looked up again
   const inflight = new Map();
   let closed = false;
 
@@ -566,19 +569,32 @@ function createCatalog(options) {
     return { buf: r.body, ext: ext };
   }
 
-  async function webLookup(key) {
-    const deadline = clock() + budgetMs;
+  // A web item saved without a brand or a picture (a source had none, or a
+  // picture failed) is worth one more look on a rescan; a manual one is not.
+  function needsRefill(p) {
+    return !!p && p.source !== 'manual' && (!p.brand || !p.image || !imageFile(p.upc));
+  }
+
+  // old: the saved item a rescan fills in (only its empty fields change).
+  async function webLookup(key, old) {
+    // A refill keeps the phone waiting less: a saved item is already shown.
+    const deadline = clock() + (old ? Math.min(budgetMs, REFILL_BUDGET_MS) : budgetMs);
+    // A change while we waited (a manual entry, another fill) wins.
+    const changed = () => (old ? get(key) !== old : !!get(key));
+    const oldPic = !!(old && old.image && imageFile(key));
     const said = {}; // source id -> 'none' | 'skipped' | 'error'
     for (let i = 0; i < sources.length; i++) {
       const src = sources[i];
+      // UPCitemdb's 100 a day are not spent on a saved item's picture alone.
+      if (old && old.brand && src.id === 'upcitemdb') continue;
       const r = await ask(src, key, deadline);
       if (r.found) {
-        // A manual entry may have landed while we waited: it wins.
-        if (get(key)) return get(key);
+        if (changed()) return get(key);
         // A hit with no brand or no picture borrows them from the sources
         // after it (inside the same budget), so a row can say "Brand · size".
-        let prod = r.product, images = r.images.slice();
-        for (let j = i + 1; j < sources.length && (!prod.brand || !images.length) && left(deadline) > 500; j++) {
+        let prod = r.product, images = oldPic ? [] : r.images.slice();
+        if (old && old.brand) prod = Object.assign({}, prod, { brand: old.brand });
+        for (let j = i + 1; j < sources.length && (!prod.brand || (!oldPic && !images.length)) && left(deadline) > 500; j++) {
           // UPCitemdb's 100 a day is for real misses and missing brands, not for a missing picture alone.
           if (sources[j].id === 'upcitemdb' && prod.brand) continue;
           let more = null;
@@ -593,7 +609,8 @@ function createCatalog(options) {
         for (let k = 0; k < images.length && !image; k++) {
           try { image = await downloadImage(images[k], left(deadline)); } catch (e) { why = (e && e.code) || 'error'; }
         }
-        if (get(key)) return get(key);
+        if (changed()) return get(key);
+        if (old) return refill(key, old, prod, image, oldPic, why);
         if (!makeRoom()) return null;
         const t = now();
         const p = { upc: key, brand: prod.brand, name: prod.name, size: prod.size, source: src.id, image: '', addedAt: t, updatedAt: t };
@@ -609,6 +626,10 @@ function createCatalog(options) {
       else if (r.error) { said[src.id] = 'error'; log('products: ' + src.id + ' did not answer (' + r.error + ')'); }
       else said[src.id] = 'none';
     }
+    if (old) {
+      log('products: a saved item was looked up again; not found on the web');
+      return get(key);
+    }
     // Remembered when both open databases said no; UPCitemdb may have been
     // skipped (its limits), but not have failed.
     const trouble = Object.keys(said).some((k) => said[k] !== 'none');
@@ -622,6 +643,31 @@ function createCatalog(options) {
     }
     log('products: not found on the web' + (trouble ? ' (a source was skipped or failed)' : ''));
     return null;
+  }
+
+  // Fills only the saved item's empty brand, size and picture; its name,
+  // source and added time stay.
+  function refill(key, old, prod, image, oldPic, why) {
+    const t = now();
+    const p = Object.assign({}, old, {
+      brand: old.brand || prod.brand || '',
+      size: old.size || prod.size || '',
+      image: oldPic ? old.image : '',
+      updatedAt: t
+    });
+    if (image) {
+      try { writeImage(key, image.buf, image.ext); p.image = imageUrl(key, t); } catch (e) { why = 'not saved'; log('products: could not save a picture (' + (e.code || 'error') + ')'); }
+    }
+    const gained = [];
+    if (p.brand && !old.brand) gained.push('brand');
+    if (p.image && !oldPic) gained.push('picture');
+    if (gained.length || p.size !== old.size || p.image !== old.image) {
+      products[key] = p;
+      persist();
+    }
+    log('products: a saved item was looked up again (' + (gained.length ? 'added ' + gained.join(' and ') : 'nothing new') +
+      '; ' + (p.brand ? 'brand' : 'no brand') + ', ' + (p.image ? 'picture' : 'no picture: ' + why) + ')');
+    return get(key);
   }
 
   const has = (k) => !!get(k);
@@ -644,7 +690,21 @@ function createCatalog(options) {
   function lookup(code, format, o) {
     const key = format ? normalize(code, format) : toKey(code, has);
     const have = get(key);
-    if (have) return Promise.resolve({ ok: true, upc: key, found: true, product: have });
+    if (have) {
+      // A rescan of a web item missing a brand or picture looks again, at most
+      // once per REFILL_MS per item and within the phone's own limit.
+      const due = refills.get(key);
+      if (!enabled || closed || !needsRefill(have) || (due && due > now()) || inflight.has(key) || !clientOk(o && o.client)) {
+        if (inflight.has(key)) return inflight.get(key).then((prod) => ({ ok: true, upc: key, found: true, product: prod || get(key) || have }));
+        return Promise.resolve({ ok: true, upc: key, found: true, product: have });
+      }
+      if (refills.size >= MAX_MISSES) refills.delete(refills.keys().next().value);
+      refills.set(key, now() + REFILL_MS);
+      const p = webLookup(key, have).catch((e) => { log('products: lookup failed (' + ((e && e.code) || 'error') + ')'); return null; })
+        .then((prod) => { inflight.delete(key); return prod; });
+      inflight.set(key, p);
+      return p.then((prod) => ({ ok: true, upc: key, found: true, product: prod || get(key) || have }));
+    }
     const miss = misses.get(key);
     if (miss && miss > now()) return Promise.resolve({ ok: true, upc: key, found: false, product: null });
     if (miss) misses.delete(key);

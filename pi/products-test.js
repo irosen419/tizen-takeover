@@ -402,6 +402,73 @@ async function main() {
     assert.deepStrictEqual(web3.calls.filter((x) => /^img:/.test(x)), ['img:a.example', 'img:b.example'], 'the next picture is tried when the first fails');
   });
 
+  await check('a rescan fills in a saved web item missing its brand and picture, once per 6 hours; its name and source stay', async () => {
+    let brand = '';
+    let pic = '';
+    const web = fakeWeb({ off: () => offHit({ brands: brand, image_front_small_url: pic })(), image: goodImage });
+    const c = catalogWith(web);
+    const first = await c.lookup(COLA);
+    assert.strictEqual(first.product.brand, '');
+    assert.strictEqual(first.product.image, '');
+    // The sources gain a brand and a picture; the next scan picks them up.
+    brand = 'Fizz Co'; pic = 'https://images.openfoodfacts.org/x/front.200.jpg';
+    c.tick(1000);
+    const offCalls = web.calls.filter((x) => x === 'off').length;
+    const again = await c.lookup(COLA);
+    assert.strictEqual(again.found, true);
+    assert.strictEqual(again.product.brand, 'Fizz Co');
+    assert.ok(again.product.image && c.imageFile(COLA_KEY), 'the picture was saved');
+    assert.strictEqual(again.product.name, first.product.name);
+    assert.strictEqual(again.product.source, 'off');
+    assert.strictEqual(again.product.addedAt, first.product.addedAt);
+    assert.strictEqual(web.calls.filter((x) => x === 'off').length, offCalls + 1);
+    assert.ok(c.lines.some((l) => /looked up again \(added brand and picture/.test(l)), c.lines.join(' | '));
+    // Complete now: further scans are free.
+    const n = web.calls.length;
+    await c.lookup(COLA);
+    assert.strictEqual(web.calls.length, n);
+    // Still bare on the web: one more look, then none for 6 hours.
+    const bare = fakeWeb({ off: offHit({ brands: '', image_front_small_url: '', image_small_url: '', image_front_url: '' }) });
+    const c2 = catalogWith(bare);
+    await c2.lookup(COLA);
+    await c2.lookup(COLA);
+    const looked = bare.calls.length;
+    await c2.lookup(COLA);
+    assert.strictEqual(bare.calls.length, looked, 'throttled');
+    c2.tick(6 * 60 * 60 * 1000 + 1);
+    await c2.lookup(COLA);
+    assert.ok(bare.calls.length > looked, 'looked again after 6 hours');
+    assert.ok(c2.lines.some((l) => /looked up again \(nothing new; no brand, no picture/.test(l)));
+    // Gone from the web on a refill: the saved item stays as it was.
+    const gone = fakeWeb({ off: offHit({ brands: '', image_front_small_url: '', image_small_url: '', image_front_url: '' }) });
+    const c3 = catalogWith(gone);
+    const kept = await c3.lookup(COLA);
+    const goneWeb = fakeWeb({});
+    const c4 = products.createCatalog({ dataDir: c3.dir, log: () => {}, request: goneWeb.request, resolve: goneWeb.resolve, now: () => 5000000 });
+    const r4 = await c4.lookup(COLA);
+    assert.strictEqual(r4.found, true);
+    assert.strictEqual(r4.product.name, kept.product.name);
+    assert.strictEqual(c4._misses.size, 0, 'not a miss: it is in the catalog');
+  });
+
+  await check('a rescan never looks again for a manual item or one already complete; a hand-edited brand and photo stick', async () => {
+    const web = fakeWeb({ off: offHit({ brands: '', image_front_small_url: '', image_small_url: '', image_front_url: '' }) });
+    const c = catalogWith(web);
+    await c.lookup(COLA);
+    c.save({ upc: COLA_KEY, brand: 'Mine', name: 'My cola', photo: 'data:image/jpeg;base64,' + jpeg(2000).toString('base64') });
+    const n = web.calls.length;
+    c.tick(7 * 60 * 60 * 1000);
+    const r = await c.lookup(COLA);
+    assert.strictEqual(web.calls.length, n, 'no web call');
+    assert.strictEqual(r.product.brand, 'Mine');
+    assert.strictEqual(r.product.source, 'manual');
+    assert.ok(r.product.image);
+    // A manual name with no brand stays manual too.
+    c.save({ upc: EAN13, name: 'Plain bread' });
+    await c.lookup(EAN13);
+    assert.strictEqual(web.calls.length, n);
+  });
+
   await check('per-phone cap on web lookups (429), catalog hits and remembered misses stay free', async () => {
     const web = fakeWeb({});
     const c = catalogWith(web, { clientPerMin: 2 });
