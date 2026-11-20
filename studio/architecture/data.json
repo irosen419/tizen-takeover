@@ -301,12 +301,12 @@
        "status": "unverified",
        "summary": "English or Latin American Spanish, chosen on the Clock page; every widget's fixed words, plus Ian's own text through the Pi.",
        "details": [
-        "HUB_I18N holds the Spanish strings, one section per widget, with English as the fallback and its own day and month names. Since PR 112 every widget's fixed words are covered (the Architecture page is still English).",
+        "HUB_I18N holds the Spanish strings, one section per widget, with English as the fallback and its own day and month names. Every widget's fixed words are covered (the Architecture page is still English).",
         "HUB_I18N.dyn (app/i18n-dyn.js) shows to-dos, calendar events and AWWS tasks in Spanish: it shows English first, asks the Pi's translate service in one batch, keeps answers on the TV, and redraws. Show titles, songs and place names stay as they are. Choice kept in localStorage; ?lang=es tries it."
        ],
        "files": [
         "app/i18n.js",
-        "(PR 112) app/i18n-dyn.js"
+        "app/i18n-dyn.js"
        ],
        "notes": [
         "Text fit (+25% for Spanish) is tested on a laptop only, not on the TV's font."
@@ -2018,8 +2018,7 @@
      "id": "pi.translate",
      "title": "Translate service",
      "kind": "component",
-     "status": "draft",
-     "pr": "PR 112",
+     "status": "unverified",
      "summary": "Turns Ian's own text (to-dos, calendar events, AWWS tasks) into Latin American Spanish when the hub is in Spanish, and remembers each line.",
      "details": [
       "The TV sends up to 60 lines at a time to POST /translate. Lines already known come from data/translations-es.json (up to 5000, oldest dropped); new ones go to Gemini (gemini-3.5-flash-lite) in one batched call, are checked, then saved, so each line is translated once.",
@@ -2027,8 +2026,8 @@
       "Usage per day (new lines, Gemini calls, tokens, estimated cost) is kept in data/translate-usage.json for 62 days; Claude reads it with the mailbox command translate.status (GET /api/translate/usage). At most 2000 new lines a day."
      ],
      "files": [
-      "(PR 112) pi/translate.js",
-      "(PR 112) pi/translate-test.js"
+      "pi/translate.js",
+      "pi/translate-test.js"
      ],
      "talksTo": [
       {
@@ -3275,8 +3274,7 @@
        "id": "ext.gemini.translate",
        "title": "Hub translations",
        "kind": "external",
-       "status": "draft",
-       "pr": "PR 112",
+       "status": "unverified",
        "summary": "Gemini translates new to-do, event and AWWS lines for Spanish mode, called only by the Pi's translate service.",
        "details": [
         "Names of people, places, shows, books and songs are kept as they are. Billed to Ian's personal Gemini key, not AWWS's."
