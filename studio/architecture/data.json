@@ -2291,7 +2291,8 @@
      ],
      "notes": [
       "Not yet run against the real Echos: Alexa custom commands on the Everywhere group, and voice pause on Audible, are unverified."
-     ]
+     ],
+     "pr": "PR 124"
     },
     {
      "id": "pi.deploy",
@@ -5085,7 +5086,7 @@
   {
    "id": "flow.echo-start",
    "title": "Resume Audible on an Echo",
-   "summary": "Draft: the hub starts an app on an Echo, then All sounds names it.",
+   "summary": "Draft (PR 124): the hub starts an app on an Echo, then All sounds names it.",
    "steps": [
     {
      "node": "pi.echo",
