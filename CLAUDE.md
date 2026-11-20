@@ -18,6 +18,10 @@ Custom home screen for Ian's Samsung Tizen TV (TizenBrew module, loaded from jsD
 
 ## Tests
 Run only suites for files you touched: `node dev/<name>-test.js` (browser suites) and `node pi/<name>-test.js`. Re-run only what failed. Do not run all suites repeatedly.
+`npm test` runs only the suites your branch affects; `npm test -- --failed` re-runs just the failures.
+
+## Version
+PRs never change the version. Right before merging: `node dev/bump.js minor` (or `patch`), commit, merge. Details: `docs/process.md`.
 
 ## Pi chores from the cloud
 `node dev/hub-remote.js status` (is the Pi up), `node dev/hub-remote.js <cmd> '<json args>'` (one-line result). Commands: COMMANDS in `pi/mailbox.js`. It cannot git pull or restart: Ian restarts (`hubup` on the Pi, see `pi/aliases.sh`); never ask him to run steps you can send through the mailbox.
