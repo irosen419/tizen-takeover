@@ -1245,7 +1245,7 @@
        "title": "Sound control",
        "kind": "component",
        "status": "draft",
-       "pr": "PR 127",
+       "pr": "PR 131",
        "summary": "A copy of All sounds whose page adds Echo controls: a speaker switch, Play/Pause, Next, a volume stepper, Stop and quick starts.",
        "details": [
         "The tile looks the same as All sounds. The page adds a speaker switch (Echo Show, Echo Dot, Everywhere), a round Play/Pause, Next, a volume stepper (− 40% +), Stop and one-press starts: Resume audiobook, KERA 90.1, News briefing, Pandora and Amazon Music. All sounds stays untouched as the backup.",
