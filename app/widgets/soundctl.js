@@ -3,7 +3,7 @@
  * a control panel for the Echo speakers. The tile is the All sounds tile,
  * drawn the same way; the page and full screen add, under what is playing, a
  * speaker row, Play/Pause, Next, Volume down and up, Stop, and a few quick
- * starts (an audiobook, KERA, the news, Pandora, Amazon Music).
+ * starts (an audiobook, KERA, NPR's newscast, Spotify, Pandora, Amazon Music).
  *
  * It reads the same "allsounds" resource from the Pi (pi/allsounds.js), which
  * now also carries `echos` (the speakers: key, name, state, volume, app) and
@@ -27,8 +27,8 @@
   var lastSig = '';
   var lastCtlSig = '';
   var sel = null;          // the speaker the person picked (a key), until the page closes
-  var pend = null;         // { key, state, at }: Play/Pause shown before the Pi confirms
-  var pendVol = null;      // { key, value, at }: the volume shown before the Pi confirms
+  var pend = {};           // key -> { state, at }: Play/Pause shown before the Pi confirms
+  var pendVol = {};        // key -> { value, at }: the volume shown before the Pi confirms
   var note = null;         // { text, kind: 'ok'|'bad', at } shown in the panel head
   var noteTimer = null;
   var pendTimer = null;
@@ -227,7 +227,10 @@
       if (!e || typeof e !== 'object' || typeof e.key !== 'string' || !APP_KEY.test(e.key)) continue;
       var st = e.state === 'playing' || e.state === 'paused' || e.state === 'idle' ? e.state : 'off';
       var vol = typeof e.volume === 'number' && e.volume >= 0 && e.volume <= 100 ? Math.round(e.volume) : -1;
-      out.push({ key: e.key, name: str(e.name, 60) || e.key, state: st, volume: vol });
+      out.push({
+        key: e.key, name: str(e.name, 60) || e.key, state: st, volume: vol, group: e.group === true,
+        source: str(e.source, 30), title: str(e.title, 200), artist: str(e.artist, 120), art: artUrl(e.art), started: e.started === true
+      });
     }
     return out;
   }
@@ -239,30 +242,107 @@
     return n || e.name;
   }
 
+  function fresh(map, key) {
+    var m = map[key];
+    return m && now() - m.at < PENDING_MS ? m : null;
+  }
+
+  // A speaker as the page shows it: what was just pressed counts at once.
+  function eff(e) {
+    var o = {};
+    for (var k in e) if (Object.prototype.hasOwnProperty.call(e, k)) o[k] = e[k];
+    var p = fresh(pend, e.key);
+    var pv = fresh(pendVol, e.key);
+    if (p) o.state = p.state;
+    if (pv) o.volume = pv.value;
+    return o;
+  }
+
   // The controls' picture, or null when they do not show (no speakers, not live).
+  // `cur` is the speaker the page follows (picked, else the Pi's target, else
+  // the first one playing, else the first); `group` is true for Everywhere.
   function ctlView(v) {
     if (!v || (v.kind !== 'playing' && v.kind !== 'paused' && v.kind !== 'idle')) return null;
-    var list = echosOf(data);
-    if (!list.length) return null;
-    var key = null;
+    var raw = echosOf(data);
+    if (!raw.length) return null;
+    var list = [];
     var i;
+    for (i = 0; i < raw.length; i++) list.push(eff(raw[i]));
+    // The group follows its members unless it was pressed itself.
+    for (i = 0; i < list.length; i++) {
+      if (!list[i].group || fresh(pend, list[i].key)) continue;
+      var any = '';
+      for (var m = 0; m < list.length; m++) {
+        if (list[m].group) continue;
+        if (list[m].state === 'playing') any = 'playing';
+        else if (list[m].state === 'paused' && any !== 'playing') any = 'paused';
+      }
+      list[i].state = any || (list[i].state === 'off' ? 'off' : 'idle');
+    }
+    var key = null;
     if (sel) for (i = 0; i < list.length; i++) if (list[i].key === sel) key = sel;
     if (!key && data && typeof data.target === 'string') for (i = 0; i < list.length; i++) if (list[i].key === data.target) key = data.target;
-    if (!key) for (i = 0; i < list.length; i++) if (list[i].state === 'playing') { key = list[i].key; break; }
+    if (!key) for (i = 0; i < list.length; i++) if (list[i].state === 'playing' && !list[i].group) { key = list[i].key; break; }
     if (!key) key = list[0].key;
     var cur = null;
     for (i = 0; i < list.length; i++) if (list[i].key === key) cur = list[i];
-    var state = cur.state;
-    if (pend && pend.key === key && now() - pend.at < PENDING_MS) state = pend.state;
-    var vol = cur.volume;
-    if (pendVol && pendVol.key === key && now() - pendVol.at < PENDING_MS) vol = pendVol.value;
-    return { echos: list, key: key, cur: cur, name: shortName(cur), playing: state === 'playing', vol: vol };
+    return { echos: list, key: key, cur: cur, name: shortName(cur), playing: cur.state === 'playing', vol: cur.volume, group: cur.group };
+  }
+
+  // One speaker as the info area shows it: the same shape as view().
+  function spkView(e) {
+    var v = { kind: 'idle', song: false, label: '', title: '', sub: '', album: '', source: '', device: '', art: '', msg: '', hint: '', note: '' };
+    if (e.state === 'playing' || e.state === 'paused') {
+      v.kind = e.state;
+      v.song = true;
+      v.label = e.state === 'playing' ? T('playing', 'Now playing') : T('paused', 'Paused');
+      v.source = e.source;
+      v.title = e.title || e.source || (e.state === 'playing' ? T('unknown', 'Something is playing') : T('unknownPaused', 'Something is paused'));
+      v.unknown = !e.title;
+      v.sub = e.title ? e.artist : '';
+      v.art = e.title ? e.art : '';
+      v.note = e.started ? T('started', 'Started from the hub') : '';
+      return v;
+    }
+    v.label = shortName(e);
+    v.msg = e.state === 'idle' ? T('idle', 'Nothing playing') : T('off', 'Off');
+    return v;
+  }
+
+  // The state in one short word (the speaker's own, for the Everywhere rows).
+  function stateWord(e) {
+    if (e.state === 'playing') return T('stPlaying', 'Playing');
+    if (e.state === 'paused') return T('paused', 'Paused');
+    if (e.state === 'idle') return T('stIdle', 'Idle');
+    return T('off', 'Off');
+  }
+
+  // What a speaker plays, short: the app ("Spotify"), or the station for radio
+  // ("KERA"), when it plays; else its state in a word.
+  function whatPlays(e) {
+    if (e.state !== 'playing' && e.state !== 'paused') return '';
+    if (e.source && !(/^(tune\s*in|i\s*heart\s*radio)$/i.test(e.source) && e.title)) return e.source;
+    return e.title || e.source || '';
+  }
+
+  // The tiny second line under a name on the speaker switch.
+  function switchLine(e, all) {
+    if (e.group) {
+      var n = 0;
+      for (var i = 0; i < all.length; i++) if (!all[i].group && all[i].state === 'playing') n++;
+      if (n > 0) return T('nPlaying', '{n} playing', { n: n });
+      return e.state === 'paused' ? T('paused', 'Paused') : T('stIdle', 'Idle');
+    }
+    if (e.state === 'playing') return whatPlays(e) || T('stPlaying', 'Playing');
+    if (e.state === 'paused') return T('paused', 'Paused');
+    return e.state === 'idle' ? T('stIdle', 'Idle') : T('off', 'Off');
   }
 
   var QUICK = [
     ['audible', 'qAudible', 'Resume audiobook', 'appAudible', 'Audible', 'audible'],
     ['kera', 'qKera', 'KERA 90.1', 'appKera', 'KERA 90.1', 'kera'],
-    ['news', 'qNews', 'News briefing', 'appNews', 'the news', 'news'],
+    ['npr', 'qNpr', 'NPR newscast', 'appNpr', 'the NPR newscast', 'news'],
+    ['spotify', 'qSpotify', 'Spotify', 'appSpotify', 'Spotify', 'music'],
     ['pandora', 'qPandora', 'Pandora', 'appPandora', 'Pandora', 'music'],
     ['amazon-music', 'qAmazon', 'Amazon Music', 'appAmazon', 'Amazon Music', 'music']
   ];
@@ -489,42 +569,96 @@
     var v = view();
     var full = ctx.mode && ctx.mode() === 'full';
     var cv = ctlView(v);
-    var root = el('div', 'sc-page sc-k-' + v.kind + (full ? ' is-full' : '') + (cv ? ' has-ctl' : ''), body);
-    page = { root: root, v: v, full: full, cv: cv, hint: '', spk: [], btns: [], qk: [] };
-    var main = cv ? el('div', 'sc-main', root) : root;
+    var group = !!cv && cv.group;
+    // The info area follows the speaker picked, never the house-wide winner;
+    // Everywhere shows one row per speaker instead. Without speakers (an older
+    // Pi) it is the All sounds page.
+    var sv = cv ? (group ? null : spkView(cv.cur)) : v;
+    var root = el('div', 'sc-page sc-k-' + (sv ? sv.kind : 'playing') + (full ? ' is-full' : '') + (cv ? ' has-ctl' : ''), body);
+    page = { root: root, v: sv, full: full, cv: cv, hint: '', spk: [], btns: [], qk: [], mrows: [], members: null, art: null, info: null };
+    var main = cv ? el('div', 'sc-main' + (group ? ' is-members' : ''), root) : root;
     page.main = main;
-    page.art = artBox(main, v.song ? v : { kind: 'idle' }, 'sc-art-page');
-    var info = el('div', 'sc-info', main);
-    page.info = info;
-    var head = el('div', 'sc-label', info);
-    page.head = head;
-    if (v.song) {
-      eq(head, v);
-      el('span', 'sc-label-text', head, v.label);
-      platform(head, v);
-      page.title = el('div', 'sc-title', info, v.title);
-      page.stale = v.note ? el('div', 'sc-stale', info, v.note) : null;
-      page.sub = v.sub ? el('div', 'sc-sub', info, v.sub) : null;
-      page.album = v.album ? el('div', 'sc-album', info, v.album) : null;
-      // With the controls the speaker row already says which speaker it is
-      // (unless the sound is on a speaker that is not one of its chips).
-      var known = false;
-      if (cv) for (var ki = 0; ki < cv.echos.length; ki++) if (cv.echos[ki].name === v.device) known = true;
-      if (!known) {
-        var foot = el('div', 'sc-foot', info);
-        page.foot = foot;
-        var chips = el('div', 'sc-chips', foot);
-        if (v.device) el('span', 'sc-chip sc-chip-device', chips, T('on', 'On {device}', { device: v.device }));
-      }
+    if (group) {
+      page.members = el('div', 'sc-members', main);
+      drawMembers(page.members, cv);
     } else {
-      el('span', 'sc-label-text', head, T('title', 'Sound control'));
-      page.title = el('div', 'sc-title sc-quiet-title', info, v.msg);
-      page.sub = el('div', 'sc-sub sc-hint-line', info, v.hint);
+      page.art = artBox(main, sv.song ? sv : { kind: 'idle' }, 'sc-art-page');
+      var info = el('div', 'sc-info', main);
+      page.info = info;
+      var head = el('div', 'sc-label', info);
+      page.head = head;
+      if (sv.song) {
+        eq(head, sv);
+        el('span', 'sc-label-text', head, sv.label);
+        platform(head, sv);
+        page.title = el('div', 'sc-title', info, sv.title);
+        page.stale = sv.note ? el('div', 'sc-stale', info, sv.note) : null;
+        page.sub = sv.sub ? el('div', 'sc-sub', info, sv.sub) : null;
+        page.album = sv.album ? el('div', 'sc-album', info, sv.album) : null;
+        // Without the controls the speaker's name is a chip; with them the
+        // picker already says which speaker it is.
+        if (!cv) {
+          var foot = el('div', 'sc-foot', info);
+          page.foot = foot;
+          var chips = el('div', 'sc-chips', foot);
+          if (sv.device) el('span', 'sc-chip sc-chip-device', chips, T('on', 'On {device}', { device: sv.device }));
+        }
+      } else if (cv) {
+        el('span', 'sc-label-text', head, sv.label);
+        page.title = el('div', 'sc-title sc-quiet-title', info, sv.msg);
+      } else {
+        el('span', 'sc-label-text', head, T('title', 'Sound control'));
+        page.title = el('div', 'sc-title sc-quiet-title', info, sv.msg);
+        page.sub = el('div', 'sc-sub sc-hint-line', info, sv.hint);
+      }
     }
     if (cv) drawCtl(root, cv);
     // The head's line first, so the room the controls get is the final room.
     if (cv) paintStatus();
     fitPage(body);
+  }
+
+  // Everywhere: one row for each speaker, with what it plays and its own
+  // Play/Pause and volume (they act on that speaker alone).
+  function drawMembers(box, cv) {
+    for (var i = 0; i < cv.echos.length; i++) {
+      var e = cv.echos[i];
+      if (e.group) continue;
+      var sv = spkView(e);
+      var row = el('div', 'sc-mrow' + (e.state === 'off' ? ' is-off' : ''), box);
+      row.setAttribute('data-spk-row', e.key);
+      artBox(row, sv.song ? sv : { kind: 'idle' }, 'sc-art-mini');
+      var tx = el('div', 'sc-mtext', row);
+      el('div', 'sc-mname', tx, shortName(e));
+      var detail = sv.msg;
+      if (sv.song) detail = e.source && e.title && e.source !== e.title ? sv.title + ' · ' + e.source : sv.title;
+      el('div', 'sc-mdetail', tx, detail);
+      el('div', 'sc-mstate sc-st-' + e.state, row, stateWord(e));
+      var btns = [];
+      var ctl = el('div', 'sc-mctl', row);
+      if (e.state !== 'off') {
+        var mk = function (parent, cls, act, label) {
+          var b = el('div', 'f ' + cls, parent);
+          b.setAttribute('data-key', 'm:' + e.key + ':' + act);
+          b.setAttribute('data-act', act);
+          b.setAttribute('data-mspk', e.key);
+          b.setAttribute('aria-label', label);
+          b.setAttribute('role', 'button');
+          btns.push(b);
+          return b;
+        };
+        var name = shortName(e);
+        var t = mk(ctl, 'sc-tc sc-mt', 'toggle', (e.state === 'playing' ? T('pause', 'Pause') : T('play', 'Play')) + ' · ' + name);
+        glyph(e.state === 'playing' ? 'pause' : 'play', 'sc-tc-icon', t);
+        var pill = el('div', 'sc-step sc-mstep', ctl);
+        var minus = mk(pill, 'sc-sb', 'volDown', T('volDown', 'Volume down') + ' · ' + name);
+        el('span', 'sc-sb-t', minus, '−');
+        el('span', 'sc-vol' + (e.volume >= 0 ? '' : ' is-unknown'), pill, e.volume >= 0 ? e.volume + '%' : '—');
+        var plus = mk(pill, 'sc-sb', 'volUp', T('volUp', 'Volume up') + ' · ' + name);
+        el('span', 'sc-sb-t', plus, '+');
+      }
+      if (btns.length) page.mrows.push(btns);
+    }
   }
 
   // The Echo controls, one deck under what plays: the speaker picker (one
@@ -537,19 +671,24 @@
     var i;
     var r1 = el('div', 'sc-drow sc-row-spk', deck);
     el('div', 'sc-rlabel', r1, T('speaker', 'Speaker'));
-    var seg = el('div', 'sc-seg', el('div', 'sc-rbody', r1));
+    var rb = el('div', 'sc-rbody', r1);
+    var seg = el('div', 'sc-seg', rb);
     for (i = 0; i < cv.echos.length; i++) {
       var e = cv.echos[i];
       var chip = el('div', 'f sc-spk' + (e.key === cv.key ? ' is-sel' : ''), seg);
       chip.setAttribute('data-key', 'spk:' + e.key);
       chip.setAttribute('data-spk', e.key);
-      if (e.state === 'playing') el('i', 'sc-dot', chip);
-      el('span', 'sc-spk-name', chip, shortName(e));
+      el('i', 'sc-dot' + (e.state === 'playing' ? ' is-on' : ''), chip);
+      var tx = el('span', 'sc-spk-tx', chip);
+      el('span', 'sc-spk-name', tx, shortName(e));
+      el('span', 'sc-spk-sub', tx, switchLine(e, cv.echos));
       page.spk.push(chip);
     }
+    // Which speaker the page is showing, in words, beside the picker.
+    page.showing = el('div', 'sc-showing', rb, cv.group ? T('showingAll', 'Showing all speakers') : T('showing', 'Showing {name}', { name: cv.name }));
 
     var r2 = el('div', 'sc-drow sc-row-tr', deck);
-    el('div', 'sc-rlabel', r2, '');
+    el('div', 'sc-rlabel' + (cv.group ? ' is-wrap' : ''), r2, cv.group ? T('allSpeakers', 'All speakers') : '');
     var bar = el('div', 'sc-trans sc-rbody', r2);
     page.trans = bar;
     var vol = cv.vol >= 0 ? cv.vol + '%' : '—';
@@ -640,12 +779,18 @@
     }
     // What plays keeps the room above the deck: the cover is the hero, and
     // the words give way before it does. With very little room the song gives
-    // way whole to the controls, never half a line.
+    // way whole to the controls, never half a line. (The Everywhere rows
+    // never hide: they hold controls, so they shrink instead.)
     var roomH = Math.max(0, pageH - ctlH);
-    var hide = !!page.ctl && roomH < 3.4 * r;
+    var hide = !!page.ctl && !page.members && roomH < 3.4 * r;
     if (page.main) page.main.style.display = hide ? 'none' : '';
     page.root.style.height = pageH + 'px';
     if (hide) return;
+    if (page.members) {
+      page.main.style.height = roomH + 'px';
+      fitMembers(roomH);
+      return;
+    }
     var px = Math.min(page.ctl ? roomH : h - 0.4 * r, w * (page.full ? (page.ctl ? 0.36 : 0.42) : 0.4));
     var minArt = page.ctl ? 6.5 * r : 6 * r;
     var noArt = page.ctl && px < minArt;
@@ -674,15 +819,28 @@
     if (used() > room && page.head) page.head.style.display = 'none';
   }
 
+  // The Everywhere rows: full (cover, two lines), then smaller, then lean
+  // (no cover, one line) until they fit the room.
+  function fitMembers(room) {
+    var box = page.members;
+    var stages = ['sc-members', 'sc-members is-compact', 'sc-members is-compact is-lean'];
+    for (var i = 0; i < stages.length; i++) {
+      box.className = stages[i];
+      if (box.scrollHeight <= room + 1) break;
+    }
+  }
+
   // The deck has to leave room for the song: when it does not, it tightens
   // (smaller circles), and when its captions do not fit in a row they go.
   function fitCtl(h) {
     var ctl = page.ctl;
     var r = rem();
     var stages = ['sc-ctl', 'sc-ctl is-tight', 'sc-ctl is-tight is-tighter'];
+    // The song wants 7.5rem above the deck; each Everywhere row about 3rem.
+    var need = page.members ? (page.members.children.length * 3 + 0.4) * r : 7.5 * r;
     for (var i = 0; i < stages.length; i++) {
       ctl.className = stages[i];
-      if (h - outer(ctl) >= 7.5 * r) break;
+      if (h - outer(ctl) >= need) break;
     }
     if (page.trans && page.trans.scrollWidth > page.trans.clientWidth + 1) ctl.className += ' is-nocap';
   }
@@ -738,35 +896,48 @@
     return T('errPi', 'Couldn’t reach the Pi. Nothing changed.');
   }
 
+  function expire(map) {
+    var gone = false;
+    for (var k in map) {
+      if (Object.prototype.hasOwnProperty.call(map, k) && now() - map[k].at >= PENDING_MS) { delete map[k]; gone = true; }
+    }
+    return gone;
+  }
+
   function schedulePend() {
     if (pendTimer) clearTimeout(pendTimer);
     pendTimer = setTimeout(function () {
       pendTimer = null;
-      var stale = false;
-      if (pend && now() - pend.at >= PENDING_MS) { pend = null; stale = true; }
-      if (pendVol && now() - pendVol.at >= PENDING_MS) { pendVol = null; stale = true; }
-      if (stale) refresh(true);
+      var a = expire(pend);
+      var b = expire(pendVol);
+      if (a || b) refresh(true);
     }, PENDING_MS + 100);
   }
 
-  // body: what to send (target is added); okText: our words for a success;
-  // optimistic: the state to show on the Play/Pause button meanwhile, or ''.
-  function send(body, okText, optimistic, optVol) {
+  // e: the speaker to act on (its key is the target); body: what to send;
+  // okText: our words for a success; optimistic: the state to show meanwhile
+  // ('' for none); optVol: the volume to show meanwhile.
+  function send(e, body, okText, optimistic, optVol) {
     var cv = ctlView(view());
-    if (!cv) return;
-    body.target = cv.key;
+    if (!cv || !e) return;
+    body.target = e.key;
     var mine = ++seq;
-    var pmine = null;
-    setNote(T('sending', 'Sending…'), 'ok');
+    var pmine = {};
     var vmine = null;
-    if (optimistic) { pmine = { key: cv.key, state: optimistic, at: now() }; pend = pmine; }
-    if (typeof optVol === 'number') { vmine = { key: cv.key, value: optVol, at: now() }; pendVol = vmine; }
-    if (pmine || vmine) { schedulePend(); refresh(true); }
+    setNote(T('sending', 'Sending…'), 'ok');
+    if (optimistic) {
+      // The group moves its speakers that have something (or had it) too.
+      var keys = [e.key];
+      if (e.group) for (var i = 0; i < cv.echos.length; i++) if (!cv.echos[i].group && (cv.echos[i].state === 'playing' || cv.echos[i].state === 'paused')) keys.push(cv.echos[i].key);
+      for (var j = 0; j < keys.length; j++) { pmine[keys[j]] = { state: optimistic, at: now() }; pend[keys[j]] = pmine[keys[j]]; }
+    }
+    if (typeof optVol === 'number') { vmine = { value: optVol, at: now() }; pendVol[e.key] = vmine; }
+    if (optimistic || vmine) { schedulePend(); refresh(true); }
     post('/echo/run', body, safe(function (err, r, code) {
       if (err) {
         var back = false;
-        if (pmine && pend === pmine) { pend = null; back = true; }
-        if (vmine && pendVol === vmine) { pendVol = null; back = true; }
+        for (var k in pmine) if (Object.prototype.hasOwnProperty.call(pmine, k) && pend[k] === pmine[k]) { delete pend[k]; back = true; }
+        if (vmine && pendVol[e.key] === vmine) { delete pendVol[e.key]; back = true; }
         if (back) refresh(true);
         if (mine === seq) setNote(failText(err, r, code), 'bad');
         return;
@@ -775,28 +946,38 @@
     }));
   }
 
-  function act(name) {
+  function find(cv, key) {
+    for (var i = 0; i < cv.echos.length; i++) if (cv.echos[i].key === key) return cv.echos[i];
+    return null;
+  }
+
+  // name: the control; key: the speaker whose row it is (none: the one picked,
+  // or all of them when that is Everywhere).
+  function act(name, key) {
     var cv = ctlView(view());
     if (!cv) return;
-    var dev = { device: cv.name };
+    var e = key ? find(cv, key) : cv.cur;
+    if (!e) return;
+    var dev = { device: shortName(e) };
     if (name === 'toggle') {
-      if (cv.playing) send({ action: 'pause' }, T('donePaused', 'Paused on {device}', dev), 'paused');
-      else send({ action: 'resume' }, T('donePlaying', 'Playing on {device}', dev), 'playing');
-    } else if (name === 'next') send({ action: 'next' }, T('doneNext', 'Skipped'), '');
-    else if (name === 'volUp') volume(cv, 1);
-    else if (name === 'volDown') volume(cv, -1);
-    else if (name === 'stop') send({ action: 'stop' }, T('doneStopped', 'Stopped'), '');
+      if (e.state === 'playing') send(e, { action: 'pause' }, T('donePaused', 'Paused on {device}', dev), 'paused');
+      else send(e, { action: 'resume' }, T('donePlaying', 'Playing on {device}', dev), 'playing');
+    } else if (name === 'next') send(e, { action: 'next' }, T('doneNext', 'Skipped'), '');
+    else if (name === 'volUp') volume(e, 1);
+    else if (name === 'volDown') volume(e, -1);
+    else if (name === 'stop') send(e, { action: 'stop' }, T('doneStopped', 'Stopped'), '');
   }
 
   // One press of the stepper: the volume this speaker should reach (10 up or
   // down from what is shown), sent as that level so the shown number is the
-  // number asked for; a speaker with no known volume gets the plain step.
-  function volume(cv, dir) {
-    if (cv.vol >= 0) {
-      var to = Math.max(0, Math.min(100, cv.vol + dir * 10));
-      send({ action: 'volume', level: to }, dir > 0 ? T('doneUp', 'Volume up') : T('doneDown', 'Volume down'), '', to);
+  // number asked for; a speaker with no known volume (Everywhere) gets the
+  // plain step.
+  function volume(e, dir) {
+    if (e.volume >= 0) {
+      var to = Math.max(0, Math.min(100, e.volume + dir * 10));
+      send(e, { action: 'volume', level: to }, dir > 0 ? T('doneUp', 'Volume up') : T('doneDown', 'Volume down'), '', to);
     } else {
-      send({ action: 'volume', step: dir > 0 ? 'up' : 'down' }, dir > 0 ? T('doneUp', 'Volume up') : T('doneDown', 'Volume down'), '');
+      send(e, { action: 'volume', step: dir > 0 ? 'up' : 'down' }, dir > 0 ? T('doneUp', 'Volume up') : T('doneDown', 'Volume down'), '');
     }
   }
 
@@ -805,7 +986,7 @@
     if (!cv) return;
     for (var i = 0; i < QUICK.length; i++) {
       if (QUICK[i][0] !== app) continue;
-      send({ action: 'start', app: app }, T('doneStart', 'Starting {app} on {device}', { app: T(QUICK[i][3], QUICK[i][4]), device: cv.name }), '');
+      send(cv.cur, { action: 'start', app: app }, T('doneStart', 'Starting {app} on {device}', { app: T(QUICK[i][3], QUICK[i][4]), device: cv.name }), '');
       return;
     }
   }
@@ -893,14 +1074,13 @@
         if (held) data = held;
         ctx.live.on('allsounds', safe(function (d) {
           data = d && typeof d === 'object' ? d : null;
-          // The Pi's push confirms a Play/Pause that was on its way.
-          if (pend && data) {
+          // The Pi's push confirms a Play/Pause or a volume that was on its way.
+          if (data) {
             var es = echosOf(data);
-            for (var i = 0; i < es.length; i++) if (es[i].key === pend.key && es[i].state === pend.state) pend = null;
-          }
-          if (pendVol && data) {
-            var ev = echosOf(data);
-            for (var k = 0; k < ev.length; k++) if (ev[k].key === pendVol.key && ev[k].volume === pendVol.value) pendVol = null;
+            for (var i = 0; i < es.length; i++) {
+              if (pend[es[i].key] && pend[es[i].key].state === es[i].state) delete pend[es[i].key];
+              if (pendVol[es[i].key] && pendVol[es[i].key].value === es[i].volume) delete pendVol[es[i].key];
+            }
           }
           refresh(false);
         }));
@@ -953,14 +1133,15 @@
       var k = target.getAttribute('data-spk');
       var a = target.getAttribute('data-act');
       var q = target.getAttribute('data-q');
+      var mk = target.getAttribute('data-mspk');
       if (k) { sel = k; refresh(true); }
-      else if (a) act(a);
+      else if (a) act(a, mk || '');
       else if (q) quick(q);
     }),
 
     onMove: safe(function (dir, from) {
       if (!page || !page.ctl || !from || !from.getAttribute) return undefined;
-      var rows = [page.spk, page.btns, page.qk];
+      var rows = [page.spk].concat(page.mrows, [page.btns, page.qk]);
       var ri = -1;
       var at = -1;
       for (var i = 0; i < rows.length; i++) {
@@ -980,7 +1161,7 @@
     }),
 
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
-    onClose: function () { page = null; sel = null; pend = null; pendVol = null; note = null; clearSub(); },
+    onClose: function () { page = null; sel = null; pend = {}; pendVol = {}; note = null; clearSub(); },
     onStatus: safe(function () { refresh(false); })
   };
   // Read whenever the hub draws a title, so it follows the language.

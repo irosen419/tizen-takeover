@@ -107,7 +107,7 @@ const allsounds = require('./allsounds');
 const echo = require('./echo');
 const translate = require('./translate');
 
-const SERVER_VERSION = '0.24.1';
+const SERVER_VERSION = '0.24.2';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1042,7 +1042,7 @@ function start(options) {
   // log (only the action and the speaker's key do, from echo.js), and
   // neither a Home Assistant address nor the token is in the reply.
   const SCREEN_ECHO_FIELDS = ['action', 'target', 'app', 'level', 'step'];
-  const SCREEN_ECHO_APPS = ['audible', 'pandora', 'amazon-music', 'kera', 'news'];
+  const SCREEN_ECHO_APPS = ['audible', 'pandora', 'amazon-music', 'kera', 'news', 'npr', 'spotify'];
   const echoScreenMax = Number.isInteger(opt.echoScreenMax) && opt.echoScreenMax > 0 ? opt.echoScreenMax : 6;
   const echoStamps = [];
   let echoSlowLogged = false;

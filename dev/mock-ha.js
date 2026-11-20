@@ -26,7 +26,8 @@
  *                          first seconds, playing with nothing at all; NPR
  *                          reported as idle) | stale (an Echo still
  *                          "playing" a song that ended minutes ago, as when
- *                          Audible takes over) |
+ *                          Audible takes over) | twoplaying (the Echo Show plays KERA on
+ *                          TuneIn at 35%, the Echo Dot an iHeartRadio stream at 60%) |
  *                          unauthorized (401 to everything) | down (drops the
  *                          connection) | slow (never answers) | broken (not JSON)
  *   ha.calls               { states, one, art } counters
@@ -39,13 +40,13 @@
 
 const http = require('http');
 
-const MODES = ['radio', 'music', 'paused', 'idle', 'off', 'long', 'amazonmusic', 'pandora', 'tunein', 'tuneinstart', 'npr', 'stale', 'unauthorized', 'down', 'slow', 'broken'];
+const MODES = ['radio', 'music', 'paused', 'idle', 'off', 'long', 'amazonmusic', 'pandora', 'tunein', 'tuneinstart', 'npr', 'stale', 'twoplaying', 'unauthorized', 'down', 'slow', 'broken'];
 // The real picture hosts of the two samples. They do not resolve here: a test
 // browser answers them itself (see dev/allsounds-test.js), keyed by the cover
 // name in /art/<name>.svg.
 const AMAZON_ART = 'https://m.media-amazon.com/images/I/51GoldenHourDrive._SX300_.jpg';
 const PANDORA_ART = 'https://content-images.p-cdn.com/images/public/int/5/1/2/golden-hour-drive_500W_500H.jpg';
-const ART_HOSTS = { 'm.media-amazon.com': 'album', 'content-images.p-cdn.com': 'album' };
+const ART_HOSTS = { 'm.media-amazon.com': 'album', 'content-images.p-cdn.com': 'album', 'i.iheart.com': 'long' };
 const TOKEN = 'mock-ha-token-not-a-secret-0123456789abcdef';
 
 // Two made-up covers: a radio show's square logo and an album.
@@ -91,10 +92,20 @@ function entities(mode, base) {
     { entity_id: 'media_player.browser_mod_kitchen', state: 'playing', attributes: { friendly_name: 'Kitchen panel', media_title: 'Panel sound' }, last_changed: stamp(1) },
     { entity_id: 'media_player.everywhere', state: 'playing', attributes: { friendly_name: 'Everywhere', media_title: 'Group copy', last_called: false }, last_changed: stamp(0) }
   ];
-  if (mode === 'amazonmusic' || mode === 'pandora' || mode === 'tunein' || mode === 'tuneinstart' || mode === 'npr' || mode === 'stale') {
-    const dot = speaker('ian_s_echo_dot', 'Ian\'s Echo Dot', 'idle', {}, 200);
+  if (mode === 'amazonmusic' || mode === 'pandora' || mode === 'tunein' || mode === 'tuneinstart' || mode === 'npr' || mode === 'stale' || mode === 'twoplaying') {
+    const dot = mode === 'twoplaying'
+      ? speaker('ian_s_echo_dot', 'Ian\'s Echo Dot', 'playing', {
+        media_title: 'Classic Rock 101', media_artist: null, media_album_name: null, volume_level: 0.6,
+        entity_picture: 'https://i.iheart.com/v3/re/new_assets/radio.png'
+      }, 5)
+      : speaker('ian_s_echo_dot', 'Ian\'s Echo Dot', 'idle', {}, 200);
     let show;
-    if (mode === 'amazonmusic' || mode === 'pandora') {
+    if (mode === 'twoplaying') {
+      show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'playing', {
+        media_title: 'KERA', media_artist: null, media_album_name: null, volume_level: 0.35,
+        entity_picture: base + '/art/radio.svg'
+      }, 2);
+    } else if (mode === 'amazonmusic' || mode === 'pandora') {
       show = speaker('ian_s_echo_show', 'Ian\'s Echo Show', 'playing', {
         media_title: 'Golden Hour Drive', media_artist: 'The Lanterns', media_album_name: 'Slow Coast',
         media_duration: 214, media_position: 62, media_position_updated_at: stamp(0),
