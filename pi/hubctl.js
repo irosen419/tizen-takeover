@@ -18,7 +18,7 @@
  *   ./hub todo done <id or exact title>
  *   ./hub todo remove <id or exact title>
  *   ./hub grocery add "Milk" "Eggs"    (one item per quoted name, up to 20)
- *   ./hub grocery list | done <id or name> | remove <id or name> | clear
+ *   ./hub grocery list | done <id or name> | remove <id or name> | clear | export
  *   ./hub calendar status            each calendar, and the next event
  *   ./hub calendar refresh           read the calendars again now
  *   ./hub layout show                the home-screen tile layout
@@ -1331,6 +1331,7 @@ const HELP = [
   '  ./hub grocery list          the grocery list with ids, items to get first',
   '  ./hub grocery done "Milk"   tick an item, by id or name; ./hub grocery remove "Milk" takes it off',
   '  ./hub grocery clear         drop every ticked item',
+  '  ./hub grocery export        what to search a store for, one line per item to get (brand, name, size)',
   '  ./hub calendar status       each calendar, and the next event',
   '  ./hub calendar refresh      read the calendars again now (after adding an event)',
   '  ./hub layout show           the home-screen tile layout',
@@ -1434,6 +1435,19 @@ async function groceryClear(callFn) {
   return { message: 'Cleared ' + n + ' ticked grocery ' + (n === 1 ? 'item' : 'items') + '.', data: { cleared: n } };
 }
 
+// The shopping-run view: counts and one search text per item still to get.
+async function groceryExport(callFn) {
+  const r = await callFn('GET', '/api/grocery/export');
+  const items = r.items || [];
+  const counts = r.counts || groceryCounts(items);
+  const search = items.filter((i) => !i.done).map((i) => i.search || i.name);
+  const head = counts.left + ' to get, ' + counts.ticked + ' ticked.';
+  return {
+    message: [head].concat(search).join('\n'),
+    data: { counts: { left: counts.left, ticked: counts.ticked }, search: search, scanned: items.filter((i) => !i.done && i.upc).length }
+  };
+}
+
 async function groceryCmd(args) {
   const sub = args[0];
   const rest = args.slice(1);
@@ -1455,7 +1469,8 @@ async function groceryCmd(args) {
     return;
   }
   if (sub === 'clear') { say((await groceryClear(call)).message); return; }
-  stop('Use one of: grocery add, grocery list, grocery done, grocery remove, grocery clear. Run ./hub help for examples.');
+  if (sub === 'export') { (await groceryExport(call)).message.split('\n').forEach(say); return; }
+  stop('Use one of: grocery add, grocery list, grocery done, grocery remove, grocery clear, grocery export. Run ./hub help for examples.');
 }
 
 /* ---------- main ---------- */
@@ -1547,6 +1562,7 @@ module.exports = {
   groceryAdd: groceryAdd,
   groceryChange: groceryChange,
   groceryClear: groceryClear,
+  groceryExport: groceryExport,
   todoAddText: todoAddText,
   todoListLines: todoListLines,
   todoChangeText: todoChangeText,

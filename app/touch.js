@@ -10,7 +10,10 @@
  *             app/widgets/grocery.js) opens here; the rest say "TV only".
  *   phone     opens on the menu; #/<id> shows one widget with a back button.
  *   data      GET /touch/state every 3 s (paused while the tab is hidden);
- *             changes POST /<resource>/ops with an optimistic update.
+ *             changes POST /<resource>/ops with an optimistic update. The
+ *             state's products (catalog entries for codes on the lists)
+ *             reach widgets as ctx.products(); ctx.call() reaches the rest
+ *             of the Pi (app/scan.js: product lookup and save).
  *
  * Touch only, so it may use what the TV lacks (fetch, CSS grid), but it is
  * plain ES5 like the rest of app/.
@@ -98,15 +101,17 @@
 
   /* ---------- data ---------- */
 
-  var store = { data: {}, rev: {}, status: 'loading', pending: 0 };
+  // products: the Pi's catalog entries for codes on the lists ({ upc: product }).
+  var store = { data: {}, rev: {}, status: 'loading', pending: 0, products: {}, productsKey: '' };
   var mounted = [];
   var pollTimer = null, polling = false;
 
-  function request(method, url, body) {
+  function request(method, url, body, timeoutMs) {
     return new Promise(function (resolve, reject) {
       var done = false;
-      var timer = setTimeout(function () { if (!done) { done = true; reject(new Error(T('touch.offline', 'Offline'))); } }, TIMEOUT_MS);
-      var opts = { method: method, cache: 'no-store', headers: {} };
+      var timer = setTimeout(function () { if (!done) { done = true; reject(new Error(T('touch.offline', 'Offline'))); } }, timeoutMs || TIMEOUT_MS);
+      // X-Hub-Touch: the Pi serves its touch routes (products, grocery) only to this app.
+      var opts = { method: method, cache: 'no-store', headers: { 'X-Hub-Touch': '1' } };
       if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
       fetch(url, opts).then(function (res) {
         return res.json().then(function (j) { return { ok: res.ok, j: j }; }, function () { return { ok: false, j: {} }; });
@@ -140,6 +145,10 @@
     polling = true;
     request('GET', '/touch/state').then(function (j) {
       var changed = setStatus('ok');
+      if (j.products && typeof j.products === 'object') {
+        var pk = JSON.stringify(j.products);
+        if (pk !== store.productsKey) { store.productsKey = pk; store.products = j.products; changed = true; }
+      }
       if (!store.pending) {
         Object.keys(touchWidgets()).forEach(function (id) {
           var res = touchWidgets()[id].resource || id;
@@ -196,6 +205,9 @@
       data: function () { return store.data[res] || null; },
       status: function () { return store.status; },
       send: function (ops, optimistic, cb) { sendOps(res, ops, optimistic, cb || function () {}); },
+      // Any other call to the Pi (product lookup, save): resolves to its JSON.
+      call: request,
+      products: function () { return store.products; },
       reduced: reduced
     };
     var inst = w.renderTouch(host, ctx) || {};

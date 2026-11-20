@@ -3,7 +3,9 @@
   Home Hub on a phone, tablet or computer: the touch app. The Pi serves it at
   http://<Pi>:8097/ (pi/server.js, read only from app/). The TV never loads
   this page: its loader is index.html and hub.html. ?as=phone|tablet|tv picks
-  the shape by hand; ?lang=es tries Spanish for one load.
+  the shape by hand; ?lang=es tries Spanish for one load. scan.js (the
+  barcode scanner) comes before the widgets so they can register where a
+  scan goes; its reader (vendor/barcode-detector/) loads on the first Scan.
 -->
 <html lang="en">
 <head>
@@ -21,6 +23,7 @@
   <noscript><p class="t-noscript">Home Hub needs JavaScript.</p></noscript>
   <script src="config.js"></script>
   <script src="i18n.js"></script>
+  <script src="scan.js"></script>
   <script src="widgets/grocery.js"></script>
   <script src="touch.js"></script>
 </body>

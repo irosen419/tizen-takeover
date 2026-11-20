@@ -107,6 +107,22 @@ The first touch widget is the grocery list. From the Pi or the mailbox:
 
 The log only counts changes; it never names an item. After pulling this change: `hubup` (it mounts `../app` read only into the container, so it needs `docker compose up -d`, not just a restart); `./hub status` should say `version 0.26.0`. Nothing changes in `.env`. Even when `HUB_TV_IPS` is set, the touch app and its two routes (`/touch/state`, `/grocery/ops`) answer any home or Tailscale address, and a phone is never counted as a screen.
 
+### Scanning barcodes (the products catalog)
+
+The grocery view has a **Scan** button: the phone's camera reads a product's barcode (EAN-13, UPC-A, UPC-E, EAN-8; the decoder is served by the Pi, nothing loads from another site), the Pi looks the code up and the item lands on the list as "Brand Name", with a small picture and the size under it. A torn label can be typed in instead.
+
+The lookup is its own small service on the Pi (`products.js`), so a pantry or meal planner can use the same catalog later. Order: the Pi's own catalog (`data/products.json`, pictures in `data/products/`), then Open Food Facts, Open Products Facts and UPCitemdb's free tier (100 a day). Only the barcode number leaves the Pi, with a generic User-Agent; no account, no key. A hit is saved with its thumbnail (stored on the Pi, never linked), so the next scan of that product needs no internet. A code nobody knows is remembered for 24 hours (in memory) and opens a short form: brand, name, size and an optional photo of the pack. What you type is saved as a manual entry and always wins over web data. At most 5000 products; the oldest web ones make room. The log counts lookups and saves, never a code or a name.
+
+For the camera the page must be opened over HTTPS. Tailscale gives the Pi a free certificate: once, in the Tailscale admin console, under DNS, turn on MagicDNS and HTTPS Certificates, then on the Pi:
+
+```sh
+tailscale serve --bg 8097
+```
+
+Then open `https://<the Pi's machine name>.<your tailnet>.ts.net/` on the phone. Certificates renew by themselves. The machine name ends up in public certificate logs, so keep it generic (like `hub-pi`), never a person's name. Never use `tailscale funnel`: that would put the hub on the open internet. `tailscale serve status` shows it; `tailscale serve --https=443 off` stops it. The plain `http://` address keeps working for everything but the camera (the number box still works there).
+
+For a shopping run (the export): `./hub grocery export` prints one search line per item to get ("Brand Name Size", or just the name), and the mailbox has `grocery.export`. The full list, with brand, name, size, code and a picture path per item, is `GET /api/grocery/export` (token). A lookup must come from the app's own page (a same-host Origin, `Sec-Fetch-Site: same-origin`, or the `X-Hub-Touch: 1` header the app sends), at most 10 web lookups a minute per phone, and ends within 20 seconds. Products on the grocery list are never dropped to make room. Routes: touch `GET /products/lookup?upc=<code>`, `POST /products/save`, `GET /products/image/<code>`; control `GET /api/products?upc=<code>`, `GET /api/products/image?upc=<code>`. After pulling this change: `hubup`. Nothing changes in `.env`.
+
 ## Tile layout
 
 Where each tile sits on the home screen can be changed from the Pi, without editing `app/config.js`:

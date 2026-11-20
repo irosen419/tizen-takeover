@@ -447,6 +447,8 @@ The data is `studio/architecture/data.json`, the single source. `node studio/bui
 
 A small server on the Raspberry Pi (`pi/`) lets Claude steer the screen ("show me the weather", "go home", a short message at the bottom) and keeps the to-do list, so "add milk to my to-do list" shows up on the TV by itself. The TV keeps one open line to the Pi and redraws when something changes. The TV being off, or the Pi being down, never breaks the hub: it draws from what it saved and tries again quietly. The design is in [docs/live-updates.md](docs/live-updates.md); installing and running the server is in [pi/README.md](pi/README.md).
 
+The same server hands a phone or tablet the touch app with the grocery list, whose Scan button reads a product's barcode with the camera; the Pi looks the code up (its own catalog first, then Open Food Facts, Open Products Facts and UPCitemdb) and keeps what it finds. The camera needs the Pi's HTTPS address through `tailscale serve`; see "Scanning barcodes" in [pi/README.md](pi/README.md#scanning-barcodes-the-products-catalog).
+
 The setting is `live` in `app/config.js`:
 
 ```js
