@@ -102,7 +102,7 @@ const allsounds = require('./allsounds');
 const echo = require('./echo');
 const translate = require('./translate');
 
-const SERVER_VERSION = '0.22.2';
+const SERVER_VERSION = '0.22.3';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;

@@ -298,6 +298,13 @@ function applyLabel(rec, label, nowMs, hooks) {
   const empty = !rec.title && !rec.artist && !rec.art;
   const live = rec.state === 'playing' || rec.state === 'paused';
   const at = Math.max(rec.changedAt || 0, Number(label.at) || 0);
+  // Alexa Media Player names the same app itself (an Audible book with its
+  // title and author, seen 2026-11-20): keep its real details, as for a
+  // visible app.
+  if (label.hidden && rec.source === str(label.label) && rec.title) {
+    return Object.assign({}, rec, { started: true, stale: false, device: str(label.via) || rec.device, changedAt: at,
+      state: label.playing === false ? 'paused' : (live ? rec.state : 'playing') });
+  }
   if (label.hidden) {
     if (label.base == null) hooks.base(rec.id, sig);
     else if (label.base !== sig && !empty) { hooks.clear(rec.id, 'other'); return rec; }
@@ -321,6 +328,15 @@ function applyLabel(rec, label, nowMs, hooks) {
     device: str(label.via) || rec.device, changedAt: at,
     state: live ? rec.state : (label.playing === false ? 'paused' : 'playing')
   });
+}
+
+// An Echo that says it plays Spotify while Spotify itself (signed in, so
+// its word counts) says paused or idle: Alexa Media Player kept a stale
+// "playing" (seen 2026-11-20 on the Echo Dot). Spotify's own word wins.
+function spotifyChecked(rec, np) {
+  if (!rec || rec.state !== 'playing' || rec.source !== 'Spotify' || !isObj(np)) return rec;
+  if (np.state !== 'paused' && np.state !== 'idle') return rec;
+  return Object.assign({}, rec, { state: 'paused' });
 }
 
 // Picks the one to show: the newest playing one, else the newest paused one.
@@ -540,8 +556,9 @@ function createWatcher(o) {
         clear: (id, why) => { if (typeof o.clearLabel === 'function') o.clearLabel(id, why); },
         base: (id, sig) => { if (typeof o.setBase === 'function') o.setBase(id, sig); }
       };
+      const np = spotify();
       house = pickActive(r.list.map((e) => {
-        const rec = readEntity(e, allowHttp, t);
+        const rec = spotifyChecked(readEntity(e, allowHttp, t), np);
         return rec && isObj(lbl) && lbl[rec.id] ? applyLabel(rec, lbl[rec.id], t, hooks) : rec;
       }));
       return { ok: true, changed: put() };
@@ -630,6 +647,7 @@ module.exports = {
   isAlexaSpeaker: isAlexaSpeaker,
   readEntity: readEntity,
   applyLabel: applyLabel,
+  spotifyChecked: spotifyChecked,
   staleEcho: staleEcho,
   pickActive: pickActive,
   fromSpotify: fromSpotify,
