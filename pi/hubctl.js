@@ -1385,7 +1385,7 @@ async function main(argv) {
   if (cmd === 'news') {
     let ep;
     try {
-      ep = await news.latest();
+      ep = await news.latestPlayable();
     } catch (e) {
       stop('Could not read the NPR News Now feed: ' + (e && e.message) + '.');
     }

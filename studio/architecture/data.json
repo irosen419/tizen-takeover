@@ -1631,7 +1631,8 @@
        "details": [
         "This is what makes 'TV off' safe: a command reaches 0 screens and the sender is told 'no screen is listening'. Only the poll fallback remembers commands, for 10 s, at most 20.",
         "say can carry 'hub:working <kind> <seconds>', which the TV turns into a quiet working chip on a tile instead of showing text. The Pi passes it on unchanged.",
-        "play {url (http or https, up to 2048 characters), title?} has the TV play that audio through one reused audio element; stop ends it. ./hub news fetches the newest NPR News Now newscast (pi/news.js reads its public feed, a new one every hour) and sends it as play. Server 0.21.0."
+        "play {url (http or https, up to 2048 characters), title?} has the TV play that audio through one reused audio element; stop ends it. ./hub news fetches the newest NPR News Now newscast (pi/news.js reads its public feed, a new one every hour), follows its tracking redirects to the MP3 and sends that address as play. Server 0.21.0.",
+        "Autoplay: the first key press after the hub loads plays a silent blip to unlock sound; a play the TV still refuses waits up to 10 minutes for the next key press. Hub v0.37.0."
        ],
        "files": [
         "pi/server.js",
@@ -3011,6 +3012,30 @@
      ],
      "notes": [
       "Live TVmaze calls have not run from the real Pi yet."
+     ]
+    },
+    {
+     "id": "ext.npr",
+     "title": "NPR News Now feed",
+     "kind": "external",
+     "status": "unverified",
+     "summary": "NPR's public podcast feed of its five minute hourly newscast. ./hub news reads it and the TV plays the newest one.",
+     "details": [
+      "pi/news.js reads https://feeds.npr.org/500005/podcast.xml (no account or key, 2 MB cap, 15 s limit), picks the newest episode by date (skipping the 2023 trailer) and follows the audio link's tracking redirects (prfx.byspotify.com, podtrac) so the TV gets the MP3's own address."
+     ],
+     "files": [
+      "pi/news.js",
+      "pi/news-test.js"
+     ],
+     "talksTo": [
+      {
+       "to": "pi.server.commands",
+       "label": "newest newscast, sent to the TV as play",
+       "dir": "out"
+      }
+     ],
+     "notes": [
+      "Not yet heard on the real TV (Chrome 63 autoplay and the redirects)."
      ]
     },
     {
