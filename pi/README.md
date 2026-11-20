@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.22.3, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.23.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -286,6 +286,18 @@ The log names no show. It only counts, for example `shows refresh: 4 of 4 shows 
 ### Watch link test answers
 
 The TV's About panel has a **Watch link test**: each recipe tries one way of opening a title straight in an app (Prime Video, Netflix, Apple TV, Disney+...). You answer "Opened the title", "Only opened the app" or "Nothing". The TV sends each answer here, and the Pi keeps the last 100. `./hub linktests` lists them, newest first, so a Claude thread can see which deep links work on this TV.
+
+### TV remote from the Pi (two-step launch)
+
+The TV refuses remote key presses it sends to itself, so some Watch link test rows ("Open, Enter, then ...") ask the Pi to press the keys. The Pi talks to the TV's remote-control WebSocket (`wss://<tv>:8002`, or `ws://<tv>:8001` if that does not connect) under the name "Home Hub Pi" (`tvremote.js`, server 0.23.0). A run opens the app, waits about 10 seconds, presses Enter (the default profile), waits about 5 seconds, then sends the title link while the app is already running, either as a deep link or by DIAL (HTTP POST to `http://<tv>:8080/ws/apps/Netflix`). Then you answer the usual "Opened the title / Only opened the app / Nothing".
+
+**One-time Allow prompt.** The first run makes the TV show a prompt to allow "Home Hub Pi": press Allow on the remote within 30 seconds. The TV answers with a token, which the Pi keeps in `data/tvremote.json` (readable by you only, never in a log, never sent anywhere). If the TV said no, allow it under Settings > General > External Device Manager > Device Connection Manager > Device List, then try again.
+
+**The TV's address** comes from the screen's own request, or set `HUB_TV_REMOTE_IP=192.168.1.x` in `.env` to name it (needed for runs from the mailbox before the TV has talked to the Pi). One run at a time.
+
+- `./hub tvremote` says whether the Pi is paired and shows the last run's steps (what was sent, how long each took). `./hub tvremote run '{"id":"x","appId":"3201907018807","link":"dial","dialApp":"Netflix","payload":"m=..."}'` starts one by hand. The mailbox has `tvremote.status` and `tvremote.run` with the same fields (`open`, `waitOpen`, `enter`, `waitAfter`, `link` = `deeplink`, `dial` or `none`, `payload`, `dialApp`).
+- The log says only what was done, for example `tvremote: netflix-2step-dial: opened app (ok), Enter (ok), DIAL Netflix -> HTTP 201`; never the link or the token.
+- Tests: `node pi/tvremote-test.js` (a fake TV and a fake DIAL port).
 
 ### After pulling this change
 
@@ -616,7 +628,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.22.3 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.23.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

@@ -11,6 +11,12 @@
  * (localStorage homeHub.linkTests) and sent to the Pi (POST /linktests), where
  * ./hub linktests and the mailbox's linktests.show read them.
  *
+ * A recipe may instead have pi: { link, payload, dialApp, open, enter,
+ * waitOpen, waitAfter }. The TV refuses remote key presses it sends to
+ * itself, so OK asks the Pi (POST /tvremote/run) to do a "two-step launch"
+ * through the TV's remote channel: open the app, wait, press Enter, wait,
+ * then send the link (a deep link, or DIAL) while the app is running.
+ *
  * {name} in a recipe is filled from linkTests.ids. The ids named in
  * linkTests.editable (the Prime title id by default) also get a text box at
  * the top of the list; what is typed there is kept on this TV and wins over
@@ -71,7 +77,10 @@
     probeSent: 'Probe sent to the Pi ({n} rows).',
     probeFail: 'The probe couldn’t be sent to the Pi: {err}',
     probeNoMeta: 'getAppMetaData missing',
-    probeNoFind: 'findAppControl missing'
+    probeNoFind: 'findAppControl missing',
+    piToast: 'The Pi is opening {app}. If the TV asks to allow “Home Hub Pi”, choose Allow. Come back here after.',
+    piOff: 'Live updates are off, so the Pi can’t be asked.',
+    piFail: 'The Pi couldn’t start it: {error}'
   };
 
   function word(key, vars) {
@@ -186,6 +195,31 @@
     return null;
   }
 
+  // A recipe's pi settings, with {name} filled in: only what the recipe set.
+  function piFrom(src, ids) {
+    var out = { link: src.link === 'dial' || src.link === 'none' ? src.link : 'deeplink' };
+    if (typeof src.payload === 'string') out.payload = fillIds(src.payload, ids);
+    if (typeof src.dialApp === 'string') out.dialApp = src.dialApp;
+    var flags = ['open', 'enter'];
+    for (var i = 0; i < flags.length; i++) if (typeof src[flags[i]] === 'boolean') out[flags[i]] = src[flags[i]];
+    var waits = ['waitOpen', 'waitAfter'];
+    for (var j = 0; j < waits.length; j++) if (typeof src[waits[j]] === 'number') out[waits[j]] = src[waits[j]];
+    return out;
+  }
+
+  // The row's detail line for a Pi recipe: "via the Pi · open, wait 10 s, Enter, DIAL Netflix".
+  function piText(pi) {
+    var open = pi.open !== false;
+    var enter = pi.enter !== false;
+    var wo = typeof pi.waitOpen === 'number' ? pi.waitOpen : 10;
+    var parts = [];
+    if (open) { parts.push('open'); if (wo > 0 && (enter || pi.link !== 'none')) parts.push('wait ' + wo + ' s'); }
+    if (enter) parts.push('Enter');
+    if (pi.link === 'dial') parts.push('DIAL ' + (pi.dialApp || ''));
+    else if (pi.link !== 'none') parts.push('deep link');
+    return 'via the Pi · ' + parts.join(', ');
+  }
+
   // The recipes, ready to fire: { id, app, name, op, uri, key, val, needsId }.
   function recipes() {
     var c = conf();
@@ -194,14 +228,16 @@
     var out = [];
     for (var i = 0; i < list.length; i++) {
       var r = list[i];
-      if (!r || typeof r.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(r.id) || (!r.plain && typeof r.op !== 'string')) continue;
+      var viaPi = r && r.pi && typeof r.pi === 'object' && !isArr(r.pi);
+      if (!r || typeof r.id !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(r.id) || (!r.plain && !viaPi && typeof r.op !== 'string')) continue;
       var o = {
-        id: r.id, app: String(r.app || ''), name: String(r.name || r.id), op: r.plain ? '' : r.op, plain: !!r.plain,
+        id: r.id, app: String(r.app || ''), name: String(r.name || r.id), op: r.plain || viaPi ? '' : r.op, plain: !!r.plain,
         uri: r.uri ? fillIds(String(r.uri), ids) : '',
         key: r.key ? String(r.key) : '',
         val: r.key ? fillIds(String(r.val || ''), ids) : ''
       };
-      o.needsId = PLACEHOLDER.test(o.uri) || PLACEHOLDER.test(o.val);
+      o.pi = viaPi ? piFrom(r.pi, ids) : null;
+      o.needsId = PLACEHOLDER.test(o.uri) || PLACEHOLDER.test(o.val) || !!(o.pi && PLACEHOLDER.test(o.pi.payload || ''));
       out.push(o);
     }
     // One app's tests together (apps in the order they first appear), so a
@@ -287,11 +323,12 @@
 
   function record(rec, outcome, detail) {
     var r = {
-      id: rec.id, app: rec.app, name: rec.name, outcome: outcome, op: rec.plain ? 'plain open' : rec.op,
+      id: rec.id, app: rec.app, name: rec.name, outcome: outcome, op: rec.pi ? 'pi two-step (' + rec.pi.link + ')' : (rec.plain ? 'plain open' : rec.op),
       at: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), build: window.HUB_BUILD || '', sent: false
     };
     if (rec.uri) r.uri = rec.uri;
     if (rec.key) r.data = rec.key + '=' + rec.val;
+    else if (rec.pi && rec.pi.payload) r.data = rec.pi.payload;
     if (!detail) { try { detail = appDetail(rec); } catch (e) { detail = ''; } }
     if (detail) r.detail = String(detail).substring(0, 140);
     S.results.unshift(r);
@@ -483,6 +520,8 @@
     if (app === undefined) { C.toast(word('toastLooking'), 3500); return 'waiting'; }
     if (!app) { C.toast(word('toastMissing', { app: rec.app }), 4500); return 'missing'; }
     S.rowError = null;
+    // A Pi recipe: the Pi presses the keys, since the TV refuses its own.
+    if (rec.pi) return firePi(rec, app);
     // A plain open has no app control: the TV's own /launch, then the question.
     if (rec.plain) {
       S.pending = rec.id;
@@ -509,6 +548,28 @@
     C.service('/ping', 3000, function (err, data) {
       if (!err && data && isOlder(data.version, LAUNCH_CONTROL_SINCE)) { showError(rec, word('stale')); return; }
       go();
+    });
+    return 'fired';
+  }
+
+  // Asks the Pi to run the two steps. The question comes up once the Pi has started.
+  function firePi(rec, app) {
+    var C = S.C;
+    var Lv = C.live;
+    if (!Lv || typeof Lv.post !== 'function') { record(rec, 'error', word('piOff')); showError(rec, word('piOff')); return 'fired'; }
+    var body = { id: rec.id, appId: app.id };
+    for (var k in rec.pi) if (rec.pi.hasOwnProperty(k)) body[k] = rec.pi[k];
+    Lv.post('/tvremote/run', body, function (err) {
+      if (err) {
+        var msg = err === 'live updates are off' ? word('piOff') : String(err);
+        record(rec, 'error', msg);
+        showError(rec, word('piFail', { error: msg }));
+        return;
+      }
+      S.pending = rec.id;
+      save();
+      C.toast(word('piToast', { app: rec.app }), 7000);
+      if (C.isOpen()) C.redrawPanel();
     });
     return 'fired';
   }
@@ -558,7 +619,7 @@
       el('span', 'lt-num', row, String(i + 1));
       var main = el('div', 'lt-main', row);
       el('div', 'lt-name', main, rec.app + ' · ' + rec.name);
-      el('div', 'lt-detail', main, (rec.plain ? word('plain') : shortOp(rec.op)) + (rec.uri ? ' · ' + rec.uri : '') + (rec.key ? ' · ' + rec.key + '=' + rec.val : ''));
+      el('div', 'lt-detail', main, (rec.pi ? piText(rec.pi) : (rec.plain ? word('plain') : shortOp(rec.op))) + (rec.uri ? ' · ' + rec.uri : '') + (rec.key ? ' · ' + rec.key + '=' + rec.val : ''));
       el('span', 'lt-state' + (rec.needsId ? ' is-needs' : ''), row, st);
       if (S.rowError && S.rowError.id === rec.id) el('div', 'lt-rowerr', main, S.rowError.text);
       if (S.pending === rec.id) {
