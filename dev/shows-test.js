@@ -466,6 +466,35 @@ async function main() {
       } finally { await lt.ctx.close(); }
     });
 
+    await check('Watch link test: with no tizen on the page, the App probe asks service.js (/probe) and posts its answer', async () => {
+      const lt = await env.newPage({});
+      try {
+        await H.openView(lt, 'linktests');
+        const posts = await lt.evaluate(() => {
+          try { delete window.tizen; } catch (e) { window.tizen = undefined; }
+          const C = window.HUB_LINKTEST._test.state().C;
+          const sent = [];
+          const asked = [];
+          const origPost = C.live.post;
+          const origService = C.service;
+          C.live.post = function (path, body, cb) { sent.push(body.result); cb(null); };
+          C.service = function (path, ms, cb) {
+            asked.push(path);
+            if (path !== '/probe') return origService.apply(this, arguments);
+            cb(null, { ok: true, hasMeta: true, hasFind: true,
+              apps: [{ id: 'dp.app', name: 'Disney+', meta: [{ key: 'http://samsung.com/tv/metadata/use.preview', value: 'endpoint_URL=https://e/p' }] }, { id: 'x.plain', name: 'Calc', meta: [] }],
+              ops: { 'http://samsung.com/appcontrol/operation/eden_resume': [{ id: 'dp.app', name: 'Disney+' }] } });
+          };
+          const r = window.HUB_LINKTEST._test.probe();
+          return new Promise((res) => setTimeout(() => { C.live.post = origPost; C.service = origService; res({ r: r, asked: asked, sent: sent }); }, 300));
+        });
+        assert(posts.r === 'service' && posts.asked.indexOf('/probe') >= 0, JSON.stringify(posts));
+        assert(posts.sent.map((x) => x.id).join() === 'probe-01,probe-ops', JSON.stringify(posts.sent));
+        assert(/use\.preview=endpoint_URL=https:\/\/e\/p/.test(posts.sent[0].op) && /^dp\.app eden_resume/.test(posts.sent[0].detail), JSON.stringify(posts.sent[0]));
+        assert(/eden_resume: dp\.app/.test(posts.sent[1].op), JSON.stringify(posts.sent[1]));
+      } finally { await lt.ctx.close(); }
+    });
+
     await check('Watch link test: OK fires through /launch-control, the answer is kept and reaches the Pi', async () => {
       const lt = await env.newPage({});
       try {
