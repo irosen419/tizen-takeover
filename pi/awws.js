@@ -503,12 +503,37 @@ function merge(current, normalized, nowMs) {
       data[k] = cur[k];
     }
   });
+  // A waiting "Sync now" is answered only by a snapshot that carries the board
+  // (todos) and was built after the request; a money-only or older one keeps it.
+  const rs = isObj(cur.resync) && isTime(field(cur.resync, 'requestedAt')) ? cur.resync : null;
+  if (rs && !(has(sent, 'todos') && sent.todos !== null && Date.parse(normalized.sentAt) >= Date.parse(rs.requestedAt))) {
+    data.resync = { requestedAt: rs.requestedAt };
+  }
   const bytes = bytesOf(data);
   if (bytes > MAX_BYTES) {
     throw bad('with this snapshot the Pi would hold ' + sizeText(bytes) + ' (' + commas(bytes) + ' bytes); at most 48 KB (49,152 bytes). Nothing was stored');
   }
   const changed = JSON.stringify(sectionsOnly(cur)) !== JSON.stringify(sectionsOnly(data));
   return { data: data, changed: changed, bytes: bytes, accepted: accepted, cleared: cleared, rejected: rejected };
+}
+
+// A manual "sync now": remembers when it was asked, next to the sections
+// (not inside the snapshot). merge() clears it when a snapshot with the board
+// (todos), built after the request, is stored. Asking again while one is waiting keeps
+// the first time. Returns { data, changed, requestedAt, already }.
+function requestResync(current, nowMs) {
+  const now = typeof nowMs === 'number' ? nowMs : Date.now();
+  const cur = isObj(current) ? current : emptyData();
+  const old = isObj(cur.resync) && isTime(field(cur.resync, 'requestedAt')) ? cur.resync.requestedAt : null;
+  if (old) return { data: cur, changed: false, requestedAt: old, already: true };
+  const at = new Date(now).toISOString().replace(/\.\d+Z$/, 'Z');
+  return { data: Object.assign({}, cur, { resync: { requestedAt: at } }), changed: true, requestedAt: at, already: false };
+}
+
+// The answer to ./hub awws resync (and the mailbox's awws.resync).
+function resyncText(r) {
+  if (r.already) return 'A sync was already asked for at ' + plainWhen(Date.parse(r.requestedAt)) + '. The next sync check will pick it up.';
+  return 'Asked for a sync now. The next sync check (at most a few hours; Claude can also run it at once) reads the board and sends a fresh snapshot.';
 }
 
 // The awws resource from a state file. Anything damaged or missing means
@@ -523,6 +548,8 @@ function cleanResource(r) {
     if (!has(d, k) || d[k] === null) return;
     try { data[k] = checkSection(k, d[k], d.sentAt); } catch (e) { /* a broken section is dropped */ }
   });
+  const rs = field(d, 'resync');
+  if (isObj(rs) && isTime(field(rs, 'requestedAt'))) data.resync = { requestedAt: rs.requestedAt };
   if (bytesOf(data) > MAX_BYTES) return { rev: rev, data: emptyData() };
   return { rev: rev, data: data };
 }
@@ -563,12 +590,15 @@ function summaryData(data) {
   sectionsIn(d).forEach((k) => {
     sections[k] = Object.assign({ asOf: d[k].asOf }, sectionCounts(k, d[k]));
   });
-  return {
+  const out = {
     sentAt: d.sentAt || null,
     receivedAt: d.receivedAt || null,
     bytes: d.sentAt ? bytesOf(d) : 0,
     sections: sections
   };
+  // Only while a manual sync waits (the routine that reads the board looks for this).
+  if (isObj(d.resync) && isTime(field(d.resync, 'requestedAt'))) out.resyncRequestedAt = d.resync.requestedAt;
+  return out;
 }
 
 function sectionLine(name, s) {
@@ -600,19 +630,22 @@ const NOTHING_YET = 'No A World Worth Saving snapshot yet. The TV tiles say "Not
 function summaryLines(data, opts) {
   const when = opts && typeof opts.when === 'function' ? opts.when : plainWhen;
   const d = isObj(data) ? data : emptyData();
-  if (!d.sentAt) return [NOTHING_YET];
+  const wait = isObj(d.resync) && isTime(field(d.resync, 'requestedAt')) ? 'A sync is waiting, asked ' + when(Date.parse(d.resync.requestedAt)) + '.' : '';
+  if (!d.sentAt) return wait ? [NOTHING_YET, wait] : [NOTHING_YET];
   const out = ['Snapshot sent ' + when(Date.parse(d.sentAt)) +
     (d.receivedAt ? ', received ' + when(Date.parse(d.receivedAt)) : '') +
     '. ' + sizeText(bytesOf(d)) + ' of 48 KB.'];
   const names = sectionsIn(d);
   if (!names.length) {
     out.push('No sections are stored, so the tiles have nothing to show.');
+    if (wait) out.push(wait);
     return out;
   }
   const width = Math.max.apply(null, names.map((k) => k.length));
   names.forEach((k) => {
     out.push('  ' + k + ' '.repeat(width - k.length) + '  ' + sectionLine(k, d[k]) + ', as of ' + when(Date.parse(d[k].asOf)));
   });
+  if (wait) out.push(wait);
   return out;
 }
 
@@ -648,6 +681,8 @@ module.exports = {
   SECTIONS: SECTIONS,
   normalizeSnapshot: normalizeSnapshot,
   merge: merge,
+  requestResync: requestResync,
+  resyncText: resyncText,
   emptyData: emptyData,
   cleanResource: cleanResource,
   sectionsIn: sectionsIn,

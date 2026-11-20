@@ -563,6 +563,26 @@ async function main() {
       'Cleared money (2 KB of 48 KB). Nothing changed, but the TV now knows the data is fresh.');
   });
 
+  await check('resync: asked once, kept in show, cleared by the next snapshot', () => {
+    const base = awws.merge(null, awws.normalizeSnapshot({ v: 1, sentAt: '2026-11-16T15:10:00Z', reach: { asOf: '2026-11-16T15:00:00Z', subscribers: 2, subscribersAsOf: '2026-11-16' } }, Date.parse('2026-11-16T15:10:30Z')), Date.parse('2026-11-16T15:10:30Z')).data;
+    const r1 = awws.requestResync(base, Date.parse('2026-11-17T09:00:00Z'));
+    assert.strictEqual(r1.changed, true);
+    assert.strictEqual(r1.data.resync.requestedAt, '2026-11-17T09:00:00Z');
+    const r2 = awws.requestResync(r1.data, Date.parse('2026-11-17T09:30:00Z'));
+    assert.strictEqual(r2.already, true);
+    assert.strictEqual(r2.requestedAt, '2026-11-17T09:00:00Z');
+    assert.strictEqual(awws.summaryData(r1.data).resyncRequestedAt, '2026-11-17T09:00:00Z');
+    assert.strictEqual(awws.summaryData(base).resyncRequestedAt, undefined);
+    assert.ok(/A sync is waiting/.test(awws.summaryLines(r1.data).join('\n')));
+    assert.strictEqual(awws.cleanResource({ rev: 3, data: r1.data }).data.resync.requestedAt, '2026-11-17T09:00:00Z');
+    const reachOnly = awws.merge(r1.data, awws.normalizeSnapshot({ v: 1, sentAt: '2026-11-17T12:00:00Z', reach: { asOf: '2026-11-17T12:00:00Z', subscribers: 2, subscribersAsOf: '2026-11-16' } }, Date.parse('2026-11-17T12:00:05Z')), Date.parse('2026-11-17T12:00:05Z'));
+    assert.strictEqual(reachOnly.data.resync.requestedAt, '2026-11-17T09:00:00Z', 'a snapshot without the board keeps the request');
+    const early = awws.merge(r1.data, awws.normalizeSnapshot({ v: 1, sentAt: '2026-11-17T08:00:00Z', todos: { asOf: '2026-11-17T08:00:00Z', items: [], totals: { ian: { now: 0, next: 0, later: 0 }, claude: { now: 0, next: 0, later: 0 }, both: { now: 0, next: 0, later: 0 } } } }, Date.parse('2026-11-17T12:00:05Z')), Date.parse('2026-11-17T12:00:05Z'));
+    assert.ok(early.data.resync, 'a board snapshot built before the request keeps it');
+    const next = awws.merge(r1.data, awws.normalizeSnapshot({ v: 1, sentAt: '2026-11-17T12:00:00Z', todos: { asOf: '2026-11-17T12:00:00Z', items: [], totals: { ian: { now: 0, next: 0, later: 0 }, claude: { now: 0, next: 0, later: 0 }, both: { now: 0, next: 0, later: 0 } } } }, Date.parse('2026-11-17T12:00:05Z')), Date.parse('2026-11-17T12:00:05Z'));
+    assert.strictEqual(next.data.resync, undefined);
+  });
+
   console.log(passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 }

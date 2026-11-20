@@ -950,7 +950,7 @@
        "status": "unverified",
        "summary": "Tiles for the picture book project: Glance, Next visit, This week, To-do board, Reach, Earned vs spent.",
        "details": [
-        "All registered from app/widgets/awws.js and fed by the Pi's awws snapshot, which a scheduled Claude task refreshes twice a day. The Glance also reads the calendar resource. Librarians and Books are Soon placeholders."
+        "All registered from app/widgets/awws.js and fed by the Pi's awws snapshot, which a scheduled Claude task refreshes once a day (and when the launcher's Sync now row asks). The Glance also reads the calendar resource. Librarians and Books are Soon placeholders."
        ],
        "files": [
         "app/widgets/awws.js",
@@ -2107,7 +2107,7 @@
       }
      ],
      "notes": [
-      "The routine runs twice a day, 7:12 AM and 1:12 PM Central (changed 2026-11-17)."
+      "The board routine wakes five times a day but only syncs at 7:12 AM or when Sync now was asked; money has its own weekly routine (changed 2026-11-20)."
      ]
     },
     {
@@ -3276,7 +3276,7 @@
      "talksTo": [
       {
        "to": "sched.awws-sync",
-       "label": "read twice a day",
+       "label": "read once a day and on request",
        "dir": "out"
       }
      ],
@@ -3570,13 +3570,14 @@
      "title": "AWWS sync",
      "kind": "task",
      "status": "live",
-     "summary": "Twice a day, 7:12 AM and 1:12 PM Central: reads the AWWS board and profit page and sends one snapshot to the Pi.",
+     "summary": "Once a day at 7:12 AM Central, or when Sync now was asked: reads the AWWS board and sends one snapshot to the Pi. Money is a separate weekly routine.",
      "details": [
-      "A fresh Claude session each run. It reads the board's todos and handoffs and the profit page's costs and royalties, builds the snapshot with a small script in its prompt, and sends awws.set through the mailbox. A normal run posts nothing.",
+      "A fresh, light-model Claude session each run. It wakes at 7:12, 10:12, 1:12, 4:12 and 7:12 PM; first it asks the Pi (awws.show) whether a Sync now is waiting, and does nothing unless it is 7 AM or one is. Then it reads the board's todos and handoffs, builds the snapshot with docs/awws-sync/build_snapshot.py (inlined in its prompt) and sends awws.set. A weekly Sunday routine does the same for the profit page's money totals. A normal run posts nothing.",
       "Writes: the 'awws' snapshot on the Pi (to-dos, handoffs, reach, monthly money totals). It skips a run when the Pi's status is over 3 minutes old."
      ],
      "files": [
       "docs/awws-snapshot.md",
+      "docs/awws-sync/build_snapshot.py",
       "pi/awws.js"
      ],
      "talksTo": [
@@ -4778,11 +4779,11 @@
   {
    "id": "flow.pi-awws",
    "title": "The AWWS snapshot reaches the TV",
-   "summary": "A scheduled Claude routine builds the snapshot and sends it through the mailbox twice a day.",
+   "summary": "A scheduled Claude routine builds the snapshot and sends it through the mailbox once a day, or when Sync now asks.",
    "steps": [
     {
      "node": "sched.awws-sync",
-     "say": "At 7:12 AM and 1:12 PM a routine reads the AWWS board and profit page and builds the snapshot"
+     "say": "At 7:12 AM (or when Sync now was asked) a routine reads the AWWS board and builds the snapshot"
     },
     {
      "node": "cloud.r2.status",

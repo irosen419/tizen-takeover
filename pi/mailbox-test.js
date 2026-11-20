@@ -453,6 +453,22 @@ async function main() {
     return s;
   };
 
+  await check('awws.resync: asks once, shows in awws.show, the board snapshot clears it', async () => {
+    await h.api('POST', '/api/awws', { snapshot: null });
+    let r = await run(fake, h, 'awws.resync');
+    assert.strictEqual(r.ok, true);
+    assert.ok(/^Asked for a sync now/.test(r.message), r.message);
+    r = await run(fake, h, 'awws.resync');
+    assert.ok(/already asked/.test(r.message), r.message);
+    await h.api('POST', '/api/awws', { snapshot: { v: 1, sentAt: new Date().toISOString(), reach: { subscribers: 2 } } });
+    r = await run(fake, h, 'awws.show');
+    assert.ok(r.data.resyncRequestedAt, 'a snapshot without the board keeps the request');
+    await h.api('POST', '/api/awws', { snapshot: { v: 1, sentAt: new Date(Date.now() + 1000).toISOString(), todos: { items: [], totals: { ian: { now: 0, next: 0, later: 0 }, claude: { now: 0, next: 0, later: 0 }, both: { now: 0, next: 0, later: 0 } } } } });
+    r = await run(fake, h, 'awws.show');
+    assert.strictEqual(r.data.resyncRequestedAt, undefined);
+    await h.api('POST', '/api/awws', { snapshot: null });
+  });
+
   await check('awws.show, awws.set, awws.clear: same words as ./hub, compact data', async () => {
     let r = await run(fake, h, 'awws.show');
     assert.strictEqual(r.ok, true);

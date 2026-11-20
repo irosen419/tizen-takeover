@@ -639,6 +639,13 @@ const COMMANDS = {
       };
     }
   },
+  'awws.resync': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/awws/resync', {});
+      return { message: awws.resyncText(r), data: { requestedAt: r.requestedAt, already: r.already } };
+    }
+  },
   'awws.clear': {
     args: {},
     run: async (a, ctx) => {

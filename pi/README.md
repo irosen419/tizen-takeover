@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.24.2, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.25.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -107,7 +107,7 @@ A tile is `{ "widget": "weather", "x": 0, "y": 0, "w": 3, "h": 2 }` on a grid 12
 
 ## A World Worth Saving snapshot
 
-The A World Worth Saving tiles on the TV (to-dos, handoffs, outreach and the rest) show one small file of figures, called the **snapshot**. A scheduled Claude routine builds it from places only a signed-in Claude can read and sends it to the Pi through the Claude mailbox (below), twice a day at 7:12 AM and 1:12 PM Central. The Pi checks it, keeps it in `data/state.json` and passes it to the TV. School visits and other dates still come from the calendars, not from the snapshot.
+The A World Worth Saving tiles on the TV (to-dos, handoffs, outreach and the rest) show one small file of figures, called the **snapshot**. A scheduled Claude routine builds it from places only a signed-in Claude can read and sends it to the Pi through the Claude mailbox (below), once a day at 7:12 AM Central, and when the TV's Sync now row asks (`./hub awws resync`); money has its own weekly routine. See `docs/awws-sync/`. The Pi checks it, keeps it in `data/state.json` and passes it to the TV. School visits and other dates still come from the calendars, not from the snapshot.
 
 The full description of the file, field by field, is in [`docs/awws-snapshot.md`](../docs/awws-snapshot.md). A made-up example is `fixtures/awws-sample.json` in this folder.
 
@@ -169,7 +169,7 @@ Server 0.18.0 keeps one more optional section, `investments` (the portfolio tota
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.24.2` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.25.0` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 

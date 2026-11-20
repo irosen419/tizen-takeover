@@ -17,7 +17,7 @@
  *   (amber), below zero (coral), a card day covered (green) and short by $120;
  *   the empty states: no snapshot ("Not synced yet", "Waiting for the budget
  *   app"), a snapshot without a money section ("No money data yet");
- *   budget data over 2 hours old (AWWS over 19 hours): "as of" under the title, and the tile dims;
+ *   budget data over 2 hours old (AWWS over 31 hours): "as of" under the title, and the tile dims;
  *   showMoney false hides every money figure; budget.show false hides the
  *   budget tiles and the banner;
  *   Guest mode (app/guest.js): every money tile says "Hidden for guests", no
@@ -79,8 +79,8 @@ const SEL = '.cell[data-widget="awws-money"] .tile-body, .cell[data-widget^="bud
 const iso = (ms) => new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z');
 const FRESH = iso(H.MONDAY - 60000);
 const OLD = iso(H.MONDAY - 3 * 3600000);
-// The AWWS snapshot dims only after 19 hours (it syncs twice a day).
-const SNAP_OLD = iso(H.MONDAY - 20 * 3600000);
+// The AWWS snapshot dims only after 31 hours (it syncs once a day).
+const SNAP_OLD = iso(H.MONDAY - 33 * 3600000);
 
 // HUB_CONFIG as config.js has it, for the layouts.
 function hubConfig() {
@@ -348,7 +348,7 @@ async function main() {
     });
 
     /* ---------- stale ---------- */
-    await check('budget data over 2 hours old and AWWS over 19 hours: "as of" under each title, and the tiles dim', async () => {
+    await check('budget data over 2 hours old and AWWS over 31 hours: "as of" under each title, and the tiles dim', async () => {
       await env.setBudget(H.budgetSample.snapshot({ sentAt: OLD }));
       await env.setSnapshot(H.sample.snapshot({ sentAt: SNAP_OLD }));
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
