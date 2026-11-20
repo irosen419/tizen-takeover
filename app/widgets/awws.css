@@ -659,7 +659,7 @@
 .aw-lrow {
   display: flex;
   align-items: baseline;
-  padding: 0.42rem 0.9rem;
+  padding: 0.34rem 0.9rem;
 }
 .aw-lrow-name {
   flex: 0 0 auto;
@@ -672,9 +672,12 @@
 }
 .aw-lrow-status { flex: 1 1 auto; min-width: 0; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); }
 .aw-lrow.is-focused .aw-lrow-status { color: var(--text); }
-.aw-lrow.is-soon { cursor: default; padding-top: 0.26rem; padding-bottom: 0.26rem; }
+.aw-lrow.is-soon { cursor: default; padding-top: 0.14rem; padding-bottom: 0.14rem; }
 .aw-lrow.is-soon .aw-lrow-name { color: var(--text-3); font-size: 1.1rem; }
 .aw-lrow.is-soon .aw-lrow-status { color: var(--text-3); font-size: 1rem; }
+.aw-lrow.is-sync { padding-top: 0.14rem; padding-bottom: 0.14rem; }
+.aw-lrow.is-sync .aw-lrow-name { font-size: 1.1rem; }
+.aw-lrow.is-sync .aw-lrow-status { font-size: 1rem; }
 .aw-lrow-soon {
   flex: 0 0 auto;
   margin-left: auto;
@@ -689,7 +692,7 @@
   white-space: nowrap;
 }
 .aw-lrow-status + .aw-lrow-soon { margin-left: 0.8rem; }
-.aw-ldiv { height: 0; margin: 0.4rem 0.9rem 0.3rem; border-top: 0.06rem solid var(--aw-hair); }
+.aw-ldiv { height: 0; margin: 0.12rem 0.9rem 0.1rem; border-top: 0.06rem solid var(--aw-hair); }
 
 /* Next visit: every booked visit. */
 .aw-vpanel {

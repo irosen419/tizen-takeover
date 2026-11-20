@@ -2621,7 +2621,7 @@
   // The Pi only notes the request; the routine that reads the board sends the
   // snapshot at its next check, which clears the note.
   function syncRow(list) {
-    var r = el('div', 'aw-lrow f', list);
+    var r = el('div', 'aw-lrow is-sync f', list);
     r.setAttribute('data-key', 'sync');
     el('div', 'aw-lrow-name', r, STRINGS.syncName);
     var asked = snapReady(S.snap) && S.snap.resync && S.snap.resync.requestedAt ? parseIso(S.snap.resync.requestedAt) : NaN;
