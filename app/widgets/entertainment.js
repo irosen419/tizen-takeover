@@ -219,11 +219,18 @@
       containsIn(match, false) || containsIn(match, true);
   }
 
+  // Samsung's placeholders for apps not installed yet (com.samsung.tv.aria-dummy
+  // is named "Apple TV" beside the real com.samsung.tv.aria-video) open
+  // nothing, so they never stand for an app.
+  function isDummy(app) {
+    return /dummy$/i.test(String(app && app.id || ''));
+  }
+
   function exactIn(match, hidden) {
     for (var i = 0; i < match.length; i++) {
       var m = match[i].toLowerCase();
       for (var j = 0; j < apps.length; j++) {
-        if (!!apps[j].hidden === hidden && (apps[j].name || '').toLowerCase() === m) return apps[j];
+        if (!!apps[j].hidden === hidden && !isDummy(apps[j]) && (apps[j].name || '').toLowerCase() === m) return apps[j];
       }
     }
     return null;
@@ -235,7 +242,7 @@
       var best = null;
       for (var j = 0; j < apps.length; j++) {
         var lower = (apps[j].name || '').toLowerCase();
-        if (!!apps[j].hidden !== hidden || lower.indexOf(m) === -1) continue;
+        if (!!apps[j].hidden !== hidden || isDummy(apps[j]) || lower.indexOf(m) === -1) continue;
         if (!best || lower.length < best.name.length) best = apps[j];
       }
       if (best) return best;
