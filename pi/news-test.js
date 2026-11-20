@@ -55,6 +55,10 @@ async function main() {
     assert.deepStrictEqual(news.newest(XML), { title: '7pm ET, November 19', url: 'https://example.test/seven.mp3', published: '2026-11-20T00:09:35.000Z' });
   });
 
+  await check('the same-every-hour "| The latest headlines from NPR" is dropped from the title', () => {
+    assert.strictEqual(news.newest(XML).title, '7pm ET, November 19');
+  });
+
   await check('CDATA titles and &amp; in addresses are decoded', () => {
     const six = news.episodes(XML)[1];
     assert.strictEqual(six.title, '6pm ET, November 19');

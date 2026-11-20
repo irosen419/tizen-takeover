@@ -41,7 +41,10 @@ function episodes(xml) {
     const url = enc ? decode(enc[1]) : '';
     const when = Date.parse(tag(block, 'pubDate'));
     if (!/^https?:\/\//i.test(url) || !isFinite(when)) return;
-    out.push({ title: tag(block, 'title'), url: url, published: new Date(when).toISOString() });
+    // NPR's titles read "7pm ET, November 19 | The latest headlines from NPR";
+    // the part after the bar is the same every hour, so only the time is kept.
+    const title = tag(block, 'title').split(' | ')[0].trim();
+    out.push({ title: title, url: url, published: new Date(when).toISOString() });
   });
   out.sort((a, b) => Date.parse(b.published) - Date.parse(a.published));
   return out;
