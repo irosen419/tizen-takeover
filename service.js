@@ -28,7 +28,7 @@ var urlLib = require('url');
 var os = require('os');
 
 var PORT = 8095;
-var VERSION = '0.39.0';
+var VERSION = '0.39.1';
 var TOKEN_FILE = '/home/owner/share/tizen-takeover-remote-token.txt';
 var REMOTE_NAME = new Buffer('Home Hub').toString('base64');
 
@@ -107,6 +107,63 @@ function launchControl(c, cb) {
     });
   } catch (e) {
     cb(e.message);
+  }
+}
+
+/* ---------- App probe (watch link test) ---------- */
+
+// For the link test's App probe: every installed app with its manifest
+// metadata (getAppMetaData), and which apps answer each probe operation
+// (findAppControl). Read-only; app ids, names and metadata only. The hub page
+// has no tizen object on some TVs, so the probe runs here.
+var PROBE_OPS = [
+  'http://samsung.com/appcontrol/operation/eden_resume',
+  'http://tizen.org/appcontrol/operation/view',
+  'http://tizen.org/appcontrol/operation/play',
+  'http://tizen.org/appcontrol/operation/default',
+  'http://samsung.com/appcontrol/operation/deeplink'
+];
+
+function probeApps(cb) {
+  var api;
+  try { api = tizen.application; } catch (e) { return cb('no tizen'); }
+  var hasMeta = typeof api.getAppMetaData === 'function';
+  var hasFind = typeof api.findAppControl === 'function';
+  var finished = false;
+  function done(err, body) { if (!finished) { finished = true; cb(err, body); } }
+  try {
+    api.getAppsInfo(function (infos) {
+      var apps = [];
+      for (var i = 0; i < infos.length; i++) {
+        var a = infos[i];
+        var meta = [];
+        if (hasMeta) {
+          try {
+            var m = api.getAppMetaData(a.id);
+            for (var k = 0; m && k < m.length && k < 40; k++) if (m[k]) meta.push({ key: String(m[k].key).substring(0, 200), value: String(m[k].value).substring(0, 500) });
+          } catch (e) { /* none for this app */ }
+        }
+        apps.push({ id: a.id, name: a.name, hidden: a.show === false, meta: meta });
+      }
+      var ops = {};
+      var left = PROBE_OPS.length;
+      function finish() { done(null, { ok: true, hasMeta: hasMeta, hasFind: hasFind, apps: apps, ops: ops }); }
+      if (!hasFind) return finish();
+      setTimeout(finish, 8000);
+      PROBE_OPS.forEach(function (op) {
+        var settled = false;
+        ops[op] = [];
+        function end() { if (!settled) { settled = true; if (--left <= 0) finish(); } }
+        try {
+          api.findAppControl(new tizen.ApplicationControl(op, null, null, null, null), function (found) {
+            for (var f = 0; found && f < found.length; f++) ops[op].push({ id: String(found[f].id), name: String(found[f].name || '') });
+            end();
+          }, end);
+        } catch (e) { end(); }
+      });
+    }, function (e) { done(e && e.message ? e.message : 'getAppsInfo failed'); });
+  } catch (e) {
+    done(e.message);
   }
 }
 
@@ -398,6 +455,13 @@ var server = http.createServer(function (req, res) {
     return listApps(function (err, apps) {
       if (err) return send(res, 500, { ok: false, error: String(err) });
       send(res, 200, { ok: true, apps: apps });
+    });
+  }
+
+  if (parsed.pathname === '/probe') {
+    return probeApps(function (err, body) {
+      if (err) return send(res, 500, { ok: false, error: String(err) });
+      send(res, 200, body);
     });
   }
 
