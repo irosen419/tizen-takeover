@@ -1889,7 +1889,13 @@ function start(options) {
           // The grocery rows for this code take the corrected "Brand Name", so the TV tile shows the brand too.
           const cur = state.resources.grocery.data.items;
           const line = products.lineName(product);
-          const next = cur.map((i) => (i.upc === product.upc && line && i.name !== line ? Object.assign({}, i, { name: line }) : i));
+          let lineOk = !!line && Array.from(line).length === line.length && line.length <= grocery.MAX_NAME;
+          const next = cur.map((i) => {
+            if (!lineOk || i.upc !== product.upc || i.name === line) return i;
+            // Never make two rows with the same name (name commands pick the first).
+            if (cur.some((o) => o !== i && o.name.toLowerCase() === line.toLowerCase())) return i;
+            return Object.assign({}, i, { name: line });
+          });
           if (JSON.stringify(next) !== JSON.stringify(cur)) changeResource('grocery', { items: next });
           sendJson(res, 200, { ok: true, product: product }, cors);
         } catch (e) {

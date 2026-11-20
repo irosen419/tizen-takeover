@@ -541,7 +541,7 @@
       if (pre && pre.image) {
         var cur = el('img');
         cur.alt = '';
-        cur.onload = function () { thumb.innerHTML = ''; thumb.className = 'sc-photo'; thumb.appendChild(cur); };
+        cur.onload = function () { if (photo) return; thumb.innerHTML = ''; thumb.className = 'sc-photo'; thumb.appendChild(cur); };
         cur.src = pre.image;
       }
       var pickBtn = button('sc-btn sc-quiet sc-pick-btn', T('scan.photo', 'Add a photo (optional)'));

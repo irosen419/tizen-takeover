@@ -579,6 +579,8 @@ function createCatalog(options) {
         // after it (inside the same budget), so a row can say "Brand · size".
         let prod = r.product, images = r.images.slice();
         for (let j = i + 1; j < sources.length && (!prod.brand || !images.length) && left(deadline) > 500; j++) {
+          // UPCitemdb's 100 a day is for real misses and missing brands, not for a missing picture alone.
+          if (sources[j].id === 'upcitemdb' && prod.brand) continue;
           let more = null;
           try { more = await ask(sources[j], key, deadline); } catch (e) { more = null; }
           if (!more || !more.found) continue;
