@@ -309,7 +309,7 @@
         a.href = '#/' + e.id;
         a.setAttribute('data-widget', e.id);
         var ic = el('span', 't-row-ic');
-        ic.appendChild(svg(e.widget.icon || 'M12 12h.01'));
+        ic.appendChild(svg(e.widget.touchIcon || e.widget.icon || 'M12 12h.01'));
         a.appendChild(ic);
         a.appendChild(el('span', 't-row-name', nameOf(e)));
         var datum = el('span', 't-row-datum');
@@ -394,7 +394,7 @@
         var pane = el('section', 't-pane');
         pane.id = 'w-' + e.id;
         var ph = el('header', 't-pane-head');
-        ph.appendChild(svg(e.widget.icon || 'M12 12h.01'));
+        ph.appendChild(svg(e.widget.touchIcon || e.widget.icon || 'M12 12h.01'));
         ph.appendChild(el('h2', 't-pane-title', nameOf(e)));
         pane.appendChild(ph);
         var body2 = el('div', 't-body');

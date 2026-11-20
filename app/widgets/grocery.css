@@ -1,0 +1,375 @@
+/* Groceries on the TV (app/widgets/grocery.js; the touch app has its own
+   touch.css and never loads this). Same rules as style.css: no grid, no flex
+   gap, only transform and opacity animate, focus changes are instant. Text
+   has a line-height of at least 1.3, and the one-line item names (the only
+   text that ends in an ellipsis) carry padding inside their clip, cancelled
+   by the same negative margin, so accents stay whole. */
+
+.gt-tile,
+.gt-panel {
+  --gt-hair: rgba(255, 255, 255, 0.12);
+  --gt-done: #5fd38a;
+}
+.theme-day .gt-tile,
+.theme-day .gt-panel { --gt-hair: rgba(0, 0, 0, 0.12); --gt-done: #1f8a4c; }
+
+/* An item name on one line: ellipsis only here. */
+.gt-tname,
+.gt-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 0.12em 0;
+  margin: -0.12em 0;
+  line-height: 1.35;
+}
+
+/* ---------- home tile ---------- */
+
+.gt-tile {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.9rem;
+}
+.gt-msg {
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+
+.gt-hero {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.gt-hero-num {
+  flex: 0 0 auto;
+  margin-right: 0.6rem;
+  font-size: 4.4rem;
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.gt-hero-cap {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 1.15rem;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+/* Two rows: a smaller count, so the first items still fit under it. */
+.gt-tile-standard { padding-top: 0.5rem; }
+.gt-tile-standard .gt-hero-num { font-size: 2.6rem; line-height: 1.2; }
+.gt-tile-standard .gt-hero-word { font-size: 1.35rem; }
+.gt-tile-standard .gt-tlist { margin-top: 0.4rem; }
+.gt-tile-standard .gt-trow { padding: 0.3rem 0 0.25rem; }
+.gt-tile-standard .gt-foot { padding-top: 0.3rem; }
+.gt-hero-word {
+  font-size: 1.7rem;
+  font-weight: 300;
+  line-height: 1.3;
+  color: var(--text);
+  word-wrap: break-word;
+}
+.gt-hint {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  color: var(--text-3);
+  word-wrap: break-word;
+}
+
+/* The first items that fit; the JS takes rows off the bottom until the foot
+   line is inside the tile, so the list never shrinks and a row is whole. */
+.gt-tlist {
+  flex: 0 0 auto;
+  margin-top: 0.8rem;
+  border-top: 0.06rem solid var(--gt-hair);
+}
+.gt-trow {
+  display: flex;
+  align-items: center;
+  padding: 0.45rem 0 0.4rem;
+  border-bottom: 0.06rem solid var(--gt-hair);
+}
+.gt-tbox {
+  display: block;
+  flex: 0 0 auto;
+  position: relative;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-right: 0.7rem;
+  border: 0.1rem solid var(--text-2);
+  border-radius: 0.25rem;
+}
+.gt-trow .gt-tname { flex: 1 1 auto; font-size: 0.95rem; color: var(--text); }
+.gt-trow.is-done .gt-tbox { border-color: var(--gt-done); background: var(--gt-done); color: #06140b; }
+.gt-trow.is-done .gt-tname { color: var(--text-3); text-decoration: line-through; }
+.gt-trow.is-pending { opacity: 0.6; }
+.gt-tbox svg,
+.gt-box svg {
+  position: absolute;
+  top: 8%;
+  left: 8%;
+  width: 84%;
+  height: 84%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gt-foot {
+  flex: 0 0 auto;
+  padding-top: 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  word-wrap: break-word;
+}
+
+/* Strip: "3 left · Milk" on one line beside the head. */
+.gt-tile-strip { padding-top: 0; justify-content: center; }
+.gt-strip {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  font-size: 1.15rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+.gt-strip-num { flex: 0 0 auto; font-weight: 500; }
+.gt-strip-dot { flex: 0 0 auto; margin: 0 0.45rem; color: var(--text-3); }
+.gt-strip-next { flex: 0 1 auto; color: var(--text-2); }
+.gt-strip-word { flex: 0 1 auto; min-width: 0; color: var(--text-2); word-wrap: break-word; }
+
+/* One column: the count alone. */
+.gt-tile-one { padding-top: 0; justify-content: center; align-items: center; }
+.gt-one-num {
+  font-size: 2.4rem;
+  font-weight: 300;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+/* ---------- panel ---------- */
+
+.gt-panel { padding: 0.2rem 0 0.6rem; }
+.gt-panel-msg { padding: 1rem 0.9rem; }
+
+/* Add box: the input is the focusable, .gt-add-frame (after it) draws the
+   box, so sibling selectors style the row from the input's state. */
+.gt-add {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  padding: 0 1rem 0 0.9rem;
+}
+.gt-add-icon,
+.gt-input,
+.gt-add-hint { position: relative; z-index: 1; }
+.gt-add-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-right: 0.7rem;
+  color: var(--text-2);
+}
+.gt-add-icon svg,
+.gt-del-ic svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.gt-input {
+  flex: 1 1 auto;
+  min-width: 8rem;
+  display: block;
+  padding: 0.7rem 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1.4;
+  color: var(--text);
+  caret-color: #ffffff;
+  outline: none;
+  -webkit-appearance: none;
+}
+.gt-input::-webkit-input-placeholder { color: var(--text-3); opacity: 1; }
+.gt-input::placeholder { color: var(--text-3); opacity: 1; }
+.gt-add-hint {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  margin-left: 1rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--text-3);
+  text-align: right;
+}
+.gt-hint-ok,
+.gt-hint-typing { display: block; height: 0; overflow: hidden; visibility: hidden; }
+.gt-add-frame {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+  border-radius: 0.8rem;
+  border: var(--edge) solid var(--gt-hair);
+  background: rgba(255, 255, 255, 0.05);
+}
+.gt-input.is-focused ~ .gt-add-frame { border-color: var(--focus); background: var(--card-2); }
+.gt-input.is-focused ~ .gt-add-hint .gt-hint-ok { height: auto; overflow: visible; visibility: visible; }
+.gt-input:focus ~ .gt-add-frame {
+  border-color: var(--focus);
+  background: #2b313c;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.24);
+}
+.gt-input:focus ~ .gt-add-hint { color: var(--text-2); }
+.gt-input:focus ~ .gt-add-hint .gt-hint-ok { height: 0; overflow: hidden; visibility: hidden; }
+.gt-input:focus ~ .gt-add-hint .gt-hint-typing { height: auto; overflow: visible; visibility: visible; }
+
+/* Sections: a quiet sentence-case label and its count, then rows. */
+.gt-sec { padding-top: 0.8rem; }
+.gt-sec-head {
+  display: flex;
+  align-items: center;
+  padding: 0 0.9rem 0.35rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-3);
+}
+.gt-sec-name { flex: 0 1 auto; min-width: 0; font-weight: 500; }
+.gt-sec-count { flex: 0 0 auto; margin-left: 0.6rem; }
+.gt-clear {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0.3rem 0.85rem;
+  border-radius: 1rem;
+  border: var(--edge) solid var(--gt-hair);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.gt-clear.is-focused { background: var(--card-2); border-color: var(--focus); color: var(--text); }
+.gt-empty {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+
+/* A row: the tick and name (OK ticks), then Remove on the right. */
+.gt-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.gt-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.8rem;
+  border: var(--edge) solid transparent;
+  cursor: pointer;
+}
+.gt-box {
+  display: block;
+  flex: 0 0 auto;
+  position: relative;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-right: 0.8rem;
+  border: 0.12rem solid var(--text-2);
+  border-radius: 0.3rem;
+  color: #06140b;
+}
+.gt-box svg { display: none; }
+.gt-name { flex: 1 1 auto; font-size: 1.1rem; color: var(--text); }
+.gt-main.is-focused { background: var(--card-2); border-color: var(--focus); }
+.gt-main.is-focused .gt-box { border-color: var(--text); }
+.gt-row.is-done .gt-box { border-color: var(--gt-done); background: var(--gt-done); }
+.gt-row.is-done .gt-box svg { display: block; }
+.gt-row.is-done .gt-name { color: var(--text-3); text-decoration: line-through; }
+.gt-row.is-done .gt-main.is-focused .gt-name { color: var(--text-2); }
+.gt-row.is-pending { opacity: 0.6; }
+
+/* Remove: a round button; its label shows as a pill growing leftward over
+   the row while it has focus, red once it waits for the second OK. */
+.gt-del {
+  position: relative;
+  flex: 0 0 auto;
+  width: 2.3rem;
+  height: 2.3rem;
+  margin-left: 0.4rem;
+  border-radius: 50%;
+  border: var(--edge) solid transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.gt-del-ic {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: -0.525rem 0 0 -0.525rem;
+}
+.gt-pill {
+  display: none;
+  position: absolute;
+  top: -0.16rem;
+  right: -0.16rem;
+  bottom: -0.16rem;
+  z-index: 0;
+  align-items: center;
+  padding: 0 2.4rem 0 1rem;
+  border-radius: 1.3rem;
+  border: 0.14rem solid #fff;
+  background: #f6d3d7;
+  color: #4a1219;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  -webkit-animation: gt-in 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation: gt-in 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.gt-pill-armed { display: none; }
+.gt-del.is-focused { z-index: 2; color: #4a1219; }
+.gt-del.is-focused .gt-pill { display: flex; }
+.gt-del.is-armed .gt-pill { background: #d93036; color: #fff; font-weight: 700; }
+.gt-del.is-armed .gt-pill-label { display: none; }
+.gt-del.is-armed .gt-pill-armed { display: inline; }
+.gt-del.is-armed.is-focused { color: #fff; }
+
+@-webkit-keyframes gt-in { from { opacity: 0; -webkit-transform: translateX(0.4rem); } to { opacity: 1; -webkit-transform: none; } }
+@keyframes gt-in { from { opacity: 0; transform: translateX(0.4rem); } to { opacity: 1; transform: none; } }
+
+/* Full screen: the same list, bigger. */
+.gt-panel.is-full .gt-input { font-size: 1.3rem; padding: 0.85rem 0; }
+.gt-panel.is-full .gt-name { font-size: 1.3rem; }
+.gt-panel.is-full .gt-sec-head { font-size: 0.95rem; }
+
+.css-end { top: 0; }

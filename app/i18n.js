@@ -66,6 +66,7 @@
     'hub.layout.plant-wall': 'Plantas',
     'hub.layout.ambience-test': 'Prueba de ambiente',
     'hub.layout.architecture-test': 'Arquitectura del hub',
+    'hub.layout.grocery-test': 'Prueba del súper',
     /* The About strip's group and row names (key 'hub.about.<name>' with the
      * English words joined, 'This hub' = ThisHub). The values come from the
      * hub's own status lines and stay as they are. */
@@ -1523,7 +1524,23 @@
     'grocery.saveFailed': 'No se guardó: {why}',
     'grocery.offline': 'No se puede conectar con el hub. Se muestra la última lista; los cambios no se guardarán.',
     'grocery.loading': 'Cargando la lista…',
-    'grocery.tooLong': 'Máximo {n} caracteres por artículo'
+    'grocery.tooLong': 'Máximo {n} caracteres por artículo',
+    /* The TV tile and panel (same file; English there). */
+    'grocery.titleShort': 'Súper',
+    'grocery.left': 'quedan {n}',
+    'grocery.listEmpty': 'La lista está vacía',
+    'grocery.tvEmptyHint': 'Ábrela para agregar, o agrega desde el teléfono.',
+    'grocery.more': '+{n} más',
+    'grocery.inCartN': '{n} en el carrito',
+    'grocery.notLive': 'Sin conexión',
+    'grocery.noPi': 'La lista se guarda en la Pi',
+    'grocery.secLeft': 'Por comprar',
+    'grocery.hintOk': 'OK para escribir',
+    'grocery.hintTyping': 'Con comas agregas varios',
+    'grocery.removeBtn': 'Quitar',
+    'grocery.removeArmed': 'OK otra vez para quitar',
+    'grocery.tvUnreachable': 'la Pi no respondió',
+    'grocery.activity': 'Nuevo en la lista'
   };
 
   var DAYS = {

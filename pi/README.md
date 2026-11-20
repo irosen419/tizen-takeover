@@ -107,6 +107,8 @@ The first touch widget is the grocery list. From the Pi or the mailbox:
 
 The log only counts changes; it never names an item. After pulling this change: `hubup` (it mounts `../app` read only into the container, so it needs `docker compose up -d`, not just a restart); `./hub status` should say `version 0.26.0`. Nothing changes in `.env`. Even when `HUB_TV_IPS` is set, the touch app and its two routes (`/touch/state`, `/grocery/ops`) answer any home or Tailscale address, and a phone is never counted as a screen.
 
+The TV has a grocery tile too (on the "Groceries test" layout). It reads the list over the live line like every other widget and posts its changes to the same `POST /grocery/ops`. Its page is on another origin, so that needs server 0.26.1 (it answers the browser's preflight): run `hubup` once, then `./hub status` should say `version 0.26.1`. With an older server the TV shows the list but a change says it didn't save and goes back. The log says `screen changed the grocery list` for the TV and `touch app changed the grocery list` for a phone, never an item's name.
+
 ## Tile layout
 
 Where each tile sits on the home screen can be changed from the Pi, without editing `app/config.js`:
