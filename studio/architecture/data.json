@@ -1241,6 +1241,35 @@
        ]
       },
       {
+       "id": "tv.widgets.soundctl",
+       "title": "Sound control",
+       "kind": "component",
+       "status": "draft",
+       "pr": "PR 131",
+       "summary": "A copy of All sounds whose page adds Echo controls: a speaker switch, Play/Pause, Next, a volume stepper, Stop and quick starts.",
+       "details": [
+        "The tile looks the same as All sounds. The page adds a speaker switch (Echo Show, Echo Dot, Everywhere), a round Play/Pause, Next, a volume stepper (− 40% +), Stop and one-press starts: Resume audiobook, KERA 90.1, News briefing, Pandora and Amazon Music. All sounds stays untouched as the backup.",
+        "Presses go to the Pi as POST /echo/run with presets only (no search text from the TV). The speakers' state and volume come back in the allsounds resource (echos, target), so the page follows within seconds. Tried alone in the 'Sound control test' layout (hub v0.39.0)."
+       ],
+       "files": [
+        "app/widgets/soundctl.js",
+        "app/widgets/soundctl.css",
+        "dev/soundctl-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.echo",
+         "label": "Echo presses (POST /echo/run)",
+         "dir": "out"
+        },
+        {
+         "to": "pi.allsounds",
+         "label": "allsounds resource with the speakers' state",
+         "dir": "in"
+        }
+       ]
+      },
+      {
        "id": "tv.widgets.sunpath",
        "title": "Plant sun",
        "kind": "component",
@@ -2267,7 +2296,8 @@
      "details": [
       "./hub echo and the mailbox's echo.* commands POST Home Assistant services with HA_TOKEN: media_player.play_media (an Alexa custom command such as 'resume my book on Audible', a TuneIn or Amazon Music search, or the Alexa.FlashBriefing.Play sequence), media_pause, media_play, media_next_track and volume_set. Targets: the Echo Show, the Echo Dot and the Everywhere group (ECHO_TARGETS in pi/.env). Server 0.22.0.",
       "When the hub starts an app, the Pi notes which app, which Echo and when (data/echo.json). All sounds then shows 'Audible on Ian's Echo Show' with 'Started from the hub' instead of Alexa's stale title. The note clears when something else clearly starts on that Echo, on stop, or after 6 hours. No book title or chapter.",
-      "Audible and the news briefing are not media players Alexa Media Player can drive, so pause, resume, skip and stop on them are sent as Alexa voice commands. Log lines name only the target key and the app, never a search or a speaker's name."
+      "Audible and the news briefing are not media players Alexa Media Player can drive, so pause, resume, skip and stop on them are sent as Alexa voice commands. Log lines name only the target key and the app, never a search or a speaker's name.",
+      "From server 0.24.0 the TV's Sound control page sends presses on the screen API, POST /echo/run: presets only, origin-checked, 6 presses in 5 s. allsounds carries echos (each speaker's state and volume) and target for it."
      ],
      "files": [
       "pi/echo.js",
@@ -2290,6 +2320,11 @@
        "to": "pi.allsounds",
        "label": "what the hub started, for the All sounds label",
        "dir": "out"
+      },
+      {
+       "to": "tv.widgets.soundctl",
+       "label": "takes presses from the Sound control page",
+       "dir": "in"
       }
      ],
      "notes": [

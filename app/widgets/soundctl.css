@@ -1,0 +1,505 @@
+/* Sound control (test widget, app/widgets/soundctl.js). Every class starts
+   with sc-. The All sounds look (allsounds.css) plus the Echo control panel. The look of Now Playing (nowplaying.css) without the progress
+   bar and the visualizer, plus the platform in brackets after the label and the
+   speaker's name.
+
+   Only the three little equalizer bars move (a transform, off on the
+   plainest motion setting). Every text keeps a line-height of 1.3 or more
+   so accents (Á, Ñ, Ú) never clip; texts wrap or end in "...", and nothing
+   has a fixed width that a longer language could overflow. */
+
+/* ---------- shared ---------- */
+
+.sc-tile,
+.sc-page {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.sc-art {
+  position: relative;
+  flex: 0 0 auto;
+  width: 4rem;
+  height: 4rem;
+}
+.sc-face {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  overflow: hidden;
+  border-radius: 0.7rem;
+  background: #1c2028;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sc-mark { width: 38%; height: 38%; color: var(--text-3); }
+.sc-img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 240ms linear;
+}
+.sc-img.is-loaded { opacity: 1; }
+.sc-art.is-dim .sc-img.is-loaded { opacity: 0.55; }
+/* Paused, the dimmed picture must not show the music mark through it. */
+.sc-face.has-img .sc-mark { visibility: hidden; }
+
+.sc-label {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.sc-label-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-title {
+  font-size: 1.3rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.sc-sub {
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.sc-quiet-title { color: var(--text-2); }
+/* "May be out of date": an Echo still says it plays a song that has ended. */
+.sc-stale {
+  margin-top: 0.15rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-hint-line { color: var(--text-2); }
+
+/* The platform, "(Pandora)", after the label: smaller and quieter, on the
+   label's own line. It shrinks first (only the name gets "..."), the label
+   keeps its room. */
+.sc-plat {
+  display: flex;
+  align-items: center;
+  flex: 0 100 auto;
+  min-width: 0;
+  margin-left: 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.sc-plat-b { flex: 0 0 auto; }
+.sc-plat-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The speaker's name: one line, cut with "...". */
+.sc-meta {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  margin-top: 0.45rem;
+  white-space: nowrap;
+}
+.sc-device {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Three bars, only while something is playing. */
+.sc-eq {
+  display: none;
+  flex: 0 0 auto;
+  width: 0.9rem;
+  height: 0.8rem;
+  margin-right: 0.5rem;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.sc-eq.is-playing { display: flex; }
+.sc-eq i {
+  display: block;
+  width: 0.22rem;
+  height: 100%;
+  border-radius: 0.1rem;
+  background: #7be0a0;
+  transform-origin: 50% 100%;
+  -webkit-animation: sc-eq 900ms ease-in-out infinite alternate;
+  animation: sc-eq 900ms ease-in-out infinite alternate;
+}
+.sc-eq i:nth-child(2) { -webkit-animation-duration: 700ms; animation-duration: 700ms; -webkit-animation-delay: -300ms; animation-delay: -300ms; }
+.sc-eq i:nth-child(3) { -webkit-animation-duration: 1100ms; animation-duration: 1100ms; -webkit-animation-delay: -600ms; animation-delay: -600ms; }
+@-webkit-keyframes sc-eq { from { -webkit-transform: scaleY(0.25); } to { -webkit-transform: scaleY(1); } }
+@keyframes sc-eq { from { transform: scaleY(0.25); } to { transform: scaleY(1); } }
+.motion-fade .sc-eq i { -webkit-animation: none; animation: none; }
+
+/* ---------- tile layouts ---------- */
+
+.sc-tile { display: flex; }
+
+.sc-row { flex-direction: row; align-items: flex-start; }
+.sc-row .sc-art { margin-right: 1.1rem; }
+.sc-row .sc-text {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+.sc-row .sc-label { margin-bottom: 0.1rem; }
+.sc-row .sc-title { font-size: 1.45rem; }
+.sc-row .sc-sub { margin-top: 0.1rem; }
+
+.sc-col { flex-direction: column; align-items: flex-start; }
+.sc-col .sc-art { margin-bottom: 0.7rem; }
+.sc-col .sc-text { flex: 0 0 auto; min-width: 0; width: 100%; }
+.sc-col .sc-title { font-size: 1.2rem; }
+
+.sc-icon { align-items: flex-start; }
+
+.sc-strip.sc-row { align-items: center; }
+.sc-strip .sc-title { font-size: 1.2rem; }
+.sc-strip .sc-sub { font-size: 0.95rem; }
+.sc-strip .sc-art { margin-right: 0.9rem; }
+.sc-strip .sc-face { border-radius: 0.5rem; }
+.sc-strip .sc-text { align-self: center; }
+
+.tile-w1 .sc-art { margin-right: 0; }
+
+/* A big tile (the test layout): everything a step larger. */
+.tile-h3.tile-ww .sc-row .sc-title { font-size: 2.4rem; line-height: 1.25; }
+.tile-h3.tile-ww .sc-row .sc-sub { margin-top: 0.3rem; font-size: 1.45rem; }
+.tile-h3.tile-ww .sc-row .sc-label-text { font-size: 0.95rem; }
+.tile-h3.tile-ww .sc-row .sc-label { margin-bottom: 0.35rem; }
+.tile-h3.tile-ww .sc-row .sc-meta { margin-top: 1rem; }
+.tile-h3.tile-ww .sc-row .sc-plat { margin-left: 0.6rem; font-size: 0.85rem; }
+.tile-h3.tile-ww .sc-row .sc-device { font-size: 1.1rem; }
+.tile-h3.tile-ww .sc-row .sc-stale { margin-top: 0.25rem; font-size: 1.1rem; }
+.tile-h3.tile-ww .sc-row .sc-art { margin-right: 2rem; }
+.tile-h3.tile-ww .sc-row .sc-face { border-radius: 1rem; }
+
+/* Nothing playing, two rows or more: the hub's header, the message, the hint. */
+.sc-tile.sc-headed { display: block; }
+.sc-headed .tile-head { margin-bottom: 0.2rem; }
+.sc-msg {
+  margin-top: 0.6rem;
+  font-size: 1.3rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.sc-hint {
+  margin-top: 0.35rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+.tile-h3.tile-ww .sc-msg { margin-top: 1.4rem; font-size: 2.2rem; line-height: 1.25; }
+.tile-h3.tile-ww .sc-hint { margin-top: 0.6rem; font-size: 1.35rem; }
+
+/* ---------- the page ---------- */
+
+.sc-page {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+/* With the Echo controls the page is two layers: what plays, then the controls. */
+.sc-page.has-ctl { flex-direction: column; align-items: stretch; }
+.sc-main { display: flex; flex-direction: row; align-items: flex-start; flex: 0 0 auto; min-height: 0; overflow: hidden; }
+.sc-page .sc-art { margin-right: 2rem; }
+.sc-page .sc-face { border-radius: 1rem; }
+.sc-info {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+/* Nothing in the info column shrinks: a text that does not fit is clamped by the script, never squeezed. */
+.sc-info > * { flex-shrink: 0; }
+.sc-page .sc-label { margin-bottom: 0.4rem; }
+.sc-page .sc-title { font-size: 2.1rem; line-height: 1.25; letter-spacing: -0.01em; }
+.sc-page .sc-sub { margin-top: 0.4rem; font-size: 1.3rem; line-height: 1.35; color: var(--text); }
+.sc-page .sc-hint-line { font-size: 1.1rem; color: var(--text-2); }
+.sc-page .sc-stale { margin-top: 0.3rem; font-size: 1.05rem; }
+.sc-page .sc-album { margin-top: 0.2rem; font-size: 1.05rem; line-height: 1.35; color: var(--text-2); word-wrap: break-word; }
+.sc-foot { margin-top: auto; flex: 0 0 auto; }
+.sc-chips { display: flex; flex-wrap: wrap; margin-top: 0.7rem; }
+.sc-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 0.5rem 0.3rem 0;
+  padding: 0.1rem 0.7rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.16);
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-fallback { font-size: 1.1rem; color: var(--text-2); }
+
+.panel.is-full .sc-page .sc-art { margin-right: 3.4rem; }
+.panel.is-full .sc-page .sc-title { font-size: 3.2rem; }
+.panel.is-full .sc-page .sc-sub { margin-top: 0.7rem; font-size: 1.9rem; }
+.panel.is-full .sc-page .sc-album { font-size: 1.4rem; }
+.panel.is-full .sc-page .sc-hint-line { font-size: 1.5rem; }
+.panel.is-full .sc-page .sc-stale { margin-top: 0.5rem; font-size: 1.4rem; }
+.panel.is-full .sc-label-text { font-size: 1rem; }
+.panel.is-full .sc-chips .sc-chip { font-size: 1rem; padding: 0.15rem 0.9rem; }
+.panel.is-full .sc-plat { margin-left: 0.6rem; font-size: 0.9rem; }
+.panel.is-full .sc-eq { width: 1.2rem; height: 1rem; }
+.panel.is-full .sc-eq i { width: 0.3rem; }
+
+
+/* ---------- the Echo controls (page and full screen only) ----------
+   One deck under what plays, three rows that start at the same text column:
+   the speaker picker (one segmented track), the transport (Play/Pause the
+   one filled control, Next, a volume stepper, a quiet Stop) and the quick
+   starts on a rail. One accent (a soft green, the equalizer's). Captions are
+   0.88rem (21 px) and never wrap; everything else 1rem or more. Focus is the
+   hub's white border and moves instantly; nothing here animates. Heights do
+   not depend on the words (nothing in the deck wraps), so a longer language
+   cannot push the deck out of the panel. */
+.sc-ctl {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 0.05rem solid rgba(255, 255, 255, 0.1);
+}
+.sc-drow { display: flex; align-items: center; margin-bottom: 0.67rem; }
+.sc-drow:last-child { margin-bottom: 0; }
+.sc-rlabel {
+  flex: 0 0 auto;
+  width: 6.4rem;
+  padding-right: 0.4rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sc-rbody { flex: 1 1 0; min-width: 0; }
+
+/* The speaker picker: one rounded track, the chosen segment filled with a
+   tinted neutral, the focused one ringed in white. A dot only for a speaker
+   that is playing. */
+.sc-row-spk .sc-rbody { display: flex; }
+.sc-seg {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  padding: 0.18rem;
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 0.05rem solid rgba(255, 255, 255, 0.12);
+}
+.sc-spk {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0.3rem 1.05rem 0.35rem;
+  border: var(--edge) solid transparent;
+  border-radius: 2rem;
+  font-size: 1.05rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.sc-spk.is-sel { background: rgba(214, 224, 240, 0.16); color: var(--text); }
+.sc-spk.is-focused { border-color: var(--focus); color: var(--text); }
+.sc-spk-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-dot {
+  flex: 0 0 auto;
+  display: block;
+  width: 0.6rem;
+  height: 0.6rem;
+  margin-right: 0.55rem;
+  border-radius: 50%;
+  background: #78c896;
+}
+
+/* The transport: circles over their captions. */
+.sc-trans { display: flex; flex-direction: row; align-items: flex-start; }
+.sc-titem { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; margin-right: 1.3rem; }
+.sc-titem:last-child { margin-right: 0; }
+.sc-tbox { height: 3.67rem; display: flex; align-items: center; justify-content: center; }
+.sc-tcap {
+  margin-top: 0.15rem;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.sc-tc {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--edge) solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+.sc-tc-icon { width: 1.3rem; height: 1.3rem; }
+.sc-tc-next { width: 2.67rem; height: 2.67rem; }
+.sc-tc-stop { width: 2.67rem; height: 2.67rem; background: transparent; color: var(--text-2); }
+.sc-tc-stop .sc-tc-icon { width: 1.1rem; height: 1.1rem; }
+/* The one filled control. */
+.sc-tc-main {
+  width: 3.67rem;
+  height: 3.67rem;
+  background: rgba(120, 200, 150, 0.26);
+  border-color: rgba(140, 210, 165, 0.65);
+}
+.sc-tc-main .sc-tc-icon { width: 1.7rem; height: 1.7rem; }
+.sc-tc.is-focused { border-color: var(--focus); }
+.sc-tc-main.is-focused { background: rgba(120, 200, 150, 0.36); }
+.sc-tc-next.is-focused { background: var(--card-2); }
+.sc-tc-stop.is-focused { background: var(--card-2); color: var(--text); }
+/* Stop's word shows only while it is focused (its space stays, so nothing moves). */
+.sc-titem.is-capfocus .sc-tcap { visibility: hidden; }
+.sc-titem.is-capfocus.is-on .sc-tcap { visibility: visible; color: var(--text); }
+
+/* The volume stepper: speaker, minus, the number, plus; one pill. */
+.sc-step {
+  display: flex;
+  align-items: center;
+  height: 2.67rem;
+  padding: 0 0.35rem 0 0.9rem;
+  border: 0.05rem solid rgba(255, 255, 255, 0.14);
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.05);
+}
+.sc-step-ic { width: 1.4rem; height: 1.4rem; margin-right: 0.45rem; color: var(--text-2); }
+.sc-sb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border: var(--edge) solid transparent;
+  border-radius: 50%;
+  color: var(--text);
+}
+.sc-sb.is-focused { border-color: var(--focus); background: var(--card-2); }
+.sc-sb-t { font-size: 1.5rem; line-height: 1; font-weight: 500; padding-bottom: 0.1rem; }
+.sc-vol {
+  min-width: 3.6rem;
+  padding: 0 0.2rem;
+  text-align: center;
+  font-size: 1.15rem;
+  line-height: 1.35;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sc-vol.is-unknown { color: var(--text-2); font-weight: 400; }
+
+/* The quick starts: one row on a rail that moves, never a second line. */
+.sc-rail { overflow: hidden; padding: 0.05rem 0; }
+.sc-track { display: flex; flex-wrap: nowrap; will-change: transform; }
+.sc-q {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  margin-right: 0.55rem;
+  padding: 0.3rem 1rem 0.35rem 0.8rem;
+  border: var(--edge) solid rgba(255, 255, 255, 0.14);
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text);
+  white-space: nowrap;
+}
+.sc-q.is-focused { border-color: var(--focus); background: var(--card-2); }
+.sc-q-ic { width: 1.25rem; height: 1.25rem; margin-right: 0.5rem; color: var(--text-2); }
+.sc-q-text { white-space: nowrap; }
+
+/* Not much room: tighter spacing first, then smaller circles. */
+.sc-ctl.is-tight { margin-top: 0.6rem; padding-top: 0.6rem; }
+.sc-ctl.is-tight .sc-drow { margin-bottom: 0.4rem; }
+.sc-ctl.is-tight .sc-drow:last-child { margin-bottom: 0; }
+.sc-ctl.is-tighter .sc-tbox { height: 2.9rem; }
+.sc-ctl.is-tighter .sc-tc-main { width: 2.9rem; height: 2.9rem; }
+.sc-ctl.is-tighter .sc-tc-next,
+.sc-ctl.is-tighter .sc-tc-stop { width: 2.3rem; height: 2.3rem; }
+.sc-ctl.is-tighter .sc-step { height: 2.3rem; }
+/* The captions do not fit in a row: they go, the aria labels stay. */
+.sc-ctl.is-nocap .sc-tcap { display: none; }
+
+#panel .panel-sub.sc-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.35em; }
+#panel .panel-sub.sc-sub-bad { color: #ffa395; }
+
+/* Full screen: the same deck, a step larger. */
+.panel.is-full .sc-ctl { margin-top: 1.4rem; padding-top: 1.2rem; }
+.panel.is-full .sc-drow { margin-bottom: 1rem; }
+.panel.is-full .sc-rlabel { width: 9rem; font-size: 1.05rem; }
+.panel.is-full .sc-spk { font-size: 1.3rem; padding: 0.45rem 1.4rem 0.5rem; }
+.panel.is-full .sc-tbox { height: 5rem; }
+.panel.is-full .sc-tc-main { width: 5rem; height: 5rem; }
+.panel.is-full .sc-tc-main .sc-tc-icon { width: 2.3rem; height: 2.3rem; }
+.panel.is-full .sc-tc-next,
+.panel.is-full .sc-tc-stop { width: 3.4rem; height: 3.4rem; }
+.panel.is-full .sc-tc-icon { width: 1.6rem; height: 1.6rem; }
+.panel.is-full .sc-step { height: 3.4rem; padding-left: 1.1rem; }
+.panel.is-full .sc-sb { width: 2.8rem; height: 2.8rem; }
+.panel.is-full .sc-vol { font-size: 1.4rem; min-width: 4.4rem; }
+.panel.is-full .sc-tcap { font-size: 1rem; }
+.panel.is-full .sc-titem { margin-right: 2rem; }
+.panel.is-full .sc-q { font-size: 1.3rem; padding: 0.4rem 1.3rem 0.45rem 1.1rem; }
+.panel.is-full .sc-q-ic { width: 1.5rem; height: 1.5rem; }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }
