@@ -3,7 +3,7 @@
  * a control panel for the Echo speakers. The tile is the All sounds tile,
  * drawn the same way; the page and full screen add, under what is playing, a
  * speaker row, Play/Pause, Next, Volume down and up, Stop, and a few quick
- * starts (an audiobook, KERA, the news, Pandora, Amazon Music).
+ * starts (an audiobook, KERA, NPR's newscast, Spotify, Pandora, Amazon Music).
  *
  * It reads the same "allsounds" resource from the Pi (pi/allsounds.js), which
  * now also carries `echos` (the speakers: key, name, state, volume, app) and
@@ -262,7 +262,8 @@
   var QUICK = [
     ['audible', 'qAudible', 'Resume audiobook', 'appAudible', 'Audible', 'audible'],
     ['kera', 'qKera', 'KERA 90.1', 'appKera', 'KERA 90.1', 'kera'],
-    ['news', 'qNews', 'News briefing', 'appNews', 'the news', 'news'],
+    ['npr', 'qNpr', 'NPR newscast', 'appNpr', 'the NPR newscast', 'news'],
+    ['spotify', 'qSpotify', 'Spotify', 'appSpotify', 'Spotify', 'music'],
     ['pandora', 'qPandora', 'Pandora', 'appPandora', 'Pandora', 'music'],
     ['amazon-music', 'qAmazon', 'Amazon Music', 'appAmazon', 'Amazon Music', 'music']
   ];

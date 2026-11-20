@@ -119,6 +119,9 @@ async function main() {
       ['amazon-music', ' Chill\u0007  mix ', { media_content_type: 'AMAZON_MUSIC', media_content_id: 'Chill mix' }],
       ['tunein', 'KERA', { media_content_type: 'TUNEIN', media_content_id: 'KERA' }],
       ['kera', undefined, { media_content_type: 'TUNEIN', media_content_id: 'KERA 90.1' }],
+      ['npr', undefined, { media_content_type: 'custom', media_content_id: 'play NPR News Now' }],
+      ['spotify', undefined, { media_content_type: 'custom', media_content_id: 'play Spotify' }],
+      ['spotify', 'lo-fi beats', { media_content_type: 'SPOTIFY', media_content_id: 'lo-fi beats' }],
       ['news', undefined, { media_content_type: 'sequence', media_content_id: 'Alexa.FlashBriefing.Play' }]
     ];
     for (const [app, query, want] of cases) {
@@ -152,7 +155,7 @@ async function main() {
     assert.ok(/needs a query/.test((await x.c.start('tunein', undefined, ' \n ')).message));
     assert.ok(/longer than 100/.test((await x.c.start('pandora', undefined, 'x'.repeat(101))).message));
     assert.strictEqual((await x.c.start('pandora', undefined, 'x'.repeat(100))).ok, true);
-    assert.ok(/App must be one of/.test((await x.c.start('spotify')).message));
+    assert.ok(/App must be one of/.test((await x.c.start('deezer')).message));
     assert.strictEqual(ha.services.length, 1, 'refused ones never reach Home Assistant');
   });
 
@@ -371,7 +374,7 @@ async function main() {
     assert.deepStrictEqual(last().body, { entity_id: DOT, media_content_type: 'TUNEIN', media_content_id: 'KERA 90.1' });
     const bads = [
       [{}, /"action" must be one of/], [{ action: 'explode' }, /"action" must be one of: start, pause/], [{ action: 'start' }, /"app" must be one of: audible, pandora, amazon-music, tunein, kera, news/],
-      [{ action: 'start', app: 'spotify' }, /"app" must be one of/], [{ action: 'start', app: 'audible', query: 'x' }, /does not take a query/],
+      [{ action: 'start', app: 'deezer' }, /"app" must be one of/], [{ action: 'start', app: 'audible', query: 'x' }, /does not take a query/],
       [{ action: 'start', app: 'tunein' }, /needs a query/], [{ action: 'start', app: 'pandora', target: 'garage' }, /"target" must be one of: show, dot, everywhere/],
       [{ action: 'pause', color: 'red' }, /unknown field "color"/], [{ action: 'pause', app: 'audible' }, /go with "start"/],
       [{ action: 'volume' }, /level must be/], [{ action: 'volume', level: 101 }, /level must be/], [{ action: 'pause', level: 5 }, /goes with "volume"/],
@@ -447,7 +450,7 @@ async function main() {
     const validate = (e) => mailbox.checkEnvelope(e.id, Buffer.from(JSON.stringify(e)), Date.now());
     const env = (cmd, args) => ({ id: 'abcdef12', created: new Date().toISOString(), cmd: cmd, args: args });
     const fails = [
-      [env('echo.start', { app: 'spotify' }), /"app" must be one of: audible/], [env('echo.start', { app: 'audible', query: 'x' }), /does not take a query/],
+      [env('echo.start', { app: 'deezer' }), /"app" must be one of: audible/], [env('echo.start', { app: 'audible', query: 'x' }), /does not take a query/],
       [env('echo.start', {}), /needs "app"/], [env('echo.start', { app: 'tunein' }), /needs a query/],
       [env('echo.volume', { level: 101 }), /"level" must be a whole number from 0 to 100/], [env('echo.volume', {}), /needs "level"/],
       [env('echo.volume', { level: 'loud' }), /"level" must be/], [env('echo.volume', { level: 50.5 }), /"level" must be/],
@@ -485,7 +488,7 @@ async function main() {
     const text = logs.join('\n');
     [QUERY, ha.token, ha.url, '127.0.0.1', 'Ian', 'Echo Show', 'Golden Hour', 'media_player', 'Bearer'].forEach((bad) => assert.ok(text.indexOf(bad) < 0, 'the log has "' + bad + '"'));
     const FIXED = [
-      /^echo: started (Audible|Pandora|TuneIn|Amazon Music|Alexa news) on [a-z0-9-]+$/, /^echo: (pause|resume|next|stop) on [a-z0-9-]+( \(voice\))?$/,
+      /^echo: started (Audible|Pandora|TuneIn|Amazon Music|Alexa news|NPR|Spotify) on [a-z0-9-]+$/, /^echo: (pause|resume|next|stop) on [a-z0-9-]+( \(voice\))?$/,
       /^echo: volume on [a-z0-9-]+$/, /^echo: Home Assistant refused the token \((401|403)\)$/, /^echo: Home Assistant answered HTTP \d+$/,
       /^echo: Home Assistant could not be reached$/, /^echo: label cleared on [a-z0-9-]+ \((other playback|timeout|stop)\)$/,
       /^echo: off \(no HA_TOKEN in \.env\)$/, /^echo: ready \(\d targets\)$/

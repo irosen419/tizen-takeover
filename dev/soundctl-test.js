@@ -614,7 +614,7 @@ async function main() {
       const vol = await texts(s.page, '.sc-vol');
       assert(vol.join() === '40%', 'volume: ' + vol.join());
       const q = await texts(s.page, '.sc-q');
-      assert(q.join('|') === (en ? 'Resume audiobook|KERA 90.1|News briefing|Pandora|Amazon Music' : 'Reanudar audiolibro|KERA 90.1|Resumen de noticias|Pandora|Amazon Music'), 'quick: ' + q.join('|'));
+      assert(q.join('|') === (en ? 'Resume audiobook|KERA 90.1|NPR newscast|Spotify|Pandora|Amazon Music' : 'Reanudar audiolibro|KERA 90.1|Noticiero de NPR|Spotify|Pandora|Amazon Music'), 'quick: ' + q.join('|'));
       const glyphs = await s.page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.sc-q .sc-q-ic svg'), (n) => n.querySelectorAll('path,circle').length > 0).join());
       assert(glyphs === 'true,true,true,true,true', 'quick start glyphs: ' + glyphs);
       const labels = (await texts(s.page, '.sc-rlabel')).filter(Boolean);

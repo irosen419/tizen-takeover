@@ -45,7 +45,7 @@
  *   ./hub spotify logout             forget the Spotify sign-in
  *   ./hub allsounds status           what plays anywhere (Echo speakers through Home Assistant, Spotify)
  *   ./hub echo status                the Echo targets and what the hub started on them
- *   ./hub echo start <app> [--on show|dot|everywhere] [--query "..."]   audible, pandora, amazon-music, tunein, kera or news
+ *   ./hub echo start <app> [--on show|dot|everywhere] [--query "..."]   audible, pandora, amazon-music, tunein, kera, news, npr or spotify
  *   ./hub echo audible | kera | news     the same as start with that app
  *   ./hub echo pause|resume|next|stop [--on <target>]
  *   ./hub echo volume <0-100|up|down> [--on <target>]
@@ -901,12 +901,12 @@ async function echoCommand(args) {
   else if (a.opts.on) stop('--on needs a target, for example --on dot.');
   if (a.opts.query !== undefined && typeof a.opts.query !== 'string') stop('--query needs the words to look for, for example --query "jazz".');
   let words = a.words;
-  if (sub === 'start' || ['audible', 'pandora', 'amazon-music', 'tunein', 'kera', 'news'].indexOf(sub) >= 0) {
+  if (sub === 'start' || ['audible', 'pandora', 'amazon-music', 'tunein', 'kera', 'news', 'npr', 'spotify'].indexOf(sub) >= 0) {
     body.action = 'start';
     if (sub === 'start') {
       body.app = (words[0] || '').toLowerCase();
       words = words.slice(1);
-      if (!body.app) stop('Say which app: audible, pandora, amazon-music, tunein, kera or news.');
+      if (!body.app) stop('Say which app: audible, pandora, amazon-music, tunein, kera, news, npr or spotify.');
     } else {
       body.app = sub;
     }
@@ -1352,7 +1352,7 @@ const HELP = [
   '  ./hub echo status           the Echo targets (show, dot, everywhere) and what the hub started on them',
   '  ./hub echo audible          resume the Audible book on the Echo Show (add --on dot or everywhere)',
   '  ./hub echo kera             KERA 90.1 on the Echo (TuneIn); ./hub echo news plays the Alexa news',
-  '  ./hub echo start pandora --query "jazz"   start an app: audible, pandora, amazon-music, tunein (needs --query), kera, news',
+  '  ./hub echo start pandora --query "jazz"   start an app: audible, pandora, amazon-music, tunein (needs --query), kera, news, npr, spotify',
   '  ./hub echo pause            pause, resume, next or stop what is playing (add --on dot)',
   '  ./hub echo volume 40        volume 0 to 100, or up or down',
   '  ./hub ambience status       the room\'s lights: how many answer, which scene is on',

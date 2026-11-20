@@ -53,7 +53,11 @@ const APPS = {
   'amazon-music': { label: 'Amazon Music', hidden: false, query: 'optional', title: '' },
   tunein: { label: 'TuneIn', hidden: false, query: 'required', title: '' },
   kera: { label: 'TuneIn', hidden: false, query: 'no', title: 'KERA 90.1' },
-  news: { label: 'Alexa news', hidden: true, query: 'no', title: '' }
+  news: { label: 'Alexa news', hidden: true, query: 'no', title: '' },
+  // Asked for by name: NPR's hourly five-minute newscast (server 0.24.1).
+  npr: { label: 'NPR', hidden: true, query: 'no', title: '' },
+  // Spotify on an Echo: what it played last, or a search (server 0.24.1).
+  spotify: { label: 'Spotify', hidden: false, query: 'optional', title: '' }
 };
 const APP_KEYS = Object.keys(APPS);
 
@@ -127,6 +131,8 @@ function playBody(app, query) {
   const q = cleanQuery(query);
   if (app === 'audible') return { media_content_type: 'custom', media_content_id: 'resume my book on Audible' };
   if (app === 'news') return { media_content_type: 'sequence', media_content_id: 'Alexa.FlashBriefing.Play' };
+  if (app === 'npr') return { media_content_type: 'custom', media_content_id: 'play NPR News Now' };
+  if (app === 'spotify') return q ? { media_content_type: 'SPOTIFY', media_content_id: q } : { media_content_type: 'custom', media_content_id: 'play Spotify' };
   if (app === 'kera') return { media_content_type: 'TUNEIN', media_content_id: 'KERA 90.1' };
   if (app === 'tunein') return { media_content_type: 'TUNEIN', media_content_id: q };
   if (app === 'pandora') return q ? { media_content_type: 'PANDORA', media_content_id: q } : { media_content_type: 'custom', media_content_id: 'play Pandora' };
