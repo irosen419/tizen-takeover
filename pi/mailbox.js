@@ -37,6 +37,8 @@ const awws = require('./awws');
 const budget = require('./budget');
 const shows = require('./shows');
 const linktests = require('./linktests');
+const news = require('./news');
+const echo = require('./echo');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -359,6 +361,12 @@ const V = {
     if (Array.from(t).length > max) throw argError('"' + name + '" is longer than ' + max + ' characters');
     return t;
   },
+  // An http or https address, no spaces.
+  url: (max) => (name, v) => {
+    if (typeof v !== 'string' || !/^https?:\/\/\S+$/i.test(v.trim())) throw argError('"' + name + '" must be an http or https address');
+    if (v.trim().length > max) throw argError('"' + name + '" is longer than ' + max + ' characters');
+    return v.trim();
+  },
   date: () => (name, v) => {
     if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) throw argError('"' + name + '" must look like 2026-12-31');
     return v.trim();
@@ -441,6 +449,18 @@ function ambienceCounts(c) {
   return { lights: n('lights'), scenes: n('scenes'), moods: n('moods') };
 }
 
+// The run function of an echo.* command: POST /api/echo with the same words.
+function echoRun(action) {
+  return async (a, ctx) => {
+    const body = { action: action };
+    ['target', 'app', 'query', 'level'].forEach((k) => { if (a[k] !== undefined) body[k] = a[k]; });
+    const r = await ctx.call('POST', '/api/echo', body);
+    const out = { message: hubctl.echoText(r), data: { echo: r.echo || null } };
+    if (!r.ok) out.ok = false;
+    return out;
+  };
+}
+
 const COMMANDS = {
   show: {
     args: { widget: [V.oneOf(hubctl.WIDGETS), true], full: [V.bool(), false] },
@@ -451,6 +471,24 @@ const COMMANDS = {
   say: {
     args: { text: [V.text(MAX_TEXT), true], seconds: [V.number(1, 60), false] },
     run: sendCommand('say', (a) => (a.seconds !== undefined ? { text: a.text, seconds: a.seconds } : { text: a.text }))
+  },
+  play: {
+    args: { url: [V.url(2048), true], title: [V.text(MAX_TEXT), false] },
+    run: sendCommand('play', (a) => (a.title !== undefined ? { url: a.url, title: a.title } : { url: a.url }))
+  },
+  stop: { args: {}, run: sendCommand('stop', () => ({})) },
+  news: {
+    args: {},
+    run: async (args, ctx) => {
+      let ep;
+      try {
+        ep = await news.latest();
+      } catch (e) {
+        return { message: 'Could not read the NPR News Now feed: ' + (e && e.message) + '.', ok: false };
+      }
+      const r = await ctx.call('POST', '/api/command', { type: 'play', data: hubctl.newsPlay(ep) });
+      return { message: hubctl.newsText(ep, r), data: { delivered: r.delivered, title: ep.title, published: ep.published } };
+    }
   },
   'todo.add': {
     args: {
@@ -866,6 +904,36 @@ const COMMANDS = {
       };
     }
   },
+  // Echo controls (echo.js): start an app on an Echo, or steer it. The
+  // answer is the server's own words, the same as ./hub. A Home Assistant
+  // failure is ok: false with that message.
+  'echo.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/echo');
+      return { message: lines(hubctl.echoStatusLines(r.echo)), data: { echo: r.echo || null } };
+    }
+  },
+  'echo.start': {
+    args: { app: [V.oneOf(echo.APP_KEYS), true], target: [V.text(20), false], query: [V.text(echo.MAX_QUERY), false] },
+    check: (a) => {
+      const why = echo.checkStart(a.app, a.query);
+      if (why) throw argError(why);
+    },
+    run: echoRun('start')
+  },
+  'echo.pause': { args: { target: [V.text(20), false] }, run: echoRun('pause') },
+  'echo.resume': { args: { target: [V.text(20), false] }, run: echoRun('resume') },
+  'echo.next': { args: { target: [V.text(20), false] }, run: echoRun('next') },
+  'echo.stop': { args: { target: [V.text(20), false] }, run: echoRun('stop') },
+  'echo.volume': {
+    args: { target: [V.text(20), false], level: [(name, v) => {
+      if (v === 'up' || v === 'down') return v;
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 100) throw argError('"' + name + '" must be a whole number from 0 to 100, or "up" or "down"');
+      return v;
+    }, true] },
+    run: echoRun('volume')
+  },
   ping: {
     args: {},
     run: async (a, ctx) => ({ message: 'Pong. Home Hub live server ' + ctx.version + ' is running.', data: { version: ctx.version } })
@@ -970,7 +1038,8 @@ function createMailbox(o) {
 
   async function call(method, route, body) {
     const r = await o.api(method, route, body);
-    if (!r.body || !r.body.ok) {
+    const echoNo = r.status === 200 && route === '/api/echo' && r.body && r.body.ok === false && typeof r.body.message === 'string';
+    if (!echoNo && (!r.body || !r.body.ok)) {
       const e = new Error('The server said no: ' + ((r.body && r.body.error) || 'error ' + r.status) + '.');
       e.serverSaidNo = true;
       throw e;

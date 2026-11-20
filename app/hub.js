@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.36.3';
+  var BUILD = 'v0.38.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -2992,6 +2992,51 @@
     toast(text, Math.round(seconds * 1000));
   }
 
+  // play / stop: one audio element, reused, so a new play replaces whatever
+  // was playing. The TV's browser may refuse to start sound without a key
+  // press first (autoplay); that is said on screen and in the log.
+  var liveAudio = null;
+
+  function liveStop() {
+    if (!liveAudio) return;
+    try { liveAudio.pause(); } catch (e) {}
+    try { liveAudio.removeAttribute('src'); liveAudio.load(); } catch (e2) {}
+  }
+
+  function livePlay(data) {
+    var url = String(data.url === undefined || data.url === null ? '' : data.url);
+    url = url.replace(/^\s+|\s+$/g, '');
+    if (!/^https?:\/\/\S+$/i.test(url)) return;
+    var title = String(data.title === undefined || data.title === null ? '' : data.title).replace(/\s+/g, ' ');
+    title = title.replace(/^\s+|\s+$/g, '').substring(0, 140);
+    liveStop();
+    if (!liveAudio) {
+      liveAudio = new Audio();
+      liveAudio.preload = 'auto';
+      liveAudio.addEventListener('error', function () {
+        if (!liveAudio.getAttribute('src')) return;
+        liveWarn('play failed: the audio could not be loaded');
+        toast('Could not play that audio', 5000);
+      });
+    }
+    liveAudio.src = url;
+    var shown = title ? 'Playing: ' + title : 'Playing';
+    var started;
+    try { started = liveAudio.play(); } catch (e) {
+      liveWarn('play failed: ' + (e && e.message));
+      toast('Could not start the audio', 5000);
+      return;
+    }
+    if (started && typeof started.then === 'function') {
+      started.then(function () { toast(shown, 6000); }, function (err) {
+        liveWarn('play refused: ' + (err && (err.name || err.message)));
+        toast('The TV would not start the audio (press a key on the remote and try again)', 7000);
+      });
+    } else {
+      toast(shown, 6000);
+    }
+  }
+
   function liveReload() {
     // A reload loop (an old command arriving right after loading) must not happen.
     if (new Date().getTime() - LOADED_AT < 30000) return;
@@ -3009,6 +3054,8 @@
       if (type === 'show') liveShow(data);
       else if (type === 'home') liveHome();
       else if (type === 'say') liveSay(data);
+      else if (type === 'play') livePlay(data);
+      else if (type === 'stop') liveStop();
       else if (type === 'reload') liveReload();
     } catch (e) {
       liveWarn(type + ' failed: ' + (e && e.message));

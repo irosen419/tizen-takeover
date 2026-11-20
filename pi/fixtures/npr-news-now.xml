@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+<channel>
+<title>NPR News Now</title>
+<item>
+<title>NPR News: Trailer</title>
+<pubDate>Thu, 30 Nov 2023 20:30:51 +0000</pubDate>
+<enclosure url="https://example.test/trailer.mp3" length="1" type="audio/mpeg"/>
+</item>
+<item>
+<title><![CDATA[6pm ET, November 19]]></title>
+<pubDate>Thu, 19 Nov 2026 23:09:30 +0000</pubDate>
+<enclosure url="https://example.test/six.mp3?a=1&amp;b=2" length="1" type="audio/mpeg"/>
+</item>
+<item>
+<title>7pm ET, November 19 | The latest headlines from NPR</title>
+<pubDate>Fri, 20 Nov 2026 00:09:35 +0000</pubDate>
+<enclosure url="https://example.test/seven.mp3" length="1" type="audio/mpeg"/>
+</item>
+<item>
+<title>No audio</title>
+<pubDate>Fri, 20 Nov 2026 01:09:35 +0000</pubDate>
+</item>
+</channel>
+</rss>

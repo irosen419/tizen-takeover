@@ -6,6 +6,9 @@
  *                              (in the Alexa Media Player integration's shapes)
  *                              plus a few other entities to skip
  *   GET /api/states/<id>       one entity, 404 when unknown
+ *   POST /api/services/<domain>/<service>   a service call: answers 200 with [] and
+ *                              records it (see ha.services); ha.serviceStatus can
+ *                              make it answer another status (401, 500...)
  *   GET /art/<name>.svg        made-up cover pictures (with CORS)
  *
  * Every /api call needs "Authorization: Bearer <token>" (401 otherwise, as
@@ -27,6 +30,8 @@
  *                          unauthorized (401 to everything) | down (drops the
  *                          connection) | slow (never answers) | broken (not JSON)
  *   ha.calls               { states, one, art } counters
+ *   ha.services            [{ domain, service, body }] every service call seen
+ *   ha.serviceStatus       0 (answer 200) or the status to answer service calls with
  *   ha.lastAuth            the last Authorization header it saw
  *   ha.close()
  */
@@ -160,7 +165,7 @@ function start(opts) {
   const calls = { states: 0, one: 0, art: 0 };
   const hanging = new Set();
   const api = {
-    url: '', token: token, modes: MODES.slice(), calls: calls, lastAuth: '',
+    url: '', token: token, modes: MODES.slice(), calls: calls, lastAuth: '', services: [], serviceStatus: 0,
     set: (m) => { if (MODES.indexOf(m) < 0) return false; mode = m; return true; },
     mode: () => mode
   };
@@ -185,6 +190,19 @@ function start(opts) {
     };
     if (mode === 'unauthorized' || api.lastAuth !== 'Bearer ' + token) { send(401, { message: 'Invalid authentication' }); return; }
     if (mode === 'broken') { send(200, '<html>not json'); return; }
+    const svc = /^\/api\/services\/([a-z_]+)\/([a-z_]+)$/.exec(p);
+    if (svc && req.method === 'POST') {
+      const chunks = [];
+      req.on('data', (c) => chunks.push(c));
+      req.on('end', () => {
+        let body = null;
+        try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { body = null; }
+        api.services.push({ domain: svc[1], service: svc[2], body: body });
+        if (api.serviceStatus) send(api.serviceStatus, { message: 'service answer ' + api.serviceStatus });
+        else send(200, []);
+      });
+      return;
+    }
     const all = entities(mode, api.url);
     if (p === '/api/states') { calls.states += 1; send(200, all); return; }
     const one = /^\/api\/states\/([a-z_]+\.[a-z0-9_]+)$/.exec(p);
