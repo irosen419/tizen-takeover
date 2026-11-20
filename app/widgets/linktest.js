@@ -404,7 +404,7 @@
 
   function probeBuild(infos, byOp, hasMeta, hasFind) {
     var rows = [];
-    var api = tizen.application;
+    var api = typeof tizen !== 'undefined' && tizen ? tizen.application : null;
     var seen = {};
     for (var i = 0; i < infos.length && rows.length < PROBE_MAX - 1; i++) {
       var a = infos[i];
@@ -414,7 +414,7 @@
       var pairs = [];
       var keep = false;
       if (hasMeta) {
-        var meta = probeMeta(api, a.id);
+        var meta = a.meta || (api ? probeMeta(api, a.id) : []);
         var ent = PROBE_APPS.test(name);
         for (var m = 0; m < meta.length; m++) {
           if (PROBE_META.test(meta[m].key) || PROBE_META.test(meta[m].value)) keep = true;
@@ -457,29 +457,41 @@
     })(0);
   }
 
-  // OK on the App probe row. Returns 'busy', 'notizen' or 'started'.
+  // OK on the App probe row. Returns 'busy', 'notizen', 'service' (service.js
+  // runs it) or 'started' (the page's own tizen API).
   function probe() {
     var C = S.C;
     if (probing) return 'busy';
     var api = typeof tizen !== 'undefined' && tizen && tizen.application;
-    if (!api || typeof api.getAppsInfo !== 'function') { C.toast(word('probeNoTizen'), 5000); return 'notizen'; }
     probing = true;
     C.toast(word('probeRunning'), 3000);
     function fail(err) { probing = false; C.toast(word('probeFail', { err: err }), 6000); }
+    function finish(infos, byOp, hasMeta, hasFind) {
+      var rows;
+      try { rows = probeBuild(infos || [], byOp || {}, hasMeta, hasFind); } catch (e) { fail(String(e && e.message || e)); return; }
+      probeSend(rows, function (err) {
+        if (err) { fail(err); return; }
+        probing = false;
+        C.toast(word('probeSent', { n: rows.length }), 4000);
+      });
+    }
+    // The hub page has no tizen object on some TVs (Ian's included): then
+    // service.js runs the probe (/probe, service 0.39.1 and newer).
+    if (!api || typeof api.getAppsInfo !== 'function') {
+      if (typeof C.service !== 'function') { probing = false; C.toast(word('probeNoTizen'), 5000); return 'notizen'; }
+      C.service('/probe', 20000, function (err, data) {
+        if (err === 'not found' || err === 'HTTP 404') { probing = false; C.toast(word('stale'), 8000); return; }
+        if (err || !data || !data.apps) { fail(err || 'no app list'); return; }
+        finish(data.apps, data.ops, !!data.hasMeta, !!data.hasFind);
+      });
+      return 'service';
+    }
     try {
       api.getAppsInfo(function (infos) {
         try {
           var hasMeta = typeof api.getAppMetaData === 'function';
           var hasFind = typeof api.findAppControl === 'function';
-          function go(byOp) {
-            var rows;
-            try { rows = probeBuild(infos || [], byOp, hasMeta, hasFind); } catch (e) { fail(String(e && e.message || e)); return; }
-            probeSend(rows, function (err) {
-              if (err) { fail(err); return; }
-              probing = false;
-              C.toast(word('probeSent', { n: rows.length }), 4000);
-            });
-          }
+          function go(byOp) { finish(infos, byOp, hasMeta, hasFind); }
           if (hasFind) probeOps(api, go); else go({});
         } catch (e) { fail(String(e && e.message || e)); }
       }, function (e) { fail(String(e && e.message || e || 'no app list')); });
