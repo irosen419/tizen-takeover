@@ -517,6 +517,14 @@ var HUB_CONFIG = {
      */
     architecture: { openMode: 'full' },
 
+    /*
+     * Groceries: the grocery list kept on the Pi (app/widgets/grocery.js).
+     * touch: true = it has a phone and tablet view in the touch app
+     * (app/touch.html, served by the Pi at http://<Pi>:8097/). No TV tile
+     * yet, so it is in no layout; every other widget shows there as "TV only".
+     */
+    grocery: { touch: true },
+
     sunpath: {
       roofAngle: 40,
       gapFeet: 2.0,

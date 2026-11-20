@@ -95,6 +95,18 @@ A to-do can carry notes, plain text up to 300 characters. The TV shows them unde
 
 This needs server 0.3.0. After pulling it: `git pull`, then `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.3.0`. Nothing changes in `.env`, and the TV needs nothing: it picks up its part by itself. An older server keeps notes it is sent through `todo/ops` but ignores `--notes` on `todo add`.
 
+## Phone and tablet app, and the grocery list (server 0.26.0)
+
+The Pi also serves a touch app for phones, tablets and computers: open `http://<the Pi's address>:8097/` on the home Wi-Fi, or `http://<the Pi's Tailscale address or name>.ts.net:8097/` from anywhere on your tailnet. There is no login: being on the home network or the tailnet is the key. A small screen opens on a menu of every widget (the ones without a touch view say "TV only"), then one widget per view; a tablet or computer shows them side by side. `?as=phone`, `?as=tablet` or `?as=tv` picks the shape by hand.
+
+The first touch widget is the grocery list. From the Pi or the mailbox:
+
+- `./hub grocery add "Milk" "Eggs"` (one quoted name per item, up to 20 at a time; a name already on the list is not doubled)
+- `./hub grocery list`, `./hub grocery done "Milk"`, `./hub grocery remove "Milk"` (id or name), `./hub grocery clear` (drops ticked items; a ticked item also goes by itself after 48 hours)
+- Mailbox: `grocery.add {"items": ["Milk", "Eggs"]}`, `grocery.list`, `grocery.done {"name": "Milk"}` or `{"id": "..."}`, `grocery.remove` the same, `grocery.clear`
+
+The log only counts changes; it never names an item. After pulling this change: `hubup` (it mounts `../app` read only into the container, so it needs `docker compose up -d`, not just a restart); `./hub status` should say `version 0.26.0`. Nothing changes in `.env`. Even when `HUB_TV_IPS` is set, the touch app and its two routes (`/touch/state`, `/grocery/ops`) answer any home or Tailscale address, and a phone is never counted as a screen.
+
 ## Tile layout
 
 Where each tile sits on the home screen can be changed from the Pi, without editing `app/config.js`:

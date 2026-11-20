@@ -321,6 +321,38 @@ async function main() {
     }
   });
 
+  await check('grocery.add (dedupe, already there), grocery.list, grocery.done, grocery.remove, grocery.clear', async () => {
+    let r = await run(fake, h, 'grocery.add', { items: [' Milk ', 'Eggs', 'milk'] });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.strictEqual(r.message, 'Added "Milk", "Eggs" to the grocery list. 2 to get.');
+    assert.deepStrictEqual(r.data, { added: 2, already: 0, left: 2 });
+    r = await run(fake, h, 'grocery.add', { items: ['EGGS', 'Bread'] });
+    assert.strictEqual(r.message, 'Added "Bread" to the grocery list. Already on it: "EGGS". 3 to get.');
+    r = await run(fake, h, 'grocery.list');
+    assert.strictEqual(r.data.items.length, 3);
+    const milk = r.data.items.find((i) => i.name === 'Milk');
+    assert.ok(/^3 to get, 0 ticked\.\n\[ \] /.test(r.message), r.message);
+    r = await run(fake, h, 'grocery.done', { name: 'milk' });
+    assert.strictEqual(r.message, 'Ticked "Milk" on the grocery list.');
+    r = await run(fake, h, 'grocery.list');
+    assert.ok(/^2 to get, 1 ticked\./.test(r.message));
+    assert.ok(/\[x\] Milk   id /.test(r.message.split('\n').pop()), 'ticked last');
+    r = await run(fake, h, 'grocery.remove', { name: 'Bread' });
+    assert.strictEqual(r.message, 'Removed "Bread" on the grocery list.');
+    r = await run(fake, h, 'grocery.done', { id: 'nope12' });
+    assert.strictEqual(r.ok, false);
+    assert.ok(/No grocery item has the id or name "nope12"/.test(r.message));
+    r = await run(fake, h, 'grocery.clear');
+    assert.strictEqual(r.message, 'Cleared 1 ticked grocery item.');
+    assert.deepStrictEqual(r.data, { cleared: 1 });
+    r = await run(fake, h, 'grocery.clear');
+    assert.strictEqual(r.message, 'No ticked grocery items to clear.');
+    r = await run(fake, h, 'grocery.remove', { id: milk.id });
+    assert.strictEqual(r.ok, false, 'milk was cleared');
+    r = await run(fake, h, 'grocery.list');
+    assert.strictEqual(r.data.items.length, 1);
+  });
+
   await check('todo.add, todo.list, todo.done (title), todo.remove (id)', async () => {
     let r = await run(fake, h, 'todo.add', { title: 'Buy milk', section: 'next', due: '2026-12-24' });
     assert.strictEqual(r.ok, true);
@@ -703,6 +735,13 @@ async function main() {
     ['todo.add notes too long', () => ({ raw: envelope('todo.add', { title: 'A', notes: 'n'.repeat(301) }) }), /"notes" is longer than 300 characters/],
     ['todo.add notes not text', () => ({ raw: envelope('todo.add', { title: 'A', notes: 5 }) }), /"notes" must be text/],
     ['todo.notes without notes', () => ({ raw: envelope('todo.notes', { title: 'A' }) }), /needs "notes"/],
+    ['grocery.add without items', () => ({ raw: envelope('grocery.add', {}) }), /"grocery\.add" needs "items"/],
+    ['grocery.add empty list', () => ({ raw: envelope('grocery.add', { items: [] }) }), /"items" is empty/],
+    ['grocery.add over 20', () => ({ raw: envelope('grocery.add', { items: Array(21).fill('x') }) }), /more than 20 entries/],
+    ['grocery.add a blank name', () => ({ raw: envelope('grocery.add', { items: ['Milk', '  '] }) }), /"items\[1\]" is empty/],
+    ['grocery.add a long name', () => ({ raw: envelope('grocery.add', { items: ['m'.repeat(61)] }) }), /longer than 60 characters/],
+    ['grocery.done with id and name', () => ({ raw: envelope('grocery.done', { id: 'abc', name: 'A' }) }), /exactly one/],
+    ['grocery.remove with neither', () => ({ raw: envelope('grocery.remove', {}) }), /exactly one/],
     ['todo.add with "note" (singular)', () => ({ raw: envelope('todo.add', { title: 'A', note: 'x' }) }), /does not take "note"/],
     ['layout.set not a list', () => ({ raw: envelope('layout.set', { layout: 'big' }) }), /"layout" must be a list/],
     ['full not a boolean', () => ({ raw: envelope('show', { widget: 'todo', full: 'yes' }) }), /"full" must be true or false/],

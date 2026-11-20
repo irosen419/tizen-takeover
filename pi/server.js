@@ -9,6 +9,10 @@
  *   GET  /live/events    the push line (Server-Sent Events)
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
+ *   GET  /touch/state    the touch app's data (grocery; no screen is registered)
+ *   POST /grocery/ops    grocery changes made in the touch app
+ *   GET  /, /app/...     the touch app (app/touch.html) and the files it loads, read only
+ *                        (the three touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
  *   POST /linktests      one watch link test answer from the About panel
  *   POST /tvremote/run   start a two-step launch from the Pi (tvremote.js): { id, appId, ... }
  *   POST /shows/watched  the TV marks an episode watched: { id, season, number }
@@ -26,6 +30,8 @@
  *   GET  /api/todo       the to-do list
  *   POST /api/todo       add one to-do
  *   POST /api/todo/ops   several to-do changes at once
+ *   GET  /api/grocery    the grocery list (grocery.js)
+ *   POST /api/grocery/ops  grocery changes: add, check, remove, clear
  *   GET  /api/layout     the home-screen tile layout (null = the hub's own)
  *   POST /api/layout     set it, { layout: [...] }, or { layout: null } to reset
  *   GET  /api/awws       the A World Worth Saving snapshot (awws.js)
@@ -107,8 +113,9 @@ const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 const echo = require('./echo');
 const translate = require('./translate');
+const grocery = require('./grocery');
 
-const SERVER_VERSION = '0.25.0';
+const SERVER_VERSION = '0.26.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -255,8 +262,9 @@ function isLoopback(ip) {
   return a === '::1';
 }
 
-// True for loopback and home-network addresses: 10/8, 172.16/12,
-// 192.168/16, 169.254/16, 127/8, ::1, fc00::/7, fe80::/10.
+// True for loopback, home-network and Tailscale addresses: 10/8, 172.16/12,
+// 192.168/16, 169.254/16, 127/8, 100.64/10 (Tailscale), ::1, fc00::/7
+// (Tailscale's IPv6 range fd7a:115c:a1e0::/48 is inside it), fe80::/10.
 function isPrivateAddress(ip) {
   const a = plainAddress(ip);
   const p = ipv4Parts(a);
@@ -264,7 +272,8 @@ function isPrivateAddress(ip) {
     return p[0] === 10 || p[0] === 127 ||
       (p[0] === 172 && p[1] >= 16 && p[1] <= 31) ||
       (p[0] === 192 && p[1] === 168) ||
-      (p[0] === 169 && p[1] === 254);
+      (p[0] === 169 && p[1] === 254) ||
+      (p[0] === 100 && p[1] >= 64 && p[1] <= 127);
   }
   if (a === '::1') return true;
   if (!/^[0-9a-f:]+$/.test(a) || a.indexOf(':') < 0) return false;
@@ -289,13 +298,14 @@ function screenAllowed(ip, tvIps) {
 // A page on another site can point its own name at the Pi's address (called
 // DNS rebinding) and then read the lists through a browser at home. Such a
 // request still carries that site's name in its Host header, so the screen
-// side only answers when Host is an IP address, localhost or a .local name.
+// side only answers when Host is an IP address, localhost, a .local name or a
+// Tailscale name (.ts.net).
 function hostAllowed(hostHeader) {
   let h = String(hostHeader || '').trim().toLowerCase();
   if (!h) return true; // no browser leaves Host out
   if (h[0] === '[') return h.indexOf(']') > 0; // an IPv6 address
   h = h.replace(/:\d+$/, '');
-  return h === 'localhost' || /\.local$/.test(h) || ipv4Parts(h) !== null;
+  return h === 'localhost' || /\.local$/.test(h) || /\.ts\.net$/.test(h) || ipv4Parts(h) !== null;
 }
 
 /* ---------- to-do validation ---------- */
@@ -525,6 +535,7 @@ function freshState() {
     rev: 0,
     resources: {
       todo: { rev: 0, data: { items: [] } },
+      grocery: { rev: 0, data: grocery.emptyData() },
       calendar: { rev: 0, data: calendar.unconfiguredData() },
       layout: { rev: 0, data: { layout: null } },
       awws: { rev: 0, data: awws.emptyData() },
@@ -571,6 +582,8 @@ function loadState(dir, log) {
       } catch (e) { /* skip one bad item, keep the rest */ }
     });
     st.resources.todo = { rev: typeof todo.rev === 'number' ? todo.rev : 0, data: { items: items } };
+    // The grocery list (grocery.js): empty in older files.
+    st.resources.grocery = grocery.cleanResource(st.resources.grocery);
     // Older files have no calendar; a damaged one is rebuilt from known fields.
     st.resources.calendar = calendar.cleanResource(st.resources.calendar);
     // Older files have no layout either: null, the hub's built-in one.
@@ -842,6 +855,17 @@ function start(options) {
     return h;
   }
 
+  // A POST from a page of this server itself (the touch app at the Pi's own
+  // address) names that same address as its Origin, so it is allowed; so is an
+  // Origin on the list. A page on any other site is not.
+  function originOk(req) {
+    const origin = req.headers.origin;
+    if (!origin) return true;
+    if (origins.indexOf(origin) >= 0) return true;
+    const host = req.headers.host;
+    return !!host && (origin === 'http://' + host || origin === 'https://' + host);
+  }
+
   function readBody(req, res, cb, limitBytes) {
     const limit = limitBytes || BODY_LIMIT;
     const tooLarge = 'request body too large (at most ' + Math.round(limit / 1024) + ' KB)';
@@ -898,6 +922,17 @@ function start(options) {
 
   function todoItems() {
     return state.resources.todo.data.items;
+  }
+
+  // Applies grocery ops: saves, bumps rev, tells every screen. Throws a 400
+  // error (nothing changes) when an op is wrong.
+  function groceryOps(body) {
+    if (!isObj(body)) throw bad('the body must be a JSON object');
+    const cur = state.resources.grocery.data.items;
+    const items = grocery.applyOps(cur, body.ops, Date.now());
+    const changed = JSON.stringify(items) !== JSON.stringify(cur);
+    if (changed) changeResource('grocery', { items: items });
+    return { ok: true, rev: state.rev, changed: changed, items: state.resources.grocery.data.items };
   }
 
   // Applies a change to the to-do list: saves, bumps rev, tells every screen.
@@ -1343,6 +1378,8 @@ function start(options) {
     '/api/command': ['POST'],
     '/api/todo': ['GET', 'POST'],
     '/api/todo/ops': ['POST'],
+    '/api/grocery': ['GET'],
+    '/api/grocery/ops': ['POST'],
     '/api/layout': ['GET', 'POST'],
     '/api/awws': ['GET', 'POST'],
     '/api/awws/resync': ['POST'],
@@ -1602,6 +1639,13 @@ function start(options) {
           const l = state.resources.linktests;
           return reply(200, { ok: true, rev: l.rev, data: l.data });
         }
+        if (route === '/api/grocery') {
+          return reply(200, { ok: true, rev: state.resources.grocery.rev, items: state.resources.grocery.data.items });
+        }
+        if (route === '/api/grocery/ops') {
+          const r = groceryOps(body);
+          return reply(200, r, 'grocery, rev ' + state.rev);
+        }
         if (route === '/api/todo' && method === 'GET') {
           return reply(200, { ok: true, rev: state.rev, items: todoItems() });
         }
@@ -1665,6 +1709,70 @@ function start(options) {
     return undefined;
   }
 
+  /* --- the touch app: its files, its data, its grocery changes --- */
+
+  const appDir = path.resolve(__dirname, opt.appDir || path.join('..', 'app'));
+  const TYPES = {
+    '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
+    '.webp': 'image/webp', '.woff2': 'font/woff2', '.ico': 'image/x-icon'
+  };
+
+  // Home, Tailscale and loopback addresses only, whatever HUB_TV_IPS says:
+  // the phone is not the TV. The Host rule is the same as the TV's.
+  function touchAllowed(req) {
+    return isPrivateAddress(clientAddress(req)) && hostAllowed(req.headers.host);
+  }
+
+  // GET / (to the app page) and GET /app/<file>: read only, from appDir.
+  function appFile(req, res, route, query) {
+    if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' });
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return sendJson(res, 405, { ok: false, error: 'use GET for ' + route }, { Allow: 'GET, HEAD' });
+    }
+    if (route === '/') {
+      const q = query.toString();
+      res.writeHead(302, { Location: '/app/touch.html' + (q ? '?' + q : ''), 'Cache-Control': 'no-store' });
+      return res.end();
+    }
+    let rel;
+    try { rel = decodeURIComponent(route.slice('/app/'.length)); } catch (e) { rel = ''; }
+    const type = TYPES[path.extname(rel).toLowerCase()];
+    const file = path.resolve(appDir, rel);
+    if (!rel || !type || rel.indexOf('\0') >= 0 || rel.split('/').some((p) => p[0] === '.') ||
+        file.indexOf(appDir + path.sep) !== 0) {
+      return sendJson(res, 404, { ok: false, error: 'not found' });
+    }
+    return fs.readFile(file, (err, data) => {
+      if (err) return sendJson(res, 404, { ok: false, error: 'not found' });
+      res.writeHead(200, { 'Content-Type': type, 'Content-Length': data.length, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(req.method === 'HEAD' ? undefined : data);
+    });
+  }
+
+  // GET /touch/state and POST /grocery/ops. Unlike /live/state this never
+  // registers the caller as a screen (so a phone is not taken for the TV) and
+  // carries only what the touch app shows.
+  function touch(req, res, route) {
+    const cors = corsHeaders(req);
+    if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
+    const want = route === '/grocery/ops' ? 'POST' : 'GET';
+    if (req.method !== want) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
+    if (route === '/touch/state') {
+      return sendJson(res, 200, { ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev, grocery: state.resources.grocery }, cors);
+    }
+    if (!originOk(req)) return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    return readBody(req, res, (body) => {
+      try {
+        const r = groceryOps(body);
+        sendJson(res, 200, r, cors);
+        log('touch app changed the grocery list (rev ' + state.rev + ')');
+      } catch (e) {
+        fail(res, e, cors);
+      }
+    });
+  }
+
   function screen(req, res, route, query) {
     const address = clientAddress(req);
     const cors = corsHeaders(req);
@@ -1708,8 +1816,7 @@ function start(options) {
     // POST /todo/ops and /ambience/*. A web page on another site must not be
     // able to change the list or the lights through a browser at home, so a
     // foreign Origin is refused.
-    const origin = req.headers.origin;
-    if (origin && origins.indexOf(origin) < 0) {
+    if (!originOk(req)) {
       return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
     }
     if (route === '/translate') {
@@ -1855,6 +1962,8 @@ function start(options) {
     '/echo/run': 1
   };
 
+  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1 };
+
   function handler(door) {
     return (req, res) => {
       try {
@@ -1873,6 +1982,8 @@ function start(options) {
           return sendJson(res, 200, { ok: true, server: SERVER_VERSION });
         }
         if (route === '/api' || route.indexOf('/api/') === 0) return control(req, res, route, door, url.searchParams);
+        if (door === 'main' && (route === '/' || route.indexOf('/app/') === 0)) return appFile(req, res, route, url.searchParams);
+        if (door === 'main' && TOUCH_ROUTES[route]) return touch(req, res, route);
         if (door === 'main' && SCREEN_ROUTES[route]) return screen(req, res, route, url.searchParams);
         return sendJson(res, 404, { ok: false, error: 'not found' });
       } catch (e) {
@@ -2040,6 +2151,7 @@ if (require.main === module) {
     origins: env.HUB_ORIGINS || '',
     tunnelPort: env.HUB_TUNNEL_PORT || null,
     dataDir: env.HUB_DATA_DIR || 'data',
+    appDir: env.HUB_APP_DIR || '',
     calendarEnv: env,
     timezone: env.HUB_TIMEZONE || '',
     refreshMinutes: env.CALENDAR_REFRESH_MINUTES || '',

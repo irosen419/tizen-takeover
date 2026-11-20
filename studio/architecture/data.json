@@ -1635,6 +1635,34 @@
            "dir": "out"
           }
          ]
+        },
+        {
+         "id": "pi.server.resources.grocery",
+         "title": "grocery",
+         "kind": "data",
+         "status": "unverified",
+         "summary": "The grocery list: up to 200 items, each a name (60 characters) and a tick. Ticked items stay 48 hours, then go.",
+         "details": [
+          "Written by the touch app (POST /grocery/ops), by ./hub grocery and by the mailbox's grocery.* commands (both through POST /api/grocery/ops). Ops: add (a name already there is not doubled; a ticked one comes back), check, remove, clear.",
+          "The log counts changes and never names an item. No TV tile yet (PR 2)."
+         ],
+         "files": [
+          "pi/grocery.js",
+          "pi/server.js",
+          "pi/grocery-test.js"
+         ],
+         "talksTo": [
+          {
+           "to": "pi.touchapp.shell",
+           "label": "read every 3 s through /touch/state",
+           "dir": "out"
+          },
+          {
+           "to": "pi.mailbox.commands.grocery",
+           "label": "Claude adds and ticks",
+           "dir": "in"
+          }
+         ]
         }
        ]
       },
@@ -1894,6 +1922,20 @@
          ],
          "files": [
           "pi/mailbox.js"
+         ]
+        },
+        {
+         "id": "pi.mailbox.commands.grocery",
+         "title": "Groceries",
+         "kind": "component",
+         "status": "unverified",
+         "summary": "Add, list, tick, remove and clear grocery items.",
+         "details": [
+          "grocery.add {items: up to 20 names}, grocery.list, grocery.done and grocery.remove {id or name}, grocery.clear. The same words as ./hub grocery."
+         ],
+         "files": [
+          "pi/mailbox.js",
+          "pi/hubctl.js"
          ]
         }
        ]
@@ -2471,6 +2513,91 @@
      ]
     },
     {
+     "id": "pi.touchapp",
+     "title": "Pi serves the app",
+     "kind": "component",
+     "status": "unverified",
+     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state and POST /grocery/ops.",
+     "details": [
+      "Docker mounts ../app read only at /webapp (HUB_APP_DIR). Only known file types, no dotfiles, nothing outside the folder.",
+      "Home, Tailscale and loopback addresses only, even when HUB_TV_IPS names the TV; a phone is never counted as a screen. A POST needs no token but must come from the page's own address (same-Host Origin) or HUB_ORIGINS."
+     ],
+     "files": [
+      "pi/server.js",
+      "pi/docker-compose.yml",
+      "pi/grocery-test.js"
+     ],
+     "talksTo": [
+      {
+       "to": "pi.touchapp.shell",
+       "label": "serves touch.html and the widget files",
+       "dir": "out"
+      },
+      {
+       "to": "pi.server.resources.grocery",
+       "label": "reads and changes the grocery list",
+       "dir": "both"
+      }
+     ],
+     "children": [
+      {
+       "id": "pi.touchapp.shell",
+       "title": "Touch shell",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "Home Hub on a phone, tablet or computer: a menu of every widget, then one widget per view on a phone, side by side on a tablet.",
+       "details": [
+        "Tizen in the user agent = TV; else phone under 600 px, tablet under 1200, desktop above; ?as=phone|tablet|tv overrides. Widgets with renderTouch open (Groceries first); the rest say TV only.",
+        "Polls /touch/state every 3 s (paused while hidden), changes are drawn at once and rolled back if the Pi says no. English and Spanish from app/i18n.js. The TV never loads it."
+       ],
+       "files": [
+        "app/touch.html",
+        "app/touch.js",
+        "app/touch.css",
+        "app/widgets/grocery.js",
+        "dev/touch-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.touchapp",
+         "label": "polls /touch/state, posts /grocery/ops",
+         "dir": "both"
+        },
+        {
+         "to": "tv.hub.config",
+         "label": "reads the widget list from config.js",
+         "dir": "in"
+        },
+        {
+         "to": "tv.hub.i18n",
+         "label": "the same Spanish table",
+         "dir": "in"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "pi.tailscale",
+     "title": "Tailscale",
+     "kind": "service",
+     "status": "unverified",
+     "summary": "The private network that lets Ian's phone reach the Pi away from home, at its 100.x address or its .ts.net name.",
+     "details": [
+      "The server treats Tailscale's 100.x range (100.64/10) and its IPv6 range like the home network and accepts a .ts.net Host. Whether Tailscale runs on the Pi is not confirmed yet."
+     ],
+     "files": [
+      "pi/server.js"
+     ],
+     "talksTo": [
+      {
+       "to": "pi.touchapp",
+       "label": "phone to Pi, port 8097",
+       "dir": "both"
+      }
+     ]
+    },
+    {
      "id": "pi.auth",
      "title": "Who may do what",
      "kind": "doc",
@@ -2479,7 +2606,8 @@
      "details": [
       "Screen side: no password, but only home-network addresses (or the list in HUB_TV_IPS), only a Host that is an address, localhost or .local (blocks web pages that fake a name), and browser origins from HUB_ORIGINS. It can read data and edit to-dos, nothing more.",
       "Control side: a long random token from pi/.env on every call. ./hub reads it locally; the budget app reads it on the same Pi; the optional tunnel door listens only on 127.0.0.1.",
-      "Cloud: R2 keys scoped to one bucket stay in .env and are never logged or written to the bucket. Claude writes notes with its own Cloudflare connection. The Pi only reaches out; secrets for calendars, Spotify and Home Assistant never leave it."
+      "Cloud: R2 keys scoped to one bucket stay in .env and are never logged or written to the bucket. Claude writes notes with its own Cloudflare connection. The Pi only reaches out; secrets for calendars, Spotify and Home Assistant never leave it.",
+      "Touch app (server 0.26.0): GET /, /app/..., /touch/state and POST /grocery/ops take home and Tailscale addresses even with HUB_TV_IPS set, never register a screen, and accept a POST only from the page's own address or HUB_ORIGINS."
      ],
      "files": [
       "pi/server.js",
@@ -2500,6 +2628,11 @@
       {
        "to": "cloud.r2",
        "label": "bucket-scoped keys",
+       "dir": "both"
+      },
+      {
+       "to": "pi.touchapp",
+       "label": "home or tailnet, no token",
        "dir": "both"
       }
      ]
@@ -5171,6 +5304,37 @@
     {
      "node": "tv.widgets",
      "say": "All sounds shows Audible on Ian's Echo Show, started from the hub"
+    }
+   ]
+  },
+  {
+   "id": "flow.touch-grocery",
+   "title": "A grocery item from a phone",
+   "summary": "Ian adds milk on his phone; Claude can add to the same list.",
+   "steps": [
+    {
+     "node": "pi.tailscale",
+     "say": "The phone reaches the Pi at home or on the tailnet"
+    },
+    {
+     "node": "pi.touchapp",
+     "say": "The Pi serves touch.html and the grocery widget, read only"
+    },
+    {
+     "node": "pi.touchapp.shell",
+     "say": "Ian types “milk, eggs”; both show at once"
+    },
+    {
+     "node": "pi.server.resources.grocery",
+     "say": "POST /grocery/ops saves them; the log counts, never names"
+    },
+    {
+     "node": "pi.mailbox.commands.grocery",
+     "say": "Claude can add with grocery.add through the mailbox"
+    },
+    {
+     "node": "pi.touchapp.shell",
+     "say": "Other phones see the change within 3 seconds"
     }
    ]
   }

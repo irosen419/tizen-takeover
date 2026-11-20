@@ -26,8 +26,13 @@ services:
     working_dir: /app
     volumes:
       - ./:/app
+      # The touch app (app/touch.html and the widget files) for phones and
+      # tablets, served read only at /app/... (HUB_APP_DIR below). The server
+      # cannot write to the TV's code.
+      - ../app:/webapp:ro
     command: node server.js
     environment:
+      - HUB_APP_DIR=/webapp
       - TZ=${HUB_TIMEZONE:-America/Chicago}
       # Spanish for the owner's own text (translate.js). Set either in .env; empty means off.
       - HUB_TRANSLATE_KEY=${HUB_TRANSLATE_KEY:-}
