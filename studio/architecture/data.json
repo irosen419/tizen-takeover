@@ -394,7 +394,7 @@
       },
       {
        "to": "tv.hub.core",
-       "label": "commands: show, home, say, reload",
+       "label": "commands: show, home, say, play, stop, reload",
        "dir": "out"
       },
       {
@@ -1626,19 +1626,21 @@
        "title": "Screen commands",
        "kind": "component",
        "status": "live",
-       "summary": "show, home, say and reload: sent to every screen that is on right now, never stored for a TV that is off.",
+       "summary": "show, home, say, play, stop and reload: sent to every screen that is on right now, never stored for a TV that is off.",
        "details": [
         "This is what makes 'TV off' safe: a command reaches 0 screens and the sender is told 'no screen is listening'. Only the poll fallback remembers commands, for 10 s, at most 20.",
-        "say can carry 'hub:working <kind> <seconds>', which the TV turns into a quiet working chip on a tile instead of showing text. The Pi passes it on unchanged."
+        "say can carry 'hub:working <kind> <seconds>', which the TV turns into a quiet working chip on a tile instead of showing text. The Pi passes it on unchanged.",
+        "play {url (http or https, up to 2048 characters), title?} has the TV play that audio through one reused audio element; stop ends it. ./hub news fetches the newest NPR News Now newscast (pi/news.js reads its public feed, a new one every hour) and sends it as play. Server 0.21.0."
        ],
        "files": [
         "pi/server.js",
-        "docs/live-updates.md"
+        "docs/live-updates.md",
+        "pi/news.js"
        ],
        "talksTo": [
         {
          "to": "tv.hub",
-         "label": "opens widgets, shows messages, reloads",
+         "label": "opens widgets, shows messages, plays audio, reloads",
          "dir": "out"
         }
        ]
@@ -1773,7 +1775,7 @@
          "status": "live",
          "summary": "Steer the TV that is on now.",
          "details": [
-          "show {widget, full?} for any of the 16 widget ids, home, reload, and say {text up to 140 characters, seconds 1 to 60}. say also carries the hub:working chip signal."
+          "show {widget, full?} for any of the 16 widget ids, home, reload, say {text up to 140 characters, seconds 1 to 60}, play {url, title?}, stop, and news (plays the newest NPR News Now newscast). say also carries the hub:working chip signal."
          ],
          "files": [
           "pi/mailbox.js"
@@ -1872,7 +1874,7 @@
      "summary": "./hub on the Pi: the command line for people and the Pi's own Claude to steer the TV and edit data.",
      "details": [
       "hubctl.js reads HUB_TOKEN and HUB_PORT from pi/.env, calls the control API on 127.0.0.1, and prints one plain sentence per result. It never prints the token, and waits about 5 s for a server that is just starting.",
-      "Commands: show, home, say, reload; todo add/list/level/notes/done/remove; calendar status/refresh; layout show/set/reset; awws and budget show/set/clear; spotify status/login/code/logout; status; mailbox status; log; token; help."
+      "Commands: show, home, say, play, stop, news, reload; todo add/list/level/notes/done/remove; calendar status/refresh; layout show/set/reset; awws and budget show/set/clear; spotify status/login/code/logout; status; mailbox status; log; token; help."
      ],
      "files": [
       "pi/hubctl.js",

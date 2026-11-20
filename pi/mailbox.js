@@ -37,6 +37,7 @@ const awws = require('./awws');
 const budget = require('./budget');
 const shows = require('./shows');
 const linktests = require('./linktests');
+const news = require('./news');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -359,6 +360,12 @@ const V = {
     if (Array.from(t).length > max) throw argError('"' + name + '" is longer than ' + max + ' characters');
     return t;
   },
+  // An http or https address, no spaces.
+  url: (max) => (name, v) => {
+    if (typeof v !== 'string' || !/^https?:\/\/\S+$/i.test(v.trim())) throw argError('"' + name + '" must be an http or https address');
+    if (v.trim().length > max) throw argError('"' + name + '" is longer than ' + max + ' characters');
+    return v.trim();
+  },
   date: () => (name, v) => {
     if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) throw argError('"' + name + '" must look like 2026-12-31');
     return v.trim();
@@ -451,6 +458,24 @@ const COMMANDS = {
   say: {
     args: { text: [V.text(MAX_TEXT), true], seconds: [V.number(1, 60), false] },
     run: sendCommand('say', (a) => (a.seconds !== undefined ? { text: a.text, seconds: a.seconds } : { text: a.text }))
+  },
+  play: {
+    args: { url: [V.url(2048), true], title: [V.text(MAX_TEXT), false] },
+    run: sendCommand('play', (a) => (a.title !== undefined ? { url: a.url, title: a.title } : { url: a.url }))
+  },
+  stop: { args: {}, run: sendCommand('stop', () => ({})) },
+  news: {
+    args: {},
+    run: async (args, ctx) => {
+      let ep;
+      try {
+        ep = await news.latest();
+      } catch (e) {
+        return { message: 'Could not read the NPR News Now feed: ' + (e && e.message) + '.', ok: false };
+      }
+      const r = await ctx.call('POST', '/api/command', { type: 'play', data: hubctl.newsPlay(ep) });
+      return { message: hubctl.newsText(ep, r), data: { delivered: r.delivered, title: ep.title, published: ep.published } };
+    }
   },
   'todo.add': {
     args: {

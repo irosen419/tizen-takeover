@@ -98,7 +98,7 @@ const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 const translate = require('./translate');
 
-const SERVER_VERSION = '0.20.0';
+const SERVER_VERSION = '0.21.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -115,6 +115,9 @@ const MAX_ITEM_BYTES = 2000; // room for full notes in any script
 const MAX_TITLE = 80;
 const MAX_NOTES = 300;
 const MAX_SAY = 140;
+// play: an audio address the TV plays (http or https only), and its title.
+const MAX_PLAY_URL = 2048;
+const MAX_PLAY_TITLE = 140;
 const DONE_KEEP_MS = 48 * 60 * 60 * 1000;
 const SSE_MAX_BUFFER = 64 * 1024; // a screen this far behind is dropped
 const SECTIONS = ['now', 'next', 'waiting'];
@@ -486,8 +489,22 @@ function normalizeCommand(body) {
     }
     return { type: type, data: out };
   }
-  if (type === 'home' || type === 'reload') return { type: type, data: {} };
-  throw bad('unknown command type (use show, home, say or reload)');
+  if (type === 'play') {
+    if (typeof data.url !== 'string') throw bad('"play" needs an audio address');
+    const url = data.url.trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(url)) throw bad('"url" must be an http or https address');
+    if (url.length > MAX_PLAY_URL) throw bad('"url" is longer than ' + MAX_PLAY_URL + ' characters');
+    const out = { url: url };
+    if (data.title !== undefined && data.title !== null) {
+      if (typeof data.title !== 'string') throw bad('"title" must be text');
+      const title = data.title.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+      if (Array.from(title).length > MAX_PLAY_TITLE) throw bad('"title" is longer than ' + MAX_PLAY_TITLE + ' characters');
+      if (title) out.title = title;
+    }
+    return { type: type, data: out };
+  }
+  if (type === 'home' || type === 'reload' || type === 'stop') return { type: type, data: {} };
+  throw bad('unknown command type (use show, home, say, play, stop or reload)');
 }
 
 /* ---------- state file ---------- */

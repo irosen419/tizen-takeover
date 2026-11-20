@@ -6,6 +6,9 @@
  *   ./hub show weather [--full]      open a widget on the TV
  *   ./hub home                       close whatever is open
  *   ./hub say "Dinner in 10" [--seconds 8]
+ *   ./hub play <http(s) audio address> [--title "Doorbell"]   play audio on the TV
+ *   ./hub stop                       stop what the TV is playing
+ *   ./hub news                       play the newest NPR News Now newscast on the TV
  *   ./hub reload                     load the hub afresh
  *   ./hub todo add "Buy milk" [--level must|optional|passive] [--due 2026-12-24] [--lead 3] [--notes "Oat, not dairy"]
  *   ./hub todo list
@@ -68,6 +71,7 @@ const awws = require('./awws');
 const budget = require('./budget');
 const shows = require('./shows');
 const linktests = require('./linktests');
+const news = require('./news');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
@@ -212,6 +216,16 @@ function commandText(r) {
 async function command(type, data) {
   const r = await call('POST', '/api/command', { type: type, data: data || {} });
   say(commandText(r));
+}
+
+// ./hub news and the mailbox's "news": the play command for the newest
+// newscast, and the line naming it.
+function newsPlay(ep) {
+  return { url: ep.url, title: news.playTitle(ep) };
+}
+
+function newsText(ep, r) {
+  return news.playTitle(ep) + '. ' + commandText(r);
 }
 
 /* ---------- to-do helpers ---------- */
@@ -1200,6 +1214,9 @@ const HELP = [
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
+  '  ./hub play https://.../a.mp3   play audio on the TV (add --title "Doorbell"); the hub must be open',
+  '  ./hub stop                  stop what the TV is playing',
+  '  ./hub news                  play the newest NPR News Now newscast (a new one every hour) on the TV',
   '  ./hub reload                load the hub afresh',
   '  ./hub todo add "Buy milk"   add a to-do (add --level must or passive, --due 2026-12-24; optional when left out)',
   '  ./hub todo level "Buy milk" must   change a to-do\'s level: must, optional or passive',
@@ -1275,6 +1292,28 @@ async function main(argv) {
     }
     return command('say', data);
   }
+  if (cmd === 'play') {
+    const a = parseArgs(rest, ['title']);
+    const url = (a.words[0] || '').trim();
+    if (!url) stop('Say what to play, for example: ./hub play https://example.com/doorbell.mp3');
+    if (a.words.length > 1) stop('Give one audio address; put a title in --title "...".');
+    if (!/^https?:\/\/\S+$/i.test(url)) stop('The address must start with http:// or https://.');
+    const data = { url: url };
+    if (typeof a.opts.title === 'string' && a.opts.title.trim()) data.title = a.opts.title.trim();
+    return command('play', data);
+  }
+  if (cmd === 'stop') return command('stop', {});
+  if (cmd === 'news') {
+    let ep;
+    try {
+      ep = await news.latest();
+    } catch (e) {
+      stop('Could not read the NPR News Now feed: ' + (e && e.message) + '.');
+    }
+    const r = await call('POST', '/api/command', { type: 'play', data: newsPlay(ep) });
+    say(newsText(ep, r));
+    return;
+  }
   if (cmd === 'todo') return todo(rest);
   if (cmd === 'calendar') return calendar(rest);
   if (cmd === 'layout') return layout(rest);
@@ -1305,6 +1344,8 @@ module.exports = {
   setLead: setLead,
   MAX_LEAD: MAX_LEAD,
   commandText: commandText,
+  newsPlay: newsPlay,
+  newsText: newsText,
   matchItem: matchItem,
   todoAddText: todoAddText,
   todoListLines: todoListLines,

@@ -78,6 +78,8 @@ Commands:
 - `show <widget>`: open a widget (`weather`, `todo`, `calendar`, `entertainment`), optionally full screen.
 - `home`: close whatever is open.
 - `say "<text>"`: a short message at the bottom of the screen for a few seconds. A text that starts with `hub:` is for the hub and never shown: `hub:working <kind> [seconds]` (kind `todo`, `calendar` or `awws`, seconds 10 to 900, 120 by default) puts a quiet "working" chip on that tile while a job that will change that data is still running, and `hub:working <kind> done` ends it. The chip also ends when the data lands (turning into the usual activity chip if something changed) or when its time is up. The Pi passes the text on unchanged, so this needed nothing new on the Pi; an older hub would show it as a message. `hub:motion push` (or `expand`, `fade`) sets that motion on the TV for this session only, whatever auto measured, so the motion extras and the character run on a TV that stepped itself down (About shows `push (remote)`; a reload goes back to auto); `hub:motion auto` forgets a step-down and times push again from now (v0.29.11 or later).
+- `play <url> [title]`: play audio (an http or https address) on the TV, showing "Playing: <title>". One audio element is reused, so a new `play` replaces what was playing. The TV's browser may refuse to start sound it was not asked for by a key press (autoplay); the hub then says so on screen. Server 0.21.0, hub v0.37.0.
+- `stop`: stop what `play` started.
 - `reload`: load the hub afresh. It restarts through the loader (`app/index.html`), so it also picks up the newest version of the hub.
 
 Data:
