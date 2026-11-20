@@ -174,13 +174,18 @@ async function main() {
     assert.strictEqual(P('https://m.media-amazon.com/x.jpg', 'iHeartRadio'), 'iHeartRadio', 'a station naming itself beats Amazon\'s catch-all host');
     assert.strictEqual(P('https://i.scdn.co/x', 'Pandora'), 'Spotify', 'a real artist called Pandora on Spotify art stays Spotify');
     assert.strictEqual(allsounds.inferPlatform(null), '');
+    // An audiobook: the author as "By ..." with Amazon's picture is Audible.
+    assert.strictEqual(P('https://m.media-amazon.com/images/I/x.jpg', 'By Pierce Brown'), 'Audible');
+    assert.strictEqual(P('', 'by  Andy Weir'), 'Audible');
+    assert.strictEqual(P('https://i.scdn.co/image/x', 'By The Sea'), 'Spotify');
+    assert.strictEqual(P('https://m.media-amazon.com/x.jpg', 'Byrds'), 'Amazon Music');
     // A named app still wins over the inference (readEntity), and nothing keeps the host.
     const named = allsounds.readEntity(entity('l', 'playing', { media_title: 'x', source: 'TuneIn', entity_picture: 'https://i.scdn.co/x' }));
     assert.strictEqual(named.source, 'TuneIn');
     const inferred = allsounds.cleanData(allsounds.pickActive([allsounds.readEntity(entity('l', 'playing', { media_title: 'x', entity_picture: 'https://content-images.p-cdn.com/secret-path/x.jpg' }))]));
     assert.strictEqual(inferred.source, 'Pandora');
     assert.ok(inferred.source.length <= 30);
-    assert.deepStrictEqual(Object.keys(inferred).sort(), ['album', 'art', 'artist', 'device', 'from', 'problem', 'source', 'stale', 'state', 'title', 'v']);
+    assert.deepStrictEqual(Object.keys(inferred).sort(), ['album', 'art', 'artist', 'device', 'from', 'problem', 'source', 'stale', 'started', 'state', 'title', 'v']);
     ['p-cdn', 'secret-path'].forEach((bad) => assert.ok(JSON.stringify(Object.assign({}, inferred, { art: '' })).indexOf(bad) < 0, bad + ' leaked beyond the picture address'));
   });
 
@@ -527,6 +532,163 @@ async function main() {
     const out = await C['allsounds.status'].run({}, { call: call });
     assert.strictEqual(out.message, 'All sounds: playing from Amazon Music on Living room Echo.\nNow: "Golden Hour Drive" by The Lanterns.');
     assert.deepStrictEqual(Object.keys(out.data.allsounds).sort(), ['artist', 'device', 'source', 'state', 'title']);
+    await stop(h);
+  });
+
+  /* ---------- what the hub started (echo.js labels) ---------- */
+
+  const SHOW_ID = 'media_player.ian_s_echo_show';
+  const mkLabel = (o) => Object.assign({ app: 'audible', label: 'Audible', title: '', hidden: true, at: Date.now() - 1000, playing: true, via: '', base: null }, o || {});
+  function labelled(map, extra) {
+    const calls = { cleared: [], bases: [] };
+    const store = JSON.parse(JSON.stringify(map));
+    const hooks = {
+      labels: () => JSON.parse(JSON.stringify(store)),
+      clearLabel: (id, why) => { calls.cleared.push([id, why]); delete store[id]; },
+      setBase: (id, sig) => { calls.bases.push([id, sig]); if (store[id]) store[id].base = sig; }
+    };
+    return watcher(HA_ENV, Object.assign(hooks, extra || {})).then((x) => Object.assign(x, { calls: calls, store: store }));
+  }
+
+  await check('labels: a hidden one (Audible) hides AMP\'s stale title, says started, keeps the Echo\'s name; the first sight sets the base', async () => {
+    ha.set('stale');
+    const x = await labelled({ [SHOW_ID]: mkLabel() });
+    await x.w.poll();
+    let d = x.cur();
+    assert.deepStrictEqual([d.state, d.from, d.source, d.title, d.artist, d.album, d.art, d.started, d.stale, d.device],
+      ['playing', 'echo', 'Audible', '', '', '', '', true, false, 'Ian\'s Echo Show']);
+    assert.strictEqual(x.calls.bases.length, 1);
+    assert.strictEqual(x.calls.bases[0][0], SHOW_ID);
+    assert.strictEqual(x.calls.bases[0][1], JSON.stringify(['Golden Hour Drive', 'The Lanterns', ha.url + '/art/album.svg']));
+    await x.w.poll();
+    assert.strictEqual(x.calls.bases.length, 1, 'the base is set once');
+    assert.strictEqual(x.cur().started, true);
+    // Paused by the hub's own pause: shown paused, whatever AMP's stale state says.
+    x.store[SHOW_ID].playing = false;
+    await x.w.poll();
+    assert.deepStrictEqual([x.cur().state, x.cur().started, x.cur().source], ['paused', true, 'Audible']);
+    // A group start: shown on "Everywhere".
+    x.store[SHOW_ID].playing = true;
+    x.store[SHOW_ID].via = 'Everywhere';
+    await x.w.poll();
+    assert.strictEqual(x.cur().device, 'Everywhere');
+    // Something else clearly starts (a new picture): the label goes and the real data shows.
+    ha.set('amazonmusic');
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual(x.calls.cleared, [[SHOW_ID, 'other']]);
+    assert.deepStrictEqual([d.source, d.title, d.started], ['Amazon Music', 'Golden Hour Drive', false]);
+    x.w.close();
+  });
+
+  await check('labels: a hidden one stays over an empty Echo (idle, off) and wins over an older speaker', async () => {
+    ha.set('npr');
+    const x = await labelled({ [SHOW_ID]: mkLabel({ base: JSON.stringify(['Golden Hour Drive', 'The Lanterns', 'x']) }) });
+    await x.w.poll();
+    assert.deepStrictEqual([x.cur().state, x.cur().source, x.cur().started, x.calls.cleared.length], ['playing', 'Audible', true, 0]);
+    x.w.close();
+    ha.set('radio');
+    const y = await labelled({ 'media_player.kitchen_echo': mkLabel({ app: 'news', label: 'Alexa news', base: '[]' }) });
+    await y.w.poll();
+    assert.deepStrictEqual([y.cur().source, y.cur().device, y.cur().started], ['Alexa news', 'Kitchen Echo Dot', true], 'newer than the living room\'s radio');
+    y.w.close();
+  });
+
+  await check('labels: a visible one (Pandora, TuneIn) keeps the real data, fills the source and title, and clears when another platform shows', async () => {
+    ha.set('pandora');
+    // In its first 45 seconds another platform on the Echo is Alexa catching
+    // up: the label holds.
+    let x = await labelled({ [SHOW_ID]: mkLabel({ app: 'pandora', label: 'Pandora', hidden: false }) });
+    ha.set('amazonmusic');
+    await x.w.poll();
+    let d = x.cur();
+    assert.deepStrictEqual([d.source, d.started, x.calls.cleared.length], ['Pandora', true, 0], 'grace');
+    x.w.close();
+    ha.set('pandora');
+    x = await labelled({ [SHOW_ID]: mkLabel({ app: 'pandora', label: 'Pandora', hidden: false, at: Date.now() - 60000 }) });
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual([d.source, d.title, d.artist, d.started, x.calls.cleared.length], ['Pandora', 'Golden Hour Drive', 'The Lanterns', true, 0]);
+    ha.set('amazonmusic');
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual(x.calls.cleared, [[SHOW_ID, 'other']]);
+    assert.deepStrictEqual([d.source, d.started], ['Amazon Music', false]);
+    x.w.close();
+    // KERA on TuneIn: no title in its first seconds, so the label's stands in.
+    ha.set('tuneinstart');
+    x = await labelled({ [SHOW_ID]: mkLabel({ app: 'kera', label: 'TuneIn', title: 'KERA 90.1', hidden: false, via: 'Everywhere' }) });
+    await x.w.poll();
+    d = x.cur();
+    assert.deepStrictEqual([d.source, d.title, d.started, d.device, d.state], ['TuneIn', 'KERA 90.1', true, 'Everywhere', 'playing']);
+    ha.set('tunein');
+    await x.w.poll();
+    assert.deepStrictEqual([x.cur().title, x.cur().source, x.cur().started], ['KERA', 'TuneIn', true], 'the real title once it has one');
+    x.w.close();
+    // The Echo says idle: a fresh label shows as playing or paused, an old one clears.
+    ha.set('npr');
+    x = await labelled({ [SHOW_ID]: mkLabel({ app: 'pandora', label: 'Pandora', hidden: false, playing: false }) });
+    await x.w.poll();
+    assert.deepStrictEqual([x.cur().state, x.cur().source, x.cur().started], ['paused', 'Pandora', true]);
+    x.w.close();
+    x = await labelled({ [SHOW_ID]: mkLabel({ app: 'pandora', label: 'Pandora', hidden: false, at: Date.now() - 11 * 60000 }) });
+    await x.w.poll();
+    assert.deepStrictEqual(x.calls.cleared, [[SHOW_ID, 'other']]);
+    assert.strictEqual(x.cur().started, false);
+    x.w.close();
+  });
+
+  await check('labels: Spotify\'s stale "playing" on the same Echo loses to a labelled Echo; a different speaker still wins', async () => {
+    ha.set('stale');
+    const np = (device) => ({ state: 'playing', track: { title: 'Old Song', artist: 'Someone', album: 'A' }, device: { name: device } });
+    let x = await labelled({ [SHOW_ID]: mkLabel() }, { spotify: () => np('Ian\'s Echo Show') });
+    await x.w.poll();
+    assert.deepStrictEqual([x.cur().from, x.cur().source, x.cur().started], ['echo', 'Audible', true]);
+    x.w.close();
+    x = await labelled({ [SHOW_ID]: mkLabel() }, { spotify: () => np('Living room speaker') });
+    await x.w.poll();
+    assert.deepStrictEqual([x.cur().from, x.cur().started], ['spotify', false]);
+    x.w.close();
+    const house = { v: 1, state: 'playing', from: 'echo', source: 'Audible', device: 'Echo', title: '', artist: '', album: '', art: '', problem: '', stale: false, started: true };
+    const sp = allsounds.fromSpotify(np('echo'));
+    assert.strictEqual(allsounds.merge(house, sp), house);
+    assert.strictEqual(allsounds.merge(Object.assign({}, house, { started: false }), sp), sp, 'an unlabelled, title-less house does not beat Spotify');
+  });
+
+  await check('labels: started only for an Echo that plays or pauses; the resource keeps v 1; no label code, no change', async () => {
+    const base = Object.assign(allsounds.notsetData(), { state: 'playing', from: 'echo', source: 'Audible', device: 'E', started: true });
+    assert.strictEqual(allsounds.cleanData(base).started, true);
+    assert.strictEqual(allsounds.cleanData(Object.assign({}, base, { state: 'paused' })).started, true);
+    assert.strictEqual(allsounds.cleanData(Object.assign({}, base, { state: 'idle' })).started, false);
+    assert.strictEqual(allsounds.cleanData(Object.assign({}, base, { from: 'spotify' })).started, false);
+    assert.strictEqual(allsounds.cleanData(Object.assign({}, base, { started: 'yes' })).started, false);
+    assert.strictEqual(allsounds.notsetData().started, false);
+    assert.strictEqual(allsounds.notsetData().v, 1);
+    ha.set('amazonmusic');
+    const x = await watcher(HA_ENV);
+    await x.w.poll();
+    assert.strictEqual(x.cur().started, false);
+    x.w.close();
+  });
+
+  await check('server: labels from Echo controls reach the TV resource and clear when something else plays; mailbox echo.* with a bad level is refused', async () => {
+    const C = mailbox.COMMANDS;
+    assert.throws(() => mailbox.checkEnvelope('abcdef12', Buffer.from(JSON.stringify({ id: 'abcdef12', created: new Date().toISOString(), cmd: 'echo.volume', args: { level: 101 } })), Date.now()), /"level" must be a whole number from 0 to 100/);
+    assert.throws(() => mailbox.checkEnvelope('abcdef12', Buffer.from(JSON.stringify({ id: 'abcdef12', created: new Date().toISOString(), cmd: 'echo.start', args: { app: 'audible', query: 'x' } })), Date.now()), /does not take a query/);
+    assert.ok(C['echo.start'] && C['echo.volume']);
+    ha.set('stale');
+    ha.serviceStatus = 0;
+    const h = await start({ echoEnv: HA_ENV });
+    const r = await h.echo.start('audible', 'show');
+    assert.strictEqual(r.ok, true);
+    await h.allsounds.poll();
+    let d = (await live(h)).data;
+    assert.deepStrictEqual([d.source, d.title, d.started], ['Audible', '', true]);
+    ha.set('amazonmusic');
+    await h.allsounds.poll();
+    d = (await live(h)).data;
+    assert.deepStrictEqual([d.source, d.started], ['Amazon Music', false]);
+    assert.deepStrictEqual(h.echo.labels(), {}, 'the label is gone');
     await stop(h);
   });
 

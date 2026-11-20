@@ -54,6 +54,9 @@
  *   POST /api/spotify/refresh  ask Spotify what is playing right now
  *   GET  /api/allsounds  what plays anywhere in the house (allsounds.js): state,
  *                        source, speaker, title and artist
+ *   GET  /api/echo       the Echo controls: targets and what the hub started (echo.js)
+ *   POST /api/echo      { action, target?, app?, query?, level? }: start an app on an
+ *                        Echo, or pause, resume, next, stop, volume (server 0.22.0)
  *   GET  /api/ambience   the room's lights, scenes and plant wall (ambience.js)
  *   POST /api/ambience/scene   apply a scene, { id }
  *   POST /api/ambience/light   one light, { id, on?, pct? }
@@ -100,9 +103,10 @@ const tvremote = require('./tvremote');
 const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
+const echo = require('./echo');
 const translate = require('./translate');
 
-const SERVER_VERSION = '0.21.0';
+const SERVER_VERSION = '0.23.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -119,6 +123,9 @@ const MAX_ITEM_BYTES = 2000; // room for full notes in any script
 const MAX_TITLE = 80;
 const MAX_NOTES = 300;
 const MAX_SAY = 140;
+// play: an audio address the TV plays (http or https only), and its title.
+const MAX_PLAY_URL = 2048;
+const MAX_PLAY_TITLE = 140;
 const DONE_KEEP_MS = 48 * 60 * 60 * 1000;
 const SSE_MAX_BUFFER = 64 * 1024; // a screen this far behind is dropped
 const SECTIONS = ['now', 'next', 'waiting'];
@@ -490,8 +497,22 @@ function normalizeCommand(body) {
     }
     return { type: type, data: out };
   }
-  if (type === 'home' || type === 'reload') return { type: type, data: {} };
-  throw bad('unknown command type (use show, home, say or reload)');
+  if (type === 'play') {
+    if (typeof data.url !== 'string') throw bad('"play" needs an audio address');
+    const url = data.url.trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(url)) throw bad('"url" must be an http or https address');
+    if (url.length > MAX_PLAY_URL) throw bad('"url" is longer than ' + MAX_PLAY_URL + ' characters');
+    const out = { url: url };
+    if (data.title !== undefined && data.title !== null) {
+      if (typeof data.title !== 'string') throw bad('"title" must be text');
+      const title = data.title.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim();
+      if (Array.from(title).length > MAX_PLAY_TITLE) throw bad('"title" is longer than ' + MAX_PLAY_TITLE + ' characters');
+      if (title) out.title = title;
+    }
+    return { type: type, data: out };
+  }
+  if (type === 'home' || type === 'reload' || type === 'stop') return { type: type, data: {} };
+  throw bad('unknown command type (use show, home, say, play, stop or reload)');
 }
 
 /* ---------- state file ---------- */
@@ -711,9 +732,23 @@ function start(options) {
   // ALLSOUNDS_ENTITIES). opt.allsounds may hold { allowHttp, manual, ... }
   // for tests and the preview.
   const asOpt = isObj(opt.allsounds) ? opt.allsounds : {};
+  // Echo controls (echo.js): what the hub started on an Echo is laid over
+  // what All sounds reads from Home Assistant. A successful action asks All
+  // sounds to look again at once.
+  const echoOpt = isObj(opt.echo) ? opt.echo : {};
+  const echoCtl = echo.createController(Object.assign({}, echoOpt, {
+    config: echo.configFromEnv(opt.echoEnv || {}),
+    dataDir: dataDir,
+    log: log,
+    changed: () => { if (sounds && !closing) sounds.poll(); }
+  }));
+  echoCtl.startLog();
   sounds = allsounds.createWatcher(Object.assign({}, asOpt, {
     config: allsounds.configFromEnv(opt.allsoundsEnv || {}),
     log: log,
+    labels: () => echoCtl.labels(),
+    clearLabel: (id, reason) => echoCtl.clearLabel(id, reason),
+    setBase: (id, sig) => echoCtl.setBase(id, sig),
     current: () => state.resources.allsounds.data,
     spotify: () => state.resources.nowplaying.data,
     publish: (data) => {
@@ -951,6 +986,51 @@ function start(options) {
       if (status === 500) log('ambience: unexpected problem with a command');
       return { status: status, body: { ok: false, error: e && e.status ? e.message : 'the server had a problem' } };
     });
+  }
+
+  /* --- Echo controls (echo.js) --- */
+
+  const ECHO_FIELDS = ['action', 'target', 'app', 'query', 'level'];
+  const ECHO_ACTIONS = ['start', 'pause', 'resume', 'next', 'stop', 'volume'];
+
+  // POST /api/echo. Bad input is a 400 that names what is valid; a Home
+  // Assistant failure is a 200 with ok: false (the message says what).
+  function echoPost(body) {
+    if (!isObj(body)) throw bad('send { "action": "start", "app": "audible" }');
+    Object.keys(body).forEach((k) => { if (ECHO_FIELDS.indexOf(k) < 0) throw bad('unknown field "' + k + '" (use ' + ECHO_FIELDS.join(', ') + ')'); });
+    const action = body.action;
+    if (typeof action !== 'string' || ECHO_ACTIONS.indexOf(action) < 0) throw bad('"action" must be one of: ' + ECHO_ACTIONS.join(', '));
+    let target;
+    if (body.target !== undefined && body.target !== null) {
+      const keys = echoCtl.targetKeys();
+      if (typeof body.target !== 'string' || (keys.length && keys.indexOf(body.target) < 0)) {
+        throw bad('"target" must be one of: ' + (keys.length ? keys.join(', ') : '(none: Echo controls are off)'));
+      }
+      target = body.target;
+    }
+    let run;
+    if (action === 'start') {
+      if (body.level !== undefined) throw bad('"level" goes with "volume"');
+      if (typeof body.app !== 'string' || echo.APP_KEYS.indexOf(body.app) < 0) throw bad('"app" must be one of: ' + echo.APP_KEYS.join(', '));
+      const why = echo.checkStart(body.app, body.query);
+      if (why) throw bad(why);
+      run = () => echoCtl.start(body.app, target, body.query);
+    } else {
+      if (body.app !== undefined || body.query !== undefined) throw bad('"app" and "query" go with "start"');
+      if (action === 'volume') {
+        const why = echo.checkVolume(body.level);
+        if (why) throw bad(why);
+        run = () => echoCtl.volume(body.level, target);
+      } else {
+        if (body.level !== undefined) throw bad('"level" goes with "volume"');
+        run = () => echoCtl[action](target);
+      }
+    }
+    return run().then((r) => ({
+      status: 200,
+      body: { ok: r.ok === true, message: r.message, echo: echoCtl.status() },
+      note: r.ok ? action : (r.problem || 'failed')
+    }));
   }
 
   /* --- push line --- */
@@ -1200,6 +1280,7 @@ function start(options) {
     '/api/tvremote': ['GET'],
     '/api/tvremote/run': ['POST'],
     '/api/allsounds': ['GET'],
+    '/api/echo': ['GET', 'POST'],
     '/api/ambience': ['GET'],
     '/api/ambience/scene': ['POST'],
     '/api/ambience/light': ['POST'],
@@ -1331,6 +1412,11 @@ function start(options) {
         }
         if (route === '/api/spotify/refresh') {
           player.poll().then(() => reply(200, { ok: true, spotify: player.status() })).catch(failed);
+          return undefined;
+        }
+        if (route === '/api/echo') {
+          if (method === 'GET') return reply(200, { ok: true, echo: echoCtl.status() });
+          echoPost(body).then((a) => reply(a.status, a.body, a.note)).catch(failed);
           return undefined;
         }
         if (route.indexOf('/api/ambience') === 0) {
@@ -1759,6 +1845,7 @@ function start(options) {
     note: (s) => { try { remember(String(s)); } catch (e) { /* never throws */ } },
     shows: tracker,
     allsounds: sounds,
+    echo: echoCtl,
     _debug: () => {
       forgetOld();
       return {
@@ -1853,6 +1940,7 @@ if (require.main === module) {
       sampleFile: env.HUB_SHOWS === 'sample' ? path.join(__dirname, 'fixtures', 'shows-sample.json') : undefined
     },
     allsoundsEnv: env,
+    echoEnv: env,
     ambienceEnv: env,
     // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
     // or systemd (Restart=always) starts the server again, with any new code.

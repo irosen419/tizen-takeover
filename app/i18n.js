@@ -255,6 +255,7 @@
     'allsounds.unknown': 'Algo está sonando',
     'allsounds.unknownPaused': 'Algo está en pausa',
     'allsounds.stale': 'Puede que no esté al día',
+    'allsounds.started': 'Iniciado desde el hub',
     'allsounds.idle': 'Nada sonando',
     'allsounds.idleHint': 'Pon algo en un Echo o en Spotify y aparecerá aquí.',
     'allsounds.notset': 'Aún sin configurar',

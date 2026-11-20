@@ -288,12 +288,36 @@ async function main() {
     assert.deepStrictEqual(fake.keys('inbox/'), []);
   });
 
-  await check('show, home, say, reload (no screen on: same words as ./hub)', async () => {
-    for (const [cmd, args] of [['show', { widget: 'weather', full: true }], ['show', { widget: 'calendar' }], ['home', {}], ['say', { text: '  Dinner in 10 ', seconds: 8 }], ['reload', {}]]) {
+  await check('show, home, say, play, stop, reload (no screen on: same words as ./hub)', async () => {
+    for (const [cmd, args] of [['show', { widget: 'weather', full: true }], ['show', { widget: 'calendar' }], ['home', {}], ['say', { text: '  Dinner in 10 ', seconds: 8 }], ['play', { url: 'https://example.com/a.mp3', title: 'Doorbell' }], ['play', { url: 'https://example.com/a.mp3' }], ['stop', {}], ['reload', {}]]) {
       const r = await run(fake, h, cmd, args);
       assert.strictEqual(r.ok, true, cmd);
       assert.strictEqual(r.message, 'Sent, but no screen is listening (is the TV on with Home Hub open?).');
       assert.deepStrictEqual(r.data, { delivered: 0 });
+    }
+  });
+
+  await check('news: plays the newest newscast from the feed; a dead feed is ok: false', async () => {
+    const xml = fs.readFileSync(path.join(__dirname, 'fixtures', 'npr-news-now.xml'), 'utf8');
+    const feed = http.createServer((req, res) => {
+      if (req.url === '/feed.xml') { res.writeHead(200); res.end(xml); return; }
+      res.writeHead(503); res.end();
+    });
+    await new Promise((r) => feed.listen(0, '127.0.0.1', r));
+    const before = process.env.NEWS_FEED_URL;
+    try {
+      process.env.NEWS_FEED_URL = 'http://127.0.0.1:' + feed.address().port + '/feed.xml';
+      let r = await run(fake, h, 'news');
+      assert.strictEqual(r.ok, true);
+      assert.strictEqual(r.message, 'NPR News Now, 7pm ET, November 19. Sent, but no screen is listening (is the TV on with Home Hub open?).');
+      assert.deepStrictEqual(r.data, { delivered: 0, title: '7pm ET, November 19', published: '2026-11-20T00:09:35.000Z' });
+      process.env.NEWS_FEED_URL = 'http://127.0.0.1:' + feed.address().port + '/gone';
+      r = await run(fake, h, 'news');
+      assert.strictEqual(r.ok, false);
+      assert.ok(/Could not read the NPR News Now feed: the news feed answered 503/.test(r.message), r.message);
+    } finally {
+      if (before === undefined) delete process.env.NEWS_FEED_URL; else process.env.NEWS_FEED_URL = before;
+      await new Promise((r) => feed.close(r));
     }
   });
 
@@ -647,6 +671,10 @@ async function main() {
     ['widget not in the list', () => ({ raw: envelope('show', { widget: 'mirror' }) }), /"widget" must be one of: weather, todo, calendar, entertainment/],
     ['say text too long', () => ({ raw: envelope('say', { text: 'x'.repeat(141) }) }), /longer than 140/],
     ['say seconds out of range', () => ({ raw: envelope('say', { text: 'hi', seconds: 600 }) }), /"seconds" must be a number from 1 to 60/],
+    ['play missing url', () => ({ raw: envelope('play', {}) }), /"play" needs "url"/],
+    ['play not http', () => ({ raw: envelope('play', { url: 'file:///etc/passwd' }) }), /"url" must be an http or https address/],
+    ['play title too long', () => ({ raw: envelope('play', { url: 'https://example.com/a.mp3', title: 't'.repeat(141) }) }), /longer than 140/],
+    ['news takes no args', () => ({ raw: envelope('news', { feed: 'https://evil.test/' }) }), /does not take "feed"/],
     ['todo.add missing title', () => ({ raw: envelope('todo.add', {}) }), /needs "title"/],
     ['todo.add bad section', () => ({ raw: envelope('todo.add', { title: 'A', section: 'later' }) }), /"section" must be one of/],
     ['todo.add bad level', () => ({ raw: envelope('todo.add', { title: 'A', level: 'urgent' }) }), /"level" must be one of: must, optional, passive/],

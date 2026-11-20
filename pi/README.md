@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.20.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.23.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -74,6 +74,16 @@ Turn the TV on with Home Hub open (it needs to know the Pi's address; that is se
 If the TV is off you will see `Sent, but no screen is listening`. That is normal: commands are only for a screen that is on right now. To-dos are kept and show up when the TV turns on.
 
 Run `./hub help` for every command.
+
+## Sound on the TV
+
+From server 0.23.0 and hub v0.37.0 the TV can play audio:
+
+- `./hub play https://example.com/doorbell.mp3 --title "Doorbell"`: the TV plays it and shows `Playing: Doorbell`. Any http or https audio address the TV's browser can play (MP3 is safest). A new `play` replaces what was playing.
+- `./hub stop`: stops it.
+- `./hub news`: plays the newest **NPR News Now** newscast, NPR's five minute summary that is posted every hour. The Pi reads NPR's public feed (`https://feeds.npr.org/500005/podcast.xml`, no account or key), picks the newest episode by date and sends it as `play`; the terminal says which one, for example `NPR News Now, 7pm ET, November 19. Sent. 1 screen showed it.` The code is `news.js`; tests are `node pi/news-test.js`.
+
+The hub has to be open (`./hub status` shows the screen). The TV's browser may refuse to start sound that no key press asked for; the hub then shows "The TV would not start the audio". Press a key on the remote and send it again.
 
 ### To-do notes
 
@@ -159,7 +169,7 @@ Server 0.18.0 keeps one more optional section, `investments` (the portfolio tota
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.20.0` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.22.1` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 
@@ -279,7 +289,7 @@ The TV's About panel has a **Watch link test**: each recipe tries one way of ope
 
 ### TV remote from the Pi (two-step launch)
 
-The TV refuses remote key presses it sends to itself, so some Watch link test rows ("Open, Enter, then ...") ask the Pi to press the keys. The Pi talks to the TV's remote-control WebSocket (`wss://<tv>:8002`, or `ws://<tv>:8001` if that does not connect) under the name "Home Hub Pi" (`tvremote.js`, server 0.21.0). A run opens the app, waits about 10 seconds, presses Enter (the default profile), waits about 5 seconds, then sends the title link while the app is already running, either as a deep link or by DIAL (HTTP POST to `http://<tv>:8080/ws/apps/Netflix`). Then you answer the usual "Opened the title / Only opened the app / Nothing".
+The TV refuses remote key presses it sends to itself, so some Watch link test rows ("Open, Enter, then ...") ask the Pi to press the keys. The Pi talks to the TV's remote-control WebSocket (`wss://<tv>:8002`, or `ws://<tv>:8001` if that does not connect) under the name "Home Hub Pi" (`tvremote.js`, server 0.23.0). A run opens the app, waits about 10 seconds, presses Enter (the default profile), waits about 5 seconds, then sends the title link while the app is already running, either as a deep link or by DIAL (HTTP POST to `http://<tv>:8080/ws/apps/Netflix`). Then you answer the usual "Opened the title / Only opened the app / Nothing".
 
 **One-time Allow prompt.** The first run makes the TV show a prompt to allow "Home Hub Pi": press Allow on the remote within 30 seconds. The TV answers with a token, which the Pi keeps in `data/tvremote.json` (readable by you only, never in a log, never sent anywhere). If the TV said no, allow it under Settings > General > External Device Manager > Device Connection Manager > Device List, then try again.
 
@@ -552,6 +562,34 @@ Commands: `./hub allsounds status` (state, source, speaker, title and artist), `
 | `Home Assistant cannot be reached` | `HA_URL` is wrong, or Home Assistant is down | Check Home Assistant opens at that address from the Pi |
 | `nothing playing` while an Echo plays | Alexa Media Player has not caught up (it can lag 10 to 30 seconds), or the speaker is not listed in `ALLSOUNDS_ENTITIES` | Wait a moment; check the entity in Home Assistant |
 
+## Echo controls (server 0.22.0)
+
+`./hub echo ...` starts an app on one of your Echo speakers, or pauses, skips, stops and sets the volume, through the same Home Assistant and Alexa Media Player (AMP) setup as All sounds (`HA_TOKEN`, `HA_URL`). Without `HA_TOKEN` it says `Echo controls are off (no HA_TOKEN in .env)`. The code is `echo.js`; tests are `node pi/echo-test.js`.
+
+```sh
+./hub echo status                                  # targets, and what the hub started
+./hub echo audible                                 # resume your book on Audible
+./hub echo kera --on dot                           # KERA 90.1 on the Echo Dot
+./hub echo news                                    # the Alexa flash briefing
+./hub echo start pandora --query "jazz"            # or: start amazon-music, start tunein --query "KERA"
+./hub echo pause | resume | next | stop            # add --on show|dot|everywhere
+./hub echo volume 40                               # 0 to 100, or up or down
+```
+
+**Apps.** Only these presets can be started: `audible` (says "resume my book on Audible"), `pandora` and `amazon-music` (with no `--query` they say "play Pandora" or "play Amazon Music"; with one they search for it), `tunein` (needs a `--query`, a station or show), `kera` (TuneIn's KERA 90.1) and `news` (Alexa's flash briefing). A query is plain text up to 100 characters; `audible`, `news` and `kera` take none.
+
+**Targets.** `show`, `dot` and `everywhere` (Alexa's group of all speakers) by default; the first is used when `--on` is left out. To use other speakers, set `ECHO_TARGETS` in `.env` as `key=media_player.id` pairs (key: letters a-z, digits and `-`, up to 20 characters; up to 8; the first is the default), for example `ECHO_TARGETS=show=media_player.ian_s_echo_show,dot=media_player.ian_s_echo_dot,everywhere=media_player.everywhere`, then `docker compose restart hub`. A target called `everywhere` (or `media_player.everywhere`) is a group: one call goes to it, and every other target counts as a member of it.
+
+**What "All sounds" shows.** Amazon does not tell AMP what Audible or the news is playing, and AMP keeps the last song's title. So when the hub starts something, it remembers that (a label in `data/echo.json`, mode 600, no query saved) and All sounds shows `Audible` (or `Alexa news`) on that speaker with no title and "started by the hub", instead of the stale song. There is no book title or chapter: Amazon does not send one. For Pandora, Amazon Music and TuneIn the real title shows as usual and the label only supplies the app's name (and `KERA 90.1` for the first seconds). Started on `everywhere`, the device reads "Everywhere".
+
+**When the label clears.** On `./hub echo stop`; when something else clearly starts on that speaker (a new picture or title, Spotify, another app); after 6 hours; and for Pandora, Amazon Music and TuneIn when the speaker has been idle for 10 minutes.
+
+**Pause, skip and stop for Audible and the news.** AMP cannot control these as a media player, so while the hub's label says one of them is playing, `pause`, `resume`, `next` and `stop` are sent as spoken commands ("pause", "resume", "next", "stop") instead. Volume always uses the normal speaker volume.
+
+**Not tested yet (written from how AMP is documented):** the spoken commands on the `everywhere` group, whether AMP's `custom` voice commands include "pause" and "resume" for Audible, and the exact words AMP needs for Pandora and Amazon Music with no query.
+
+**Limits and the log.** At most 10 commands in 10 seconds (`Too many Echo commands; wait a few seconds.`). The log gets fixed words and target keys only, never a query, a speaker's name or a title: `echo: started Audible on show`, `echo: pause on dot (voice)`, `echo: volume on show`, `echo: label cleared on show (other playback)` (also `(timeout)`, `(stop)`), `echo: Home Assistant refused the token (401)`. The control API is `GET /api/echo` and `POST /api/echo` (`{ action, target?, app?, query?, level? }`); the TV cannot reach it. The mailbox commands are `echo.status`, `echo.start`, `echo.pause`, `echo.resume`, `echo.next`, `echo.stop` and `echo.volume`.
+
 ## Weekly health report (server 0.15.0)
 
 Once a week (Sundays at 3:15 AM Central) a script checks the whole Pi and writes one report, so Claude can tell you if anything is drifting before it breaks. It runs on the Pi itself, outside Docker, from a systemd **user** timer, so it needs no sudo.
@@ -590,7 +628,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.20.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.23.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 
@@ -768,7 +806,7 @@ At one look every 10 seconds the Pi makes about 8,600 list calls a day (about 26
 ### How it works (for builders)
 
 - Claude writes `inbox/<id>.json`: `{"id": "<id>", "created": "<ISO time>", "cmd": "<name>", "args": {...}}`. The id is 6 to 64 letters, digits, `_` or `-` and must match the file name; `created` must be within the last 24 hours and at most 5 minutes ahead; the file must be under 64 KB; only `id`, `created`, `cmd` and `args` are allowed.
-- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `reload`, `todo.add {title, level?, section?, due?, notes?}`, `todo.level {id or title, level}`, `todo.notes {id or title, notes}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `budget.show`, `budget.set {snapshot: {...} or null}`, `budget.clear`, `log.tail {lines?, errors?}`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
+- Commands: `show {widget, full?}`, `home`, `say {text, seconds?}`, `play {url, title?}`, `stop`, `news`, `echo.status`, `echo.start {app, target?, query?}`, `echo.pause`, `echo.resume`, `echo.next`, `echo.stop` (each `{target?}`), `echo.volume {level, target?}`, `reload`, `todo.add {title, level?, section?, due?, notes?}`, `todo.level {id or title, level}`, `todo.notes {id or title, notes}`, `todo.list`, `todo.done {id or title}`, `todo.remove {id or title}`, `calendar.status`, `calendar.refresh`, `layout.show`, `layout.set {layout: [...]}`, `layout.reset`, `awws.show`, `awws.set {snapshot: {...} or null}`, `awws.clear`, `budget.show`, `budget.set {snapshot: {...} or null}`, `budget.clear`, `log.tail {lines?, errors?}`, `status`, `ping`, `restart`. They go through the same control API, and the same checks, as `./hub`.
 - The Pi writes `outbox/<id>.json`: `{id, cmd, ok, state, message, data, started, finished}`. `message` is the same text `./hub` prints (several lines for lists). First it writes `state: "running"` as a claim, then the final result with `state: "done"`; a command with an outbox file is never run again, even after a crash. Then it deletes the inbox file.
 - At most 20 commands per look, oldest `created` first, one at a time.
 - `status.json` is rewritten every minute and after each command: version, uptime, how many screens are listening, the mailbox's last command and last error, a calendar summary (counts only), and `log: {errors24h, lastErrorAt}` (a count and a time, never log text).

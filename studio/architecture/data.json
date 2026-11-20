@@ -394,7 +394,7 @@
       },
       {
        "to": "tv.hub.core",
-       "label": "commands: show, home, say, reload",
+       "label": "commands: show, home, say, play, stop, reload",
        "dir": "out"
       },
       {
@@ -1222,7 +1222,8 @@
        "status": "unverified",
        "summary": "Shows any audio playing at home, Spotify first, otherwise what an Echo reports through Home Assistant.",
        "details": [
-        "The Pi reads Home Assistant's Alexa Media Player states and folds in Spotify into an allsounds resource. Tracks that may have ended get a may be out of date label. Tried in its own one-widget test layout."
+        "The Pi reads Home Assistant's Alexa Media Player states and folds in Spotify into an allsounds resource. Tracks that may have ended get a may be out of date label. Tried in its own one-widget test layout.",
+        "When the hub started what plays (Echo controls), it shows the app and the speaker with a quiet 'Started from the hub' line (hub v0.38.0)."
        ],
        "files": [
         "app/widgets/allsounds.js"
@@ -1626,19 +1627,21 @@
        "title": "Screen commands",
        "kind": "component",
        "status": "live",
-       "summary": "show, home, say and reload: sent to every screen that is on right now, never stored for a TV that is off.",
+       "summary": "show, home, say, play, stop and reload: sent to every screen that is on right now, never stored for a TV that is off.",
        "details": [
         "This is what makes 'TV off' safe: a command reaches 0 screens and the sender is told 'no screen is listening'. Only the poll fallback remembers commands, for 10 s, at most 20.",
-        "say can carry 'hub:working <kind> <seconds>', which the TV turns into a quiet working chip on a tile instead of showing text. The Pi passes it on unchanged."
+        "say can carry 'hub:working <kind> <seconds>', which the TV turns into a quiet working chip on a tile instead of showing text. The Pi passes it on unchanged.",
+        "play {url (http or https, up to 2048 characters), title?} has the TV play that audio through one reused audio element; stop ends it. ./hub news fetches the newest NPR News Now newscast (pi/news.js reads its public feed, a new one every hour) and sends it as play. Server 0.21.0."
        ],
        "files": [
         "pi/server.js",
-        "docs/live-updates.md"
+        "docs/live-updates.md",
+        "pi/news.js"
        ],
        "talksTo": [
         {
          "to": "tv.hub",
-         "label": "opens widgets, shows messages, reloads",
+         "label": "opens widgets, shows messages, plays audio, reloads",
          "dir": "out"
         }
        ]
@@ -1773,7 +1776,7 @@
          "status": "live",
          "summary": "Steer the TV that is on now.",
          "details": [
-          "show {widget, full?} for any of the 16 widget ids, home, reload, and say {text up to 140 characters, seconds 1 to 60}. say also carries the hub:working chip signal."
+          "show {widget, full?} for any of the 16 widget ids, home, reload, say {text up to 140 characters, seconds 1 to 60}, play {url, title?}, stop, and news (plays the newest NPR News Now newscast). say also carries the hub:working chip signal."
          ],
          "files": [
           "pi/mailbox.js"
@@ -1872,7 +1875,7 @@
      "summary": "./hub on the Pi: the command line for people and the Pi's own Claude to steer the TV and edit data.",
      "details": [
       "hubctl.js reads HUB_TOKEN and HUB_PORT from pi/.env, calls the control API on 127.0.0.1, and prints one plain sentence per result. It never prints the token, and waits about 5 s for a server that is just starting.",
-      "Commands: show, home, say, reload; todo add/list/level/notes/done/remove; calendar status/refresh; layout show/set/reset; awws and budget show/set/clear; spotify status/login/code/logout; status; mailbox status; log; token; help."
+      "Commands: show, home, say, play, stop, news, reload; echo status/start/pause/resume/next/stop/volume; todo add/list/level/notes/done/remove; calendar status/refresh; layout show/set/reset; awws and budget show/set/clear; spotify status/login/code/logout; status; mailbox status; log; token; help."
      ],
      "files": [
       "pi/hubctl.js",
@@ -2213,7 +2216,8 @@
      "summary": "An allsounds resource: whatever plays in the house, from the Echo speakers via Home Assistant, with Spotify winning when both play.",
      "details": [
       "Reads Home Assistant's /api/states (every 5 s while playing, 20 s otherwise) for the Echo media players that the Alexa Media Player add-on exposes, filtered by ALLSOUNDS_ENTITIES. Picture addresses are only public https ones, never Home Assistant's.",
-      "Feeds a one-widget 'All sounds test' layout, per Ian's rule that new widgets are tried alone first. Log lines are fixed words only: no titles, device names or anything from Amazon."
+      "Feeds a one-widget 'All sounds test' layout, per Ian's rule that new widgets are tried alone first. Log lines are fixed words only: no titles, device names or anything from Amazon.",
+      "Shows what the hub started on an Echo (Echo controls, server 0.22.0): the app and the speaker with 'Started from the hub', in place of Alexa's stale title."
      ],
      "files": [
       "pi/allsounds.js",
@@ -2240,11 +2244,55 @@
        "to": "pi.server.screen",
        "label": "pushes the allsounds resource",
        "dir": "out"
+      },
+      {
+       "to": "pi.echo",
+       "label": "labels for what the hub started",
+       "dir": "in"
       }
      ],
      "notes": [
-      "Home Assistant keeps old details when something unsupported plays (Audible, NPR briefings), so the plan adds a 'may be out of date' label. Real attribute names unverified."
+      "Home Assistant keeps old details when something unsupported plays (Audible, NPR briefings): a 'may be out of date' line, or the Echo controls' label when the hub started it."
      ]
+    },
+    {
+     "id": "pi.echo",
+     "title": "Echo controls",
+     "kind": "component",
+     "status": "draft",
+     "summary": "Starts apps on Ian's Echo speakers (Audible, Pandora, Amazon Music, TuneIn and KERA, the Alexa news briefing) and pauses, resumes, skips or sets volume, through Home Assistant's Alexa Media Player.",
+     "details": [
+      "./hub echo and the mailbox's echo.* commands POST Home Assistant services with HA_TOKEN: media_player.play_media (an Alexa custom command such as 'resume my book on Audible', a TuneIn or Amazon Music search, or the Alexa.FlashBriefing.Play sequence), media_pause, media_play, media_next_track and volume_set. Targets: the Echo Show, the Echo Dot and the Everywhere group (ECHO_TARGETS in pi/.env). Server 0.22.0.",
+      "When the hub starts an app, the Pi notes which app, which Echo and when (data/echo.json). All sounds then shows 'Audible on Ian's Echo Show' with 'Started from the hub' instead of Alexa's stale title. The note clears when something else clearly starts on that Echo, on stop, or after 6 hours. No book title or chapter.",
+      "Audible and the news briefing are not media players Alexa Media Player can drive, so pause, resume, skip and stop on them are sent as Alexa voice commands. Log lines name only the target key and the app, never a search or a speaker's name."
+     ],
+     "files": [
+      "pi/echo.js",
+      "pi/echo-test.js",
+      "pi/allsounds.js",
+      "dev/mock-ha.js"
+     ],
+     "talksTo": [
+      {
+       "to": "ext.ha",
+       "label": "calls media player services with HA_TOKEN",
+       "dir": "out"
+      },
+      {
+       "to": "ext.alexa",
+       "label": "Alexa custom commands and playback, through Home Assistant",
+       "dir": "out"
+      },
+      {
+       "to": "pi.allsounds",
+       "label": "what the hub started, for the All sounds label",
+       "dir": "out"
+      }
+     ],
+     "notes": [
+      "Not yet run against the real Echos: Alexa custom commands on the Everywhere group, and voice pause on Audible, are unverified."
+     ],
+     "pr": "PR 124"
     },
     {
      "id": "pi.deploy",
@@ -2769,6 +2817,11 @@
        "to": "ext.alexa",
        "label": "Alexa Media Player add-on lives inside it",
        "dir": "in"
+      },
+      {
+       "to": "pi.echo",
+       "label": "runs media player services for the Echos",
+       "dir": "in"
       }
      ],
      "children": [
@@ -2841,7 +2894,7 @@
      "title": "Alexa Media Player",
      "kind": "external",
      "status": "unverified",
-     "summary": "An unofficial Home Assistant add-on that lets the Pi read what Ian's Echo devices are playing. Installed; the TV side is still a draft.",
+     "summary": "An unofficial Home Assistant add-on that lets the Pi read what Ian's Echo devices are playing and, from server 0.22.0, start apps and control playback on them.",
      "details": [
       "TV apps only report their app name and SmartThings gives no title, so the Echo Show is the main way to see 'any audio'. Ian installed the add-on and did the Amazon sign-in himself inside Home Assistant; Claude never handles that login.",
       "No microphone is needed. The plant wall board's mic only gives sound levels, so it cannot recognise songs.",
@@ -2856,6 +2909,11 @@
        "to": "ext.ha",
        "label": "reports through Home Assistant's media players",
        "dir": "out"
+      },
+      {
+       "to": "pi.echo",
+       "label": "takes custom commands and playback controls",
+       "dir": "in"
       }
      ],
      "notes": [
@@ -5022,6 +5080,33 @@
     {
      "node": "sched.pi-health",
      "say": "A Claude routine reads it and flags what is out of the ordinary"
+    }
+   ]
+  },
+  {
+   "id": "flow.echo-start",
+   "title": "Resume Audible on an Echo",
+   "summary": "Draft (PR 124): the hub starts an app on an Echo, then All sounds names it.",
+   "steps": [
+    {
+     "node": "pi.echo",
+     "say": "./hub echo audible (or the mailbox's echo.start) asks for Audible on the Echo Show"
+    },
+    {
+     "node": "ext.ha",
+     "say": "Home Assistant runs media_player.play_media with the custom command"
+    },
+    {
+     "node": "ext.alexa",
+     "say": "The Echo hears 'resume my book on Audible' and plays"
+    },
+    {
+     "node": "pi.allsounds",
+     "say": "The Pi's note says Audible on that Echo, so the stale title is replaced"
+    },
+    {
+     "node": "tv.widgets",
+     "say": "All sounds shows Audible on Ian's Echo Show, started from the hub"
     }
    ]
   }

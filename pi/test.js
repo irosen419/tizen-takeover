@@ -213,7 +213,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.21.0' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.23.0' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -234,7 +234,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.21.0');
+    assert.strictEqual(r.json.server, '0.23.0');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -283,6 +283,23 @@ async function main() {
     assert.ok(/140/.test(r.json.error));
     r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'say', data: { text: 'hi', seconds: 'ten' } } });
     assert.strictEqual(r.status, 400);
+    for (const url of [undefined, '', 'ftp://example.com/a.mp3', 'javascript:alert(1)', 'https://a b.mp3', 'https://x/' + 'a'.repeat(2048)]) {
+      r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'play', data: { url: url } } });
+      assert.strictEqual(r.status, 400, String(url).slice(0, 40));
+    }
+    r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'play', data: { url: 'https://example.com/a.mp3', title: 't'.repeat(141) } } });
+    assert.strictEqual(r.status, 400);
+    assert.ok(/140/.test(r.json.error));
+  });
+
+  await check('play and stop pass the checks; play keeps the address and a cleaned title', async () => {
+    let r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'play', data: { url: ' https://example.com/a.mp3?x=1 ', title: ' Doorbell\n ' } } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.json.delivered, 0);
+    r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'play', data: { url: 'http://example.com/a.mp3' } } });
+    assert.strictEqual(r.status, 200);
+    r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'stop' } });
+    assert.strictEqual(r.status, 200);
   });
 
   await check('a command with no screens: delivered 0 at once, nothing kept', async () => {
@@ -509,7 +526,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.21.0');
+    assert.strictEqual(r.json.server, '0.23.0');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);
@@ -641,6 +658,18 @@ async function main() {
     assert.deepStrictEqual(r.json.commands[0].data, { text: 'Dinner in 10', seconds: 8 });
     assert.strictEqual(r.json.cursor, r.json.commands[0].id);
     assert.deepStrictEqual(r.json.resources, {});
+  });
+
+  await check('poll: play reaches a screen with the trimmed address and title', async () => {
+    const st = (await request(P, 'GET', '/live/state')).json;
+    const cur = (await request(P, 'GET', '/live/poll')).json.cursor;
+    const pending = request(P, 'GET', '/live/poll?epoch=' + st.epoch + '&rev=' + st.rev + '&cursor=' + cur);
+    await waitUntil(() => h._debug().polls === 1);
+    const c = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'play', data: { url: ' https://example.com/n.mp3 ', title: ' NPR News Now, 7pm ET ' } } });
+    assert.strictEqual(c.json.delivered, 1);
+    const r = await pending;
+    assert.strictEqual(r.json.commands[0].type, 'play');
+    assert.deepStrictEqual(r.json.commands[0].data, { url: 'https://example.com/n.mp3', title: 'NPR News Now, 7pm ET' });
   });
 
   await check('poll: a command sent between polls is picked up, then forgotten after the time limit', async () => {
