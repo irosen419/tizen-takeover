@@ -9,15 +9,17 @@ HUB_REPO="${HUB_REPO:-$HOME/code/tizen-takeover}"
 # so the budget's new snapshot is not dropped), and say what is running.
 hubup() {
   ( cd "$HUB_REPO" && git pull --ff-only ) || { echo "hubup: git pull failed, nothing restarted"; return 1; }
-  ( cd "$HUB_REPO/pi" && docker compose restart hub ) || { echo "hubup: hub restart failed"; return 1; }
+  ( cd "$HUB_REPO/pi" && docker compose up -d hub && docker compose restart hub ) || { echo "hubup: hub restart failed"; return 1; }
   if [ "$1" != "--no-budget" ] && systemctl --user cat budget >/dev/null 2>&1; then
     systemctl --user restart budget && echo "budget restarted"
+  else
+    echo "budget not restarted (no user service named budget here, or --no-budget)"
   fi
   sleep 3
   hubstat
 }
 
-hubrestart() { ( cd "$HUB_REPO/pi" && docker compose restart hub ) && sleep 3 && hubstat; }  # hub only, no pull
+hubrestart() { ( cd "$HUB_REPO/pi" && docker compose up -d hub && docker compose restart hub ) && sleep 3 && hubstat; }  # hub only, no pull
 budgetrestart() { systemctl --user restart budget && echo "budget restarted"; }
 hubstat() { ( cd "$HUB_REPO/pi" && ./hub status ); }
 hublog() { ( cd "$HUB_REPO/pi" && ./hub log "$@" ); }       # hublog --errors, hublog --lines 120

@@ -19,12 +19,13 @@ const POLL_MS = 3000;
 const WAIT_MS = 60000;
 
 function get(key) {
-  const r = cp.spawnSync('curl', ['-sS', '--max-time', '20', B + '/' + encodeURIComponent(key)], { encoding: 'utf8' });
+  const r = cp.spawnSync('curl', ['-sS', '--fail', '--max-time', '20', B + '/' + encodeURIComponent(key)], { encoding: 'utf8' });
+  if (r.status === 22) return null; // 4xx: object not there yet
   if (r.status !== 0) throw new Error('curl failed: ' + (r.stderr || '').trim().slice(0, 120));
   try { return JSON.parse(r.stdout); } catch (e) { return null; }
 }
 function put(key, body) {
-  const r = cp.spawnSync('curl', ['-sS', '--max-time', '20', '-X', 'PUT', B + '/' + encodeURIComponent(key),
+  const r = cp.spawnSync('curl', ['-sS', '--fail', '--max-time', '20', '-X', 'PUT', B + '/' + encodeURIComponent(key),
     '-H', 'content-type: application/json', '--data-binary', '@-'], { input: body, encoding: 'utf8' });
   if (r.status !== 0) throw new Error('curl failed: ' + (r.stderr || '').trim().slice(0, 120));
 }
@@ -36,12 +37,13 @@ function ago(iso) {
 
 function status() {
   const s = get('status.json');
-  if (!s || !s.updated) { console.log('Pi mailbox: no status file (Pi off or mailbox down).'); return 1; }
+  if (!s || !s.updated) { console.log('Pi mailbox: no status file (Pi off, or the mailbox unreachable).'); return 1; }
   const age = (Date.now() - Date.parse(s.updated)) / 1000;
   const bits = ['Pi ' + (age < 150 ? 'alive' : 'STALE') + ' (checked ' + ago(s.updated) + ' ago)'];
   if (s.version) bits.push('server ' + s.version);
-  if (s.hubVersion) bits.push('hub ' + s.hubVersion);
-  if (s.summary) bits.push(String(s.summary).slice(0, 160));
+  if (s.screensListening !== undefined) bits.push('TV screens listening: ' + (typeof s.screensListening === 'object' ? JSON.stringify(s.screensListening) : s.screensListening));
+  if (s.mailbox && s.mailbox.lastError) bits.push('mailbox error: ' + String(s.mailbox.lastError).slice(0, 100));
+  if (s.log && s.log.errors24h !== undefined) bits.push('log errors 24h: ' + s.log.errors24h);
   console.log(bits.join(', '));
   return age < 150 ? 0 : 1;
 }
@@ -52,15 +54,18 @@ function run(env) {
   env.created = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
   put('inbox/' + id + '.json', JSON.stringify(env));
   const end = Date.now() + WAIT_MS;
+  let running = false;
   while (Date.now() < end) {
     sleep(POLL_MS);
     const o = get('outbox/' + id + '.json');
+    if (o && o.state === 'running') running = true;
     if (o && o.state === 'done') {
       const msg = String(o.message || (o.ok ? 'done' : 'failed')).split('\n').slice(0, 60).join('\n');
       console.log((o.ok ? '' : 'FAILED: ') + msg);
       return o.ok ? 0 : 1;
     }
   }
+  if (running) { console.log('Still running after ' + WAIT_MS / 1000 + ' s (id ' + id + '). Do NOT resend; read outbox/' + id + '.json later.'); return 2; }
   console.log('No answer after ' + WAIT_MS / 1000 + ' s (id ' + id + '). Run: node dev/hub-remote.js status');
   return 2;
 }
