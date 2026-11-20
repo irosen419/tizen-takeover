@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.38.4';
+  var BUILD = 'v0.38.5';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -3004,6 +3004,29 @@
   var audioUnlocked = false;
   var audioUnlocking = false;
   var playWaiting = null; // { shown, at } while a refused play waits for a key
+  var audioNow = null;     // { url, title } of the real sound loaded, or null
+  var audioWatchers = [];
+  // A layout switch (or an update) loads the page afresh; sound playing then
+  // carries on from where it was if the page comes back within a minute.
+  var AUDIO_RESUME_KEY = 'homeHub.audio.resume';
+  var AUDIO_RESUME_MS = 60 * 1000;
+
+  function audioChanged() {
+    for (var i = 0; i < audioWatchers.length; i++) {
+      try { audioWatchers[i](); } catch (e) { liveWarn('audio watcher failed: ' + (e && e.message)); }
+    }
+  }
+
+  // window.HUB_AUDIO, for widgets (All sounds): what the TV itself plays.
+  // now() is null, or { state: 'playing'|'paused'|'waiting', title }.
+  window.HUB_AUDIO = {
+    now: function () {
+      if (!audioNow || !liveAudio || liveAudio.ended) return null;
+      var state = playWaiting ? 'waiting' : liveAudio.paused ? 'paused' : 'playing';
+      return { state: state, title: audioNow.title };
+    },
+    onChange: function (fn) { if (typeof fn === 'function') audioWatchers.push(fn); }
+  };
 
   function audioEl() {
     if (liveAudio) return liveAudio;
@@ -3013,8 +3036,18 @@
       var src = liveAudio.getAttribute('src');
       if (!src || src === SILENT_CLIP) return;
       playWaiting = null;
+      audioNow = null;
+      audioChanged();
       liveWarn('play failed: the audio could not be loaded');
       toast(hubWord('playFailed', 'Could not play that audio'), 5000);
+    });
+    var real = function () { var src = liveAudio.getAttribute('src'); if (src && src !== SILENT_CLIP) audioChanged(); };
+    liveAudio.addEventListener('playing', real);
+    liveAudio.addEventListener('pause', real);
+    liveAudio.addEventListener('ended', function () {
+      if (liveAudio.getAttribute('src') === SILENT_CLIP) return;
+      audioNow = null;
+      audioChanged();
     });
     return liveAudio;
   }
@@ -3032,10 +3065,14 @@
   }
 
   function liveStop() {
+    var had = !!audioNow;
     playWaiting = null;
-    if (!liveAudio) return;
-    try { liveAudio.pause(); } catch (e) {}
-    try { liveAudio.removeAttribute('src'); liveAudio.load(); } catch (e2) {}
+    audioNow = null;
+    if (liveAudio) {
+      try { liveAudio.pause(); } catch (e) {}
+      try { liveAudio.removeAttribute('src'); liveAudio.load(); } catch (e2) {}
+    }
+    if (had) audioChanged();
   }
 
   function livePlay(data) {
@@ -3046,14 +3083,53 @@
     title = title.replace(/^\s+|\s+$/g, '').substring(0, 140);
     liveStop();
     audioEl().src = url;
+    audioNow = { url: url, title: title };
+    // Carrying on after a reload: from the second it was at, without a toast.
+    var from = typeof data.from === 'number' && data.from > 0 ? data.from : 0;
+    if (from) {
+      var seek = function () {
+        liveAudio.removeEventListener('loadedmetadata', seek);
+        try { if (liveAudio.getAttribute('src') === url) liveAudio.currentTime = from; } catch (e) {}
+      };
+      liveAudio.addEventListener('loadedmetadata', seek);
+    }
     var shown = playingText(title);
-    startAudio(function () { audioUnlocked = true; toast(shown, 6000); }, function (err) {
+    startAudio(function () { audioUnlocked = true; if (!data.quiet) toast(shown, 6000); }, function (err) {
       if (liveAudio.getAttribute('src') !== url) return; // replaced or stopped meanwhile
       liveWarn('play refused: ' + (err && (err.name || err.message)) + '; waiting for a key press');
       playWaiting = { shown: shown, at: new Date().getTime() };
+      audioChanged();
       toast(hubWord('playPressKey', 'Press any button on the remote to start the sound'), 8000);
     });
+    audioChanged();
   }
+
+  // Before the page goes (a layout switch, an update, a reload): note what is
+  // playing. On the next load within a minute it carries on.
+  window.addEventListener('beforeunload', function () {
+    try {
+      if (!window.sessionStorage) return;
+      if (!audioNow || !liveAudio || liveAudio.paused || liveAudio.ended) { sessionStorage.removeItem(AUDIO_RESUME_KEY); return; }
+      sessionStorage.setItem(AUDIO_RESUME_KEY, JSON.stringify({
+        url: audioNow.url, title: audioNow.title, from: liveAudio.currentTime || 0, at: new Date().getTime()
+      }));
+    } catch (e) { /* no note: the sound simply ends with the page */ }
+  });
+
+  (function resumeAudio() {
+    var note = null;
+    try {
+      if (!window.sessionStorage) return;
+      note = JSON.parse(sessionStorage.getItem(AUDIO_RESUME_KEY) || 'null');
+      sessionStorage.removeItem(AUDIO_RESUME_KEY);
+    } catch (e) { return; }
+    if (!note || typeof note.url !== 'string' || typeof note.at !== 'number') return;
+    var age = new Date().getTime() - note.at;
+    if (age < 0 || age > AUDIO_RESUME_MS) return;
+    setTimeout(function () {
+      try { livePlay({ url: note.url, title: note.title, from: Number(note.from) || 0, quiet: true }); } catch (e) { liveWarn('resume failed: ' + (e && e.message)); }
+    }, 0);
+  })();
 
   // Every key press (capture phase, nothing is stopped or changed): start a
   // play that is waiting, or unlock the audio element once.
@@ -3062,8 +3138,9 @@
       var w = playWaiting;
       playWaiting = null;
       if (new Date().getTime() - w.at > PLAY_WAIT_MS || !liveAudio || !liveAudio.getAttribute('src')) return;
-      startAudio(function () { audioUnlocked = true; toast(w.shown, 6000); }, function (err) {
+      startAudio(function () { audioUnlocked = true; audioChanged(); toast(w.shown, 6000); }, function (err) {
         liveWarn('play refused again after a key press: ' + (err && (err.name || err.message)));
+        liveStop();
         toast(hubWord('playNoStart', 'Could not start the audio'), 5000);
       });
       return;

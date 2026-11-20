@@ -162,7 +162,9 @@ const tileText = (page) => page.evaluate(() => {
 const waitKind = (page, kind, title) => until(async () => {
   const t = await tileText(page);
   return t.kind === kind && (!title || t.title === title) ? t : false;
-}, 6000, 'the tile never showed ' + kind + (title ? ' "' + title + '"' : ''));
+}, 6000, 'the tile never showed ' + kind + (title ? ' "' + title + '"' : '')).catch(async (e) => {
+  throw new Error(e.message + ' (it shows ' + JSON.stringify(await tileText(page)) + ')');
+});
 
 // Anything that sticks out of the tile, overlapping words, tight line heights.
 function problems(page, rootSel) {
@@ -453,6 +455,53 @@ async function main() {
       await s2.context.close();
     }
     await stopPi(p2);
+    assert(!bad.length, bad.join(' | '));
+  });
+
+  await check('sound the TV plays itself (./hub news) comes first, "Living room TV" as the speaker, every size, English and Spanish; stop gives the Echo back', async () => {
+    const n = 8000 * 30;
+    const wav = Buffer.alloc(44 + n, 128);
+    wav.write('RIFF', 0); wav.writeUInt32LE(36 + n, 4); wav.write('WAVE', 8); wav.write('fmt ', 12);
+    wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(8000, 24);
+    wav.writeUInt32LE(8000, 28); wav.writeUInt16LE(1, 32); wav.writeUInt16LE(8, 34); wav.write('data', 36); wav.writeUInt32LE(n, 40);
+    const audio = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wav.length }); res.end(wav); });
+    await new Promise((r) => audio.listen(0, '127.0.0.1', r));
+    const url = 'http://127.0.0.1:' + audio.address().port + '/news.wav';
+    const p5 = await startPi(true);
+    await house(p5, 'stale');
+    await control(p5, 'POST', '/api/echo', { action: 'start', app: 'audible', target: 'show' });
+    await p5.h.allsounds.poll();
+    const bad = [];
+    try {
+      for (const lang of ['en', 'es', 'es+25']) {
+        const s = await open(p5, TEST_LAYOUT, { lang: lang === 'en' ? 'en' : 'es' });
+        await waitKind(s.page, 'playing', 'Audible');
+        const r = await control(p5, 'POST', '/api/command', { type: 'play', data: { url: url, title: 'NPR News Now, 8pm ET, November 19' } });
+        assert(r.delivered === 1, 'play: ' + JSON.stringify(r));
+        const t = await waitKind(s.page, 'playing', 'NPR News Now');
+        if (lang !== 'es+25') {
+          assert(t.sub === '8pm ET, November 19', lang + ' sub: ' + t.sub);
+          assert(t.device === (lang === 'en' ? 'Living room TV' : 'Televisor de la sala'), lang + ' device: ' + t.device);
+          assert(t.stale === null && t.plat === null, lang + ' extra lines: ' + JSON.stringify(t));
+          if (SHOTS) await sleep(7000);   // the "Playing" toast has gone, so only the tile differs
+          await shot(s.page, 'allsounds-tv-' + lang + '.png');
+        }
+        await control(p5, 'POST', '/api/command', { type: 'stop', data: {} });
+        await waitKind(s.page, 'playing', 'Audible');
+        await s.context.close();
+        const s2 = await open(p5, ONLY(SIZES[0][0], SIZES[0][1]), { lang: lang === 'en' ? 'en' : 'es' });
+        await waitKind(s2.page, 'playing');   // the smallest size has no words
+        await control(p5, 'POST', '/api/command', { type: 'play', data: { url: url, title: 'NPR News Now, 8pm ET, November 19' } });
+        await until(() => s2.page.evaluate(() => { const n = window.HUB_AUDIO.now(); return !!n && n.state === 'playing'; }), 5000, 'the TV did not play');
+        if (lang === 'es+25') await longerSpanish(s2.page);
+        bad.push.apply(bad, await sizeSweep(p5, s2, 'tv ' + lang));
+        assert(s2.errors.length === 0, 'page errors: ' + s2.errors.join(' | '));
+        await s2.context.close();
+      }
+    } finally {
+      await stopPi(p5);
+      audio.close();
+    }
     assert(!bad.length, bad.join(' | '));
   });
 
