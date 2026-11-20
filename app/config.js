@@ -193,6 +193,19 @@ var HUB_CONFIG = {
        openSolo). The id still says test so a saved pick still matches. */
     { id: 'architecture-test', name: 'Hub architecture', layout: [
       { widget: 'architecture', x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    /* A test layout: Groceries (app/widgets/grocery.js, the list kept on the
+       Pi) among everyday tiles, so its panel opens in place and pushes them
+       aside. Not alone at 12x6: that would open straight to full screen. */
+    { id: 'grocery-test', name: 'Groceries test', layout: [
+      { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
+      { widget: 'grocery',       x: 3, y: 0, w: 3, h: 4 },
+      { widget: 'calendar',      x: 6, y: 0, w: 3, h: 4 },
+      { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
+      { widget: 'todo',          x: 0, y: 2, w: 3, h: 4 },
+      { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
+      { widget: 'entertainment', x: 3, y: 4, w: 6, h: 2 },
+      { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 }
     ] }
   ],
 
@@ -520,8 +533,9 @@ var HUB_CONFIG = {
     /*
      * Groceries: the grocery list kept on the Pi (app/widgets/grocery.js).
      * touch: true = it has a phone and tablet view in the touch app
-     * (app/touch.html, served by the Pi at http://<Pi>:8097/). No TV tile
-     * yet, so it is in no layout; every other widget shows there as "TV only".
+     * (app/touch.html, served by the Pi at http://<Pi>:8097/); every other
+     * widget shows there as "TV only". The TV tile is on the "Groceries
+     * test" layout only; its changes need Pi server 0.26.1.
      */
     grocery: { touch: true },
 

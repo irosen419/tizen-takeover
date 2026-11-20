@@ -1337,6 +1337,37 @@
        "notes": [
         "Not yet seen on the real TV: Chrome 63 drawing of the connector lines and the drawer slide are only checked in headless Chromium."
        ]
+      },
+      {
+       "id": "tv.widgets.grocery",
+       "title": "Groceries",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "The grocery list on the TV: the count and first items on the tile; a panel to add, tick, remove and clear with the remote. On the \"Groceries test\" layout.",
+       "details": [
+        "Same file as the touch view (app/widgets/grocery.js, shared logic HUB_GROCERY). Tile: 1 column the count, strip \"3 left · Milk\", 2+ rows the count, the first items that fit (ticked ones dimmed) and \"+N more · 2 in the cart\". Panel: Add box (commas add several), To get rows (OK ticks, Right to Remove, OK twice), In the cart with Clear ticked.",
+        "No copy on the TV: the list comes over the live line (resource grocery), each change is posted to POST /grocery/ops, shown at once and taken back with a toast if the Pi refuses or does not answer. Nothing is queued. A 'grocery' activity chip when someone else adds an item."
+       ],
+       "files": [
+        "app/widgets/grocery.js",
+        "app/widgets/grocery.css",
+        "dev/grocery-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "tv.live",
+         "label": "grocery resource in over the live line",
+         "dir": "in"
+        },
+        {
+         "to": "pi.server.resources.grocery",
+         "label": "POST /grocery/ops out (server 0.26.1)",
+         "dir": "out"
+        }
+       ],
+       "notes": [
+        "Writes need Pi server 0.26.1 (it answers the TV's CORS preflight); an older server shows the list but every change says it didn't save. Not yet tried on the TV."
+       ]
       }
      ]
     },
@@ -1643,8 +1674,8 @@
          "status": "unverified",
          "summary": "The grocery list: up to 200 items, each a name (60 characters) and a tick. Ticked items stay 48 hours, then go.",
          "details": [
-          "Written by the touch app (POST /grocery/ops), by ./hub grocery and by the mailbox's grocery.* commands (both through POST /api/grocery/ops). Ops: add (a name already there is not doubled; a ticked one comes back), check, remove, clear.",
-          "The log counts changes and never names an item. No TV tile yet (PR 2).",
+          "Written by the touch app and the TV (both POST /grocery/ops; the TV's page is another origin, so server 0.26.1 answers its preflight), by ./hub grocery and by the mailbox's grocery.* commands (both through POST /api/grocery/ops). Ops: add (a name already there is not doubled; a ticked one comes back), check, remove, clear.",
+          "Reaches the TV over the live line like every resource. The log counts changes ('screen' or 'touch app') and never names an item.",
           "Items carry an optional upc (a catalog key). { op: add, upc } with no name takes \"Brand Name\" from the products catalog; the same code is not doubled (a ticked one comes back), and a typed item of the same name gets the code. /touch/state carries the catalog products of the codes on the list."
          ],
          "files": [
@@ -1667,6 +1698,11 @@
            "to": "pi.products",
            "label": "product names and the export",
            "dir": "in"
+          },
+          {
+           "to": "tv.widgets.grocery",
+           "label": "live line in, POST /grocery/ops back",
+           "dir": "both"
           }
          ]
         }
@@ -2523,7 +2559,7 @@
      "title": "Pi serves the app",
      "kind": "component",
      "status": "unverified",
-     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state and POST /grocery/ops.",
+     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state and POST /grocery/ops (the TV posts there too).",
      "details": [
       "Docker mounts ../app read only at /webapp (HUB_APP_DIR). Only known file types, no dotfiles, nothing outside the folder.",
       "Home, Tailscale and loopback addresses only, even when HUB_TV_IPS names the TV; a phone is never counted as a screen. A POST needs no token but must come from the page's own address (same-Host Origin) or HUB_ORIGINS."
@@ -5485,6 +5521,10 @@
     {
      "node": "pi.touchapp.shell",
      "say": "Other phones see the change within 3 seconds"
+    },
+    {
+     "node": "tv.widgets.grocery",
+     "say": "The TV's Groceries tile gets it over the live line; a tick on the TV goes back the same way"
     }
    ]
   },

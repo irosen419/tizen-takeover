@@ -233,7 +233,7 @@ function checkFiles() {
   assert(/widgets\/architecture\.css/.test(html) && /widgets\/architecture\.js/.test(html), 'hub.html does not link the files');
   assert(!/architecture-data/.test(html), 'hub.html loads the data at boot');
   const order = fs.readFileSync(path.join(ROOT, 'dev/styles-test.js'), 'utf8');
-  assert(/widgets\/ambience\.css widgets\/architecture\.css widgets\/investments\.css agents\.css/.test(order), 'styles-test ORDER lacks architecture.css');
+  assert(/widgets\/ambience\.css widgets\/architecture\.css widgets\/investments\.css (widgets\/[\w-]+\.css )*agents\.css/.test(order), 'styles-test ORDER lacks architecture.css');
   assert(html.indexOf('architecture.css') > html.indexOf('ambience.css') && html.indexOf('investments.css') < html.indexOf('agents.css'), 'hub.html order differs from ORDER');
   const out = childProcess.spawnSync(process.execPath, [path.join(ROOT, 'studio/build-architecture.js'), '--check'], { encoding: 'utf8' });
   assert(out.status === 0, 'build-architecture --check: ' + out.stdout);

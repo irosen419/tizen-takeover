@@ -11,7 +11,8 @@
  *   POST /todo/ops       to-do changes made on the TV
  *   GET  /touch/state    the touch app's data (grocery, and the catalog products of the
  *                        codes on it; no screen is registered)
- *   POST /grocery/ops    grocery changes made in the touch app ({ op: 'add', upc } names
+ *   POST /grocery/ops    grocery changes made in the touch app or on the TV (it answers the
+ *                        browser's OPTIONS preflight for an Origin on HUB_ORIGINS) ({ op: 'add', upc } names
  *                        the item from the products catalog)
  *   GET  /products/lookup?upc=<code>&format=<hint>   a scanned code: the catalog, then the
  *                        web (products.js) -> { ok, upc, found, product }; needs a same-host
@@ -127,7 +128,7 @@ const translate = require('./translate');
 const grocery = require('./grocery');
 const products = require('./products');
 
-const SERVER_VERSION = '0.26.0';
+const SERVER_VERSION = '0.27.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1838,12 +1839,22 @@ function start(options) {
     });
   }
 
-  // GET /touch/state, POST /grocery/ops and the products routes. Unlike
+  // GET /touch/state, POST /grocery/ops and the products routes (the TV's grocery tile posts to /grocery/ops too, from another origin, so the browser asks with OPTIONS first). Unlike
   // /live/state this never registers the caller as a screen (so a phone is
   // not taken for the TV) and carries only what the touch app shows.
   function touch(req, res, route, query) {
     const cors = corsHeaders(req);
     if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
+    if (req.method === 'OPTIONS' && route === '/grocery/ops') {
+      const h = Object.assign({ 'Cache-Control': 'no-store', 'Content-Length': 0 }, cors);
+      if (cors['Access-Control-Allow-Origin']) {
+        h['Access-Control-Allow-Methods'] = 'POST';
+        h['Access-Control-Allow-Headers'] = 'Content-Type';
+        h['Access-Control-Max-Age'] = '600';
+      }
+      res.writeHead(204, h);
+      return res.end();
+    }
     const image = route.indexOf('/products/image/') === 0;
     const want = route === '/grocery/ops' || route === '/products/save' ? 'POST' : 'GET';
     const okMethod = req.method === want || (image && req.method === 'HEAD');
@@ -1885,7 +1896,9 @@ function start(options) {
       try {
         const r = groceryOps(body);
         sendJson(res, 200, r, cors);
-        log('touch app changed the grocery list (rev ' + state.rev + ')');
+        // A listed Origin is the TV's page; the touch app names the Pi itself.
+        const who = req.headers.origin && origins.indexOf(req.headers.origin) >= 0 ? 'screen' : 'touch app';
+        log(who + ' changed the grocery list (rev ' + state.rev + ')');
       } catch (e) {
         fail(res, e, cors);
       }

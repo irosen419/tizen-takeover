@@ -222,6 +222,27 @@ async function main() {
     assert.notStrictEqual(r.status, 403);
   });
 
+  await check('the TV (a listed Origin): OPTIONS preflight answered, its POST works and is logged as a screen', async () => {
+    const tv = { Origin: 'http://127.0.0.1:8081', 'x-test-ip': '192.168.1.50' };
+    let r = await request(P, 'OPTIONS', '/grocery/ops', { headers: Object.assign({ 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' }, tv) });
+    assert.strictEqual(r.status, 204);
+    assert.strictEqual(r.headers['access-control-allow-origin'], 'http://127.0.0.1:8081');
+    assert.ok(/POST/.test(r.headers['access-control-allow-methods']), 'allows POST');
+    assert.ok(/Content-Type/i.test(r.headers['access-control-allow-headers']), 'allows Content-Type');
+    r = await request(P, 'OPTIONS', '/grocery/ops', { headers: { Origin: 'http://evil.example', 'x-test-ip': '192.168.1.50' } });
+    assert.strictEqual(r.status, 204);
+    assert.ok(!r.headers['access-control-allow-origin'], 'no CORS header for a foreign site');
+    assert.strictEqual((await request(P, 'OPTIONS', '/grocery/ops', { headers: { Origin: 'http://127.0.0.1:8081', 'x-test-ip': '8.8.8.8' } })).status, 403);
+    assert.strictEqual((await request(P, 'OPTIONS', '/touch/state', { headers: tv })).status, 405);
+    const n = h.lines.length;
+    r = await request(P, 'POST', '/grocery/ops', { headers: tv, body: { ops: [{ op: 'add', name: 'Private pickles' }] } });
+    assert.strictEqual(r.status, 200, r.text);
+    assert.strictEqual(r.headers['access-control-allow-origin'], 'http://127.0.0.1:8081');
+    const added = h.lines.slice(n);
+    assert.ok(added.some((l) => /screen changed the grocery list/.test(l)), added.join(' | '));
+    assert.ok(!h.lines.some((l) => /Private pickles/.test(l)), 'a name in the log');
+  });
+
   await check('Host: .ts.net and the Pi\'s address are fine; another site\'s name is refused', async () => {
     for (const host of ['pi.tail1234.ts.net', 'pi.tail1234.ts.net:8097', '100.101.102.103:8097', 'raspberrypi.local:8097']) {
       assert.strictEqual((await request(P, 'GET', '/touch/state', { headers: { Host: host } })).status, 200, host);
