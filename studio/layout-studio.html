@@ -987,8 +987,8 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     sunpath:       { title: 'Plant sun',             sub: 'When direct sun reaches the plant wall, with the room from above and the seasons' },
     // app/widgets/architecture.js (v0.30.1): the Architecture map on the TV, driven by the remote; alone on the "Hub architecture" layout.
     architecture:  { title: 'Architecture',          sub: 'The map of the whole system: Big picture, group diagrams and a detail drawer, with the data flows' },
-    // app/widgets/grocery.js (PR 1 of the one-app plan): the grocery list, kept on the Pi. Touch only for now (app/touch.html on a phone or tablet); its TV tile comes in PR 2, so it is in no layout.
-    grocery:       { title: 'Grocery',               sub: 'The grocery list, kept on the Pi: add, tick and clear from a phone or tablet. Touch only for now; the TV tile comes next' }
+    // app/widgets/grocery.js: the grocery list, kept on the Pi. Touch view (app/touch.html) and, since PR 2 of the one-app plan, a TV tile on the "Groceries test" layout.
+    grocery:       { title: 'Grocery',               sub: 'The grocery list, kept on the Pi: add, tick, remove and clear on the TV or from a phone or tablet' }
   };
   var BASE = [
     { id: 'today', x: 0, y: 0, w: 3, h: 2 }, { id: 'entertainment', x: 3, y: 0, w: 6, h: 2 }, { id: 'weather', x: 9, y: 0, w: 3, h: 2 },
@@ -1050,6 +1050,12 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     // v0.30.1: the Architecture widget on the whole screen, for trying the map with the remote.
     { id: 'architecture-test', name: 'Hub architecture', layout: [
       { id: 'architecture', x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    // Groceries on the TV (PR 2 of the one-app plan) among everyday tiles, so its panel opens in place.
+    { id: 'grocery-test', name: 'Groceries test', layout: [
+      { id: 'today', x: 0, y: 0, w: 3, h: 2 }, { id: 'grocery', x: 3, y: 0, w: 3, h: 4 }, { id: 'calendar', x: 6, y: 0, w: 3, h: 4 },
+      { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 2, w: 3, h: 4 }, { id: 'nowplaying', x: 9, y: 2, w: 3, h: 2 },
+      { id: 'entertainment', x: 3, y: 4, w: 6, h: 2 }, { id: 'wotd', x: 9, y: 4, w: 3, h: 2 }
     ] }
   ];
   // A preset hides the Stock tiles it leaves out, as the TV does.
@@ -1535,10 +1541,25 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     architecture: plannedEntry({ en: 'Architecture', es: 'Arquitectura' },
       { en: 'The map of the whole system on the remote: Big picture, group diagrams, a detail drawer and the data flows. Only on the “Hub architecture” layout.',
         es: 'El mapa de todo el sistema con el control remoto: panorama general, diagramas por grupo, un panel de detalles y los flujos de datos. Solo en el diseño «Arquitectura del hub».' }),
-    // app/widgets/grocery.js: touch only for now (the phone and tablet app); the TV tile comes in PR 2, so the cells say so.
-    grocery: plannedEntry({ en: 'Grocery', es: 'Supermercado' },
-      { en: 'The grocery list, kept on the Pi. On a phone or tablet (the touch app) you add, tick and clear it; Claude adds with grocery.add. No TV tile yet.',
-        es: 'La lista del súper, guardada en la Pi. En el teléfono o la tableta (la app táctil) agregas, marcas y limpias; Claude agrega con grocery.add. Todavía sin mosaico en la TV.' }),
+    // app/widgets/grocery.js: the TV tile (PR 2 of the one-app plan) over the list kept on the Pi; the phone and tablet view is the touch app. Item names are made up.
+    grocery: {
+      title: { en: 'Groceries', es: 'Lista del súper' },
+      sample: {
+        en: { n: '5', cap: 'to get', left: '5 left', items: ['Milk', 'Sourdough bread', 'Bananas', 'Oat milk', 'Coffee beans'], ticked: ['Eggs', 'Spinach'],
+              moreStd: '+5 more · 2 in the cart', foot: '2 in the cart', add: 'Milk, eggs, bread', ok: 'OK to type', secs: ['To get', 'In the cart'], clear: 'Clear ticked', remove: 'Remove', sub: '5 to get' },
+        es: { n: '5', cap: 'por comprar', left: 'quedan 5', items: ['Milk', 'Sourdough bread', 'Bananas', 'Oat milk', 'Coffee beans'], ticked: ['Eggs', 'Spinach'],
+              moreStd: '+5 más · 2 en el carrito', foot: '2 en el carrito', add: 'Leche, huevos, pan', ok: 'OK para escribir', secs: ['Por comprar', 'En el carrito'], clear: 'Quitar marcados', remove: 'Quitar', sub: '5 por comprar' }
+      },
+      strip: { en: '“5 left · Milk” (the next item; its name ends in “…” when long). Empty: “List is empty”; all ticked: “All in the cart”. 1 column: the count alone.',
+               es: '«quedan 5 · Milk» (lo siguiente; un nombre largo termina en «…»). Vacía: «La lista está vacía»; todo marcado: «Todo está en el carrito». 1 columna: solo la cuenta.' },
+      standard: { en: 'The count (“5 to get”), then the first items that fit, to get first and ticked ones dimmed, and “+5 more · 2 in the cart”.',
+                  es: 'La cuenta («5 por comprar»), luego lo primero que quepa, primero lo que falta y lo marcado atenuado, y «+5 más · 2 en el carrito».' },
+      tall: { en: 'Standard with the count bigger and more rows: every item when they fit, ticked ones struck through at the end, then “2 in the cart”. Without the Pi it waits quietly (“The list lives on the Pi”).',
+              es: 'Estándar con la cuenta más grande y más filas: todo cuando cabe, lo marcado tachado al final y «2 en el carrito». Sin la Pi espera en silencio («La lista se guarda en la Pi»).' },
+      panel: { en: 'Opens in place. An Add box (OK to type; commas add several; “Already on the list” and “At most 60 characters” as toasts), To get rows (OK ticks at once; Right goes to the row’s Remove, OK twice removes), then In the cart with Clear ticked. Every change shows at once and goes back with a toast if the Pi says no.',
+               es: 'Se abre en su lugar. Un cuadro para agregar (OK para escribir; con comas agregas varios; «Ya está en la lista» y «Máximo 60 caracteres» como avisos), las filas Por comprar (OK marca al momento; Derecha va a Quitar de esa fila, OK dos veces quita) y En el carrito con Quitar marcados. Cada cambio se ve al momento y se deshace con un aviso si la Pi dice que no.' },
+      full: { en: 'The same list, bigger.', es: 'La misma lista, más grande.' }
+    },
     // app/widgets/investments.js (v0.36.0). Standalone: in no layout. Figures are made up. In guest mode every dollar is replaced by percentages.
     investments: {
       title: { en: 'Investments', es: 'Inversiones' },
@@ -2285,6 +2306,13 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     return '<div class="bu-grow am-r"><span class="l1">' + esc(l[0]) + '</span>' + (l[2] === 'switch' ? '<span></span>' : buMeter(l[1] / 100, 'bu-warn')) + state + '</div>';
   }
   var X_TILE = {
+    grocery: function (S, T, tier, cls, id) {
+      var row = function (t, done) { return '<div class="rw"' + (done ? ' style="opacity:.55;text-decoration:line-through"' : '') + '><span class="tick" style="border-radius:.2em"></span><div class="l1">' + esc(t) + '</div></div>'; };
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b>' + esc(S.left) + '</b><span class="mu"> · ' + esc(S.items[0]) + '</span></div></div>';
+      var h = head(id, T) + '<div class="td-hero"><span class="big td-num">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.cap) + '</span></div>';
+      if (tier === 'standard') return '<div class="' + cls + '">' + h + '<div class="rows td">' + row(S.items[0]) + row(S.items[1]) + '</div><div class="more l1">' + esc(S.moreStd) + '</div></div>';
+      return '<div class="' + cls + '">' + h + '<div class="rows td">' + S.items.map(function (t) { return row(t); }).join('') + S.ticked.map(function (t) { return row(t, true); }).join('') + '</div><div class="more l1">' + esc(S.foot) + '</div></div>';
+    },
     ambience: function (S, T, tier, cls, id) {
       if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b>' + esc(S.big) + '</b><span class="mu"> \u00b7 ' + esc(S.meta) + '</span> ' + amDots(S) + '</div></div>';
       var h = head(id, T) + '<div class="am-glow"></div><div class="big c2" style="font-size:calc(var(--r) * 2.2)">' + esc(S.big) + '</div><div class="l1">' + amDots(S) + '<span class="mu"> ' + esc(S.meta) + '</span></div>';
@@ -2353,6 +2381,13 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
     }
   };
   var X_PANEL = {
+    grocery: function (S, full) {
+      var row = function (t, done, focus) { return '<div class="prow' + (done ? ' done' : '') + '"><span class="tick" style="border-radius:.2em"></span><span class="l1" style="flex:1 1 auto">' + esc(t) + '</span>' +
+        (focus ? '<span class="chipb l1">' + esc(S.remove) + ' ×</span>' : '<span class="mu">×</span>') + '</div>'; };
+      var add = '<div class="add">' + ic('plus') + '<span class="l1 sm" style="flex:1 1 auto">' + esc(S.add) + '</span><span class="l1 xs mu">' + esc(S.ok) + '</span></div>';
+      return add + '<div class="secl"><span class="l1">' + esc(S.secs[0]) + '</span><span>5</span></div>' + S.items.map(function (t, j) { return row(t, false, j === 1); }).join('') +
+        '<div class="secl"><span class="l1">' + esc(S.secs[1]) + '</span><span>2</span><span class="chipb l1" style="margin-left:auto">' + esc(S.clear) + '</span></div>' + S.ticked.map(function (t) { return row(t, true); }).join('');
+    },
     ambience: function (S, full) {
       var cards = '<div class="pp-tabs">' + S.scenes.map(function (n, i) { return '<span class="chipb l1' + (i ? '' : ' on') + '">' + esc(n) + '</span>'; }).join('') + '</div>';
       return '<div class="xs bu-warn l1">' + esc(S.note) + '</div><div class="secl"><span class="l1">' + esc(S.heads[0]) + '</span></div>' + cards +
