@@ -41,11 +41,16 @@ const PLACES = [
 ];
 
 function current(p) {
-  const m = read(p.file).match(p.re);
-  return m ? m[2] : null;
+  const re = new RegExp(p.re.source, 'g');
+  const found = [];
+  let m;
+  while ((m = re.exec(read(p.file))) && (!p.all || found.length < p.all)) found.push(m[2]);
+  if (p.all && found.length < p.all) return 'only ' + found.length + ' of ' + p.all + ' version spots found';
+  return found.every((v) => v === found[0]) ? found[0] : found.join(' / ');
 }
 
 function writeAll(version) {
+  const out = [];
   PLACES.forEach((p) => {
     let text = read(p.file);
     let n = 0;
@@ -56,9 +61,11 @@ function writeAll(version) {
       if (p.all && n > p.all) return all;
       return a + version + c;
     });
-    if (!n) throw new Error('could not find the version in ' + p.file);
-    if (!DRY) fs.writeFileSync(abs(p.file), text);
+    if (!n || (p.all && n < p.all)) throw new Error('could not find the version in ' + p.file + ' (nothing was changed)');
+    out.push([p.file, text]);
   });
+  // Every file checked first, so a miss never leaves the version half-stamped.
+  if (!DRY) out.forEach((o) => fs.writeFileSync(abs(o[0]), o[1]));
 }
 
 function mainVersion() {

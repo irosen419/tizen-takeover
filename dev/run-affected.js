@@ -7,7 +7,7 @@
  *   npm test -- --failed          run again only the suites that failed last time
  *   npm test -- --full            every suite (slow: the full set takes 45+ minutes)
  *   npm test -- --base=<ref>      compare against another ref
- *   npm test -- foo bar           run dev/foo-test.js and dev/bar-test.js (or pi/foo-test.js)
+ *   npm test -- foo bar           run dev/foo-test.js and dev/bar-test.js (and pi/foo-test.js when it exists)
  *
  * Suites run one after another (each browser suite uses fixed ports). A failing
  * suite prints its last lines; a passing one prints a single "ok" line.
@@ -30,7 +30,7 @@ const args = process.argv.slice(2);
 const flag = (n) => args.indexOf('--' + n) >= 0;
 const opt = (n) => { const a = args.find((x) => x.indexOf('--' + n + '=') === 0); return a ? a.slice(n.length + 3) : ''; };
 const names = args.filter((a) => a.indexOf('--') !== 0);
-const FAILED_FILE = path.join(os.tmpdir(), 'hub-run-affected-failed.json');
+const FAILED_FILE = path.join(os.tmpdir(), 'hub-run-affected-failed-' + require('crypto').createHash('md5').update(root).digest('hex').slice(0, 8) + '.json');
 const TIMEOUT_MS = 20 * 60 * 1000;
 
 function listSuites() {
@@ -97,14 +97,19 @@ const sourceCache = {};
 function suiteMentions(suite, rel) {
   if (!sourceCache[suite]) sourceCache[suite] = fs.readFileSync(path.join(root, suite), 'utf8');
   const base = path.basename(rel);
-  // "app/widgets/weather.css" or "widgets/weather.css" or a require of the bare file name.
-  return sourceCache[suite].indexOf(rel) >= 0 || sourceCache[suite].indexOf(base) >= 0 && base.length > 8 && !/^(hub|config|style|theme)\./.test(base);
+  const src = sourceCache[suite];
+  if (src.indexOf(rel) >= 0) return true;
+  if (/^(hub|config|style|theme)\./.test(base)) return false;
+  if (base.length > 8 && src.indexOf(base) >= 0) return true;
+  // require('./awws-harness') and require('./version') leave the .js off.
+  const stem = base.replace(/\.js$/, '');
+  return /\.js$/.test(base) && (src.indexOf("'./" + stem + "'") >= 0 || src.indexOf("'../" + path.dirname(rel) + "/" + stem + "'") >= 0 || src.indexOf("'../" + rel.replace(/\.js$/, '') + "'") >= 0);
 }
 
 function pick(files) {
   const chosen = {};
   const why = {};
-  const add = (s, f) => { if (ALL.indexOf(s) >= 0) { chosen[s] = 1; (why[s] = why[s] || []).push(f); } };
+  const add = (s, f) => { if (ALL.indexOf(s) >= 0) { chosen[s] = 1; why[s] = why[s] || []; if (why[s].indexOf(f) < 0) why[s].push(f); } };
   files.forEach((f) => {
     if (ALL.indexOf(f) >= 0) add(f, f);
     const stem = path.basename(f).replace(/\.[a-z]+$/, '');
@@ -144,7 +149,12 @@ function run(suite) {
     try { suites = JSON.parse(fs.readFileSync(FAILED_FILE, 'utf8')); } catch (e) { suites = []; }
     if (!suites.length) { console.log('No failed suites recorded. Run: npm test'); return; }
   } else if (names.length) {
-    suites = names.map((n) => (/\//.test(n) ? n : ALL.filter((s) => s === 'dev/' + n + '-test.js' || s === 'pi/' + n + '-test.js')[0] || n)).map((n) => (/\.js$/.test(n) ? n : n + '-test.js'));
+    suites = [];
+    names.forEach((n) => {
+      n = n.replace(/\.js$/, '').replace(/-test$/, '');
+      const hits = ALL.filter((s) => s === n + '-test.js' || s === n + '.js' || s === 'dev/' + n + '-test.js' || s === 'pi/' + n + '-test.js');
+      (hits.length ? hits : [n + '-test.js']).forEach((s) => { if (suites.indexOf(s) < 0) suites.push(s); });
+    });
   } else {
     const files = changedFiles();
     const p = pick(files);
