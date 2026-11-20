@@ -174,6 +174,11 @@ async function main() {
     assert.strictEqual(P('https://m.media-amazon.com/x.jpg', 'iHeartRadio'), 'iHeartRadio', 'a station naming itself beats Amazon\'s catch-all host');
     assert.strictEqual(P('https://i.scdn.co/x', 'Pandora'), 'Spotify', 'a real artist called Pandora on Spotify art stays Spotify');
     assert.strictEqual(allsounds.inferPlatform(null), '');
+    // An audiobook: the author as "By ..." with Amazon's picture is Audible.
+    assert.strictEqual(P('https://m.media-amazon.com/images/I/x.jpg', 'By Pierce Brown'), 'Audible');
+    assert.strictEqual(P('', 'by  Andy Weir'), 'Audible');
+    assert.strictEqual(P('https://i.scdn.co/image/x', 'By The Sea'), 'Spotify');
+    assert.strictEqual(P('https://m.media-amazon.com/x.jpg', 'Byrds'), 'Amazon Music');
     // A named app still wins over the inference (readEntity), and nothing keeps the host.
     const named = allsounds.readEntity(entity('l', 'playing', { media_title: 'x', source: 'TuneIn', entity_picture: 'https://i.scdn.co/x' }));
     assert.strictEqual(named.source, 'TuneIn');

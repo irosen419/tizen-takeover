@@ -221,9 +221,15 @@ function platformFromArtist(artist) {
 // The platform of an Echo entity's attributes, or '' when unknown. A picture
 // host wins, except that Amazon's (the catch-all) gives way to a station that
 // names itself as the artist.
+// An audiobook on an Echo: Alexa Media Player reports the author as the
+// artist with "By " in front ("By Pierce Brown", seen 2026-11-19 on the Echo
+// Show), and Amazon's picture host, which would otherwise say Amazon Music.
+const AUDIOBOOK_ARTIST = /^by\s+\S/i;
+
 function inferPlatform(attrs) {
   const a = isObj(attrs) ? attrs : {};
   const fromPic = platformFromPicture(a.entity_picture);
+  if ((!fromPic || fromPic === 'Amazon Music') && AUDIOBOOK_ARTIST.test(cleanText(a.media_artist, 120))) return 'Audible';
   const fromArtist = platformFromArtist(a.media_artist);
   if (fromPic && (fromPic !== 'Amazon Music' || !fromArtist)) return fromPic;
   return fromArtist || fromPic;
