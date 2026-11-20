@@ -154,6 +154,10 @@
       // An Echo still "playing" a song that should have ended a while ago
       // (the Pi decides): a small quiet line under the title.
       v.stale = d.state === 'playing' && d.from === 'echo' && d.stale === true && !!title;
+      // The hub started this on an Echo (Audible, an Alexa briefing...): the
+      // Pi shows the app, not Alexa's old title. Same quiet line, own words.
+      v.started = (d.state === 'playing' || d.state === 'paused') && d.from === 'echo' && d.started === true;
+      v.note = v.stale ? T('stale', 'May be out of date') : v.started ? T('started', 'Started from the hub') : '';
       return v;
     }
     if (d.state === 'notset') {
@@ -284,7 +288,7 @@
       el('span', 'as-label-text', card.head, v.label);
       platform(card.head, v);
       card.title = el('div', 'as-title', text, v.title);
-      card.stale = v.stale ? el('div', 'as-stale', text, T('stale', 'May be out of date')) : null;
+      card.stale = v.note ? el('div', 'as-stale', text, v.note) : null;
       card.sub = v.sub ? el('div', 'as-sub', text, v.sub) : null;
       card.meta = meta(text, v);
     } else {
@@ -387,7 +391,7 @@
       el('span', 'as-label-text', head, v.label);
       platform(head, v);
       page.title = el('div', 'as-title', info, v.title);
-      page.stale = v.stale ? el('div', 'as-stale', info, T('stale', 'May be out of date')) : null;
+      page.stale = v.note ? el('div', 'as-stale', info, v.note) : null;
       page.sub = v.sub ? el('div', 'as-sub', info, v.sub) : null;
       page.album = v.album ? el('div', 'as-album', info, v.album) : null;
       var foot = el('div', 'as-foot', info);
@@ -430,7 +434,7 @@
     var L = window.HUB_I18N;
     var lang = '';
     try { lang = L && L.lang ? L.lang() : ''; } catch (e) { lang = ''; }
-    return JSON.stringify([lang, v.kind, v.label, v.title, v.sub, v.album, v.source, v.device, v.art, v.msg, v.hint, !!v.stale]);
+    return JSON.stringify([lang, v.kind, v.label, v.title, v.sub, v.album, v.source, v.device, v.art, v.msg, v.hint, v.note || '']);
   }
 
   function refresh(force) {

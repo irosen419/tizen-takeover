@@ -29,6 +29,9 @@
  *            over a minute ago (staleEcho). Alexa Media Player keeps the last
  *            title when an app it does not understand (Audible) takes over.
  *            Only ever for an Echo that is playing, never for Spotify.
+ *   started  true when the hub itself started it (echo.js: "Audible on Ian's
+ *            Echo Show"); only for an Echo that is playing or paused. A hub
+ *            label overrides AMP's stale title for Audible and the news.
  *
  * Settings (pi/.env), all optional:
  *   HA_TOKEN            a long-lived access token from Home Assistant (your
@@ -110,7 +113,7 @@ function configFromEnv(env) {
 /* ---------- the resource the TV gets ---------- */
 
 function notsetData() {
-  return { v: 1, state: 'notset', from: '', source: '', device: '', title: '', artist: '', album: '', art: '', problem: '', stale: false };
+  return { v: 1, state: 'notset', from: '', source: '', device: '', title: '', artist: '', album: '', art: '', problem: '', stale: false, started: false };
 }
 
 // Rebuilds data from known fields only, for the state file and the TV.
@@ -124,7 +127,8 @@ function cleanData(d, allowHttp) {
     title: cleanText(d.title, 200), artist: cleanText(d.artist, 120), album: cleanText(d.album, 120),
     art: cleanArt(d.art, allowHttp),
     problem: PROBLEMS.indexOf(d.problem) >= 0 ? d.problem : '',
-    stale: d.stale === true
+    stale: d.stale === true,
+    started: d.started === true
   };
   // Playing with nothing known (TuneIn on an Echo sends no title, artist,
   // picture or app): still playing, as long as the speaker is known.
@@ -136,6 +140,7 @@ function cleanData(d, allowHttp) {
   }
   if (out.state !== 'error') out.problem = '';
   if (out.state !== 'playing' || out.from !== 'echo') out.stale = false;
+  if ((out.state !== 'playing' && out.state !== 'paused') || out.from !== 'echo') out.started = false;
   return out;
 }
 
@@ -268,8 +273,48 @@ function readEntity(e, allowHttp, now) {
     device: cleanText(a.friendly_name, 60) || cleanText(e.entity_id.slice(13).replace(/_/g, ' '), 60),
     source: sourceLabel(a) || inferPlatform(a), title: title, artist: artist, album: album === title ? '' : album,
     art: cleanArt(a.entity_picture, allowHttp),
-    stale: state === 'playing' && staleEcho(a, typeof now === 'number' ? now : Date.now())
+    stale: state === 'playing' && staleEcho(a, typeof now === 'number' ? now : Date.now()),
+    started: false
   };
+}
+
+// The hub's own label (echo.js) laid over what an Echo entity says. rec is
+// from readEntity. hooks: { clear(id, reason), base(id, sig) }. Returns the
+// record to use, or the same one when the label does not apply. The entity
+// signature is the title, artist and picture; a "hidden" app (Audible, the
+// news) has none of its own in Alexa Media Player, so a changed signature
+// means something else started.
+const LABEL_IDLE_MS = 10 * 60 * 1000;
+const LABEL_GRACE_MS = 45 * 1000;
+function applyLabel(rec, label, nowMs, hooks) {
+  if (!rec || !isObj(label)) return rec;
+  const sig = JSON.stringify([rec.title, rec.artist, rec.art]);
+  const empty = !rec.title && !rec.artist && !rec.art;
+  const live = rec.state === 'playing' || rec.state === 'paused';
+  const at = Math.max(rec.changedAt || 0, Number(label.at) || 0);
+  if (label.hidden) {
+    if (label.base == null) hooks.base(rec.id, sig);
+    else if (label.base !== sig && !empty) { hooks.clear(rec.id, 'other'); return rec; }
+    return Object.assign({}, rec, {
+      title: '', artist: '', album: '', art: '', source: str(label.label), stale: false, started: true,
+      device: str(label.via) || rec.device, changedAt: at,
+      state: label.playing === false ? 'paused' : (live ? rec.state : 'playing')
+    });
+  }
+  // Another platform on that Echo means something else started, except in
+  // the first seconds after the start, while Alexa may still show the old one.
+  const young = nowMs - (Number(label.at) || 0) < LABEL_GRACE_MS;
+  if (rec.source && rec.source !== label.label && !young) { hooks.clear(rec.id, 'other'); return rec; }
+  if (rec.source && rec.source !== label.label) {
+    return Object.assign({}, rec, { title: str(label.title), artist: '', album: '', art: '', source: str(label.label),
+      stale: false, started: true, device: str(label.via) || rec.device, changedAt: at, state: label.playing === false ? 'paused' : 'playing' });
+  }
+  if (!live && nowMs - (Number(label.at) || 0) > LABEL_IDLE_MS) { hooks.clear(rec.id, 'other'); return rec; }
+  return Object.assign({}, rec, {
+    source: rec.source || str(label.label), title: rec.title || str(label.title), started: true,
+    device: str(label.via) || rec.device, changedAt: at,
+    state: live ? rec.state : (label.playing === false ? 'paused' : 'playing')
+  });
 }
 
 // Picks the one to show: the newest playing one, else the newest paused one.
@@ -280,7 +325,7 @@ function pickActive(list) {
   const hit = newest('playing') || newest('paused');
   if (hit) {
     return { v: 1, state: hit.state, from: 'echo', source: hit.source, device: hit.device, title: hit.title,
-      artist: hit.artist, album: hit.album, art: hit.art, problem: '', stale: hit.stale === true };
+      artist: hit.artist, album: hit.album, art: hit.art, problem: '', stale: hit.stale === true, started: hit.started === true };
   }
   const d = notsetData();
   const idle = newest('idle');
@@ -314,7 +359,7 @@ function sameName(a, b) {
 function merge(house, sp) {
   const h = house || notsetData();
   if (sp && sp.state === 'playing' && h.state === 'playing' && sameName(sp.device, h.device) &&
-      h.title && !sameName(h.title, sp.title)) return h;
+      ((h.title && !sameName(h.title, sp.title)) || h.started === true)) return h;
   if (sp && sp.state === 'playing') return sp;
   if (h.state === 'playing' || h.state === 'paused') return h;
   if (sp) return sp;
@@ -322,7 +367,7 @@ function merge(house, sp) {
 }
 
 function signature(d) {
-  return JSON.stringify([d.state, d.from, d.source, d.device, d.title, d.artist, d.album, d.art, d.problem, d.stale === true]);
+  return JSON.stringify([d.state, d.from, d.source, d.device, d.title, d.artist, d.album, d.art, d.problem, d.stale === true, d.started === true]);
 }
 
 /* ---------- a small web request ---------- */
@@ -364,6 +409,8 @@ function request(url, token, timeoutMs) {
  * o.config      from configFromEnv
  * o.current()   the allsounds data held by the server
  * o.spotify()   the nowplaying data held by the server (or null)
+ * o.labels()    what the hub started, entity id -> label (echo.js), optional
+ * o.clearLabel(id, reason), o.setBase(id, sig)   for those labels
  * o.publish(data)   a real change: save and push it
  * o.log, o.now
  * o.allowHttp   let http pictures through (the stand-in)
@@ -481,7 +528,16 @@ function createWatcher(o) {
       if (r.bad) return fail('reply');
       if (fails) log('allsounds: Home Assistant working again');
       fails = 0;
-      house = pickActive(r.list.map((e) => readEntity(e, allowHttp, now())));
+      const t = now();
+      const lbl = typeof o.labels === 'function' ? o.labels() : null;
+      const hooks = {
+        clear: (id, why) => { if (typeof o.clearLabel === 'function') o.clearLabel(id, why); },
+        base: (id, sig) => { if (typeof o.setBase === 'function') o.setBase(id, sig); }
+      };
+      house = pickActive(r.list.map((e) => {
+        const rec = readEntity(e, allowHttp, t);
+        return rec && isObj(lbl) && lbl[rec.id] ? applyLabel(rec, lbl[rec.id], t, hooks) : rec;
+      }));
       return { ok: true, changed: put() };
     }, (e) => fail(e && e.kind === 'timeout' ? 'timeout' : e && e.kind === 'reply' ? 'reply' : 'network'));
   }
@@ -567,6 +623,7 @@ module.exports = {
   inferPlatform: inferPlatform,
   isAlexaSpeaker: isAlexaSpeaker,
   readEntity: readEntity,
+  applyLabel: applyLabel,
   staleEcho: staleEcho,
   pickActive: pickActive,
   fromSpotify: fromSpotify,

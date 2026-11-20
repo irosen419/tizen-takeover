@@ -42,6 +42,11 @@
  *   ./hub spotify code "<address>"   the second half of login, without the prompt
  *   ./hub spotify logout             forget the Spotify sign-in
  *   ./hub allsounds status           what plays anywhere (Echo speakers through Home Assistant, Spotify)
+ *   ./hub echo status                the Echo targets and what the hub started on them
+ *   ./hub echo start <app> [--on show|dot|everywhere] [--query "..."]   audible, pandora, amazon-music, tunein, kera or news
+ *   ./hub echo audible | kera | news     the same as start with that app
+ *   ./hub echo pause|resume|next|stop [--on <target>]
+ *   ./hub echo volume <0-100|up|down> [--on <target>]
  *   ./hub ambience status            the room's lights: how many answer, the scene
  *   ./hub ambience scenes            the saved scenes, lights and plant wall moods, with ids
  *   ./hub ambience scene <id>        apply a scene
@@ -174,7 +179,8 @@ function call(method, p, body, timeoutMs) {
     if (r.status === 503 && /no token/.test(r.json.error || '')) {
       stop('The server has no token yet. Run ./hub token, then restart the server.');
     }
-    if (!r.json.ok) stop('The server said no: ' + (r.json.error || 'error ' + r.status) + '.');
+    // The Echo controls answer 200 with ok: false when Home Assistant said no; the message is the answer.
+    if (!r.json.ok && !(r.status === 200 && p === '/api/echo' && typeof r.json.message === 'string')) stop('The server said no: ' + (r.json.error || 'error ' + r.status) + '.');
     return r.json;
   });
 }
@@ -836,6 +842,73 @@ function allsoundsStatusLines(a) {
   return ['All sounds: nothing playing' + (a.device ? ' (' + a.device + ' is on)' : '') + '.'];
 }
 
+/* ---------- Echo controls ---------- */
+
+// What the server answered to POST /api/echo, in one line (echo.js).
+function echoText(r) {
+  const m = r && typeof r.message === 'string' ? r.message : '';
+  if (m) return m;
+  return r && r.ok ? 'Done.' : 'The Echo command did not go through.';
+}
+
+// ./hub echo status (echo.js status()). No titles: Amazon sends none we use.
+function echoStatusLines(s) {
+  if (!s || typeof s !== 'object') return ['This server does not know Echo controls yet (it needs 0.22.0): run git pull, then docker compose restart hub.'];
+  if (!s.configured) return ['Echo controls: off (' + (s.problem || 'no HA_TOKEN in .env') + '). Fix it in pi/.env, then docker compose restart hub.'];
+  const targets = Array.isArray(s.targets) ? s.targets : [];
+  const out = ['Echo controls: on. Targets: ' + targets.map((t, i) => t.key + (i === 0 ? ' (default)' : '') + (t.group ? ' (group)' : '')).join(', ') + '.'];
+  if (s.problem) out.push('Last problem: ' + (s.problem === 'auth' ? 'Home Assistant refused the token.' : 'Home Assistant did not answer well.'));
+  const labels = Array.isArray(s.labels) ? s.labels : [];
+  if (!labels.length) out.push('The hub has not started anything on an Echo.');
+  labels.forEach((l) => out.push('Started by the hub: ' + l.label + ' on ' + l.target + (l.playing ? '' : ' (paused)') + '.'));
+  return out;
+}
+
+const ECHO_USE = 'Use: ./hub echo status | start <app> | audible | kera | news | pause | resume | next | stop | volume <0-100|up|down> (add --on show|dot|everywhere). Run ./hub help for examples.';
+
+async function echoCommand(args) {
+  const sub = args[0];
+  const a = parseArgs(args.slice(1), ['on', 'query']);
+  if (!sub) stop(ECHO_USE);
+  if (sub === 'status') {
+    const r = await call('GET', '/api/echo');
+    echoStatusLines(r.echo).forEach(say);
+    return;
+  }
+  const body = {};
+  if (typeof a.opts.on === 'string') body.target = a.opts.on.trim().toLowerCase();
+  else if (a.opts.on) stop('--on needs a target, for example --on dot.');
+  if (a.opts.query !== undefined && typeof a.opts.query !== 'string') stop('--query needs the words to look for, for example --query "jazz".');
+  let words = a.words;
+  if (sub === 'start' || ['audible', 'pandora', 'amazon-music', 'tunein', 'kera', 'news'].indexOf(sub) >= 0) {
+    body.action = 'start';
+    if (sub === 'start') {
+      body.app = (words[0] || '').toLowerCase();
+      words = words.slice(1);
+      if (!body.app) stop('Say which app: audible, pandora, amazon-music, tunein, kera or news.');
+    } else {
+      body.app = sub;
+    }
+    if (a.opts.query !== undefined) body.query = a.opts.query;
+  } else if (['pause', 'resume', 'next', 'stop'].indexOf(sub) >= 0) {
+    body.action = sub;
+  } else if (sub === 'volume') {
+    body.action = 'volume';
+    const v = (words[0] || '').toLowerCase();
+    words = words.slice(1);
+    if (v === 'up' || v === 'down') body.level = v;
+    else if (/^\d{1,3}$/.test(v)) body.level = Number(v);
+    else stop('Say the volume: a number from 0 to 100, or up or down.');
+  } else {
+    stop(ECHO_USE);
+  }
+  if (words.length) stop('Too many words. ' + ECHO_USE);
+  if (a.opts.query !== undefined && body.action !== 'start') stop('--query goes with start.');
+  const r = await call('POST', '/api/echo', body);
+  say(echoText(r));
+  if (!r.ok) process.exitCode = 1;
+}
+
 async function allsoundsCmd(args) {
   if (args[0] !== 'status') stop('Use: ./hub allsounds status. Run ./hub help for examples.');
   const r = await call('GET', '/api/allsounds');
@@ -1253,6 +1326,12 @@ const HELP = [
   '  ./hub spotify login         connect Spotify, once (a link to open, then paste the address back)',
   '  ./hub spotify logout        forget the Spotify sign-in',
   '  ./hub allsounds status      what plays anywhere: Echo speakers (Home Assistant) and Spotify',
+  '  ./hub echo status           the Echo targets (show, dot, everywhere) and what the hub started on them',
+  '  ./hub echo audible          resume the Audible book on the Echo Show (add --on dot or everywhere)',
+  '  ./hub echo kera             KERA 90.1 on the Echo (TuneIn); ./hub echo news plays the Alexa news',
+  '  ./hub echo start pandora --query "jazz"   start an app: audible, pandora, amazon-music, tunein (needs --query), kera, news',
+  '  ./hub echo pause            pause, resume, next or stop what is playing (add --on dot)',
+  '  ./hub echo volume 40        volume 0 to 100, or up or down',
   '  ./hub ambience status       the room\'s lights: how many answer, which scene is on',
   '  ./hub ambience scenes       the scenes, lights and plant wall moods, with their ids',
   '  ./hub ambience scene chill  apply a scene (a light that doesn\'t answer never stops the others)',
@@ -1326,6 +1405,7 @@ async function main(argv) {
   if (cmd === 'log') return logCommand(rest);
   if (cmd === 'spotify') return spotifyCmd(rest);
   if (cmd === 'allsounds') return allsoundsCmd(rest);
+  if (cmd === 'echo') return echoCommand(rest);
   if (cmd === 'ambience') return ambienceCommand(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
@@ -1371,6 +1451,8 @@ module.exports = {
   spotifyCodeText: spotifyCodeText,
   spotifyLogoutText: spotifyLogoutText,
   allsoundsStatusLines: allsoundsStatusLines,
+  echoText: echoText,
+  echoStatusLines: echoStatusLines,
   ambienceLine: ambienceLine,
   ambienceStatusLines: ambienceStatusLines,
   ambienceScenesLines: ambienceScenesLines,

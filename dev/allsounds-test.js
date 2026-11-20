@@ -77,6 +77,7 @@ async function startPi(withHa) {
   const h = server.start({
     token: TOKEN, port: port, host: '127.0.0.1', origins: [PAGE], dataDir: dir, log: false, timezone: 'America/Chicago',
     allsoundsEnv: withHa === false ? {} : { HA_URL: ha.url, HA_TOKEN: ha.token },
+    echoEnv: withHa === false ? {} : { HA_URL: ha.url, HA_TOKEN: ha.token },
     allsounds: { allowHttp: true, manual: true, timeoutMs: 400 }
   });
   await h.ready;
@@ -422,6 +423,34 @@ async function main() {
         bad.push.apply(bad, await sizeSweep(p2, s, mode + ' ' + lang));
         await s.context.close();
       }
+    }
+    await stopPi(p2);
+    assert(!bad.length, bad.join(' | '));
+  });
+
+  // Echo controls: the hub started Audible on the Echo Show, which still
+  // reports its old song. The tile names the app and the speaker, with a
+  // quiet "Started from the hub" line, at every size and in Spanish +25%.
+  await check('started from the hub: Audible on the Echo Show replaces the stale song, every size, English and Spanish', async () => {
+    const p2 = await startPi(true);
+    await house(p2, 'stale');
+    const r = await control(p2, 'POST', '/api/echo', { action: 'start', app: 'audible', target: 'show' });
+    assert(r.ok === true, 'start: ' + JSON.stringify(r));
+    await p2.h.allsounds.poll();
+    const bad = [];
+    for (const lang of ['en', 'es', 'es+25']) {
+      const s = await open(p2, TEST_LAYOUT, { lang: lang === 'en' ? 'en' : 'es' });
+      const t = await waitKind(s.page, 'playing', 'Audible');
+      const want = { title: 'Audible', device: "Ian's Echo Show", stale: lang === 'en' ? 'Started from the hub' : 'Iniciado desde el hub', sub: null };
+      if (lang !== 'es+25') Object.keys(want).forEach((k) => assert(t[k] === want[k], lang + ' ' + k + ': ' + JSON.stringify(t[k])));
+      if (lang !== 'es+25') await shot(s.page, 'allsounds-started-' + lang + '.png');
+      await s.context.close();
+      const s2 = await open(p2, ONLY(SIZES[0][0], SIZES[0][1]), { lang: lang === 'en' ? 'en' : 'es' });
+      await waitKind(s2.page, 'playing');
+      if (lang === 'es+25') await longerSpanish(s2.page);
+      bad.push.apply(bad, await sizeSweep(p2, s2, 'started ' + lang));
+      assert(s2.errors.length === 0, 'page errors: ' + s2.errors.join(' | '));
+      await s2.context.close();
     }
     await stopPi(p2);
     assert(!bad.length, bad.join(' | '));
