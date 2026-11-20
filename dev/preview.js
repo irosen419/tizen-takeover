@@ -95,6 +95,8 @@ var APPS = [
   { id: '3201910019365', name: 'Prime Video', hidden: false },
   { id: '3201901017640', name: 'Disney+', hidden: false },
   { id: '3201601007625', name: 'Hulu', hidden: false },
+  // Like the real TV: Samsung's placeholder for Apple TV sits before the real app.
+  { id: 'com.samsung.tv.aria-dummy', name: 'Apple TV', hidden: false },
   { id: '3201807016597', name: 'Apple TV', hidden: false },
   { id: '3201808016802', name: 'Pluto TV', hidden: false },
   { id: '3201608010191', name: 'Twitch', hidden: false },
