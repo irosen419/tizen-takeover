@@ -213,7 +213,7 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: '0.22.1' });
+    assert.deepStrictEqual(r.json, { ok: true, server: '0.22.2' });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
   });
 
@@ -234,7 +234,7 @@ async function main() {
     const r = await request(P, 'GET', '/api/status', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
-    assert.strictEqual(r.json.server, '0.22.1');
+    assert.strictEqual(r.json.server, '0.22.2');
     assert.strictEqual(typeof r.json.rev, 'number');
     assert.strictEqual(typeof r.json.epoch, 'string');
     assert.strictEqual(typeof r.json.uptime, 'number');
@@ -526,7 +526,7 @@ async function main() {
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.ok, true);
     assert.strictEqual(r.json.v, 1);
-    assert.strictEqual(r.json.server, '0.22.1');
+    assert.strictEqual(r.json.server, '0.22.2');
     assert.ok(Array.isArray(r.json.resources.todo.data.items));
     assert.strictEqual(r.json.resources.todo.rev, r.json.rev);
     assert.strictEqual(r.json.resources.calendar.data.configured, false);

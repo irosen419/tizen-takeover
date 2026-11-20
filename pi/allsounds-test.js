@@ -581,6 +581,26 @@ async function main() {
     x.w.close();
   });
 
+  await check('labels: a hidden one whose app Alexa names itself (an Audible book) keeps the title, author and picture', async () => {
+    const fake = { id: SHOW_ID, state: 'playing', changedAt: 1, device: "Ian's Echo Show", source: 'Audible', title: 'Morning Star', artist: 'By Pierce Brown', album: '', art: 'https://m.media-amazon.com/x.jpg', stale: true, started: false };
+    const calls = [];
+    const hooks = { clear: (id, why) => calls.push(['clear', id, why]), base: (id, sig) => calls.push(['base', id]) };
+    let d = allsounds.applyLabel(fake, mkLabel(), Date.now(), hooks);
+    assert.deepStrictEqual([d.title, d.artist, d.art, d.source, d.started, d.stale, d.state], ['Morning Star', 'By Pierce Brown', 'https://m.media-amazon.com/x.jpg', 'Audible', true, false, 'playing']);
+    d = allsounds.applyLabel(fake, mkLabel({ playing: false }), Date.now(), hooks);
+    assert.strictEqual(d.state, 'paused');
+    assert.deepStrictEqual(calls, []);
+  });
+
+  await check('an Echo stuck on Spotify "playing" while Spotify says paused shows as paused', () => {
+    const rec = { id: 'media_player.ian_s_echo_dot', state: 'playing', source: 'Spotify', title: 'x' };
+    assert.strictEqual(allsounds.spotifyChecked(rec, { state: 'paused' }).state, 'paused');
+    assert.strictEqual(allsounds.spotifyChecked(rec, { state: 'idle' }).state, 'paused');
+    assert.strictEqual(allsounds.spotifyChecked(rec, { state: 'playing' }).state, 'playing');
+    assert.strictEqual(allsounds.spotifyChecked(rec, { state: 'notset' }).state, 'playing', 'not signed in: no say');
+    assert.strictEqual(allsounds.spotifyChecked(Object.assign({}, rec, { source: 'TuneIn' }), { state: 'paused' }).state, 'playing');
+  });
+
   await check('labels: a hidden one stays over an empty Echo (idle, off) and wins over an older speaker', async () => {
     ha.set('npr');
     const x = await labelled({ [SHOW_ID]: mkLabel({ base: JSON.stringify(['Golden Hour Drive', 'The Lanterns', 'x']) }) });
