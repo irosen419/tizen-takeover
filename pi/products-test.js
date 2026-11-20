@@ -356,7 +356,26 @@ async function main() {
     assert.strictEqual(c2._misses.size, 0);
   });
 
-  await check('one time budget per lookup: a hanging source ends the lookup in time and the rest are skipped; DNS has its own short limit; one thumbnail try', async () => {
+  await check('a hit with no brand or picture borrows them from the next source; a missing brand stays empty when nobody has one', async () => {
+    const web = fakeWeb({
+      off: offHit({ brands: '', image_front_small_url: '', image_small_url: '', image_front_url: '' }),
+      upc: () => ({ status: 200, json: { code: 'OK', items: [{ title: 'Fizz Co Cola', brand: 'Fizz Co', size: '12 oz', images: ['https://pics.example/a.jpg'] }] } }),
+      image: goodImage
+    });
+    const c = catalogWith(web);
+    const r = await c.lookup(COLA);
+    assert.strictEqual(r.product.brand, 'Fizz Co');
+    assert.strictEqual(r.product.source, 'off', 'the first source that answered stays the source');
+    assert.ok(r.product.image, 'the borrowed picture was saved');
+    assert.ok(c.lines.some((l) => /brand, picture/.test(l)), 'the log says brand and picture, no names');
+    const bare = fakeWeb({ off: offHit({ brands: '', image_front_small_url: '', image_small_url: '', image_front_url: '' }) });
+    const c2 = catalogWith(bare);
+    const r2 = await c2.lookup(COLA);
+    assert.strictEqual(r2.product.brand, '');
+    assert.ok(c2.lines.some((l) => /no brand, no picture/.test(l)));
+  });
+
+  await check('one time budget per lookup: a hanging source ends the lookup in time and the rest are skipped; DNS has its own short limit; a picture that fails is followed by the next one', async () => {
     const web = fakeWeb({ off: () => new Promise(() => {}) });
     const c = catalogWith(web, { budgetMs: 400 });
     const t0 = Date.now();
@@ -380,7 +399,7 @@ async function main() {
     const c3 = catalogWith(web3);
     const r3 = await c3.lookup(COLA);
     assert.strictEqual(r3.found, true);
-    assert.deepStrictEqual(web3.calls.filter((x) => /^img:/.test(x)), ['img:a.example'], 'one thumbnail try only');
+    assert.deepStrictEqual(web3.calls.filter((x) => /^img:/.test(x)), ['img:a.example', 'img:b.example'], 'the next picture is tried when the first fails');
   });
 
   await check('per-phone cap on web lookups (429), catalog hits and remembered misses stay free', async () => {
@@ -640,6 +659,13 @@ async function main() {
     r = await request(P, 'GET', '/touch/state', { headers: { 'x-test-ip': '100.70.0.9' } });
     assert.deepStrictEqual(Object.keys(r.json.products).sort(), [COLA_KEY, EAN13].sort());
     assert.strictEqual(r.json.products[EAN13].name, 'Sourdough');
+    assert.strictEqual(r.json.grocery.data.items.length, 3);
+    // A fix typed later renames the rows for that code ("Brand Name"), so the TV tile shows it.
+    r = await request(P, 'POST', '/products/save', { body: { upc: EAN13, brand: 'Baker Bros', name: 'Rye', size: '1 loaf' } });
+    assert.strictEqual(r.status, 200, r.text);
+    r = await request(P, 'GET', '/touch/state', { headers: { 'x-test-ip': '100.70.0.9' } });
+    const bread = r.json.grocery.data.items.find((i) => i.upc === EAN13);
+    assert.strictEqual(bread.name, 'Baker Bros Rye');
     assert.strictEqual(r.json.grocery.data.items.length, 3);
   });
 

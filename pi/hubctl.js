@@ -1441,10 +1441,11 @@ async function groceryExport(callFn) {
   const items = r.items || [];
   const counts = r.counts || groceryCounts(items);
   const search = items.filter((i) => !i.done).map((i) => i.search || i.name);
-  const head = counts.left + ' to get, ' + counts.ticked + ' ticked.';
+  const scannedAll = items.filter((i) => i.upc);
+  const head = counts.left + ' to get, ' + counts.ticked + ' ticked.' + (scannedAll.length ? ' Scanned: ' + scannedAll.length + ', no brand: ' + scannedAll.filter((i) => !i.brand).length + ', no picture: ' + scannedAll.filter((i) => !i.imagePath).length + '.' : '');
   return {
     message: [head].concat(search).join('\n'),
-    data: { counts: { left: counts.left, ticked: counts.ticked }, search: search, scanned: items.filter((i) => !i.done && i.upc).length }
+    data: { counts: { left: counts.left, ticked: counts.ticked }, search: search, scanned: items.filter((i) => !i.done && i.upc).length, noBrand: items.filter((i) => i.upc && !i.brand).length, noPicture: items.filter((i) => i.upc && !i.imagePath).length }
   };
 }
 

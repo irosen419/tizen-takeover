@@ -128,7 +128,7 @@ const translate = require('./translate');
 const grocery = require('./grocery');
 const products = require('./products');
 
-const SERVER_VERSION = '0.27.0';
+const SERVER_VERSION = '0.27.1';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1886,6 +1886,17 @@ function start(options) {
       return readBody(req, res, (body) => {
         try {
           const product = catalog.save(body);
+          // The grocery rows for this code take the corrected "Brand Name", so the TV tile shows the brand too.
+          const cur = state.resources.grocery.data.items;
+          const line = products.lineName(product);
+          let lineOk = !!line && Array.from(line).length === line.length && line.length <= grocery.MAX_NAME;
+          const next = cur.map((i) => {
+            if (!lineOk || i.upc !== product.upc || i.name === line) return i;
+            // Never make two rows with the same name (name commands pick the first).
+            if (cur.some((o) => o !== i && o.name.toLowerCase() === line.toLowerCase())) return i;
+            return Object.assign({}, i, { name: line });
+          });
+          if (JSON.stringify(next) !== JSON.stringify(cur)) changeResource('grocery', { items: next });
           sendJson(res, 200, { ok: true, product: product }, cors);
         } catch (e) {
           fail(res, e, cors);

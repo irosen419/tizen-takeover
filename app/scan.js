@@ -12,6 +12,10 @@
  *                         confirm card -> add; not found -> a short form
  *                         (POST /products/save) -> the same card.
  *
+ *   HUB_SCAN.open(ctx, { edit: product, onSaved(product), returnFocus })
+ *                         no camera: the form prefilled with a saved product's
+ *                         brand, name, size and photo (POST /products/save).
+ *
  * Detector: the browser's own BarcodeDetector when it reads EAN/UPC, else the
  * barcode-detector polyfill vendored in app/vendor/barcode-detector/ (ZXing
  * wasm), fetched only when Scan is first tapped, with the .wasm served by the
@@ -220,8 +224,8 @@
     var closeBtn = button('sc-round sc-close', null, 'cross');
     closeBtn.setAttribute('aria-label', T('scan.close', 'Close'));
     var title = el('div', 'sc-title');
-    title.appendChild(el('span', 'sc-title-word', T('scan.title', 'Scan a barcode')));
-    if (destLabel) title.appendChild(el('span', 'sc-title-dest', destLabel));
+    title.appendChild(el('span', 'sc-title-word', opts.edit ? T('scan.editHead', 'Edit product') : T('scan.title', 'Scan a barcode')));
+    if (destLabel && !opts.edit) title.appendChild(el('span', 'sc-title-dest', destLabel));
     var torchBtn = button('sc-round sc-torch', null, 'torch');
     torchBtn.setAttribute('aria-label', T('scan.torchOn', 'Turn the light on'));
     torchBtn.setAttribute('aria-pressed', 'false');
@@ -504,20 +508,20 @@
       return { wrap: wrap, input: input };
     }
 
-    function showForm(code) {
+    function showForm(code, pre) {
       setState('form');
       sheet.innerHTML = '';
       var head = el('div', 'sc-form-head');
-      head.appendChild(el('h2', 'sc-form-title', T('scan.newTitle', 'New to the hub')));
-      head.appendChild(el('p', 'sc-form-text', T('scan.newText', 'Tell it once; the next scan finds it.')));
+      head.appendChild(el('h2', 'sc-form-title', pre ? T('scan.editTitle', 'Fix the details') : T('scan.newTitle', 'New to the hub')));
+      head.appendChild(el('p', 'sc-form-text', pre ? T('scan.editText', 'Add the brand or a photo; the list updates.') : T('scan.newText', 'Tell it once; the next scan finds it.')));
       sheet.appendChild(head);
       sheet.appendChild(codeLine(code));
       var form = el('form', 'sc-form');
       form.noValidate = true;
       form.setAttribute('autocomplete', 'off');
-      var brand = field(T('scan.brand', 'Brand'), 'is-brand', '', 40);
-      var name = field(T('scan.name', 'Product'), 'is-name', '', 80);
-      var size = field(T('scan.size', 'Size (optional)'), 'is-size', '', 30);
+      var brand = field(T('scan.brand', 'Brand'), 'is-brand', pre ? pre.brand : '', 40);
+      var name = field(T('scan.name', 'Product'), 'is-name', pre ? pre.name : '', 80);
+      var size = field(T('scan.size', 'Size (optional)'), 'is-size', pre ? pre.size : '', 30);
       size.input.placeholder = T('scan.sizePlaceholder', 'e.g. 12 oz');
       size.input.setAttribute('autocapitalize', 'none');
       form.appendChild(brand.wrap);
@@ -534,6 +538,12 @@
       file.setAttribute('aria-hidden', 'true');
       var thumb = el('div', 'sc-photo is-none');
       thumb.appendChild(icon('camera'));
+      if (pre && pre.image) {
+        var cur = el('img');
+        cur.alt = '';
+        cur.onload = function () { if (photo) return; thumb.innerHTML = ''; thumb.className = 'sc-photo'; thumb.appendChild(cur); };
+        cur.src = pre.image;
+      }
       var pickBtn = button('sc-btn sc-quiet sc-pick-btn', T('scan.photo', 'Add a photo (optional)'));
       pick.appendChild(thumb);
       pick.appendChild(pickBtn);
@@ -563,7 +573,7 @@
       save.type = 'submit';
       form.appendChild(save);
       var cancel = button('sc-btn sc-quiet sc-cancel', T('scan.cancel', 'Cancel'));
-      cancel.addEventListener('click', function () { resume(); });
+      cancel.addEventListener('click', function () { if (opts.edit) close(); else resume(); });
       form.appendChild(cancel);
       sheet.appendChild(form);
 
@@ -585,6 +595,12 @@
         if (photo) body.photo = photo;
         ctx.call('POST', '/products/save', body, LOOKUP_TIMEOUT).then(function (j) {
           if (closed) return;
+          if (opts.edit) {
+            var saved = j.product || { upc: code, brand: b, name: n, size: z, image: '' };
+            close();
+            if (opts.onSaved) opts.onSaved(saved);
+            return;
+          }
           showFound(j.product || { upc: code, brand: b, name: n, size: z, image: '' });
         }, function (err) {
           if (closed) return;
@@ -613,7 +629,7 @@
     closeBtn.addEventListener('click', function () { close(); });
     function onKey(e) {
       if (e.key !== 'Escape' && e.keyCode !== 27) return;
-      if (state === 'found' || state === 'form') resume(); else close();
+      if (!opts.edit && (state === 'found' || state === 'form')) resume(); else close();
     }
     document.addEventListener('keydown', onKey);
 
@@ -630,10 +646,15 @@
       if (opts.returnFocus && opts.returnFocus.focus) { try { opts.returnFocus.focus(); } catch (e) { /* gone */ } }
     }
 
-    setState('scan');
-    startCamera();
     var api = { close: close, lookup: lookup, state: function () { return state; } };
     current = api;
+    if (opts.edit) {
+      box.className += ' is-edit';
+      showForm(opts.edit.upc, opts.edit);
+    } else {
+      setState('scan');
+      startCamera();
+    }
     return api;
   }
 

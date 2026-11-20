@@ -175,6 +175,22 @@ async function main() {
       await page.ctx.close();
     });
 
+    await check('edit: the pencil on a scanned row opens the form with its details, saving fixes the brand and the row', async () => {
+      const page = await open();
+      await page.evaluate(() => window.HUB_TOUCH.poll());
+      await page.waitForSelector('.gx-row.has-product .gx-edit');
+      await page.click('.gx-row.has-product .gx-edit');
+      await page.waitForSelector('.sc.is-edit .sc-form');
+      assert((await page.inputValue('.sc-field.is-brand input')) === 'Riverbend Farms', 'prefilled brand');
+      assert(!(await page.isVisible('.sc-dock')), 'no camera or number box in edit mode');
+      await page.fill('.sc-field.is-brand input', 'Riverbend Dairy');
+      await page.click('.sc-save');
+      await page.waitForSelector('.sc', { state: 'detached' });
+      await page.waitForFunction(() => /Riverbend Dairy/.test((document.querySelector('.gx-row.has-product .gx-sub') || {}).textContent || ''));
+      assert(!page.errors.length, page.errors.join('; '));
+      await page.ctx.close();
+    });
+
     await check('not found: the form (with a photo) saves, the card follows, and the next scan finds it', async () => {
       const page = await open();
       const png = path.join(dataDir, 'pack.png');

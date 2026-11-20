@@ -345,7 +345,7 @@ async function main() {
     r = await run(fake, h, 'grocery.export');
     assert.strictEqual(r.ok, true, r.message);
     assert.strictEqual(r.message, '1 to get, 1 ticked.\nEggs');
-    assert.deepStrictEqual(r.data, { counts: { left: 1, ticked: 1 }, search: ['Eggs'], scanned: 0 });
+    assert.deepStrictEqual(r.data, { counts: { left: 1, ticked: 1 }, search: ['Eggs'], scanned: 0, noBrand: 0, noPicture: 0 });
     r = await run(fake, h, 'grocery.clear');
     assert.strictEqual(r.message, 'Cleared 1 ticked grocery item.');
     assert.deepStrictEqual(r.data, { cleared: 1 });

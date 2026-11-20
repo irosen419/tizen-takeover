@@ -575,21 +575,34 @@ function createCatalog(options) {
       if (r.found) {
         // A manual entry may have landed while we waited: it wins.
         if (get(key)) return get(key);
-        // One thumbnail try, inside the budget.
-        let image = null;
-        if (r.images.length) {
-          try { image = await downloadImage(r.images[0], left(deadline)); } catch (e) { /* no picture then */ }
+        // A hit with no brand or no picture borrows them from the sources
+        // after it (inside the same budget), so a row can say "Brand · size".
+        let prod = r.product, images = r.images.slice();
+        for (let j = i + 1; j < sources.length && (!prod.brand || !images.length) && left(deadline) > 500; j++) {
+          // UPCitemdb's 100 a day is for real misses and missing brands, not for a missing picture alone.
+          if (sources[j].id === 'upcitemdb' && prod.brand) continue;
+          let more = null;
+          try { more = await ask(sources[j], key, deadline); } catch (e) { more = null; }
+          if (!more || !more.found) continue;
+          if (!prod.brand && more.product.brand) { prod = Object.assign({}, prod, { brand: more.product.brand }); }
+          if (!prod.size && more.product.size) prod = Object.assign({}, prod, { size: more.product.size });
+          if (!images.length) images = more.images.slice();
+        }
+        // The first picture that downloads, inside the budget.
+        let image = null, why = images.length ? 'failed' : 'none offered';
+        for (let k = 0; k < images.length && !image; k++) {
+          try { image = await downloadImage(images[k], left(deadline)); } catch (e) { why = (e && e.code) || 'error'; }
         }
         if (get(key)) return get(key);
         if (!makeRoom()) return null;
         const t = now();
-        const p = { upc: key, brand: r.product.brand, name: r.product.name, size: r.product.size, source: src.id, image: '', addedAt: t, updatedAt: t };
+        const p = { upc: key, brand: prod.brand, name: prod.name, size: prod.size, source: src.id, image: '', addedAt: t, updatedAt: t };
         if (image) {
-          try { writeImage(key, image.buf, image.ext); p.image = imageUrl(key, t); } catch (e) { log('products: could not save a picture (' + (e.code || 'error') + ')'); }
+          try { writeImage(key, image.buf, image.ext); p.image = imageUrl(key, t); } catch (e) { why = 'not saved'; log('products: could not save a picture (' + (e.code || 'error') + ')'); }
         }
         products[key] = p;
         persist();
-        log('products: found on ' + src.id + (p.image ? ' with a picture' : '') + '; catalog has ' + Object.keys(products).length);
+        log('products: found on ' + src.id + ' (' + (p.brand ? 'brand' : 'no brand') + ', ' + (p.image ? 'picture' : 'no picture: ' + why) + '); catalog has ' + Object.keys(products).length);
         return p;
       }
       if (r.skipped) said[src.id] = 'skipped';
