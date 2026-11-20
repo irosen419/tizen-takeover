@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.38.2';
+  var BUILD = 'v0.38.3';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -2993,11 +2993,46 @@
   }
 
   // play / stop: one audio element, reused, so a new play replaces whatever
-  // was playing. The TV's browser may refuse to start sound without a key
-  // press first (autoplay); that is said on screen and in the log.
+  // was playing. The TV's browser may refuse to start sound that no key
+  // press started (autoplay). Two defences: the first key press after
+  // loading plays a silent blip through the same element, which unlocks it
+  // for later plays; and a play the TV still refuses waits (up to 10
+  // minutes) for the next key press, which starts it.
+  var SILENT_CLIP = 'data:audio/wav;base64,UklGRogAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YWQAAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA'
+  var PLAY_WAIT_MS = 10 * 60 * 1000;
   var liveAudio = null;
+  var audioUnlocked = false;
+  var audioUnlocking = false;
+  var playWaiting = null; // { shown, at } while a refused play waits for a key
+
+  function audioEl() {
+    if (liveAudio) return liveAudio;
+    liveAudio = new Audio();
+    liveAudio.preload = 'auto';
+    liveAudio.addEventListener('error', function () {
+      var src = liveAudio.getAttribute('src');
+      if (!src || src === SILENT_CLIP) return;
+      playWaiting = null;
+      liveWarn('play failed: the audio could not be loaded');
+      toast(hubWord('playFailed', 'Could not play that audio'), 5000);
+    });
+    return liveAudio;
+  }
+
+  function playingText(title) {
+    return title ? hubWord('playing', 'Playing: {title}', { title: title }) : hubWord('playingNoTitle', 'Playing');
+  }
+
+  // play() as a promise-or-not: ok() once sound starts, no(err) if refused.
+  function startAudio(ok, no) {
+    var started;
+    try { started = liveAudio.play(); } catch (e) { no(e); return; }
+    if (started && typeof started.then === 'function') started.then(ok, no);
+    else ok();
+  }
 
   function liveStop() {
+    playWaiting = null;
     if (!liveAudio) return;
     try { liveAudio.pause(); } catch (e) {}
     try { liveAudio.removeAttribute('src'); liveAudio.load(); } catch (e2) {}
@@ -3010,32 +3045,46 @@
     var title = String(data.title === undefined || data.title === null ? '' : data.title).replace(/\s+/g, ' ');
     title = title.replace(/^\s+|\s+$/g, '').substring(0, 140);
     liveStop();
-    if (!liveAudio) {
-      liveAudio = new Audio();
-      liveAudio.preload = 'auto';
-      liveAudio.addEventListener('error', function () {
-        if (!liveAudio.getAttribute('src')) return;
-        liveWarn('play failed: the audio could not be loaded');
-        toast('Could not play that audio', 5000);
+    audioEl().src = url;
+    var shown = playingText(title);
+    startAudio(function () { audioUnlocked = true; toast(shown, 6000); }, function (err) {
+      if (liveAudio.getAttribute('src') !== url) return; // replaced or stopped meanwhile
+      liveWarn('play refused: ' + (err && (err.name || err.message)) + '; waiting for a key press');
+      playWaiting = { shown: shown, at: new Date().getTime() };
+      toast(hubWord('playPressKey', 'Press any button on the remote to start the sound'), 8000);
+    });
+  }
+
+  // Every key press (capture phase, nothing is stopped or changed): start a
+  // play that is waiting, or unlock the audio element once.
+  document.addEventListener('keydown', function () {
+    if (playWaiting) {
+      var w = playWaiting;
+      playWaiting = null;
+      if (new Date().getTime() - w.at > PLAY_WAIT_MS || !liveAudio || !liveAudio.getAttribute('src')) return;
+      startAudio(function () { audioUnlocked = true; toast(w.shown, 6000); }, function (err) {
+        liveWarn('play refused again after a key press: ' + (err && (err.name || err.message)));
+        toast(hubWord('playNoStart', 'Could not start the audio'), 5000);
       });
-    }
-    liveAudio.src = url;
-    var shown = title ? 'Playing: ' + title : 'Playing';
-    var started;
-    try { started = liveAudio.play(); } catch (e) {
-      liveWarn('play failed: ' + (e && e.message));
-      toast('Could not start the audio', 5000);
       return;
     }
-    if (started && typeof started.then === 'function') {
-      started.then(function () { toast(shown, 6000); }, function (err) {
-        liveWarn('play refused: ' + (err && (err.name || err.message)));
-        toast('The TV would not start the audio (press a key on the remote and try again)', 7000);
-      });
-    } else {
-      toast(shown, 6000);
-    }
-  }
+    if (audioUnlocked || audioUnlocking) return;
+    var el = audioEl();
+    if (el.getAttribute('src')) return; // something real is loaded; leave it alone
+    audioUnlocking = true;
+    el.src = SILENT_CLIP;
+    startAudio(function () {
+      audioUnlocking = false;
+      audioUnlocked = true;
+      if (el.getAttribute('src') !== SILENT_CLIP) return;
+      try { el.pause(); el.removeAttribute('src'); el.load(); } catch (e) {}
+    }, function () {
+      audioUnlocking = false; // try again on the next key press
+      if (el.getAttribute('src') === SILENT_CLIP) {
+        try { el.removeAttribute('src'); el.load(); } catch (e) {}
+      }
+    });
+  }, true);
 
   function liveReload() {
     // A reload loop (an old command arriving right after loading) must not happen.

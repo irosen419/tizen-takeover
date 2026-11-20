@@ -10,7 +10,7 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Close whatever is open: `./hub home`
 - Short message on the TV: `./hub say "Dinner in 10" --seconds 8`
 - Play audio on the TV: `./hub play https://example.com/doorbell.mp3 --title "Doorbell"` (http or https; the hub must be open); stop it: `./hub stop`
-- The newest NPR News Now newscast (a five minute summary posted every hour) on the TV: `./hub news` (server 0.21.0, hub v0.37.0)
+- The newest NPR News Now newscast (a five minute summary posted every hour) on the TV: `./hub news` (server 0.21.0, hub v0.37.0; redirects followed and the key-press unlock from server 0.22.3, hub v0.38.2)
 - Echo speakers through Home Assistant (server 0.22.0): `./hub echo status`; `./hub echo audible` (resume the book), `./hub echo kera`, `./hub echo news`; `./hub echo start pandora --query "jazz"` (apps: audible, pandora, amazon-music, tunein (needs `--query`), kera, news; a query is up to 100 characters and not for audible, news or kera); `./hub echo pause|resume|next|stop`; `./hub echo volume 40` (0-100, or `up`/`down`); add `--on show|dot|everywhere` (the first target is the default). All sounds then marks it "Started from the hub"; for Audible it shows the book, author and cover when Alexa reports them, else just "Audible" in place of a stale title
 - Load the hub afresh: `./hub reload`
 - Add a to-do: `./hub todo add "Buy milk" --level must --due 2026-12-24 --notes "Oat, not dairy"` (level, due and notes are optional; levels are `must`, `optional` (the default) and `passive` (a reminder shown on the TV under "Coming up" from 2 days before its due date); notes are plain text up to 300 characters; `--section` is still taken but no longer shown)

@@ -81,9 +81,9 @@ From server 0.21.0 and hub v0.37.0 the TV can play audio:
 
 - `./hub play https://example.com/doorbell.mp3 --title "Doorbell"`: the TV plays it and shows `Playing: Doorbell`. Any http or https audio address the TV's browser can play (MP3 is safest). A new `play` replaces what was playing.
 - `./hub stop`: stops it.
-- `./hub news`: plays the newest **NPR News Now** newscast, NPR's five minute summary that is posted every hour. The Pi reads NPR's public feed (`https://feeds.npr.org/500005/podcast.xml`, no account or key), picks the newest episode by date and sends it as `play`; the terminal says which one, for example `NPR News Now, 7pm ET, November 19. Sent. 1 screen showed it.` The code is `news.js`; tests are `node pi/news-test.js`.
+- `./hub news`: plays the newest **NPR News Now** newscast, NPR's five minute summary that is posted every hour. The Pi reads NPR's public feed (`https://feeds.npr.org/500005/podcast.xml`, no account or key), picks the newest episode by date, follows NPR's tracking redirects (prfx.byspotify.com, podtrac) to the MP3 itself and sends that final address as `play` (if the redirects can't be followed in 8 s it sends the feed's address and the TV tries); the terminal says which one, for example `NPR News Now, 7pm ET, November 19. Sent. 1 screen showed it.` The code is `news.js`; tests are `node pi/news-test.js`.
 
-The hub has to be open (`./hub status` shows the screen). The TV's browser may refuse to start sound that no key press asked for; the hub then shows "The TV would not start the audio". Press a key on the remote and send it again.
+The hub has to be open (`./hub status` shows the screen). The TV's browser may refuse to start sound that no key press asked for. To get ahead of that, the first key press after the hub loads plays a silent blip, which unlocks sound for later plays. If the TV still refuses, the hub shows "Press any button on the remote to start the sound", and the next key press within 10 minutes starts it (no need to send it again).
 
 ### To-do notes
 
@@ -169,7 +169,7 @@ Server 0.18.0 keeps one more optional section, `investments` (the portfolio tota
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.22.2` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.22.3` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 

@@ -47,6 +47,11 @@
     'hub.noEntertainment': 'Entretenimiento no está en este diseño. Elige uno que lo tenga (Arriba en un mosaico de arriba) y vuelve a intentarlo.',
     'hub.noAddress': 'Este panel todavía no tiene dirección.',
     'hub.askedShow': 'Se pidió mostrar "{name}", que este hub no tiene.',
+    'hub.playing': 'Reproduciendo: {title}',
+    'hub.playingNoTitle': 'Reproduciendo',
+    'hub.playFailed': 'No se pudo reproducir ese audio',
+    'hub.playNoStart': 'No se pudo iniciar el audio',
+    'hub.playPressKey': 'Pulsa cualquier botón del control remoto para iniciar el sonido',
     /* The layout switcher's pills (key 'hub.layout.<id in config.js>'); a
      * layout the owner names themselves keeps its own name. */
     'hub.layout.stock': 'Predeterminado',
