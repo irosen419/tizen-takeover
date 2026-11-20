@@ -69,6 +69,15 @@
     about: 'OK to open · {tried} of {ready} tried',
     badId: 'an id has no spaces, quotes or angle brackets and is at most 200 characters',
     noEdit: 'that id can’t be changed here',
+    probeName: 'App probe',
+    probeHelp: 'OK to read the installed apps’ link metadata and send it to the Pi (not counted below)',
+    probeState: 'OK to run',
+    probeRunning: 'Probing the apps…',
+    probeNoTizen: 'This TV’s app list isn’t reachable here.',
+    probeSent: 'Probe sent to the Pi ({n} rows).',
+    probeFail: 'The probe couldn’t be sent to the Pi: {err}',
+    probeNoMeta: 'getAppMetaData missing',
+    probeNoFind: 'findAppControl missing',
     piToast: 'The Pi is opening {app}. If the TV asks to allow “Home Hub Pi”, choose Allow. Come back here after.',
     piOff: 'Live updates are off, so the Pi can’t be asked.',
     piFail: 'The Pi couldn’t start it: {error}'
@@ -332,6 +341,152 @@
     });
   }
 
+  /* ---------- app probe ---------- */
+
+  var PROBE_OPS = [
+    'http://samsung.com/appcontrol/operation/eden_resume',
+    'http://tizen.org/appcontrol/operation/view',
+    'http://tizen.org/appcontrol/operation/play',
+    'http://tizen.org/appcontrol/operation/default',
+    'http://samsung.com/appcontrol/operation/deeplink'
+  ];
+  var PROBE_META = /preview|deeplink|deep_link|endpoint|content|resume|eden|action/i;
+  var PROBE_APPS = /netflix|prime|disney|hulu|peacock|max|hbo|apple|paramount|youtube|pluto|tubi/i;
+  var PROBE_MAX = 40;
+  var probing = false;
+
+  function cut(text, n) { return String(text === undefined || text === null ? '' : text).substring(0, n); }
+
+  // Probe rows carry no personal data: app ids, names and metadata only.
+  // The Pi accepts four outcomes (title, app, nothing, error), none of which
+  // fits a probe, so probe rows use 'error'; their name 'App probe' tells
+  // them apart in ./hub linktests.
+  function probeResult(id, app, detail, text) {
+    var r = { id: id, app: cut(app, 40), name: word('probeName'), outcome: 'error', detail: cut(detail, 140), op: 'probe',
+      at: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), build: window.HUB_BUILD || '' };
+    // The text fills op, then uri, then data (300 each).
+    text = String(text || '');
+    if (text) r.op = text.substring(0, 300);
+    if (text.length > 300) r.uri = text.substring(300, 600);
+    if (text.length > 600) r.data = text.substring(600, 900);
+    return r;
+  }
+
+  function probeMeta(api, appId) {
+    var out = [];
+    try {
+      var m = api.getAppMetaData(appId);
+      for (var i = 0; m && i < m.length; i++) if (m[i]) out.push({ key: String(m[i].key), value: String(m[i].value) });
+    } catch (e) { /* no metadata for this app */ }
+    return out;
+  }
+
+  // Collects the apps each probe operation finds, then calls done(byOp).
+  function probeOps(api, done) {
+    var byOp = {};
+    var left = PROBE_OPS.length;
+    var over = false;
+    function finish() { if (!over) { over = true; done(byOp); } }
+    function one(op) {
+      var settled = false;
+      function end() { if (!settled) { settled = true; if (--left <= 0) finish(); } }
+      byOp[op] = [];
+      try {
+        api.findAppControl(new tizen.ApplicationControl(op, null, null, null, null), function (infos) {
+          for (var i = 0; infos && i < infos.length; i++) byOp[op].push({ id: String(infos[i].id), name: String(infos[i].name || '') });
+          end();
+        }, end);
+      } catch (e) { end(); }
+    }
+    for (var i = 0; i < PROBE_OPS.length; i++) one(PROBE_OPS[i]);
+    setTimeout(finish, 8000);
+  }
+
+  function probeBuild(infos, byOp, hasMeta, hasFind) {
+    var rows = [];
+    var api = tizen.application;
+    var seen = {};
+    for (var i = 0; i < infos.length && rows.length < PROBE_MAX - 1; i++) {
+      var a = infos[i];
+      if (!a || seen[a.id]) continue;
+      seen[a.id] = true;
+      var name = String(a.name || '');
+      var pairs = [];
+      var keep = false;
+      if (hasMeta) {
+        var meta = probeMeta(api, a.id);
+        var ent = PROBE_APPS.test(name);
+        for (var m = 0; m < meta.length; m++) {
+          if (PROBE_META.test(meta[m].key) || PROBE_META.test(meta[m].value)) keep = true;
+        }
+        if (keep || (ent && meta.length)) for (var q = 0; q < meta.length; q++) pairs.push(meta[q].key + '=' + meta[q].value);
+        if (ent) keep = true;
+      } else if (PROBE_APPS.test(name)) keep = true;
+      if (!keep) continue;
+      var hit = [];
+      for (var o = 0; o < PROBE_OPS.length; o++) {
+        var list = byOp[PROBE_OPS[o]] || [];
+        for (var l = 0; l < list.length; l++) if (list[l].id === a.id) hit.push(shortOp(PROBE_OPS[o]));
+      }
+      var n = rows.length + 1;
+      rows.push(probeResult('probe-' + (n < 10 ? '0' : '') + n, name, a.id + (hit.length ? ' ' + hit.join(',') : ' no op'), pairs.join(' | ')));
+    }
+    var status = [];
+    if (!hasMeta) status.push(word('probeNoMeta'));
+    if (!hasFind) status.push(word('probeNoFind'));
+    var parts = [];
+    for (var p = 0; p < PROBE_OPS.length; p++) {
+      var ids = [];
+      var found = byOp[PROBE_OPS[p]] || [];
+      for (var f = 0; f < found.length; f++) ids.push(found[f].id);
+      parts.push(shortOp(PROBE_OPS[p]) + ': ' + (ids.length ? ids.join(',') : 'none'));
+    }
+    rows.push(probeResult('probe-ops', 'App probe', (status.length ? status.join(', ') : 'apps ' + infos.length) + ' · ' + rows.length + ' kept', parts.join(' | ')));
+    return rows;
+  }
+
+  function probeSend(rows, cb) {
+    var Lv = S.C && S.C.live;
+    if (!Lv || typeof Lv.post !== 'function') { cb('live updates are off'); return; }
+    (function next(n) {
+      if (n >= rows.length) { cb(null); return; }
+      Lv.post('/linktests', { result: rows[n] }, function (err) {
+        if (err) { cb(err); return; }
+        next(n + 1);
+      });
+    })(0);
+  }
+
+  // OK on the App probe row. Returns 'busy', 'notizen' or 'started'.
+  function probe() {
+    var C = S.C;
+    if (probing) return 'busy';
+    var api = typeof tizen !== 'undefined' && tizen && tizen.application;
+    if (!api || typeof api.getAppsInfo !== 'function') { C.toast(word('probeNoTizen'), 5000); return 'notizen'; }
+    probing = true;
+    C.toast(word('probeRunning'), 3000);
+    function fail(err) { probing = false; C.toast(word('probeFail', { err: err }), 6000); }
+    try {
+      api.getAppsInfo(function (infos) {
+        try {
+          var hasMeta = typeof api.getAppMetaData === 'function';
+          var hasFind = typeof api.findAppControl === 'function';
+          function go(byOp) {
+            var rows;
+            try { rows = probeBuild(infos || [], byOp, hasMeta, hasFind); } catch (e) { fail(String(e && e.message || e)); return; }
+            probeSend(rows, function (err) {
+              if (err) { fail(err); return; }
+              probing = false;
+              C.toast(word('probeSent', { n: rows.length }), 4000);
+            });
+          }
+          if (hasFind) probeOps(api, go); else go({});
+        } catch (e) { fail(String(e && e.message || e)); }
+      }, function (e) { fail(String(e && e.message || e || 'no app list')); });
+    } catch (e) { fail(String(e && e.message || e)); }
+    return 'started';
+  }
+
   /* ---------- firing ---------- */
 
   function byId(id) {
@@ -447,6 +602,12 @@
       box.setAttribute('data-key', 'lt:id:' + ed[e].name);
       box.value = ed[e].value;
     }
+    var pr = el('div', 'lt-row lt-probe f', root);
+    pr.setAttribute('data-key', 'lt:probe');
+    var pm = el('div', 'lt-main', pr);
+    el('div', 'lt-name', pm, word('probeName'));
+    el('div', 'lt-detail', pm, word('probeHelp'));
+    el('span', 'lt-state', pr, word('probeState'));
     el('div', 'lt-total', root, word('total', { n: list.length }));
     for (var i = 0; i < list.length; i++) {
       var rec = list[i];
@@ -479,6 +640,7 @@
     var key = (target && target.getAttribute('data-key')) || '';
     var p = key.split(':');
     if (p[0] !== 'lt') return false;
+    if (p[1] === 'probe') { probe(); return true; }
     var rec = byId(p[2]);
     if (!rec) return true;
     if (p[1] === 'run') fire(rec);
@@ -535,6 +697,6 @@
       // Short: one line in the About strip (the list says which need an id).
       return word('about', { tried: tried, ready: ready });
     },
-    _test: { isOlder: isOlder, recipes: recipes, fire: fire, record: record, setId: setId, editable: editable, state: function () { return S; }, stateText: stateText }
+    _test: { probe: probe, isOlder: isOlder, recipes: recipes, fire: fire, record: record, setId: setId, editable: editable, state: function () { return S; }, stateText: stateText }
   };
 })();
