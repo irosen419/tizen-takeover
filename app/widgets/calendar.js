@@ -23,6 +23,18 @@
  *   Month:     arrows move by day and week (and into the next or last month),
  *              OK opens the Day.
  *   Up from the first event (or the top row of the month) goes back to the tabs.
+ *   Notes:     an event with notes (its description in Google Calendar,
+ *              data.notes[ev.note], from Pi server 0.16.0) shows the start
+ *              of them beside the Day view; OK there (or a click on the
+ *              event) opens them to read: Up/Down scroll, OK, Back, Left or
+ *              Right close. Guest mode hides notes (app/guest.js).
+ *   Guests:    an event with other people on it (Pi server 0.19.0:
+ *              guestCount and guests) says "1 guest" / "3 guests" beside its
+ *              time in every view; its notes open with the count and the
+ *              names. Nothing when there are none; Guest mode hides both.
+ *
+ * Opening the panel when nothing is left today goes straight to the next
+ * event's day with it chosen, the one the tile shows under "Next".
  *
  * Past events: hidden on the tile (it is about what's next), dimmed in the panel.
  */
@@ -34,6 +46,14 @@
   /* Every word the widget shows, in one place for translating. {n} is a
      number, {t} a time, {d} a day, {name} a calendar's name. */
   var STRINGS = {
+    title: 'Calendar',
+    calendarN: 'Calendar {n}',
+    fmtShort: '{mon} {d}',
+    fmtLong: '{dow}, {mon} {d}',
+    fmtLongYear: '{dow}, {mon} {d}, {y}',
+    fmtRangeSame: '{mon} {a} – {b}',
+    fmtWithYear: '{s}, {y}',
+    fmtMonthYear: '{mon} {y}',
     days: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     daysMin: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
@@ -69,6 +89,14 @@
     hintDay: '← → day · ↑ ↓ events',
     hintWeek: '← → day · ↑ ↓ events · OK opens the day',
     hintMonth: 'Arrows move · OK opens the day',
+    hintDayNotes: '← → day · ↑ ↓ events · OK reads the notes',
+    hintReading: '↑ ↓ scroll · OK or Back closes',
+    notesLabel: 'Notes',
+    readNotes: 'OK to read',
+    notesGuest: 'Notes hidden for guests',
+    guestOne: '1 guest',
+    guestMany: '{n} guests',
+    guestsLabel: 'Guests',
     states: {
       off: { head: 'Calendar needs the Pi',
         line: 'Your calendars come from the hub server on the Raspberry Pi. Live updates are off on this TV: set live.server in config.js to the Pi’s address.',
@@ -110,6 +138,24 @@
     }
   }
   try { mergeStrings(STRINGS, window.HUB_CALENDAR_STRINGS); } catch (e) { /* keep English */ }
+
+  /* The words in the hub's language ('calendar.<path in STRINGS>' in
+     app/i18n.js). STRINGS keeps its identity and is refilled from the
+     English copy, or from the Spanish, when the language changes. */
+  var EN = JSON.parse(JSON.stringify(STRINGS));
+  function localizeStrings() {
+    var L = window.HUB_I18N;
+    var src = EN;
+    try { if (L && typeof L.localize === 'function') src = L.localize(EN, 'calendar'); } catch (e) { src = EN; }
+    for (var k in src) if (src.hasOwnProperty(k)) STRINGS[k] = src[k];
+    try {
+      if (L && typeof L.t === 'function') STRINGS.daysMin = String(L.t('calendar.daysMin', EN.daysMin.join(','))).split(',');
+    } catch (e) { /* the English letters */ }
+  }
+  localizeStrings();
+
+  // "a. m." and "p. m." keep their space, so a time never breaks in two.
+  function apWord(h) { return String(h < 12 ? STRINGS.am : STRINGS.pm).replace(/ /g, '\u00a0'); }
 
   // States that only wait for the Pi: the hub may show these tiles quietly
   // (motion extras, quietTiles), as one small line.
@@ -154,6 +200,8 @@
   var selId = null;             // the chosen event's id in Day and Week
   var panelOpen = false;
   var ui = null;                // { root, stage, label, hint, tabs, today, full, focus: 'stage'|'tabs' }
+  var reading = false;          // the chosen event's notes are open to read (Day view)
+  var readTop = 0;              // how far the notes are scrolled (rem)
 
   /* ---------- small helpers ---------- */
 
@@ -330,8 +378,8 @@
 
   function str(v) { return typeof v === 'string' ? v : ''; }
 
-  // The events as the views use them: { id, cal, title, location, allDay,
-  // s, e (UTC ms), startDay, endDay (exclusive day numbers) }, sorted.
+  // The events as the views use them: { id, cal, title, location, notes,
+  // allDay, s, e (UTC ms), startDay, endDay (exclusive day numbers) }, sorted.
   function normalize(d, z) {
     var out = [];
     var list = d && isArr(d.events) ? d.events : [];
@@ -342,7 +390,14 @@
       var n = { id: str(ev.id) || ('x' + i), cal: typeof ev.cal === 'number' && ev.cal >= 1 ? ev.cal : 1,
         title: str(ev.title).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''),
         location: str(ev.location).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, ''),
-        allDay: ev.allDay === true };
+        allDay: ev.allDay === true,
+        notes: typeof ev.note === 'string' && d.notes && typeof d.notes === 'object' && typeof d.notes[ev.note] === 'string' ?
+          d.notes[ev.note].replace(/\r\n?/g, '\n').replace(/^\s+|\s+$/g, '') : '',
+        guestCount: typeof ev.guestCount === 'number' && ev.guestCount >= 1 ? Math.floor(ev.guestCount) : 0,
+        guests: [] };
+      if (n.guestCount && isArr(ev.guests)) {
+        for (var gi = 0; gi < ev.guests.length && gi < 25; gi++) if (typeof ev.guests[gi] === 'string' && ev.guests[gi]) n.guests.push(ev.guests[gi]);
+      }
       if (seen.hasOwnProperty('k' + n.id)) n.id = n.id + '~' + i;
       seen['k' + n.id] = true;
       if (n.allDay) {
@@ -483,7 +538,7 @@
 
   function hm(h, m, withAmPm) {
     var h12 = h % 12 === 0 ? 12 : h % 12;
-    return h12 + ':' + pad(m) + (withAmPm ? ' ' + (h < 12 ? STRINGS.am : STRINGS.pm) : '');
+    return h12 + ':' + pad(m) + (withAmPm ? ' ' + apWord(h) : '');
   }
 
   function timeText(z, ms) {
@@ -493,17 +548,17 @@
 
   // "9 AM" for hour lines.
   function hourText(h) {
-    return (h % 12 === 0 ? 12 : h % 12) + ' ' + (h < 12 ? STRINGS.am : STRINGS.pm);
+    return (h % 12 === 0 ? 12 : h % 12) + ' ' + apWord(h);
   }
 
   function shortDate(n) {
     var p = ymd(n);
-    return STRINGS.monthsShort[p.m] + ' ' + p.d;
+    return fill(STRINGS.fmtShort, { mon: STRINGS.monthsShort[p.m], d: p.d });
   }
 
   function longDate(n, withYear) {
     var p = ymd(n);
-    return STRINGS.days[weekday(n)] + ', ' + STRINGS.months[p.m] + ' ' + p.d + (withYear ? ', ' + p.y : '');
+    return fill(withYear ? STRINGS.fmtLongYear : STRINGS.fmtLong, { dow: STRINGS.days[weekday(n)], mon: STRINGS.months[p.m], d: p.d, y: p.y });
   }
 
   // "Today", "Tomorrow", "Yesterday", a weekday within the week, else "Tue, Nov 24".
@@ -522,7 +577,7 @@
       if (ev.endDay - ev.startDay <= 1) return STRINGS.allDay;
       var a = ymd(ev.startDay);
       var b = ymd(ev.endDay - 1);
-      var range = a.m === b.m && a.y === b.y ? shortDate(ev.startDay) + ' – ' + b.d : shortDate(ev.startDay) + ' – ' + shortDate(ev.endDay - 1);
+      var range = a.m === b.m && a.y === b.y ? fill(STRINGS.fmtRangeSame, { mon: STRINGS.monthsShort[a.m], a: a.d, b: b.d }) : shortDate(ev.startDay) + ' – ' + shortDate(ev.endDay - 1);
       return STRINGS.allDay + ', ' + range;
     }
     var s = clockOf(z, ev.s);
@@ -537,7 +592,95 @@
     return hm(s.h, s.m, true) + ' – ' + hm(e.h, e.m, true);
   }
 
-  function titleOf(ev) { return ev.title || STRINGS.noTitle; }
+  // Owner-typed text in the hub's language (display only; app/i18n-dyn.js).
+  function dyn(s) { return (window.HUB_I18N && window.HUB_I18N.dyn) ? window.HUB_I18N.dyn(s) : s; }
+
+  function titleOf(ev) { return ev.title ? dyn(ev.title) : STRINGS.noTitle; }
+
+  function guestOn() {
+    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
+  }
+
+  // Notes the screen may show: none while Guest mode is on.
+  function notesOf(ev) { return ev && ev.notes && !guestOn() ? ev.notes : ''; }
+
+  // Notes as blocks: { head, lines } per paragraph (blank line between). A
+  // short first line with more under it reads as a heading ("Golden pothos").
+  // Each line is translated on its own (dyn takes up to 500 characters).
+  function noteBlocks(text) {
+    var out = [];
+    var paras = String(text).split(/\n[ \t]*\n/);
+    for (var i = 0; i < paras.length; i++) {
+      var lines = paras[i].split('\n');
+      var kept = [];
+      for (var j = 0; j < lines.length; j++) {
+        var l = lines[j].replace(/^\s+|\s+$/g, '');
+        if (l) kept.push(l);
+      }
+      if (!kept.length) continue;
+      var head = '';
+      if (kept.length > 1 && kept[0].length <= 48 && !/[.!?:,;]$/.test(kept[0])) head = kept.shift();
+      out.push({ head: head ? dyn(head) : '', lines: kept.map(function (x) { return x.length > 500 ? x : dyn(x); }) });
+    }
+    return out;
+  }
+
+  function drawNoteBlocks(parent, text) {
+    var blocks = noteBlocks(text);
+    for (var i = 0; i < blocks.length; i++) {
+      var b = el('div', 'cal-nb', parent);
+      if (blocks[i].head) el('div', 'cal-nb-head', b, blocks[i].head);
+      for (var j = 0; j < blocks[i].lines.length; j++) el('div', 'cal-nb-line', b, blocks[i].lines[j]);
+    }
+  }
+
+  // How many other people are on the event, as words; '' for none or in Guest mode.
+  function guestText(ev) {
+    if (!ev || !ev.guestCount || guestOn()) return '';
+    return ev.guestCount === 1 ? STRINGS.guestOne : fill(STRINGS.guestMany, { n: ev.guestCount });
+  }
+
+  // " · 3 guests" after an event's time, in its own span so it can be quieter.
+  // Narrow places (a Week column) get a small person mark and the number.
+  function guestTag(parent, ev, mini) {
+    var t = guestText(ev);
+    if (!t) return;
+    if (!mini) { el('span', 'cal-guests', parent, '\u00a0\u00b7 ' + t); return; }
+    var m = el('span', 'cal-guests is-mini', parent);
+    m.setAttribute('title', t);
+    var p = el('span', 'cal-person', m);
+    el('i', '', p);
+    el('i', '', p);
+    el('span', '', m, String(ev.guestCount));
+  }
+
+  // Guests are the least important words on a line: wherever a line is too
+  // tight for them (it would cut its time or title), they leave.
+  function fitGuests(root) {
+    if (!root || !root.querySelectorAll) return;
+    var tags = root.querySelectorAll('.cal-guests');
+    for (var i = tags.length - 1; i >= 0; i--) {
+      var p = tags[i].parentNode;
+      if (!p) continue;
+      if (p.scrollWidth > p.clientWidth + 1) { p.removeChild(tags[i]); continue; }
+      // A line that wraps (a narrow tile) must not grow a row for them.
+      var withTag = p.offsetHeight;
+      var tag = p.removeChild(tags[i]);
+      if (p.offsetHeight >= withTag) p.appendChild(tag);
+    }
+  }
+
+  // The event can be opened to read: it has notes or guests to show.
+  function readable(ev) { return !!(notesOf(ev) || guestText(ev)); }
+
+  // A small lines mark: this event has notes.
+  function notesMark(parent) {
+    var m = el('span', 'cal-has-notes', parent);
+    el('i', '', m);
+    el('i', '', m);
+    el('i', '', m);
+    return m;
+  }
 
   /* ---------- test hook ---------- */
 
@@ -561,7 +704,11 @@
     whenText: whenText,
     timeText: timeText,
     relDay: relDay,
-    isPast: isPast
+    isPast: isPast,
+    noteBlocks: noteBlocks,
+    notesOf: notesOf,
+    guestText: guestText,
+    readable: readable
   };
 
   /* ---------- the data and the live line ---------- */
@@ -656,7 +803,7 @@
     return out;
   }
 
-  function calName(c) { return str(c && c.name) || ('Calendar ' + (c && c.cal)); }
+  function calName(c) { return str(c && c.name) || fill(STRINGS.calendarN, { n: c && c.cal }); }
 
   // The error text from the Pi, only when it is short and plain.
   function plainError(text) {
@@ -679,7 +826,7 @@
   var liveEvents = '';
 
   function eventsKey(d) {
-    try { return d && d.configured === true ? JSON.stringify(d.events) : 'none'; } catch (e) { return 'none'; }
+    try { return d && d.configured === true ? JSON.stringify(d.events) + JSON.stringify(d.notes || null) : 'none'; } catch (e) { return 'none'; }
   }
 
   function onLive(d) {
@@ -799,7 +946,17 @@
       var when = el('span', 'cal-strip-when', line);
       if (u.now) el('span', 'cal-now-tag', when, STRINGS.now);
       else when.textContent = timeText(zone, u.ev.s);
-      el('span', 'cal-strip-title', line, titleOf(u.ev));
+      var st = el('span', 'cal-strip-title', line, titleOf(u.ev));
+      // Guests come last and only when the whole title still fits beside them.
+      var gt = guestText(u.ev);
+      if (gt) {
+        st.className += ' has-guests';
+        var sg = el('span', 'cal-strip-guests', line, '\u00b7 ' + gt);
+        if (st.scrollWidth > st.clientWidth + 1 || line.scrollWidth > line.clientWidth + 1) {
+          line.removeChild(sg);
+          st.className = st.className.replace(' has-guests', '');
+        }
+      }
     } else if (a.allDay.length) {
       bar(line, a.allDay[0].cal);
       el('span', 'cal-strip-when cal-trow-tag', line, STRINGS.allDay);
@@ -880,8 +1037,10 @@
         bar(line, a.next.cal);
         var txt = el('div', 'cal-next-text', line);
         var when = relDay(a.next.startDay, a.today) + (a.next.allDay ? '' : ' ' + timeText(zone, a.next.s));
-        el('div', 'cal-next-when', txt, when);
-        el('div', 'cal-next-title', txt, titleOf(a.next));
+        var nw = el('div', 'cal-next-when', txt, when);
+        guestTag(nw, a.next);
+        var nt = el('div', 'cal-next-title', txt, titleOf(a.next));
+        if (notesOf(a.next)) notesMark(nt);
       } else if (!a.had) {
         empty.textContent = STRINGS.nothingComing;
       }
@@ -913,13 +1072,16 @@
       fitRows(list, more, rows);
     }
     if (size && size.tier === 'tall' && a.upcoming.length && list.childNodes.length === rows.length) drawLater(root, list, a);
+    fitGuests(root);
   }
 
   function alldayRow(ev) {
     var row = el('div', 'cal-trow cal-trow-allday');
     bar(row, ev.cal);
     el('span', 'cal-trow-tag', row, STRINGS.allDay);
-    el('span', 'cal-trow-line', row, titleOf(ev));
+    var line = el('span', 'cal-trow-line', row, titleOf(ev));
+    if (notesOf(ev)) notesMark(line);
+    guestTag(line, ev);
     return row;
   }
 
@@ -934,7 +1096,9 @@
     } else {
       when.textContent = timeText(zone, u.ev.s);
     }
-    el('div', 'cal-trow-title', text, titleOf(u.ev));
+    guestTag(when, u.ev);
+    var t = el('div', 'cal-trow-title', text, titleOf(u.ev));
+    if (notesOf(u.ev)) notesMark(t);
     return row;
   }
 
@@ -979,6 +1143,7 @@
       panelOpen = true;
       selDay = null;
       selId = null;
+      reading = false;
       ui.focus = 'stage';
     }
     C.setSub(subText());
@@ -993,7 +1158,17 @@
       return;
     }
     var td = today();
-    if (selDay === null || Math.abs(selDay - td) > NAV_LIMIT) selDay = td;
+    if (selDay === null || Math.abs(selDay - td) > NAV_LIMIT) {
+      selDay = td;
+      // Nothing left today: open on the next event, as the tile's "Next" says.
+      var ag = agenda(index, now());
+      if (!ag.upcoming.length && ag.next && ag.next.startDay - td <= NAV_LIMIT) {
+        var lefts = orderFor(td);
+        var open = false;
+        for (var q = 0; q < lefts.length; q++) if (!isPast(lefts[q], now(), td)) open = true;
+        if (!open) { selDay = ag.next.startDay; selId = ag.next.id; }
+      }
+    }
 
     // Today comes first, so reaching it never walks across (and switches) the views.
     var barRow = el('div', 'cal-bar-row', root);
@@ -1050,7 +1225,8 @@
   function setHint() {
     if (!ui || !ui.hint) return;
     var text = ui.focus === 'tabs' ? STRINGS.hintTabs :
-      view === 'day' ? STRINGS.hintDay : view === 'week' ? STRINGS.hintWeek : STRINGS.hintMonth;
+      view === 'day' ? (reading ? STRINGS.hintReading : readable(selectedEvent()) ? STRINGS.hintDayNotes : STRINGS.hintDay) :
+      view === 'week' ? STRINGS.hintWeek : STRINGS.hintMonth;
     ui.hint.textContent = text;
   }
 
@@ -1066,10 +1242,11 @@
       var a = weekStartOf(selDay);
       var pa = ymd(a);
       var pb = ymd(a + 6);
-      text = shortDate(a) + ' – ' + (pa.m === pb.m ? String(pb.d) : shortDate(a + 6)) + (pb.y !== thisYear ? ', ' + pb.y : '');
+      text = pa.m === pb.m ? fill(STRINGS.fmtRangeSame, { mon: STRINGS.monthsShort[pa.m], a: pa.d, b: pb.d }) : shortDate(a) + ' – ' + shortDate(a + 6);
+      if (pb.y !== thisYear) text = fill(STRINGS.fmtWithYear, { s: text, y: pb.y });
     } else {
       var pm = ymd(selDay);
-      text = STRINGS.months[pm.m] + ' ' + pm.y;
+      text = fill(STRINGS.fmtMonthYear, { mon: STRINGS.months[pm.m], y: pm.y });
     }
     ui.label.textContent = text;
     if (selDay === td) ui.today.classList.add('is-here');
@@ -1088,6 +1265,7 @@
     if (view === 'week') drawWeek(ui.stage);
     else if (view === 'month') drawMonth(ui.stage);
     else drawDay(ui.stage);
+    fitGuests(ui.stage);
     setLabel();
     setHint();
   }
@@ -1095,6 +1273,8 @@
   /* ---------- panel: picking ---------- */
 
   function orderFor(n) { return dayOrder(dayEvents(index, n)); }
+
+  function selectedEvent() { return selId && index ? index.byId['k' + selId] || null : null; }
 
   // The event to pick on a day: on today the first that hasn't ended, else the first.
   function defaultPick(n) {
@@ -1158,7 +1338,9 @@
     settleSelection();
     pack(de.timed, minH / H * 60);
 
-    var wrap = el('div', 'cal-day', stage);
+    var selEv = selectedEvent();
+    if (reading && !readable(selEv)) reading = false;
+    var wrap = el('div', 'cal-day' + (reading ? ' is-reading' : ''), stage);
     var tl = el('div', 'cal-tl', wrap);
     var detailBox = el('div', 'cal-detail', wrap);
 
@@ -1207,7 +1389,8 @@
       face.style.backgroundColor = color(it.ev.cal, 0.26);
       face.style.borderLeftColor = color(it.ev.cal);
       el('div', 'cal-ev-title', face, titleOf(it.ev));
-      el('div', 'cal-ev-time', face, it.before ? fill(STRINGS.untilT, { t: timeText(zone, it.ev.e) }) : timeText(zone, it.ev.s));
+      var et = el('div', 'cal-ev-time', face, it.before ? fill(STRINGS.untilT, { t: timeText(zone, it.ev.e) }) : timeText(zone, it.ev.s));
+      guestTag(et, it.ev);
       clickPick(box, it.ev.id);
       if (it.ev.id === selId) selItem = { top: top, height: height };
     }
@@ -1256,27 +1439,108 @@
   function drawDetail(box, de) {
     var td = today();
     var ev = selId && index.byId['k' + selId];
-    el('div', 'cal-detail-day', box, relDay(selDay, td) === STRINGS.today || Math.abs(selDay - td) === 1 ? relDay(selDay, td) : STRINGS.days[weekday(selDay)]);
+    var meta = el('div', 'cal-detail-meta', box);
+    el('div', 'cal-detail-day', meta, relDay(selDay, td) === STRINGS.today || Math.abs(selDay - td) === 1 ? relDay(selDay, td) : STRINGS.days[weekday(selDay)]);
     if (!ev) {
-      el('div', 'cal-detail-empty', box, index.events.length ? STRINGS.nothingDay : STRINGS.nothingComing);
-      if (outsideData(selDay)) el('div', 'cal-detail-note', box, STRINGS.outside);
+      el('div', 'cal-detail-empty', meta, index.events.length ? STRINGS.nothingDay : STRINGS.nothingComing);
+      if (outsideData(selDay)) el('div', 'cal-detail-note', meta, STRINGS.outside);
       return;
     }
     var c = calendarFor(ev.cal);
-    var who = el('div', 'cal-detail-cal', box);
+    var who = el('div', 'cal-detail-cal', meta);
     var dot = el('span', 'cal-swatch', who);
     dot.style.backgroundColor = color(ev.cal);
     el('span', 'cal-detail-calname', who, calName(c || { cal: ev.cal }));
-    el('div', 'cal-detail-title' + (ev.title === 'Busy' ? ' is-busy' : ''), box, titleOf(ev));
-    el('div', 'cal-detail-when', box, whenText(zone, ev));
-    if (ev.location) el('div', 'cal-detail-place', box, ev.location);
+    el('div', 'cal-detail-title' + (ev.title === 'Busy' ? ' is-busy' : ''), meta, titleOf(ev));
+    el('div', 'cal-detail-when', meta, whenText(zone, ev));
+    var gtext = guestText(ev);
+    if (gtext) el('div', 'cal-detail-guests', meta, gtext);
+    if (ev.location) el('div', 'cal-detail-place', meta, ev.location);
     var count = dayOrder(de).length;
-    if (count > 1) {
+    if (count > 1 && !reading) {
       var at = 0;
       var order = dayOrder(de);
       for (var i = 0; i < order.length; i++) if (order[i].id === ev.id) at = i;
-      el('div', 'cal-detail-count', box, (at + 1) + ' / ' + count);
+      el('div', 'cal-detail-count', meta, (at + 1) + ' / ' + count);
     }
+    if (ev.notes && guestOn()) {
+      el('div', 'cal-detail-note', meta, STRINGS.notesGuest);
+      return;
+    }
+    var text = notesOf(ev);
+    if (!text && !gtext) { ui.readView = null; return; }
+    var notes = el('div', 'cal-notes', box);
+    var head = el('div', 'cal-notes-head', notes);
+    var label = el('div', 'cal-notes-label', head);
+    notesMark(label);
+    el('span', '', label, text ? STRINGS.notesLabel : STRINGS.guestsLabel);
+    var nview = el('div', 'cal-notes-view', notes);
+    var body = el('div', 'cal-notes-body', nview);
+    // Who is on it comes first: the count, then the names.
+    if (gtext) {
+      var gb = el('div', 'cal-nb cal-nb-guests', body);
+      el('div', 'cal-nb-head', gb, gtext);
+      if (ev.guests.length) {
+        var more = ev.guestCount - ev.guests.length;
+        el('div', 'cal-nb-line', gb, ev.guests.join(', ') + (more > 0 ? ', ' + fill(STRINGS.more, { n: more }) : ''));
+      }
+    }
+    if (text) drawNoteBlocks(body, text);
+    if (reading) {
+      ui.readView = nview;
+      ui.readBody = body;
+      scrollNotes(0);
+    } else {
+      // A preview: whole lines while they fit, faded at the foot when there is
+      // more. Under two lines of room it is just the heading and how to read them.
+      ui.readView = null;
+      el('div', 'cal-notes-more', head, STRINGS.readNotes);
+      var first = body.firstChild && body.firstChild.lastChild;
+      var lh = first ? parseFloat(window.getComputedStyle(first).lineHeight) || 0 : 0;
+      var room = nview.clientHeight;
+      var lines = lh > 0 ? Math.floor((room + 1) / lh) : 0;
+      if (lines < 2) {
+        notes.className += ' is-squeezed';
+      } else {
+        if (body.offsetHeight > room + 1) {
+          nview.style.height = (lines * lh) + 'px';
+          notes.className += ' is-more is-clipped';
+        }
+      }
+    }
+  }
+
+  // Scrolls the open notes by dir pages (a transform; nothing reflows).
+  // Returns false at the top going up.
+  function scrollNotes(dir) {
+    if (!ui || !ui.readView || !ui.readBody) return true;
+    var rem = remPx();
+    var vh = ui.readView.clientHeight / rem;
+    var max = Math.max(0, ui.readBody.offsetHeight / rem - vh);
+    var step = Math.max(1, vh * 0.35);
+    var next = Math.max(0, Math.min(max, readTop + dir * step));
+    if (dir < 0 && readTop <= 0) return false;
+    readTop = next;
+    ui.readBody.style.transform = 'translateY(' + (-readTop) + 'rem)';
+    if (readTop < max - 0.05) ui.readView.parentNode.classList.add('is-more');
+    else ui.readView.parentNode.classList.remove('is-more');
+    return true;
+  }
+
+  function openNotes() {
+    if (view !== 'day' || !readable(selectedEvent())) return false;
+    reading = true;
+    readTop = 0;
+    drawStage();
+    return true;
+  }
+
+  function closeNotes() {
+    if (!reading) return false;
+    reading = false;
+    readTop = 0;
+    drawStage();
+    return true;
   }
 
   /* ---------- panel: Week ---------- */
@@ -1311,7 +1575,8 @@
         } else {
           item.style.borderLeftColor = color(ev.cal);
           var startsHere = zone.dayOf(ev.s) === n;
-          el('div', 'cal-wev-time', item, startsHere ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) }));
+          var wt = el('div', 'cal-wev-time', item, startsHere ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) }));
+          guestTag(wt, ev, true);
           el('div', 'cal-wev-title', item, titleOf(ev));
         }
         clickPickDay(item, n, ev.id);
@@ -1330,6 +1595,7 @@
       el('span', 'cal-wdetail-when', strip, whenText(zone, ev2));
       el('span', 'cal-wdetail-title', strip, titleOf(ev2));
       var extra = [];
+      if (guestText(ev2)) extra.push(guestText(ev2));
       if (ev2.location) extra.push(ev2.location);
       extra.push(calName(calendarFor(ev2.cal) || { cal: ev2.cal }));
       el('span', 'cal-wdetail-more', strip, extra.join(' · '));
@@ -1419,7 +1685,8 @@
       var item = el('div', 'cal-mev' + (isPast(ev, t, td) ? ' is-past' : ''));
       bar(item, ev.cal);
       var text = el('div', 'cal-mev-text', item);
-      el('div', 'cal-mev-when', text, ev.allDay ? STRINGS.allDay : (zone.dayOf(ev.s) === selDay ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) })));
+      var mw = el('div', 'cal-mev-when', text, ev.allDay ? STRINGS.allDay : (zone.dayOf(ev.s) === selDay ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) })));
+      guestTag(mw, ev);
       el('div', 'cal-mev-title', text, titleOf(ev));
       rows.push(item);
     }
@@ -1445,6 +1712,12 @@
   function moveInStage(dir) {
     var td = today();
     if (view === 'day') {
+      if (reading) {
+        if (dir === 'down') { scrollNotes(1); return true; }
+        if (dir === 'up') { if (!scrollNotes(-1)) closeNotes(); return true; }
+        closeNotes();
+        return true;
+      }
       if (dir === 'left' || dir === 'right') { if (setDay(selDay + (dir === 'left' ? -1 : 1))) drawStage(); return true; }
       if (!stepEvent(dir === 'up' ? -1 : 1)) return ui.tabs[view];
       drawStage();
@@ -1466,6 +1739,7 @@
   function showView(next) {
     if (view === next || !ui) return;
     view = next;
+    reading = false;
     drawStage();
   }
 
@@ -1480,7 +1754,7 @@
 
   return {
     id: 'calendar',
-    title: 'Calendar',
+    get title() { return STRINGS.title; },
     icon: 'calendar',
     expandable: true,
     activity: 'calendar',      // its working chip (app/motion.js)
@@ -1496,6 +1770,39 @@
         } catch (e) { /* wait for it */ }
         L.on('calendar', safe(function (d) { onLive(d); }));
       }
+      // A language change: new words, the tile and an open panel drawn again.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+          window.HUB_I18N.onChange(function () {
+            try { localizeStrings(); refresh(true); } catch (e) { warn('language: ' + (e && e.message)); }
+          });
+        }
+      } catch (e) { /* stays in the language it started in */ }
+      // Guest mode hides notes: draw again when it changes.
+      try {
+        if (window.HUB_GUEST && typeof window.HUB_GUEST.onChange === 'function') {
+          window.HUB_GUEST.onChange(function () {
+            try { if (guestOn()) reading = false; refresh(true); } catch (e) { warn('guest: ' + (e && e.message)); }
+          });
+        }
+      } catch (e) { /* notes follow the next draw */ }
+      // Spanish for event titles arrived: draw again once per batch, not while typing.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onDyn === 'function') {
+          var dynTimer = null;
+          window.HUB_I18N.onDyn(function () {
+            if (dynTimer) return;
+            dynTimer = setTimeout(function () {
+              dynTimer = null;
+              try {
+                var ae = document.activeElement;
+                if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
+                refresh(true);
+              } catch (e2) { warn('translation: ' + (e2 && e2.message)); }
+            }, 120);
+          });
+        }
+      } catch (e1) { /* stays as typed */ }
       lastToday = today();
       tileSig = signature();
       shownState = stateNow();
@@ -1547,6 +1854,7 @@
       var key = target.getAttribute('data-key') || '';
       if (key.indexOf('tab-') === 0) { showView(key.substring(4)); ctx.focus(ui.stage); return; }
       if (key === 'today') {
+        reading = false;
         selDay = today();
         selId = defaultPick(selDay);
         drawStage();
@@ -1554,15 +1862,24 @@
       }
       // OK on Week or Month opens the chosen day (a click has already picked it).
       if (target === ui.stage) {
-        if (view === 'week' || view === 'month') view = 'day';
+        if (view === 'day') {
+          if (reading) closeNotes();
+          else if (!openNotes()) drawStage();
+          return;
+        }
+        view = 'day';
         drawStage();
       }
     },
+
+    // Back while reading notes closes them; otherwise the hub closes the panel.
+    onBack: function () { return closeNotes(); },
 
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
 
     onClose: function () {
       panelOpen = false;
+      reading = false;
       ui = null;
     }
   };

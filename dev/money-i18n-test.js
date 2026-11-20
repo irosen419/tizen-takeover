@@ -24,7 +24,7 @@
  *     rows (label on its own line over the track) and "A dónde va" at panel
  *     and full screen, plain and 25% longer, line height 1.25 or more; the
  *     runway chart at full screen ("Recorrido hasta el 30 nov", the legend,
- *     Spanish weekdays, the gap "Cubierto, sin sobrante", "Faltan $13"),
+ *     Spanish weekdays, the gap "Vas bien, sobran $0", "Faltan $13"),
  *     every label inside the chart, apart from the others, accents whole;
  *   - a language change (HUB_I18N.setLang) redraws the tiles, their titles
  *     and an open panel, and back to English;
@@ -123,7 +123,8 @@ function inspect(args) {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
   const out = [];
   const roots = document.querySelectorAll(sel);
-  function cuts(cs) { return cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none'); }
+  // A cut that is shown: "...", a line clamp, or (the redesign, app/theme.css) an edge that fades out under a mask.
+  function cuts(cs) { return cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || (cs.webkitMaskImage && cs.webkitMaskImage !== 'none'); }
   function hides(cs) { return cs.overflowX === 'hidden' || cs.overflowY === 'hidden'; }
   function scrolls(cs, el) { return /auto|scroll/.test(cs.overflowY) || /auto|scroll/.test(cs.overflowX) || el.classList.contains('panel-body'); }
   for (let i = 0; i < roots.length; i++) {
@@ -275,7 +276,7 @@ async function main() {
         const titles = await text(page, IDS.map(titleOf).join(', '));
         assert(titles === 'Ganado y gastado | Margen diario | Pago de tarjeta | Metas | Laboratorio', 'titles: ' + titles);
         const l = await text(page, tileOf('budget-lab'));
-        assert(/día bajo el tope/.test(l) && /Ayer \$41 de \$65/.test(l) && /Quédate bajo \$62 hoy/.test(l) && /19 nov: cubierto/.test(l), 'lab: ' + l);
+        assert(/\$62al día/.test(l) && /Cubre el pago del 19 nov/.test(l) && /1 día bajo el tope/.test(l) && /Quédate bajo \$62 hoy/.test(l) && !/sobran \$0/.test(l), 'lab: ' + l);
         const m = await text(page, tileOf('awws-money'));
         assert(/neto/.test(m) && /−\$575/.test(m) && /\$1,265/.test(m) && /ganado/.test(m) && /gastado/.test(m), 'money: ' + m);
         assert(/Próxima transferencia: 1 dic/.test(m), 'no Spanish date for the next transfer: ' + m);
@@ -423,7 +424,7 @@ async function main() {
           assert(/Recorrido/.test(c.head) && (long || /30 nov/.test(c.head)), 'head: ' + c.head);
           assert(/Margen/.test(c.legend) && /Gasto/.test(c.legend), 'legend: ' + c.legend);
           assert(c.labels.indexOf('lun') >= 0 && c.labels.indexOf('20 nov') >= 0 && c.labels.indexOf('30 nov') >= 0, 'labels: ' + c.labels.join(' | '));
-          assert(/Cubierto/.test(c.gap) && /sobran/.test(c.gap), 'gap: ' + c.gap);
+          assert(/Vas bien, sobran \$0/.test(c.gap.replace(/[^\x20-\x7e]/g, '')) && !/Cubierto/.test(c.gap), 'gap: ' + c.gap);
           const fk = () => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
           for (let i = 0; i < 4 && !/^(cap|reset|cut-\d+)$/.test(await fk() || ''); i++) await H.key(page, 'ArrowDown');
           for (let i = 0; i < 16 && (await fk()) !== 'cap'; i++) await H.key(page, 'ArrowUp');
@@ -447,7 +448,7 @@ async function main() {
         try {
           await H.openPanel(page, 'budget-lab');
           let p = await text(page, '#panel .panel-body');
-          assert(/Mantén/.test(p) && /◀ ▶/.test(p) && /cambiar/.test(p) && /Calculado\S* \$62/.test(p) && /cubierto/i.test(p), 'covered: ' + p.slice(0, 300));
+          assert(/Mantén/.test(p) && /◀ ▶/.test(p) && /cambiar/.test(p) && /Calculado\S* \$62/.test(p) && /bien con \$62/i.test(p.replace(/[^\x20-\x7e]/g, '')), 'covered: ' + p.slice(0, 300));
           const o = await page.evaluate(() => {
             const out = [];
             const body = document.querySelector('#panel .panel-body').getBoundingClientRect();
@@ -474,6 +475,30 @@ async function main() {
           assert(!bad.length, 'short: ' + bad.slice(0, 4).join('; '));
           const fit = await page.evaluate(() => { const b = document.querySelector('#panel .panel-body'); return [b.scrollHeight, b.clientHeight, [].map.call(b.querySelectorAll('.bu-pcol'), (c) => c.offsetHeight), document.querySelector('.bl-pwrap').className]; });
           assert(fit[0] <= fit[1] + 1, 'the short case does not fit one screen: ' + JSON.stringify(fit));
+          noErrors(page);
+        } finally {
+          await page.ctx.close();
+          await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+        }
+      });
+      // Autopay days in Spanish: the amber card tile with its payment rows, the room's quiet line and the lab's header, nothing clipped.
+      await check(name + ': autopay days, the card tile, the room line and the lab header in Spanish, nothing clipped', async () => {
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true, autopay: true }));
+        const page = await open(env, { layout: ROW, lang: 'es', long: long });
+        try {
+          const card = await text(page, tileOf('budget-card'));
+          assert(/Faltan/.test(card) && /Pagos/.test(card) && /autom/.test(card) && /Sapphire Reserve/.test(card), 'card: ' + card);
+          assert(!/Faltan \$955.*Faltan/.test(card), 'card: ' + card);
+          assert(/pago autom|autom/.test(await text(page, tileOf('budget-room'))), 'room: ' + await text(page, tileOf('budget-room')));
+          let bad = await page.evaluate(inspect, [tileOf('budget-card'), 0]);
+          assert(!bad.length, 'card tile: ' + bad.slice(0, 4).join('; '));
+          bad = await page.evaluate(inspect, [tileOf('budget-room'), 0]);
+          assert(!bad.length, 'room tile: ' + bad.slice(0, 4).join('; '));
+          await H.openPanel(page, 'budget-lab');
+          const p = await text(page, '#panel .panel-body');
+          assert(/\$955/.test(p) && /pago/.test(p), 'lab: ' + p.slice(0, 300));
+          bad = await page.evaluate(inspect, ['#panel .panel-body', 1.5]);
+          assert(!bad.length, 'lab panel: ' + bad.slice(0, 4).join('; '));
           noErrors(page);
         } finally {
           await page.ctx.close();
@@ -508,8 +533,8 @@ async function main() {
         assert(/neto/.test(await text(page, tileOf('awws-money'))), 'money: ' + await text(page, tileOf('awws-money')));
         assert((await text(page, '#panel .panel-title')) === 'Margen diario', 'panel title: ' + await text(page, '#panel .panel-title'));
         assert(/disponible al día/.test(await text(page, '#panel .panel-body')), 'panel: ' + await text(page, '#panel .panel-body'));
-        // The A World Worth Saving Glance stays English for now.
-        assert(/Next visit|Now for you|now for you|Progress|Coming up/.test(await text(page, tileOf('awws'))), 'the Glance changed: ' + (await text(page, tileOf('awws'))).slice(0, 120));
+        // The A World Worth Saving Glance follows the language too.
+        assert(/Próximamente|ahora para ti|Ahora para ti|Avance/.test(await text(page, tileOf('awws'))), 'the Glance did not change: ' + (await text(page, tileOf('awws'))).slice(0, 120));
         await page.evaluate(() => window.HUB_I18N.setLang('en'));
         await H.sleep(300);
         assert((await text(page, titleOf('budget-card'))) === 'Card day', 'back to English');

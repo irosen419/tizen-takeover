@@ -19,7 +19,31 @@
       { "label": "From savings", "amount": 125 },
       { "label": "Side work", "amount": 60 }
     ],
-    "paychecks": ["2026-11-20", "2026-12-04"]
+    "paychecks": ["2026-11-20", "2026-12-04"],
+    "receipt": {
+      "asOf": "2026-11-16T15:05:00Z",
+      "next": { "date": "2026-11-20", "amount": 3595 },
+      "perDay": 143,
+      "lines": [
+        { "key": "checking", "label": "Checking now", "amount": 4200 },
+        { "key": "paychecks", "label": "Paychecks before card day", "amount": 0, "items": [] },
+        { "key": "billsBefore", "label": "Bills before card day", "amount": -160, "items": [
+          { "label": "Phone", "amount": 85, "date": "2026-11-17", "new": true },
+          { "label": "Internet", "amount": 75, "date": "2026-11-18" }
+        ] },
+        { "key": "cardsToday", "label": "Cards today, pending included", "amount": -2100, "items": [
+          { "label": "Blue Card", "amount": 1300, "bal": 1250, "pending": 50, "coming": 0, "autopay": "2026-11-27", "pay": 1300, "auto": 0 },
+          { "label": "Green Card", "amount": 800, "bal": 800, "pending": 0, "coming": 0, "autopay": "2026-11-24", "pay": 800, "auto": 0 }
+        ] },
+        { "key": "billsAfter", "label": "Bills from card day to payday", "amount": -1450, "items": [
+          { "label": "Rent", "amount": 1450, "date": "2026-11-19" }
+        ] },
+        { "key": "buys", "label": "Planned buys", "amount": -60, "items": [
+          { "label": "Headphones", "amount": 60 }
+        ] }
+      ],
+      "bottom": 430
+    }
   },
   "goals": {
     "asOf": "2026-11-16T15:05:00Z",
@@ -44,6 +68,8 @@
     "daysLeft": 3,
     "cardDate": "2026-11-19",
     "monthDay": 16,
+    "autopayRoom": 412.6,
+    "autopayDate": "2026-11-24",
     "split": [
       { "key": "savings", "amount": 500 },
       { "key": "awws", "amount": 150 },
@@ -89,6 +115,38 @@
       { "date": "2026-11-17", "delta": -45.5, "kind": "bill" },
       { "date": "2026-11-18", "delta": -120, "kind": "bill" },
       { "date": "2026-11-19", "delta": -415, "kind": "reserve" }
+    ]
+  },
+  "investments": {
+    "asOf": "2026-11-16T15:05:00Z",
+    "total": 48210.55,
+    "cost": 40100,
+    "gain": 8110.55,
+    "accounts": [
+      { "label": "Roth Contributory IRA", "value": 30110.2, "gain": 5200.1 },
+      { "label": "Individual Brokerage", "value": 18100.35, "gain": 2910.45 }
+    ],
+    "top": [
+      { "ticker": "VTI", "name": "Vanguard Total Stock Market ETF", "value": 21000, "gain": 3100 },
+      { "ticker": "VXUS", "name": "Vanguard Total International Stock ETF", "value": 9800.5, "gain": 1240.75 },
+      { "ticker": "BND", "name": "Vanguard Total Bond Market ETF", "value": 7420.3, "gain": -310.2 },
+      { "ticker": "SCHD", "name": "Schwab US Dividend Equity ETF", "value": 5600, "gain": 980.4 },
+      { "ticker": "", "name": "Cash and money market", "value": 2100.25 }
+    ],
+    "history": [
+      { "date": "2026-11-06", "total": 46320.4 },
+      { "date": "2026-11-07", "total": 46510.15 },
+      { "date": "2026-11-08", "total": 46480.9 },
+      { "date": "2026-11-09", "total": 46890.0 },
+      { "date": "2026-11-10", "total": 47105.6 },
+      { "date": "2026-11-11", "total": 47010.25 },
+      { "date": "2026-11-12", "total": 47350.8 },
+      { "date": "2026-11-13", "total": 47620.1 },
+      { "date": "2026-11-14", "total": 47480.35 },
+      { "date": "2026-11-15", "total": 47790.7 },
+      { "date": "2026-11-16", "total": 47950.0 },
+      { "date": "2026-11-17", "total": 48020.55 },
+      { "date": "2026-11-18", "total": 48100.0 }
     ]
   }
 }

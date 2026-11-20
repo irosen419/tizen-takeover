@@ -6,6 +6,9 @@
  *   inbox/<id>.json    written by Claude: { id, created, cmd, args }
  *   outbox/<id>.json   written by the Pi: { id, cmd, ok, message, data, started, finished, state }
  *   status.json        written by the Pi every minute and after each command
+ *   health/latest.json and health/YYYY-MM-DD.json
+ *                      the weekly Pi health report (pi/health/pi-health.py),
+ *                      copied here by the Pi whenever data/health/latest.json changes
  *
  * Only the commands in COMMANDS below can run: the same things ./hub does,
  * through the server's own control API (so every change goes through the same
@@ -24,6 +27,8 @@
  */
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
@@ -60,6 +65,10 @@ const MAX_NOTES = 300;
 const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const MAX_DEPTH = 8;
 const MAX_AMBIENCE_CONFIG = 8 * 1024;
+const HEALTH_MAX = 512 * 1024;
+const HEALTH_CHECK_MS = 60 * 1000;
+const HEALTH_KEEP_MS = 180 * 24 * 60 * 60 * 1000;
+const HEALTH_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isObj(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -677,6 +686,21 @@ const COMMANDS = {
       return { message: shows.unwatchText(r), data: { season: r.season, number: r.number, changed: !!r.changed } };
     }
   },
+  // "I'm only up to S3E4" (binge) and "seen it all" (every episode out so far).
+  'shows.upto': {
+    args: { name: [V.text(80), true], episode: [V.text(12), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows/upto', { show: a.name, episode: a.episode });
+      return { message: shows.upToText(r), data: { season: r.season, number: r.number, changed: !!r.changed } };
+    }
+  },
+  'shows.caughtup': {
+    args: { name: [V.text(80), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/shows/caughtup', { show: a.name });
+      return { message: shows.caughtUpText(r), data: { season: r.season, number: r.number, changed: !!r.changed } };
+    }
+  },
   'shows.refresh': {
     args: {},
     run: async (a, ctx) => {
@@ -823,6 +847,22 @@ const COMMANDS = {
   },
   // Recent log lines. Always scrubbed on the Pi (addresses and names
   // replaced), so no raw log text reaches the bucket.
+  // Spanish translations (translate.js): counts, tokens and estimated cost only, never the texts.
+  'translate.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/translate/usage');
+      const money = (n) => '$' + (n < 0.01 && n > 0 ? n.toFixed(4) : n.toFixed(2));
+      const line = (name, d) => name + ': ' + d.lines + ' new lines, ' + d.calls + ' Gemini calls, ' +
+        (d.inTok + d.outTok) + ' tokens, about ' + money(d.cost);
+      const msg = [
+        'Translating: ' + (r.enabled ? (r.paused ? 'paused after an error' : 'on') : 'off (no key)') + '; ' + r.cached + ' lines saved; limit ' + r.cap + ' new lines a day.',
+        line('Today', r.today), line('This month', r.month), line('All time', r.all)
+      ];
+      if (r.lastError) msg.push('Last Gemini error: ' + r.lastError);
+      return { message: lines(msg), data: { enabled: r.enabled, paused: r.paused, cached: r.cached, cap: r.cap, today: r.today, month: r.month, all: r.all, lastError: r.lastError } };
+    }
+  },
   'log.tail': {
     args: { lines: [V.number(1, 200), false], errors: [V.bool(), false] },
     check: (a) => {
@@ -937,6 +977,9 @@ function createMailbox(o) {
   let lastHeartbeat = 0;
   let lastPrune = 0;
   let restarting = false;
+  let lastHealthCheck = 0;
+  let healthSent = null;  // mtime and size of the last health report copied to the bucket
+  let healthInfo = null;  // its one-line summary, for status.json
 
   function describe(e) {
     if (!e) return 'unknown problem';
@@ -1001,8 +1044,48 @@ function createMailbox(o) {
         lastErrorAt: lastError && typeof lastError.t === 'string' ? lastError.t : null
       }
     };
+    if (healthInfo) body.health = healthInfo;
     await s3.put('status.json', JSON.stringify(body, null, 1) + '\n');
     lastHeartbeat = Date.now();
+  }
+
+  // The weekly health report: pi/health/pi-health.py writes data/health/latest.json
+  // on the Pi itself; this copies it to the bucket when it changes, so a cloud
+  // thread can read it. The script scrubs it before writing; nothing is added here.
+  async function sendHealth() {
+    lastHealthCheck = Date.now();
+    if (!o.healthDir) return;
+    const file = path.join(o.healthDir, 'latest.json');
+    let st;
+    try { st = fs.statSync(file); } catch (e) { return; } // no report yet
+    const tag = st.mtimeMs + ':' + st.size;
+    if (tag === healthSent) return;
+    const kb = Math.max(1, Math.round(st.size / 1024));
+    if (st.size > HEALTH_MAX) {
+      healthSent = tag;
+      log('Claude mailbox: health report too large to send (' + kb + ' KB)');
+      return;
+    }
+    const text = fs.readFileSync(file, 'utf8');
+    let rep = null;
+    try { rep = JSON.parse(text); } catch (e) { rep = null; }
+    if (!isObj(rep) || rep.kind !== 'pi-health') {
+      healthSent = tag;
+      log('Claude mailbox: health report is not valid, so it was not sent');
+      return;
+    }
+    const day = String(rep.generated || '').slice(0, 10);
+    await s3.put('health/latest.json', text, 'application/json');
+    if (HEALTH_DAY_RE.test(day)) await s3.put('health/' + day + '.json', text, 'application/json');
+    healthSent = tag;
+    const sum = isObj(rep.summary) ? rep.summary : {};
+    healthInfo = {
+      generated: typeof rep.generated === 'string' ? rep.generated.slice(0, 40) : null,
+      overall: ['ok', 'warn', 'bad'].indexOf(sum.overall) >= 0 ? sum.overall : null,
+      bad: Number.isInteger(sum.bad) ? sum.bad : null,
+      warn: Number.isInteger(sum.warn) ? sum.warn : null
+    };
+    log('Claude mailbox: health report sent (' + (healthInfo.overall || 'no summary') + ', ' + kb + ' KB)');
   }
 
   // Writes a result that could not be written before. True when done.
@@ -1117,12 +1200,17 @@ function createMailbox(o) {
     for (const i of await s3.list('inbox/')) {
       if (i.key !== 'inbox/' && i.lastModified && i.lastModified < cutIn) await s3.del(i.key);
     }
+    const cutHealth = Date.now() - HEALTH_KEEP_MS;
+    for (const i of await s3.list('health/')) {
+      if (i.key !== 'health/latest.json' && i.lastModified && i.lastModified < cutHealth) await s3.del(i.key);
+    }
     lastPrune = Date.now();
   }
 
   async function cycle() {
     await flushPending();
     if (closed) return;
+    if (Date.now() - lastHealthCheck >= HEALTH_CHECK_MS) await sendHealth();
     if (Date.now() - lastHeartbeat >= HEARTBEAT_MS) await heartbeat();
     const inbox = (await s3.list('inbox/')).filter((i) => i.key !== 'inbox/');
     const valid = [];

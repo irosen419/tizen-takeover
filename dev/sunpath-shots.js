@@ -8,7 +8,7 @@
  * is still (in every shot, before and after alike), so only what a shot is
  * about changes.
  *
- *   plant-wall-1-lit.png            "Plant wall" layout, Jun 21 2026 6:10 PM (sun on the plants)
+ *   plant-wall-1-lit.png            "Plants" layout, Jun 21 2026 6:10 PM (sun on the plants)
  *   plant-wall-2-later-today.png    the same, 2:00 PM ("Next sun at 5:15 PM")
  *   plant-wall-3-nov17.png          Nov 17 2026 3:05 PM ("Next sun Mar 9, 6:15 PM")
  *   panel-lit.png, full-lit.png     the panel and full screen at 6:10 PM, slider one step back (6:00 PM)
@@ -25,6 +25,18 @@
  *                                   x, y, w, h). stock-diff.txt says which
  *                                   pixels differ.
  *
+ * Care view (the watering notes), from calendar live data injected into the
+ * page: a "Water plants" event Sat Nov 21 2026 10 AM Chicago with the
+ * owner's notes. Thu Nov 19 2026 3:05 PM on the TV's clock.
+ *
+ *   care-panel.png, care-full.png   the Care view in the panel and in full screen
+ *   care-panel-es.png, care-full-es.png   the same in Spanish
+ *   care-panel-scrolled.png         the panel's text scrolled to the end
+ *   care-tile-3x2.png, care-tile-3x4.png, care-tile-6x3.png   the tile with its watering line
+ *
+ * --care-only runs just these; --scale 2 draws them at deviceScaleFactor 2
+ * (the default 1 is for checking).
+ *
  * Needs Playwright and port 8095 free.
  */
 'use strict';
@@ -35,6 +47,9 @@ const vm = require('vm');
 
 const OUT = process.argv[2];
 if (!OUT) { console.log('usage: node dev/sunpath-shots.js <folder> [--before <root of origin/main>]'); process.exit(1); }
+const CARE_ONLY = process.argv.indexOf('--care-only') > 0;
+const si = process.argv.indexOf('--scale');
+const SCALE = si > 0 ? Number(process.argv[si + 1]) || 1 : 1;
 const bi = process.argv.indexOf('--before');
 const BEFORE_ROOT = bi > 0 ? process.argv[bi + 1] : '';
 fs.mkdirSync(OUT, { recursive: true });
@@ -43,6 +58,28 @@ const ROOT = path.join(__dirname, '..');
 const LIT = Date.parse('2026-06-21T23:10:00Z');        // 6:10 PM CDT
 const AFTERNOON = Date.parse('2026-06-21T19:00:00Z');  // 2:00 PM CDT
 const NOV17 = Date.parse('2026-11-17T21:05:00Z');      // 3:05 PM CST
+const NOV19 = Date.parse('2026-11-19T21:05:00Z');      // Thu 3:05 PM CST, two days before the watering
+
+const NOTES = 'Check each plant with a finger in the soil first. Water slowly until it drains, then empty the saucer so roots never sit in water. Winter light is low, so they drink less until March.\n\n' +
+  'Gold Lines maranta\nWater when the top inch is dry, usually every week. Keep it evenly moist but never soggy. Use filtered water or tap water left out overnight, since it browns from chlorine and fluoride. Mist the leaves or keep it near a humidifier.\n\n' +
+  'Birkin philodendron\nWater when the top 1 to 2 inches are dry, usually every 7 to 10 days in winter. Yellow leaves mean too much water. Wipe dust off the leaves once a month.\n\n' +
+  'Golden pothos\nWater only when the top half of the soil is dry, usually every other week in winter. Drooping, soft leaves mean it is thirsty. It handles drying out better than overwatering.\n\n' +
+  'Cuttings in the glass wall vases\nTop up the water weekly and swap it out fully every two weeks.\n\n' +
+  'Keep the Birkin and pothos out of Ember\u2019s reach, since both are toxic to dogs.';
+const CAL = {
+  configured: true, tz: 'America/Chicago', from: '2026-11-19T06:00:00Z', to: '2027-01-18T06:00:00Z', updatedAt: '2026-11-19T21:00:00Z', calendars: [],
+  events: [{ id: 'wp1', cal: 'home', title: 'Water plants', start: '2026-11-21T16:00:00Z', end: '2026-11-21T16:15:00Z', allDay: false, location: '', note: 'n1' }],
+  notes: { n1: NOTES }
+};
+
+// Runs before the hub's scripts: the hub's live data answers get('calendar')
+// with CAL and hands calendar listeners to window.__calHandlers.
+const CARE_DATA = new Function('var D = ' + JSON.stringify(CAL) + ';' +
+  'var real; window.__calHandlers = [];' +
+  'Object.defineProperty(window, "HUB_LIVE", { configurable: true, get: function () { return real; }, set: function (v) {' +
+  ' real = v; var g = v.get, on = v.on;' +
+  ' v.get = function (r) { return r === "calendar" ? D : g.apply(v, arguments); };' +
+  ' v.on = function (r, fn) { if (r === "calendar") window.__calHandlers.push(fn); return on.apply(v, arguments); }; } });');
 
 function readConfig(root) {
   const box = {};
@@ -113,6 +150,35 @@ async function plantWall(H, env) {
       if (errs.length) console.log('console in ' + tag + ' ' + lang + ': ' + errs.join(' | '));
       await page.ctx.close();
     }
+  }
+}
+
+async function care(H, env) {
+  const both = new Function('(' + STILL.toString() + ')();(' + CARE_DATA.toString() + ')();');
+  for (const lang of ['en', 'es']) {
+    const es = lang === 'es' ? '-es' : '';
+    const page = await env.newPage({ layout: [{ widget: 'sunpath', x: 0, y: 0, w: 12, h: 5 }], at: NOV19, config: both, live: 'off', scale: SCALE, storage: { 'homeHub.lang': lang } });
+    await H.openPanel(page, 'sunpath');
+    await page.evaluate(() => document.querySelector('.sp-view-chip[data-view="care"]').click());
+    await H.sleep(250);
+    await shot(page, 'care-panel' + es + '.png');
+    if (lang === 'en') {
+      for (let i = 0; i < 6; i++) await H.key(page, 'ArrowDown', 1);
+      await H.sleep(150);
+      await shot(page, 'care-panel-scrolled.png');
+    }
+    await H.fullScreen(page);
+    await H.sleep(300);
+    await shot(page, 'care-full' + es + '.png');
+    const errs = H.errorsOf(page, true);
+    if (errs.length) console.log('console in care ' + lang + ': ' + errs.join(' | '));
+    await page.ctx.close();
+  }
+  for (const [w, h] of [[3, 2], [3, 4], [6, 3]]) {
+    const page = await env.newPage({ layout: [{ widget: 'sunpath', x: 0, y: 0, w: w, h: h }], at: NOV19, config: both, live: 'off', scale: SCALE });
+    fs.writeFileSync(path.join(OUT, 'care-tile-' + w + 'x' + h + '.png'), await crop(page, '.cell[data-widget="sunpath"] .tile', 6));
+    console.log('saved care-tile-' + w + 'x' + h + '.png');
+    await page.ctx.close();
   }
 }
 
@@ -188,11 +254,14 @@ async function beforeAfter() {
   const H = require('./awws-harness');
   const env = await H.start();
   try {
-    await plantWall(H, env);
-    await sizes(H, env);
+    if (!CARE_ONLY) {
+      await plantWall(H, env);
+      await sizes(H, env);
+    }
+    await care(H, env);
   } finally {
     await env.stop();
   }
-  await beforeAfter();
+  if (!CARE_ONLY) await beforeAfter();
   process.exit(0);
 })().catch((e) => { console.log('FAILED: ' + (e && e.stack)); process.exit(1); });

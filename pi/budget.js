@@ -8,8 +8,13 @@
  * for Budget lab the room to card day (lab), the top 5 merchants with their
  * month-to-date totals (merchants, which the owner asked for), one spending
  * total per day (pace) and the runway as headroom (runway). No balances, no
- * transactions, no amounts on alerts. The budget app talks to the server on
- * the Pi itself, so none of it goes through the cloud.
+ * transactions, no amounts on alerts, with one exception the owner approved on
+ * 2026-11-19: cardDay.receipt, the Card day sum with the checking balance, what
+ * each card owes and bill names (the TV hides it in guest mode), and a second
+ * one approved the same day: the investments section, with the portfolio
+ * total, its accounts and top holdings in dollars (also hidden in guest mode).
+ * The budget app talks to the server on the Pi itself, so none of it goes
+ * through the cloud.
  *
  * This file only checks, merges and describes snapshots, the same way
  * awws.js does for the A World Worth Saving snapshot (and with the same text
@@ -31,16 +36,30 @@ const MAX_BYTES = 48 * 1024; // 49,152 bytes of JSON
 const MAX_FUTURE_MS = 10 * 60 * 1000;
 const MAX_AMOUNT = 1000000;
 const MAX_DAYS = 366;
-const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway'];
+const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway', 'investments'];
 const GOAL_STATES = ['clean', 'on-pace', 'over', 'under'];
 // Budget lab: where spare money on card day goes, and the runway's steps.
 const SPLIT_KEYS = ['savings', 'awws', 'buffer', 'extra'];
 const STEP_KINDS = ['pay', 'bill', 'reserve'];
+// Card day's payment plan (autopay days): when a payment goes out.
+const PLAN_KINDS = ['first', 'autopay'];
+const BASES = ['first', 'autopay'];
+const MAX_PLAN = 6;
+// Card day's receipt (cardDay.receipt): the lines of the budget site's own sum.
+const RECEIPT_KEYS = ['checking', 'paychecks', 'billsBefore', 'cardsToday', 'cardCharges', 'billsAfter', 'buys'];
+const MAX_RECEIPT_ITEMS = 12;
 const MAX_MERCHANTS = 5;
 const MAX_PACE_DAYS = 31;
 const MAX_STEPS = 40;
 const MAX_SPLIT = 4;
 const MAX_COUNT = 999;
+const MAX_OUTLOOK_MONTHS = 3;
+const MAX_PAYDAYS = 3;
+// Investments: portfolio totals can run higher than a monthly budget figure.
+const MAX_INVEST = 10000000;
+const MAX_INVEST_ACCOUNTS = 6;
+const MAX_INVEST_TOP = 8;
+const MAX_INVEST_HISTORY = 92;
 // Sections that are lists; sent as a plain list or as { asOf, items }.
 const LISTS = { goals: 8, alerts: 5 };
 
@@ -69,10 +88,12 @@ function amountOf(o, k, where, required, opts) {
     return undefined;
   }
   const signed = !!(opts && opts.signed);
-  const lo = signed ? -MAX_AMOUNT : 0;
-  if (typeof v !== 'number' || !isFinite(v) || v < lo || v > MAX_AMOUNT || (opts && opts.above0 && v <= 0)) {
-    throw wrong(name + ' must be a number ' + (opts && opts.above0 ? 'more than 0 and up to 1,000,000' :
-      signed ? 'from -1,000,000 to 1,000,000' : 'from 0 to 1,000,000'), where);
+  const hi = (opts && opts.max) || MAX_AMOUNT;
+  const lo = signed ? -hi : 0;
+  const hiText = F.commas(hi);
+  if (typeof v !== 'number' || !isFinite(v) || v < lo || v > hi || (opts && opts.above0 && v <= 0)) {
+    throw wrong(name + ' must be a number ' + (opts && opts.above0 ? 'more than 0 and up to ' + hiText :
+      signed ? 'from -' + hiText + ' to ' + hiText : 'from 0 to ' + hiText), where);
   }
   // Halves round away from 0, so -12.345 is -12.35 like 12.345 is 12.35.
   return (v < 0 ? -1 : 1) * Math.round(Math.abs(v) * 100) / 100;
@@ -83,7 +104,99 @@ function requiredBool(o, k, where) {
   return F.boolOf(o, k, where);
 }
 
+// Whole cents, so sums are compared without floating point drift.
+function cents(v) {
+  return (v < 0 ? -1 : 1) * Math.round(Math.abs(v) * 100);
+}
+
+// One thing behind a receipt line: a bill, a card, a paycheck, a planned buy.
+function receiptItem(e, where) {
+  const it = {
+    label: F.textOf(e, 'label', 30, where, true),
+    amount: amountOf(e, 'amount', where, true, { signed: true })
+  };
+  F.put(it, 'date', F.dateOf(e, 'date', where));
+  if (F.boolOf(e, 'new', where)) it.new = true;
+  F.put(it, 'note', F.textOf(e, 'note', 30, where));
+  // A card: what it owes split in posted and pending, the recurring charges
+  // still to come before card day, the autopay day, and what the plan pays.
+  F.put(it, 'bal', amountOf(e, 'bal', where, false, { signed: true }));
+  F.put(it, 'pending', amountOf(e, 'pending', where, false, { signed: true }));
+  F.put(it, 'coming', amountOf(e, 'coming', where, false));
+  F.put(it, 'pay', amountOf(e, 'pay', where, false));
+  F.put(it, 'auto', amountOf(e, 'auto', where, false));
+  F.put(it, 'autopay', F.dateOf(e, 'autopay', where));
+  return it;
+}
+
+// cardDay.receipt: top to bottom, oldest money first. Every line adds up to
+// "bottom" and every line's items add up to the line, to the cent, or the
+// receipt is refused (the sender is tested against the same rule).
+function receiptOf(r) {
+  const out = {};
+  out.asOf = F.timeOf(r, 'asOf', 'receipt', true);
+  out.bottom = amountOf(r, 'bottom', 'receipt', true, { signed: true });
+  F.put(out, 'perDay', amountOf(r, 'perDay', 'receipt', false));
+  const next = F.objectOf(r, 'next', 'receipt');
+  if (next !== undefined) {
+    out.next = { date: F.dateOf(next, 'date', 'receipt next', true) };
+    F.put(out.next, 'amount', amountOf(next, 'amount', 'receipt next', false));
+  }
+  const lines = F.listOf(r, 'lines', RECEIPT_KEYS.length + 1, 'receipt', true);
+  if (!lines.length) throw wrong('"lines" must have at least 1 entry', 'receipt');
+  const seen = Object.create(null);
+  let sum = 0;
+  out.lines = F.eachEntry(lines, 'receipt line', (e, where) => {
+    const ln = { key: F.choiceOf(e, 'key', RECEIPT_KEYS, where) };
+    where += ', ' + ln.key;
+    if (seen[ln.key]) throw wrong('"' + ln.key + '" is used twice', where);
+    seen[ln.key] = true;
+    F.put(ln, 'label', F.textOf(e, 'label', 60, where));
+    ln.amount = amountOf(e, 'amount', where, true, { signed: true });
+    sum += cents(ln.amount);
+    const items = F.listOf(e, 'items', MAX_RECEIPT_ITEMS, where);
+    if (items !== undefined) {
+      if (ln.key === 'checking') throw wrong('"items" is not for the checking line', where);
+      ln.items = F.eachEntry(items, 'item', receiptItem);
+      const total = ln.items.reduce((a, it) => a + cents(it.amount), 0);
+      if (ln.items.length && total !== cents(ln.amount) * (ln.key === 'paychecks' ? 1 : -1)) {
+        throw wrong('its items do not add up to "amount" (paychecks add, every other line takes away)', where);
+      }
+    }
+    return ln;
+  });
+  if (out.lines[0].key !== 'checking') throw wrong('the first line must be "checking"', 'receipt');
+  if (sum !== cents(out.bottom)) throw wrong('the lines do not add up to "bottom"', 'receipt');
+  return out;
+}
+
 /* ---------- the sections ---------- */
+
+// cardDay.outlook: where the month starts (behind or ahead of the plan), the
+// 3 month average of daily spending and up to 3 months of totals.
+function checkOutlook(o) {
+  if (!isObj(o)) throw wrong('"outlook" must be an object');
+  const out = {};
+  const st = F.objectOf(o, 'start', '', true);
+  out.start = {
+    date: F.dateOf(st, 'date', 'start', true),
+    behind: amountOf(st, 'behind', 'start', true),
+    ahead: amountOf(st, 'ahead', 'start', true)
+  };
+  out.dailyAverage = amountOf(o, 'dailyAverage', '', true);
+  out.averageMonths = F.wholeOf(o, 'averageMonths', '', true, { min: 1, max: 12 });
+  const months = F.listOf(o, 'months', MAX_OUTLOOK_MONTHS, '', true);
+  if (!months.length) throw wrong('"months" is empty');
+  out.months = F.eachEntry(months, 'month', (e, where) => {
+    const m = { month: F.monthOf(e, 'month', where, true) };
+    m.days = F.wholeOf(e, 'days', where, true, { min: 28, max: 31 });
+    const pd = F.listOf(e, 'paydays', MAX_PAYDAYS, where, true);
+    m.paydays = pd.map((v, n) => F.dateOf({ d: v }, 'd', where + ', payday ' + (n + 1), true, 'paydays'));
+    ['paycheck', 'bills', 'cardRecurring', 'planned'].forEach((k) => { m[k] = amountOf(e, k, where, true); });
+    return m;
+  });
+  return out;
+}
 
 const CHECK = {
   room: (s) => {
@@ -91,6 +204,8 @@ const CHECK = {
     out.cap = amountOf(s, 'cap', '', true, { above0: true });
     out.roomPerDay = amountOf(s, 'roomPerDay', '', true, { signed: true });
     F.put(out, 'roomIfRefund', amountOf(s, 'roomIfRefund', '', false, { signed: true }));
+    // Which card day plan the room is worked from; left out means "first".
+    if (field(s, 'basis') !== undefined) out.basis = F.choiceOf(s, 'basis', BASES, '');
     out.daysLeft = F.wholeOf(s, 'daysLeft', '', true, { max: MAX_DAYS });
     out.throughDate = F.dateOf(s, 'throughDate', '', true);
     return out;
@@ -104,6 +219,29 @@ const CHECK = {
     const short = amountOf(s, 'shortBy', '', false);
     if (short !== undefined && out.covered) throw wrong('"shortBy" is only for a card day that is not covered ("covered": false)');
     F.put(out, 'shortBy', short);
+    // Autopay days: a short card day can still be covered when the cards
+    // wait for their own autopay dates. Only said when it is not covered.
+    const by = field(s, 'byAutopay');
+    if (by !== undefined) {
+      if (out.covered) throw wrong('"byAutopay" is only for a card day that is not covered ("covered": false)');
+      out.byAutopay = F.boolOf(s, 'byAutopay', '');
+    }
+    const autoShort = amountOf(s, 'autopayShortBy', '', false);
+    if (autoShort !== undefined) {
+      if (out.byAutopay !== false) throw wrong('"autopayShortBy" is only for a card day that is not covered by autopay ("byAutopay": false)');
+      out.autopayShortBy = autoShort;
+    }
+    // The payments to make, in date order. These amounts are payments the
+    // owner asked to see, never what a card owes.
+    const plan = F.listOf(s, 'plan', MAX_PLAN, '');
+    if (plan !== undefined) {
+      out.plan = F.eachEntry(plan, 'payment', (e, where) => ({
+        label: F.textOf(e, 'label', 24, where, true),
+        date: F.dateOf(e, 'date', where, true),
+        amount: amountOf(e, 'amount', where, true),
+        kind: F.choiceOf(e, 'kind', PLAN_KINDS, where)
+      }));
+    }
     const transfers = F.listOf(s, 'transfers', 6, '');
     if (transfers !== undefined) {
       out.transfers = F.eachEntry(transfers, 'transfer', (e, where) => ({
@@ -114,6 +252,15 @@ const CHECK = {
     const pay = F.listOf(s, 'paychecks', 4, '');
     if (pay !== undefined) {
       out.paychecks = pay.map((v, n) => F.dateOf({ d: v }, 'd', 'paycheck ' + (n + 1), true, 'paychecks'));
+    }
+    // The Card day receipt: checking balance, what the cards owe and bill
+    // names, which the owner approved for the TV (guest mode hides it there).
+    const receipt = F.objectOf(s, 'receipt', '');
+    if (receipt !== undefined) out.receipt = receiptOf(receipt);
+    // The next 3 months outlook. A bad outlook is dropped on its own: the
+    // rest of card day is still good.
+    if (field(s, 'outlook') !== undefined) {
+      try { out.outlook = checkOutlook(s.outlook); } catch (e) { /* dropped */ }
     }
     return out;
   },
@@ -152,6 +299,10 @@ const CHECK = {
     out.daysLeft = F.wholeOf(s, 'daysLeft', '', true, { max: MAX_DAYS });
     out.cardDate = F.dateOf(s, 'cardDate', '', true);
     out.monthDay = F.wholeOf(s, 'monthDay', '', true, { min: 1, max: 31 });
+    // The room when the cards wait for their autopay days, same morning
+    // basis as "room", and the day that plan is worked to.
+    F.put(out, 'autopayRoom', amountOf(s, 'autopayRoom', '', false, { signed: true }));
+    F.put(out, 'autopayDate', F.dateOf(s, 'autopayDate', '', false));
     const split = F.listOf(s, 'split', MAX_SPLIT, '');
     if (split !== undefined) {
       const seen = Object.create(null);
@@ -196,6 +347,49 @@ const CHECK = {
         return d;
       })
     };
+  },
+
+  // The portfolio: the owner approved dollar figures on the TV on 2026-11-19
+  // (guest mode hides them there). Totals, accounts and top holdings, plus one
+  // total per date so the TV can draw a trend. No quantities, no account
+  // numbers, no transactions: a field not named here is dropped.
+  investments: (s) => {
+    const big = { max: MAX_INVEST };
+    const sbig = { max: MAX_INVEST, signed: true };
+    const out = {};
+    out.total = amountOf(s, 'total', '', true, big);
+    F.put(out, 'cost', amountOf(s, 'cost', '', false, big));
+    F.put(out, 'gain', amountOf(s, 'gain', '', false, sbig));
+    const accounts = F.listOf(s, 'accounts', MAX_INVEST_ACCOUNTS, '', true);
+    if (!accounts.length) throw wrong('"accounts" must have at least 1 entry');
+    out.accounts = F.eachEntry(accounts, 'account', (e, where) => {
+      const a = { label: F.textOf(e, 'label', 30, where, true), value: amountOf(e, 'value', where, true, big) };
+      F.put(a, 'gain', amountOf(e, 'gain', where, false, sbig));
+      return a;
+    });
+    const top = F.listOf(s, 'top', MAX_INVEST_TOP, '');
+    if (top !== undefined) {
+      out.top = F.eachEntry(top, 'holding', (e, where) => {
+        // A ticker may be empty (cash, a fund with no symbol): then it is left out.
+        const h = {};
+        F.put(h, 'ticker', F.textOf(e, 'ticker', 10, where));
+        h.name = F.textOf(e, 'name', 40, where, true);
+        h.value = amountOf(e, 'value', where, true, big);
+        F.put(h, 'gain', amountOf(e, 'gain', where, false, sbig));
+        return h;
+      });
+    }
+    const hist = F.listOf(s, 'history', MAX_INVEST_HISTORY, '');
+    if (hist !== undefined) {
+      let last = '';
+      out.history = F.eachEntry(hist, 'day', (e, where) => {
+        const d = { date: F.dateOf(e, 'date', where, true), total: amountOf(e, 'total', where, true, big) };
+        if (d.date <= last) throw wrong('"date" must come after the day before it (oldest first, each date once)', where);
+        last = d.date;
+        return d;
+      });
+    }
+    return out;
   },
 
   // Headroom from this morning to card day: never checking or a card
@@ -334,7 +528,7 @@ function sectionCounts(name, s) {
     return { daysLeft: s.daysLeft, throughDate: s.throughDate, state: s.roomPerDay < 0 ? 'negative' : s.roomPerDay < s.cap ? 'under' : 'at', refund: s.roomIfRefund !== undefined };
   }
   if (name === 'cardDay') {
-    return { date: s.date, daysAway: s.daysAway, covered: s.covered, transfers: (s.transfers || []).length, paychecks: (s.paychecks || []).length };
+    return { date: s.date, daysAway: s.daysAway, covered: s.covered, byAutopay: s.byAutopay === true, payments: (s.plan || []).length, transfers: (s.transfers || []).length, paychecks: (s.paychecks || []).length, outlook: s.outlook ? s.outlook.months.length : 0 };
   }
   if (name === 'goals') {
     const c = { goals: s.items.length };
@@ -349,6 +543,10 @@ function sectionCounts(name, s) {
   if (name === 'pace') {
     const n = s.days.length;
     return { days: n, capped: s.days.filter((d) => d.cap !== undefined).length, from: n ? s.days[0].date : null, to: n ? s.days[n - 1].date : null };
+  }
+  if (name === 'investments') {
+    const n = s.history ? s.history.length : 0;
+    return { accounts: s.accounts.length, holdings: (s.top || []).length, days: n, from: n ? s.history[0].date : null, to: n ? s.history[n - 1].date : null };
   }
   const c = { end: s.end, steps: s.steps.length };
   STEP_KINDS.forEach((k) => { c[k] = s.steps.filter((x) => x.kind === k).length; });
@@ -372,8 +570,8 @@ function sectionLine(name, s) {
     return plural(c.daysLeft, 'day') + ' left through ' + c.throughDate + ', ' + st + (c.refund ? ', a refund pending' : '');
   }
   if (name === 'cardDay') {
-    return c.date + ' (in ' + plural(c.daysAway, 'day') + '), ' + (c.covered ? 'covered' : 'not covered') + ', ' +
-      plural(c.transfers, 'transfer') + ', ' + plural(c.paychecks, 'paycheck');
+    return c.date + ' (in ' + plural(c.daysAway, 'day') + '), ' + (c.covered ? 'covered' : c.byAutopay ? 'covered by autopay' : 'not covered') + ', ' +
+      (c.payments ? plural(c.payments, 'payment') + ', ' : '') + plural(c.transfers, 'transfer') + ', ' + plural(c.paychecks, 'paycheck');
   }
   if (name === 'goals') {
     const parts = GOAL_STATES.filter((st) => c[st]).map((st) => c[st] + ' ' + st.replace('-', ' '));
@@ -388,6 +586,10 @@ function sectionLine(name, s) {
   if (name === 'merchants') return plural(c.merchants, 'merchant') + ' in ' + c.month;
   if (name === 'pace') {
     return c.days ? plural(c.days, 'day') + ' (' + c.capped + ' with a cap), ' + c.from + ' to ' + c.to : 'no days yet';
+  }
+  if (name === 'investments') {
+    return plural(c.accounts, 'account') + ', ' + plural(c.holdings, 'holding') + ', ' +
+      (c.days ? plural(c.days, 'day') + ' of history, ' + c.from + ' to ' + c.to : 'no history yet');
   }
   return plural(c.steps, 'step') + ' to ' + c.end + ' (' + plural(c.pay, 'payday') + ', ' + plural(c.bill, 'bill') + ', ' +
     plural(c.reserve, 'reserve') + ')';
@@ -452,6 +654,7 @@ module.exports = {
   GOAL_STATES: GOAL_STATES,
   SPLIT_KEYS: SPLIT_KEYS,
   STEP_KINDS: STEP_KINDS,
+  PLAN_KINDS: PLAN_KINDS,
   normalizeSnapshot: normalizeSnapshot,
   merge: merge,
   emptyData: emptyData,

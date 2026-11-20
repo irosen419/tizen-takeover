@@ -26,7 +26,7 @@ const OUT = path.join(ROOT, 'docs', 'screenshots');
 const TOKEN = 'preview-token-not-a-secret-000000';
 const MORNING = Date.parse('2026-11-15T16:40:00Z');   // 10:40 AM in Chicago
 const EVENING = Date.parse('2026-11-16T03:00:00Z');   // 9:00 PM in Chicago
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 
 let PAGE_PORT, LIVE_PORT, PAGE, LIVE, DEAD;
 let preview = null;
@@ -469,14 +469,159 @@ async function fakeState(context, make) {
   await context.route('**/live/events', () => { /* never answers */ });
 }
 
+/* ---------- notes: reading an event's notes ---------- */
+
+// Spanish for the notes lines, as the Pi's translator would give them, so
+// the shots need no Gemini key (app/i18n-dyn.js keeps these in homeHub.tr.es).
+const ES_NOTES = {
+  'Water plants': 'Regar las plantas',
+  'Library visit': 'Visita a la biblioteca',
+  'Call with the contractor': 'Llamada con el contratista',
+  'Ask about': 'Preguntar por',
+  'the kitchen tile and the this': 'el azulejo de la cocina y esto',
+  'Bring the paint chips. Join:': 'Lleva las muestras de pintura. Únete:',
+  'Check each plant with a finger in the soil first. Water slowly until it drains, then empty the saucer so roots never sit in water. Winter light is low, so they drink less until March.':
+    'Primero revisa cada planta con un dedo en la tierra. Riega despacio hasta que drene y luego vacía el plato para que las raíces nunca queden en agua. En invierno hay poca luz, así que beben menos hasta marzo.',
+  'Gold Lines maranta': 'Maranta Gold Lines',
+  'Water when the top inch is dry, usually every week. Keep it evenly moist but never soggy. Use filtered water or tap water left out overnight, since it browns from chlorine and fluoride. Mist the leaves or keep it near a humidifier.':
+    'Riégala cuando la primera pulgada esté seca, casi siempre cada semana. Mantenla húmeda de forma pareja, nunca empapada. Usa agua filtrada o agua del grifo reposada toda la noche, porque el cloro y el flúor la ponen café. Rocía las hojas o tenla cerca de un humidificador.',
+  'Birkin philodendron': 'Filodendro Birkin',
+  'Water when the top 1 to 2 inches are dry, usually every 7 to 10 days in winter. Yellow leaves mean too much water. Wipe dust off the leaves once a month.':
+    'Riégalo cuando las primeras 1 o 2 pulgadas estén secas, casi siempre cada 7 a 10 días en invierno. Las hojas amarillas indican exceso de agua. Limpia el polvo de las hojas una vez al mes.',
+  'Golden pothos': 'Potos dorado',
+  'Water only when the top half of the soil is dry, usually every other week in winter. Drooping, soft leaves mean it is thirsty. It handles drying out better than overwatering.':
+    'Riégalo solo cuando la mitad superior de la tierra esté seca, casi siempre cada dos semanas en invierno. Las hojas caídas y blandas indican que tiene sed. Aguanta mejor la sequía que el exceso de riego.',
+  'Cuttings in the glass wall vases': 'Esquejes en los floreros de vidrio de la pared',
+  'Top up the water weekly and swap it out fully every two weeks.': 'Rellena el agua cada semana y cámbiala por completo cada dos semanas.',
+  "Keep the Birkin and pothos out of Ember's reach, since both are toxic to dogs.": 'Mantén el Birkin y el potos fuera del alcance de Ember, porque ambos son tóxicos para los perros.'
+};
+
+function readingNow(page) {
+  return page.evaluate(() => !!document.querySelector('#panel .cal-day.is-reading'));
+}
+
+async function notesShots(lang) {
+  const tag = lang === 'es' ? '-es' : '';
+  const storage = lang === 'es' ? { 'homeHub.lang': 'es', 'homeHub.tr.es': JSON.stringify(ES_NOTES) } : {};
+  const page = await openHub({ storage: storage });
+  await waitTile(page, lang === 'es' ? 'Llamada con el contratista' : 'Call with the contractor');
+  await focusCalendarTile(page);
+  await sleep(300);
+  const marks = await page.evaluate(() => document.querySelectorAll('.cell[data-widget="calendar"] .cal-has-notes').length);
+  expect(marks === 1, lang + ': the tile marks the one event today with notes, got ' + marks);
+  const g1 = lang === 'es' ? '1 invitado' : '1 guest';
+  const g3 = lang === 'es' ? '3 invitados' : '3 guests';
+  const tileText = await page.evaluate(() => document.querySelector('.cell[data-widget="calendar"] .tile-body').textContent);
+  expect(tileText.indexOf(g1) >= 0, lang + ': the tile says ' + g1 + ' next to the call');
+  await tileShot(page, 'calendar-notes-tile' + tag);
+
+  await openPanel(page);
+  await shot(page, 'calendar-notes-1-preview' + tag);
+  expect((await page.evaluate(() => document.querySelector('#panel .cal-detail').textContent)).indexOf(g1) >= 0, lang + ': the overlay says ' + g1);
+  await key(page, 'Enter');
+  expect(await readingNow(page), lang + ': OK on an event with notes opens them');
+  const reading = await page.evaluate(() => document.querySelector('#panel .cal-notes-body').textContent);
+  expect(reading.indexOf(g1) === 0 && reading.indexOf('Marta Ibáñez') > 0, lang + ': the notes open with the guest count and name: ' + reading.slice(0, 60));
+  await shot(page, 'calendar-notes-2-reading' + tag);
+  await key(page, 'Escape');
+  expect(!(await readingNow(page)) && (await page.evaluate(() => window.HUB_TEST.open() === 'calendar')),
+    lang + ': Back closes the notes and keeps the panel open');
+
+  // Tuesday: Library visit has 3 guests and no notes; OK still opens the list.
+  await key(page, 'ArrowRight', 2);
+  for (let i = 0; i < 6 && (await selected(page)) !== (lang === 'es' ? 'Visita a la biblioteca' : 'Library visit'); i++) await key(page, 'ArrowDown');
+  expect((await page.evaluate(() => document.querySelector('#panel .cal-stage').textContent)).indexOf(g3) >= 0, lang + ': the day view says ' + g3);
+  await key(page, 'Enter');
+  expect(await readingNow(page), lang + ': OK opens the guest list of an event without notes');
+  await shot(page, 'calendar-guests-library-reading' + tag);
+  await key(page, 'Escape');
+  await toTabs(page);
+  await key(page, 'ArrowRight');
+  await key(page, 'ArrowDown');
+  await shot(page, 'calendar-guests-week' + tag);
+  await toTabs(page);
+  await key(page, 'ArrowLeft');
+  await key(page, 'ArrowDown');
+
+  // Saturday: Water plants.
+  await key(page, 'ArrowRight', 4);
+  const sel = await selected(page);
+  expect(sel === (lang === 'es' ? 'Regar las plantas' : 'Water plants'), lang + ': Saturday picks Water plants, got "' + sel + '"');
+  await shot(page, 'calendar-notes-3-water-preview' + tag);
+  await key(page, 'Enter');
+  expect(await readingNow(page), lang + ': OK opens the plant notes');
+  await shot(page, 'calendar-notes-4-water-reading' + tag);
+  const moved = await page.evaluate(() => {
+    const b = document.querySelector('#panel .cal-notes-body');
+    return b ? b.style.transform : '';
+  });
+  await key(page, 'ArrowDown');
+  const after = await page.evaluate(() => (document.querySelector('#panel .cal-notes-body') || {}).style.transform);
+  expect(after !== moved, lang + ': Down scrolls the notes (' + moved + ' -> ' + after + ')');
+  await shot(page, 'calendar-notes-5-water-scrolled' + tag);
+  await key(page, 'ArrowUp');
+  await key(page, 'ArrowUp');
+  expect(!(await readingNow(page)), lang + ': Up at the top closes the notes');
+
+  // Full screen reading.
+  await toTabs(page);
+  await key(page, 'ArrowUp');
+  await key(page, 'Enter');
+  await until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full'), 5000, 'full screen did not open');
+  await idle(page);
+  await key(page, 'ArrowDown');
+  await key(page, 'ArrowDown');
+  await key(page, 'Enter');
+  expect(await readingNow(page), lang + ': OK reads the notes at full screen');
+  await shot(page, 'calendar-notes-6-water-full' + tag);
+  await key(page, 'Escape');
+  await key(page, 'Escape');
+  await key(page, 'Escape');
+  await idle(page);
+  await done(page, 'notes ' + lang);
+
+  // One-row tiles: guests show only when the whole title still fits.
+  for (const w of [12, 4]) {
+    const sp = await openHub({ storage: Object.assign({}, storage, { 'homeHub.layout': JSON.stringify([{ widget: 'calendar', x: 0, y: 0, w: w, h: 1 }]) }) });
+    await waitTile(sp, lang === 'es' ? 'Llamada con el contratista' : 'Call with the contractor');
+    const st = await sp.evaluate(() => {
+      const t = document.querySelector('.cell[data-widget="calendar"] .cal-strip-title');
+      return { guests: !!document.querySelector('.cal-strip-guests'), cut: t ? t.scrollWidth > t.clientWidth + 1 : false };
+    });
+    expect(!st.cut || !st.guests, lang + ' ' + w + 'x1: the title is never cut for the guests');
+    if (w === 12) expect(st.guests, lang + ' 12x1: a wide strip shows the guests');
+    await tileShot(sp, 'calendar-guests-strip-' + w + 'x1' + tag);
+    await done(sp, 'strip ' + w);
+  }
+
+  // Guest mode: no mark, no notes.
+  const g = await openHub({ storage: { 'homeHub.guest.v1': 'on' } });
+  await waitTile(g, 'Call with the contractor');
+  const gm = await g.evaluate(() => document.querySelectorAll('.cal-has-notes').length);
+  expect(gm === 0, 'guest: no notes mark on the tile, got ' + gm);
+  expect((await g.evaluate(() => document.body.textContent)).indexOf('1 guest') < 0, 'guest mode: no guest count anywhere');
+  await openPanel(g);
+  const gtext = await g.evaluate(() => document.querySelector('#panel').textContent);
+  expect(gtext.indexOf('paint chips') < 0 && /hidden for guests/.test(gtext), 'guest: the panel hides the notes and says so');
+  await key(g, 'Enter');
+  expect(!(await readingNow(g)), 'guest: OK does not open notes');
+  if (lang !== 'es') await shot(g, 'calendar-notes-7-guest');
+  await done(g, 'guest');
+}
+
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  for (const f of fs.readdirSync(OUT)) if (/^calendar-/.test(f)) fs.unlinkSync(path.join(OUT, f));
+  const only = process.argv.indexOf('--notes') >= 0;
+  for (const f of fs.readdirSync(OUT)) if ((only ? /^calendar-notes-/ : /^calendar-/).test(f)) fs.unlinkSync(path.join(OUT, f));
   await startAll();
   browser = await chromium.launch();
   try {
-    await mainShots();
-    await stateShots();
+    if (process.argv.indexOf('--notes') < 0) {
+      await mainShots();
+      await stateShots();
+    }
+    await notesShots('en');
+    await notesShots('es');
   } finally {
     await stopAll();
   }

@@ -31,6 +31,8 @@
  *   ./hub shows refresh              ask TVmaze about every show now
  *   ./hub shows watched "Stick" [S3E4]   mark an episode watched (none named: the earliest out and unmarked)
  *   ./hub shows unwatch "Stick" S3E4     take a watched mark off
+ *   ./hub shows upto "Stick" S3E4        watched up to and including S3E4 (binge: everything before it counts)
+ *   ./hub shows caughtup "Stick"         watched every episode that has aired
  *   ./hub linktests                  the TV's watch link test answers
  *   ./hub tvremote                   the TV remote from the Pi: paired or not, the last run
  *   ./hub tvremote run '<json>'      a two-step launch (see pi/README.md)
@@ -73,7 +75,7 @@ const tvremote = require('./tvremote');
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
 const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach',
-  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'allsounds'];
+  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'allsounds'];
 
 /* ---------- settings ---------- */
 
@@ -675,7 +677,24 @@ async function showsCommand(args) {
     say(sub === 'watched' ? shows.watchedText(r) : shows.unwatchText(r));
     return;
   }
-  stop('Use one of: shows list, shows add "<name>" --service <app>, shows remove "<name>", shows refresh, shows watched "<name>" [S3E4], shows unwatch "<name>" S3E4. Run ./hub help for examples.');
+  if (sub === 'upto') {
+    const words = args.slice(1);
+    let ep = null;
+    if (words.length > 1 && shows.parseEpisode(words[words.length - 1])) ep = words.pop();
+    const name = words.join(' ').trim();
+    if (!name || !ep) stop('Say which show and episode, for example: ./hub shows upto "Stick" S3E4');
+    const r = await call('POST', '/api/shows/upto', { show: name, episode: ep });
+    say(shows.upToText(r));
+    return;
+  }
+  if (sub === 'caughtup') {
+    const name = args.slice(1).join(' ').trim();
+    if (!name) stop('Say which show, for example: ./hub shows caughtup "Stick"');
+    const r = await call('POST', '/api/shows/caughtup', { show: name });
+    say(shows.caughtUpText(r));
+    return;
+  }
+  stop('Use one of: shows list, shows add "<name>" --service <app>, shows remove "<name>", shows refresh, shows watched "<name>" [S3E4], shows unwatch "<name>" S3E4, shows upto "<name>" S3E4, shows caughtup "<name>". Run ./hub help for examples.');
 }
 
 async function linktestsCommand() {
@@ -1197,8 +1216,8 @@ const HELP = [
   'Home Hub commands (run from the pi folder):',
   '  ./hub show weather          open a widget: weather, todo, calendar, entertainment, nowplaying,',
   '                              today (the clock), awws, awws-visits, awws-agenda, awws-todo,',
-  '                              awws-reach, awws-money, budget-room, budget-card, budget-goals',
-  '                              budget-lab or allsounds (the test widget)',
+  '                              awws-reach, awws-money, budget-room, budget-card, budget-goals,',
+  '                              budget-lab, investments or allsounds (the test widget)',
   '  ./hub show todo --full      the same, full screen',
   '  ./hub home                  close whatever is open',
   '  ./hub say "Dinner in 10"    a short message on the TV (add --seconds 8)',
@@ -1231,6 +1250,8 @@ const HELP = [
   '  ./hub shows refresh         ask TVmaze about every show now (it also does so every 6 hours)',
   '  ./hub shows watched "Stick" S3E4   mark an episode watched by hand (S3E4 left out: the earliest out and unmarked);',
   '                              the TV marks them when you answer "Did you finish?"; ./hub shows unwatch "Stick" S3E4 takes one off',
+  '  ./hub shows upto "Stick" S3E4      watched up to and including S3E4 (binge: all before it count too)',
+  '  ./hub shows caughtup "Stick"       watched every episode that has aired so far',
   '  ./hub linktests             what the TV\'s watch link test found (About panel on the TV)',
   '  ./hub tvremote              the TV remote from the Pi: paired or not, and the last run\'s steps',
   '  ./hub tvremote run \'<json>\'   a two-step launch: open the app, Enter, then a link (see README.md)',

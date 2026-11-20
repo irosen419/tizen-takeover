@@ -2409,22 +2409,29 @@
 
   /* ---------- status, for the About panel ---------- */
 
+  // The words follow the hub's language (Spanish: app/i18n.js 'clay.*').
+  function T(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') { try { return String(L.t(key, english, vars)); } catch (e) { /* English below */ } }
+    return String(english).replace(/\{(\w+)\}/g, function (all, n) { return vars && vars.hasOwnProperty(n) ? String(vars[n]) : all; });
+  }
+
   function ago(t) {
     var s = Math.max(0, Math.round((now() - t) / 1000));
-    if (s < 60) return s + ' s ago';
+    if (s < 60) return T('clay.agoS', '{n} s ago', { n: s });
     var m = Math.floor(s / 60);
-    if (m < 60) return m + ' min ago';
-    return Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago';
+    if (m < 60) return T('clay.agoMin', '{n} min ago', { n: m });
+    return T('clay.agoH', '{h} h {m} min ago', { h: Math.floor(m / 60), m: m % 60 });
   }
 
   function outcome(l) {
     var r = l.result;
-    var word = r === 'done' ? 'finished' :
-      r === 'interrupted' ? 'interrupted' :
-      r === 'stopped' ? 'stopped' :
-      r === 'failed: does not fit here' ? 'did not fit' :
-      r === 'error' ? 'hit an error' :
-      r.indexOf('slow:') === 0 ? 'too slow' : 'failed';
+    var word = r === 'done' ? T('clay.done', 'finished') :
+      r === 'interrupted' ? T('clay.interrupted', 'interrupted') :
+      r === 'stopped' ? T('clay.stopped', 'stopped') :
+      r === 'failed: does not fit here' ? T('clay.noFit', 'did not fit') :
+      r === 'error' ? T('clay.error', 'hit an error') :
+      r.indexOf('slow:') === 0 ? T('clay.slow', 'too slow') : T('clay.failed', 'failed');
     return l.name + ' ' + word;
   }
 
@@ -2442,53 +2449,54 @@
     typing: 'you are typing',
     moving: 'the hub is moving'
   };
+  function busyWord(w) { return T('clay.busy.' + w, BUSY[w]); }
 
   function busyWhy() {
     try {
       var w = host && typeof host.busyWhy === 'function' ? host.busyWhy() : '';
-      return BUSY.hasOwnProperty(w) ? BUSY[w] : '';
+      return BUSY.hasOwnProperty(w) ? busyWord(w) : '';
     } catch (e) { return ''; }
   }
 
   // Now: what they are doing, or what comes next.
   function nowText() {
     if (scene) {
-      if (scene.phase === 'playing') return 'On screen now: ' + scene.name;
+      if (scene.phase === 'playing') return T('clay.onScreen', 'On screen now: {name}', { name: scene.name });
       var secs = Math.floor((now() - scene.t0) / 1000) + ' s';
       if (scene.step === 'frames' && lastLoad && lastLoad.name === scene.name && lastLoad.of !== undefined) {
-        return 'Loading ' + scene.name + ', ' + lastLoad.got + ' of ' + lastLoad.of + ' frames, ' + secs;
+        return T('clay.loadingFrames', 'Loading {name}, {got} of {of} frames, {secs}', { name: scene.name, got: lastLoad.got, of: lastLoad.of, secs: secs });
       }
-      return 'Loading ' + scene.name + ' (' + scene.step + '), ' + secs;
+      return T('clay.loadingStep', 'Loading {name} ({step}), {secs}', { name: scene.name, step: scene.step, secs: secs });
     }
-    if (isHidden()) return 'Waiting: page reports hidden';
+    if (isHidden()) return T('clay.hidden', 'Waiting: page reports hidden');
     if (!hostQuiet()) {
       var why = busyWhy();
-      return 'Waiting: hub busy' + (why ? ' (' + why + ')' : '');
+      return T('clay.busy', 'Waiting: hub busy') + (why ? ' (' + why + ')' : '');
     }
-    return 'Due back in ' + howLong(nextAt() - now());
+    return T('clay.dueBack', 'Due back in {t}', { t: howLong(nextAt() - now()) });
   }
 
   // "N ms" under a second, else "N.N s".
   function ms(v) { return v < 1000 ? v + ' ms' : (v / 1000).toFixed(1) + ' s'; }
 
-  function overLimit() { return ' (over ' + Math.round(loadMs / 1000) + ' s)'; }
+  function overLimit() { return T('clay.over', ' (over {n} s)', { n: Math.round(loadMs / 1000) }); }
 
   // How the sprite list's last try went, or '' before the first.
   function spriteText() {
-    if (spriteEvent === 'already there' && spriteMs === null) return 'sprite list in';
+    if (spriteEvent === 'already there' && spriteMs === null) return T('clay.spriteIn', 'sprite list in');
     if (!spriteScript) return '';
-    if (spriteMs === null) return 'sprite list not in after ' + ms(now() - spriteStart);
-    var s = 'sprite list ' + (spriteHow === 'onerror' ? 'onerror after ' : '') + ms(spriteMs);
+    if (spriteMs === null) return T('clay.spriteNot', 'sprite list not in after {t}', { t: ms(now() - spriteStart) });
+    var s = spriteHow === 'onerror' ? T('clay.spriteErr', 'sprite list onerror after {t}', { t: ms(spriteMs) }) : T('clay.sprite', 'sprite list {t}', { t: ms(spriteMs) });
     return spriteMs > loadMs ? s + overLimit() : s;
   }
 
   // How the last scene's frames came, or ''.
   function framesText(L) {
     if (!L || L.of === undefined) return '';
-    var s = L.name + ' ' + L.got + '/' + L.of + ' frames';
-    if (L.ms !== null) return s + ' in ' + ms(L.ms) + (L.timedOut ? overLimit() : '') + (L.retried ? ' (' + L.retried + ' asked for again)' : '');
-    if (L.failed) return s + ', then one failed';
-    return s + (L.timedOut ? ' after ' : ' so far, ') + ms(now() - L.t0);
+    var s = T('clay.frames', '{name} {got}/{of} frames', { name: L.name, got: L.got, of: L.of });
+    if (L.ms !== null) return s + T('clay.framesIn', ' in {t}', { t: ms(L.ms) }) + (L.timedOut ? overLimit() : '') + (L.retried ? T('clay.retried', ' ({n} asked for again)', { n: L.retried }) : '');
+    if (L.failed) return s + T('clay.framesFailed', ', then one failed');
+    return s + (L.timedOut ? T('clay.framesAfter', ' after {t}', { t: ms(now() - L.t0) }) : T('clay.framesSoFar', ' so far, {t}', { t: ms(now() - L.t0) }));
   }
 
   // How the last (or current) visit is drawn, in plain words, or ''.
@@ -2496,18 +2504,18 @@
     if (!d) return '';
     var playing = scene && scene.phase === 'playing' && scene.draw === d;
     if (d.mode === 'smooth') {
-      if (d.why === 'hand') return 'Smooth, stepped by hand (a test)';
-      if (d.fps) return 'Smooth, ' + d.fps + ' frames a second';
-      return playing ? 'Smooth, measuring the frame rate' : 'Smooth (too short to measure)';
+      if (d.why === 'hand') return T('clay.smoothHand', 'Smooth, stepped by hand (a test)');
+      if (d.fps) return T('clay.smoothFps', 'Smooth, {n} frames a second', { n: d.fps });
+      return playing ? T('clay.smoothMeasuring', 'Smooth, measuring the frame rate') : T('clay.smoothShort', 'Smooth (too short to measure)');
     }
-    if (d.why === 'slow') return 'Stepped: the screen managed ' + d.fps + ' frames a second';
+    if (d.why === 'slow') return T('clay.steppedSlow', 'Stepped: the screen managed {n} frames a second', { n: d.fps });
     if (d.why === 'remembered') {
-      return 'Stepped: the screen managed ' + d.fps + ' frames a second ' + ago(d.seenAt) +
-        '; smooth is tried again in ' + howLong(Math.max(0, d.seenAt + SLOW_KEEP_MS - now()));
+      return T('clay.steppedRemembered', 'Stepped: the screen managed {n} frames a second {ago}; smooth is tried again in {t}',
+        { n: d.fps, ago: ago(d.seenAt), t: howLong(Math.max(0, d.seenAt + SLOW_KEEP_MS - now())) });
     }
-    if (d.why === 'no-raf') return 'Stepped: this browser has no requestAnimationFrame';
-    if (d.why === 'speed') return 'Stepped: sped up by a test';
-    return 'Stepped: set by a test';
+    if (d.why === 'no-raf') return T('clay.steppedNoRaf', 'Stepped: this browser has no requestAnimationFrame');
+    if (d.why === 'speed') return T('clay.steppedSpeed', 'Stepped: sped up by a test');
+    return T('clay.steppedTest', 'Stepped: set by a test');
   }
 
   // The parts the About panel shows, one row each, all strings ('' when a
@@ -2520,11 +2528,11 @@
   function status() {
     try {
       var out = { now: '', visits: '', last: '', drawing: '', loading: '', problem: '', text: '' };
-      if (!started) out.now = 'Not started';
-      else if (!settings) out.now = 'Off (' + (offWhy || 'config') + ')';
+      if (!started) out.now = T('clay.notStarted', 'Not started');
+      else if (!settings) out.now = T('clay.off', 'Off ({why})', { why: offWhy === '?clay=off' ? offWhy : T('clay.offConfig', offWhy || 'config') });
       else {
         out.now = nowText();
-        out.visits = played + ' played · ' + slow + ' slow · ' + failedN + ' failed';
+        out.visits = T('clay.visits', '{played} played · {slow} slow · {failed} failed', { played: played, slow: slow, failed: failedN });
         if (last) out.last = outcome(last) + ', ' + ago(last.at);
         out.drawing = drawingText(drawInfo);
         var load = [];
@@ -2537,10 +2545,10 @@
       }
       var parts = [out.now];
       if (out.visits) parts.push(out.visits);
-      if (out.last) parts.push('last ' + out.last);
-      if (out.drawing) parts.push('drawing: ' + out.drawing);
+      if (out.last) parts.push(T('clay.partLast', 'last {t}', { t: out.last }));
+      if (out.drawing) parts.push(T('clay.partDrawing', 'drawing: {t}', { t: out.drawing }));
       if (out.loading) parts.push(out.loading);
-      if (out.problem) parts.push('problem: ' + out.problem);
+      if (out.problem) parts.push(T('clay.partProblem', 'problem: {t}', { t: out.problem }));
       out.text = parts.join(' · ');
       return out;
     } catch (e) {

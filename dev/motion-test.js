@@ -42,7 +42,7 @@ const awwsSample = require('./awws-sample');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 const BUILD = /var BUILD = '([^']+)'/.exec(fs.readFileSync(path.join(ROOT, 'app', 'hub.js'), 'utf8'))[1];
 
 // The default layout with Weather and Now Playing swapped: the same widgets.
@@ -253,7 +253,9 @@ async function openEntertainment(page) {
       if (performance.now() - t0 < 900) requestAnimationFrame(look);
       else window.__items = seen;
     })();
-    window.HUB_TEST.openPanel('entertainment');
+    // These checks are about the small panel; config.js opens Entertainment
+    // straight to full screen.
+    window.HUB_CONFIG.widgets.entertainment.openMode = 'panel'; window.HUB_TEST.openPanel('entertainment');
   });
   await sleep(1000);
   return page.evaluate(() => window.__items);
@@ -343,6 +345,56 @@ async function checkDetection(pi) {
   await page.context().close();
 }
 
+// A new build keeps a clean push result (timed again later) but not a step-down,
+// and nothing is timed in the first minute after a load.
+async function checkSettle(pi) {
+  const page = await open({ pi: pi });
+  const state = () => page.evaluate(() => window.HUB_TEST.motionState());
+  const reloadWith = async (rec) => {
+    await page.evaluate((r) => localStorage.setItem('homeHub.motion', JSON.stringify(r)), rec);
+    await page.reload();
+    await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0);
+  };
+  // An older build's clean push: push at once, extras on, timed again later.
+  await reloadWith({ mode: 'push', build: 'v0.0.1', fps: 61, at: Date.now() });
+  let s = await state();
+  assert(s.mode === 'push' && s.measuring, 'an older clean push: ' + JSON.stringify(s));
+  assert((await fx(page)).speed === 'ok', 'extras off after an older clean push');
+  // An older build's step-down: back to the top rung, timed again.
+  await reloadWith({ mode: 'expand', build: 'v0.0.1', fps: 50, measuring: true, at: Date.now() });
+  s = await state();
+  assert(s.mode === 'push' && s.measuring, 'an older step-down kept: ' + JSON.stringify(s));
+  // This build's step-down still holds (for its day).
+  await reloadWith({ mode: 'expand', build: BUILD, fps: 50, at: Date.now() });
+  assert((await state()).mode === 'expand', 'this build\'s step-down was dropped');
+  // In the first minute: opening and closing a panel is not timed.
+  await reloadWith({ mode: 'push', build: 'v0.0.1', fps: 61, at: Date.now() });
+  await idle(page);
+  for (let i = 0; i < 2; i++) {
+    await page.keyboard.press('Enter');
+    await sleep(900);
+    await page.keyboard.press('Escape');
+    await sleep(900);
+  }
+  s = await state();
+  assert(s.runs === 0 && s.measuring, 'timed while settling: ' + JSON.stringify(s));
+  noErrors(page);
+  await page.context().close();
+  // With ?settle=0 the same opens are timed.
+  const now = await open({ pi: pi, query: 'settle=0' });
+  await idle(now);
+  for (let i = 0; i < 2; i++) {
+    await now.keyboard.press('Enter');
+    await sleep(900);
+    await now.keyboard.press('Escape');
+    await sleep(900);
+  }
+  s = await now.evaluate(() => window.HUB_TEST.motionState());
+  assert(s.runs > 0 || !s.measuring, 'not timed with settle=0: ' + JSON.stringify(s));
+  noErrors(now);
+  await now.context().close();
+}
+
 async function checkDisabled(pi) {
   const cases = [
     { name: 'fade', o: { query: 'motion=fade' }, why: 'fade' },
@@ -363,7 +415,8 @@ async function checkDisabled(pi) {
     const loud = await page.evaluate(() => document.querySelectorAll('.fx-ring, .fx-fly, .fx-bloom, .fx-chip, .fx-edge').length);
     assert(!loud, c.name + ': a ring: ' + JSON.stringify(x));
     const border = await page.evaluate(() => getComputedStyle(document.querySelector('#grid .tile.is-focused')).borderTopColor);
-    assert(/255, 255, 255(, 1)?\)/.test(border), c.name + ': the focused tile lost its border: ' + border);
+    // White at night; the day look (the test's clock is 10:40 AM) draws it in dark ink, #151b24.
+    assert(/(255, 255, 255|21, 27, 36)(, 1)?\)/.test(border), c.name + ': the focused tile lost its border: ' + border);
     await page.keyboard.press('ArrowRight');
     // Stagger: items just show.
     const items = await openEntertainment(page);
@@ -446,7 +499,7 @@ async function checkQuiet(pi) {
       });
       return out;
     });
-    const want = ['ambiance', 'awws', 'calendar', 'mirror', 'nowplaying'];
+    const want = ['ambience', 'awws', 'calendar', 'mirror', 'nowplaying'];
     assert(JSON.stringify(info.dormant.sort()) === JSON.stringify(want), lang + ': quiet tiles ' + JSON.stringify(info.dormant));
     assert(!info.problems.length, lang + ': ' + info.problems.join(' | '));
     if (lang === 'es') {
@@ -462,9 +515,10 @@ async function checkQuiet(pi) {
     const t = document.querySelector('.cell[data-widget="nowplaying"] .tile');
     return t && !t.classList.contains('is-dormant');
   }), 6000, 'Now Playing stayed quiet with a song');
-  const d = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.tile.is-dormant'), (t) => t.parentNode.getAttribute('data-widget')).sort());
-  assert(JSON.stringify(d) === JSON.stringify(['ambiance', 'mirror']) || JSON.stringify(d) === JSON.stringify(['ambiance', 'calendar', 'mirror']) ||
-    JSON.stringify(d) === JSON.stringify(['ambiance', 'awws', 'calendar', 'mirror']) || JSON.stringify(d) === JSON.stringify(['ambiance', 'awws', 'mirror']),
+  // Ambience may be live or waiting, depending on whether its lights answered yet.
+  const d = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.tile.is-dormant'), (t) => t.parentNode.getAttribute('data-widget')).filter((w) => w !== 'ambience').sort());
+  assert(JSON.stringify(d) === JSON.stringify(['mirror']) || JSON.stringify(d) === JSON.stringify(['calendar', 'mirror']) ||
+    JSON.stringify(d) === JSON.stringify(['awws', 'calendar', 'mirror']) || JSON.stringify(d) === JSON.stringify(['awws', 'mirror']),
     'quiet with the Pi: ' + JSON.stringify(d));
   noErrors(page);
 }
@@ -492,6 +546,10 @@ async function checkRing(pi) {
   assert(same(r, want), 'the ring is not on the focused tile at start: ' + JSON.stringify({ r, want }));
   const border = await page.evaluate(() => getComputedStyle(document.querySelector('#grid .tile.is-focused')).borderTopColor);
   assert(!/^rgb\(255, 255, 255\)$/.test(border), 'the tile still draws its own white border under the ring: ' + border);
+  // Focus starts top-left (Today); walk to Entertainment first.
+  assert((await focused(page)) === 'today', 'start focus: ' + (await focused(page)));
+  for (const k of ['ArrowDown', 'ArrowDown', 'ArrowRight']) { await page.keyboard.press(k); await sleep(250); }
+  assert((await focused(page)) === 'entertainment', 'walk to Entertainment: ' + (await focused(page)));
   // A press glides (190 ms), ending on the new tile.
   await page.keyboard.press('ArrowLeft');
   r = await ringRect(page);
@@ -519,7 +577,15 @@ async function checkRing(pi) {
   await control(pi, 'POST', '/api/layout', { layout: SWAPPED });
   await until(() => page.evaluate(() => window.HUB_TEST.homeRects().weather.left < 200), 4000, 'the layout did not switch');
   await sleep(80);
-  await page.keyboard.press('ArrowLeft');
+  // This layout has other widgets, so the hub reloads and focus starts top-left again.
+  await until(async () => (await focused(page)) === 'today', 4000, 'focus after the switch is not top-left');
+  r = await ringRect(page);
+  want = await page.evaluate(() => window.HUB_TEST.homeRects().today);
+  assert(same(r, want), 'the ring after the layout switch is not on Today: ' + JSON.stringify({ r, want }));
+  // Down, Down: Today, To-do, Weather (now bottom-left).
+  await page.keyboard.press('ArrowDown');
+  await sleep(250);
+  await page.keyboard.press('ArrowDown');
   await sleep(320);
   r = await ringRect(page);
   want = await page.evaluate(() => window.HUB_TEST.homeRects().weather);
@@ -623,7 +689,7 @@ async function checkCover(pi) {
 async function checkBloom(pi) {
   const page = await open({ pi: pi, query: 'motion=push' });
   await idle(page);
-  await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
+  await page.evaluate(() => { window.HUB_CONFIG.widgets.entertainment.openMode = 'panel'; window.HUB_TEST.openPanel('entertainment'); });
   await idle(page);
   await sleep(600);
   await launchFirstApp(page);
@@ -948,7 +1014,7 @@ async function checkActivityClay(pi) {
   assert(!seen.length, 'a chip during a scene: ' + JSON.stringify(seen));
   await page.evaluate(() => window.HUB_TEST.clay.stop());
   // With a panel open, also none (the home screen is covered).
-  await page.evaluate(() => window.HUB_TEST.openPanel('entertainment'));
+  await page.evaluate(() => { window.HUB_CONFIG.widgets.entertainment.openMode = 'panel'; window.HUB_TEST.openPanel('entertainment'); });
   await idle(page);
   await postTodo(pi, 'Behind a panel ' + Date.now());
   await sleep(800);
@@ -1093,6 +1159,7 @@ async function main() {
   await check('16. Motion timing: one stall does not step down, three janky runs do, a step-down lasts a day', () => checkDetection(pi));
   await check('16. Activity chips: a to-do whose notes change on the Pi adds one chip; the first list, an unchanged list and a tick add none', () => checkActivityTodoEdit(pi));
   await check('17. Auto stepped down to expand at 60 fps or more: chips, the accent edge and its light still run, the ring does not; the Motion row says so', () => checkLightStepped(pi));
+  await check('18. A new build keeps a clean push (not a step-down); nothing is timed in the first minute after a load', () => checkSettle(pi));
 }
 
 main().catch((e) => {

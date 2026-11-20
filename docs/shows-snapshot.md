@@ -12,6 +12,9 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
   - `via`: the app the show is billed through and opened in, such as `Prime Video` for HBO Max through Prime Video Channels.
   - `tvmazeId`: filled in by the first lookup and kept.
   - `watched`: optional, the episodes marked watched: `[{ s, e, at }]` (season, episode, when it was marked; at most 400 per show, the oldest go first). Never written by hand: the TV marks them, `./hub shows watched|unwatch` and the mailbox correct them.
+  - `upTo`: optional, `{ s, e, at }`, "watched up to here": every numbered episode of an earlier season, or of season `s` up to number `e`, counts as watched.
+  - `unwatched`: optional, `[{ s, e }]` (at most 200): episodes inside the `upTo` range that were NOT seen.
+  An episode is watched when it is in `watched`, or inside `upTo` and not in `unwatched`. A special (no season or number) never is.
   Change it with `./hub shows add|remove`, the mailbox (`shows.add`, `shows.remove`, `shows.set`) or `POST /api/shows`.
 - **TVmaze** (`https://api.tvmaze.com`, public, no key). Per show and refresh:
   - `GET /singlesearch/shows?q=<name>`, only until the id is known;
@@ -47,6 +50,7 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
       "nextEpisode": { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z", "runtime": 60 },
       "upcoming": [ { "season": 24, "number": 7, "name": "Hot Mess", "airstamp": "2026-11-13T02:00:00Z", "runtime": 60, "watched": true }, { "season": 24, "number": 8, "name": "Surf and Turf", "airstamp": "2026-11-20T02:00:00Z", "runtime": 60 } ],
       "watched": [ { "season": 24, "number": 7, "at": "2026-11-13T04:10:00Z" } ],
+      "progress": { "upTo": { "season": 24, "number": 6, "at": "2026-11-13T04:00:00Z" }, "unwatched": [ { "season": 24, "number": 3 } ], "aired": 7, "seen": 6, "caughtUp": false, "next": { "season": 24, "number": 3 }, "left": [ { "season": 24, "unseen": 1, "out": 7, "total": 8 } ] },
       "returning": null
     }
   ]
@@ -71,12 +75,15 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
 | `stale`, `error` | Present when the last read failed and this is the last good copy. `error` is a code only: `timeout`, `unreachable`, `not-found`, `rate-limited`, `http-503`, `not-json` or `no-id`. |
 | `nextEpisode` | `{ season, number, name, airstamp, runtime?, watched? }` or `null`. |
 | `watched` | The newest 60 episodes marked watched: `[{ season, number, at }]`, always present (`[]` when none). |
+| `progress` | Always present: `{ upTo, unwatched, aired, seen, caughtUp, next, left }`. `upTo` is `{ season, number, at }` or `null`; `unwatched` the exceptions inside it, `[{ season, number }]`. `aired` counts the numbered episodes already out in the show's full list (`0` when that list is not known yet), `seen` how many of those are watched, `next` is the earliest aired episode not watched (`{ season, number }` or `null`), and `caughtUp` is `aired > 0 && seen === aired`. `left` (server 0.17.0) lists the seasons that have aired episodes not watched, oldest first, at most 6 (the latest): `[{ season, unseen, out, total }]`, where `out` counts the season's episodes already aired and `total` every episode of it TVmaze lists (announced ones too), so `out === total` means the whole season is out. The TV's "Ready to watch" on Coming soon reads it; an older Pi sends none. Recomputed on every publish and refresh, so an episode airing moves it. The TV can also work it out from the list in `GET /shows/episodes`. |
 | `runtime` (on an episode) | TVmaze's length in minutes, when it has one. |
 | `watched` (on an episode) | `true` when that episode is marked watched. Absent otherwise. |
 | `upcoming` | Episodes from 7 days ago to 60 days ahead, at most 40, oldest first. The week view shows the days already gone dimmed as "Aired". |
 | `returning` | A season coming back: `{ season, label, date, airstamp }` (`date` and `airstamp` `null` when there is no date yet), or `null`. The Coming soon strip shows these with a day count. |
 
 Times are UTC ISO strings (`airstamp`). The TV shows them in its own time zone, 12 or 24 hour as the Clock is set, and puts episodes on its own local days.
+
+The snapshot does not carry a show's full episode list (it would be far too big): the TV asks for one show at a time, see "The show page" below.
 
 At most 40 shows. Episode names are cut at 80 characters, service names at 24.
 
@@ -108,6 +115,38 @@ The TV marks an episode when the person says so: "Watched" on a line of the Sche
 
 By hand, with the token: `POST /api/shows/watched` and `POST /api/shows/unwatch` with `{ "show": "<name or id>", "episode": "S3E4" }` (`episode` may be left out on `watched`: the earliest episode out in the last week and not yet marked). `./hub shows watched "<name>" [S3E4]`, `./hub shows unwatch "<name>" S3E4`, and the mailbox's `shows.watched {name, episode?}` and `shows.unwatch {name, episode}` do the same. Needs server 0.8.0.
 
+## Progress: watched up to here, caught up
+
+Besides single episodes, the owner can say "I'm up to S3E4" (a binge) or "I've seen it all". The TV tells the Pi with `POST /shows/upto` (body `{ "id": "slow-horses", "season": 3, "number": 4 }`, answer `{ ok, changed }`) and `POST /shows/caughtup` (body `{ "id": "slow-horses" }`, answer `{ ok, changed, season, number }`), the same door as `/shows/watched` (no token, origin checked). A show that is not on the list, or a bad body, answers 400 with `{ ok: false, error }`. No TVmaze call; the new snapshot goes out at once.
+
+- **Up to** sets `upTo` to that episode: every numbered episode up to and including it counts as watched, and the single marks and exceptions inside it go (they are now redundant). Setting it to an EARLIER point than before replaces the old one: the episodes after the new point (and before the old) are unwatched again, except those still in the `watched` list.
+- **Caught up** sets `upTo` to the latest numbered episode that has already aired (from the show's full list, else from the snapshot's episodes) and clears `unwatched`. It answers 400 when nothing has aired.
+- **Mark watched** on an episode inside `upTo` (one that is in `unwatched`) takes it out of `unwatched`; outside it adds it to `watched`. **Unwatch** inside `upTo` adds it to `unwatched` (and takes it off `watched` if it was there).
+
+By hand, with the token: `POST /api/shows/upto` `{ "show": "<name or id>", "episode": "S3E4" }` and `POST /api/shows/caughtup` `{ "show": "<name or id>" }`; `./hub shows upto "<name>" S3E4`, `./hub shows caughtup "<name>"`, and the mailbox's `shows.upto {name, episode}` and `shows.caughtup {name}` do the same. Needs server 0.14.0.
+
+## The show page
+
+`GET /shows/episodes?id=<show id>` (screen door, no token, like `/live/state`) answers one show's full list for the TV's show page:
+
+```json
+{
+  "ok": true,
+  "id": "slow-horses",
+  "checkedAt": "2026-11-17T12:00:00Z",
+  "partial": true,
+  "seasons": [
+    { "season": 1, "episodes": [ { "number": 1, "name": "Spook Street", "airstamp": "2022-04-01T03:00:00Z", "runtime": 60, "watched": true } ] }
+  ],
+  "progress": { "upTo": null, "unwatched": [], "aired": 0, "seen": 0, "caughtUp": false, "next": null, "left": [] }
+}
+```
+
+- `seasons` and their `episodes` are sorted ascending. Only numbered episodes are listed. `runtime` is present when TVmaze has one; `watched: true` only on watched episodes. `progress` is as in the snapshot, computed now. `checkedAt` is when the show was last read well, or `null`.
+- `partial: true` (absent otherwise) means the Pi has no full list for the show yet (not read since 0.14.0 started, or TVmaze not reached): `seasons` then holds only the episodes the snapshot has (the week back to 60 days ahead), and `progress.aired` is `0`.
+- An id that is not on the list answers 404 `{ ok: false, error }`; no `id` answers 400.
+- The Pi keeps the lists in `data/show-episodes.json` (`{ v: 1, shows: { "<show id>": [ { season, number, name, airstamp, runtime? } ] } }`, numbered episodes only, at most 800 per show, written only when one changes, dropped with the show). They come from the `GET /shows/<id>/episodes` call every refresh already makes. In sample mode (`HUB_SHOWS=sample`) the lists come from an optional `episodes` array on a show in `pi/fixtures/shows-sample.json`, moved to today like the rest, and are never part of the snapshot.
+
 ## Logs
 
 The Pi's log never names a show or carries a link. It holds counts and codes only:
@@ -117,4 +156,6 @@ The Pi's log never names a show or carries a link. It holds counts and codes onl
 - `shows changed: 4 shows (rev 58)`
 - `screen marked an episode watched` (and `screen marked an episode watched (already marked)`), when the TV marks one
 - `screen took a watched mark off an episode`, when the TV takes one off (no show, episode, address or token in either line)
-- `control POST /api/shows/watched -> 200 marked an episode watched` and `control POST /api/shows/unwatch -> 200 took a watched mark off an episode`, from the control API (the usual `control ...` line, with the route, the status and a generic note)
+- `screen marked a show watched up to an episode` and `screen marked a show caught up` (each with ` (already marked)` added when nothing changed), from the show page; `GET /shows/episodes` logs nothing
+- `shows: could not save the episode lists (EACCES)`, when `data/show-episodes.json` can't be written (a code only)
+- `control POST /api/shows/watched -> 200 marked an episode watched` and `control POST /api/shows/unwatch -> 200 took a watched mark off an episode`, from the control API (the usual `control ...` line, with the route, the status and a generic note; likewise `control POST /api/shows/upto -> 200 marked a show watched up to an episode` and `control POST /api/shows/caughtup -> 200 marked a show caught up`)

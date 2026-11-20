@@ -264,5 +264,45 @@ check('parseIso: the Pi\'s UTC form, with and without seconds', () => {
   assert.ok(isNaN(T.parseIso('nope')));
 });
 
+check('notes: an event takes its text from data.notes by key; missing or bad keys give none', () => {
+  const d = { configured: true, tz: TZ, notes: { k1: 'Line one\r\nLine two  ' },
+    events: [{ id: 'a', cal: 1, title: 'A', start: '2026-11-21T16:00:00Z', end: '2026-11-21T16:15:00Z', note: 'k1' },
+      { id: 'b', cal: 1, title: 'B', start: '2026-11-21T17:00:00Z', end: '2026-11-21T17:15:00Z', note: 'nope' },
+      { id: 'c', cal: 1, title: 'C', start: '2026-11-21T18:00:00Z', end: '2026-11-21T18:15:00Z' }] };
+  const n = T.normalize(d, z);
+  same(n.map((e) => e.notes), ['Line one\nLine two', '', '']);
+  assert.strictEqual(T.notesOf(n[0]), 'Line one\nLine two');
+  assert.strictEqual(T.notesOf(n[1]), '');
+  const old = T.normalize({ configured: true, tz: TZ, events: d.events }, z);
+  assert.ok(old.every((e) => e.notes === ''), 'an older Pi without notes still works');
+});
+
+check('notes: Guest mode hides them', () => {
+  const n = T.normalize({ configured: true, tz: TZ, notes: { k: 'Secret' }, events: [{ id: 'a', cal: 1, title: 'A', start: '2026-11-21T16:00:00Z', end: '2026-11-21T16:15:00Z', note: 'k' }] }, z);
+  sandbox.window.HUB_GUEST = { on: () => true };
+  try { assert.strictEqual(T.notesOf(n[0]), ''); } finally { delete sandbox.window.HUB_GUEST; }
+  assert.strictEqual(T.notesOf(n[0]), 'Secret');
+});
+
+check('notes: paragraphs become blocks; a short first line with more under it is a heading', () => {
+  const b = T.noteBlocks('Check each plant first. Water slowly.\n\nGolden pothos\nWater when half dry.\nIt handles drying out.\n\n\nAsk about:\nthe tile\n\nOne line only');
+  same(b.map((x) => x.head), ['', 'Golden pothos', '', '']);
+  same(b[1].lines, ['Water when half dry.', 'It handles drying out.']);
+  same(b[2].lines, ['Ask about:', 'the tile'], 'a line ending in a colon is not a heading');
+  same(b[3].lines, ['One line only']);
+});
+
+check('guests: "1 guest" / "3 guests", nothing without, nothing in Guest mode; guests alone make an event readable', () => {
+  const n = T.normalize({ configured: true, tz: TZ, events: [
+    { id: 'a', cal: 1, title: 'A', start: '2026-11-21T16:00:00Z', end: '2026-11-21T16:15:00Z', guestCount: 1, guests: ['Ana'] },
+    { id: 'b', cal: 1, title: 'B', start: '2026-11-21T17:00:00Z', end: '2026-11-21T17:15:00Z', guestCount: 3, guests: ['Ana', 'Sam', 'Jo'] },
+    { id: 'c', cal: 1, title: 'C', start: '2026-11-21T18:00:00Z', end: '2026-11-21T18:15:00Z' }] }, z);
+  same(n.map((e) => T.guestText(e)), ['1 guest', '3 guests', '']);
+  same(n[1].guests, ['Ana', 'Sam', 'Jo']);
+  assert.ok(T.readable(n[0]) && !T.readable(n[2]));
+  sandbox.window.HUB_GUEST = { on: () => true };
+  try { assert.strictEqual(T.guestText(n[1]), ''); assert.ok(!T.readable(n[0])); } finally { delete sandbox.window.HUB_GUEST; }
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

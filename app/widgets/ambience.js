@@ -106,6 +106,25 @@
     return 'rgb(' + c.join(', ') + ')';
   }
 
+  // The colour made deep enough to read on the light day glass: the same hue,
+  // saturation at least 0.85 and lightness at most 0.55 (warm white becomes
+  // amber, a blue stays blue). theme-day uses it through --am-deep.
+  function deep(hex) {
+    var m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+    var r = (m ? parseInt(m[1], 16) : 255) / 255, g = (m ? parseInt(m[2], 16) : 214) / 255, b = (m ? parseInt(m[3], 16) : 170) / 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), h = 0, d = max - min;
+    if (d) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    var l = Math.min((max + min) / 2, 0.55);
+    var sat = d ? Math.max(d / (1 - Math.abs(max + min - 1)), 0.85) : 0;
+    return 'hsl(' + Math.round(h) + ', ' + Math.round(sat * 100) + '%, ' + Math.round(l * 100) + '%)';
+  }
+
   // The scene icons, drawn like app/icons.js (24 x 24 lines).
   var GLYPH = {
     moon: '<path d="M19.5 14.6A8 8 0 0 1 9.4 4.5a8 8 0 1 0 10.1 10.1z"/>',
@@ -291,6 +310,7 @@
         var halo = el('i', 'am-halo', d);
         var lvl = l.kind === 'switch' ? 0.7 : 0.35 + 0.65 * (l.pct / 100);
         d.style.backgroundColor = lift(l.tone || '#ffd6aa', 0.35);
+        d.style.setProperty('--am-deep', deep(l.tone || '#ffd6aa'));
         halo.style.boxShadow = '0 0 ' + (0.35 + 0.5 * lvl).toFixed(2) + 'rem ' + (0.1 + 0.18 * lvl).toFixed(2) + 'rem ' + rgba(l.tone || '#ffd6aa', 0.9);
       }
     }
@@ -304,7 +324,10 @@
     var row = el('div', 'am-lrow ' + (inline ? 'am-inline ' : '') + (cls || '') + (!l.reachable ? ' is-gone' : l.on ? ' is-on' : ' is-off') + (l.pending ? ' is-pending' : ''), parent);
     var top = el('div', 'am-lrow-top', row);
     var dot = el('span', 'am-dot am-lrow-dot' + (l.kind === 'switch' ? ' is-switch' : '') + (!l.reachable ? ' is-gone' : l.on ? ' is-on' : ' is-off'), top);
-    if (l.reachable && l.on) dot.style.backgroundColor = lift(l.tone || '#ffd6aa', 0.2);
+    if (l.reachable && l.on) {
+      dot.style.backgroundColor = lift(l.tone || '#ffd6aa', 0.2);
+      dot.style.setProperty('--am-deep', deep(l.tone || '#ffd6aa'));
+    }
     el('span', 'am-lrow-name', top, l.name);
     var stateText = !l.reachable ? T('gone', 'Not answering') : !l.on ? T('off', 'Off')
       : l.kind === 'switch' ? T('on', 'On') : T('pct', '{n}%', { n: l.pct });
@@ -355,8 +378,9 @@
         root.title = v.msg;
         return;
       }
-      var msg = el('div', 'am-msg', root, v.msg);
-      var hint = layout === 'strip' ? null : el('div', 'am-hint', root, v.hint);
+      // Waiting for the Pi: the hub's one quiet line (style.css, body.fx-quiet).
+      var msg = el('div', 'am-msg' + (dormant ? ' hub-quiet-line' : ''), root, v.msg);
+      var hint = layout === 'strip' ? null : el('div', 'am-hint' + (dormant ? ' hub-quiet-hide' : ''), root, v.hint);
       fitBlocks(body, [hint], [msg]);
       return;
     }

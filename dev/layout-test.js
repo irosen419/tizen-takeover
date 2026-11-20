@@ -6,7 +6,7 @@
  * the TV-side layout check, the saved layout at start, a new layout that
  * moves tiles in place, waiting while a panel is open, a new set of widgets
  * that reloads once, the reset, the guard against a reload loop, and
- * config.js's Budget layout with Budget lab.
+ * config.js's Budget layout with Budget lab, and focus starting on the top-left tile.
  * Needs Playwright (require('playwright')).
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
@@ -24,7 +24,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 
 // app/config.js's layout with Weather and Now Playing swapped: the same widgets.
 const SWAPPED = [
@@ -35,7 +35,7 @@ const SWAPPED = [
   { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
   { widget: 'mirror',        x: 9, y: 2, w: 3, h: 2 },
   { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 },
-  { widget: 'ambiance',      x: 3, y: 4, w: 6, h: 1 },
+  { widget: 'ambience',      x: 3, y: 4, w: 6, h: 1 },
   { widget: 'weather',       x: 0, y: 5, w: 3, h: 1 },
   { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
 ];
@@ -285,7 +285,12 @@ async function checkMove() {
   await until(async () => (await look.live(page)) === 'live', 8000, 'the hub did not go live');
   await waitIdle(page);
   await until(() => page.evaluate(() => document.body.classList.contains('is-glass')), 6000, 'the frosted glass never came on');
-  assert((await look.focused(page)) === 'entertainment', 'start focus: ' + (await look.focused(page)));
+  assert((await look.focused(page)) === 'today', 'start focus (top-left): ' + (await look.focused(page)));
+  // Down, Down, Right: Today, To-do, Now Playing, Entertainment.
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowRight');
+  assert((await look.focused(page)) === 'entertainment', 'walk to Entertainment: ' + (await look.focused(page)));
   // With config.js's layout, Left from Entertainment reaches Now Playing.
   await page.keyboard.press('ArrowLeft');
   assert((await look.focused(page)) === 'nowplaying', 'Left before: ' + (await look.focused(page)));
@@ -302,7 +307,8 @@ async function checkMove() {
   assert(after.left < before.left && after.left < today.left, 'measured rects: ' + JSON.stringify({ before, after, today }));
   assert(await page.evaluate(() => window.__sameLoad === true) && page.loads === 1, 'the page reloaded (loads ' + page.loads + ')');
   assert((await look.ids(page)).length === 10, 'tile count changed');
-  // Focus follows the new places: Left from Entertainment now reaches Weather.
+  // The remote was used a moment ago, so focus stays put; Left from
+  // Entertainment now reaches Weather.
   assert((await look.focused(page)) === 'entertainment', 'focus moved by itself');
   await page.keyboard.press('ArrowLeft');
   assert((await look.focused(page)) === 'weather', 'Left after: ' + (await look.focused(page)));
@@ -322,6 +328,63 @@ async function checkMove() {
   await until(() => cellAt(page, 'weather', 9, 0, 3, 2), 4000, 'reset did not move weather back');
   assert(page.loads === 1, 'reset reloaded');
   assert((await look.saved(page)) === null, 'saved copy not cleared: ' + (await look.saved(page)));
+  noErrors(context);
+}
+
+// config.js's layout with Today and Now Playing swapped: Now Playing is top-left.
+const NP_TOP = [
+  { widget: 'nowplaying',    x: 0, y: 0, w: 3, h: 1 },
+  { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },
+  { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
+  { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
+  { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
+  { widget: 'mirror',        x: 9, y: 2, w: 3, h: 2 },
+  { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 },
+  { widget: 'ambience',      x: 3, y: 4, w: 6, h: 1 },
+  { widget: 'today',         x: 0, y: 5, w: 3, h: 1 },
+  { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
+];
+
+async function checkTopLeftFocus() {
+  // A saved layout listing tiles out of order: focus still lands top-left
+  // (smallest y, then smallest x), not on the first entry or config.start.
+  let context = await newContext(() => { try { localStorage.setItem('homeHub.layout', JSON.stringify([
+    { widget: 'entertainment', x: 0, y: 3, w: 12, h: 3 },
+    { widget: 'weather', x: 6, y: 0, w: 6, h: 3 },
+    { widget: 'todo', x: 0, y: 0, w: 6, h: 3 }
+  ])); } catch (e) { /* ignore */ } });
+  let page = await openHub(context, 'live=off');
+  await waitIdle(page);
+  assert((await look.focused(page)) === 'todo', 'saved layout start focus: ' + (await look.focused(page)));
+  assert((await page.evaluate(() => window.HUB_TEST.focused())) === 'todo', 'HUB_TEST.focused');
+  noErrors(context);
+  await context.close();
+
+  // A layout arriving in place, with no recent key press, refocuses top-left.
+  await setLayout(null);
+  context = await newContext();
+  page = await openHub(context, liveQuery());
+  await until(async () => (await look.live(page)) === 'live', 8000, 'the hub did not go live');
+  await waitIdle(page);
+  assert((await look.focused(page)) === 'today', 'start focus: ' + (await look.focused(page)));
+  await page.keyboard.press('ArrowRight');
+  const moved = await look.focused(page);
+  assert(moved && moved !== 'today', 'Right did not move focus');
+  await page.evaluate(() => window.HUB_TEST.setFocusKeepMs(0));
+  await new Promise((r) => setTimeout(r, 20));
+  await setLayout(NP_TOP);
+  await until(() => cellAt(page, 'nowplaying', 0, 0, 3, 1), 4000, 'now playing did not move');
+  assert((await look.focused(page)) === 'nowplaying', 'focus after an idle layout: ' + (await look.focused(page)));
+  assert(page.loads === 1, 'the page reloaded');
+
+  // Right after a key press, a layout arriving leaves focus where it is.
+  await page.evaluate(() => window.HUB_TEST.setFocusKeepMs(60000));
+  await page.keyboard.press('ArrowDown');
+  const before = await look.focused(page);
+  await setLayout(null);
+  await until(() => cellAt(page, 'today', 0, 0, 3, 1), 4000, 'reset did not move today back');
+  assert((await look.focused(page)) === before, 'focus yanked right after an arrow press: ' + (await look.focused(page)));
+  await setLayout(null);
   noErrors(context);
 }
 
@@ -477,6 +540,7 @@ async function main() {
   await check('5. A new set of widgets reloads once; the reset reloads once more', checkReload);
   await check('6. A layout that cannot be saved does not reload in a loop', checkNoLoop);
   await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, Goals 4 x 3, Calendar, no gaps, OK opens it full screen', checkBudgetLayout);
+  await check('8. Focus starts on the top-left tile; a layout arriving refocuses it unless the remote was just used', checkTopLeftFocus);
 }
 
 main().catch((e) => {

@@ -479,7 +479,7 @@ async function main() {
     snap.sentAt = new Date(Date.now() - 60000).toISOString();
     r = await run(fake, h, 'budget.set', { snapshot: snap });
     assert.strictEqual(r.ok, true, r.message);
-    assert.ok(/^Stored room, cardDay, goals, alerts, lab, merchants, pace and runway \(.* of 48 KB\)\. Screens that are on change now\.$/.test(r.message), r.message);
+    assert.ok(/^Stored room, cardDay, goals, alerts, lab, merchants, pace, runway and investments \(.* of 48 KB\)\. Screens that are on change now\.$/.test(r.message), r.message);
     assert.strictEqual(r.message, budget.setText(Object.assign({}, r.data)));
     const stored = (await h.api('GET', '/api/budget')).body;
     r = await run(fake, h, 'budget.show');
@@ -492,7 +492,7 @@ async function main() {
     snap.merchants.items.forEach((m) => assert.ok(shown.indexOf(m.label) < 0 && shown.indexOf(String(m.mtd)) < 0, 'shows a merchant'));
     ['186.4', '498.57', '766.9', '$'].forEach((w) => assert.ok(shown.indexOf(w) < 0, 'shows ' + w));
     r = await run(fake, h, 'budget.set', { snapshot: null });
-    assert.ok(/^Cleared the budget snapshot \(room, cardDay, goals, alerts, lab, merchants, pace and runway\)\./.test(r.message), r.message);
+    assert.ok(/^Cleared the budget snapshot \(room, cardDay, goals, alerts, lab, merchants, pace, runway and investments\)\./.test(r.message), r.message);
     r = await run(fake, h, 'budget.clear');
     assert.strictEqual(r.message, 'There is no budget snapshot to clear. Nothing changed.');
     r = await run(fake, h, 'show', { widget: 'budget-room' });
@@ -555,6 +555,15 @@ async function main() {
     assert.ok(/^Claude mailbox: connected/.test(lines[0]));
     assert.ok(lines.some((l) => /Bucket home-hub-mailbox at 127\.0\.0\.1:\d+, checked every 10 seconds/.test(l)));
     assert.ok(lines.some((l) => /^Last command: status/.test(l)));
+  });
+
+  await check('translate.status: counts and estimated cost, no texts', async () => {
+    const r = await run(fake, h, 'translate.status');
+    assert.strictEqual(r.ok, true, r.message);
+    assert.ok(/^Translating: (on|off \(no key\)|paused after an error); \d+ lines saved; limit \d+ new lines a day\.$/m.test(r.message), r.message);
+    assert.ok(/^Today: \d+ new lines, \d+ Gemini calls, \d+ tokens, about \$\d/m.test(r.message), r.message);
+    assert.ok(/^This month: /m.test(r.message) && /^All time: /m.test(r.message), r.message);
+    assert.deepStrictEqual(Object.keys(r.data).sort(), ['all', 'cached', 'cap', 'enabled', 'lastError', 'month', 'paused', 'today']);
   });
 
   /* --- log.tail --- */
@@ -831,6 +840,62 @@ async function main() {
     await h2.mailbox.pollOnce();
     assert.ok(!fake.store.has('outbox/oldresult1.json'));
     assert.ok(fake.store.has('outbox/newresult1.json'));
+    await stopHub(h2);
+  });
+
+  /* --- the weekly health report --- */
+
+  await check('health report: copied to the bucket once when it changes, summary in status.json', async () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'health'));
+    const h2 = await startHub(fake, { dataDir: dir });
+    const file = path.join(dir, 'health', 'latest.json');
+    const rep = { kind: 'pi-health', v: 1, generated: '2026-11-22T03:15:02-06:00', summary: { overall: 'warn', bad: 0, warn: 2 }, flags: [] };
+    fs.writeFileSync(file, JSON.stringify(rep));
+    await h2.mailbox.pollOnce();
+    assert.deepStrictEqual(fake.json('health/latest.json'), rep);
+    assert.deepStrictEqual(fake.json('health/2026-11-22.json'), rep);
+    assert.deepStrictEqual(fake.json('status.json').health, { generated: rep.generated, overall: 'warn', bad: 0, warn: 2 });
+    assert.ok(h2.lines.some((l) => / Claude mailbox: health report sent \(warn, 1 KB\)$/.test(l)), h2.lines.join('\n'));
+    // Unchanged: not sent again.
+    fake.store.delete('health/latest.json');
+    await h2.mailbox.pollOnce();
+    assert.ok(!fake.store.has('health/latest.json'));
+    await stopHub(h2);
+  });
+
+  await check('health report: an unreadable one is not sent, and says so once', async () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, 'health'));
+    fs.writeFileSync(path.join(dir, 'health', 'latest.json'), '{"not": "a report"}');
+    fake.store.delete('health/latest.json');
+    const h2 = await startHub(fake, { dataDir: dir });
+    await h2.mailbox.pollOnce();
+    assert.ok(!fake.store.has('health/latest.json'));
+    assert.strictEqual(h2.lines.filter((l) => / Claude mailbox: health report is not valid, so it was not sent$/.test(l)).length, 1);
+    await h2.mailbox.pollOnce();
+    await stopHub(h2);
+  });
+
+  await check('health report: none on the Pi yet is fine, nothing sent, no log line', async () => {
+    fake.store.delete('health/latest.json');
+    const h2 = await startHub(fake);
+    await h2.mailbox.pollOnce();
+    assert.ok(!fake.store.has('health/latest.json'));
+    assert.ok(h2.lines.every((l) => l.indexOf('health') < 0));
+    assert.strictEqual(fake.json('status.json').health, undefined);
+    await stopHub(h2);
+  });
+
+  await check('prune: dated health reports older than 180 days go, latest stays', async () => {
+    const h2 = await startHub(fake);
+    fake.put('health/2026-01-01.json', { kind: 'pi-health' }, Date.now() - 200 * 24 * 3600 * 1000);
+    fake.put('health/latest.json', { kind: 'pi-health' }, Date.now() - 200 * 24 * 3600 * 1000);
+    fake.put('health/2026-11-01.json', { kind: 'pi-health' }, Date.now() - 20 * 24 * 3600 * 1000);
+    await h2.mailbox.pollOnce();
+    assert.ok(!fake.store.has('health/2026-01-01.json'));
+    assert.ok(fake.store.has('health/latest.json'));
+    assert.ok(fake.store.has('health/2026-11-01.json'));
     await stopHub(h2);
   });
 

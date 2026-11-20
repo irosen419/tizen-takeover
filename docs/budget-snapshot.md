@@ -18,7 +18,7 @@ A sample with made-up figures is in [`pi/fixtures/budget-sample.json`](../pi/fix
  The budget tiles and the banner on the TV
 ```
 
-Only totals ever leave the budget app: room per day, the card day and how it is covered, goal states, the names of merchants with a new charge, and for Budget lab the room to card day, one spending total per day, the top 5 merchants with their month-to-date totals and the runway to card day as headroom. **Never a balance, never a transaction list, never an amount on an alert.** (The owner asked for the merchant names and their totals on 2026-11-17; see [Privacy for Budget lab](#privacy-for-budget-lab).) The budget app talks to the hub server on the Pi directly; nothing goes through the cloud. (The Claude mailbox also has `budget.show`, `budget.set` and `budget.clear`, for setting things up by hand; `budget.show` only ever answers with dates, counts and states.)
+Only totals ever leave the budget app: room per day, the card day and how it is covered, goal states, the names of merchants with a new charge, and for Budget lab the room to card day, one spending total per day, the top 5 merchants with their month-to-date totals and the runway to card day as headroom. **Never a balance, never a transaction list, never an amount on an alert**, with two exceptions: the Card day receipt (`cardDay.receipt`, below) carries the checking balance, what each card owes and the names of bills and planned buys, and the `investments` section (below) carries the portfolio total, each account's value and the top holdings in dollars. (The owner asked for the merchant names and their totals on 2026-11-17, see [Privacy for Budget lab](#privacy-for-budget-lab), approved the receipt for the TV on 2026-11-19, and approved the investment dollar figures for the TV the same day, see [Privacy for investments](#privacy-for-investments); guest mode on the TV hides both.) The budget app talks to the hub server on the Pi directly; nothing goes through the cloud. (The Claude mailbox also has `budget.show`, `budget.set` and `budget.clear`, for setting things up by hand; `budget.show` only ever answers with dates, counts and states.)
 
 By hand on the Pi: `./hub budget set file.json`.
 
@@ -42,17 +42,22 @@ One JSON object. `v` and `sentAt` are required. Every section is optional.
   "sentAt": "2026-11-16T15:10:00Z",
   "room":    { "asOf": "...", "cap": 60, "roomPerDay": 42.5, "roomIfRefund": 48, "daysLeft": 9, "throughDate": "2026-11-24" },
   "cardDay": { "asOf": "...", "date": "2026-11-19", "daysAway": 3, "covered": true,
-               "transfers": [ { "label": "From checking", "amount": 310 } ], "paychecks": ["2026-11-20"] },
+               "transfers": [ { "label": "From checking", "amount": 310 } ], "paychecks": ["2026-11-20"],
+               "plan": [ { "label": "Sapphire Reserve", "date": "2026-11-19", "amount": 480, "kind": "first" } ] },
   "goals":   { "asOf": "...", "items": [ { "label": "Coffee out", "state": "over", "text": "$62 over", "pct": 100 } ] },
   "alerts":  { "asOf": "...", "items": [ { "id": "a-1042", "label": "Corner Bakery Stand" } ] },
-  "lab":       { "asOf": "...", "room": 1334, "spentToday": 0, "daysLeft": 14, "cardDate": "2026-12-01", "monthDay": 17,
+  "lab":       { "asOf": "...", "room": 1334, "spentToday": 0, "daysLeft": 14, "cardDate": "2026-12-01", "monthDay": 17, "autopayRoom": 412.6, "autopayDate": "2026-11-24",
                  "split": [ { "key": "savings", "amount": 500 }, { "key": "awws", "amount": 150 }, { "key": "buffer", "amount": 350 } ] },
   "merchants": { "asOf": "...", "month": "2026-11", "combined": 702.4,
                  "items": [ { "label": "Corner Bakery Stand", "mtd": 212.6, "count": 9 } ] },
   "pace":      { "asOf": "...", "days": [ { "date": "2026-11-16", "spent": 71.2, "cap": 95.29 } ] },
   "runway":    { "asOf": "...", "start": -731, "end": "2026-12-01",
                  "steps": [ { "date": "2026-11-20", "delta": 2600, "kind": "pay" }, { "date": "2026-11-24", "delta": -120, "kind": "bill" },
-                            { "date": "2026-12-01", "delta": -415, "kind": "reserve" } ] }
+                            { "date": "2026-12-01", "delta": -415, "kind": "reserve" } ] },
+  "investments": { "asOf": "...", "total": 48210.55, "cost": 40100, "gain": 8110.55,
+                   "accounts": [ { "label": "Roth Contributory IRA", "value": 30110.2, "gain": 5200.1 } ],
+                   "top": [ { "ticker": "VTI", "name": "Vanguard Total Stock Market ETF", "value": 21000, "gain": 3100 } ],
+                   "history": [ { "date": "2026-11-18", "total": 48100 } ] }
 }
 ```
 
@@ -68,7 +73,7 @@ These are the same rules as the A World Worth Saving snapshot ([`awws-snapshot.m
 - `asOf` on a section is when its figures were worked out. Left out, the Pi fills in `sentAt`.
 - **Text** is trimmed, control characters become spaces, and text longer than its limit is cut and ends in "…". **No email addresses and no links:** a section with one is refused.
 - **Unknown fields are dropped**, at the top and inside sections. An `amount` on an alert, or a `balance` anywhere, is simply never stored.
-- **Dollar figures** are numbers, rounded to cents by the Pi, from 0 to 1,000,000 unless a field says it may be negative. The TV shows whole dollars: room rounded down, a shortfall rounded up.
+- **Dollar figures** are numbers, rounded to cents by the Pi, from 0 to 1,000,000 unless a field says it may be negative (the `investments` section allows up to 10,000,000). The TV shows whole dollars: room rounded down, a shortfall rounded up.
 - `goals` and `alerts` may be sent as the list itself (`"goals": [ ... ]`) or as `{ "asOf": "...", "items": [ ... ] }`. The Pi stores the second form.
 
 ### `room`: daily room
@@ -78,6 +83,7 @@ These are the same rules as the A World Worth Saving snapshot ([`awws-snapshot.m
 | `cap` | dollars, more than 0 | required: the daily cap |
 | `roomPerDay` | dollars, may be negative | required: what is left to spend per day through `throughDate` |
 | `roomIfRefund` | dollars, may be negative | optional: `roomPerDay` once a pending refund posts |
+| `basis` | `first` or `autopay` | optional, `first` when left out: which card day plan `roomPerDay` is worked from. `autopay` means the cards wait for their own autopay days |
 | `daysLeft` | whole number, 0 to 366 | required |
 | `throughDate` | date | required: the last day the room covers |
 
@@ -93,8 +99,49 @@ On the TV: the room per day, big; amber when it is under the cap, coral below ze
 | `shortBy` | dollars | optional, and only when `covered` is false; a snapshot with `shortBy` and `covered: true` has its card day refused |
 | `transfers` | list, at most 6 | optional: `{ "label": "From checking", "amount": 310 }`; `label` is text, 24; `amount` is dollars. The split that covers the card |
 | `paychecks` | list of dates, at most 4 | optional: the coming paychecks |
+| `byAutopay` | true or false | optional, and only when `covered` is false (a snapshot with `byAutopay` and `covered: true` is refused). `true`: the card day is short, but every card is paid in full by its own autopay day |
+| `autopayShortBy` | dollars | optional, and only when `byAutopay` is `false`: how short it is even when the cards wait for their autopay days (refused otherwise) |
+| `plan` | list, at most 6 | optional: `{ "label": "Sapphire Reserve", "date": "2026-12-01", "amount": 1200, "kind": "first" }`; `label` is text, 24; `date` is the day of the payment; `amount` is dollars, the payment itself; `kind` is `first` (paid by hand on card day) or `autopay` (left for the card's autopay day, which can be before card day too). In date order |
 
-On the TV: "Thu, Nov 19 · in 3 days", then "Covered" in green or "Short by $120" in coral, the transfer rows, and "Next paycheck Fri, Nov 20" (the first paycheck from today on).
+| `receipt` | object | optional: the Card day sum, line by line, as the budget site shows it (below) |
+| `outlook` | object | optional: the next 3 months (server 0.13.0). `start`: `{ "date", "behind", "ahead" }` (the day the outlook starts from; `behind` and `ahead` are dollars from 0 to 1,000,000; an ahead start is a cushion the savings start from). `dailyAverage`: dollars, the average daily spending. `averageMonths`: whole number 1 to 12 (3). `months`: 1 to 3 of `{ "month": "2026-12", "days": 28 to 31, "paydays": [dates, at most 3], "paycheck", "bills", "cardRecurring", "planned" }` (the four are dollars). Anything wrong in `outlook` drops the outlook only; the rest of card day is kept |
+
+The `plan` amounts are payments the owner asked to see. Outside `receipt`, they are the one exception to "no balance": never what a card owes in any other form.
+
+On the TV: "Thu, Nov 19 · in 3 days", then "Covered" in green or "Short by $120" in coral, the transfer rows, and "Next paycheck Fri, Nov 20" (the first paycheck from today on). With `covered: false` and `byAutopay: true` the word is amber, "Short $954 for Dec 1, covered by autopay", not a coral alarm. When there is a `plan`, its rows come next ("Dec 1  Sapphire Reserve  $1,200", "Dec 7  Sapphire Reserve  $400 autopay"), also when the card day is covered. With `byAutopay: false` the tile stays coral, as before, and says "$X short even with autopay" from `autopayShortBy`.
+
+#### `cardDay.receipt`: the Card day sum
+
+The same lines, in the same order, as the Card day sum on the budget site, so the TV and the site always agree. The owner approved sending the checking balance, what the cards owe and the names of bills and planned buys for this on 2026-11-19. On the TV the whole receipt is hidden in guest mode. Nothing here pays or moves money.
+
+A shortened example (a real one has all its lines, and they add up):
+
+```json
+"receipt": {
+  "asOf": "2026-11-16T15:05:00Z", "bottom": 430, "perDay": 143, "next": { "date": "2026-11-20", "amount": 3595 },
+  "lines": [
+    { "key": "checking", "label": "Checking now", "amount": 4200 },
+    { "key": "billsBefore", "label": "Bills before card day", "amount": -160,
+      "items": [ { "label": "Phone", "amount": 85, "date": "2026-11-17", "new": true }, { "label": "Internet", "amount": 75, "date": "2026-11-18" } ] },
+    { "key": "cardsToday", "label": "Cards today, pending included", "amount": -800,
+      "items": [ { "label": "Green Card", "amount": 800, "bal": 750, "pending": 50, "coming": 0, "autopay": "2026-11-24", "pay": 800, "auto": 0 } ] }
+  ]
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `asOf` | UTC time | required: when the figures were worked (the sync the checking balance is from) |
+| `bottom` | dollars, may be negative | required: left to spend before the next paycheck (the card day allowance) |
+| `perDay` | dollars | optional: the allowance over the days left, sent when `bottom` is more than 0 |
+| `next` | `{ "date", "amount" }` | optional: the paycheck that ends the window; `date` is a date, `amount` is dollars |
+| `lines` | list, 1 to 8 | required, each `key` at most once, the first is `checking`, in the budget site's order |
+
+Each line: `key` is `checking`, `paychecks`, `billsBefore`, `cardsToday`, `cardCharges` (recurring charges on the cards before card day), `billsAfter` (bills from card day to the next payday) or `buys` (planned buys); `label` is text, 60, optional (the TV words each line itself, in the language it is set to); `amount` is signed dollars (the checking balance and paychecks are plus, the rest minus); `items` is optional, at most 12, and not for `checking`.
+
+**The sums are checked to the cent, and a receipt that does not add up is refused.** The lines add up to `bottom`, and a line's items add up to the line (paychecks add, every other line takes away, so the items are plain figures and the line carries the sign). A line with more than 12 things behind it sends 11 and one more item for the rest ("4 more"), so the sum still holds. A sender that cannot make it add up leaves the receipt out and the TV draws its older Card day tile.
+
+Each item: `label` is text, 30; `amount` is dollars; and, all optional, `date` (the day it falls), `new` (`true` when the owner has not yet chosen whether the bill counts), `note` (text, 30; for a card charge, the card), and, for a card only, `bal` and `pending` (the owed `amount` split in the posted balance and pending charges), `coming` (recurring charges still to come before card day), `autopay` (the card's next autopay date), `pay` (what the plan pays on card day) and `auto` (what is left to the card's autopay).
 
 ### `goals`
 
@@ -131,6 +178,8 @@ The figures the Budget lab tile works its equations from (cap, what is kept on c
 | `daysLeft` | whole number, 0 to 366 | required: today through the day before card day. 0 means card day is today |
 | `cardDate` | date | required: card day |
 | `monthDay` | whole number, 1 to 31 | required: the day of the month today, today included |
+| `autopayRoom` | dollars, may be negative | optional: the room to the autopay date, worked on the same morning basis as `room` (the autopay allowance less pending refunds plus `spentToday`). Sent whenever the budget app works it out; the TV uses it only when `room` is below zero |
+| `autopayDate` | date | optional: the day that plan is worked to (the earliest autopay day on or after card day) |
 | `split` | list, at most 4 | optional: `{ "key": "savings", "amount": 500 }`; `key` is `savings`, `awws`, `buffer` or `extra`, each at most once; `amount` is dollars. Where spare money on card day goes, in this order. Left out, the TV uses 500, 150 and 350 |
 
 ### `merchants`: the top 5 merchants this month
@@ -146,6 +195,8 @@ The figures the Budget lab tile works its equations from (cap, what is kept on c
 | Field | Type | Notes |
 |---|---|---|
 | `days` | list, at most 31 | required, oldest first, one entry per date, each date once: `{ "date": "2026-11-16", "spent": 71.2, "cap": 95.29 }`; `spent` is dollars, that day's total in the spend buckets; `cap` is dollars, more than 0, the calculated daily cap the budget app logged that morning, left out on a day with no log (the Pi was off). One total per day, never the charges themselves |
+
+When `room` is below zero and `autopayRoom` is there, Budget lab works from `autopayRoom` instead of showing "You're $X short even at $0 a day": its header says the 1st is short and the plan relies on the cards' autopay days (up to `autopayDate`), then the usual cap screen runs off `autopayRoom`. When `autopayRoom` is below zero too, the move money screen shows that shortfall.
 
 ### `runway`: headroom from today to card day
 
@@ -166,7 +217,29 @@ The headroom on card day (`start` plus every `delta`) is the same figure as `lab
 - `./hub budget show` and the mailbox's `budget.show` print counts, dates and states for these sections, never a merchant name or an amount: `merchants  5 merchants in 2026-11`, `pace  14 days (13 with a cap), 2026-11-03 to 2026-11-16`, `runway  6 steps to 2026-12-01 (1 payday, 4 bills, 1 reserve)`.
 - The snapshot only travels on the Pi itself (127.0.0.1), never through the mailbox or the cloud.
 
-The four Budget lab sections are optional like the others and checked one by one; a snapshot with only `room`, `cardDay`, `goals` and `alerts` is stored as before. A hub server older than 0.5.0 drops the four sections and keeps the rest.
+The four Budget lab sections are optional like the others and checked one by one; a snapshot with only `room`, `cardDay`, `goals` and `alerts` is stored as before. A hub server older than 0.5.0 drops the four sections and keeps the rest; one older than 0.16.0 drops `investments` the same way.
+
+### `investments`: the portfolio
+
+Added with server 0.18.0. Sent by the budget app from its investment accounts' holdings, at least once a day (the app logs one total per date so the trend builds from the first day).
+
+| Field | Type | Notes |
+|---|---|---|
+| `total` | dollars, 0 to 10,000,000 | required: the whole portfolio |
+| `cost` | dollars, 0 to 10,000,000 | optional: what was paid in (the cost basis) |
+| `gain` | dollars, may be negative, up to 10,000,000 either way | optional: `total` less `cost`; the TV shows it as +$X or -$X and as a percent of `cost` |
+| `accounts` | list, 1 to 6 | required: `{ "label": "Roth Contributory IRA", "value": 30110.2, "gain": 5200.1 }`; `label` is text, 30; `value` is dollars, 0 to 10,000,000; `gain` is optional and signed. No account numbers |
+| `top` | list, 0 to 8 | optional, biggest first: `{ "ticker": "VTI", "name": "Vanguard Total Stock Market ETF", "value": 21000, "gain": 3100 }`; `ticker` is text, 10, and may be empty or left out (cash); `name` is text, 40; `value` is dollars; `gain` is optional and signed. No share counts |
+| `history` | list, 0 to 92 | optional, oldest first, one per date, dates ascending (a repeated or earlier date refuses the section): `{ "date": "2026-11-18", "total": 48100 }`. The TV draws it as a trend line without an axis |
+
+On the TV: the Investments tile (`investments`, standalone, in no layout; add it in Layout Studio or `layout.set`). Smallest size: the total and the gain against cost (`+$8,110 · +20.2%`, green when up, coral when down). Wider: a trend line from `history` (hidden under 2 points, with "Trend starts building today"). Bigger: an allocation bar by account and the top holdings with their share of the total. A click opens it in place with every account and holding. In guest mode **no dollar figure is drawn**: only percentages (the gain percent, each account's and holding's share) and the shape of the trend. Old data (over 2 hours) dims and says "as of 9:10 AM"; with no section the tile says "Waiting for the budget app".
+
+### Privacy for investments
+
+- **Dollar figures for the portfolio total, each account and the top holdings are allowed on the TV: the owner approved them on 2026-11-19** (the second exception to "no balance", after the Card day receipt). Guest mode hides them: the TV derives the percentages it needs first and throws the dollars away before anything is stored.
+- Never account numbers, share counts, purchase dates or a transaction list. A field not named above is dropped.
+- `./hub budget show` and the mailbox's `budget.show` print counts and dates only: `investments  6 accounts, 8 holdings, 31 days of history, 2026-10-19 to 2026-11-18`.
+- The snapshot only travels on the Pi itself (127.0.0.1), never through the mailbox or the cloud.
 
 ## What the Pi keeps
 

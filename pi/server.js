@@ -13,6 +13,9 @@
  *   POST /tvremote/run   start a two-step launch from the Pi (tvremote.js): { id, appId, ... }
  *   POST /shows/watched  the TV marks an episode watched: { id, season, number }
  *   POST /shows/unwatch  the TV takes a watched mark off an episode: { id, season, number }
+ *   POST /shows/upto     the TV marks a show watched up to an episode: { id, season, number }
+ *   POST /shows/caughtup the TV marks a show caught up (every aired episode): { id }
+ *   GET  /shows/episodes?id=<show id>  a show's seasons and episodes with watched flags and progress
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
  *                        from the TV (ambience.js): saved ids only, rate limited
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
@@ -33,6 +36,8 @@
  *   POST /api/shows/refresh   ask TVmaze about every show now and wait for it
  *   POST /api/shows/watched   { show, episode? }: mark an episode watched (none named = the earliest out and unmarked)
  *   POST /api/shows/unwatch   { show, episode }: take a watched mark off
+ *   POST /api/shows/upto      { show, episode }: watched up to and including that episode
+ *   POST /api/shows/caughtup  { show }: watched every episode aired so far
  *   GET  /api/linktests  the TV's watch link test answers (linktests.js)
  *   GET  /api/tvremote   the TV remote from the Pi: paired or not, last run and its steps (tvremote.js)
  *   POST /api/tvremote/run   start a run, the same body as POST /tvremote/run
@@ -73,6 +78,9 @@
  * what plays on Spotify comes from spotify.js, and the room's lights
  * (Home Assistant, and the plant wall's WLED) from ambience.js.
  *
+ *   POST /api/translate  { to: "es", texts: [...] } -> { map } (translate.js; the TV uses POST /translate)
+ *   GET  /api/translate/usage -> lines, Gemini calls, tokens and estimated cost today, this month, in all
+ *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
 'use strict';
@@ -92,8 +100,9 @@ const tvremote = require('./tvremote');
 const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
+const translate = require('./translate');
 
-const SERVER_VERSION = '0.9.0';
+const SERVER_VERSION = '0.21.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -207,7 +216,7 @@ function loadSettings(file) {
   const fromFile = readEnvFile(file);
   const out = Object.assign({}, fromFile);
   Object.keys(process.env).forEach((k) => {
-    if (/^(HUB_|CALENDAR_|SPOTIFY_|HA_|ALLSOUNDS_|WLED_)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
+    if (/^(HUB_|CALENDAR_|SPOTIFY_|HA_|ALLSOUNDS_|WLED_|GEMINI_VIDEO_GEN_KEY$)/.test(k) && process.env[k] !== '') out[k] = process.env[k];
   });
   return out;
 }
@@ -1185,6 +1194,8 @@ function start(options) {
     '/api/shows/refresh': ['POST'],
     '/api/shows/watched': ['POST'],
     '/api/shows/unwatch': ['POST'],
+    '/api/shows/upto': ['POST'],
+    '/api/shows/caughtup': ['POST'],
     '/api/linktests': ['GET'],
     '/api/tvremote': ['GET'],
     '/api/tvremote/run': ['POST'],
@@ -1193,7 +1204,9 @@ function start(options) {
     '/api/ambience/scene': ['POST'],
     '/api/ambience/light': ['POST'],
     '/api/ambience/mood': ['POST'],
-    '/api/ambience/config': ['GET', 'POST']
+    '/api/ambience/config': ['GET', 'POST'],
+    '/api/translate': ['POST'],
+    '/api/translate/usage': ['GET']
   };
 
   function statusBody() {
@@ -1270,6 +1283,16 @@ function start(options) {
         if (ROUTES[route].indexOf(method) < 0) {
           return reply(405, { ok: false, error: 'use ' + ROUTES[route].join(' or ') + ' for ' + route });
         }
+        if (route === '/api/translate') {
+          const texts = translate.checkRequest(body);
+          translator.translate(texts).then((r) => {
+            const out = { ok: true, map: r.map };
+            if (r.disabled) out.disabled = true;
+            reply(200, out);
+          }).catch(failed);
+          return undefined;
+        }
+        if (route === '/api/translate/usage') return reply(200, Object.assign({ ok: true }, translator.info()));
         if (route === '/api/status') return reply(200, statusBody());
         if (route === '/api/log') return reply(200, logBody(query));
         if (route === '/api/calendar') {
@@ -1366,6 +1389,20 @@ function start(options) {
           return reply(200, { ok: true, season: r.season, number: r.number, changed: r.changed, entry: r.entry, list: tracker.list() },
             (up ? 'took a watched mark off' : 'marked') + ' an episode' + (up ? '' : ' watched'));
         }
+        if (route === '/api/shows/upto' || route === '/api/shows/caughtup') {
+          const all = route === '/api/shows/caughtup';
+          if (!isObj(body) || typeof body.show !== 'string' || !body.show.trim()) throw bad(all ? 'send { "show": "name" }' : 'send { "show": "name", "episode": "S3E4" }');
+          let r;
+          if (all) {
+            r = tracker.caughtUp(body.show);
+          } else {
+            const ep = shows.parseEpisode(body.episode);
+            if (!ep) throw bad('"episode" must look like S3E4');
+            r = tracker.upTo(body.show, ep);
+          }
+          return reply(200, { ok: true, season: r.season, number: r.number, changed: r.changed, entry: r.entry, list: tracker.list() },
+            all ? 'marked a show caught up' : 'marked a show watched up to an episode');
+        }
         if (route === '/api/shows/refresh') {
           let waitTimer = null;
           const late = new Promise((r) => { waitTimer = setTimeout(() => r(null), showsWaitMs); });
@@ -1448,7 +1485,7 @@ function start(options) {
       req.resume(); // no body is needed
       return run(undefined);
     }
-    readBody(req, res, run, route === '/api/awws' || route === '/api/budget' ? AWWS_BODY_LIMIT : BODY_LIMIT);
+    readBody(req, res, run, route === '/api/awws' || route === '/api/budget' || route === '/api/translate' ? AWWS_BODY_LIMIT : BODY_LIMIT);
     return undefined;
   }
 
@@ -1469,7 +1506,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/linktests' || route === '/tvremote/run' || route === '/shows/watched' || route === '/shows/unwatch' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -1481,12 +1518,28 @@ function start(options) {
     }
     if (route === '/live/events') return openSse(req, res, address);
     if (route === '/live/poll') return openPoll(req, res, query, address);
+    if (route === '/shows/episodes') {
+      // One show's seasons and episodes, read by the TV when its show page
+      // opens. A plain read like /live/state: nothing is changed and nothing logged.
+      const id = query.get('id');
+      if (typeof id !== 'string' || !id.trim() || id.length > 80) {
+        return sendJson(res, 400, { ok: false, error: 'send ?id=<show id>' }, cors);
+      }
+      const v = tracker.episodes(id);
+      if (!v) return sendJson(res, 404, { ok: false, error: 'that show is not on the list' }, cors);
+      return sendJson(res, 200, Object.assign({ ok: true }, v), cors);
+    }
     // POST /todo/ops and /ambience/*. A web page on another site must not be
     // able to change the list or the lights through a browser at home, so a
     // foreign Origin is refused.
     const origin = req.headers.origin;
     if (origin && origins.indexOf(origin) < 0) {
       return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    }
+    if (route === '/translate') {
+      return readBody(req, res, (body) => {
+        api('POST', '/api/translate', body).then((r) => sendJson(res, r.status, r.body, cors));
+      }, AWWS_BODY_LIMIT);
     }
     if (route === '/linktests') {
       return readBody(req, res, (body) => {
@@ -1528,6 +1581,23 @@ function start(options) {
           const r = off ? tracker.unwatch(body.id, ep) : tracker.markWatched(body.id, ep);
           sendJson(res, 200, { ok: true, changed: r.changed }, cors);
           log(off ? 'screen took a watched mark off an episode' : 'screen marked an episode watched' + (r.changed ? '' : ' (already marked)'));
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
+    }
+    if (route === '/shows/upto' || route === '/shows/caughtup') {
+      // "Watched up to here" and "caught up" from the show page. Same door as
+      // /shows/watched; the log never carries the show, the episode or an address.
+      const all = route === '/shows/caughtup';
+      return readBody(req, res, (body) => {
+        try {
+          if (!isObj(body) || typeof body.id !== 'string' || !body.id) throw bad(all ? 'send { "id": "show-id" }' : 'send { "id": "show-id", "season": 3, "number": 4 }');
+          const r = all ? tracker.caughtUp(body.id) : tracker.upTo(body.id, { season: body.season, number: body.number });
+          const out = { ok: true, changed: r.changed };
+          if (all) { out.season = r.season; out.number = r.number; }
+          sendJson(res, 200, out, cors);
+          log((all ? 'screen marked a show caught up' : 'screen marked a show watched up to an episode') + (r.changed ? '' : ' (already marked)'));
         } catch (e) {
           fail(res, e, cors);
         }
@@ -1582,7 +1652,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/linktests': 1, '/tvremote/run': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1
   };
 
@@ -1614,6 +1684,12 @@ function start(options) {
 
   /* --- listeners --- */
 
+  /* --- Spanish for the owner's own text (translate.js) --- */
+  const translator = translate.createTranslator({
+    dataDir: dataDir, log: log, call: opt.translateCall,
+    key: opt.translateKey !== undefined ? opt.translateKey : ''
+  });
+
   /* --- the Claude mailbox (mailbox.js) --- */
 
   // opt.mailboxEnv is the .env settings (HUB_MAILBOX_...). Off when not set.
@@ -1622,6 +1698,7 @@ function start(options) {
   if (mailboxCfg.configured) {
     mbox = mailbox.createMailbox({
       config: mailboxCfg, api: api, version: SERVER_VERSION, log: log,
+      healthDir: path.join(dataDir, 'health'),
       onRestart: typeof opt.onRestart === 'function' ? opt.onRestart : null,
       now: typeof opt.mailboxNow === 'function' ? opt.mailboxNow : undefined,
       s3: opt.mailboxS3, manual: opt.mailboxManual === true
@@ -1767,6 +1844,7 @@ if (require.main === module) {
     timezone: env.HUB_TIMEZONE || '',
     refreshMinutes: env.CALENDAR_REFRESH_MINUTES || '',
     mailboxEnv: env,
+    translateKey: env.HUB_TRANSLATE_KEY || env.GEMINI_VIDEO_GEN_KEY || '',
     spotifyEnv: env,
     // TVmaze for the show schedule. HUB_SHOWS=off stops the lookups;
     // HUB_SHOWS=sample shows the made-up sample instead (for trying the TV).

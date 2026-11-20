@@ -7,7 +7,11 @@
  *                  below zero.
  *   budget-card    Card day: when the card is due, "Covered" (green) or
  *                  "Short by $X" (coral), the transfers that cover it and the
- *                  next paycheck.
+ *                  next paycheck. When the snapshot carries cardDay.receipt
+ *                  (a prototype, docs/budget-snapshot.md says nothing of it
+ *                  yet) the tile is a 3 line receipt, the panel the whole
+ *                  receipt (OK on a row opens that row's items in place, Back
+ *                  returns) and nothing says "Transfers".
  *   budget-goals   Goals: one bar per goal, colored by its state (clean, on
  *                  pace, over, under).
  *   The banner     "New charge: <label>" across the top when a charge posts
@@ -42,6 +46,7 @@
     titlesShort: { room: 'Room', card: 'Card', goals: 'Goals' },
     daysShort: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     monthsShort: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    months: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
     // {dow} short weekday, {mon} short month, {d} day
     dateLong: '{dow}, {mon} {d}',
     dateShort: '{mon} {d}',
@@ -83,6 +88,104 @@
     nextPayShort: 'Paycheck {d}',
     paychecksHead: 'Paychecks',
     noTransfers: 'No transfers needed',
+    // Card day, autopay days: short on card day but every card is paid by its own autopay day
+    planHead: 'Payments',
+    autoWord: 'Short {n}',
+    autoNote: 'for {d}, covered by autopay',
+    autoNoteShort: 'covered by autopay',
+    autoNoteTiny: 'autopay',
+    autoSolo: 'autopay',
+    autoPay: 'autopay',
+    autoShortNote: '{n} short even with autopay',
+    autoShortNoteShort: '{n} short with autopay',
+    // Card day receipt, the budget app's own lines: one list read top to bottom, each with a sign.
+    // {d} is card day, {e} the day the next paycheck lands (both short dates)
+    receipt: {
+      lines: {
+        checking: 'Checking now',
+        paychecks: 'Paychecks before {d}',
+        billsBefore: 'Bills before {d}',
+        cardsToday: 'Cards today, pending included',
+        cardCharges: 'Recurring charges on the cards before {d}',
+        billsAfter: 'Bills from {d} to payday {e}',
+        billsAfterNo: 'Bills from {d} to the next payday',
+        buys: 'Planned buys'
+      },
+      bottom: 'Left to spend',
+      bottomNote: 'What checking will hold just before your {e} paycheck, after the bills and paying today’s card balances in full. Every new charge comes out of it.',
+      bottomNoteNo: 'What checking will hold just before your next paycheck, after the bills and paying today’s card balances in full. Every new charge comes out of it.',
+      miniBills: 'Cards and bills to {e}',
+      miniBillsNo: 'Cards and bills to the next payday',
+      heroLeft: '{n} left to spend',
+      heroDay: 'about {n} a day',
+      heroShort: 'Short {n} on {d}',
+      heroShortPlain: 'Short {n}',
+      heroByAutopay: 'covered by autopay',
+      heroEven: 'even with autopay',
+      noPay: 'None before {d}. Next: {n}',
+      noPayNext: 'None before {d}',
+      planHead: 'Payment plan',
+      payOn: 'Pay on {d}',
+      leaveFor: 'Leave for autopay',
+      planNote: 'A plan to read, nothing here pays a card or moves money.',
+      okHint: 'OK for details',
+      backHint: 'Back to the receipt',
+      nextPay: 'Next paycheck {d} · {n}',
+      checkingNote: 'Available balance, pending debits already out.',
+      checkingAsOf: 'As of {t} sync.',
+      payNote: 'The smallest of the last three deposits.',
+      buysNote: 'Edit them on the budget site.',
+      newTag: 'new',
+      total: 'Total',
+      owesBal: 'Balance {n}',
+      owesPending: 'pending {n}',
+      owesComing: 'plus {n} in recurring charges before {d}',
+      cardAutopay: 'Autopay {d}',
+      cardNoAutopay: 'No autopay day',
+      cardPays: 'You pay {n} on {d}',
+      cardAuto: 'Autopay takes {n}',
+      formula: 'Checking, plus paychecks, less bills, cards, charges and buys:',
+      onCard: 'on {card}',
+      empty: 'Nothing here.',
+      // The next 3 months page (sample data). {d} short date, {n} a figure, {m} a month name
+      outlook: {
+        tabReceipt: 'Receipt',
+        tabOutlook: 'Next {n} months',
+        tabHint: '◀ ▶',
+        headOn: 'Back on top by {d}',
+        headBehind: 'Still behind by {d}',
+        headAhead: 'Ahead all {n} months',
+        headAheadBy: 'Ahead by {n} on {d}',
+        subCatch: 'Your {o} {m} paycheck catches you up. After that, about {n} a month you could save.',
+        subAhead: 'About {n} a month you could save.',
+        subBehind: 'Try a lower daily amount.',
+        ordWord: '{n}{s}',
+        ordSfx: 'st|nd|rd|th',
+        start: 'Starting {d}: {n} behind',
+        startAhead: 'Starting {d}: even',
+        startAheadBy: 'Starting {d}: {n} ahead',
+        paychecks: 'Paychecks',
+        bills: 'Bills from checking',
+        cards: 'Everyday spending and card charges',
+        buys: 'Planned buys',
+        left: 'Left over this month',
+        save: 'Could move to savings',
+        saveNote: 'after catching up {n}',
+        pill: '{n} paychecks',
+        lever: 'Everyday spending: {n} a day, your average for the last {m} months',
+        leverOther: 'Everyday spending: {n} a day, you average {a}',
+        leverHint: '▲ ▼ try another amount',
+        moreSave: 'At {n} a day you could save {m} more a month',
+        lessSave: 'At {n} a day you would save {m} less a month',
+        legOk: 'ahead / can save',
+        legNeg: 'behind',
+        legPill: 'a month with an extra paycheck',
+        legNote: 'A forecast, not a promise. Nothing here pays or moves money.'
+      }
+    },
+    // Daily room, when its figure is worked from the autopay days
+    usingAutopay: 'using autopay days',
+    usingAutopayShort: 'autopay days',
     // Goals
     goalStates: { clean: 'Clean', 'on-pace': 'On pace', over: 'Over', under: 'Under' },
     overN: '{n} over',
@@ -488,6 +591,9 @@
 
   // Guest mode: forget the budget here and on this TV's storage.
   function dropData() {
+    S.rcOpen = null;
+    S.rcPage = 'receipt';
+    S.olDaily = null;
     S.data = null;
     S.fromCache = false;
     saveCache();
@@ -601,7 +707,7 @@
     // a cent more than there is.
     var refund = num(s.roomIfRefund);
     var r = { cap: s.cap, per: Math.floor(s.roomPerDay), refund: refund === null ? null : Math.floor(refund),
-      days: num(s.daysLeft), through: dayFromText(s.throughDate) };
+      days: num(s.daysLeft), through: dayFromText(s.throughDate), auto: s.basis === 'autopay' };
     r.tone = r.per < 0 ? 'is-neg' : r.per < r.cap ? 'is-under' : 'is-ok';
     return r;
   }
@@ -657,6 +763,7 @@
     var cap = el('div', 'bu-line', root);
     var thru = r.through !== null ? el('div', 'bu-quiet', root) : null;
     var refund = r.refund !== null ? el('div', 'bu-note', root) : null;
+    var auto = r.auto ? el('div', 'bu-quiet bu-auto-line', root, STRINGS.usingAutopay) : null;
     fitHero(h, STRINGS.aDay);
     fitForms(cap, roomForms(r, false));
     if (thru) fitForms(thru, [fill(STRINGS.through, { d: dateText(r.through, 'long') }), fill(STRINGS.through, { d: dateText(r.through, 'short') })]);
@@ -664,7 +771,8 @@
       refund.textContent = fill(STRINGS.refund, { n: cash(r.refund) });
       if (overH(refund) || overW(refund)) fitForms(refund, [fill(STRINGS.refundShort, { n: cash(r.refund) }), fill(STRINGS.refundTiny, { n: cash(r.refund) })]);
     }
-    trim(root, [cap, refund, thru]);
+    if (auto) fitForms(auto, [STRINGS.usingAutopay, STRINGS.usingAutopayShort]);
+    trim(root, [cap, refund, thru, auto]);
     if (overH(root) && bar.parentNode) root.removeChild(bar);
   }
 
@@ -684,6 +792,7 @@
     if (r.per < 0) el('div', 'bu-pline is-neg', sec, STRINGS.overBudget);
     else if (r.per < r.cap) el('div', 'bu-pline is-under', sec, STRINGS.underCap);
     if (r.refund !== null) el('div', 'bu-pline is-quiet', sec, fill(STRINGS.refund, { n: cash(r.refund) }));
+    if (r.auto) el('div', 'bu-pline is-quiet', sec, STRINGS.usingAutopay);
     fitWidth(h.numEl);
     if (full) wrap.className += ' is-full';
   }
@@ -696,7 +805,18 @@
     if (!s || day === null || typeof s.covered !== 'boolean') return null;
     var short = num(s.shortBy);
     // A shortfall in whole dollars rounded up, never smaller than it is.
-    var c = { day: day, away: num(s.daysAway), covered: s.covered, short: short === null ? null : Math.ceil(short), transfers: [], pay: [] };
+    var c = { day: day, away: num(s.daysAway), covered: s.covered, short: short === null ? null : Math.ceil(short), transfers: [], pay: [], plan: [] };
+    // Short on card day but every card paid by its autopay day: amber, not an alarm.
+    c.byAuto = !s.covered && s.byAutopay === true;
+    var ashort = num(s.autopayShortBy);
+    c.autoShort = !s.covered && s.byAutopay === false && ashort !== null ? Math.ceil(ashort) : null;
+    var pl = isArr(s.plan) ? s.plan : [];
+    for (var q = 0; q < pl.length; q++) {
+      var pday = pl[q] ? dayFromText(pl[q].date) : null;
+      if (pday !== null && str(pl[q].label) && num(pl[q].amount) !== null) {
+        c.plan.push({ day: pday, label: str(pl[q].label), amount: pl[q].amount, auto: pl[q].kind === 'autopay' });
+      }
+    }
     var t = isArr(s.transfers) ? s.transfers : [];
     for (var i = 0; i < t.length; i++) {
       if (t[i] && str(t[i].label) && num(t[i].amount) !== null) c.transfers.push({ label: str(t[i].label), amount: t[i].amount });
@@ -711,10 +831,462 @@
     // The days away, from the date itself once the TV's day has moved on.
     var left = day - td;
     if (c.away === null || left !== c.away) c.away = Math.max(0, left);
-    c.tone = c.covered ? 'is-ok' : 'is-neg';
-    c.word = c.covered ? STRINGS.covered : fill(STRINGS.shortBy, { n: cash(c.short || 0) });
-    if (!c.covered && c.short === null) c.word = fill(STRINGS.shortBy, { n: '' }).replace(/\s+$/, '');
+    c.rc = receiptData(s, c);
+    c.ol = c.rc ? outlookData(s) : null;
+    c.tone = c.covered ? 'is-ok' : c.byAuto ? 'is-under' : 'is-neg';
+    var wordText = c.byAuto ? STRINGS.autoWord : STRINGS.shortBy;
+    c.word = c.covered ? STRINGS.covered : fill(wordText, { n: cash(c.short || 0) });
+    if (!c.covered && c.short === null) c.word = fill(wordText, { n: '' }).replace(/\s+$/, '');
     return c;
+  }
+
+
+  /* ---------- Card day receipt ---------- */
+
+  var RC_KEYS = ['checking', 'paychecks', 'billsBefore', 'cardsToday', 'cardCharges', 'billsAfter', 'buys'];
+
+  function itemData(it) {
+    if (!it || typeof it !== 'object' || !str(it.label) || num(it.amount) === null) return null;
+    var o = { label: str(it.label), amount: it.amount, day: dayFromText(it.date), isNew: it.new === true, note: str(it.note) };
+    var f = ['bal', 'pending', 'coming', 'pay', 'auto'];
+    for (var i = 0; i < f.length; i++) o[f[i]] = num(it[f[i]]);
+    o.autoDay = dayFromText(it.autopay);
+    return o;
+  }
+
+  // The receipt, or null when it is missing or its lines do not add up to the bottom line.
+  function receiptData(s, c) {
+    var r = s.receipt;
+    if (!r || typeof r !== 'object' || !isArr(r.lines) || num(r.bottom) === null) return null;
+    var out = { lines: [], bottom: r.bottom, next: null, asOf: parseIso(r.asOf), perDay: num(r.perDay) };
+    var sum = 0;
+    for (var i = 0; i < r.lines.length; i++) {
+      var ln = r.lines[i];
+      if (!ln || RC_KEYS.indexOf(ln.key) < 0 || num(ln.amount) === null) continue;
+      var items = [];
+      var its = isArr(ln.items) ? ln.items : [];
+      for (var j = 0; j < its.length; j++) { var d = itemData(its[j]); if (d) items.push(d); }
+      sum += ln.amount;
+      out.lines.push({ key: ln.key, amount: ln.amount, items: items });
+    }
+    if (!out.lines.length || out.lines[0].key !== 'checking' || Math.abs(sum - out.bottom) > 0.01) return null;
+    var nx = r.next && typeof r.next === 'object' ? r.next : null;
+    var nd = nx ? dayFromText(nx.date) : null;
+    if (nd !== null) out.next = { day: nd, amount: num(nx.amount) };
+    return out;
+  }
+
+  /* ---------- Card day, next 3 months (sample data, a forecast) ---------- */
+
+  var OL_STEP = 5;
+  var OL_MAX = 500;
+
+  // The outlook as sent, or null when it is not well formed.
+  function outlookData(s) {
+    var o = s.outlook;
+    if (!o || typeof o !== 'object' || !isArr(o.months) || !o.months.length || !o.start || typeof o.start !== 'object') return null;
+    var out = { startDay: dayFromText(o.start.date), behind: num(o.start.behind), ahead: num(o.start.ahead), avg: num(o.dailyAverage), avgMonths: num(o.averageMonths), months: [] };
+    if (out.startDay === null || out.behind === null || out.avg === null || out.behind < 0 || out.avg < 0) return null;
+    // Older sample data had no "ahead": that is the same as 0.
+    if (out.ahead === null) out.ahead = 0;
+    if (out.ahead < 0) return null;
+    // A cushion and a gap cancel: only the net is shown.
+    var net = out.ahead - out.behind;
+    out.behind = net < 0 ? -net : 0;
+    out.ahead = net > 0 ? net : 0;
+    // The budget app sends 3 months; more than that is not drawn.
+    for (var i = 0; i < o.months.length && i < 3; i++) {
+      var m = o.months[i];
+      var mm = m && /^(\d{4})-(\d{2})$/.exec(str(m.month));
+      if (!mm || num(m.days) === null || m.days < 28 || m.days > 31 || m.days % 1 !== 0 || +mm[2] < 1 || +mm[2] > 12 || !isArr(m.paydays) || num(m.paycheck) === null || num(m.bills) === null ||
+          num(m.cardRecurring) === null) return null;
+      var pd = [];
+      for (var j = 0; j < m.paydays.length; j++) { var d = dayFromText(m.paydays[j]); if (d !== null) pd.push(d); }
+      out.months.push({ idx: +mm[2] - 1, days: m.days, paydays: pd, paycheck: m.paycheck, bills: m.bills, cardRecurring: m.cardRecurring,
+        planned: num(m.planned) || 0, end: dayFromText(mm[1] + '-' + mm[2] + '-' + (m.days < 10 ? '0' : '') + m.days) });
+    }
+    if (out.avgMonths === null) out.avgMonths = out.months.length;
+    return out;
+  }
+
+  /*
+   * The math, pure (no DOM): each month's paychecks, bills, card spending (recurring + daily x days), planned
+   * buys, what is left over, and what could move to savings once the starting gap is caught up. The catch-up
+   * day is the first payday at which the position (minus the gap, plus every paycheck so far, less the
+   * month's outflows, which come out at the start of the month) is back at zero. Never caught up: catchDay
+   * is null and endDay is the last day of the window.
+   */
+  function outlookCalc(o, daily) {
+    var pos = o.ahead - o.behind;
+    var caught = null;
+    var out = { months: [], catchDay: null, catchMonth: -1, catchNth: 0, endDay: o.months[o.months.length - 1].end, avgSave: 0, behind: o.behind, ahead: o.ahead };
+    var i;
+    for (i = 0; i < o.months.length; i++) {
+      var m = o.months[i];
+      var paychecks = m.paycheck * m.paydays.length;
+      var card = m.cardRecurring + daily * m.days;
+      var left = paychecks - m.bills - card - m.planned;
+      var run = pos - m.bills - card - m.planned;
+      for (var j = 0; j < m.paydays.length; j++) {
+        run += m.paycheck;
+        if (!caught && o.behind > 0 && run >= 0) { caught = { day: m.paydays[j], month: i, nth: j + 1 }; }
+      }
+      var end = pos + left;
+      var save = end > 0 ? Math.min(left, end) : 0;
+      out.months.push({ idx: m.idx, days: m.days, paydayCount: m.paydays.length, paychecks: paychecks, bills: m.bills, card: card, planned: m.planned,
+        left: left, save: Math.max(0, save), note: pos < 0 && end > 0 ? -pos : 0 });
+      pos = end;
+    }
+    if (caught) { out.catchDay = caught.day; out.catchMonth = caught.month; out.catchNth = caught.nth; }
+    var from = o.behind > 0 ? (caught ? caught.month + 1 : out.months.length) : 0;
+    if (from >= out.months.length && caught) from = out.months.length - 1;
+    var sum = 0;
+    var n = 0;
+    for (i = from; i < out.months.length; i++) { sum += out.months[i].save; n++; }
+    out.avgSave = n ? sum / n : 0;
+    return out;
+  }
+
+  function olDaily(o) { return S.olDaily === null || S.olDaily === undefined ? o.avg : S.olDaily; }
+
+  function olStep(c, dir) {
+    var d = olDaily(c.ol) + (dir === 'up' ? OL_STEP : -OL_STEP);
+    S.olDaily = Math.max(0, Math.min(OL_MAX, d));
+  }
+
+  function olOrd(n) {
+    var O = STRINGS.receipt.outlook;
+    var sf = O.ordSfx.split('|');
+    var k = n % 100 >= 11 && n % 100 <= 13 ? 3 : n % 10 === 1 ? 0 : n % 10 === 2 ? 1 : n % 10 === 3 ? 2 : 3;
+    return fill(O.ordWord, { n: n, s: sf[k] || '' });
+  }
+
+  function olTabs(root, page, n) {
+    var O = STRINGS.receipt.outlook;
+    var bar = el('div', 'bu-tabs', root);
+    el('span', 'bu-tab' + (page === 'receipt' ? ' is-on' : ''), bar, O.tabReceipt);
+    el('span', 'bu-tab' + (page === 'outlook' ? ' is-on' : ''), bar, fill(O.tabOutlook, { n: n }));
+    el('span', 'bu-tabhint', bar, O.tabHint);
+  }
+
+  function olCells(row, vals, cls) {
+    for (var i = 0; i < vals.length; i++) {
+      var cell = el('span', 'bu-ramt bu-ocell' + (cls ? ' ' + cls : ''), row);
+      if (typeof vals[i] === 'string') cell.textContent = vals[i]; else vals[i](cell);
+    }
+  }
+
+  function olRow(sign, label, vals, cls, tones) {
+    var row = el('div', 'bu-rrow bu-orow' + (cls ? ' ' + cls : ''));
+    el('span', 'bu-rsign', row, sign);
+    el('span', 'bu-rlabel', row, label);
+    for (var i = 0; i < vals.length; i++) {
+      var cell = el('span', 'bu-ramt bu-ocell' + (tones && tones[i] ? ' ' + tones[i] : ''), row);
+      if (typeof vals[i] === 'string') cell.textContent = vals[i]; else vals[i](cell);
+    }
+    return row;
+  }
+
+  function olPage(root, c) {
+    var O = STRINGS.receipt.outlook;
+    var o = c.ol;
+    var daily = olDaily(o);
+    var r = outlookCalc(o, daily);
+    var wrap = el('div', 'bu-pwrap bu-rc bu-ol' + (staleAt() ? ' is-stale' : ''), root);
+    var nm = o.months.length;
+    var i;
+    // Headline and its line
+    var tone;
+    var head;
+    var sub;
+    if (o.behind <= 0) {
+      tone = 'is-ok';
+      head = o.ahead > 0 ? fill(O.headAheadBy, { n: cash(o.ahead), d: dateText(o.startDay, 'short') }) : fill(O.headAhead, { n: nm }); sub = fill(O.subAhead, { n: cash(r.avgSave) });
+    } else if (r.catchDay !== null) {
+      tone = 'is-ok'; head = fill(O.headOn, { d: dateText(r.catchDay, 'short') });
+      sub = fill(O.subCatch, { o: olOrd(r.catchNth), m: STRINGS.months[r.months[r.catchMonth].idx], n: cash(r.avgSave) });
+    } else {
+      tone = 'is-under'; head = fill(O.headBehind, { d: dateText(r.endDay, 'short') }); sub = O.subBehind;
+    }
+    var top = el('div', 'bu-rhead', wrap);
+    el('div', 'bu-rhero-word ' + tone, top, head);
+    el('div', 'bu-rhero-cap bu-ol-sub', top, sub);
+    if (o.behind > 0) el('div', 'bu-ol-start is-neg', wrap, fill(O.start, { d: dateText(o.startDay, 'short'), n: cash(o.behind) }));
+    else if (o.ahead > 0) el('div', 'bu-ol-start is-ok', wrap, fill(O.startAheadBy, { d: dateText(o.startDay, 'short'), n: cash(o.ahead) }));
+    else el('div', 'bu-ol-start is-ok', wrap, fill(O.startAhead, { d: dateText(o.startDay, 'short') }));
+    // The table
+    var tbl = el('div', 'bu-otable', wrap);
+    var hd = el('div', 'bu-rrow bu-orow bu-ohead', tbl);
+    el('span', 'bu-rsign', hd, '');
+    el('span', 'bu-rlabel', hd, '');
+    for (i = 0; i < r.months.length; i++) el('span', 'bu-ramt bu-ocell', hd, STRINGS.months[r.months[i].idx]);
+    function col(fn) { var a = []; for (var k = 0; k < r.months.length; k++) a.push(fn(r.months[k])); return a; }
+    var pay = col(function (m) {
+      if (m.paydayCount < 3) return cash(m.paychecks);
+      return function (cell) { el('span', 'bu-opill', cell, fill(O.pill, { n: m.paydayCount })); cell.appendChild(document.createTextNode(cash(m.paychecks))); };
+    });
+    tbl.appendChild(olRow('+', O.paychecks, pay));
+    tbl.appendChild(olRow(STRINGS.minus, O.bills, col(function (m) { return cash(m.bills); })));
+    tbl.appendChild(olRow(STRINGS.minus, O.cards, col(function (m) { return cash(m.card); })));
+    tbl.appendChild(olRow(STRINGS.minus, O.buys, col(function (m) { return cash(m.planned); })));
+    tbl.appendChild(olRow('=', O.left, col(function (m) { return (m.left > 0 ? '+' : '') + cash(m.left); }), 'is-total',
+      col(function (m) { return m.left >= 0 ? 'is-ok' : 'is-neg'; })));
+    tbl.appendChild(olRow('', O.save, col(function (m) {
+      return function (cell) {
+        el('span', 'bu-osave', cell, cash(m.save));
+        if (m.note) el('span', 'bu-onote', cell, fill(O.saveNote, { n: cash(m.note) }));
+      };
+    }), 'is-save', col(function (m) { return m.save > 0 ? 'is-ok' : ''; })));
+    // The lever
+    var lev = el('div', 'bu-olever f', wrap);
+    lev.setAttribute('data-key', 'ol-lever');
+    lev.setAttribute('data-autofocus', '');
+    var same = Math.round(daily) === Math.round(o.avg);
+    var lt = same ? fill(O.lever, { n: cash(daily), m: nm }) : fill(O.leverOther, { n: cash(daily), a: cash(o.avg) });
+    var lrow = el('div', 'bu-olever-top', lev);
+    el('span', 'bu-olever-text', lrow, lt);
+    el('span', 'bu-olever-hint', lrow, O.leverHint);
+    if (!same) {
+      var days = 0;
+      for (i = 0; i < o.months.length; i++) days += o.months[i].days;
+      var diff = Math.round((o.avg - daily) * days / o.months.length);
+      el('div', 'bu-olever-more ' + (diff >= 0 ? 'is-ok' : 'is-neg'), lev,
+        fill(diff >= 0 ? O.moreSave : O.lessSave, { n: cash(daily), m: cash(Math.abs(diff)) }));
+    }
+    // The legend
+    var lg = el('div', 'bu-olegend', wrap);
+    var li = el('div', 'bu-olegend-row', lg);
+    el('span', 'bu-odot is-ok', li);
+    el('span', 'bu-olegend-t', li, O.legOk);
+    el('span', 'bu-odot is-neg', li);
+    el('span', 'bu-olegend-t', li, O.legNeg);
+    el('span', 'bu-opill', li, fill(O.pill, { n: 3 }));
+    el('span', 'bu-olegend-t', li, '= ' + O.legPill);
+    el('div', 'bu-olegend-row', lg, O.legNote);
+  }
+
+  function rcLabel(line, c, rc) {
+    var R = STRINGS.receipt;
+    var key = line.key === 'billsAfter' && !rc.next ? 'billsAfterNo' : line.key;
+    return fill(R.lines[key], { d: dateText(c.day, 'short'), e: rc.next ? dateText(rc.next.day, 'short') : '' });
+  }
+
+  function rcBottomLabel() { return STRINGS.receipt.bottom; }
+
+  function rcBottomNote(rc) {
+    var R = STRINGS.receipt;
+    return rc.next ? fill(R.bottomNote, { e: dateText(rc.next.day, 'short') }) : R.bottomNoteNo;
+  }
+
+  // Tile words: the hero and the small word beside it.
+  function rcHero(c) {
+    var R = STRINGS.receipt;
+    if (c.covered) {
+      return { word: fill(R.heroLeft, { n: cash(c.rc.bottom) }), cap: c.rc.perDay !== null ? fill(R.heroDay, { n: cash(c.rc.perDay) }) : '' };
+    }
+    if (c.byAuto) return { word: fill(R.heroShort, { n: cash(c.short || 0), d: dateText(c.day, 'short') }), cap: R.heroByAutopay };
+    return { word: fill(R.heroShortPlain, { n: cash(c.autoShort !== null ? c.autoShort : (c.short || 0)) }), cap: R.heroEven };
+  }
+
+  function rcNextText(c, form) {
+    var R = STRINGS.receipt;
+    if (!c.rc.next) return '';
+    var amt = c.rc.next.amount === null ? '' : cash(c.rc.next.amount);
+    var m = fill(R.nextPay, { d: dateText(c.rc.next.day, form || 'long'), n: amt });
+    return amt ? m : fill(STRINGS.nextPay, { d: dateText(c.rc.next.day, form || 'long') });
+  }
+
+  // One line of the receipt: sign, words, amount. Signs have their own column, amounts right-aligned.
+  function rcRow(sign, label, amount, tone, cls) {
+    var row = el('div', 'bu-rrow' + (cls ? ' ' + cls : ''));
+    el('span', 'bu-rsign', row, sign);
+    el('span', 'bu-rlabel', row, label);
+    el('span', 'bu-ramt' + (tone ? ' ' + tone : ''), row, amount);
+    return row;
+  }
+
+  function rcSign(line, i) {
+    if (i === 0) return '';
+    return line.key === 'paychecks' ? '+' : STRINGS.minus;
+  }
+
+  // The mini receipt on the tile: three lines.
+  function rcMini(parent, c) {
+    var R = STRINGS.receipt;
+    var rc = c.rc;
+    var e = rc.next ? dateText(rc.next.day, 'short') : '';
+    var box = el('div', 'bu-mini', parent);
+    box.appendChild(rcRow('', R.lines.checking, cash(rc.lines[0].amount), '', 'is-mini'));
+    box.appendChild(rcRow('', rc.next ? fill(R.miniBills, { e: e }) : R.miniBillsNo, cash(rc.bottom - rc.lines[0].amount), '', 'is-mini'));
+    box.appendChild(rcRow('', R.bottom, cash(rc.bottom), c.tone, 'is-mini is-total'));
+    return box;
+  }
+
+  /* level 2: what one line is made of */
+
+  function rcDetailItems(line, c, rc, panel) {
+    var R = STRINGS.receipt;
+    var i;
+    function itemRow(it, n) {
+      var row = el('div', 'bu-ritem f');
+      row.setAttribute('data-key', 'rd-' + n);
+      var top = el('div', 'bu-ritop', row);
+      el('span', 'bu-rdate', top, it.day !== null ? dateText(it.day, 'short') : '');
+      var lab = el('span', 'bu-rlabel', top, it.label);
+      if (it.isNew) el('span', 'bu-rtag', lab, R.newTag);
+      el('span', 'bu-ramt', top, cash(Math.abs(it.amount)));
+      return row;
+    }
+    if (line.key === 'checking') {
+      var txt = R.checkingNote;
+      if (!isNaN(rc.asOf)) txt += ' ' + fill(R.checkingAsOf, { t: hm(rc.asOf) });
+      var cn = el('div', 'bu-rnote f', panel, txt);
+      cn.setAttribute('data-key', 'rd-0');
+      return;
+    }
+    if (line.key === 'paychecks' && !line.items.length) {
+      var np = rc.next ? fill(R.noPay, { d: dateText(c.day, 'short'), n: dateText(rc.next.day, 'long') }) : fill(R.noPayNext, { d: dateText(c.day, 'short') });
+      var nn = el('div', 'bu-rnote f', panel, np);
+      nn.setAttribute('data-key', 'rd-0');
+      return;
+    }
+    if (!line.items.length) {
+      var ne = el('div', 'bu-rnote f', panel, R.empty);
+      ne.setAttribute('data-key', 'rd-0');
+      return;
+    }
+    for (i = 0; i < line.items.length; i++) {
+      var it = line.items[i];
+      var row = itemRow(it, i);
+      if (line.key === 'cardsToday') {
+        var parts = [fill(R.owesBal, { n: cash(it.bal !== null ? it.bal : it.amount) })];
+        if (it.pending) parts.push(fill(R.owesPending, { n: cash(it.pending) }));
+        if (it.coming) parts.push(fill(R.owesComing, { n: cash(it.coming), d: dateText(c.day, 'short') }));
+        el('div', 'bu-rsub', row, parts.join(STRINGS.sep));
+        var two = [it.autoDay !== null ? fill(R.cardAutopay, { d: dateText(it.autoDay, 'short') }) : R.cardNoAutopay];
+        if (it.pay) two.push(fill(R.cardPays, { n: cash(it.pay), d: dateText(c.day, 'short') }));
+        if (it.auto) two.push(fill(R.cardAuto, { n: cash(it.auto) }));
+        el('div', 'bu-rsub', row, two.join(STRINGS.sep));
+      } else if (line.key === 'paychecks') {
+        el('div', 'bu-rsub', row, R.payNote);
+      } else if (line.key === 'cardCharges' && it.note) {
+        el('div', 'bu-rsub', row, fill(R.onCard, { card: it.note }));
+      } else if (it.note) {
+        el('div', 'bu-rsub', row, it.note);
+      }
+      panel.appendChild(row);
+    }
+    var tot = el('div', 'bu-ritem bu-rtotal f', panel);
+    tot.setAttribute('data-key', 'rd-total');
+    var tt = el('div', 'bu-ritop', tot);
+    el('span', 'bu-rdate', tt, '');
+    el('span', 'bu-rlabel', tt, R.total);
+    el('span', 'bu-ramt', tt, cash(Math.abs(line.amount)));
+    if (line.key === 'buys') el('div', 'bu-rsub', tot, R.buysNote);
+  }
+
+  function rcDetailBottom(c, rc, panel) {
+    var R = STRINGS.receipt;
+    var f = el('div', 'bu-rnote f', panel);
+    f.setAttribute('data-key', 'rd-0');
+    el('div', 'bu-rsub', f, R.formula);
+    var terms = '';
+    for (var i = 0; i < rc.lines.length; i++) {
+      var a = rc.lines[i].amount;
+      if (i > 0 && a === 0) continue;
+      terms += (i === 0 ? '' : ' ' + (rc.lines[i].key === 'paychecks' ? '+' : STRINGS.minus) + ' ') + cash(Math.abs(a));
+    }
+    el('div', 'bu-rformula', f, terms + ' = ' + cash(rc.bottom));
+    el('div', 'bu-rsub', f, rcBottomNote(rc));
+  }
+
+  function setBackHint() {
+    var h = document.querySelector('#panel .panel-hint');
+    if (h) h.textContent = STRINGS.receipt.backHint;
+  }
+
+  function rcPanel(root, ctx, full, c) {
+    var R = STRINGS.receipt;
+    var rc = c.rc;
+    var tabbed = !!(c.ol && !S.rcOpen);
+    if (tabbed && S.rcPage === 'outlook') {
+      olTabs(root, 'outlook', c.ol.months.length);
+      return olPage(root, c);
+    }
+    var wrap = el('div', 'bu-pwrap bu-rc' + (full ? ' is-full is-cols' : '') + (S.rcOpen ? ' is-detail' : '') + (staleAt() ? ' is-stale' : ''), root);
+    var detail = S.rcOpen;
+    var line = null;
+    var idx = -1;
+    var i;
+    if (detail) {
+      if (detail === 'bottom') { line = { key: 'bottom', amount: rc.bottom, items: [] }; idx = rc.lines.length; } else {
+        for (i = 0; i < rc.lines.length; i++) if (rc.lines[i].key === detail) { line = rc.lines[i]; idx = i; }
+      }
+      if (!line) { S.rcOpen = null; detail = null; }
+    }
+    var colA = el('div', 'bu-pcol', wrap);
+    // The tab strip sits over the receipt's own column only, so the plan column keeps its height
+    // (and its "OK for details" hint stays on screen).
+    if (tabbed) olTabs(colA, 'receipt', c.ol.months.length);
+    var colB = full && !detail ? el('div', 'bu-pcol', wrap) : null;
+    var hh = rcHero(c);
+    if (detail) {
+      var head = line.key === 'bottom' ? rcRow('=', rcBottomLabel(rc), cash(rc.bottom), c.tone, 'is-total is-open f') :
+        rcRow(rcSign(line, idx), rcLabel(line, c, rc), cash(Math.abs(line.amount)), '', 'is-open f');
+      head.setAttribute('data-key', 'rc-' + line.key);
+      colA.appendChild(head);
+      var box = el('div', 'bu-rdetail' + (S.rcFresh ? ' is-enter' : ''), colA);
+      if (line.key === 'bottom') rcDetailBottom(c, rc, box); else rcDetailItems(line, c, rc, box);
+      S.rcFresh = false;
+      // The hub writes its own Back hint after this draw.
+      setTimeout(setBackHint, 0);
+      return;
+    }
+    // At full screen the headline sits over the plan, so the whole receipt fits on the left.
+    var top = el('div', 'bu-rhead', colB || colA);
+    el('div', 'bu-pline', top, fill(STRINGS.cardOn, { d: dateText(c.day, 'long') }) + STRINGS.sep + awayText(c));
+    var hb = el('div', 'bu-rhero', top);
+    el('span', 'bu-rhero-word ' + c.tone, hb, hh.word);
+    if (hh.cap) el('span', 'bu-rhero-cap', hb, hh.cap);
+    for (i = 0; i < rc.lines.length; i++) {
+      var ln = rc.lines[i];
+      var row = rcRow(rcSign(ln, i), rcLabel(ln, c, rc), cash(Math.abs(ln.amount)), '', 'f');
+      row.setAttribute('data-key', 'rc-' + ln.key);
+      if (S.rcBack ? S.rcBack === ln.key : i === 0) row.setAttribute('data-autofocus', '');
+      colA.appendChild(row);
+    }
+    var tot = rcRow('=', rcBottomLabel(rc), cash(rc.bottom), c.tone, 'is-total f');
+    tot.setAttribute('data-key', 'rc-bottom');
+    if (S.rcBack === 'bottom') tot.setAttribute('data-autofocus', '');
+    colA.appendChild(tot);
+    el('div', 'bu-pline is-quiet bu-rnote-low', colA, rcBottomNote(rc));
+    var side = colB || colA;
+    if (c.plan.length) {
+      var pls = el('div', 'bu-psec f' + (colB ? '' : ' is-after'), side);
+      pls.setAttribute('data-key', 'plan');
+      el('div', 'bu-label', pls, R.planHead);
+      var firsts = [];
+      var laters = [];
+      for (var n = 0; n < c.plan.length; n++) (c.plan[n].auto ? laters : firsts).push(c.plan[n]);
+      if (firsts.length) {
+        el('div', 'bu-rsubhead', pls, fill(R.payOn, { d: dateText(c.day, 'short') }));
+        for (i = 0; i < firsts.length; i++) pls.appendChild(planRow(firsts[i], 'pay'));
+      }
+      laters.sort(function (a, b) { return a.day - b.day; });
+      if (laters.length) {
+        el('div', 'bu-rsubhead', pls, R.leaveFor);
+        for (i = 0; i < laters.length; i++) pls.appendChild(planRow(laters[i], 'auto'));
+      }
+      el('div', 'bu-pline is-quiet', pls, R.planNote);
+    }
+    var nxt = rcNextText(c, 'long');
+    if (nxt) {
+      var ps = el('div', 'bu-psec f', side);
+      ps.setAttribute('data-key', 'pay');
+      el('div', 'bu-pline', ps, nxt);
+    }
+    el('div', 'bu-pline is-quiet bu-rhint', side, R.okHint);
+    S.rcBack = null;
   }
 
   function awayText(c) {
@@ -730,6 +1302,26 @@
     if (!c.pay.length) return [];
     return [fill(STRINGS.nextPay, { d: dateText(c.pay[0], 'long') }), fill(STRINGS.nextPay, { d: dateText(c.pay[0], 'short') }),
       fill(STRINGS.nextPayShort, { d: dateText(c.pay[0], 'short') })];
+  }
+
+  // The plain words under the figure: covered by autopay, or still short with it.
+  function noteForms(c) {
+    if (c.byAuto) {
+      return [fill(STRINGS.autoNote, { d: dateText(c.day, 'short') }), STRINGS.autoNoteShort, STRINGS.autoNoteTiny];
+    }
+    if (c.autoShort !== null) return [fill(STRINGS.autoShortNote, { n: cash(c.autoShort) }), fill(STRINGS.autoShortNoteShort, { n: cash(c.autoShort) })];
+    return [];
+  }
+
+  // One payment of the plan: its day, the card and the amount ("autopay" after it when left for the card's day).
+  function planRow(p, mode) {
+    var row = el('div', 'bu-trow bu-prow' + (mode === 'pay' ? ' is-nodate' : ''));
+    // The receipt's plan: "Pay on Dec 1" rows have no date of their own.
+    if (mode !== 'pay') el('span', 'bu-prow-date', row, dateText(p.day, 'short'));
+    el('span', 'bu-trow-label bu-cut', row, p.label);
+    var v = el('span', 'bu-trow-value', row, cash(p.amount));
+    if (p.auto && !mode) el('span', 'bu-prow-auto', v, STRINGS.autoPay);
+    return row;
   }
 
   function transferRow(t) {
@@ -748,7 +1340,7 @@
     dim(root);
     if (size.cols === 1) {
       return solo(root, c.away === 0 ? STRINGS.todayCap : fmtNum(c.away), c.covered ? [STRINGS.coveredWord] :
-        [fill(STRINGS.shortWord, { n: cash(c.short || 0) }), cash(-(c.short || 0))], c.tone);
+        c.byAuto ? [STRINGS.autoSolo] : [fill(STRINGS.shortWord, { n: cash(c.short || 0) }), cash(-(c.short || 0))], c.tone);
     }
     if (size.tier === 'strip') {
       root.className += ' bu-strip';
@@ -763,6 +1355,8 @@
       var forms = [];
       var w = whenForms(c);
       var p = payForms(c);
+      var nf = noteForms(c);
+      if (nf.length) forms.push(STRINGS.sep + w[0] + STRINGS.sep + nf[nf.length - 1]);
       for (var i = 0; i < w.length; i++) {
         if (p.length) forms.push(STRINGS.sep + w[i] + STRINGS.sep + p[Math.min(i, p.length - 1)]);
         forms.push(STRINGS.sep + w[i]);
@@ -775,35 +1369,57 @@
       }
       return;
     }
-    var wide = size.width === 'wide' && c.transfers.length > 0;
+    if (c.rc) {
+      var rh = rcHero(c);
+      var rwhen = el('div', 'bu-when', root);
+      var hr = hero(root, rh.word, rh.cap, c.tone, 'is-word');
+      var rcap = hr.capEl;
+      fitForms(rwhen, whenForms(c));
+      fitHero(hr, '');
+      if (rcap && rcap.parentNode) rcap.className += ' bu-rcap ' + c.tone;
+      var mini = rcMini(root, c);
+      // Short on height: the heading's caption goes first, then the middle line.
+      if (overH(root) && rcap && rcap.parentNode) rcap.parentNode.removeChild(rcap);
+      if (overH(root)) mini.removeChild(mini.childNodes[1]);
+      if (size.cols < 3) mini.className += ' is-tight';
+      return;
+    }
+    // The payment plan takes the list's place when there is one; the transfers stay in the panel.
+    var usePlan = c.plan.length > 0;
+    var wide = size.width === 'wide' && (usePlan || c.transfers.length > 0);
     var left = wide ? el('div', 'bu-split-a', el('div', 'bu-split', root)) : root;
     var right = wide ? el('div', 'bu-split-b', left.parentNode) : null;
     var when = el('div', 'bu-when', left);
     var h = hero(left, c.word, '', c.tone, 'is-word');
+    var nfs = noteForms(c);
+    var note = nfs.length ? el('div', 'bu-line bu-auto-note ' + (c.byAuto ? 'is-under' : 'is-neg'), left) : null;
     var list = null;
     var more = null;
-    if (c.transfers.length && size.cols >= 3) {
+    if ((usePlan || c.transfers.length) && size.cols >= 3) {
       var sect = el('div', 'bu-sect', wide ? right : left);
-      el('div', 'bu-label', sect, STRINGS.transfersHead);
+      el('div', 'bu-label', sect, usePlan ? STRINGS.planHead : STRINGS.transfersHead);
       list = el('div', 'bu-list', sect);
       more = el('div', 'bu-more', sect);
     }
     var pay = c.pay.length ? el('div', 'bu-foot', root) : null;
     fitForms(when, whenForms(c));
     fitHero(h);
+    if (note) fitForms(note, nfs);
     if (pay) fitForms(pay, payForms(c));
     if (list) {
       var rows = [];
-      for (var k = 0; k < c.transfers.length; k++) rows.push(transferRow(c.transfers[k]));
+      if (usePlan) for (var m = 0; m < c.plan.length; m++) rows.push(planRow(c.plan[m]));
+      else for (var k = 0; k < c.transfers.length; k++) rows.push(transferRow(c.transfers[k]));
       if (!fitRows(list, more, rows)) list.parentNode.parentNode.removeChild(list.parentNode);
     }
-    trim(root, [pay]);
+    trim(root, [note, pay]);
     if (!list && size.cols >= 3) mark(root);
   }
 
   function cardPanel(root, ctx, full) {
     var c = shown() ? cardData() : null;
     if (!c) return panelMessage(root, emptyState());
+    if (c.rc) return rcPanel(root, ctx, full, c);
     var wrap = el('div', 'bu-pwrap' + (full ? ' is-full is-cols' : '') + (staleAt() ? ' is-stale' : ''), root);
     var colA = el('div', 'bu-pcol', wrap);
     var colB = full ? el('div', 'bu-pcol', wrap) : colA;
@@ -813,6 +1429,14 @@
     el('div', 'bu-pline', top, fill(STRINGS.cardOn, { d: dateText(c.day, 'long') }) + STRINGS.sep + awayText(c));
     var h = hero(top, c.word, '', c.tone, 'is-panel is-word');
     fitWidth(h.numEl);
+    var pnf = noteForms(c);
+    if (pnf.length) el('div', 'bu-pline ' + (c.byAuto ? 'is-under' : 'is-neg'), top, pnf[0]);
+    if (c.plan.length) {
+      var pls = el('div', 'bu-psec f', colB);
+      pls.setAttribute('data-key', 'plan');
+      el('div', 'bu-label', pls, STRINGS.planHead);
+      for (var n = 0; n < c.plan.length; n++) pls.appendChild(planRow(c.plan[n]));
+    }
     var ts = el('div', 'bu-psec f', colB);
     ts.setAttribute('data-key', 'transfers');
     el('div', 'bu-label', ts, STRINGS.transfersHead);
@@ -1042,7 +1666,7 @@
 
   /* ---------- registering ---------- */
 
-  function real(id, titleKey, drawTile, drawPanel) {
+  function real(id, titleKey, drawTile, drawPanel, extra) {
     var w = {
       id: id,
       icon: 'wallet',
@@ -1070,6 +1694,7 @@
       onMode: function (mode, ctx) { ctx.redrawPanel(); },
       onStatus: function () { try { refreshAll(); } catch (e) { /* next change tries again */ } }
     };
+    if (extra) for (var xk in extra) if (extra.hasOwnProperty(xk)) w[xk] = extra[xk];
     // Read when the hub draws the tile head, so it follows the language.
     Object.defineProperty(w, 'title', { get: function () { return STRINGS.titles[titleKey]; }, enumerable: true, configurable: true });
     Object.defineProperty(w, 'shortTitle', { get: function () { return (STRINGS.titlesShort || {})[titleKey] || ''; }, enumerable: true, configurable: true });
@@ -1145,6 +1770,8 @@
     STRINGS: EN,
     strings: function () { return STRINGS; },
     store: S,
+    outlookCalc: outlookCalc,
+    outlookData: outlookData,
     refresh: function () { refreshAll(); updateBanner(); },
     seen: function () { return seenList().slice(); }
   };
@@ -1153,6 +1780,39 @@
 
   var list = (window.HUB_WIDGETS = window.HUB_WIDGETS || []);
   list.push(real('budget-room', 'room', roomTile, roomPanel));
-  list.push(real('budget-card', 'card', cardTile, cardPanel));
+  list.push(real('budget-card', 'card', cardTile, cardPanel, {
+    // Level 2 of the receipt: OK on a line opens its items, Back returns to the receipt.
+    onSelect: function (target, ctx) {
+      var k = (target && target.getAttribute('data-key')) || '';
+      if (k.indexOf('rc-') !== 0 || S.rcOpen) return;
+      S.rcOpen = k.substring(3);
+      S.rcBack = S.rcOpen;
+      S.rcFresh = true;
+      ctx.redrawPanel();
+    },
+    // The receipt's pages: Right opens "Next 3 months", Left returns; Up/Down on it change the daily amount.
+    onMove: function (dir, from, ctx) {
+      var c = shown() ? cardData() : null;
+      if (!c || !c.rc || !c.ol || S.rcOpen) return undefined;
+      if (S.rcPage === 'outlook') {
+        if (dir === 'left') { S.rcPage = 'receipt'; S.rcBack = null; ctx.redrawPanel(); } else if (dir === 'up' || dir === 'down') { olStep(c, dir); ctx.redrawPanel(); }
+        return true;
+      }
+      if (dir === 'right') { S.rcPage = 'outlook'; ctx.redrawPanel(); return true; }
+      return undefined;
+    },
+    onBack: function (ctx) {
+      if (!S.rcOpen) return false;
+      S.rcOpen = null;
+      ctx.redrawPanel();
+      return true;
+    },
+    onClose: function () { S.rcOpen = null; S.rcBack = null; S.rcPage = 'receipt'; S.olDaily = null; }
+  }));
+  // The receipt is a page, not a glance: OK on the tile opens it at full screen (Back closes).
+  Object.defineProperty(list[list.length - 1], 'openMode', {
+    get: function () { var c = shown() ? cardData() : null; return c && c.rc ? 'full' : undefined; },
+    enumerable: true, configurable: true
+  });
   list.push(real('budget-goals', 'goals', goalsTile, goalsPanel));
 })();

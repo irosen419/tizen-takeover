@@ -16,13 +16,35 @@ var HUB_CONFIG = {
   title: 'Living room',
   pi: HUB_PI,
 
-  /* The picture behind the tiles: a file next to hub.html or a full URL.
-     Any 1920x1080 picture works. '' or null = no picture (plain dark). */
-  background: 'backgrounds/ocean.jpg',
+  /* The picture behind the tiles:
+       'auto'   a picture from app/backgrounds/backgrounds.js: a day picture in
+                the day look and a night picture in the night look, a new one
+                each day (the default). ?bg=day/3 or ?bg=night/0 on the address
+                shows one by its place in the list (counting from 0).
+       a file next to hub.html or a full URL: that one picture, in both looks.
+       '' or null = no picture (plain dark).
+     Any 1920x1080 picture works. */
+  background: 'auto',
+
+  /* true = the current picture's title in small grey type in the bottom-right
+     corner of the home screen, so a picture can be named while trying them.
+     It hides while a panel or a dashboard is open. false = no label (the
+     About panel's "Picture" line still has the title and credit). */
+  pictureLabel: true,
 
   /* true = frosted-glass tiles that show a soft blur of the picture.
      false = solid dark cards, even with a picture. */
   glass: true,
+
+  /* The look of the glass tiles (app/theme.css), when glass is on and there
+     is a picture:
+       'auto'   day (light glass, dark text) between sunrise and sunset, night
+                (dark glass) otherwise. Sunrise and sunset come from the
+                Weather widget; without them, day is 7:00 AM to 6:00 PM (the default)
+       'day'    always light
+       'night'  always dark
+     ?theme=day or ?theme=night on the address tries one without editing this. */
+  theme: 'auto',
 
   /* How opening a widget looks:
        'auto'    start with 'push', time it on the TV, and step down to
@@ -46,8 +68,7 @@ var HUB_CONFIG = {
      motionFx: false turns them all off; so does ?fx=off on the address. */
   motionFx: { quietTiles: true, ring: true, stagger: true, cover: true, bloom: true, activity: true, edge: true },
 
-  // The tile that has focus when the hub opens.
-  start: 'entertainment',
+  // Focus starts on the top-left tile of whatever layout is showing (app/hub.js topLeftIndex).
 
   /* Live updates: the hub server on the Raspberry Pi, which can change what
      the screen shows and keeps the to-do list (see docs/live-updates.md).
@@ -83,18 +104,18 @@ var HUB_CONFIG = {
     { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
     { widget: 'mirror',        x: 9, y: 2, w: 3, h: 2 },
     { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 },
-    { widget: 'ambiance',      x: 3, y: 4, w: 6, h: 1 },
+    { widget: 'ambience',      x: 3, y: 4, w: 6, h: 1 },
     { widget: 'nowplaying',    x: 0, y: 5, w: 3, h: 1 },
     { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
   ],
 
   /* Saved layouts for the switcher: press Up on a top tile (or Left on a
      left-most one) and a bar of pills drops from the top. Pick one and it is applied (and sent to the Pi, so it
-     is remembered). "Stock" is the built-in layout above. Copy a layout here
+     is remembered). "Default" is the built-in layout above (id 'stock', kept so a saved pick still matches). Copy a layout here
      from the Layout Studio's saved list; widgets this hub doesn't have are
      skipped, and a layout may leave widgets out to hide them. */
   layouts: [
-    { id: 'stock', name: 'Stock', layout: null },
+    { id: 'stock', name: 'Default', layout: null },
     { id: 'main', name: 'Main', layout: [
       { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
       { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
@@ -102,7 +123,7 @@ var HUB_CONFIG = {
       { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },
       { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
       { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
-      { widget: 'ambiance',      x: 3, y: 4, w: 3, h: 2 },
+      { widget: 'ambience',      x: 3, y: 4, w: 3, h: 2 },
       { widget: 'mirror',        x: 6, y: 4, w: 3, h: 2 },
       { widget: 'entertainment', x: 9, y: 4, w: 3, h: 2 }
     ] },
@@ -113,7 +134,7 @@ var HUB_CONFIG = {
       { widget: 'mirror',        x: 3, y: 0, w: 6, h: 4 },
       { widget: 'calendar',      x: 3, y: 4, w: 6, h: 2 },
       { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
-      { widget: 'ambiance',      x: 9, y: 4, w: 3, h: 2 }
+      { widget: 'ambience',      x: 9, y: 4, w: 3, h: 2 }
     ] },
     { id: 'awws-desk', name: 'AWWS desk', layout: [
       { widget: 'awws-visits',   x: 0, y: 0, w: 3, h: 2 },
@@ -153,7 +174,7 @@ var HUB_CONFIG = {
       { widget: 'allsounds',     x: 0, y: 0, w: 12, h: 6 }
     ] },
     // Plant sun alone, to try it out (a new widget gets a layout of its own first).
-    { id: 'plant-wall', name: 'Plant wall', layout: [
+    { id: 'plant-wall', name: 'Plants', layout: [
       { widget: 'sunpath',       x: 0, y: 0, w: 12, h: 6 }
     ] },
     /* A test layout: Ambience (app/widgets/ambience.js, the room's lights)
@@ -161,6 +182,12 @@ var HUB_CONFIG = {
        layout. New widgets are tried the same way: one layout, one widget. */
     { id: 'ambience-test', name: 'Ambience test', layout: [
       { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    /* Architecture (app/widgets/architecture.js, the map of the whole system,
+       driven by the remote) on its own; it opens straight into a window (hub.js
+       openSolo). The id still says test so a saved pick still matches. */
+    { id: 'architecture-test', name: 'Hub architecture', layout: [
+      { widget: 'architecture', x: 0, y: 0, w: 12, h: 6 }
     ] }
   ],
 
@@ -187,6 +214,10 @@ var HUB_CONFIG = {
      * its first letter.
      */
     entertainment: {
+      // OK on the tile opens straight to full screen (apps beside the
+      // Schedule); Back closes it. Any widget takes openMode: 'full' or
+      // 'panel' here to skip or keep the small panel in between.
+      openMode: 'full',
       sections: [
         {
           label: 'Watch',
@@ -241,6 +272,23 @@ var HUB_CONFIG = {
        * as "Also on Hulu" beside the episode (Right, then OK, opens it).
        */
       watchAliases: { 'Hulu': 'Disney+' },
+
+      /*
+       * When a show from a TV channel streams. TVmaze dates each episode by
+       * its first broadcast (Hell's Kitchen: FOX, Thursday 7 PM; the Baking
+       * Show: Channel 4 in the UK, Tuesday). When that channel isn't a
+       * streaming app, the Schedule lists the episode on the day it reaches
+       * the show's app and adds "Airs live on FOX · Thu 7 PM" under it.
+       * A rule per show (by name) wins over one per app; anything else
+       * streams the next day. { days: n } counts days after the broadcast,
+       * { weekday: 'fri' } is the first Friday after it, at: '02:00' adds the
+       * hour when it is known (without it only the day shows), and
+       * { live: true } keeps the broadcast time (watched live).
+       */
+      streamAfterAir: {
+        apps: { 'Disney+': { days: 1 }, 'Hulu': { days: 1 }, 'Peacock': { days: 1 } },
+        shows: { 'The Great British Baking Show': { weekday: 'fri' } }
+      },
 
       /*
        * Prime Video Channels: a service billed through another app opens in
@@ -419,7 +467,7 @@ var HUB_CONFIG = {
     nowplaying: { visualizer: true },
 
     /*
-     * Plant sun: when direct sun reaches the plant wall (the "Plant wall"
+     * Plant sun: when direct sun reaches the plant wall (the "Plants"
      * layout). The sun's position is worked out on the TV (NOAA formulas)
      * for the weather location above, rounded; latitude and longitude here
      * would take its place. The window itself (faces about 306 degrees
@@ -441,7 +489,29 @@ var HUB_CONFIG = {
      * plantHeightFeet: how high the plants sit (3 ft up). plants: shown in
      * the panel's note; keepOutOfSun: the one to keep out of the summer
      * evening beam.
+     *
+     * Care view (the panel's fourth view, and one small line on the tile):
+     *   careEvent  the title of the weekly calendar event whose notes hold
+     *              the care for each plant (case and spacing ignored; the
+     *              next one that has not ended is used). Default
+     *              'Water plants'. Its notes come from the hub server's
+     *              "calendar" live data: paragraphs before the first plant
+     *              are shown on top, a plant is a paragraph whose short
+     *              first line (48 characters or fewer, not ending in . ! ?
+     *              or :) is its name and whose other lines are its care,
+     *              paragraphs after are shown last as a warning.
+     *   light      each plant's sunlight, shown as "Light" on its card. The
+     *              key is a lowercase word that appears in the plant's
+     *              name (the first key found in it is used); no match, no
+     *              line.
      */
+    /*
+     * Architecture: the map of the whole system, opened with the remote (app/widgets/architecture.js).
+     * OK on its tile opens straight to full screen; Back goes up a level and closes at the Big picture.
+     * It is on the "Hub architecture" layout only; the map's data loads when it is first opened.
+     */
+    architecture: { openMode: 'full' },
+
     sunpath: {
       roofAngle: 40,
       gapFeet: 2.0,
@@ -449,7 +519,14 @@ var HUB_CONFIG = {
       plantFromWindowFeet: [2.0, 6],      // PLACEHOLDER: nearest and furthest plant
       plantHeightFeet: 3,
       plants: ['4in Birkin philodendron', 'Golden pothos', 'Maranta Gold Lines'],
-      keepOutOfSun: 'Maranta Gold Lines'
+      keepOutOfSun: 'Maranta Gold Lines',
+      careEvent: 'Water plants',
+      light: {
+        maranta: 'Bright, indirect light. Direct sun bleaches and scorches its stripes.',
+        birkin: 'Bright, indirect light. Too little light fades its white stripes.',
+        pothos: 'Low to bright indirect light. Grows faster and more golden in brighter spots.',
+        cuttings: 'Bright, indirect light. Keep them out of hot direct sun so the water stays cool.'
+      }
     }
   }
 };

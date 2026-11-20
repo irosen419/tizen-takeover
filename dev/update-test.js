@@ -324,7 +324,7 @@ async function waitIdle(page) {
 
 function noErrors(context) {
   assert(!context.log.errors.length, 'console errors: ' + context.log.errors.join(' | '));
-  assert(!context.log.external.filter((u) => !/192\.168\.1\.219|open-meteo\.com|ipwho\.is|geojs\.io/.test(u)).length,
+  assert(!context.log.external.filter((u) => !/192\.168\.1\.219|open-meteo\.com|ipwho\.is|geojs\.io|pub-1a6256c9f3df467ba787267fe45d9fee\.r2\.dev\//.test(u)).length,
     'unexpected outside requests: ' + context.log.external.join(', '));
 }
 
@@ -405,8 +405,8 @@ async function check1() {
   assert(rec.entry === new URL(shellUrl()).pathname, 'entry: ' + rec.entry);
   const lines = await look.lines(page);
   assert(new RegExp('^v' + VER_RE + ' \\(newest\\)').test(lines[0]), 'first status line: ' + lines[0]);
-  // Version, browser, motion: no version check row when this is the newest.
-  assert(lines.length === 3, 'About rows: ' + JSON.stringify(lines));
+  // Version, browser, motion, look (and the picture's credit when there is room): no version check row when this is the newest.
+  assert((lines.length === 4 || (lines.length === 5 && / \u00b7 (placeholder picture$|NASA|Photo: )/.test(lines[4]))) && /^(day|night) \((auto|URL|config)/.test(lines[3]), 'About rows: ' + JSON.stringify(lines));
   const asks = githubAsks(asked);
   assert(asks.length === 1, 'GitHub was asked ' + asks.length + ' times');
   assert(asks[0].url === 'https://api.github.com/repos/' + OWNER + '/' + REPO + '/commits/main', 'GitHub address: ' + asks[0].url);
@@ -702,7 +702,7 @@ async function check11() {
   assert(github.requests.length === asked && !context.log.requests.some((u) => /api\.github\.com/.test(u)), 'GitHub was asked');
   assert((await look.updateLine(page)) === null, 'an update line showed');
   const lines = await look.lines(page);
-  assert(lines.length === 3 && lines[0].indexOf('(newest)') < 0, 'status lines: ' + JSON.stringify(lines));
+  assert((lines.length === 4 || (lines.length === 5 && / \u00b7 (placeholder picture$|NASA|Photo: )/.test(lines[4]))) && lines[0].indexOf('(newest)') < 0, 'status lines: ' + JSON.stringify(lines));
   const st = await look.status(page);
   assert(st && st.managed === false && st.text === '' && st.newest === false, 'status: ' + JSON.stringify(st));
   await openPanelAndClose(page);
@@ -741,7 +741,8 @@ async function checkTile() {
       await until(() => page.evaluate(() => window.HUB_TEST.clay.state().phase === 'playing'), 10000, 'the visit did not play');
       await page.evaluate(() => window.HUB_TEST.clay.stop());
     }
-    const a = await clockPage.waitFor(page, (x) => x.lines.length === c.rows ? x : null, 10000, c.rows + ' rows');
+    // The Look row (day or night) and the Picture row (title and credit) are spare rows: there when there is room and dropped when there is not, so they are not counted.
+    const a = await clockPage.waitFor(page, (x) => x.lines.filter((l) => !/^(day|night) \(/.test(l) && !/ \u00b7 (placeholder picture$|NASA|Photo: )/.test(l)).length === c.rows ? x : null, 10000, c.rows + ' rows');
     assert(new RegExp('^v' + VER_RE + '').test(a.lines[0]), 'version row: ' + a.lines[0]);
     const wand = a.rows.filter((r) => r.group === 'Wanderers').map((r) => r.label + ': ' + r.value);
     if (c.visit) {

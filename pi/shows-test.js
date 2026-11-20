@@ -665,6 +665,345 @@ async function main() {
     }
   });
 
+  /* ---------- progress: watched up to here, caught up, the show page ---------- */
+
+  await check('progress: isWatched with a watermark and exceptions, specials never; list validation of upTo / unwatched', () => {
+    const e = { name: 'X', upTo: { s: 2, e: 3, at: '2026-11-01T00:00:00Z' }, unwatched: [{ s: 1, e: 5 }, { s: 2, e: 2 }], watched: [{ s: 3, e: 1, at: '2026-11-02T00:00:00Z' }] };
+    assert.strictEqual(shows.isWatched(e, 1, 1), true);
+    assert.strictEqual(shows.isWatched(e, 1, 5), false, 'an exception');
+    assert.strictEqual(shows.isWatched(e, 2, 3), true, 'the point itself');
+    assert.strictEqual(shows.isWatched(e, 2, 4), false, 'after the point');
+    assert.strictEqual(shows.isWatched(e, 2, 2), false);
+    assert.strictEqual(shows.isWatched(e, 3, 1), true, 'in the watched list');
+    assert.strictEqual(shows.isWatched(e, 0, 9), true, 'season 0 is before season 2');
+    assert.strictEqual(shows.isWatched(e, null, 1), false, 'a special');
+    assert.strictEqual(shows.isWatched(e, 1, null), false);
+    assert.strictEqual(shows.isWatched({ name: 'X' }, 1, 1), false);
+    const n = shows.normalizeEntry({ name: 'X', upTo: { s: 2, e: 3, at: '2026-11-01T00:00:00Z' }, unwatched: [{ s: 1, e: 5 }, { s: 1, e: 5 }, { s: 2, e: 2 }, { s: 2, e: 9 }, { s: 5, e: 1 }] });
+    assert.deepStrictEqual(n.upTo, { s: 2, e: 3, at: '2026-11-01T00:00:00Z' });
+    assert.deepStrictEqual(n.unwatched, [{ s: 1, e: 5 }, { s: 2, e: 2 }], 'doubles and ones outside the point dropped');
+    assert.strictEqual(shows.normalizeEntry({ name: 'X', unwatched: [{ s: 1, e: 1 }] }).unwatched, undefined, 'no point, no exceptions');
+    assert.throws(() => shows.normalizeEntry({ name: 'X', upTo: { s: 'a', e: 1 } }), /"upTo" must look like/);
+    assert.throws(() => shows.normalizeEntry({ name: 'X', upTo: 3 }), /"upTo" must look like/);
+    assert.throws(() => shows.normalizeEntry({ name: 'X', upTo: { s: 1, e: 1 }, unwatched: [{ s: 'x', e: 1 }] }), /"unwatched" must be a list/);
+    assert.throws(() => shows.normalizeEntry({ name: 'X', unwatched: 'no' }), /"unwatched" must be a list/);
+    const many = [];
+    for (let i = 0; i < 260; i++) many.push({ s: 1, e: i });
+    const u = shows.normalizeEntry({ name: 'X', upTo: { s: 2, e: 1 }, unwatched: many }).unwatched;
+    assert.deepStrictEqual([u.length, u[0].e, u[199].e], [200, 60, 259], 'the cap is 200');
+    // The snapshot's progress is validated; anything damaged is "no progress".
+    const d = shows.cleanData({ shows: [{ name: 'A', progress: { upTo: { season: 1, number: 2, at: '2026-11-01T00:00:00Z' }, unwatched: [{ season: 1, number: 1 }, { season: 'x' }], aired: 5, seen: 9, caughtUp: true, next: { season: 1, number: 1 } } }, { name: 'B', progress: 'no' }, { name: 'C' }] });
+    assert.deepStrictEqual(d.shows[0].progress, { upTo: { season: 1, number: 2, at: '2026-11-01T00:00:00Z' }, unwatched: [{ season: 1, number: 1 }], aired: 5, seen: 5, caughtUp: true, next: { season: 1, number: 1 }, left: [] });
+    [1, 2].forEach((i) => assert.deepStrictEqual(d.shows[i].progress, { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null, left: [] }));
+  });
+
+  await check('progress: up to, unwatch inside it, an earlier point, a later point, caught up, counts and next; saved and sent at once', async () => {
+    const b = tracker(tv, { seedFile: writeSeed(tmpDir(), LIST) });
+    await b.t.refresh();
+    const hk = () => b.data.shows[0];
+    assert.deepStrictEqual(hk().progress, { upTo: null, unwatched: [], aired: 2, seen: 0, caughtUp: false, next: { season: 24, number: 6 }, left: [{ season: 24, unseen: 2, out: 2, total: 5 }] });
+    assert.strictEqual(b.data.shows[2].progress.aired, 1, 'Andor: one episode out');
+    // Up to S24E7: both aired episodes count; E8 (out in 2 days) does not.
+    let r = b.t.upTo("Hell's Kitchen", { season: 24, number: 7 });
+    assert.deepStrictEqual([r.season, r.number, r.changed], [24, 7, true]);
+    assert.deepStrictEqual(hk().progress, { upTo: { season: 24, number: 7, at: '2026-11-17T18:00:00Z' }, unwatched: [], aired: 2, seen: 2, caughtUp: true, next: null, left: [] });
+    assert.deepStrictEqual(hk().upcoming.map((e) => e.watched === true), [true, false, false]);
+    assert.deepStrictEqual(hk().watched, [], 'the watched list stays as it is');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(b.dir, 'shows.json'), 'utf8')).shows[0].upTo, { s: 24, e: 7, at: '2026-11-17T18:00:00Z' });
+    const pushes = b.pushes;
+    assert.strictEqual(b.t.upTo("hell's kitchen", { season: 24, number: 7 }).changed, false);
+    assert.strictEqual(b.pushes, pushes, 'the same point again pushes nothing');
+    assert.strictEqual(b.t.markWatched("Hell's Kitchen", { season: 24, number: 7 }).changed, false, 'already inside it');
+    // Unwatch inside the point: an exception; the counts move.
+    r = b.t.unwatch("Hell's Kitchen", { season: 24, number: 7 });
+    assert.strictEqual(r.changed, true);
+    assert.deepStrictEqual(hk().progress.unwatched, [{ season: 24, number: 7 }]);
+    assert.deepStrictEqual([hk().progress.seen, hk().progress.caughtUp, hk().progress.next], [1, false, { season: 24, number: 7 }]);
+    assert.strictEqual(hk().upcoming[0].watched, undefined);
+    assert.strictEqual(b.t.unwatch("Hell's Kitchen", { season: 24, number: 7 }).changed, false);
+    // Marking it again lifts the exception (not a second entry in the watched list).
+    assert.strictEqual(b.t.markWatched("Hell's Kitchen", { season: 24, number: 7 }).changed, true);
+    assert.deepStrictEqual(hk().progress.unwatched, []);
+    assert.strictEqual(b.t.list()[0].watched, undefined);
+    // An episode after the point goes to the watched list; a later point swallows it.
+    b.t.markWatched("Hell's Kitchen", { season: 24, number: 9 });
+    assert.deepStrictEqual(b.t.list()[0].watched.map((w) => w.e), [9]);
+    assert.strictEqual(hk().upcoming[2].watched, true);
+    // An EARLIER point replaces the old one: 7 is unwatched again, 9 (marked one by one) stays.
+    r = b.t.upTo("Hell's Kitchen", { season: 24, number: 6 });
+    assert.strictEqual(r.changed, true);
+    assert.deepStrictEqual(hk().upcoming.map((e) => e.watched === true), [false, false, true]);
+    assert.deepStrictEqual([hk().progress.seen, hk().progress.next], [1, { season: 24, number: 7 }]);
+    // A LATER point drops the single marks and exceptions it covers.
+    b.t.unwatch("Hell's Kitchen", { season: 24, number: 6 });
+    assert.strictEqual(b.t.list()[0].unwatched.length, 1);
+    r = b.t.upTo("Hell's Kitchen", { season: 24, number: 9 });
+    assert.deepStrictEqual([b.t.list()[0].watched, b.t.list()[0].unwatched, b.t.list()[0].upTo.e], [undefined, undefined, 9]);
+    assert.deepStrictEqual(hk().upcoming.map((e) => e.watched === true), [true, true, true]);
+    // Caught up: the latest episode already out (E7), exceptions cleared.
+    b.t.unwatch("Hell's Kitchen", { season: 24, number: 6 });
+    r = b.t.caughtUp("Hell's Kitchen");
+    assert.deepStrictEqual([r.season, r.number, r.changed], [24, 7, true]);
+    assert.deepStrictEqual(b.t.list()[0].upTo.e, 7);
+    assert.deepStrictEqual(b.t.list()[0].unwatched, undefined);
+    assert.deepStrictEqual([hk().progress.aired, hk().progress.seen, hk().progress.caughtUp], [2, 2, true]);
+    assert.strictEqual(b.t.caughtUp("Hell's Kitchen").changed, false);
+    r = b.t.caughtUp('Stick');
+    assert.deepStrictEqual([r.season, r.number], [1, 10]);
+    assert.throws(() => b.t.upTo('Nope', { season: 1, number: 1 }), /not on the show list/);
+    assert.throws(() => b.t.upTo('Stick', { season: 'x', number: 1 }), /season and a number/);
+    assert.throws(() => b.t.upTo('Stick'), /season and a number/);
+    assert.throws(() => b.t.caughtUp('Nope'), /not on the show list/);
+    // set() and a refresh keep the progress.
+    b.t.set([{ name: 'Stick' }, { name: "Hell's Kitchen" }]);
+    assert.strictEqual(b.t.list()[1].upTo.e, 7);
+    await b.t.refresh();
+    assert.strictEqual(b.data.shows.find((x) => x.id === 'hells-kitchen').progress.caughtUp, true);
+    noNames(b.logs, ["Hell's Kitchen", 'Stick', 'Andor', 'Last week']);
+  });
+
+  await check('progress.left: seasons with aired episodes not watched, a whole season out vs one still airing, capped', async () => {
+    const t = Date.parse('2026-11-19T12:00:00Z');
+    const ep = (s, e, day) => ({ season: s, number: e, airstamp: new Date(t + day * 86400000).toISOString() });
+    const eps = [ep(1, 1, -400), ep(1, 2, -399), ep(2, 1, -30), ep(2, 2, -30), ep(2, 3, -30), ep(3, 1, -2), ep(3, 2, 5), ep(3, 3, 12)];
+    // Watched up to S1E2: season 2 is out in full, season 3 has 1 of 3 out.
+    let p = shows.progressOf({ upTo: { s: 1, e: 2, at: 'x' } }, eps, t);
+    assert.deepStrictEqual(p.left, [{ season: 2, unseen: 3, out: 3, total: 3 }, { season: 3, unseen: 1, out: 1, total: 3 }]);
+    assert.deepStrictEqual([p.aired, p.seen], [6, 2]);
+    // An exception inside the up-to point brings its season back.
+    p = shows.progressOf({ upTo: { s: 3, e: 1, at: 'x' }, unwatched: [{ s: 2, e: 2 }] }, eps, t);
+    assert.deepStrictEqual(p.left, [{ season: 2, unseen: 1, out: 3, total: 3 }]);
+    assert.deepStrictEqual(shows.progressOf({ upTo: { s: 3, e: 1, at: 'x' } }, eps, t).left, []);
+    assert.deepStrictEqual(shows.progressOf(null, [], t).left, []);
+    // At most 6 seasons, the latest ones.
+    const many = [];
+    for (let s = 1; s <= 9; s++) many.push(ep(s, 1, -100 + s));
+    assert.deepStrictEqual(shows.progressOf(null, many, t).left.map((x) => x.season), [4, 5, 6, 7, 8, 9]);
+    // Cleaned for the TV: damaged rows dropped, counts kept in order.
+    const d = shows.cleanData({ shows: [{ name: 'A', progress: { aired: 4, seen: 1, left: [{ season: 2, unseen: 9, out: 3, total: 2 }, { season: 'x' }, { season: 3, unseen: 0, out: 1, total: 1 }] } }] });
+    assert.deepStrictEqual(d.shows[0].progress.left, [{ season: 2, unseen: 2, out: 2, total: 2 }]);
+  });
+
+  await check('episode lists: kept per show in show-episodes.json, only changed writes, read at start, dropped with the show; the TV never gets them', async () => {
+    const b = tracker(tv, { seedFile: writeSeed(tmpDir(), LIST) });
+    await b.t.refresh();
+    const file = path.join(b.dir, 'show-episodes.json');
+    const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepStrictEqual(Object.keys(saved.shows).sort(), ['andor', 'hells-kitchen', 'stick']);
+    assert.deepStrictEqual(saved.shows['hells-kitchen'].map((e) => e.number), [6, 7, 8, 9, 10]);
+    assert.deepStrictEqual(saved.shows['hells-kitchen'][1], { season: 24, number: 7, name: 'Last week', airstamp: '2026-11-12T01:00:00Z', runtime: 44 });
+    assert.strictEqual(saved.shows['hells-kitchen'][2].name, 'Surf & Turf');
+    assert.ok(b.data.shows.every((s) => s.episodes === undefined), 'not in the snapshot');
+    const ino = fs.statSync(file).ino;
+    await b.t.refresh();
+    assert.strictEqual(fs.statSync(file).ino, ino, 'unchanged lists are not written again');
+    // A new tracker on the same folder starts with them (no TVmaze call needed).
+    const c = tracker(tv, { dataDir: b.dir, seedFile: writeSeed(tmpDir(), LIST) });
+    c.data = b.data;
+    const v = c.t.episodes('hells-kitchen');
+    assert.strictEqual(v.partial, undefined);
+    assert.deepStrictEqual(v.seasons.map((s) => [s.season, s.episodes.length]), [[24, 5]]);
+    // Removing a show drops its list.
+    b.t.remove('Stick');
+    assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).shows).sort(), ['andor', 'hells-kitchen']);
+    // A show TVmaze can't read keeps its old list; a damaged file means "none yet".
+    tv.mode = 'down';
+    await b.t.refresh();
+    tv.mode = 'ok';
+    assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).shows).sort(), ['andor', 'hells-kitchen']);
+    fs.writeFileSync(file, '{ broken');
+    const d = tracker(tv, { dataDir: b.dir, seedFile: writeSeed(tmpDir(), LIST) });
+    d.data = b.data;
+    assert.strictEqual(d.t.episodes('hells-kitchen').partial, true);
+    // More than 800 episodes: the latest 800, numbered ones only.
+    const raw = [{ season: 1, number: null, name: 'Special', airstamp: at(-1, 1) }];
+    for (let i = 1; i <= 900; i++) raw.push({ season: 1 + Math.floor(i / 100), number: i % 100, name: 'E' + i, airstamp: at(-i, 1) });
+    const compact = shows.compactEpisodes(raw);
+    assert.strictEqual(compact.length, 800);
+    assert.ok(compact.every((e) => e.number !== null));
+    noNames(b.logs, ["Hell's Kitchen", 'Stick', 'Andor']);
+  });
+
+  await check('the made-up sample: full lists from the fixture, progress counts, never in the snapshot, caught up works on it', async () => {
+    const file = path.join(__dirname, 'fixtures', 'shows-sample.json');
+    const lists = shows.sampleEpisodes(file, NOW);
+    assert.deepStrictEqual(['slow-horses', 'paradise', 'andor', 'the-great-british-baking-show'].map((k) => k in lists), [true, true, true, true]);
+    assert.deepStrictEqual(Object.keys(lists).map((k) => k + ':' + lists[k].length).sort(), ['andor:24', 'paradise:16', 'slow-horses:30', 'the-great-british-baking-show:10']);
+    const per = (id) => lists[id].reduce((m, e) => { m[e.season] = (m[e.season] || 0) + 1; return m; }, {});
+    assert.deepStrictEqual(per('slow-horses'), { 1: 6, 2: 6, 3: 6, 4: 6, 5: 6 });
+    assert.deepStrictEqual(per('paradise'), { 1: 8, 2: 8 });
+    assert.deepStrictEqual(per('andor'), { 1: 12, 2: 12 });
+    assert.ok(lists.andor.every((e) => Date.parse(e.airstamp) < NOW), 'Andor is all in the past');
+    const sample = JSON.parse(fs.readFileSync(file, 'utf8')).shows;
+    sample.filter((s) => lists[s.id]).forEach((s) => s.upcoming.concat(s.nextEpisode ? [s.nextEpisode] : []).forEach((u) => {
+      const f = lists[s.id].find((e) => e.season === u.season && e.number === u.number);
+      assert.ok(f && f.airstamp === u.airstamp && f.name === u.name, 'the list matches the sample episode ' + s.id + ' ' + u.number);
+    }));
+    assert.deepStrictEqual(lists['slow-horses'].filter((e) => e.season === 5).map((e) => e.name), ['Cold Open', 'Dead Drop', 'Safe House', 'Tradecraft', 'Hello Goodbye', 'Last Orders']);
+    assert.strictEqual(shows.sampleData(file, NOW).shows.some((s) => s.episodes !== undefined), false);
+    const b = tracker(tv, { sampleFile: file, seedFile: writeSeed(tmpDir(), [{ name: 'Slow Horses' }, { name: 'Severance' }]) });
+    await b.t.refresh();
+    assert.strictEqual(tv.seen.length, tv.seen.length, 'no TVmaze call');
+    const sh = b.data.shows.find((s) => s.id === 'slow-horses');
+    assert.deepStrictEqual([sh.progress.aired, sh.progress.seen, sh.progress.next], [28, 0, { season: 1, number: 1 }]);
+    assert.strictEqual(b.data.shows.find((s) => s.id === 'andor').progress.aired, 24);
+    assert.ok(b.data.shows.every((s) => s.episodes === undefined));
+    const r = b.t.caughtUp('Slow Horses');
+    assert.deepStrictEqual([r.season, r.number], [5, 4]);
+    assert.deepStrictEqual(b.data.shows.find((s) => s.id === 'slow-horses').progress.caughtUp, true);
+    assert.strictEqual(b.data.shows.find((s) => s.id === 'slow-horses').upcoming[0].watched, true);
+    assert.throws(() => b.t.caughtUp('Severance'), /nothing to catch up on/);
+    b.t.upTo('Slow Horses', { season: 5, number: 2 });
+    const v = b.t.episodes('slow-horses');
+    assert.deepStrictEqual([v.seasons.length, v.progress.seen, v.progress.next], [5, 26, { season: 5, number: 3 }]);
+    b.t.close();
+  });
+
+  await check('server: POST /shows/upto, /shows/caughtup and GET /shows/episodes from the screen; the control API; logs carry no names', async () => {
+    const h = await startHub({ shows: { api: tv.url, seedFile: writeSeed(tmpDir(), LIST) } });
+    try {
+      await sleep(300);
+      h.lines.length = 0;
+      let r = await request(h, 'GET', '/shows/episodes?id=hells-kitchen');
+      assert.deepStrictEqual([r.status, r.json.ok, r.json.id, r.json.partial], [200, true, 'hells-kitchen', undefined]);
+      assert.strictEqual(r.json.checkedAt, '2026-11-17T18:00:00Z');
+      assert.deepStrictEqual(r.json.seasons, [{ season: 24, episodes: [
+        { number: 6, name: 'Old', airstamp: '2026-11-03T01:00:00Z' },
+        { number: 7, name: 'Last week', airstamp: '2026-11-12T01:00:00Z', runtime: 44 },
+        { number: 8, name: 'Surf & Turf', airstamp: '2026-11-19T02:00:00Z' },
+        { number: 9, name: 'Later', airstamp: '2026-11-26T02:00:00Z' },
+        { number: 10, name: 'Far', airstamp: '2027-02-15T02:00:00Z' }] }]);
+      assert.deepStrictEqual(r.json.progress, { upTo: null, unwatched: [], aired: 2, seen: 0, caughtUp: false, next: { season: 24, number: 6 }, left: [{ season: 24, unseen: 2, out: 2, total: 5 }] });
+      r = await request(h, 'GET', '/shows/episodes?id=Stick');
+      assert.deepStrictEqual(r.json.seasons.map((s) => s.season), [1, 2], 'a name works too');
+      r = await request(h, 'GET', '/shows/episodes?id=nope');
+      assert.deepStrictEqual([r.status, r.json.ok, typeof r.json.error], [404, false, 'string']);
+      r = await request(h, 'GET', '/shows/episodes');
+      assert.strictEqual(r.status, 400);
+      r = await request(h, 'POST', '/shows/episodes', {});
+      assert.strictEqual(r.status, 405);
+      // Up to: the TV door (no token, origin checked).
+      r = await request(h, 'POST', '/shows/upto', { id: 'hells-kitchen', season: 24, number: 7 });
+      assert.deepStrictEqual([r.status, r.json.ok, r.json.changed], [200, true, true]);
+      r = await request(h, 'POST', '/shows/upto', { id: 'hells-kitchen', season: 24, number: 7 });
+      assert.strictEqual(r.json.changed, false);
+      for (const bad of [{ id: 'nope', season: 1, number: 1 }, { id: 'stick', season: 'x', number: 1 }, {}, { id: 'stick', season: 1 }]) {
+        r = await request(h, 'POST', '/shows/upto', bad);
+        assert.strictEqual(r.status, 400, JSON.stringify(bad));
+      }
+      r = await request(h, 'POST', '/shows/upto', { id: 'stick', season: 2, number: 1 }, { Origin: 'http://evil.example' });
+      assert.strictEqual(r.status, 403);
+      r = await request(h, 'GET', '/shows/upto');
+      assert.strictEqual(r.status, 405);
+      r = await request(h, 'GET', '/shows/episodes?id=hells-kitchen');
+      assert.deepStrictEqual(r.json.seasons[0].episodes.map((e) => e.watched === true), [true, true, false, false, false]);
+      assert.deepStrictEqual([r.json.progress.upTo.number, r.json.progress.caughtUp], [7, true]);
+      let live = await request(h, 'GET', '/live/state');
+      const hk = live.json.resources.shows.data.shows[0];
+      assert.deepStrictEqual([hk.progress.caughtUp, hk.upcoming[0].watched, hk.episodes], [true, true, undefined], 'the TV gets the progress, never the list');
+      // Caught up.
+      r = await request(h, 'POST', '/shows/caughtup', { id: 'stick' });
+      assert.deepStrictEqual([r.status, r.json.ok, r.json.changed, r.json.season, r.json.number], [200, true, true, 1, 10]);
+      r = await request(h, 'POST', '/shows/caughtup', { id: 'stick' });
+      assert.strictEqual(r.json.changed, false);
+      r = await request(h, 'POST', '/shows/caughtup', { id: 'nope' });
+      assert.strictEqual(r.status, 400);
+      r = await request(h, 'POST', '/shows/caughtup', {});
+      assert.strictEqual(r.status, 400);
+      r = await request(h, 'POST', '/shows/caughtup', { id: 'stick' }, { Origin: 'http://evil.example' });
+      assert.strictEqual(r.status, 403);
+      // The control API.
+      r = await request(h, 'POST', '/api/shows/upto', { show: 'Andor', episode: 'S2E12' });
+      assert.strictEqual(r.status, 401);
+      r = await request(h, 'POST', '/api/shows/upto', { show: 'Andor' }, authed);
+      assert.strictEqual(r.status, 400);
+      r = await request(h, 'POST', '/api/shows/upto', { show: 'Andor', episode: 'two' }, authed);
+      assert.strictEqual(r.status, 400);
+      r = await request(h, 'POST', '/api/shows/upto', { show: 'andor', episode: 'S2E12' }, authed);
+      assert.deepStrictEqual([r.status, r.json.changed, r.json.season, r.json.number], [200, true, 2, 12]);
+      r = await request(h, 'POST', '/api/shows/caughtup', { show: 'Andor' }, authed);
+      assert.deepStrictEqual([r.status, r.json.changed], [200, false]);
+      r = await request(h, 'POST', '/api/shows/caughtup', {}, authed);
+      assert.strictEqual(r.status, 400);
+      r = await request(h, 'GET', '/api/status', undefined, authed);
+      assert.strictEqual(r.json.server, '0.21.0');
+      const bare = h.lines.map((l) => l.replace(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d /, ''));
+      assert.ok(bare.indexOf('screen marked a show watched up to an episode') >= 0, bare.join(' | '));
+      assert.ok(bare.indexOf('screen marked a show watched up to an episode (already marked)') >= 0);
+      assert.ok(bare.indexOf('screen marked a show caught up') >= 0);
+      assert.ok(bare.indexOf('screen marked a show caught up (already marked)') >= 0);
+      assert.ok(bare.indexOf('control POST /api/shows/upto -> 200 marked a show watched up to an episode') >= 0, bare.join(' | '));
+      assert.ok(bare.indexOf('control POST /api/shows/caughtup -> 200 marked a show caught up') >= 0, bare.join(' | '));
+      assert.ok(!bare.some((l) => /episodes/.test(l) && /GET/.test(l)), 'the episode page logs nothing');
+      noNames(h.lines, ["Hell's Kitchen", 'hells-kitchen', 'Stick', 'Andor', 'S24', 'S2E12', 'Last week']);
+    } finally {
+      await new Promise((r) => h.close(r));
+    }
+  });
+
+  await check('the show page before the full list is read: only the snapshot\'s episodes, partial: true', async () => {
+    const b = tracker(tv, { seedFile: writeSeed(tmpDir(), LIST) });
+    await b.t.refresh();
+    fs.unlinkSync(path.join(b.dir, 'show-episodes.json'));
+    const c = tracker(tv, { dataDir: b.dir, seedFile: writeSeed(tmpDir(), LIST) });
+    c.data = b.data;
+    const v = c.t.episodes('hells-kitchen');
+    assert.strictEqual(v.partial, true);
+    assert.deepStrictEqual(v.seasons[0].episodes.map((e) => e.number), [7, 8, 9]);
+    assert.deepStrictEqual(v.progress, { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null, left: [] });
+    assert.strictEqual(c.t.episodes('nope'), null);
+    // A show on the list that was never read: partial, nothing in it.
+    const e = tracker(tv, { seedFile: writeSeed(tmpDir(), LIST) });
+    const w = e.t.episodes('stick');
+    assert.deepStrictEqual([w.partial, w.seasons, w.checkedAt], [true, [], null]);
+    // Catching up with no full list falls back to the snapshot's episodes.
+    assert.deepStrictEqual([c.t.caughtUp("Hell's Kitchen").number], [7]);
+  });
+
+  await check('./hub shows upto | caughtup and the mailbox shows.upto | shows.caughtup', async () => {
+    const h = await startHub({ shows: { api: tv.url, seedFile: writeSeed(tmpDir(), LIST) } });
+    try {
+      await sleep(300);
+      h.lines.length = 0;
+      let out = await hubctl(h, ['shows', 'upto', "Hell's", 'Kitchen', 'S24E7']);
+      assert.strictEqual(out.stdout.trim(), "Marked Hell's Kitchen as watched up to S24E7. The TV shows it now.", out.stdout + out.stderr);
+      out = await hubctl(h, ['shows', 'upto', "Hell's Kitchen", 'S24E7']);
+      assert.strictEqual(out.stdout.trim(), "Hell's Kitchen was already marked watched up to S24E7.");
+      out = await hubctl(h, ['shows', 'list']);
+      assert.ok(/Hell's Kitchen \(Disney\+\): .*\[up to S24E7\]/.test(out.stdout), out.stdout);
+      out = await hubctl(h, ['shows', 'upto', "Hell's Kitchen"]);
+      assert.strictEqual(out.status, 1);
+      assert.ok(/Say which show and episode/.test(out.stderr + out.stdout), out.stderr + out.stdout);
+      out = await hubctl(h, ['shows', 'upto', 'Nope', 'S1E1']);
+      assert.strictEqual(out.status, 1);
+      out = await hubctl(h, ['shows', 'caughtup', 'Stick']);
+      assert.strictEqual(out.stdout.trim(), 'Marked Stick as caught up, watched through S1E10. The TV shows it now.', out.stdout + out.stderr);
+      out = await hubctl(h, ['shows', 'caughtup', 'Stick']);
+      assert.strictEqual(out.stdout.trim(), 'Stick was already caught up, through S1E10.');
+      out = await hubctl(h, ['shows', 'caughtup']);
+      assert.strictEqual(out.status, 1);
+      out = await hubctl(h, ['shows', 'caughtup', 'Nope']);
+      assert.strictEqual(out.status, 1);
+      out = await hubctl(h, ['help']);
+      assert.ok(/\.\/hub shows upto "Stick" S3E4/.test(out.stdout) && /shows caughtup "Stick"/.test(out.stdout));
+      // The mailbox.
+      let r = await mail(h, 'shows.upto', { name: 'Andor', episode: 'S2E12' });
+      assert.strictEqual(r.message, 'Marked Andor as watched up to S2E12. The TV shows it now.');
+      assert.deepStrictEqual([r.data.season, r.data.number, r.data.changed], [2, 12, true]);
+      r = await mail(h, 'shows.caughtup', { name: 'Andor' });
+      assert.strictEqual(r.message, 'Andor was already caught up, through S2E12.');
+      r = await mail(h, 'shows.list');
+      assert.deepStrictEqual(r.data.shows.find((s) => s.name === 'Andor').upTo.number, 12);
+      assert.throws(() => mailbox.checkEnvelope('c123456', Buffer.from(JSON.stringify({ id: 'c123456', created: new Date().toISOString(), cmd: 'shows.upto', args: { name: 'X' } })), Date.now()), /episode/);
+      assert.throws(() => mailbox.checkEnvelope('c123457', Buffer.from(JSON.stringify({ id: 'c123457', created: new Date().toISOString(), cmd: 'shows.caughtup', args: {} })), Date.now()), /name/);
+      await assert.rejects(() => mail(h, 'shows.upto', { name: 'Nope', episode: 'S1E1' }), /not on the show list/);
+      await assert.rejects(() => mail(h, 'shows.upto', { name: 'Andor', episode: 'later' }), /S3E4/);
+      noNames(h.lines, ["Hell's Kitchen", 'Stick', 'Andor']);
+    } finally {
+      await new Promise((r) => h.close(r));
+    }
+  });
+
   /* ---------- watch link test answers ---------- */
 
   await check('POST /linktests from the screen: checked, kept newest first, read back by ./hub linktests', async () => {

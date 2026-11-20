@@ -32,7 +32,7 @@ const mockHa = require('./mock-ha');
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
 const SHOTS = process.env.SHOTS || '';
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219', 'api.github.com'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219', 'api.github.com'];
 
 let PAGE_PORT, PAGE, preview = null, browser = null, ha = null;
 const pis = [];
@@ -144,7 +144,7 @@ async function open(pi, layout, opts) {
   }, { lay: layout, lang: o.lang || 'en' });
   if (pi && layout) await control(pi, 'POST', '/api/layout', { layout: layout });
   await page.goto(PAGE + '/hub.html?live=' + (pi ? encodeURIComponent(pi.url) : 'off') + '&motion=fade&clay=off' + (o.query || ''));
-  await page.waitForSelector('.tile');
+  await page.waitForSelector('.tile', { state: 'attached' });   // a one-widget layout keeps its tile hidden while its window opens
   return { page: page, context: context, errors: errors };
 }
 
@@ -273,7 +273,13 @@ async function main() {
     const s = await open(pi, TEST_LAYOUT);
     await waitKind(s.page, 'playing', 'Morning Edition');
     const cfg = await s.page.evaluate(() => window.HUB_CONFIG.layouts.map((l) => l.name));
-    assert(cfg.join('|') === 'Stock|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|All sounds test|Plant wall|Ambience test', 'layouts: ' + cfg.join(', '));
+    assert(cfg.join('|') === 'Default|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|All sounds test|Plants|Ambience test|Hub architecture', 'layouts: ' + cfg.join(', '));
+    // A one-widget layout opens straight into its window: Back to its tile, then Up.
+    if (TEST_LAYOUT.length === 1 && TEST_LAYOUT[0].w === 12 && TEST_LAYOUT[0].h === 6) {
+      await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'allsounds' && !window.HUB_TEST.busy()), 5000, 'the one-widget layout did not open');
+      await s.page.keyboard.press('Escape');
+      await until(() => s.page.evaluate(() => !window.HUB_TEST.open() && !window.HUB_TEST.busy()), 5000, 'Back did not close it');
+    }
     await s.page.keyboard.press('ArrowUp');
     await until(() => s.page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
     await sleep(400);

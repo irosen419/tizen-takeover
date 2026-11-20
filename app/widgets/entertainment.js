@@ -7,6 +7,10 @@
  * item; drawn by app/widgets/shows.js) and the watch link test (opened from
  * the About panel; drawn by app/widgets/linktest.js). Back returns to the
  * grid from either.
+ *
+ * Full screen is split: the apps in a narrow column (a quarter) and the
+ * Schedule, always shown, in the rest (renderSplit, onMove). A show page
+ * (shows.js) takes the Schedule's place there and in the panel; Back returns.
  */
 (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push((function () {
   'use strict';
@@ -22,6 +26,20 @@
   var view = 'grid';        // grid | list | schedule | linktests
   var lastKey = null;       // last focused item, so reopening lands on it
   var gridCache = null;     // the grid's DOM, built once: { grid, nodes: [{ item, node, state }] }
+
+  /* ---------- the hub's language ---------- */
+
+  // Key 'entertainment.<name>' (app/i18n.js); the English is the second
+  // argument. Words that come from config.js (section names, small lines,
+  // item names) use 'entertainment.cfg.<the English>', so the config stays
+  // English; brand names have no Spanish and show as they are.
+  function T(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') { try { return String(L.t('entertainment.' + key, english, vars)); } catch (e) { /* English */ } }
+    return String(english).replace(/\{(\w+)\}/g, function (all, name) { return vars && vars[name] !== undefined ? vars[name] : all; });
+  }
+
+  function cfgWord(english) { return english ? T('cfg.' + english, english) : english; }
 
   /* ---------- small DOM helpers ---------- */
 
@@ -185,10 +203,10 @@
   function stateOf(item) {
     var cfg = item.cfg;
     if (cfg.kind === 'schedule' && window.HUB_SHOWS) return { text: HUB_SHOWS.entry().sub, missing: false };
-    if (cfg.kind !== 'app') return { text: cfg.sub || '', missing: false };
-    if (item.appId) return { text: cfg.sub || '', missing: false };
-    if (!apps) return { text: lookupFailed ? 'Couldn’t check' : 'Looking for it', missing: false };
-    return { text: 'Not installed', missing: true };
+    if (cfg.kind !== 'app') return { text: cfgWord(cfg.sub || ''), missing: false };
+    if (item.appId) return { text: cfgWord(cfg.sub || ''), missing: false };
+    if (!apps) return { text: lookupFailed ? T('couldntCheck', 'Couldn’t check') : T('looking', 'Looking for it'), missing: false };
+    return { text: T('notInstalled', 'Not installed'), missing: true };
   }
 
   /* ---------- app lookup ---------- */
@@ -259,7 +277,7 @@
       if (attempt < 25) return setTimeout(function () { loadApps(attempt + 1); }, 800);
       lookupFailed = true;
       refresh();
-      C.toast('Couldn’t read the app list (' + err + '). Try closing and reopening the hub.', 6000);
+      C.toast(T('toastAppList', 'Couldn’t read the app list ({why}). Try closing and reopening the hub.', { why: err }), 6000);
     });
   }
 
@@ -316,7 +334,7 @@
   function launchById(id, label) {
     function viaService() {
       C.service('/launch?id=' + encodeURIComponent(id), 8000, function (err) {
-        if (err) { unbloom(); C.toast('Couldn’t open ' + label + ' (' + err + ').', 5000); }
+        if (err) { unbloom(); C.toast(T('toastOpen', 'Couldn’t open {name} ({why}).', { name: label, why: err }), 5000); }
       });
     }
     if (C.hasTizen) {
@@ -336,7 +354,7 @@
       handled = true;
       try { ws.close(); } catch (e) { /* ignore */ }
       unbloom();
-      C.toast('TizenBrew didn’t answer, so ' + label + ' couldn’t open.', 5000);
+      C.toast(T('toastTbSilent', 'TizenBrew didn’t answer, so {name} couldn’t open.', { name: label }), 5000);
     }, 7000);
 
     try {
@@ -344,7 +362,7 @@
     } catch (e) {
       clearTimeout(timer);
       unbloom();
-      return C.toast('Couldn’t reach TizenBrew.', 4000);
+      return C.toast(T('toastTbReach', 'Couldn’t reach TizenBrew.'), 4000);
     }
 
     ws.onopen = function () { ws.send(JSON.stringify({ type: 4, payload: false })); };
@@ -363,7 +381,7 @@
       }
       handled = true;
       clearTimeout(timer);
-      if (!mod) { unbloom(); return C.toast(label + ' isn’t added in TizenBrew.', 4000); }
+      if (!mod) { unbloom(); return C.toast(T('toastTbMissing', '{name} isn’t added in TizenBrew.', { name: label }), 4000); }
 
       // Same two steps TizenBrew's own menu takes when you pick a module.
       C.registerKeys(mod.keys);
@@ -375,30 +393,30 @@
       handled = true;
       clearTimeout(timer);
       unbloom();
-      C.toast('Couldn’t reach TizenBrew.', 4000);
+      C.toast(T('toastTbReach', 'Couldn’t reach TizenBrew.'), 4000);
     };
   }
 
   function pressInputKey(tc) {
-    C.toast('Switching to ' + (tc.sub || tc.label) + '. If the TV asks, choose Allow.', 6000);
+    C.toast(T('toastSwitching', 'Switching to {name}. If the TV asks, choose Allow.', { name: cfgWord(tc.sub || tc.label) }), 6000);
     C.service('/key?k=' + encodeURIComponent(tc.key), 170000, function (err) {
-      if (err) C.toast('Couldn’t switch input. ' + err, 15000);
+      if (err) C.toast(T('toastSwitchFail', 'Couldn’t switch input. {why}', { why: err }), 15000);
     });
   }
 
   function callWebhook(tc) {
-    if (!tc.url) return C.toast(tc.hint || (tc.label + ' has no webhook address yet. Add one in config.js.'), 8000);
-    C.toast((tc.busy || 'Working on it') + '…', 4000);
+    if (!tc.url) return C.toast(tc.hint ? cfgWord(tc.hint) : T('toastNoWebhook', '{name} has no webhook address yet. Add one in config.js.', { name: tc.label }), 8000);
+    C.toast((tc.busy ? cfgWord(tc.busy) : T('workingOnIt', 'Working on it')) + '…', 4000);
     C.service('/webhook?url=' + encodeURIComponent(tc.url), 15000, function (err) {
-      if (err) C.toast('Couldn’t reach Home Assistant. ' + err, 10000);
+      if (err) C.toast(T('toastHa', 'Couldn’t reach Home Assistant. {why}', { why: err }), 10000);
     });
   }
 
   function activate(item) {
     var tc = item.cfg;
     if (tc.kind === 'app') {
-      if (!apps) return C.toast('Still looking for your apps. Try again in a second.');
-      if (!item.appId) return C.toast(tc.label + ' isn’t on this TV. Open All apps to see what is.', 4500);
+      if (!apps) return C.toast(T('toastStillLooking', 'Still looking for your apps. Try again in a second.'));
+      if (!item.appId) return C.toast(T('toastNotOnTv', '{name} isn’t on this TV. Open All apps to see what is.', { name: tc.label }), 4500);
       return launchById(item.appId, tc.label);
     }
     if (tc.kind === 'tizentube') return openTizenBrewModule(/tizentube/i, tc.label);
@@ -418,8 +436,8 @@
   }
 
   function openView(name, item) {
-    if (name === 'schedule' && !window.HUB_SHOWS) return C.toast('The schedule didn’t load. Try closing and reopening the hub.', 5000);
-    if (name === 'linktests' && !window.HUB_LINKTEST) return C.toast('The watch link test didn’t load.', 5000);
+    if (name === 'schedule' && !window.HUB_SHOWS) return C.toast(T('toastNoSchedule', 'The schedule didn’t load. Try closing and reopening the hub.'), 5000);
+    if (name === 'linktests' && !window.HUB_LINKTEST) return C.toast(T('toastNoLinkTest', 'The watch link test didn’t load.'), 5000);
     view = name;
     if (item) lastKey = item.key;
     C.setSub(viewTitle(name));
@@ -436,10 +454,10 @@
   /* ---------- all apps list ---------- */
 
   function openList(item) {
-    if (!apps) return C.toast('Still looking for your apps. Try again in a second.');
+    if (!apps) return C.toast(T('toastStillLooking', 'Still looking for your apps. Try again in a second.'));
     view = 'list';
     lastKey = item.key;
-    C.setSub('All apps');
+    C.setSub(T('allApps', 'All apps'));
     C.redrawPanel();
   }
 
@@ -463,7 +481,7 @@
       row.setAttribute('data-name', sorted[i].name || sorted[i].id);
       if (i === 0) row.setAttribute('data-autofocus', '');
       row.appendChild(el('span', 'ent-row-name', sorted[i].name || sorted[i].id));
-      row.appendChild(el('span', 'ent-row-id', sorted[i].id + (sorted[i].hidden ? ' (hidden)' : '')));
+      row.appendChild(el('span', 'ent-row-id', sorted[i].id + (sorted[i].hidden ? ' (' + T('hidden', 'hidden') + ')' : '')));
       list.appendChild(row);
     }
     body.appendChild(list);
@@ -480,7 +498,7 @@
     var nodes = [];
     for (var s = 0; s < sections.length; s++) {
       var sec = el('div', 'ent-section' + (s === 0 ? ' is-first' : ''));
-      sec.appendChild(el('div', 'ent-section-label', sections[s].label));
+      sec.appendChild(el('div', 'ent-section-label', cfgWord(sections[s].label)));
       for (var i = 0; i < sections[s].items.length; i++) {
         var item = sections[s].items[i];
         var node = el('div', 'ent-item f');
@@ -489,9 +507,12 @@
         node.icon = iconWrap;
         iconWrap.appendChild(logoEl(item.cfg));
         node.appendChild(iconWrap);
-        node.appendChild(el('div', 'ent-name', item.cfg.label));
+        // Name and state in one box: a column beside the icon at full screen.
+        var text = el('div', 'ent-text');
+        text.appendChild(el('div', 'ent-name', cfgWord(item.cfg.label)));
         var state = el('div', 'ent-state');
-        node.appendChild(state);
+        text.appendChild(state);
+        node.appendChild(text);
         sec.appendChild(node);
         nodes.push({ item: item, node: node, state: state });
       }
@@ -501,21 +522,107 @@
     return gridCache;
   }
 
-  function renderGrid(body) {
+  // Full screen shows the apps in a narrow column beside the Schedule, which
+  // is always there (split = true). The panel and the tile are not touched.
+  function isSplit() {
+    return !!window.HUB_SHOWS && (view === 'grid' || view === 'schedule') && !!C && C.isOpen() && C.mode() === 'full';
+  }
+
+  function renderGrid(body, split) {
     var cache = buildGrid();
     var avail = availability();
     for (var i = 0; i < cache.nodes.length; i++) {
       var n = cache.nodes[i];
       var st = stateOf(n.item);
       // Resetting the class also drops focus and press marks from last time.
-      n.node.className = 'ent-item f' + (st.missing ? ' is-missing' : '');
+      // In the column the Schedule item has no use (the Schedule is beside it):
+      // hidden and not focusable.
+      n.node.className = 'ent-item' + (split && n.item.cfg.kind === 'schedule' ? ' is-off' : ' f') + (st.missing ? ' is-missing' : '');
       if (n.state.textContent !== st.text) n.state.textContent = st.text;
       var cnt = n.item.cfg.kind === 'app' && avail.hasOwnProperty(n.item.cfg.label) ? avail[n.item.cfg.label] : n.item.cfg.kind === 'schedule' ? toCheck() : 0;
       putBadge(n.node.icon.firstChild, cnt);
-      if (n.item.key === lastKey) n.node.setAttribute('data-autofocus', '');
+      if (n.item.key === lastKey && !split) n.node.setAttribute('data-autofocus', '');
       else n.node.removeAttribute('data-autofocus');
     }
     body.appendChild(cache.grid);
+  }
+
+  // Full screen: the app column (a quarter) and the Schedule (the rest).
+  function renderSplit(body) {
+    var wrap = el('div', 'ent-split');
+    var side = el('div', 'ent-side');
+    var main = el('div', 'ent-main');
+    wrap.appendChild(side);
+    wrap.appendChild(main);
+    body.appendChild(wrap);
+    renderGrid(side, true);
+    HUB_SHOWS.renderPanel(main);
+  }
+
+  function inside(node, cls) {
+    while (node && node.nodeType === 1) {
+      if (node.className && (' ' + node.className + ' ').indexOf(' ' + cls + ' ') >= 0) return true;
+      node = node.parentNode;
+    }
+    return false;
+  }
+
+  function list(root) {
+    var out = [];
+    var all = root ? root.querySelectorAll('.f') : [];
+    for (var i = 0; i < all.length; i++) out.push(all[i]);
+    return out;
+  }
+
+  // Left and Right cross between the column and the Schedule; Up and Down
+  // stay in their own side.
+  function splitMove(dir, from) {
+    var wrap = from.parentNode;
+    while (wrap && !(wrap.className && /\bent-split\b/.test(wrap.className))) wrap = wrap.parentNode;
+    if (!wrap) return undefined;
+    var side = wrap.querySelector('.ent-side');
+    var main = wrap.querySelector('.ent-main');
+    var inSide = inside(from, 'ent-side');
+    var fr = from.getBoundingClientRect();
+    var cy = fr.top + fr.height / 2;
+    var mine = list(inSide ? side : main);
+    if (dir === 'right' && inSide) return nearest(list(main), cy) || true;
+    if (dir === 'left' && !inSide) {
+      // Only from the leftmost thing of its line (a first tab, a row); a
+      // button or chip with something to its left goes there first.
+      for (var j = 0; j < mine.length; j++) {
+        if (mine[j] === from) continue;
+        var q = mine[j].getBoundingClientRect();
+        if (q.left < fr.left - 1 && q.top < fr.bottom - 1 && q.bottom > fr.top + 1) return undefined;
+      }
+      return nearest(list(side), cy) || true;
+    }
+    if (dir === 'left' || (dir === 'right' && inSide)) return true;
+    if (inSide) {
+      var at = mine.indexOf(from);
+      if (dir === 'down') return at < mine.length - 1 ? mine[at + 1] : true;
+      return at > 0 ? mine[at - 1] : undefined;   // Up from the first: the Full screen button
+    }
+    if (dir === 'down') {
+      // The last of the Schedule stays put (nothing of the column is "below").
+      for (var i = 0; i < mine.length; i++) {
+        if (mine[i] === from) continue;
+        if (mine[i].getBoundingClientRect().top >= cy) return undefined;
+      }
+      return true;
+    }
+    return undefined;
+  }
+
+  function nearest(nodes, cy) {
+    var best = null;
+    var bestD = 1e9;
+    for (var i = 0; i < nodes.length; i++) {
+      var r = nodes[i].getBoundingClientRect();
+      var d = Math.abs(r.top + r.height / 2 - cy);
+      if (d < bestD) { bestD = d; best = nodes[i]; }
+    }
+    return best;
   }
 
   // Builds the grid ahead of time, while nothing else is going on.
@@ -525,11 +632,8 @@
 
   /* ---------- widget ---------- */
 
-  return {
+  var widget = {
     id: 'entertainment',
-    title: 'Entertainment',
-    // Only when "Entertainment" doesn't fit its tile on one line (hub.js).
-    shortTitle: 'Apps',
     icon: 'tv',
     expandable: true,
     stagger: '.ent-item',     // the icons arrive one by one as the panel opens
@@ -537,6 +641,19 @@
     init: function (ctx) {
       C = ctx;
       buildItems();
+      // A language change: the grid's words are built again, the tile and an open panel drawn again.
+      try {
+        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') {
+          window.HUB_I18N.onChange(function () {
+            try {
+              gridCache = null;
+              if (C.isOpen()) C.setSub(view === 'list' ? T('allApps', 'All apps') : view === 'grid' ? C.config.sub || '' : viewTitle(view));
+              C.redrawTile();
+              if (C.isOpen()) C.redrawPanel();
+            } catch (e) { /* the next draw has it */ }
+          });
+        }
+      } catch (e) { /* stays in the language it started in */ }
       if (window.HUB_SHOWS) {
         try {
           HUB_SHOWS.attach(ctx, host);
@@ -547,7 +664,7 @@
             var changed = sig !== tileSig;
             if (changed) { tileSig = sig; C.redrawTile(); }
             // The grid's badges follow the counts; redrawn only when they change.
-            if (C.isOpen() && (view === 'schedule' || (view === 'grid' && changed))) C.redrawPanel();
+            if (C.isOpen() && (view === 'schedule' || (view === 'grid' && (changed || isSplit())))) C.redrawPanel();
           });
         } catch (e) { /* the grid works without it */ }
       }
@@ -608,10 +725,29 @@
     },
 
     renderPanel: function (body) {
+      if (isSplit()) { renderSplit(body); return; }
       if (view === 'list' && apps) renderList(body);
       else if (view === 'schedule' && window.HUB_SHOWS) { C.setSub(viewTitle(view)); HUB_SHOWS.renderPanel(body); }
       else if (view === 'linktests' && window.HUB_LINKTEST) { C.setSub(viewTitle(view)); HUB_LINKTEST.renderPanel(body); }
       else { view = 'grid'; renderGrid(body); }
+    },
+
+    // Full screen and back: the column and Schedule, or the grid.
+    onMode: function (mode, ctx) { ctx.redrawPanel(); },
+
+    onMove: function (dir, from) {
+      if (from && window.HUB_SHOWS && HUB_SHOWS.onMove && (HUB_SHOWS.pageOpen() || inside(from, 'sh'))) {
+        var steer = HUB_SHOWS.onMove(dir, from);
+        if (steer !== undefined) return steer;
+      }
+      if (!isSplit() || !from) return undefined;
+      if (!inside(from, 'ent-split')) {
+        // From the Full screen button (where focus stays after pressing it): Down
+        // lands where the Schedule would start, not on the row nearest the button.
+        var start = dir === 'down' ? document.querySelector('.ent-main .f[data-autofocus]') : null;
+        return start || undefined;
+      }
+      return splitMove(dir, from);
     },
 
     // The About panel's "Watch link test" opens it here (hub.js openWidgetView).
@@ -623,6 +759,7 @@
 
     onFocus: function (target) {
       var key = target && target.getAttribute('data-key');
+      if (key && key.indexOf('sh:') === 0 && window.HUB_SHOWS && HUB_SHOWS.onFocus) HUB_SHOWS.onFocus(target);
       if (key && key.indexOf('app:') !== 0) lastKey = key;
     },
 
@@ -648,6 +785,8 @@
     },
 
     onBack: function () {
+      // A show page open in the Schedule's place: Back returns to the Schedule.
+      if ((view === 'schedule' || view === 'grid') && window.HUB_SHOWS && HUB_SHOWS.onBack && HUB_SHOWS.pageOpen() && HUB_SHOWS.onBack()) return true;
       if (view === 'linktests' && window.HUB_LINKTEST && HUB_LINKTEST.onBack()) return true;
       if (view === 'grid') return false;
       closeList();
@@ -655,10 +794,16 @@
     },
 
     onClose: function (ctx) {
+      if (window.HUB_SHOWS && HUB_SHOWS.closePage) HUB_SHOWS.closePage();
       if (view !== 'grid') {
         view = 'grid';
         ctx.setSub(ctx.config.sub || '');
       }
     }
   };
+  // Read when the hub draws the head, so they follow the language.
+  Object.defineProperty(widget, 'title', { get: function () { return T('title', 'Entertainment'); }, enumerable: true, configurable: true });
+  // Only when "Entertainment" doesn't fit its tile on one line (hub.js).
+  Object.defineProperty(widget, 'shortTitle', { get: function () { return T('short', 'Apps'); }, enumerable: true, configurable: true });
+  return widget;
 })());

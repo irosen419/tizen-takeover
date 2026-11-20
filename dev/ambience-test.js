@@ -42,6 +42,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const OCEAN_JPG = fs.readFileSync(path.join(__dirname, '..', 'app', 'backgrounds', 'ocean.jpg'));
 const http = require('http');
 const net = require('net');
 const childProcess = require('child_process');
@@ -137,6 +138,8 @@ async function open(o) {
   await context.route(/.*/, (route) => {
     const u = new URL(route.request().url());
     const port = Number(u.port);
+    // The background pictures' host (the R2 bucket): the local ocean picture stands in.
+    if (u.hostname === 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev') return route.fulfill({ status: 200, contentType: 'image/jpeg', headers: { 'Access-Control-Allow-Origin': '*' }, body: OCEAN_JPG });
     if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') { context.foreign.push(u.hostname); return route.abort(); }
     if (env.mockPorts.indexOf(port) >= 0) { context.foreign.push('mock lights'); return route.abort(); }
     return route.fallback();
@@ -145,7 +148,9 @@ async function open(o) {
   const page = await context.newPage();
   page.on('console', (m) => { if (m.type() === 'error') context.errors.push(m.text()); });
   page.on('pageerror', (e) => context.errors.push('page error: ' + e.message));
-  const layout = o.layout || [{ widget: 'ambience', x: 0, y: 0, w: 12, h: 6 }];
+  // Not the whole screen: a one-widget 12x6 layout opens straight to full
+  // screen (hub.js openSolo), and these checks start from the tile and panel.
+  const layout = o.layout || [{ widget: 'ambience', x: 0, y: 0, w: 6, h: 4 }];
   await page.addInitScript((items) => {
     try {
       if (sessionStorage.getItem('am-seeded')) return;

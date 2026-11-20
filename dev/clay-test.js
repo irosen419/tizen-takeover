@@ -46,7 +46,7 @@ const childProcess = require('child_process');
 const { chromium } = require('playwright');
 
 const TOKEN = 'preview-token-not-a-secret-000000';
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 
 // config.js's layout with Weather and Now Playing swapped: the same widgets, so no reload.
 const SWAPPED = [
@@ -57,7 +57,7 @@ const SWAPPED = [
   { widget: 'todo',          x: 0, y: 1, w: 3, h: 4 },
   { widget: 'mirror',        x: 9, y: 2, w: 3, h: 2 },
   { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 },
-  { widget: 'ambiance',      x: 3, y: 4, w: 6, h: 1 },
+  { widget: 'ambience',      x: 3, y: 4, w: 6, h: 1 },
   { widget: 'weather',       x: 0, y: 5, w: 3, h: 1 },
   { widget: 'entertainment', x: 3, y: 5, w: 6, h: 1 }
 ];
@@ -978,7 +978,7 @@ async function checkSmoothLive() {
   assert(await page.evaluate(() => window.HUB_TEST.about.open()), 'the About panel did not open');
   await until(async () => /^Smooth, \d+ frames a second$/.test(await about.value(page, 'Drawing')), 3000, 'no Drawing row');
   const rows = (await about.rows(page)).map((r) => r.label).join(',');
-  assert(rows === 'Version,Browser,Motion,Watch link test,Now,Visits,Drawing,Loading', 'rows: ' + rows);
+  assert(rows === 'Version,Browser,Motion,Look,Picture,Watch link test,Now,Visits,Drawing,Loading', 'rows: ' + rows);
   noErrors(page);
 }
 
@@ -1343,7 +1343,7 @@ async function checkAboutRows() {
   let rows = await about.rows(page);
   const names = rows.map((r) => r.group + '/' + r.label).join(', ');
   // ?live=off and no TizenBrew: nothing to say about updates; no visit yet.
-  assert(names === 'This hub/Version, This hub/Browser, This hub/Motion, This hub/Watch link test, Wanderers/Now, Wanderers/Visits', 'rows at start: ' + names);
+  assert(names === 'This hub/Version, This hub/Browser, This hub/Motion, This hub/Look, This hub/Picture, This hub/Watch link test, Wanderers/Now, Wanderers/Visits', 'rows at start: ' + names);
   const groups = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#about .about-group'), (e) => e.textContent).join(','));
   assert(groups === 'This hub,Wanderers', 'groups: ' + groups);
   assert(/^v0\.\d+\.\d+/.test(rows[0].value) && !/^Motion/.test(rows[2].value), 'values: ' + JSON.stringify(rows));
@@ -1360,7 +1360,7 @@ async function checkAboutRows() {
   await page.evaluate(() => window.HUB_TEST.clay.play('stroll', { seed: 7 }));
   await until(async () => (await about.value(page, 'Last problem')) !== null, 5000, 'no Last problem row');
   rows = await about.rows(page);
-  assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Watch link test,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
+  assert(rows.map((r) => r.label).join(',') === 'Version,Browser,Motion,Look,Picture,Watch link test,Now,Visits,Last visit,Loading,Last problem', 'rows after a failure: ' + rows.map((r) => r.label));
   const p1 = await about.value(page, 'Last problem');
   assert(/^scene stroll skipped: frame ember\/stand-wag failed \(onerror, 3 tries\), \d+ s ago$/.test(p1), 'problem: ' + p1);
   await until(async () => (await about.value(page, 'Last problem')) !== p1, 3000, 'the problem\'s age did not change by itself');
@@ -1554,9 +1554,11 @@ async function checkSwitcher() {
   const page = await newHub();
   await until(() => page.evaluate(() => !window.HUB_TEST.busy()), 4000, 'busy');
   // Up to a top tile; one more Up drops the layout bar.
-  for (let i = 0; i < 4 && (await look.focused(page)) !== 'awws' && (await look.focused(page)) !== 'calendar'; i++) await page.keyboard.press('ArrowUp');
+  // Focus starts on the top-left tile (Today); any top tile will do.
+  const TOP = ['today', 'calendar', 'awws', 'weather'];
+  for (let i = 0; i < 4 && TOP.indexOf(await look.focused(page)) < 0; i++) await page.keyboard.press('ArrowUp');
   const top = await look.focused(page);
-  assert(top === 'calendar' || top === 'awws', 'not on a top tile: ' + top);
+  assert(TOP.indexOf(top) >= 0, 'not on a top tile: ' + top);
   await playing(page, 'stroll', { seed: 11 });
   await page.keyboard.press('ArrowUp');
   const bar = () => page.evaluate(() => document.getElementById('switcher').classList.contains('is-shown'));

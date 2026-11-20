@@ -37,7 +37,9 @@
  *                                          // panel opens (the About panel's watch link test
  *                                          // asks entertainment for 'linktests'); false = no
  *     openMode: 'full',       // OK on the tile opens straight to full screen, and Back
- *                             // closes it (no small panel to shrink to)
+ *                             // closes it (no small panel to shrink to). The owner can
+ *                             // set it per widget too: HUB_CONFIG.widgets[id].openMode
+ *                             // 'full' or 'panel' wins over the widget's own.
  *     onMode: function (mode, ctx) {},     // after switching 'panel' <-> 'full'
  *     onClose: function (ctx) {},          // panel closed
  *     onStatus: function (ctx) {},         // the motion, live updates or updates status
@@ -134,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.29.17';
+  var BUILD = 'v0.36.4';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -155,9 +157,11 @@
   var frameWrap = document.getElementById('frameWrap');
   var frameEl = document.getElementById('frame');
   var backdropEl = document.getElementById('backdrop');
+  var stageEl = document.getElementById('stage');
 
   var widgets = [];       // [{ w, ctx, cell, tile, body, subEl, expandable }]
   var homeIndex = -1;     // focused tile
+  var FOCUS_KEEP_MS = 60000; // a layout arriving within this of a key press or click leaves focus alone
   var open = null;        // the widget record whose panel is open
   var mode = null;        // 'panel' | 'full' | null
   var busy = false;       // a transition is running; keys are ignored
@@ -243,7 +247,7 @@
       return fn.apply(rec.w, args || []);
     } catch (e) {
       if (window.console && console.warn) console.warn('Widget ' + rec.w.id + ' ' + hook + ': ' + (e && e.message));
-      toast((rec.w.title || rec.w.id) + ' ran into a problem (' + hook + ').', 4000);
+      toast(hubWord('widgetProblem', '{name} ran into a problem ({hook}).', { name: rec.w.title || rec.w.id, hook: hook }), 4000);
       return undefined;
     }
   }
@@ -342,6 +346,11 @@
   var HITCH_MAX = 3;                    // stalls (or more) that make a run janky
   var FREEZE_MS = 400;                  // one gap this long is a freeze by itself
   var JANKY_RUNS = 3;                   // janky runs in a row that step down
+  // No timing in the first minute after the page loads: the TV is still
+  // busy starting up (scripts, pictures, the first live data), and runs
+  // timed then read a fast TV as slow. ?settle=<ms> changes it (tests).
+  var SETTLE_MS = 60 * 1000;
+  var loadedAt = Date.now();
 
   var motion = {
     mode: 'push',         // what runs now: 'push' | 'expand' | 'fade'
@@ -365,7 +374,14 @@
       var raw = window.localStorage && localStorage.getItem(MOTION_KEY);
       if (!raw) return null;
       var data = JSON.parse(raw);
-      if (!data || data.build !== BUILD || !isMode(data.mode)) return null;
+      if (!data || !isMode(data.mode)) return null;
+      // A new build keeps a good result (the top rung, timed clean): it
+      // stays on and is timed again once the TV has settled. Anything else
+      // from an older build starts over from the top rung.
+      if (data.build !== BUILD) {
+        if (data.mode !== LADDER[0] || data.measuring) return null;
+        return { mode: data.mode, fps: data.fps || 0, measuring: true, carried: true };
+      }
       // A step-down is only for a day: after that the top rung is timed
       // again, so a few stalls can't lock extras off for good.
       if (data.mode !== LADDER[0] && data.at && Date.now() - data.at > RETRY_MS) return null;
@@ -390,6 +406,8 @@
       return;
     }
     motion.source = 'auto';
+    var settle = parseInt(readQuery('settle'), 10);
+    if (settle >= 0) SETTLE_MS = settle;
     var stored = loadStored();
     if (stored) {
       motion.mode = stored.mode;
@@ -427,6 +445,7 @@
   // thread during the transition (building the panel), or null.
   function startSampling() {
     if (!motion.measuring || motion.mode === 'fade' || !window.requestAnimationFrame) return function () {};
+    if (Date.now() - loadedAt < SETTLE_MS) return function () {};
     var times = [];
     var running = true;
     var rung = motion.mode;
@@ -544,6 +563,15 @@
     var rem = remPx();
     var W = window.innerWidth;
     var H = window.innerHeight;
+    // A one-widget layout's window for a widget made for full screen (the
+    // Architecture map): most of the screen, the picture showing round it.
+    if (rec && rec === soloRec && wantsFull(rec.w)) {
+      var sw = Math.round(W * 0.86);
+      var sh = Math.round(H * 0.84);
+      var sl = Math.round((W - sw) / 2);
+      var st = Math.round((H - sh) / 2);
+      return { left: sl, top: st, width: sw, height: sh, right: sl + sw, bottom: st + sh };
+    }
     var w = 46 * rem;
     var h = 26 * rem;
     var fit = rec && rec.w && panelFit.hasOwnProperty(rec.w.id) ? panelFit[rec.w.id] : null;
@@ -659,6 +687,10 @@
       for (var i = 0; i < runs.length; i++) { if (motion.measuring) recordRun(runs[i], null); }
       return { mode: motion.mode, measuring: motion.measuring, fps: motion.fps, worst: motion.worst, status: motionStatus() };
     },
+    // The timing as it stands: { mode, measuring, runs } (runs: clean + janky timed at this rung).
+    motionState: function () {
+      return { mode: motion.mode, measuring: motion.measuring, runs: motion.clean.length + motion.janky.length };
+    },
     panelRect: function () { return panelRect(open); },
     homeRects: function () {
       var out = {};
@@ -698,28 +730,183 @@
     }
   }
 
-  function setupBackground() {
-    var src = cfg.background;
-    if (!src) return;
-    var img = new Image();
-    img.onload = function () {
-      hasPicture = true;
-      backdropEl.style.backgroundImage = 'url("' + src + '")';
-      document.body.classList.add('has-picture');
-      if (cfg.glass === false) return;
-      var data = blurredCopy(img);
-      if (data) document.documentElement.style.setProperty('--glass-img', 'url("' + data + '")');
-      document.body.classList.add('is-glass');
-      // An old engine may not take url() through a custom property, or may
-      // drop the whole background. Then fall back to the plain tint.
-      if (data && widgets.length) {
-        var bg = getComputedStyle(widgets[0].tile).backgroundImage || '';
-        if (bg.indexOf('url(') === -1) document.body.classList.add('glass-tint-only');
+  // A softer copy of the picture (384 px wide, one canvas, made once): the
+  // clear window of each tile shows it, so a busy picture is calmed without
+  // a blur filter. '' if the canvas can't be read.
+  function softCopy(img) {
+    try {
+      var W = window.innerWidth;
+      var H = window.innerHeight;
+      var k = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+      var sw = W / k;
+      var sh = H / k;
+      var a = document.createElement('canvas');
+      a.width = 384;
+      a.height = Math.round(384 * H / W);
+      a.getContext('2d').drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, 0, 0, a.width, a.height);
+      return a.toDataURL('image/jpeg', 0.85);
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // The picture's brightness on a 160-pixel-wide grid, kept once for placeGlass
+  // (the veil of each tile). null if the canvas can't be read: the tiles keep
+  // the veil the stylesheet gives them.
+  var veil = null;
+
+  function readVeil(img) {
+    try {
+      var W = window.innerWidth;
+      var H = window.innerHeight;
+      var k = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+      var sw = W / k;
+      var sh = H / k;
+      var c = document.createElement('canvas');
+      c.width = 160;
+      c.height = Math.max(1, Math.round(160 * H / W));
+      var cx = c.getContext('2d');
+      cx.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, 0, 0, c.width, c.height);
+      var px = cx.getImageData(0, 0, c.width, c.height).data;
+      var lum = [];
+      for (var i = 0; i < px.length; i += 4) lum.push((0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]) / 255);
+      return { w: c.width, h: c.height, lum: lum };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // How strong the veil over a tile's window is: the brighter or busier the
+  // picture behind the tile, the stronger. Night: a dark veil (--veil-a), day:
+  // a milky one (--veil-l); the stylesheet picks by theme.
+  function placeVeil(tile, r) {
+    if (!veil) return;
+    var kx = veil.w / window.innerWidth;
+    var ky = veil.h / window.innerHeight;
+    var n = 0;
+    var s = 0;
+    var s2 = 0;
+    for (var y = Math.floor(r.top * ky); y < Math.min(veil.h, r.bottom * ky); y++) {
+      for (var x = Math.floor(r.left * kx); x < Math.min(veil.w, r.right * kx); x++) {
+        if (x < 0 || y < 0) continue;
+        var l = veil.lum[y * veil.w + x];
+        n++;
+        s += l;
+        s2 += l * l;
       }
-      placeGlass();
-    };
-    img.onerror = function () { /* keep the plain dark look */ };
-    img.src = src;
+    }
+    if (!n) return;
+    var m = s / n;
+    var sd = Math.sqrt(Math.max(0, s2 / n - m * m));
+    tile.style.setProperty('--veil-a', clamp(0.18 + 0.62 * m + 1.4 * sd, 0.28, 0.82).toFixed(2));
+    tile.style.setProperty('--veil-l', clamp(0.36 + 0.55 * (1 - m) + 1.2 * sd, 0.40, 0.86).toFixed(2));
+  }
+
+  /* Which picture: cfg.background 'auto' picks from HUB_BACKGROUNDS
+     (app/backgrounds/backgrounds.js) by the look: list[dayNumber % length],
+     dayNumber being the days since 1970 on the TV's local date. ?bg=day/N or
+     ?bg=night/N forces entry N (from 0) of that list. A file or URL is one
+     picture for both looks. '' or null: none. */
+  var picture = null; // the picture on screen: { file, title, credit }
+  var picLabelEl = document.getElementById('picLabel');
+
+  // The corner label (cfg.pictureLabel): the picture's title, shown on the home screen only.
+  function syncPicLabel() {
+    if (!picLabelEl) return;
+    var text = cfg.pictureLabel === false || !picture ? '' : (picture.title || '');
+    if (picLabelEl.textContent !== text) picLabelEl.textContent = text;
+    var on = !!text && !open && !frameOpen;
+    picLabelEl.className = on ? 'pic-label is-on' : 'pic-label';
+  }
+
+  function dayNumber() {
+    var d = new Date();
+    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);
+  }
+
+  function pictureFor(look) {
+    var src = cfg.background;
+    if (!src) return null;
+    if (src !== 'auto') return { file: String(src), title: '', credit: '' };
+    var lists = window.HUB_BACKGROUNDS;
+    var list = lists && lists[look];
+    if (!list || !list.length) return null;
+    var n = dayNumber();
+    var m = /^(day|night)\/(\d+)$/.exec(readQuery('bg') || '');
+    if (m && m[1] === look) n = parseInt(m[2], 10);
+    var pick = list[n % list.length];
+    if (!pick) return null;
+    // HUB_BACKGROUNDS.base is put before a file that isn't a full address.
+    var file = String(pick.file || '');
+    if (!/^https?:\/\//i.test(file)) file = String(lists.base || '') + file;
+    return { file: file, title: pick.title || '', credit: pick.credit || '' };
+  }
+
+  // Loads a picture, then calls done(img), or done(null) if it fails.
+  function loadPicture(pic, done) {
+    var img = new Image();
+    // A picture from another site (a jsDelivr branch) must ask to be read, or
+    // the canvas copies for the glass would be blocked.
+    if (/^https?:\/\//i.test(pic.file)) img.crossOrigin = 'anonymous';
+    img.onload = function () { done(img); };
+    img.onerror = function () { done(null); };
+    img.src = pic.file;
+  }
+
+  // Puts a loaded picture behind the tiles: the backdrop, the blurred and
+  // soft copies for the glass, the veil grid, then the glass itself.
+  function applyPicture(pic, img) {
+    picture = pic;
+    hasPicture = true;
+    syncPicLabel();
+    backdropEl.style.backgroundImage = 'url("' + pic.file + '")';
+    document.body.classList.add('has-picture');
+    if (cfg.glass === false) return;
+    var root = document.documentElement;
+    var data = blurredCopy(img);
+    if (data) root.style.setProperty('--glass-img', 'url("' + data + '")');
+    else root.style.removeProperty('--glass-img');
+    var soft = softCopy(img);
+    if (soft) root.style.setProperty('--soft-img', 'url("' + soft + '")');
+    else root.style.removeProperty('--soft-img');
+    veil = readVeil(img);
+    document.body.classList.add('is-glass');
+    // An old engine may not take url() through a custom property, or may
+    // drop the whole background. Then fall back to the plain tint.
+    document.body.classList.remove('glass-tint-only');
+    if (data && widgets.length) {
+      var bg = getComputedStyle(widgets[0].tile).backgroundImage || '';
+      if (bg.indexOf('url(') === -1) document.body.classList.add('glass-tint-only');
+    }
+    placeGlass();
+    // The glass look has its own border and padding (theme.css): the room the titles have changes a little.
+    retitleAll();
+  }
+
+  function setupBackground() {
+    var pic = pictureFor(theme.look || wantedTheme().look);
+    if (!pic) return;
+    loadPicture(pic, function (img) {
+      if (img) return applyPicture(pic, img);
+      // The picture's host can't be reached: the manifest's fallback (a file
+      // next to hub.html), else the plain dark look.
+      var fb = cfg.background === 'auto' && window.HUB_BACKGROUNDS ? window.HUB_BACKGROUNDS.fallback : null;
+      if (!fb || !fb.file || fb.file === pic.file) return;
+      var alt = { file: String(fb.file), title: fb.title || '', credit: fb.credit || '' };
+      loadPicture(alt, function (img2) { if (img2) applyPicture(alt, img2); });
+    });
+  }
+
+  // For the About panel: "Navagio, Zakynthos · Photo: Name, CC BY-SA 4.0".
+  function pictureStatus() {
+    if (!picture) return '';
+    var parts = [];
+    var title = picture.title || (picture.credit ? '' : String(picture.file).split('/').pop());
+    if (title) parts.push(title);
+    if (picture.credit) parts.push(picture.credit);
+    return parts.join(' \u00b7 ');
   }
 
   // Lines up the blurred picture on a surface with the spot it covers.
@@ -734,6 +921,7 @@
       var rec = widgets[i];
       if (!rec.home) continue;
       setGlassOrigin(rec.tile, rec.home.left + rec.tile.clientLeft, rec.home.top + rec.tile.clientTop);
+      placeVeil(rec.tile, rec.home);
     }
     placeFloatingGlass(ghostEl);
   }
@@ -744,6 +932,92 @@
   function placeFloatingGlass(node) {
     if (!hasPicture) return;
     setGlassOrigin(node, node.offsetLeft + node.clientLeft, node.offsetTop + node.clientTop);
+  }
+
+  /* ---------- day and night ---------- */
+
+  // The look: day (light glass, dark text) between sunrise and sunset, night
+  // (dark glass) otherwise. Sunrise and sunset come from the Weather widget's
+  // forecast; without one, day is 7:00 AM to 6:00 PM on the TV's clock.
+  // HUB_CONFIG.theme ('auto' | 'day' | 'night') or ?theme=day|night on the
+  // address sets it by hand. Checked once a minute. The stylesheet is
+  // app/theme.css (body.theme-day, body.theme-night).
+  var DAY_FROM = 7;
+  var DAY_TO = 18;
+  var theme = { look: '', source: 'auto', sunrise: '', sunset: '', timer: null, fading: false };
+
+  function sunTimes() {
+    try {
+      var rec = widgetById('weather');
+      var fn = rec && rec.w ? rec.w.sunNow : null;
+      return typeof fn === 'function' ? fn() : null;
+    } catch (e) { return null; }
+  }
+
+  function wantedTheme() {
+    var q = readQuery('theme');
+    var source = 'URL';
+    if (q !== 'day' && q !== 'night') {
+      q = cfg.theme;
+      source = 'config';
+    }
+    if (q === 'day' || q === 'night') return { look: q, source: source, sunrise: '', sunset: '' };
+    var sun = sunTimes();
+    if (sun) return { look: sun.day ? 'day' : 'night', source: 'auto', sunrise: sun.sunrise, sunset: sun.sunset };
+    var h = new Date().getHours();
+    return { look: h >= DAY_FROM && h < DAY_TO ? 'day' : 'night', source: 'auto', sunrise: '', sunset: '' };
+  }
+
+  function paintTheme(look) {
+    theme.look = look;
+    document.body.classList.remove('theme-day');
+    document.body.classList.remove('theme-night');
+    document.body.classList.add('theme-' + look);
+  }
+
+  // One quick fade of the stage (out 140 ms, in 220 ms) over the change; at
+  // once when the hub is on plain fades or something is open or moving. The
+  // new look's picture (pic, already loaded as img) goes on under the same fade.
+  function switchTheme(look, pic, img) {
+    function paint() {
+      paintTheme(look);
+      if (pic && img) applyPicture(pic, img);
+    }
+    if (!theme.look || motion.mode === 'fade' || open || busy || frameOpen || theme.fading) return paint();
+    theme.fading = true;
+    setOpacity(stageEl, 0, 140);
+    setTimeout(function () {
+      paint();
+      setOpacity(stageEl, 1, 220);
+      setTimeout(function () {
+        stageEl.style.transition = '';
+        stageEl.style.opacity = '';
+        theme.fading = false;
+      }, 240);
+    }, 150);
+  }
+
+  function checkTheme() {
+    clearTimeout(theme.timer);
+    var want = wantedTheme();
+    theme.source = want.source;
+    theme.sunrise = want.sunrise;
+    theme.sunset = want.sunset;
+    theme.timer = setTimeout(checkTheme, 60000);
+    if (want.look === theme.look) return;
+    // The first look is painted at once; setupBackground picks its picture.
+    var pic = theme.look ? pictureFor(want.look) : null;
+    if (!pic || (picture && pic.file === picture.file)) return switchTheme(want.look);
+    // Load the new picture first; if it fails, keep the old one and still switch the look.
+    loadPicture(pic, function (img) { switchTheme(want.look, pic, img); });
+  }
+
+  // For the About panel: "night (auto, until 7:04 AM)", the next change.
+  function themeStatus() {
+    if (!theme.look) return '';
+    if (theme.source !== 'auto') return theme.look + ' (' + theme.source + ')';
+    var next = theme.look === 'day' ? theme.sunset || '6:00 PM' : theme.sunrise || '7:00 AM';
+    return theme.look + ' (auto, until ' + next + ')';
   }
 
   function scrimLevel() { return hasPicture ? 0.6 : 0.72; }
@@ -1050,10 +1324,13 @@
     for (var k = 0; k < widgets.length; k++) {
       var entry = at[widgets[k].w.id];
       placeCell(widgets[k].cell, entry);
+      widgets[k].entry = entry;
       if (applySize(widgets[k], entry)) resized.push(widgets[k]);
     }
     layoutKey = key;
     measureHome();
+    // Back to the top-left tile, unless the remote was used just now.
+    if (new Date().getTime() - lastInputAt > FOCUS_KEEP_MS) focusHome(topLeftIndex());
     placeGlass();
     clayHook('layout');
     agentsHook('stop');
@@ -1126,7 +1403,7 @@
       if (p.layout && !list) continue;
       // Guest mode: the money layouts ("AWWS money", "Budget") leave the bar.
       if (guestOn() && window.HUB_GUEST.hasMoney(list || cfg.layout)) continue;
-      out.push({ name: p.name, layout: list });
+      out.push({ name: p.name, id: typeof p.id === 'string' ? p.id : '', layout: list });
     }
     return out;
   }
@@ -1177,6 +1454,14 @@
     }
   } catch (e) { /* no Guest mode on this page */ }
 
+  // A preset's name in the hub's language (key 'hub.layout.<id>'); a layout
+  // named by the owner, with no Spanish for its id, keeps its own name.
+  function layoutName(p) {
+    var L = window.HUB_I18N;
+    if (!p.id || !L || typeof L.has !== 'function' || !L.has('hub.layout.' + p.id)) return p.name;
+    return hubWord('layout.' + p.id, p.name);
+  }
+
   function drawSwitcher() {
     switcherEl.innerHTML = '';
     sw.bar = el('div', 'switcher-bar', switcherEl);
@@ -1192,7 +1477,7 @@
         el('span', 'switcher-star', node).innerHTML = STAR_SVG;
         sw.index = i;
       }
-      el('span', 'switcher-name', node).textContent = sw.presets[i].name;
+      el('span', 'switcher-name', node).textContent = layoutName(sw.presets[i]);
       node.addEventListener('click', (function (n) { return function () { sw.index = n; chooseLayout(); }; })(i));
       sw.nodes.push(node);
     }
@@ -1247,7 +1532,7 @@
     saveLayout(p.layout);
     pendingLayout = p.layout;
     applyPendingLayout();
-    toast(p.name + ' layout', 1800);
+    toast(hubWord('layoutPicked', '{name} layout', { name: layoutName(p) }), 1800);
   }
 
   /* ---------- the About panel ---------- */
@@ -1272,6 +1557,11 @@
   function noPrefix(text, prefix) {
     text = text ? String(text) : '';
     return text.indexOf(prefix) === 0 ? text.slice(prefix.length) : text;
+  }
+
+  // 'This hub' -> 'hub.about.ThisHub'
+  function aboutKey(english) {
+    return 'hub.about.' + String(english).replace(/[^A-Za-z]+(.)?/g, function (m, c) { return c ? c.toUpperCase() : ''; });
   }
 
   function aboutWord(key, english) {
@@ -1300,6 +1590,10 @@
       var fn = w && w.w ? w.w.sceneStatus : null;
       try { return typeof fn === 'function' ? fn() || '' : ''; } catch (e) { return ''; }
     } },
+    // Day or night, and why (see Day and night, above).
+    { group: 'This hub', label: 'Look', spare: true, value: function () { return themeStatus(); } },
+    // The picture behind the tiles and who made it (app/backgrounds/backgrounds.js).
+    { group: 'This hub', label: 'Picture', spare: true, value: function () { return pictureStatus(); } },
     // A stylesheet that had to be fetched again, or never arrived (see hub.html).
     { group: 'This hub', label: 'Styles', value: function () {
       var S = window.HUB_STYLES;
@@ -1374,10 +1668,10 @@
       var r = list[i].row;
       if (r.group !== group) {
         group = r.group;
-        el('div', 'about-group', ab.box).textContent = r.groupKey ? aboutWord(r.groupKey, group) : group;
+        el('div', 'about-group', ab.box).textContent = aboutWord(r.groupKey || aboutKey(group), group);
       }
       var row = el('div', 'about-row' + (r.action ? ' is-action' : ''), ab.box);
-      el('div', 'about-label', row).textContent = r.labelKey ? aboutWord(r.labelKey, r.label) : r.label;
+      el('div', 'about-label', row).textContent = aboutWord(r.labelKey || aboutKey(r.label), r.label);
       var value = el('div', 'about-value', row);
       value.textContent = list[i].text;
       ab.rows.push(value);
@@ -1466,15 +1760,16 @@
     ab.hideTimer = setTimeout(function () { if (!ab.on) { aboutEl.classList.remove('is-on'); aboutEl.innerHTML = ''; } }, 260);
   }
 
-  // OK in the strip: the first row shown that has an action.
+  // OK in the strip: the first row shown that has an action, or else one
+  // that gave way for room (the watch link test when the strip is full), so
+  // OK in About always opens it.
   function aboutAction() {
-    for (var i = 0; i < ab.drawn.length; i++) {
-      if (typeof ab.drawn[i].action === 'function') {
-        try { ab.drawn[i].action(); } catch (e) { toast('That didn’t work (' + (e && e.message) + ').', 4000); }
-        return true;
-      }
-    }
-    return false;
+    var pick = null;
+    for (var i = 0; i < ab.drawn.length && !pick; i++) if (typeof ab.drawn[i].action === 'function') pick = ab.drawn[i];
+    for (var j = 0; j < ABOUT_ROWS.length && !pick; j++) if (ABOUT_ROWS[j].spare && ab.dropped[ABOUT_ROWS[j].label] && typeof ABOUT_ROWS[j].action === 'function') pick = ABOUT_ROWS[j];
+    if (!pick) return false;
+    try { pick.action(); } catch (e) { toast(hubWord('didntWork', 'That didn’t work ({why}).', { why: e && e.message }), 4000); }
+    return true;
   }
 
   // Opens a widget's panel on one of its own views (widget hook openView).
@@ -1483,13 +1778,13 @@
       var rec = widgets[i];
       if (rec.w.id !== id || !rec.expandable) continue;
       closeAbout();
-      if (typeof rec.w.openView !== 'function') return toast('This hub can’t open that yet.', 4000);
+      if (typeof rec.w.openView !== 'function') return toast(hubWord('cantOpen', 'This hub can’t open that yet.'), 4000);
       if (call(rec, 'openView', [name, rec.ctx]) === false) return undefined;
       focusHome(i);
       openPanel(rec);
       return undefined;
     }
-    toast('Entertainment isn’t on this layout. Pick one with it (Up on a top tile), then try again.', 6000);
+    toast(hubWord('noEntertainment', 'Entertainment isn’t on this layout. Pick one with it (Up on a top tile), then try again.'), 6000);
     return undefined;
   }
 
@@ -1582,6 +1877,10 @@
     return ctx;
   }
 
+  // The layout's one widget, when it fills the whole grid (12 by 6) and can
+  // open; null otherwise. Set by build(), opened as a window by openSolo().
+  var soloRec = null;
+
   function build() {
     var byId = pickWidgets();
     registry = byId;
@@ -1612,12 +1911,22 @@
       }
       rec.cell = cell;
       rec.tile = tile;
+      rec.entry = entry;
       applySize(rec, entry);
       rec.body = el('div', 'tile-body', tile);
       rec.index = widgets.length;
       widgets.push(rec);
       tile.addEventListener('click', onTileClick(rec));
     }
+
+    soloRec = null;
+    if (widgets.length === 1 && widgets[0].expandable && !widgets[0].w.planned) {
+      var only = widgets[0].entry;
+      if (only && only.x === 0 && only.y === 0 && only.w === GRID_COLS && only.h === GRID_ROWS) soloRec = widgets[0];
+    }
+    // Its screen-sized tile stays hidden until the window first closes, so the
+    // hub never shows it on the way in (see openSolo).
+    if (soloRec) soloRec.cell.classList.add('is-solo-waiting');
 
     for (var j = 0; j < widgets.length; j++) call(widgets[j], 'init', [widgets[j].ctx]);
     for (var k = 0; k < widgets.length; k++) drawTile(widgets[k]);
@@ -1634,13 +1943,35 @@
       }
     } catch (e) { /* titles stay in the language they started in */ }
 
-    var start = -1;
-    for (var s = 0; s < widgets.length; s++) {
-      if (!widgets[s].expandable) continue;
-      if (start === -1) start = s;
-      if (widgets[s].w.id === cfg.start) { start = s; break; }
+    focusHome(topLeftIndex());
+  }
+
+  // The tile that gets focus when the hub opens or a layout arrives: the
+  // top-left one (smallest y on the grid, then smallest x), skipping static
+  // tiles. -1 when nothing can take focus.
+  function topLeftIndex() {
+    var best = -1;
+    for (var i = 0; i < widgets.length; i++) {
+      var e = widgets[i].entry;
+      if (!widgets[i].expandable || !e) continue;
+      if (best === -1) { best = i; continue; }
+      var b = widgets[best].entry;
+      if (e.y < b.y || (e.y === b.y && e.x < b.x)) best = i;
     }
-    focusHome(start);
+    return best;
+  }
+
+  // A one-widget layout opens straight into the widget as a window (the
+  // small panel, Full screen one press away) as the hub starts: one fade in
+  // place, with no tile shown first and no move from it (a layout change
+  // reloads the page, so this runs for each one). Back closes the window to
+  // the tile, and Up from there opens the layout bar.
+  function openSolo() {
+    if (!soloRec) return;
+    setTimeout(function () {
+      if (!open && !busy && !frameOpen && soloRec) openPanel(soloRec, 'solo');
+      else if (soloRec) soloRec.cell.classList.remove('is-solo-waiting');
+    }, 0);
   }
 
   function drawTile(rec) {
@@ -1725,12 +2056,35 @@
     panel.sub.style.display = text ? '' : 'none';
   }
 
+  // Whether OK on a widget's tile opens straight to full screen, with no
+  // small panel in between. HUB_CONFIG.widgets[id].openMode ('full' or
+  // 'panel') wins over the widget's own openMode.
+  // A layout that is one widget filling the whole screen opens as a window
+  // (see openSolo), with Full screen one press away, whatever its openMode.
+  function isDirect(w) {
+    if (soloRec && soloRec.w === w) return false;
+    return wantsFull(w);
+  }
+
+  // ' is-wide' for a one-widget layout's window when the widget is made for
+  // full screen (its width; panelRect gives its height), else ''.
+  function wideClass(rec) {
+    return rec && rec === soloRec && wantsFull(rec.w) ? ' is-wide' : '';
+  }
+
+  // The widget's own (or config.js's) openMode is 'full'.
+  function wantsFull(w) {
+    var c = cfg.widgets && cfg.widgets[w.id];
+    var m = c && (c.openMode === 'full' || c.openMode === 'panel') ? c.openMode : w.openMode;
+    return m === 'full';
+  }
+
   function drawPanelHead() {
     var w = open.w;
     panel.icon.innerHTML = iconHTML(w.icon);
     var full = mode === 'full';
     // A widget that opens straight to full screen has no small panel to shrink to.
-    var direct = w.openMode === 'full';
+    var direct = isDirect(w);
     panel.btn.style.display = direct ? 'none' : '';
     if (direct) panel.btn.classList.remove('f'); else panel.btn.classList.add('f');
     panel.btnIcon.innerHTML = iconHTML(full ? 'shrink' : 'expand');
@@ -1750,7 +2104,7 @@
     if (!open) return;
     if (typing === undefined) typing = !!typingBox();
     // A small chip like the Full screen button, but never focusable.
-    panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : mode === 'full' && open.w.openMode !== 'full' ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
+    panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : mode === 'full' && !isDirect(open.w) ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
   }
 
   function panelFocusables() {
@@ -1862,7 +2216,7 @@
 
   function selectPanel() {
     if (!panelFocus) return;
-    if (panelFocus === panel.btn) { if (open.w.openMode !== 'full') switchMode(mode === 'full' ? 'panel' : 'full'); return; }
+    if (panelFocus === panel.btn) { if (!isDirect(open.w)) switchMode(mode === 'full' ? 'panel' : 'full'); return; }
     if (isTextBox(panelFocus)) { startTyping(panelFocus); return; }
     var target = panelFocus;
     target.classList.add('is-pressed');
@@ -1873,7 +2227,7 @@
   function backInPanel() {
     if (call(open, 'onBack', [open.ctx]) === true) return;
     // A widget that opens straight to full screen closes on Back.
-    if (mode === 'full' && open.w.openMode !== 'full') switchMode('panel');
+    if (mode === 'full' && !isDirect(open.w)) switchMode('panel');
     else closePanel();
   }
 
@@ -1991,16 +2345,19 @@
    * Transform and opacity transitions run on the compositor, so the build
    * doesn't stop them.
    */
-  function openPanel(rec) {
+  function openPanel(rec, how) {
     if (busy || open || !rec.expandable) return;
     closeAbout();                          // a panel the Pi opens goes over it: close it first
     clayHook('stop');
     open = rec;
+    syncPicLabel();
     // openMode: 'full' (a widget's own choice) opens straight to full screen.
-    var direct = rec.w.openMode === 'full';
+    var direct = isDirect(rec.w);
     mode = direct ? 'full' : 'panel';
     busy = true;
-    var fade = motion.mode === 'fade';
+    // A one-widget layout's window fades in where it rests: its tile is the
+    // whole screen, so a move from it would read as a second step.
+    var fade = motion.mode === 'fade' || how === 'solo';
     var push = motion.mode === 'push';
     var ms = fade ? 140 : push ? 320 : 260;
     var T = rec.home || rectOf(rec.tile);
@@ -2016,7 +2373,7 @@
     // The panel is as tall as its content. The first time a widget opens,
     // its content is built here, before anything moves, and measured; after
     // that the height is known and the build waits for the first frame.
-    panelEl.className = 'panel is-shown' + (direct ? ' is-full is-direct' : '');
+    panelEl.className = 'panel is-shown' + (direct ? ' is-full is-direct' : wideClass(rec));
     panelEl.style.transition = 'none';
     panelEl.style.opacity = '0';
     panelEl.style.transform = IDENTITY;
@@ -2051,7 +2408,7 @@
     // Start state, then one style flush, then the transitions (FLIP).
     panelEl.style.transform = fade ? IDENTITY : panelStart(T, P);
     ghostEl.style.transition = 'none';
-    ghostEl.className = 'ghost' + (direct ? ' is-full' : '');
+    ghostEl.className = 'ghost' + (direct ? ' is-full' : wideClass(rec));
     ghostEl.style.transform = fade ? IDENTITY : flip(T, P);
     ghostEl.style.opacity = fade ? '0' : '1';
     scrimEl.className = 'scrim is-shown';
@@ -2127,10 +2484,12 @@
       parkGhost();
       clearTile(rec);
       rec.tile.style.visibility = '';
+      rec.cell.classList.remove('is-solo-waiting');
       settleOthers();
       if (panelFocus) panelFocus.classList.remove('is-focused');
       panelFocus = null;
       open = null;
+      syncPicLabel();
       mode = null;
       busy = false;
       focusHome(rec.index);
@@ -2139,8 +2498,9 @@
       layoutChance();
     }
 
-    if (motion.mode === 'fade' || mode === 'full') {
+    if (motion.mode === 'fade' || mode === 'full' || rec === soloRec) {
       // From full screen everything just fades; there is no tile-sized box to shrink to cleanly.
+      // A one-widget layout's window fades too: its tile is the whole screen.
       // (A shared picture, the Now Playing cover, flies back to the tile.)
       if (mode === 'full') fxCall('shareTo', [fxCall('shareFrom', [panel.body]), rec.body, true]);
       setOpacity(panelEl, 0, 140);
@@ -2185,14 +2545,14 @@
 
     function apply() {
       mode = next;
-      panelEl.className = 'panel is-shown' + (next === 'full' ? ' is-full' : '') + (rec.w.openMode === 'full' ? ' is-direct' : '');
+      panelEl.className = 'panel is-shown' + (next === 'full' ? ' is-full' : wideClass(rec)) + (isDirect(rec.w) ? ' is-direct' : '');
       drawPanelHead();
       call(rec, 'onMode', [next, rec.ctx]);
       if (panelFocus) keepInView(panelFocus);
     }
 
     function sizeGhost() {
-      ghostEl.className = 'ghost' + (next === 'full' ? ' is-full' : '');
+      ghostEl.className = 'ghost' + (next === 'full' ? ' is-full' : wideClass(rec));
       sizeBoxes(next === 'full' ? null : panelRect(rec));
     }
 
@@ -2234,11 +2594,12 @@
   /* ---------- dashboard frame ---------- */
 
   function openFrame(url) {
-    if (!url) return toast('This dashboard has no address yet.');
+    if (!url) return toast(hubWord('noAddress', 'This dashboard has no address yet.'));
     closeAbout();
     clayHook('stop');
     fxCall('activityStop');
     frameOpen = true;
+    syncPicLabel();
     frameEl.src = url;
     frameWrap.hidden = false;
   }
@@ -2247,6 +2608,7 @@
     frameEl.src = 'about:blank';
     frameWrap.hidden = true;
     frameOpen = false;
+    syncPicLabel();
     layoutChance();
   }
 
@@ -2472,6 +2834,21 @@
       on: wrap('on', function () { return function () {}; }),
       onStatus: wrap('onStatus', none),
       everConnected: wrap('everConnected', function () { return false; }),
+      // GET JSON from the server's screen door (the show page's episode list).
+      fetch: function (path, cb) {
+        var finished = false;
+        function done(err, data, code) {
+          if (finished) return;
+          finished = true;
+          if (typeof cb === 'function') cb(err, data, code);
+        }
+        try {
+          if (typeof L.fetch !== 'function') throw new Error('no fetch');
+          L.fetch(path, done);
+        } catch (e) {
+          setTimeout(function () { done('live updates are not available', null, 0); }, 0);
+        }
+      },
       post: function (path, body, cb) {
         var finished = false;
         function done(err, data, code) {
@@ -2533,7 +2910,7 @@
     var rec = widgetById(id);
     if (!rec || !rec.expandable) {
       var name = id.length > 40 ? id.substring(0, 40) + '...' : id;
-      toast('Asked to show "' + name + '", which this hub doesn\'t have.', 5000);
+      toast(hubWord('askedShow', 'Asked to show "{name}", which this hub doesn\'t have.', { name: name }), 5000);
       return;
     }
     var wanted = data.mode === 'full' || data.mode === 'panel' ? data.mode : null;
@@ -2965,6 +3342,8 @@
 
   window.HUB_TEST.fx = function () { return fxCall('state') || null; };
   window.HUB_TEST.focusRect = function () { return focusRect(); };
+  window.HUB_TEST.setFocusKeepMs = function (ms) { FOCUS_KEEP_MS = ms; };
+  window.HUB_TEST.focused = function () { return homeIndex >= 0 && widgets[homeIndex] ? widgets[homeIndex].w.id : null; };
 
   /* ---------- start ---------- */
 
@@ -2974,7 +3353,9 @@
   buildPanel();
   build();
   parkGhost();
+  checkTheme();
   setupBackground();
+  openSolo();
   startLive();
   startUpdates();
   startClay();

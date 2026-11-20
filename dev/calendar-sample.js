@@ -5,7 +5,10 @@
  * with events placed around a given day, and a tiny web server that serves
  * them to the Pi's real calendar reader (pi/calendar.js), the way Google
  * would. Titles include accents (Ángel, Ñandú, Évènement) and one very long
- * title on purpose. Only what ships with Node is used.
+ * title on purpose. Two events carry notes (DESCRIPTION): the weekly "Water
+ * plants" with the owner's real plant care text, and a call whose notes are
+ * HTML with a link, as Google sends them. Two carry guests (ATTENDEE), the
+ * owner on each too, as Google sends them. Only what ships with Node is used.
  *
  *   const sample = require('./calendar-sample');
  *   sample.feedServer({ today: () => '2026-11-15' }).then((feeds) => {
@@ -51,6 +54,12 @@ function vevent(cal, i, today, e) {
   if (e.rrule) lines.push('RRULE:' + e.rrule);
   lines.push('SUMMARY:' + esc(e.title));
   if (e.where) lines.push('LOCATION:' + esc(e.where));
+  if (e.notes) lines.push('DESCRIPTION:' + esc(e.notes));
+  if (e.guests) {
+    lines.push('ORGANIZER;CN=Ian:mailto:owner@sample.test');
+    lines.push('ATTENDEE;CN=Ian;PARTSTAT=ACCEPTED:mailto:owner@sample.test');
+    e.guests.forEach((g, k) => lines.push('ATTENDEE;CN=' + g + ';PARTSTAT=NEEDS-ACTION:mailto:guest' + k + '@sample.test'));
+  }
   lines.push('END:VEVENT');
   return lines.join('\r\n');
 }
@@ -69,6 +78,14 @@ const CALENDARS = [
   { name: 'US Holidays', path: '/holidays.ics' }
 ];
 
+// The owner's own "Water plants" notes (Google Calendar, 2026-11-19).
+const WATER_NOTES = 'Check each plant with a finger in the soil first. Water slowly until it drains, then empty the saucer so roots never sit in water. Winter light is low, so they drink less until March.\n\n' +
+  'Gold Lines maranta\nWater when the top inch is dry, usually every week. Keep it evenly moist but never soggy. Use filtered water or tap water left out overnight, since it browns from chlorine and fluoride. Mist the leaves or keep it near a humidifier.\n\n' +
+  'Birkin philodendron\nWater when the top 1 to 2 inches are dry, usually every 7 to 10 days in winter. Yellow leaves mean too much water. Wipe dust off the leaves once a month.\n\n' +
+  'Golden pothos\nWater only when the top half of the soil is dry, usually every other week in winter. Drooping, soft leaves mean it is thirsty. It handles drying out better than overwatering.\n\n' +
+  'Cuttings in the glass wall vases\nTop up the water weekly and swap it out fully every two weeks.\n\n' +
+  'Keep the Birkin and pothos out of Ember\'s reach, since both are toxic to dogs.';
+
 function events(today) {
   return {
     '/family.ics': [
@@ -85,13 +102,15 @@ function events(today) {
       { d: 20, start: '1500', end: '1700', title: 'Évènement: vernissage at the gallery', where: 'Deep Ellum Art Co.' }
     ],
     '/ian.ics': [
-      { d: 0, start: '1000', end: '1100', title: 'Call with the contractor' },
+      { d: 0, start: '1000', end: '1100', title: 'Call with the contractor', guests: ['Marta Ibáñez'], notes: '<b>Ask about</b><br>the kitchen tile and the <a href="https://example.test/quote">quote</a><br><br>Bring the paint chips. Join: https://meet.example.test/abc-defg-hij' },
       { d: 0, start: '1030', end: '1130', title: 'Évènement planning review', where: 'Video call' },
       { d: 0, start: '1600', end: '1615', title: 'Quick check-in' },
       { d: 1, start: '1300', end: '1430', title: 'Haircut', where: 'Bishop Arts' },
       { d: 3, allDay: true, title: 'Pay rent' },
       { d: 5, start: '0730', end: '0830', title: 'Run club' },
+      { d: 6, start: '1000', end: '1015', title: 'Water plants', rrule: 'FREQ=WEEKLY;COUNT=8', notes: WATER_NOTES },
       { d: 8, start: '1200', end: '1300', title: 'Lunch with Ñico' },
+      { d: 2, start: '1500', end: '1600', title: 'Library visit', where: 'Central Library', guests: ['Ana Núñez', 'Sam Lee', 'Jordan Ortiz'] },
       { d: 17, start: '1830', end: '2100', title: 'Book club: “Cien años de soledad”' }
     ],
     '/work.ics': [

@@ -139,7 +139,8 @@ function inspect(args) {
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
   const out = [];
   const roots = document.querySelectorAll(sel);
-  function cuts(cs) { return cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none'); }
+  // A cut that is shown: "...", a line clamp, or (the redesign, app/theme.css) an edge that fades out under a mask.
+  function cuts(cs) { return cs.textOverflow === 'ellipsis' || (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') || (cs.webkitMaskImage && cs.webkitMaskImage !== 'none'); }
   function hides(cs) { return cs.overflowX === 'hidden' || cs.overflowY === 'hidden'; }
   function scrolls(cs, el) { return /auto|scroll/.test(cs.overflowY) || /auto|scroll/.test(cs.overflowX) || el.classList.contains('panel-body'); }
   for (let i = 0; i < roots.length; i++) {
@@ -304,6 +305,48 @@ async function main() {
       }
     });
 
+    await check('autopay days: short on the 1st but covered by autopay is amber with its plan rows; the room says so; still short with autopay stays coral', async () => {
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true, autopay: true }));
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const card = await text(page, tileOf('budget-card'));
+        assert(/Short \$955/.test(card) && /covered by autopay/.test(card), 'card: ' + card);
+        assert(!/Short by/.test(card), 'a coral "Short by": ' + card);
+        assert(/Nov 30\s*Sapphire Reserve\s*\$1,200/.test(card) && /Dec 7\s*Sapphire Reserve\s*\$400\s*autopay/.test(card), 'plan rows: ' + card);
+        assert(await has(page, tileOf('budget-card') + ' .bu-hero-num.is-under') && !(await has(page, tileOf('budget-card') + ' .is-neg')), 'short by autopay is not amber');
+        assert(/using autopay days/.test(await text(page, tileOf('budget-room'))), 'room: ' + await text(page, tileOf('budget-room')));
+        const lab = await text(page, tileOf('budget-lab'));
+        assert(!/short even at \$0/.test(lab), 'the lab tile says short even at $0: ' + lab);
+        noErrors(page);
+        await H.openPanel(page, 'budget-lab');
+        const p = await text(page, '#panel .panel-body');
+        assert(/Nov 30 is \$955 short, so this plan relies on autopay days through Dec 7/.test(p), 'lab header: ' + p);
+        assert(!/even at \$0 a day/.test(p) && await has(page, '#panel .bl-big'), 'lab panel: ' + p);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+      // Short with autopay too (no byAutopay): coral as before, with how short.
+      const bad = H.budgetSample.snapshot({ sentAt: FRESH, payday: true, autopay: true });
+      bad.cardDay.byAutopay = false;
+      delete bad.cardDay.plan;
+      bad.cardDay.autopayShortBy = 80;
+      bad.room.basis = 'first';
+      bad.lab.autopayRoom = -80;
+      await env.setBudget(bad);
+      const page2 = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const card = await text(page2, tileOf('budget-card'));
+        assert(/Short by \$955/.test(card) && /\$80 short even with autopay/.test(card), 'card: ' + card);
+        assert(await has(page2, tileOf('budget-card') + ' .bu-hero-num.is-neg'), 'not coral');
+        await H.openPanel(page2, 'budget-lab');
+        const p = await text(page2, '#panel .panel-body');
+        assert(/short for Dec 7 even at \$0 a day/.test(p) && /Move \$80 into checking before Dec 7/.test(p), 'lab: ' + p);
+        noErrors(page2);
+      } finally {
+        await page2.ctx.close();
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      }
+    });
+
     /* ---------- stale ---------- */
     await check('budget data over 2 hours old and AWWS over 19 hours: "as of" under each title, and the tiles dim', async () => {
       await env.setBudget(H.budgetSample.snapshot({ sentAt: OLD }));
@@ -380,6 +423,23 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
+    await check('Guest mode on: the Investments tile (budget-lab beside it) shows percentages only, no dollar figure, no copy kept', async () => {
+      const inv = JSON.stringify({ v: 1, at: H.MONDAY, sentAt: FRESH, section: H.budgetSample.snapshot({ sentAt: FRESH }).investments });
+      const page = await env.newPage({ layout: [{ widget: 'investments', x: 0, y: 0, w: 6, h: 4 }, { widget: 'budget-room', x: 6, y: 0, w: 3, h: 2 }],
+        storage: { 'homeHub.guest.v1': 'on', 'homeHub.investments.v1': inv } });
+      try {
+        const t = await text(page, tileOf('investments'));
+        assert(/\+20\.2%/.test(t) && /62%/.test(t) && !/\$|48,2|30,1|21,0|8,1/.test(t), 'investments: ' + t);
+        assert(/Hidden for guests/.test(await text(page, tileOf('budget-room'))), 'room is not hidden');
+        const kept = await page.evaluate(() => ({ cache: localStorage.getItem('homeHub.investments.v1'), state: window.HUB_INVESTMENTS_TEST.state() }));
+        assert(kept.cache === null && kept.state.m === null, 'dollars kept: ' + JSON.stringify(kept).slice(0, 120));
+        await H.openPanel(page, 'investments');
+        const p = await text(page, '#panel .panel-body');
+        assert(/62%/.test(p) && !/\$|48,2|30,1|21,0|8,1/.test(p), 'panel: ' + p);
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
     await check('Guest mode from the Clock page: On hides money at once, Off brings it back, and it is remembered', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
@@ -429,7 +489,7 @@ async function main() {
         await H.key(page, 'ArrowUp');
         await H.until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
         const names = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.switcher-item'), (n) => n.textContent));
-        assert(names.length === 8 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
+        assert(names.length === 9 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -530,20 +590,21 @@ async function main() {
     const focusedKey = (page) => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
     const session = (page) => page.evaluate(() => window.HUB_BUDGET_LAB_TEST.session());
 
-    await check('Budget lab tile: the streak, yesterday and the suggested move; a tall tile adds the card day outcome', async () => {
+    await check('Budget lab tile: today\'s cap big, the card day outcome, and the streak in a small box at the bottom', async () => {
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const t = await text(page, LAB_TILE);
-        assert(/^1\s*day under/.test(t.trim()) && /Yesterday \$41 of \$65, \$24 under/.test(t), 'tile: ' + t);
-        assert(/Stay under \$62 today/.test(t) && /Nov 19: Covered, nothing to spare/.test(t), 'tile: ' + t);
-        assert(await has(page, LAB_TILE + ' .bu-hero-num.is-ok'), 'the streak is not green');
+        assert(/^\$62\s*a day/.test(t.trim()) && /Keeps Nov 19 covered/.test(t) && !/New streak|nothing to spare/.test(t), 'tile: ' + t);
+        assert(/1 day under/.test(t) && /Stay under \$62 today/.test(t), 'tile: ' + t);
+        assert(await has(page, LAB_TILE + ' .bl-oline.is-even'), 'the on track line is not amber');
+        assert(await has(page, LAB_TILE + ' .bl-sbox.is-on .bl-scount') && await has(page, LAB_TILE + ' .bl-pip.is-lit'), 'no streak box with its count');
         noErrors(page);
       } finally { await page.ctx.close(); }
       const strip = await env.newPage({ layout: [{ widget: 'budget-lab', x: 0, y: 0, w: 6, h: 1 }, { widget: 'today', x: 6, y: 0, w: 6, h: 1 }],
         storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const t = await text(strip, LAB_TILE);
-        assert(/1 day under · \$41 of \$65/.test(t), 'strip: ' + t);
+        assert(/\$62 a day · 1 day under/.test(t), 'strip: ' + t);
         noErrors(strip);
       } finally { await strip.ctx.close(); }
     });
@@ -573,7 +634,8 @@ async function main() {
         await H.openPanel(page, 'budget-lab');
         assert((await focusedKey(page)) === 'cap', 'the cap slider does not have focus: ' + await focusedKey(page));
         let p = await labPanel(page);
-        assert(/\$62\s*a day/.test(p) && /Hold ◀ ▶ to change your daily cap/.test(p) && /Nov 19: covered, \$0 spare/.test(p), 'panel: ' + p);
+        assert(/\$62\s*a day/.test(p) && /Hold ◀ ▶ to change your daily cap/.test(p) && /Nov 19: on track at \$62 a day/.test(p) && !/covered, \$0 spare/i.test(p), 'panel: ' + p);
+        assert(await has(page, '#panel .bl-result.is-even') && !(await has(page, '#panel .bl-result.is-ok')), 'the on track result is not amber');
         assert(/Calculated \$62 a day/.test(p) && /No saved cap yet/.test(p) && /Down for merchants/.test(p), 'panel: ' + p);
         assert(/The Daily room tile uses \$60 a day/.test(p), 'panel: ' + p);
         assert(/Stay under \$62 today for 2 days in a row/.test(p), 'pace: ' + p);
@@ -623,7 +685,7 @@ async function main() {
         const pref = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), PREF));
         assert(pref.v === 1 && pref.cardDate === '2026-11-19' && Math.abs(pref.keep - 3.4) < 0.001 && typeof pref.at === 'string', 'stored: ' + JSON.stringify(pref));
         p = await labPanel(page);
-        assert(/Saved \$61 a day/.test(p) && /Nov 19: covered, \$3 spare/.test(p), 'after Save: ' + p);
+        assert(/Saved \$61 a day/.test(p) && /Nov 19: covered, \$3 spare/.test(p) && await has(page, '#panel .bl-result.is-ok'), 'after Save: ' + p);
         assert(await page.evaluate(() => getComputedStyle(document.querySelector('#panel .bl-tick.is-saved')).display !== 'none'), 'no saved mark on the track');
         // Down from the cap is Back to calculated (lit now); Left and Right do nothing there.
         await H.key(page, 'ArrowDown');
@@ -752,7 +814,7 @@ async function main() {
         await H.key(page, 'Escape');
         await H.idle(page);
         await page.evaluate(() => window.HUB_GUEST.set(false));
-        await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back: ' + await text(page, LAB_TILE));
+        await H.until(async () => /a day/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back: ' + await text(page, LAB_TILE));
         await H.openPanel(page, 'budget-lab');
         const back = await labPanel(page);
         assert(/\$62\s*a day/.test(back) && /Saved \$61 a day/.test(back), 'after Guest mode: ' + back);
@@ -789,7 +851,7 @@ async function main() {
         assert(/MERCHANTS|Merchants/.test(await labPanel(page)) && /Cut what you would skip before Nov 19/.test(await labPanel(page)), 'merchants head: ' + await labPanel(page));
         assert(/PUT IT SOMEWHERE|Put it somewhere/.test(await labPanel(page)), 'no Put it somewhere');
         let dest = await destVals(page);
-        assert(dest.join(' | ') === 'Card day: Covered | Savings: $0 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'destinations: ' + dest.join(' | '));
+        assert(dest.join(' | ') === 'Card day: On track | Savings: $0 of $500 | AWWS: $0 of $150 | Buffer: $0 of $350', 'destinations: ' + dest.join(' | '));
         assert(!(await has(page, '#panel .bl-dest.f, #panel .bl-dest .f')), 'Put it somewhere takes focus');
         // The panel is longer than its box at this size: it scrolls to the focused row.
         await goTo(page, 'cut-0');
@@ -975,7 +1037,7 @@ async function main() {
         await H.openPanel(page, 'budget-lab');
         let c = await chartOf(page);
         assert(c && c.right && c.n === 2 && c.pay === 1, 'full screen chart: ' + JSON.stringify(c));
-        assert(c.gap === 'Covered, $0 spare' && /is-ok/.test(c.gapCls), 'gap at the calculated cap: ' + c.gap + ' ' + c.gapCls);
+        assert(c.gap === 'On track, $0 spare' && /is-even/.test(c.gapCls) && !/is-ok/.test(c.gapCls), 'gap at the calculated cap: ' + c.gap + ' ' + c.gapCls);
         assert(!/\$/.test(c.other), 'a figure in the chart besides the gap: ' + c.other);
         assert(c.labels.indexOf('Nov 20') >= 0 && c.labels.indexOf('Nov 30') >= 0 && c.labels.indexOf('Mon') >= 0, 'labels: ' + c.labels.join(' | '));
         assert(/Runway to Nov 30/i.test(await text(page, '#panel .bl-chart-head')), 'head: ' + await text(page, '#panel .bl-chart-head'));
@@ -1129,7 +1191,7 @@ async function main() {
         await H.key(page, 'Escape');
         await H.idle(page);
         await page.evaluate(() => window.HUB_GUEST.set(false));
-        await H.until(async () => /day under/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back');
+        await H.until(async () => /a day/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back');
         await H.openPanel(page, 'budget-lab');
         assert((await cutLabels(page))[1] === 'Quick Bites Delivery · $127 so far · cut $0', 'a cut came back: ' + (await cutLabels(page))[1]);
         noErrors(page);
@@ -1169,7 +1231,7 @@ async function main() {
       });
     }
 
-    await check('the switcher: ten pills, all whole; "Budget" switches and back', async () => {
+    await check('the switcher: eleven pills, all whole; "Budget" switches and back', async () => {
       const page = await env.newPage({ storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.focusTile(page, await page.evaluate(() => {
@@ -1192,7 +1254,7 @@ async function main() {
           }) };
         });
         const names = bar.items.map((i) => i.name);
-        assert(names.length === 10 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
+        assert(names.length === 11 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
         assert(!bar.over, 'the bar overflows');
         for (const it of bar.items) assert(it.l >= 0 && it.r <= bar.w && !it.cut, 'pill cut: ' + it.name);
         for (let i = 0; i < 9; i++) {
@@ -1208,10 +1270,9 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
-    await check('the default layout and start tile are unchanged', async () => {
-      assert(C.start === 'entertainment', 'start: ' + C.start);
-      assert(C.layout.map((t) => t.widget).join() === 'today,calendar,awws,weather,todo,mirror,wotd,ambiance,nowplaying,entertainment', 'stock layout changed');
-      assert(C.layouts[0].id === 'stock' && C.layouts[0].layout === null, 'Stock is not first');
+    await check('the default layout is unchanged', async () => {
+      assert(C.layout.map((t) => t.widget).join() === 'today,calendar,awws,weather,todo,mirror,wotd,ambience,nowplaying,entertainment', 'stock layout changed');
+      assert(C.layouts[0].id === 'stock' && C.layouts[0].layout === null, 'Default is not first');
       assert(C.widgets.budget && C.widgets.budget.show === true, 'budget.show is not true by default');
     });
   } finally {
@@ -1276,7 +1337,7 @@ async function main() {
       try { acorn = require(p); break; } catch (e) { /* next */ }
     }
     const bad = [];
-    for (const f of ['app/widgets/budget.js', 'app/widgets/budget-lab.js', 'app/budget-lab-math.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
+    for (const f of ['app/widgets/budget.js', 'app/widgets/budget-lab.js', 'app/widgets/investments.js', 'app/budget-lab-math.js', 'app/widgets/awws.js', 'app/hub.js', 'app/config.js', 'app/icons.js', 'app/guest.js', 'app/widgets/today.js']) {
       const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
       if (acorn) {
         try { acorn.parse(src, { ecmaVersion: 5 }); } catch (e) { bad.push(f + ': ' + e.message); }

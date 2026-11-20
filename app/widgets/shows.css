@@ -256,6 +256,10 @@
   transform: rotate(45deg);
   vertical-align: 0.05rem;
 }
+/* "Airs live on FOX · Thu 7 PM": where a show streaming later first airs.
+   Its own quiet line, so a long channel name or the Spanish wraps, never clips. */
+.sh-air { margin-top: 0.1rem; font-size: 0.78rem; line-height: 1.4; color: var(--text-3); overflow-wrap: anywhere; }
+.panel.is-full .sh-air { font-size: 0.88rem; }
 .sh-via { display: inline-block; margin-left: 0.5rem; font-size: 0.8rem; color: var(--text-3); white-space: nowrap; }
 .sh-chip {
   display: inline-block;
@@ -269,7 +273,9 @@
   vertical-align: 0.08rem;
 }
 .sh-side {
-  flex: 0 0 auto;
+  position: relative;
+  flex: 0 0 7rem;
+  width: 7rem;
   display: flex;
   align-items: center;
   margin-left: 0.8rem;
@@ -283,7 +289,9 @@
   background: rgba(8, 12, 18, 0.42);
   font-size: 0.85rem; font-weight: 600; line-height: 1.35;
   white-space: nowrap;
+  min-width: 0; max-width: 100%; box-sizing: border-box;
 }
+.sh-badge-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sh-badge-dot {
   flex: 0 0 auto;
   width: 0.5rem; height: 0.5rem;
@@ -294,8 +302,12 @@
 /* "Watch on Hulu": only on the focused row. */
 .sh-watch {
   display: none;
+  position: absolute;
+  right: 0; top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
   align-items: center;
-  margin-left: 0.6rem;
+  max-width: 12.4rem;
   padding: 0.38rem 0.9rem;
   border-radius: 1.4rem;
   background: #fff;
@@ -304,7 +316,16 @@
   white-space: nowrap;
 }
 .sh-row.is-focused .sh-watch { display: flex; }
-.sh-row.is-focused .sh-badge { display: none; }
+.sh-row.is-focused .sh-badge { visibility: hidden; }
+/* The Watch button grows leftward over the info's free space; the columns stay put. */
+.sh-row.is-focused .sh-info { margin-right: 2.2rem; overflow: hidden; }
+.sh-row.is-focused .sh-watch { padding: 0.32rem 0.65rem; font-size: 0.8rem; max-width: 11rem; }
+.sh-row.is-focused .sh-watch-play { margin-right: 0.35rem; }
+.sh-row.is-focused .sh-meta-text { white-space: normal; }
+.sh-meta-bit { white-space: nowrap; }
+/* "Streams on Prime Video" may break between its words in a narrow row. */
+.sh-meta-text .sh-meta-wrap { white-space: normal; }
+.sh-watch-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sh-watch-play {
   width: 0; height: 0;
   margin-right: 0.5rem;
@@ -312,10 +333,25 @@
   border-top: 0.32rem solid transparent;
   border-bottom: 0.32rem solid transparent;
 }
+/* Columns after the row: Also on, check, show page. Each slot has a fixed width
+   (empty when a row lacks that pill), so a pill type starts at the same x on every row. */
+.sh-slot { position: relative; flex: 0 0 auto; margin-left: 0.3rem; height: 2rem; }
+.sh-slot.is-alt { width: 8.5rem; display: flex; align-items: center; }
+.sh-slot.is-mark { width: 2.3rem; }
+.sh-slot.is-page { width: 2.3rem; }
+.sh-slot .sh-mark,
+.sh-slot .sh-page { position: absolute; right: 0; top: 50%; margin: 0; transform: translateY(-50%); }
+.sh-slot .sh-mark.is-focused,
+.sh-slot .sh-page.is-focused { z-index: 3; }
 /* "Also on Hulu": a chip of its own beside the row; Right reaches it. */
 .sh-alt {
-  flex: 0 0 auto;
-  margin-left: 0.4rem;
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0.22rem 0.6rem;
   border-radius: 1rem;
   border: var(--edge) solid var(--line);
@@ -362,12 +398,15 @@
 }
 .sh-card-line { font-size: 0.85rem; line-height: 1.35; color: var(--text-2); }
 .sh-count {
-  flex: 0 0 auto;
+  flex: 0 0 4.6rem;
+  width: 4.6rem;
+  box-sizing: border-box;
   margin-left: 0.6rem;
   padding-left: 0.6rem;
   border-left: 0.06rem solid var(--line);
   text-align: center;
 }
+.sh-count.is-blank { border-left-color: transparent; }
 .sh-count-n { font-size: 1.4rem; font-weight: 700; line-height: 1.25; }
 .sh-count-word {
   font-size: 0.7rem; line-height: 1.35;
@@ -377,6 +416,11 @@
 .sh-count-word.is-today { color: #7fd1ff; font-weight: 700; }
 
 .sh-flag {
+  flex: 0 0 10rem;
+  width: 10rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
   margin-right: 0.6rem;
   padding: 0.12rem 0.55rem;
   border-radius: 1rem;
@@ -385,6 +429,8 @@
 }
 .sh-flag.is-running { color: #8fe3b0; background: rgba(28, 231, 131, 0.1); }
 .sh-flag.is-ended { color: var(--text-2); background: rgba(255, 255, 255, 0.07); }
+.sh-show .sh-side { flex-basis: 17.6rem; width: 17.6rem; }
+.sh-show .sh-badge { width: 7rem; }
 .sh-show.is-ended .sh-title { color: var(--text-2); }
 
 .sh-empty { padding: 0.8rem 0.6rem; font-size: 1.05rem; line-height: 1.4; color: var(--text-2); }
@@ -393,7 +439,52 @@
 .sh-msg-head { font-size: 1.35rem; font-weight: 600; line-height: 1.3; }
 .sh-msg-line { margin-top: 0.5rem; font-size: 1rem; line-height: 1.4; color: var(--text-2); }
 
-/* Full screen: a little larger. */
+/* Ready to watch: shows started and behind, at the top of Coming soon. */
+.sh-ready { margin-bottom: 0.4rem; }
+.sh-ready-head { display: flex; align-items: center; }
+.sh-ready-n,
+.sh-tab-n {
+  display: inline-block;
+  min-width: 1.15rem;
+  box-sizing: border-box;
+  margin-left: 0.45rem;
+  padding: 0 0.35rem;
+  border-radius: 0.7rem;
+  background: #7fd1ff;
+  color: #050506;
+  font-size: 0.72rem; font-weight: 700; line-height: 1.15rem;
+  letter-spacing: 0;
+  text-align: center;
+  vertical-align: 0.1em;
+}
+.sh-ready-line { overflow-wrap: anywhere; padding-bottom: 0.08rem; }
+.sh-ready-next { margin-top: 0.05rem; }
+.sh-ready-row .sh-count { flex-basis: 5.4rem; width: 5.4rem; margin-right: 0.6rem; }
+.sh-ready-row .sh-count-n { color: #7fd1ff; }
+.sh-ready-row .sh-count-word { white-space: nowrap; }
+.sh-ready-row .sh-side { flex-basis: 7rem; width: 7rem; }
+.sh-ready-row .sh-badge { width: 7rem; }
+.sh-chip.is-ready {
+  background: transparent;
+  color: #7fd1ff;
+  box-shadow: inset 0 0 0 0.06rem rgba(127, 209, 255, 0.55);
+  font-size: 0.78rem; font-weight: 600;
+  letter-spacing: 0; text-transform: none;
+  white-space: nowrap;
+}
+.sh-shows .sh-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel.is-full .sh-ready-row .sh-side { flex-basis: 8.5rem; width: 8.5rem; }
+.panel.is-full .sh-ready-row .sh-badge { width: 8.5rem; }
+
+/* Full screen: a little larger, and roomier columns. */
+.panel.is-full .sh-side { flex-basis: 8.5rem; width: 8.5rem; }
+.panel.is-full .sh-slot.is-alt { width: 10rem; }
+.panel.is-full .sh-row.is-focused .sh-watch { padding: 0.38rem 0.9rem; font-size: 0.9rem; max-width: 16rem; }
+.panel.is-full .sh-row.is-focused .sh-watch-play { margin-right: 0.5rem; }
+.panel.is-full .sh-row.is-focused .sh-info { margin-right: 6rem; }
+.panel.is-full .sh-show .sh-side { flex-basis: 21.7rem; width: 21.7rem; }
+.panel.is-full .sh-show .sh-badge { width: 8.5rem; }
+.panel.is-full .sh-flag { flex-basis: 12.6rem; width: 12.6rem; }
 .panel.is-full .sh-title { font-size: 1.3rem; }
 .panel.is-full .sh-meta { font-size: 1rem; }
 .panel.is-full .sh-date { flex-basis: 11rem; width: 11rem; }
@@ -556,5 +647,114 @@
 .sh-mark.is-focused .sh-mark-text { display: inline; }
 .sh-mark.is-focused .sh-mark-box { border-color: #050506; }
 .sh-mark.is-focused.is-on .sh-mark-box { background: #050506; border-color: #050506; color: #fff; }
+
+/* ---------- Entertainment at full screen: the apps beside the Schedule ---------- */
+
+/* A quarter for the apps, a list one item high each, and the Schedule (the
+   same view as the panel) in the rest. Only full screen: the panel and the
+   tile keep their own rules. Names wrap (Spanish is a quarter longer) with a
+   line height of 1.3 or more, so accents are never cut. */
+.ent-split { display: flex; align-items: flex-start; }
+.ent-side {
+  flex: 0 0 23%;
+  min-width: 0;
+  position: sticky;
+  top: 0;
+  padding-top: 0.2rem;
+}
+.ent-main { flex: 1 1 0; min-width: 0; margin-left: 2.6rem; }
+.panel.is-full .ent-side .ent-section,
+.panel.is-full .ent-side .ent-section.is-first { display: block; margin: 0 0 0.4rem; }
+.panel.is-full .ent-side .ent-section-label { display: none; }
+.panel.is-full .ent-side .ent-item.is-off { display: none; }
+.panel.is-full .ent-side .ent-grid { margin: 0; padding-top: 0; }
+.panel.is-full .ent-side .ent-item {
+  display: flex;
+  align-items: center;
+  width: auto;
+  box-sizing: border-box;
+  margin: 0 0 0.1rem;
+  padding: 0.22rem 0.7rem;
+  border-radius: 1.1rem;
+  text-align: left;
+}
+.panel.is-full .ent-side .ent-item.is-focused { background: rgba(255, 255, 255, 0.1); }
+.panel.is-full .ent-side .ent-icon { flex: 0 0 auto; width: 2.3rem; margin: 0; }
+.panel.is-full .ent-side .ent-icon .logo-text { font-size: 1.2rem; }
+.panel.is-full .ent-side .ent-text { flex: 1 1 0; min-width: 0; margin-left: 0.9rem; }
+.panel.is-full .ent-side .ent-name {
+  margin: 0;
+  font-size: 1.1rem;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+.panel.is-full .ent-side .ent-state { display: none; font-size: 0.8rem; line-height: 1.35; }
+.panel.is-full .ent-side .is-missing .ent-state { display: block; }
+.panel.is-full .ent-side .ent-icon .ent-count {
+  top: 0; right: 0;
+  min-width: 1.1rem; padding: 0 0.2rem; font-size: 0.75rem; line-height: 1.1rem; border-radius: 0.6rem;
+  box-shadow: 0 0 0 0.08rem var(--card);
+}
+
+/* ---------- The show page ---------- */
+
+/* The Schedule row's new chip: a small round list icon; focused, it names itself (like the check toggle). */
+.sh-page { flex: 0 0 auto; display: flex; align-items: center; margin-left: 0.3rem; padding: 0.22rem 0.35rem; border-radius: 1.2rem; border: var(--edge) solid transparent; font-size: 0.85rem; line-height: 1.4; color: var(--text-2); cursor: pointer; }
+.sh-page.is-past { opacity: 0.55; }
+.sh-page-ic { flex: 0 0 auto; box-sizing: border-box; width: 1.5rem; height: 1.5rem; padding: 0.24rem; border-radius: 50%; border: 0.12rem solid rgba(255, 255, 255, 0.4); }
+.sh-page-text { display: none; margin: 0 0.45rem 0 0.5rem; white-space: nowrap; }
+.sh-page.is-focused { opacity: 1; border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
+.sh-page.is-focused .sh-page-text { display: inline; }
+.sh-page.is-focused .sh-page-ic { border-color: #050506; }
+
+.sh-pg-top { display: flex; align-items: center; margin-bottom: 0.9rem; }
+.sh-pg-back { display: flex; align-items: center; padding: 0.3rem 0.85rem 0.3rem 0.6rem; border-radius: 1.3rem; border: var(--edge) solid var(--line); background: rgba(255, 255, 255, 0.04); font-size: 0.9rem; line-height: 1.35; color: var(--text-2); cursor: pointer; }
+.sh-pg-back-arrow { width: 0.45rem; height: 0.45rem; margin-right: 0.55rem; border-left: 0.12rem solid currentColor; border-bottom: 0.12rem solid currentColor; transform: rotate(45deg); }
+.sh-pg-back.is-focused { border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
+.sh-pg-head { display: flex; align-items: flex-start; padding-bottom: 1rem; border-bottom: 0.06rem solid var(--line); }
+.sh-pg-head .sh-poster { flex: 0 0 5.2rem; width: 5.2rem; height: 6.6rem; margin-right: 1.3rem; border-radius: 0.75rem; }
+.sh-pg-head .sh-poster-ab { font-size: 2.7rem; top: 0.2rem; left: 0.5rem; }
+.sh-pg-head .sh-poster-name { font-size: 0.7rem; left: 0.5rem; bottom: 0.4rem; }
+.sh-pg-info { flex: 1 1 auto; min-width: 0; }
+.sh-pg-title { font-size: 2rem; font-weight: 700; line-height: 1.25; padding: 0.05rem 0; }
+.sh-pg-meta { display: flex; align-items: center; flex-wrap: wrap; margin-top: 0.3rem; font-size: 0.95rem; line-height: 1.4; color: var(--text-2); }
+.sh-pg-meta .sh-badge { margin-right: 0.8rem; }
+.sh-pg-dot { margin: 0 0.5rem; color: var(--text-3); }
+.sh-pg-prog { margin-top: 0.75rem; }
+.sh-pg-prog-text { font-size: 1rem; line-height: 1.4; color: var(--text); font-weight: 600; }
+.sh-pg-segs { display: flex; margin-top: 0.4rem; max-width: 22rem; }
+.sh-pg-seg { flex: 1 1 0; height: 0.32rem; margin-right: 0.2rem; border-radius: 0.2rem; background: rgba(255, 255, 255, 0.14); }
+.sh-pg-seg:last-child { margin-right: 0; }
+.sh-pg-seg.is-on { background: #7fd1ff; }
+.sh-pg-seg.is-out { background: rgba(255, 255, 255, 0.3); }
+.sh-pg-acts { flex: 0 0 auto; display: flex; flex-direction: column; align-items: stretch; margin-left: 1.2rem; padding-top: 0.3rem; }
+.sh-pg-btn { display: flex; align-items: center; justify-content: center; margin-bottom: 0.5rem; padding: 0.45rem 1.1rem; border-radius: 1.5rem; border: var(--edge) solid var(--line); background: rgba(255, 255, 255, 0.05); font-size: 0.95rem; line-height: 1.35; color: var(--text); white-space: nowrap; cursor: pointer; }
+.sh-pg-btn.is-main { background: rgba(255, 255, 255, 0.14); font-weight: 600; }
+.sh-pg-btn.is-done { color: #7fd1ff; }
+.sh-pg-btn.is-focused { background: #fff; color: #050506; border-color: var(--focus); font-weight: 600; }
+.sh-pg-btn .sh-watch-play { border-left-color: currentColor; }
+.sh-pg-btn .sh-check { margin: 0 0.65rem 0.12rem 0.1rem; }
+.sh-pg-seasons { display: flex; margin: 1rem 0 0.7rem; }
+.sh-pg-tabs { flex-wrap: wrap; }
+.sh-pg-tabs .sh-tab { display: flex; align-items: center; }
+.sh-pg-tick { display: inline-block; width: 0.22rem; height: 0.45rem; margin: 0 0.2rem 0.1rem 0.45rem; border-right: 0.1rem solid #7fd1ff; border-bottom: 0.1rem solid #7fd1ff; transform: rotate(45deg); }
+.sh-pg-frac { margin-left: 0.45rem; font-size: 0.8rem; color: #7fd1ff; font-weight: 600; }
+.sh-pg-note { margin: -0.3rem 0 0.6rem; font-size: 0.85rem; line-height: 1.35; color: var(--text-3); }
+.sh-pg-ep { display: flex; align-items: center; }
+.sh-pg-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; padding: 0.45rem 0.7rem; border-radius: 0.9rem; border: var(--edge) solid transparent; cursor: pointer; }
+.sh-pg-row.is-seen { opacity: 0.55; }
+.sh-pg-row.is-future { opacity: 0.7; }
+.sh-pg-ep.is-in .sh-pg-row { background: var(--card-2); border-color: rgba(255, 255, 255, 0.22); opacity: 1; }
+.sh-pg-row.is-focused { border-color: var(--focus); }
+.sh-pg-num { flex: 0 0 2.6rem; font-size: 1rem; font-weight: 700; line-height: 1.3; color: var(--text-2); }
+.sh-pg-ep-info { flex: 1 1 auto; min-width: 0; }
+.sh-pg-ep-title { font-size: 1.05rem; font-weight: 600; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-pg-ep-meta { font-size: 0.85rem; line-height: 1.4; color: var(--text-2); }
+.sh-pg-ep .sh-mark { margin-left: 0.5rem; }
+.sh-pg-ep .sh-mark-gap { flex: 0 0 auto; width: 2.35rem; margin-left: 0.5rem; }
+.sh-pg-upto { display: none; flex: 0 0 auto; margin-left: 0.4rem; padding: 0.22rem 0.75rem; border-radius: 1rem; border: var(--edge) solid var(--line); background: rgba(255, 255, 255, 0.04); font-size: 0.85rem; line-height: 1.4; color: var(--text-2); white-space: nowrap; cursor: pointer; }
+.sh-pg-ep.is-in .sh-pg-upto { display: block; }
+.sh-pg-upto.is-focused { border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
 
 .css-end { top: 0; }

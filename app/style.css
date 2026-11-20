@@ -47,6 +47,8 @@ body {
 }
 .cell { position: absolute; }
 .cell.is-raised { z-index: 12; }   /* the opening or closing tile, above the ghost */
+/* A one-widget layout's screen-sized tile, hidden while its window opens (hub.js openSolo). */
+.cell.is-solo-waiting { visibility: hidden; }
 
 .tile {
   position: absolute;
@@ -175,6 +177,13 @@ body {
 .ghost {
   background: var(--card);
   border-color: var(--line);
+}
+/* A one-widget layout's window for a widget made for full screen (hub.js
+   wideClass): most of the screen; hub.js sets its height. */
+.panel.is-wide,
+.ghost.is-wide {
+  width: 86%;
+  margin-left: -43%;
 }
 .panel.is-full,
 .ghost.is-full {
@@ -720,6 +729,26 @@ body {
   background: linear-gradient(180deg, rgba(5, 7, 10, 0.12) 0%, rgba(5, 7, 10, 0.2) 50%, rgba(5, 7, 10, 0.32) 100%);
 }
 .has-picture .backdrop::after { display: block; }
+
+/* The picture's title, small in the bottom-right corner (HUB_CONFIG.pictureLabel).
+   Before the stage in the page, so under every tile; hub.js hides it (opacity)
+   while a panel or frame is open. */
+.pic-label {
+  position: fixed;
+  right: 0.9rem; bottom: 0.2rem;
+  max-width: 40%;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-3);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85), 0 0 8px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.2s linear;
+  pointer-events: none;
+}
+.pic-label.is-on { opacity: 1; }
 
 /* Grays a step lighter so they hold up on glass over the picture. */
 body.has-picture {

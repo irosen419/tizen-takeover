@@ -30,11 +30,9 @@
  *
  * Every word is in STRINGS. window.HUB_AWWS_STRINGS, when set before this
  * file loads, replaces any of them key by key (the screenshots use it to try
- * Spanish). Earned vs spent follows the hub's language (the Clock page's
+ * Spanish). Every tile follows the hub's language (the Clock page's
  * Language choice): while it draws, STRINGS is HUB_I18N.localize's copy,
- * with the Spanish under 'awws.<path>' keys in app/i18n.js. The other tiles
- * stay English for now; adding their 'awws.' keys there is enough to
- * translate them once they draw through inLang too.
+ * with the Spanish under 'awws.<path>' keys in app/i18n.js.
  */
 (function () {
   'use strict';
@@ -837,7 +835,10 @@
 
   /* ---------- the models ---------- */
 
-  function titleOf(ev) { return ev.title || STRINGS.noTitle; }
+  // Owner-typed text in the hub's language (display only; app/i18n-dyn.js).
+  function dyn(s) { return (window.HUB_I18N && window.HUB_I18N.dyn) ? window.HUB_I18N.dyn(s) : s; }
+
+  function titleOf(ev) { return ev.title ? dyn(ev.title) : STRINGS.noTitle; }
 
   // Visits that haven't ended, in the next 60 days.
   function visits(info) {
@@ -983,7 +984,7 @@
         if (!ev.allDay) last = Math.min(Math.max(ev.startDay, td) + 1, td + days);
         for (var n = first; n < last; n++) {
           out.push({ key: 'e' + ev.id + '@' + n, day: n, kind: 'event', allDay: ev.allDay, s: ev.allDay ? -1 : ev.s,
-            title: titleOf(ev), cal: ev.cal, place: ev.place, now: !ev.allDay && ev.s <= t && n === td, ev: ev });
+            title: ev.title || STRINGS.noTitle, cal: ev.cal, place: ev.place, now: !ev.allDay && ev.s <= t && n === td, ev: ev });
         }
       }
     }
@@ -999,6 +1000,14 @@
       return (p.day - q.day) || (p.s - q.s) || (p.title < q.title ? -1 : p.title > q.title ? 1 : 0);
     });
     return out;
+  }
+
+  // The sync's own "Nov 30" is English: in another language the date comes
+  // from dueISO, in this tile's date style. Other text ("Soon") stays as sent.
+  function dueText(it) {
+    var x = I18N();
+    if (it.due && it.dueDay !== null && x && x.lang() !== 'en') return dateText(it.dueDay, 'short');
+    return it.due;
   }
 
   function itemWhen(it) {
@@ -1254,10 +1263,11 @@
       el('span', 'aw-chip', row, opts.chip === 'long' ? STRINGS.owners[it.owner] : STRINGS.ownersShort[it.owner]);
     }
     var text = el('div', 'aw-trow-text', row);
-    el('div', 'aw-trow-title aw-cut', text, it.title);
+    el('div', 'aw-trow-title aw-cut', text, dyn(it.title));
     var meta = [];
-    if (late) meta.push({ t: it.due ? STRINGS.overdue + STRINGS.sep + it.due : STRINGS.overdue, c: 'is-late' });
-    else if (it.due) meta.push({ t: it.due, c: '' });
+    var dueShown = dueText(it);
+    if (late) meta.push({ t: dueShown ? STRINGS.overdue + STRINGS.sep + dueShown : STRINGS.overdue, c: 'is-late' });
+    else if (dueShown) meta.push({ t: dueShown, c: '' });
     if (it.waitingOn) meta.push({ t: fill(STRINGS.waitingOn, { name: it.waitingOn }), c: 'is-wait' });
     if (meta.length && opts.meta !== false) {
       var line = el('div', 'aw-trow-meta', text);
@@ -1288,7 +1298,7 @@
     accent(row, cal, todo);
     var text = el('div', 'aw-erow-text', row);
     el('div', 'aw-erow-when', text, when);
-    el('div', 'aw-erow-title aw-cut', text, title);
+    el('div', 'aw-erow-title aw-cut', text, dyn(title));
     return row;
   }
 
@@ -1387,7 +1397,7 @@
     var t = timeOf(ev);
     var forms = [dateText(ev.startDay, 'long') + STRINGS.sep + t, dateText(ev.startDay, 'short') + STRINGS.sep + t, dateText(ev.startDay, 'short')];
     if (ev.place) forms.unshift(forms[0] + STRINGS.sep + ev.place);
-    stripItem(root, { cal: ev.cal, title: titleOf(ev), forms: forms });
+    stripItem(root, { cal: ev.cal, title: ev.title || STRINGS.noTitle, forms: forms });
   }
 
   // A strip's one useful thing: a title and when. One line when the title
@@ -1400,9 +1410,9 @@
     var title;
     if (o.whenFirst) {
       when = el('span', 'aw-strip-when' + (o.now ? ' is-now' : ''), line);
-      title = el('span', 'aw-strip-title aw-cut', line, o.title);
+      title = el('span', 'aw-strip-title aw-cut', line, dyn(o.title));
     } else {
-      title = el('span', 'aw-strip-title aw-cut', line, o.title);
+      title = el('span', 'aw-strip-title aw-cut', line, dyn(o.title));
       when = el('span', 'aw-strip-when', line);
     }
     for (var i = 0; i < o.forms.length; i++) {
@@ -1414,7 +1424,7 @@
     accent(line, o.cal, o.todo);
     var stack = el('div', 'aw-strip-stack', line);
     var small = el('div', 'aw-strip-small' + (o.now ? ' is-now' : ''), stack);
-    el('div', 'aw-strip-title2 aw-cut', stack, o.title);
+    el('div', 'aw-strip-title2 aw-cut', stack, dyn(o.title));
     fitForms(small, o.forms);
     return null;
   }
@@ -1506,7 +1516,7 @@
         whenFirst: true, now: first.now });
       // A wide strip with room: the next items after it, while they fit whole.
       for (var k = i + 1; line && k < items.length && k < i + 4; k++) {
-        var more = el('span', 'aw-strip-extra', line, STRINGS.sep + relDay(items[k].day, td, true) + ' ' + itemWhen(items[k]) + '  ' + items[k].title);
+        var more = el('span', 'aw-strip-extra', line, STRINGS.sep + relDay(items[k].day, td, true) + ' ' + itemWhen(items[k]) + '  ' + dyn(items[k].title));
         if (overW(line)) { line.removeChild(more); break; }
       }
       return;
@@ -1538,7 +1548,7 @@
       var rows = [];
       for (var j = 0; j < mine.length; j++) {
         var r = el('div', 'aw-wd-item aw-cut' + (mine[j].now ? ' is-now' : ''));
-        r.textContent = mine[j].title;
+        r.textContent = dyn(mine[j].title);
         rows.push(r);
       }
       col.fit = { list: list, more: more, rows: rows };
@@ -1599,7 +1609,7 @@
       accent(row, it.cal, it.kind === 'todo');
       el('span', 'aw-arow-when', row, itemWhen(it));
       var text = el('div', 'aw-arow-text', row);
-      el('div', 'aw-arow-title aw-cut', text, it.title);
+      el('div', 'aw-arow-title aw-cut', text, dyn(it.title));
       // A to-do's day is in the heading already: its line says whose it is.
       var sub = it.place;
       if (it.kind === 'todo') {
@@ -1635,7 +1645,7 @@
       el('span', 'aw-strip-num', line, fmtNum(ianNow));
       var first = ianItems[0] || nowItems[0];
       // The first item may take two lines; the cut falls between lines.
-      if (first) el('span', 'aw-strip-title2 aw-cut' + (isOverdue(first) ? ' is-late' : ''), line, first.title);
+      if (first) el('span', 'aw-strip-title2 aw-cut' + (isOverdue(first) ? ' is-late' : ''), line, dyn(first.title));
       else el('span', 'aw-strip-title is-quiet', line, STRINGS.nowForYou);
       return;
     }
@@ -2683,8 +2693,7 @@
   }
 
   function drawPanel(body, ctx) {
-    if (ctx.id === 'awws-money') return inLang(function () { drawPanelNow(body, ctx); });
-    drawPanelNow(body, ctx);
+    return inLang(function () { drawPanelNow(body, ctx); });
   }
 
   function drawPanelNow(body, ctx) {
@@ -2712,8 +2721,7 @@
         try { drawPanel(body, ctx); } catch (e) {
           warn('panel: ' + (e && e.message));
           var key = id === 'awws' ? 'awws' : id.replace('awws-', '');
-          if (id === 'awws-money') inLang(function () { broken(body, STRINGS.titles[key] || ''); });
-          else broken(body, STRINGS.titles[key] || '');
+          inLang(function () { broken(body, STRINGS.titles[key] || ''); });
         }
       },
       onSelect: function (target, ctx) {
@@ -2759,16 +2767,16 @@
 
   /* ---------- registering ---------- */
 
-  // local: the tile follows the hub's language (Earned vs spent).
-  function real(id, titleKey, drawTile, local) {
-    function run(fn) { return local ? inLang(fn) : fn(); }
+  // Every tile follows the hub's language.
+  function real(id, titleKey, drawTile) {
+    function run(fn) { return inLang(fn); }
     var w = {
       id: id,
       icon: 'globe',
       expandable: true,
       init: function (ctx) {
         try { bind(ctx); } catch (e) { warn('init: ' + (e && e.message)); }
-        if (local) watchLang(ctx, titleKey);
+        watchLang(ctx, titleKey);
       },
       renderTile: function (body, ctx) {
         run(function () {
@@ -2798,6 +2806,23 @@
   // (the hub draws titles once).
   function watchLang(ctx, titleKey) {
     var x = I18N();
+    try {
+      if (x && typeof x.onDyn === 'function') {
+        var dynTimer = null;
+        x.onDyn(function () {
+          if (dynTimer) return;
+          dynTimer = setTimeout(function () {
+            dynTimer = null;
+            try {
+              var ae = document.activeElement;
+              if (ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName)) return;
+              ctx.redrawTile();
+              if (ctx.isOpen()) ctx.redrawPanel();
+            } catch (e) { warn('translation: ' + (e && e.message)); }
+          }, 120);
+        });
+      }
+    } catch (e0) { /* stays as typed */ }
     if (!x || typeof x.onChange !== 'function') return;
     x.onChange(function () {
       try {
@@ -2845,13 +2870,17 @@
   }
 
   function placeholder(key) {
-    var words = STRINGS.planned[key];
     var w = {
       id: 'awws-' + key,
       icon: 'globe',
       expandable: true,
       planned: true,
-      renderTile: function (body, ctx) {
+      init: function (ctx) { watchLang(ctx, key); },
+      renderTile: function (body, ctx) { inLang(function () { drawPlannedTile(body, ctx); }); },
+      renderPanel: function (body) { inLang(function () { drawPlannedPanel(body); }); }
+    };
+    function drawPlannedTile(body, ctx) {
+        var words = STRINGS.planned[key];
         try {
           var text = el('p', 'planned-text aw-planned-text', body, words);
           var m = el('span', 'planned-mark', body);
@@ -2859,15 +2888,15 @@
           var size = ctx && ctx.size ? ctx.size() : null;
           if (!size || size.tier !== 'strip') fitLines(body, text, m);
         } catch (e) { broken(body, STRINGS.titles[key]); }
-      },
-      renderPanel: function (body) {
+    }
+    function drawPlannedPanel(body) {
+        var words = STRINGS.planned[key];
         var wrap = el('div', 'planned-panel', body);
         el('p', 'planned-lead', wrap, words);
         el('p', 'planned-note aw-planned-note', wrap, STRINGS.plannedNote);
         var m = el('span', 'planned-mark planned-mark-panel', body);
         m.innerHTML = (window.HUB_ICONS && window.HUB_ICONS.globe) || '';
-      }
-    };
+    }
     Object.defineProperty(w, 'title', { get: function () { return inLang(function () { return STRINGS.titles[key]; }); },
       enumerable: true, configurable: true });
     return w;
@@ -2907,7 +2936,7 @@
   list.push(real('awws-agenda', 'agenda', agendaTile));
   list.push(real('awws-todo', 'todo', todoTile));
   list.push(real('awws-reach', 'reach', reachTile));
-  list.push(real('awws-money', 'money', moneyTile, true));
+  list.push(real('awws-money', 'money', moneyTile));
   list.push(placeholder('outreach'));
   list.push(placeholder('pipeline'));
 })();

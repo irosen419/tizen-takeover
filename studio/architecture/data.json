@@ -195,6 +195,11 @@
          "to": "tv.service",
          "label": "ctx.service GETs on 127.0.0.1:8095",
          "dir": "out"
+        },
+        {
+         "to": "cloud.pictures",
+         "label": "loads the day or night picture",
+         "dir": "in"
         }
        ]
       },
@@ -245,8 +250,9 @@
        "status": "unverified",
        "summary": "A glassy pill bar from the top to switch saved layouts, plus layouts pushed from the Pi.",
        "details": [
-        "Up on a top tile drops a pill bar (Stock, Main, Get ready, AWWS desk, AWWS one screen, AWWS money, Budget); Left/Right move, OK applies, Back or Down closes. The pick is kept in localStorage with the Pi layout's signature, so a newer layout set on the Pi wins.",
-        "A layout from the Pi (live resource layout) moves tiles in place when the same widgets stay, otherwise reloads once."
+        "Up on a top tile drops a pill bar (Default, Main, Get ready, AWWS desk, AWWS one screen, AWWS money, Budget); Left/Right move, OK applies, Back or Down closes. The pick is kept in localStorage with the Pi layout's signature, so a newer layout set on the Pi wins.",
+        "A layout from the Pi (live resource layout) moves tiles in place when the same widgets stay, otherwise reloads once.",
+        "A layout of one widget over the whole grid (Hub architecture, Plant wall) opens straight into that widget as a window in one fade, with no tile shown first; a widget made for full screen gets a window over most of the screen. The built-in layout is called Default."
        ],
        "files": [
         "app/hub.js",
@@ -293,15 +299,24 @@
        "title": "Spanish language",
        "kind": "component",
        "status": "unverified",
-       "summary": "English or Latin American Spanish, chosen on the Clock page; one string table for the whole hub.",
+       "summary": "English or Latin American Spanish, chosen on the Clock page; every widget's fixed words, plus Ian's own text through the Pi.",
        "details": [
-        "HUB_I18N holds the Spanish strings, one section per widget, with English as the fallback and its own day and month names. Today it covers Word of the day, the Clock page, the money tiles, to-do words and the motion chips; other widgets stay in English. Choice kept in localStorage; ?lang=es tries it."
+        "HUB_I18N holds the Spanish strings, one section per widget, with English as the fallback and its own day and month names. Every widget's fixed words are covered (the Architecture page is still English).",
+        "HUB_I18N.dyn (app/i18n-dyn.js) shows to-dos, calendar events and AWWS tasks in Spanish: it shows English first, asks the Pi's translate service in one batch, keeps answers on the TV, and redraws. Show titles, songs and place names stay as they are. Choice kept in localStorage; ?lang=es tries it."
        ],
        "files": [
-        "app/i18n.js"
+        "app/i18n.js",
+        "app/i18n-dyn.js"
        ],
        "notes": [
         "Text fit (+25% for Spanish) is tested on a laptop only, not on the TV's font."
+       ],
+       "talksTo": [
+        {
+         "to": "pi.translate",
+         "label": "asks for Spanish lines",
+         "dir": "out"
+        }
        ]
       },
       {
@@ -311,7 +326,7 @@
        "status": "unverified",
        "summary": "One switch on the Clock page that hides every money figure while guests are over.",
        "details": [
-        "When on, Earned vs spent and the budget tiles say Hidden for guests, the New charge banner never shows, budget data is dropped as it arrives, and money layouts leave the switcher. Calendars and to-dos stay."
+        "When on, Earned vs spent and the budget tiles say Hidden for guests, the New charge banner never shows, budget data is dropped as it arrives, and money layouts leave the switcher. Calendars and to-dos stay. The Investments tile is the exception: it shows percentages only (gain, shares, the trend's shape) and keeps no dollar."
        ],
        "files": [
         "app/guest.js",
@@ -327,6 +342,11 @@
         {
          "to": "tv.widgets.awws",
          "label": "hides Earned vs spent and the Glance money line",
+         "dir": "out"
+        },
+        {
+         "to": "tv.widgets.budget.investments",
+         "label": "percentages only, no dollars",
          "dir": "out"
         }
        ],
@@ -568,17 +588,16 @@
        "id": "tv.characters.lift",
        "title": "Lift pixel character",
        "kind": "component",
-       "status": "draft",
-       "pr": "PR 77",
+       "status": "live",
        "summary": "A pixel-art Lift (with Wyndle) glides over a tile when it gets an update, in place of the chip.",
        "details": [
         "app/agents.js holds a roster, swappable by one config value (agents: { on, who }), shown only when activity chips may run and home is quiet; the chip stays as a fallback. A figure() hook in motion.js is called from the chip lifecycle. Motion is transform on one frame plus sway; the source art has no skate cycle."
        ],
        "files": [
-        "(PR 77) app/agents.js",
-        "(PR 77) app/agents.css",
-        "(PR 77) app/agents/lift",
-        "(PR 77) docs/agents.md",
+        "app/agents.js",
+        "app/agents.css",
+        "app/agents/lift",
+        "docs/agents.md",
         "app/motion.js"
        ],
        "talksTo": [
@@ -589,7 +608,7 @@
         }
        ],
        "notes": [
-        "Real TV smoothness and the pixel look are unverified."
+        "Works on the TV (checked Nov 19). It shows only when the screen runs at full speed; a change to measure speed after the hub settles is in progress."
        ]
       },
       {
@@ -687,6 +706,59 @@
          ],
          "notes": [
           "Nothing has run on the real TV, including launchAppControl and every deep link."
+         ]
+        },
+        {
+         "id": "tv.widgets.entertainment.show-page",
+         "title": "Show page",
+         "kind": "component",
+         "status": "unverified",
+         "summary": "One page per show: every season and episode, watched marks, Watched up to here, and I'm caught up / I've seen it all.",
+         "details": [
+          "Opened from the round chip at the end of each Schedule row; it takes the Schedule's place and Back returns to the row. The row's check now says Mark as up to date: it marks that episode and every earlier one.",
+          "The page asks the Pi for the show's full episode list when it opens (GET /shows/episodes) and keeps the last few on the TV. Marks go to the Pi through the same waiting queue as before (POST /shows/watched, /shows/unwatch, /shows/upto, /shows/caughtup)."
+         ],
+         "files": [
+          "app/widgets/shows.js",
+          "app/widgets/shows.css",
+          "app/i18n.js"
+         ],
+         "talksTo": [
+          {
+           "to": "pi.shows",
+           "label": "episode list and progress marks",
+           "dir": "out"
+          }
+         ],
+         "notes": [
+          "Needs Pi server 0.14.0; an older Pi shows a \"needs a newer Pi\" message on the page."
+         ]
+        },
+        {
+         "id": "tv.widgets.entertainment.ready-to-watch",
+         "title": "Ready to watch",
+         "kind": "component",
+         "status": "unverified",
+         "summary": "Top of Coming soon: shows you have started that have aired episodes not marked watched, with per-season counts (\"Season 2 · all 12 out\", \"12 to watch\").",
+         "details": [
+          "A show counts once it has a Watched up to point or any episode marked; a show never touched is left out. OK on a line opens the next episode in its app; the round chip opens the show page. The Coming soon tab carries the count, and every Your shows row has the show page chip and an \"N to watch\" tag.",
+          "The per-season counts come from the snapshot (shows[].progress.left, Pi server 0.17.0). An older Pi sends only the totals, so the line says just the next episode."
+         ],
+         "files": [
+          "app/widgets/shows.js",
+          "app/widgets/shows.css",
+          "app/i18n.js",
+          "pi/shows.js"
+         ],
+         "talksTo": [
+          {
+           "to": "pi.shows",
+           "label": "progress.left in the shows snapshot",
+           "dir": "in"
+          }
+         ],
+         "notes": [
+          "Not yet seen on the TV."
          ]
         }
        ]
@@ -1015,7 +1087,7 @@
          "title": "Card day",
          "kind": "component",
          "status": "unverified",
-         "summary": "Tile: the card day date, Covered or Short, and the covering transfers. Panel: each transfer and coming paychecks.",
+         "summary": "Tile: the card day date, Covered or Short, and the covering transfers. Panel: each transfer and coming paychecks. Panel pages: the receipt and a Next 3 months outlook (the snapshot's cardDay.outlook: where the month starts, ahead or behind, and three months of paychecks, bills and spending).",
          "files": [
           "app/widgets/budget.js"
          ]
@@ -1056,6 +1128,34 @@
          ],
          "notes": [
           "To check on the TV: key-repeat timing for hold-to-speed on the slider."
+         ]
+        },
+        {
+         "id": "tv.widgets.budget.investments",
+         "title": "Investments",
+         "kind": "component",
+         "status": "draft",
+         "pr": "PR 119",
+         "summary": "Standalone tile (in no layout): the portfolio total and its gain against cost, a trend line, an allocation bar by account and the top holdings. OK opens every account and holding in place.",
+         "details": [
+          "Reads the investments section of the budget snapshot from the live line. Adapts to the tile size: total and gain, then a trend line (hidden under 2 days, with Trend starts building today), then the allocation bar and holdings. Dollar figures were approved for the TV on 2026-11-19. In Guest mode no dollar is drawn or kept: the percentages are worked out when the data arrives, then the dollars are dropped, and only percentages and the trend's shape show."
+         ],
+         "files": [
+          "app/widgets/investments.js",
+          "app/widgets/investments.css",
+          "dev/investments-test.js"
+         ],
+         "talksTo": [
+          {
+           "to": "pi.budget.investments",
+           "label": "investments section over the live line",
+           "dir": "in"
+          },
+          {
+           "to": "tv.hub.guest",
+           "label": "percentages only when guests are over",
+           "dir": "in"
+          }
          ]
         }
        ]
@@ -1176,6 +1276,35 @@
         "Nothing has run against real Home Assistant, WLED or the TV yet. Geeni bulbs must first appear in Home Assistant as lights."
        ],
        "children": []
+      },
+      {
+       "id": "tv.widgets.architecture",
+       "title": "Architecture",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "This map on the TV: Big picture, group diagrams and a detail drawer, all driven by the remote, plus the data flows stepped one by one.",
+       "details": [
+        "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 170 KB of data (app/widgets/architecture-data.js) loads only when the widget is first opened.",
+        "The data is the same studio/architecture/data.json the Studio page draws: node studio/build-architecture.js writes both, and its --check fails when either is out of date."
+       ],
+       "files": [
+        "app/widgets/architecture.js",
+        "app/widgets/architecture.css",
+        "app/widgets/architecture-data.js",
+        "studio/build-architecture.js",
+        "dev/architecture-tv-test.js",
+        "dev/architecture-shots.js"
+       ],
+       "talksTo": [
+        {
+         "to": "studio.arch-page",
+         "label": "same data.json, copied by the build script",
+         "dir": "in"
+        }
+       ],
+       "notes": [
+        "Not yet seen on the real TV: Chrome 63 drawing of the connector lines and the drawer slide are only checked in headless Chromium."
+       ]
       }
      ]
     },
@@ -1886,6 +2015,34 @@
      ]
     },
     {
+     "id": "pi.translate",
+     "title": "Translate service",
+     "kind": "component",
+     "status": "unverified",
+     "summary": "Turns Ian's own text (to-dos, calendar events, AWWS tasks) into Latin American Spanish when the hub is in Spanish, and remembers each line.",
+     "details": [
+      "The TV sends up to 60 lines at a time to POST /translate. Lines already known come from data/translations-es.json (up to 5000, oldest dropped); new ones go to Gemini (gemini-3.5-flash-lite) in one batched call, are checked, then saved, so each line is translated once.",
+      "Uses Ian's personal key (HUB_TRANSLATE_KEY, else GEMINI_VIDEO_GEN_KEY in pi/.env), never the AWWS key. No key means cache only. A Gemini error pauses new translations for 1 minute, growing to at most 10. The log counts lines and never shows the text.",
+      "Usage per day (new lines, Gemini calls, tokens, estimated cost) is kept in data/translate-usage.json for 62 days; Claude reads it with the mailbox command translate.status (GET /api/translate/usage). At most 2000 new lines a day."
+     ],
+     "files": [
+      "pi/translate.js",
+      "pi/translate-test.js"
+     ],
+     "talksTo": [
+      {
+       "to": "tv.hub.i18n",
+       "label": "Spanish for typed lines",
+       "dir": "out"
+      },
+      {
+       "to": "ext.gemini.translate",
+       "label": "new lines, one batch",
+       "dir": "out"
+      }
+     ]
+    },
+    {
      "id": "pi.awws",
      "title": "AWWS snapshot checks",
      "kind": "component",
@@ -1924,7 +2081,7 @@
      "status": "unverified",
      "summary": "Checks the totals-only snapshot that the budget app on the same Pi posts locally. It never goes through the cloud.",
      "details": [
-      "Sections: daily room, card day and how it is covered, goal states, and alerts that name a merchant with a new charge (never an amount). Same text rules as the AWWS snapshot: no emails or links, unknown fields dropped, 48 KB at most.",
+      "Sections: daily room, card day and how it is covered (with its optional 3 month outlook, which the server drops on its own when invalid), goal states, and alerts that name a merchant with a new charge (never an amount). Same text rules as the AWWS snapshot: no emails or links, unknown fields dropped, 48 KB at most.",
       "./hub budget show prints dates, counts and states only, never a label or an amount. show: false under widgets.budget hides the tiles for guests."
      ],
      "files": [
@@ -1962,6 +2119,29 @@
         "pi/budget.js",
         "docs/budget-snapshot.md"
        ]
+      },
+      {
+       "id": "pi.budget.investments",
+       "title": "Investments section",
+       "kind": "data",
+       "status": "draft",
+       "pr": "PR 119",
+       "summary": "One more optional section: portfolio total, cost and gain, 1 to 6 accounts, up to 8 top holdings and up to 92 days of totals, in dollars up to 10,000,000.",
+       "details": [
+        "Approved for the TV on 2026-11-19 (the second exception to totals only, after the Card day receipt). Account numbers and share counts are never stored. ./hub budget show prints counts and dates only. Server 0.16.0; an older server drops the section and keeps the rest."
+       ],
+       "files": [
+        "pi/budget.js",
+        "pi/budget-test.js",
+        "docs/budget-snapshot.md"
+       ],
+       "talksTo": [
+        {
+         "to": "ext.budget-app.investments",
+         "label": "receives the section with the rest of the snapshot",
+         "dir": "in"
+        }
+       ]
       }
      ]
     },
@@ -1998,13 +2178,16 @@
      "summary": "A shows resource: Ian's show list looked up on TVmaze every 6 hours, for the Entertainment Schedule.",
      "details": [
       "The list lives in data/shows.json (started from a seed list). For each show the Pi asks TVmaze (public, no key) for next and past episodes, at most 20 calls per 10 s, and pushes the result. A show that fails keeps its last copy, marked stale.",
-      "Adds ./hub shows and mailbox commands shows.list, add, remove, set and refresh, plus a Watch link test whose answers the TV sends back. Log lines carry no show names or addresses."
+      "Adds ./hub shows and mailbox commands shows.list, add, remove, set and refresh, plus a Watch link test whose answers the TV sends back. Log lines carry no show names or addresses.",
+      "Progress per show is a watermark plus exceptions: upTo (everything up to and including an episode counts as watched), single watched marks after it, and unwatched exceptions before it. The snapshot carries progress (aired, seen, next, caught up) per show.",
+      "Each refresh keeps a compact list of every episode per show in data/show-episodes.json; the TV fetches one show's list when its show page opens, so the 6-hourly snapshot stays small. Server 0.14.0 adds ./hub shows upto / caughtup and mailbox shows.upto / shows.caughtup."
      ],
      "files": [
       "pi/shows.js",
       "pi/shows-seed.json",
       "pi/linktests.js",
-      "docs/shows-snapshot.md"
+      "docs/shows-snapshot.md",
+      "pi/server.js"
      ],
      "talksTo": [
       {
@@ -2289,6 +2472,43 @@
       "Untested on real hardware. Pi server 0.7.0 or later."
      ],
      "children": []
+    },
+    {
+     "id": "pi.health",
+     "title": "Weekly health report",
+     "kind": "script",
+     "status": "draft",
+     "pr": "PR 114",
+     "summary": "A script on the Pi itself (not in Docker), run every Sunday 3:15 AM by a systemd user timer, that checks the whole Pi and writes one JSON report.",
+     "details": [
+      "Checks CPU heat and throttling, under-voltage, memory and swap, disks and folder sizes, SD card errors in the kernel log, reboots without a clean shutdown, every Docker container and its restarts, user services (budget) and failed units, timers, whether each checkout under ~/code is on main and up to date with GitHub (the hourly auto-update), Wi-Fi signal and drops, the hub's log problems, data ages and translation use against the 2,000-line daily cap.",
+      "Also reads Home Assistant's own Pi sensors (System Monitor, Raspberry Pi power) with a week of history. Each finding is a flag, bad or warn, so a Claude routine only has to read and explain.",
+      "Writes data/health/latest.json, a dated copy (12 kept) and latest.txt. Scrubbed before writing: no keys, addresses, Wi-Fi names, links, entity ids or amounts. New parts (storm speaker, room lights) add a file to checks.d/ instead of changing the script."
+     ],
+     "files": [
+      "(PR 114) pi/health/pi-health.py",
+      "(PR 114) pi/health/install.sh",
+      "(PR 114) pi/health/checks.d/README.md",
+      "(PR 114) pi/health/test_pi_health.py"
+     ],
+     "talksTo": [
+      {
+       "to": "ext.ha",
+       "label": "Pi sensors and a week of history",
+       "dir": "in"
+      },
+      {
+       "to": "pi.server",
+       "label": "status, log problems, translations",
+       "dir": "in"
+      },
+      {
+       "to": "cloud.r2.health",
+       "label": "copied up by the mailbox reader",
+       "dir": "out"
+      }
+     ],
+     "children": []
     }
    ],
    "id": "pi",
@@ -2325,7 +2545,7 @@
       }
      ],
      "notes": [
-      "Another bucket in the same account belongs to other work and is never touched."
+      "The pictures bucket (home-hub-pictures) is separate and public; the mailbox stays private. Another bucket in the same account belongs to other work and is never touched."
      ],
      "children": [
       {
@@ -2366,7 +2586,63 @@
        "files": [
         "pi/mailbox.js"
        ]
+      },
+      {
+       "id": "cloud.r2.health",
+       "title": "health/",
+       "kind": "data",
+       "status": "draft",
+       "pr": "PR 114",
+       "summary": "The weekly Pi health report: health/latest.json and one dated copy per week, kept 180 days.",
+       "details": [
+        "The Pi's mailbox reader copies data/health/latest.json here within a minute of it changing; status.json then carries a one-line summary (when, ok/warn/bad, counts). Claude reads it with curl, like status.json."
+       ],
+       "files": [
+        "(PR 114) pi/mailbox.js"
+       ],
+       "children": []
       }
+     ]
+    },
+    {
+     "id": "cloud.pictures",
+     "title": "R2 pictures bucket",
+     "kind": "service",
+     "status": "unverified",
+     "summary": "The public Cloudflare R2 bucket home-hub-pictures: the one home for big or growing pictures (backgrounds, clay source art, later character art), so the hub's package stays small.",
+     "details": [
+      "app/backgrounds/backgrounds.js names every picture, its title and credit, and one base address that points at the bucket. The hub shows one day picture and one night picture each day.",
+      "If the bucket can't be reached, the hub shows the ocean picture that ships with the hub, so the screen never goes blank.",
+      "One folder per kind, never overwritten: day/ and night/ (backgrounds), clay/source/v1/ (clay source sheets, live), later clay/sprites/vN/ and agents/<name>/vN/. A changed set gets a new vN folder, so older hub builds keep working.",
+      "Small art the hub needs at start (clay sprites 0.75 MB, Lift 0.05 MB) stays in the repo next to its code; a family moves to the bucket past about 5 MB.",
+      "The bucket allows the TV to read it (CORS) and sends long cache headers; the glass window over the tiles needs CORS to work.",
+      "Free tier: 10 GB stored, no download fees. The free r2.dev address is rate-limited, which is fine for two pictures a day."
+     ],
+     "files": [
+      "app/backgrounds/backgrounds.js",
+      "app/backgrounds/ocean.jpg",
+      "docs/asset-storage.md",
+      "art/clay/tools/fetch_source.py"
+     ],
+     "talksTo": [
+      {
+       "to": "tv.hub.core",
+       "label": "one day and one night picture a day",
+       "dir": "out"
+      },
+      {
+       "to": "studio.claude-threads",
+       "label": "threads upload new pictures",
+       "dir": "in"
+      },
+      {
+       "to": "ext.gemini.clay",
+       "label": "clay source sheets",
+       "dir": "both"
+      }
+     ],
+     "notes": [
+      "Ian chose one bucket for all growing art (Nov 19). Private reference art and photos never go here: anyone can read it."
      ]
     },
     {
@@ -2464,7 +2740,7 @@
    ],
    "id": "cloud",
    "title": "Cloud",
-   "summary": "How code reaches the TV (GitHub, jsDelivr) and how Claude reaches the Pi (the R2 mailbox)."
+   "summary": "How code reaches the TV (GitHub, jsDelivr), how Claude reaches the Pi (the R2 mailbox) and where the background pictures live (the R2 pictures bucket)."
   },
   {
    "kind": "group",
@@ -2841,6 +3117,25 @@
          "dir": "out"
         }
        ]
+      },
+      {
+       "id": "ext.budget-app.investments",
+       "title": "Investments export",
+       "kind": "data",
+       "status": "draft",
+       "pr": "PR 119",
+       "summary": "The budget app works the portfolio out from its Plaid holdings and keeps one total per day, so the trend builds from the first day.",
+       "details": [
+        "Built in the budget repo (a separate change). Sends the investments section inside the same snapshot it already posts."
+       ],
+       "files": [],
+       "talksTo": [
+        {
+         "to": "pi.budget.investments",
+         "label": "investments section",
+         "dir": "out"
+        }
+       ]
       }
      ]
     },
@@ -2940,16 +3235,23 @@
        "status": "live",
        "summary": "Pose sheets for Ian and Ember the clay wanderers, cut into the sprites the hub plays.",
        "details": [
-        "art/clay/tools asks Gemini for a sheet of poses, then cuts and cleans them. Raw sheets are kept in art/clay/raw, the biggest part of the repo's size."
+        "art/clay/tools asks Gemini for a sheet of poses, then cuts and cleans them. The raw sheets and model sheets (33 MB) live in the R2 pictures bucket under clay/source/v1/, not in git; fetch_source.py downloads them and checks each against source.sha256."
        ],
        "files": [
-        "art/clay/README.md"
+        "art/clay/README.md",
+        "art/clay/tools/fetch_source.py",
+        "art/clay/source.sha256"
        ],
        "talksTo": [
         {
          "to": "tv.widgets",
          "label": "sprites shipped in app/clay/",
          "dir": "out"
+        },
+        {
+         "to": "cloud.pictures",
+         "label": "source sheets kept in clay/source/v1/",
+         "dir": "both"
         }
        ]
       },
@@ -2967,6 +3269,24 @@
         "(PR 77) app/agents.js"
        ],
        "talksTo": []
+      },
+      {
+       "id": "ext.gemini.translate",
+       "title": "Hub translations",
+       "kind": "external",
+       "status": "unverified",
+       "summary": "Gemini translates new to-do, event and AWWS lines for Spanish mode, called only by the Pi's translate service.",
+       "details": [
+        "Names of people, places, shows, books and songs are kept as they are. Billed to Ian's personal Gemini key, not AWWS's."
+       ],
+       "files": [],
+       "talksTo": [
+        {
+         "to": "pi.translate",
+         "label": "Spanish lines back",
+         "dir": "out"
+        }
+       ]
       }
      ]
     },
@@ -3311,6 +3631,25 @@
        ]
       }
      ]
+    },
+    {
+     "id": "sched.pi-health",
+     "title": "Weekly Pi health check",
+     "kind": "task",
+     "status": "unverified",
+     "summary": "Sundays 9:20 AM Central: a fresh Claude thread reads health/latest.json and last week's report and tells Ian only what is out of the ordinary.",
+     "details": [
+      "Routine trig_011Gr7sUWzh5aDp3uEo4ScUe, created 2026-11-19 with Ian's yes. Read-only: it never sends Pi commands. All ok means a one-line note."
+     ],
+     "files": [],
+     "talksTo": [
+      {
+       "to": "cloud.r2.health",
+       "label": "reads the newest report",
+       "dir": "in"
+      }
+     ],
+     "children": []
     }
    ],
    "id": "sched",
@@ -3588,27 +3927,35 @@
      "title": "Architecture page",
      "kind": "doc",
      "status": "unverified",
-     "summary": "This page: an expandable map of the TV, Pi, cloud, outside services, tasks and tools, drawn from the repo and project memory.",
+     "summary": "An expandable map of the TV, Pi, cloud, outside services, tasks and tools, drawn from the repo and project memory. It is in the Studio and also on the TV (the Architecture widget).",
      "details": [
       "The map lives in studio/architecture/data.json. arch.js and arch.css draw it, and node studio/build-architecture.js copies all three into the Studio file, which is published as one page.",
-      "dev/architecture-test.js fails when a link or a file path is wrong, or when a secret, address or email slips into the data."
+      "dev/architecture-test.js fails when a link or a file path is wrong, or when a secret, address or email slips into the data.",
+      "The TV widget (app/widgets/architecture.js) draws the same data.json with the remote: build-architecture.js also writes app/widgets/architecture-data.js and a small summary of status counts for the tile."
      ],
      "files": [
       "studio/architecture/data.json",
       "studio/architecture/arch.js",
       "studio/architecture/arch.css",
       "studio/build-architecture.js",
-      "dev/architecture-test.js"
+      "dev/architecture-test.js",
+      "app/widgets/architecture-data.js"
      ],
      "talksTo": [
       {
        "to": "studio.layout-studio",
        "label": "lives in the Studio as a Pages chip",
        "dir": "out"
+      },
+      {
+       "to": "tv.widgets.architecture",
+       "label": "the same data, drawn on the TV with the remote",
+       "dir": "out"
       }
      ],
      "notes": [
-      "Statuses come from the repo and project memory. When something lands, ships or is checked on the TV, update its status in data.json."
+      "Statuses come from the repo and project memory. When something lands, ships or is checked on the TV, update its status in data.json.",
+      "Ian's rule (Nov 19): every large architectural decision updates this map in the same thread."
      ]
     }
    ],
@@ -3889,15 +4236,22 @@
      "status": "live",
      "summary": "jsDelivr refuses GitHub packages over 150 MB, and the TV loads through jsDelivr, so size is watched weekly.",
      "details": [
-      "The goal is under 100 MB. Tracked size grew from 0 to 80 MB in two days, mostly screenshots; it was cut to about 41 MB. The clay art's raw sheets (art/) are now the biggest part."
+      "The goal is under 100 MB; jsDelivr also refuses single files over 20 MB. Tracked size was about 44 MB on Nov 19, 33 MB of it clay source sheets the TV never loads; those moved to the R2 pictures bucket, leaving about 11 MB. Everything the TV loads (app/) is about 1.7 MB.",
+      "Big or growing pictures go to the R2 pictures bucket (docs/asset-storage.md): backgrounds (PR 95) and the clay source art."
      ],
      "files": [
-      "art/clay/README.md"
+      "art/clay/README.md",
+      "docs/asset-storage.md"
      ],
      "talksTo": [
       {
        "to": "cloud.jsdelivr",
        "label": "its package size limit",
+       "dir": "out"
+      },
+      {
+       "to": "cloud.pictures",
+       "label": "big pictures live here instead",
        "dir": "out"
       }
      ]
@@ -4278,6 +4632,29 @@
    ]
   },
   {
+   "id": "flow.pi-investments",
+   "title": "Investments reach the TV tile",
+   "summary": "The budget app adds the portfolio to the snapshot it already posts; the Pi checks it and the TV draws it, with percentages only in guest mode.",
+   "steps": [
+    {
+     "node": "ext.budget-app.investments",
+     "say": "The app works out the total, accounts, top holdings and one total per day"
+    },
+    {
+     "node": "pi.budget.investments",
+     "say": "The Pi checks the section: amounts up to 10,000,000, history oldest first, no emails or links"
+    },
+    {
+     "node": "pi.server.resources.budget",
+     "say": "The merged snapshot is saved and pushed on the live line"
+    },
+    {
+     "node": "tv.widgets.budget.investments",
+     "say": "The Investments tile draws total, gain, trend, allocation and holdings; in guest mode only percentages"
+    }
+   ]
+  },
+  {
    "id": "flow.pi-awws",
    "title": "The AWWS snapshot reaches the TV",
    "summary": "A scheduled Claude routine builds the snapshot and sends it through the mailbox twice a day.",
@@ -4492,7 +4869,7 @@
   },
   {
    "id": "flow.pi-shows",
-   "title": "Show times reach the Schedule (draft)",
+   "title": "Show times reach the Schedule",
    "summary": "PR 72: the Pi looks up Ian's shows on TVmaze every 6 hours and pushes the schedule.",
    "steps": [
     {
@@ -4543,11 +4920,115 @@
      "say": "The All sounds test tile shows it, marked 'may be out of date' when stale"
     }
    ]
+  },
+  {
+   "id": "flow.background-picture",
+   "title": "Today's background picture",
+   "summary": "The hub picks today's day or night picture and loads it from the R2 bucket, or shows the ocean if it can't.",
+   "steps": [
+    {
+     "node": "tv.hub.core",
+     "say": "At start and at sunrise or sunset the hub picks today's day or night picture from backgrounds.js"
+    },
+    {
+     "node": "cloud.pictures",
+     "say": "The TV loads that picture from the public R2 bucket"
+    },
+    {
+     "node": "tv.hub.core",
+     "say": "If the bucket can't be reached, it shows the ocean picture that ships with the hub"
+    }
+   ]
+  },
+  {
+   "id": "flow.spanish-text",
+   "title": "Your to-do shows in Spanish",
+   "summary": "In Spanish mode a typed line is shown in English, translated once on the Pi, then shown in Spanish from then on.",
+   "steps": [
+    {
+     "node": "tv.widgets.todo",
+     "say": "A to-do, event or AWWS line is drawn; with no Spanish yet it shows in English"
+    },
+    {
+     "node": "tv.hub.i18n",
+     "say": "The TV gathers new lines for 0.4 s and sends one batch"
+    },
+    {
+     "node": "pi.translate",
+     "say": "The Pi answers known lines from its saved list"
+    },
+    {
+     "node": "ext.gemini.translate",
+     "say": "New lines go to Gemini in one call"
+    },
+    {
+     "node": "tv.hub.i18n",
+     "say": "The TV keeps the answers and redraws the tiles in Spanish"
+    }
+   ]
+  },
+  {
+   "id": "flow.show-progress",
+   "title": "Watched up to here reaches the Pi",
+   "summary": "Show page: a binge mark on the TV becomes the show's progress on the Pi and comes back in the schedule.",
+   "steps": [
+    {
+     "node": "tv.widgets.entertainment.show-page",
+     "say": "Ian opens a show page and presses Watched up to here on episode 3"
+    },
+    {
+     "node": "pi.server.screen",
+     "say": "The TV posts /shows/upto; it waits in a queue if the Pi is away"
+    },
+    {
+     "node": "pi.shows",
+     "say": "The Pi moves the show's watermark and saves the list"
+    },
+    {
+     "node": "pi.server.screen",
+     "say": "The shows resource is pushed with the new progress"
+    },
+    {
+     "node": "tv.widgets",
+     "say": "Schedule rows and counts skip the watched episodes"
+    }
+   ]
+  },
+  {
+   "id": "flow.pi-health",
+   "title": "The weekly Pi health check",
+   "summary": "A timer on the Pi writes a scrubbed report, the mailbox reader copies it to R2, and Claude reads it.",
+   "steps": [
+    {
+     "node": "pi.health",
+     "say": "Sunday 3:15 AM a systemd timer on the Pi runs the health script"
+    },
+    {
+     "node": "ext.ha",
+     "say": "It reads Home Assistant's Pi sensors and their week of history"
+    },
+    {
+     "node": "pi.server",
+     "say": "It asks the hub for its status, log problems and translation use"
+    },
+    {
+     "node": "pi.mailbox",
+     "say": "Within a minute the mailbox reader sees the new report"
+    },
+    {
+     "node": "cloud.r2.health",
+     "say": "It lands in the bucket as health/latest.json"
+    },
+    {
+     "node": "sched.pi-health",
+     "say": "A Claude routine reads it and flags what is out of the ordinary"
+    }
+   ]
   }
  ],
  "title": "Architecture",
  "intro": "Every part of Home Hub, grouped so you can open as much or as little as you want. Tap a part for what it is, its files and what it talks to.",
- "asOf": "As of Nov 17, 2026 · main is v0.29.8 · open PR: 77",
+ "asOf": "As of Nov 19, 2026 · main is v0.33.1",
  "overview": {
   "w": 1000,
   "h": 620,
@@ -4574,7 +5055,7 @@
     "title": "Scheduled tasks",
     "lines": [
      "To-do converter, AWWS sync,",
-     "weekly code audit"
+     "weekly code and Pi audits"
     ]
    },
    {
@@ -4588,8 +5069,10 @@
      "GitHub, then jsDelivr:",
      "code to the TV",
      "",
-     "R2 mailbox:",
-     "commands to the Pi"
+     "R2 mailbox: Claude to Pi",
+     "",
+     "R2 pictures: backgrounds,",
+     "clay art"
     ]
    },
    {
@@ -4683,7 +5166,7 @@
       95
      ]
     ],
-    "label": "app code",
+    "label": "code, pictures",
     "lx": 680,
     "ly": 84,
     "dir": "out"

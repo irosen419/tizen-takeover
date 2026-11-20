@@ -56,6 +56,29 @@
   var nowEls = null;         // the now band's parts, to fit it once it is on screen
   var hoursEls = null;       // the hour strip's parts, likewise
 
+  /* ---------- the hub's language ---------- */
+
+  // Key 'weather.<name>' (app/i18n.js); the English is the second argument.
+  // {name} in the English is filled in from vars either way.
+  function T(key, english, vars) {
+    var L = window.HUB_I18N;
+    if (L && typeof L.t === 'function') { try { return String(L.t(key, english, vars)); } catch (e) { /* English */ } }
+    return String(english).replace(/\{(\w+)\}/g, function (all, name) { return vars && vars[name] !== undefined ? vars[name] : all; });
+  }
+
+  function spanish() {
+    var L = window.HUB_I18N;
+    try { return !!L && typeof L.lang === 'function' && L.lang() === 'es'; } catch (e) { return false; }
+  }
+
+  // A wall-clock Date (read with getUTC...) as a plain local date, for the
+  // hub's day and month names.
+  function plainDate(dt) { return new Date(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()); }
+
+  // "a. m." / "p. m." (held on one line); "AM" / "PM" in English.
+  function amWord() { return String(T('weather.am', 'AM')).replace(/ /g, '\u00a0'); }
+  function pmWord() { return String(T('weather.pm', 'PM')).replace(/ /g, '\u00a0'); }
+
   /* ---------- safety ---------- */
 
   // Wraps a callback the hub does not wrap (XHR, timers, listeners), so an
@@ -155,7 +178,7 @@
 
   function ampm(h, m) {
     var h12 = h % 12 === 0 ? 12 : h % 12;
-    return h12 + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' AM' : ' PM');
+    return h12 + ':' + (m < 10 ? '0' : '') + m + ' ' + (h < 12 ? amWord() : pmWord());
   }
 
   // The TV's own clock time of a Date.now() value, e.g. "7:10 AM".
@@ -233,8 +256,9 @@
     var row = code === null ? null : CODES[code];
     if (!row) return { text: '', icon: 'wx-cloudy' };
     var night = num(isDay) === 0;
+    var key = 'weather.cond.' + code;
     return {
-      text: (night && row[1]) || row[0],
+      text: night && row[1] ? T(key + 'n', row[1]) : T(key, row[0]),
       icon: (night && row[3]) || row[2]
     };
   }
@@ -609,7 +633,8 @@
       fromHourly: fromHourly
     };
     var today = new Date(now);
-    m.date = LONG_DAYS[today.getUTCDay()] + ', ' + MONTHS[today.getUTCMonth()] + ' ' + today.getUTCDate();
+    m.date = spanish() ? window.HUB_I18N.longDate(plainDate(today)) :
+      LONG_DAYS[today.getUTCDay()] + ', ' + MONTHS[today.getUTCMonth()] + ' ' + today.getUTCDate();
     var code = fromHourly ? at(h.weather_code, hi) : cur.weather_code;
     var isDay = fromHourly ? at(h.is_day, hi) : cur.is_day;
     var forced = sceneQuery('wxscene');
@@ -655,7 +680,7 @@
       m.hours.push({
         now: k === hi,
         hour: t % 12 === 0 ? '12' : String(t % 12),
-        ampm: t < 12 ? 'AM' : 'PM',
+        ampm: t < 12 ? amWord() : pmWord(),
         icon: hc.icon,
         temp: tnum(at(h.temperature_2m, k)),
         rain: pnum(at(h.precipitation_probability, k))
@@ -670,7 +695,7 @@
       var dt = new Date(parseDate(d.daily.time[j]));
       var dc = condition(at(d.daily.weather_code, j), 1);
       m.days.push({
-        name: j === di ? 'Today' : DAY_NAMES[dt.getUTCDay()],
+        name: j === di ? T('weather.today', 'Today') : spanish() ? window.HUB_I18N.dayName(plainDate(dt), true) : DAY_NAMES[dt.getUTCDay()],
         date: String(dt.getUTCDate()),
         icon: dc.icon,
         text: dc.text,
@@ -717,25 +742,26 @@
   // gets one brief sentence and leaves the reason and the advice to the panel.
   function message(state) {
     if (state === 'setup') {
-      return { head: 'Set your city', line: 'The TV couldn’t work out where it is. Add a city to weather.location in config.js.',
-        short: 'Add a city to weather.location in config.js.', button: 'Try again', icon: 'wx-pin' };
+      return { head: T('weather.setup.head', 'Set your city'), line: T('weather.setup.line', 'The TV couldn’t work out where it is. Add a city to weather.location in config.js.'),
+        short: T('weather.setup.short', 'Add a city to weather.location in config.js.'), button: T('weather.tryAgain', 'Try again'), icon: 'wx-pin' };
     }
     if (state === 'notfound') {
       var loc = C.config.location;
-      var name = typeof loc === 'object' && loc ? 'the spot in config.js' : str(loc);
-      return { head: 'City not found', line: 'Couldn’t find “' + name + '”. Check weather.location in config.js.',
-        short: 'Check weather.location in config.js.', icon: 'wx-pin' };
+      var name = typeof loc === 'object' && loc ? T('weather.theSpot', 'the spot in config.js') : str(loc);
+      return { head: T('weather.notfound.head', 'City not found'), line: T('weather.notfound.line', 'Couldn’t find “{name}”. Check weather.location in config.js.', { name: name }),
+        short: T('weather.notfound.short', 'Check weather.location in config.js.'), icon: 'wx-pin' };
     }
     if (state === 'lookuperror') {
-      return { head: 'Can’t find your city yet', line: 'The city lookup didn’t answer (' + reason() + '). Trying again at ' + tvClock(nextDue) +
-        '. To skip the lookup, add a city to weather.location in config.js.',
-        short: 'Trying again at ' + tvClock(nextDue) + '.', button: 'Try now', icon: 'wx-pin' };
+      return { head: T('weather.lookuperror.head', 'Can’t find your city yet'),
+        line: T('weather.lookuperror.line', 'The city lookup didn’t answer ({why}). Trying again at {t}. To skip the lookup, add a city to weather.location in config.js.', { why: reason(), t: tvClock(nextDue) }),
+        short: T('weather.tryingAt', 'Trying again at {t}.', { t: tvClock(nextDue) }), button: T('weather.tryNow', 'Try now'), icon: 'wx-pin' };
     }
     if (state === 'error') {
-      return { head: 'No forecast right now', line: 'The weather service didn’t answer (' + reason() + '). Trying again at ' + tvClock(nextDue) + '.',
-        short: 'Trying again at ' + tvClock(nextDue) + '.', button: 'Try now', icon: 'wx-cloudy' };
+      return { head: T('weather.error.head', 'No forecast right now'),
+        line: T('weather.error.line', 'The weather service didn’t answer ({why}). Trying again at {t}.', { why: reason(), t: tvClock(nextDue) }),
+        short: T('weather.tryingAt', 'Trying again at {t}.', { t: tvClock(nextDue) }), button: T('weather.tryNow', 'Try now'), icon: 'wx-cloudy' };
     }
-    return { head: phase === 'place' && !place ? 'Finding your city…' : 'Getting the forecast…', line: '', short: '', icon: 'wx-partly-day' };
+    return { head: phase === 'place' && !place ? T('weather.finding', 'Finding your city…') : T('weather.getting', 'Getting the forecast…'), line: '', short: '', icon: 'wx-partly-day' };
   }
 
   /* ---------- tile ---------- */
@@ -748,12 +774,6 @@
     if (!C || typeof C.setTitle !== 'function') return;
     C.setTitle(m && place ? place.name : '');
     C.setBadge(m && m.stale ? T('weather.asOf', 'as of {t}', { t: m.asOf }) : m && m.sample ? T('weather.sample', 'Sample') : '');
-  }
-
-  function T(key, english, vars) {
-    var L = window.HUB_I18N;
-    if (L && typeof L.t === 'function') { try { return String(L.t(key, english, vars)); } catch (e) { /* English */ } }
-    return english.replace('{t}', vars && vars.t ? vars.t : '');
   }
 
   function drawStrip(body, size) {
@@ -769,9 +789,9 @@
     el('div', 'wx-strip-cond', root, m.text || '');
     if (size.width === 'wide') {
       var range = el('div', 'wx-range wx-strip-range', root);
-      el('span', 'wx-hl-key', range, 'H');
+      el('span', 'wx-hl-key', range, T('weather.hi', 'H'));
       el('span', 'wx-hl-val', range, temp(m.hi));
-      el('span', 'wx-hl-key wx-hl-gap', range, 'L');
+      el('span', 'wx-hl-key wx-hl-gap', range, T('weather.lo', 'L'));
       el('span', 'wx-hl-val', range, temp(m.lo));
       var rain = el('div', 'wx-rain' + rainClass(m.rain), root);
       icon('wx-drop', 'wx-rain-icon', rain);
@@ -787,7 +807,7 @@
     for (var i = 0; i < hours.length && i < want; i++) {
       var h = hours[i];
       var col = el('div', 'wx-th' + (h.now ? ' is-now' : ''), row);
-      el('div', 'wx-th-hour', col, h.now ? 'Now' : h.hour + ' ' + h.ampm);
+      el('div', 'wx-th-hour', col, h.now ? T('weather.now', 'Now') : h.hour + ' ' + h.ampm);
       icon(h.icon, 'wx-th-icon', col);
       el('div', 'wx-th-temp', col, temp(h.temp));
     }
@@ -818,9 +838,9 @@
 
     var foot = el('div', 'wx-tile-foot', root);
     var range = el('div', 'wx-range', foot);
-    el('span', 'wx-hl-key', range, 'H');
+    el('span', 'wx-hl-key', range, T('weather.hi', 'H'));
     el('span', 'wx-hl-val', range, temp(m.hi));
-    el('span', 'wx-hl-key wx-hl-gap', range, 'L');
+    el('span', 'wx-hl-key wx-hl-gap', range, T('weather.lo', 'L'));
     el('span', 'wx-hl-val', range, temp(m.lo));
     var rain = el('div', 'wx-rain' + rainClass(m.rain), foot);
     icon('wx-drop', 'wx-rain-icon', rain);
@@ -833,7 +853,7 @@
     if (!place) return '';
     var m = model();
     if (!m) return placeLabel(place);
-    return placeLabel(place) + ' · ' + (m.stale ? 'As of ' : 'Updated ') + m.asOf;
+    return placeLabel(place) + ' · ' + (m.stale ? T('weather.asOfLong', 'As of {t}', { t: m.asOf }) : T('weather.updated', 'Updated {t}', { t: m.asOf }));
   }
 
   function button(parent, key, label, iconName, extra) {
@@ -849,8 +869,8 @@
     var left = el('div', 'wx-bar-left', bar);
     var hasForecast = state === 'live' || state === 'stale';
     if (hasForecast && !full) {
-      var day = button(left, 'tab-day', 'Day', '', ' wx-tab' + (view === 'day' ? ' is-selected' : ''));
-      var week = button(left, 'tab-week', 'Week', '', ' wx-tab' + (view === 'week' ? ' is-selected' : ''));
+      var day = button(left, 'tab-day', T('weather.day', 'Day'), '', ' wx-tab' + (view === 'day' ? ' is-selected' : ''));
+      var week = button(left, 'tab-week', T('weather.week', 'Week'), '', ' wx-tab' + (view === 'week' ? ' is-selected' : ''));
       (view === 'week' ? week : day).setAttribute('data-autofocus', '');
     } else if (hasForecast) {
       // The hub's head already names the place; here, the place's own date.
@@ -860,18 +880,18 @@
     var right = el('div', 'wx-bar-right', bar);
     var busy = refreshing;
     if (hasForecast) {
-      button(right, 'refresh', userAction === 'refresh' || (busy && userAction !== 'relocate') ? 'Updating…' : 'Update now', 'wx-refresh');
+      button(right, 'refresh', userAction === 'refresh' || (busy && userAction !== 'relocate') ? T('weather.updating', 'Updating…') : T('weather.updateNow', 'Update now'), 'wx-refresh');
       if (place && place.source === 'lookup') {
-        button(right, 'relocate', userAction === 'relocate' ? 'Looking…' : 'Wrong city?', 'wx-pin');
+        button(right, 'relocate', userAction === 'relocate' ? T('weather.looking', 'Looking…') : T('weather.wrongCity', 'Wrong city?'), 'wx-pin');
       }
     } else if (state === 'setup' || state === 'error' || state === 'lookuperror') {
-      var b = button(right, 'retry', busy ? 'Trying…' : message(state).button, 'wx-refresh');
+      var b = button(right, 'retry', busy ? T('weather.trying', 'Trying…') : message(state).button, 'wx-refresh');
       b.setAttribute('data-autofocus', '');
     }
   }
 
   function footer(root, m) {
-    el('div', 'wx-foot', root, (m && m.sample ? 'Sample data, not a live forecast · ' : '') + 'Weather data by Open-Meteo.com');
+    el('div', 'wx-foot', root, (m && m.sample ? T('weather.sampleNote', 'Sample data, not a live forecast') + ' · ' : '') + T('weather.credit', 'Weather data by Open-Meteo.com'));
   }
 
   function drawNow(parent, m) {
@@ -881,13 +901,13 @@
     icon(m.icon, 'wx-now-icon', main);
     var words = el('div', 'wx-now-words', main);
     if (m.text) el('div', 'wx-now-cond', words, m.text);
-    if (m.feels !== null) el('div', 'wx-now-feels', words, 'Feels like ' + temp(m.feels));
+    if (m.feels !== null) el('div', 'wx-now-feels', words, T('weather.feels', 'Feels like {t}', { t: temp(m.feels) }));
 
     var stats = el('div', 'wx-stats', band);
-    stat(stats, windText(m.wind), 'wx-wind', 'Wind', '');
-    stat(stats, pct(m.rain), 'wx-drop', 'Rain today', rainClass(m.rain));
-    stat(stats, m.sunrise, 'wx-sunrise', 'Sunrise', '');
-    stat(stats, m.sunset, 'wx-sunset', 'Sunset', '');
+    stat(stats, windText(m.wind), 'wx-wind', T('weather.wind', 'Wind'), '');
+    stat(stats, pct(m.rain), 'wx-drop', T('weather.rainToday', 'Rain today'), rainClass(m.rain));
+    stat(stats, m.sunrise, 'wx-sunrise', T('weather.sunrise', 'Sunrise'), '');
+    stat(stats, m.sunset, 'wx-sunset', T('weather.sunset', 'Sunset'), '');
     nowEls = { band: band, words: words, temp: main.firstChild, cond: words.firstChild && words.firstChild.className === 'wx-now-cond' ? words.firstChild : null };
   }
 
@@ -937,7 +957,12 @@
     var s = el('div', 'wx-stat' + extra, parent);
     var val = el('div', 'wx-stat-val', s);
     // "7:04 AM": the time leads, AM/PM smaller.
-    var m = /^(.*) (AM|PM)$/.exec(value);
+    var m = null;
+    var words = [amWord(), pmWord()];
+    for (var w = 0; w < 2 && !m; w++) {
+      var tail = ' ' + words[w];
+      if (value.length > tail.length && value.substring(value.length - tail.length) === tail) m = [value, value.substring(0, value.length - tail.length), words[w]];
+    }
     if (m) {
       el('span', '', val, m[1]);
       el('span', 'wx-stat-ampm', val, ' ' + m[2]);
@@ -988,7 +1013,7 @@
     for (i = 0; i < n; i++) {
       var col = el('div', 'wx-hcol' + (hours[i].now ? ' is-now' : ''), top);
       var label = el('div', 'wx-hour', col);
-      if (hours[i].now) label.textContent = 'Now';
+      if (hours[i].now) label.textContent = T('weather.now', 'Now');
       else {
         el('span', 'wx-hour-num', label, hours[i].hour);
         el('span', 'wx-hour-ampm', label, ' ' + hours[i].ampm);
@@ -1148,7 +1173,7 @@
     refresh(function (err) {
       userAction = '';
       if (err && before && usable()) {
-        C.toast('Couldn’t update (' + err + '). Showing the forecast from ' + tvClock(before.savedAt) + '.', 5000);
+        C.toast(T('weather.toastUpdate', 'Couldn’t update ({why}). Showing the forecast from {t}.', { why: err, t: tvClock(before.savedAt) }), 5000);
       }
     });
     redraw(true);
@@ -1171,14 +1196,14 @@
     lookupCity(old.provider === 'geojs' ? 'ipwho' : 'geojs', safe(function (err, p) {
       if (err) {
         lsSet(PLACE_KEY, old);
-        C.toast('Couldn’t reach the city lookup (' + err + '). Still showing ' + old.name + '.', 6000);
+        C.toast(T('weather.toastLookup', 'Couldn’t reach the city lookup ({why}). Still showing {name}.', { why: err, name: old.name }), 6000);
         return done();
       }
       if (p.name.toLowerCase() === old.name.toLowerCase()) {
         // Keep the coordinates the forecast was made for, but remember who answered.
         old.provider = p.provider;
         lsSet(PLACE_KEY, old);
-        C.toast('The lookup still says ' + p.name + '. To set it yourself, add a city to weather.location in config.js.', 7000);
+        C.toast(T('weather.toastSame', 'The lookup still says {name}. To set it yourself, add a city to weather.location in config.js.', { name: p.name }), 7000);
         return done();
       }
       // A different city: keep the old place and forecast until the new
@@ -1186,7 +1211,7 @@
       fetchForecast(p, safe(function (err2, r) {
         if (err2 || !r) {
           lsSet(PLACE_KEY, old);
-          C.toast('Couldn’t get the forecast for ' + p.name + ' (' + (err2 || 'no answer') + '). Still showing ' + old.name + '.', 6000);
+          C.toast(T('weather.toastForecast', 'Couldn’t get the forecast for {name} ({why}). Still showing {old}.', { name: p.name, why: err2 || T('weather.noAnswer', 'no answer'), old: old.name }), 6000);
           return done();
         }
         place = p;
@@ -1622,6 +1647,21 @@
     return 'Moving' + (scene.fps ? ', ' + scene.fps + ' frames a second' : (scene.source === 'auto' ? ', measuring' : ' (' + scene.source + ')'));
   }
 
+  // For the hub's day and night look (app/hub.js, setTheme): is it daylight at
+  // the place now, by the forecast's own sunrise and sunset? null when there is
+  // no forecast worth showing. Reads only; nothing on screen depends on it.
+  function sunNow() {
+    var r = usable();
+    if (!r) return null;
+    var d = r.data;
+    var now = locNow(r);
+    var di = dayIndex(d, now);
+    var rise = parseTime(at(d.daily.sunrise, di));
+    var set = parseTime(at(d.daily.sunset, di));
+    if (isNaN(rise) || isNaN(set)) return null;
+    return { day: now >= rise && now < set, sunrise: wallClock(rise), sunset: wallClock(set) };
+  }
+
   /* ---------- widget ---------- */
 
   function fallbackText(body, text) {
@@ -1631,9 +1671,8 @@
     } catch (e) { /* nothing more to do */ }
   }
 
-  return {
+  var widget = {
     id: 'weather',
-    title: 'Weather',
     icon: 'sun-cloud',
     expandable: true,
 
@@ -1642,7 +1681,7 @@
       sceneChoice();
       // The header's badge ("Sample", "as of ...") follows the language.
       try {
-        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') window.HUB_I18N.onChange(safe(function () { ctx.redrawTile(); }));
+        if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') window.HUB_I18N.onChange(safe(function () { lastSig = ''; ctx.redrawTile(); if (ctx.isOpen()) ctx.redrawPanel(); }));
       } catch (e) { /* stays in the language it started in */ }
       units = ctx.config.units === 'celsius' ? 'celsius' : 'fahrenheit';
       // Draw from the cache at once if there is one, then update in the background.
@@ -1659,6 +1698,9 @@
     // For the About panel: how the picture is running.
     sceneStatus: sceneStatus,
 
+    // For the hub's day and night look: { day, sunrise, sunset } or null.
+    sunNow: sunNow,
+
     renderTile: function (body, ctx) {
       C = ctx;
       try {
@@ -1666,7 +1708,7 @@
         showScene(body, false);
       } catch (e) {
         if (window.console && console.warn) console.warn('Weather tile: ' + (e && e.message));
-        fallbackText(body, 'The weather couldn’t be shown.');
+        fallbackText(body, T('weather.broken', 'The weather couldn’t be shown.'));
       }
     },
 
@@ -1678,7 +1720,7 @@
       } catch (e) {
         if (window.console && console.warn) console.warn('Weather panel: ' + (e && e.message));
         rootEl = null;
-        fallbackText(body, 'The weather couldn’t be shown.');
+        fallbackText(body, T('weather.broken', 'The weather couldn’t be shown.'));
       }
     },
 
@@ -1727,4 +1769,7 @@
       }
     }
   };
+  // Read when the hub names the tile before the place is known, so it follows the language.
+  Object.defineProperty(widget, 'title', { get: function () { return T('weather.title', 'Weather'); }, enumerable: true, configurable: true });
+  return widget;
 })());

@@ -15,6 +15,10 @@
  *               it arrives. The copy this TV kept is deleted.
  *   budget-lab.js  Budget lab says "Hidden for guests" and forgets its
  *               session (the cap being tried); the saved cap stays, hidden.
+ *   investments.js  the one tile that does NOT say "Hidden for guests": it
+ *               shows percentages only (gain, shares, the trend's shape) and
+ *               keeps no dollar. It is not in MONEY, so a layout with it
+ *               stays in the switcher.
  *   hub.js      the money layouts leave the layout bar; a money layout on
  *               screen gives way to the first layout without money.
  *   today.js    the Guest mode Off / On choice on the Clock page.

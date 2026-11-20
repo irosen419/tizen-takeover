@@ -61,7 +61,7 @@ You need Docker with the Compose plugin on the Pi. If `docker compose version` p
    ./hub status
    ```
 
-   You should see `The server is running (version 0.8.0, ...)` and `No screen is connected right now.` until the TV connects.
+   You should see `The server is running (version 0.20.0, ...)` and `No screen is connected right now.` until the TV connects.
 
 ## Try it
 
@@ -153,11 +153,13 @@ An older server drops `lead` on `todo add` (the mailbox refuses it) and has no `
 
 Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0` or later.
 
+Server 0.18.0 keeps one more optional section, `investments` (the portfolio total, its accounts, the top holdings and one total per day for a trend line), for the Investments tile. The owner approved dollar figures for it on 2026-11-19; the TV hides them in guest mode. `./hub budget show` prints counts and dates for it, never a name or an amount. An older server drops it and keeps the rest. After pulling: `docker compose restart hub`; `./hub status` should say `version 0.16.0` or later.
+
 ## Ambience (the room's lights)
 
 The Ambience tile on the TV sets the room's lights: scenes such as "Chill night", each light's level, and the plant wall's moods. The TV only talks to this server. The server talks to Home Assistant (which talks to the bulbs) and to the plant wall's WLED controller. The TV never gets the token or an address, and it can only send the ids of lights, scenes and moods you saved here.
 
-This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.8.0` or later (0.7.0 is enough for Ambience).
+This needs server 0.7.0. Other changes also move the server's version (each feature that changes the server bumps it), so after pulling, `./hub status` should say `version 0.20.0` or later (0.7.0 is enough for Ambience).
 
 ### Before you start: your bulbs must be in Home Assistant
 
@@ -232,6 +234,18 @@ The server asks Home Assistant how the lights are every 10 seconds while a TV is
 | Log `ambience: plant wall did not answer` | The WLED controller is off or `WLED_URL` is wrong | Open `WLED_URL` in a browser on the same network |
 | Log `ambience: plant wall off (WLED_URL does not look right)` | `WLED_URL` is not an `http://` address | Fix it in `.env` and restart |
 | Log `ambience: a screen sent commands too fast (asked it to slow down)` | Someone held a button down | Nothing: the TV waits and tries again |
+## Spanish for your own text (server 0.12.0)
+
+In Spanish mode the TV shows your to-dos, calendar events and AWWS task lines in Spanish. It sends new lines to `POST /translate`; the Pi answers lines it already knows from `data/translations-es.json` (up to 5000) and sends new ones to Gemini (`gemini-3.5-flash-lite`; 2.5 Flash-Lite refuses new keys with HTTP 403) in one batch, so each line is translated once. Show titles, songs and place names are kept as they are.
+
+It uses `HUB_TRANSLATE_KEY` from `.env`, or else `GEMINI_VIDEO_GEN_KEY` (your personal key; `GEMINI_API_KEY` is never used). With neither set, the TV simply stays in English for those lines. At most 2000 new lines a day go to Gemini. After an error it waits 1 minute, then 2, 4, 8 and at most 10, and a good answer resets the wait. The log counts lines and never shows the text, for example:
+
+```
+translate: 4 asked, 1 cached, 3 new (Gemini 812 ms, 210 + 95 tokens)
+```
+
+To see what it costs, Claude sends the mailbox command `translate.status` (or call `GET /api/translate/usage` with the token): new lines, Gemini calls, tokens and an estimated dollar cost for today, this month and all time, from `data/translate-usage.json` (62 days kept). The estimate uses Flash-Lite's list price ($0.30 per million tokens in, $2.50 out, thinking counted as out; `PRICE_IN`/`PRICE_OUT` in `translate.js`); Google's billing page is the real number.
+
 ## TV shows (the Schedule)
 
 The Entertainment panel on the TV has a **Schedule**: what airs today, this week and this month from the shows on your list, and which seasons are coming back. The Entertainment tile also puts first the apps that have something new, with a small count. The Pi keeps the list and looks the shows up on [TVmaze](https://www.tvmaze.com/api), a free public TV guide that needs no key or account.
@@ -246,6 +260,7 @@ The Entertainment panel on the TV has a **Schedule**: what airs today, this week
   Adding a show that is already there updates it.
 - `./hub shows remove "Stick"` takes one off.
 - `./hub shows watched "Stick" S3E4` marks an episode watched by hand, and `./hub shows unwatch "Stick" S3E4` takes the mark off (server 0.8.0). The TV marks episodes when the person answers "Did you finish?" or taps the check on a row (`POST /shows/watched` and `POST /shows/unwatch` from the screen; README.md, Schedule); these two are for mistakes made elsewhere. Leave the episode out of `watched` to mark the earliest episode out in the last week that is not marked. The marks live in `data/shows.json` (`watched: [{ "s": 3, "e": 4, "at": "..." }]`) and `./hub shows list` ends a show's line with `[watched S3E4]`. The mailbox has `shows.watched` and `shows.unwatch`.
+- `./hub shows upto "Stick" S3E4` marks the show watched up to and including S3E4 (a binge: every earlier episode counts too, kept as `upTo` in `data/shows.json`), and `./hub shows caughtup "Stick"` marks every episode that has aired so far (server 0.10.0). Both are normally set on the show page on the TV (`POST /shows/upto` and `POST /shows/caughtup`); these are for the owner telling Claude. Marking an earlier episode with `upto` replaces the old point: episodes after it become unwatched again, except ones marked one by one. `./hub shows list` ends a show's line with `[up to S3E4]`. The mailbox has `shows.upto` and `shows.caughtup`. The Pi also keeps each show's full episode list in `data/show-episodes.json` for the show page (`GET /shows/episodes?id=<show id>`).
 - `./hub shows refresh` asks TVmaze about every show now and waits up to 25 seconds. Otherwise the Pi asks every 6 hours, and right after the list changes.
 
 The list starts with Hell's Kitchen and Shark Tank (Disney+), The Great British Baking Show (Netflix) and Stick (Apple TV), and lives in `data/shows.json`. The schedule itself is kept in `data/state.json`.
@@ -264,7 +279,7 @@ The TV's About panel has a **Watch link test**: each recipe tries one way of ope
 
 ### TV remote from the Pi (two-step launch)
 
-The TV refuses remote key presses it sends to itself, so some Watch link test rows ("Open, Enter, then ...") ask the Pi to press the keys. The Pi talks to the TV's remote-control WebSocket (`wss://<tv>:8002`, or `ws://<tv>:8001` if that does not connect) under the name "Home Hub Pi" (`tvremote.js`, server 0.9.0). A run opens the app, waits about 10 seconds, presses Enter (the default profile), waits about 5 seconds, then sends the title link while the app is already running, either as a deep link or by DIAL (HTTP POST to `http://<tv>:8080/ws/apps/Netflix`). Then you answer the usual "Opened the title / Only opened the app / Nothing".
+The TV refuses remote key presses it sends to itself, so some Watch link test rows ("Open, Enter, then ...") ask the Pi to press the keys. The Pi talks to the TV's remote-control WebSocket (`wss://<tv>:8002`, or `ws://<tv>:8001` if that does not connect) under the name "Home Hub Pi" (`tvremote.js`, server 0.21.0). A run opens the app, waits about 10 seconds, presses Enter (the default profile), waits about 5 seconds, then sends the title link while the app is already running, either as a deep link or by DIAL (HTTP POST to `http://<tv>:8080/ws/apps/Netflix`). Then you answer the usual "Opened the title / Only opened the app / Nothing".
 
 **One-time Allow prompt.** The first run makes the TV show a prompt to allow "Home Hub Pi": press Allow on the remote within 30 seconds. The TV answers with a token, which the Pi keeps in `data/tvremote.json` (readable by you only, never in a log, never sent anywhere). If the TV said no, allow it under Settings > General > External Device Manager > Device Connection Manager > Device List, then try again.
 
@@ -340,7 +355,7 @@ For a calendar whose details should stay private (work, for example), add a thir
 CALENDAR_2_DETAILS=busy
 ```
 
-The TV then shows each event as `Busy`, with its time but no title and no place. Restart the server after the change, as in step 9.
+The TV then shows each event as `Busy`, with its time but no title, no place, no notes and no guests. (A calendar without this line also sends each event's notes, its description in Google Calendar, from server 0.16.0: links and email addresses are taken out, and the TV hides notes while Guest mode is on.) Restart the server after the change, as in step 9.
 
 ### Choose a calendar's color
 
@@ -537,6 +552,36 @@ Commands: `./hub allsounds status` (state, source, speaker, title and artist), `
 | `Home Assistant cannot be reached` | `HA_URL` is wrong, or Home Assistant is down | Check Home Assistant opens at that address from the Pi |
 | `nothing playing` while an Echo plays | Alexa Media Player has not caught up (it can lag 10 to 30 seconds), or the speaker is not listed in `ALLSOUNDS_ENTITIES` | Wait a moment; check the entity in Home Assistant |
 
+## Weekly health report (server 0.15.0)
+
+Once a week (Sundays at 3:15 AM Central) a script checks the whole Pi and writes one report, so Claude can tell you if anything is drifting before it breaks. It runs on the Pi itself, outside Docker, from a systemd **user** timer, so it needs no sudo.
+
+It checks: CPU temperature and throttling, under-voltage, memory and swap, disk space (and how big `pi/data`, `~/code/*`, the journal and Docker's images and volumes are), SD card or disk errors in the kernel log, reboots that came without a clean shutdown, every Docker container (running, restarts since last week, out-of-memory kills, log problem lines), your user services (the budget app) and any failed units, timers, whether each checkout under `~/code` is on its main branch and up to date with GitHub (so a stuck hourly auto-update shows), Wi-Fi signal, drops and pings, the hub's own log problems, how old the calendar, shows, budget and AWWS data are, and translation use against the 2,000-new-lines-a-day cap. If `HA_TOKEN` is set, it also reads Home Assistant's own Pi sensors (System Monitor, Raspberry Pi power) with a week of history, how many lights and speakers are unavailable, and which Home Assistant updates are waiting.
+
+Each finding is a flag, `bad` or `warn`, with a plain sentence. Where the lines are drawn is the `LIMITS` table at the top of `health/pi-health.py`.
+
+**Where it lands:** `data/health/latest.json` (the newest), one dated copy per week (the newest 12 kept) and `data/health/latest.txt` (the flags in plain lines). Within a minute the hub copies `latest.json` to the Claude mailbox bucket as `health/latest.json` and `health/YYYY-MM-DD.json` (kept 180 days), and `status.json` gains a one-line `health` summary. The hub log says, once per new report:
+
+```
+Claude mailbox: health report sent (warn, 38 KB)
+```
+
+**What it never holds:** anything from `.env`, IP or MAC addresses, the Wi-Fi name, links, email addresses, Home Assistant entity ids, budget amounts, to-do text, or what plays. The report is scrubbed once more before it is written, and its test checks that with a fake hub and Home Assistant that leak on purpose.
+
+### Set it up (once)
+
+```
+cd ~/code/tizen-takeover && git pull && pi/health/install.sh --run && cd pi && docker compose restart hub
+```
+
+`install.sh` writes `~/.config/systemd/user/pi-health.service` and `.timer`, turns the timer on, says when it runs next, and points out anything that would hide part of the picture (linger off, or your user not in the `adm`, `docker` or `video` group, each with the command that fixes it). `--run` makes a first report right away and prints its summary. After that the script itself updates with every `git pull`; the timer never needs installing again. `install.sh --remove` turns it off.
+
+By hand: `python3 health/pi-health.py` (writes the files), `--print` (prints the report, writes nothing), `--quick` (skips pings, a week of history and Docker logs).
+
+### Adding checks for new things
+
+Lights, the Bluetooth storm speaker and whatever comes next add their own check as a small executable in `health/checks.d/` that prints one JSON object; it appears under `extras` in the report and its flags join the list. The contract and an example are in `health/checks.d/README.md`.
+
 ## Run without Docker
 
 If you prefer, install Node 14 or newer (`node --version` shows yours) and run it directly:
@@ -545,7 +590,7 @@ If you prefer, install Node 14 or newer (`node --version` shows yours) and run i
 2. `./hub token`
 3. `node server.js`
 
-You should see `Home Hub live server 0.8.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
+You should see `Home Hub live server 0.20.0 listening on port 8097`. It stops when you close the terminal or press Ctrl+C.
 
 To keep it running and start it at boot, use **systemd** (the Pi's built-in service manager). Create the file with `sudo nano /etc/systemd/system/home-hub.service` and paste this, changing `pi` and the path to your user name and folder:
 

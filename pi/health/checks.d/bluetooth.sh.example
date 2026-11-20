@@ -1,0 +1,19 @@
+#!/bin/sh
+# Example extra check: Bluetooth adapter and the storm speaker.
+# Copy to bluetooth.sh and chmod +x to use. Prints one JSON object.
+# Never prints the speaker's address or name: only counts and states.
+powered=false; devices=0; connected=0
+if command -v bluetoothctl >/dev/null 2>&1; then
+  bluetoothctl show 2>/dev/null | grep -q 'Powered: yes' && powered=true
+  devices=$(bluetoothctl devices Paired 2>/dev/null | grep -c '^Device' || true)
+  connected=$(bluetoothctl devices Connected 2>/dev/null | grep -c '^Device' || true)
+  status=ok
+  [ "$powered" = true ] || status=warn
+  printf '{"status":"%s","data":{"adapterPowered":%s,"pairedDevices":%s,"connectedNow":%s}' "$status" "$powered" "$devices" "$connected"
+  if [ "$powered" != true ]; then
+    printf ',"flags":[{"level":"warn","area":"bluetooth","text":"The Bluetooth adapter is off"}]'
+  fi
+  printf '}\n'
+else
+  printf '{"status":"warn","summary":"bluetoothctl is not installed","flags":[{"level":"warn","area":"bluetooth","text":"bluetoothctl is not installed"}]}\n'
+fi

@@ -130,6 +130,17 @@ check('B: R = 1,334 gives c0 = 95.29 and keeps exactly 0 (covered, nothing to sp
   assert.strictEqual(r.capMax, 196, 'max(2 c0, c0 + 100) in whole dollars');
 });
 
+check('B: the zero spare case the widget calls on track: covered, whole spare 0, R above 0, at the calculated cap and just under it', () => {
+  const r = run();
+  assert.strictEqual(r.covered && L.wholeDown(r.keep) === 0 && r.R > 0, true);
+  const under = run({ session: { mode: 'cap', cap: 95.28, keep: null, cuts: {} } });
+  assert.strictEqual(under.covered, true);
+  assert.strictEqual(L.wholeDown(under.keep), 0, 'a cap a cent under 95.29 still rounds to $0 spare: ' + under.keep);
+  const real = run({ session: { mode: 'cap', cap: 80, keep: null, cuts: {} } });
+  assert.strictEqual(L.wholeDown(real.keep) > 0, true, 'real spare is not the zero case');
+  assert.strictEqual(run({ lab: lab(-9.54) }).covered, false, 'short stays short');
+});
+
 check('B: cap $80 keeps $214, savings 214 of 500, monthly $1,120 vs $1,334, gap -$214', () => {
   const r = run({ session: { mode: 'cap', cap: 80, keep: null, cuts: {} } });
   assert.strictEqual(r.keep, 214);
@@ -538,6 +549,42 @@ check('runway chart: none without an equation, a runway, or for another card day
   assert.strictEqual(L.runwayChart(RUNWAY_B, run({ lab: lab(1334, { daysLeft: 0 }) })), null);
   assert.strictEqual(L.runwayChart(RUNWAY_B, run({ lab: null })), null);
   assert.strictEqual(L.runwayChart(RUNWAY_B, null), null);
+});
+
+/* ---------- autopay days ---------- */
+
+check('autopay: short on the 1st with a positive autopayRoom, the cap screen runs from it', () => {
+  const r = run({ lab: lab(-954.2, { autopayRoom: 1400, autopayDate: '2026-12-07' }) });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.R, 1400);
+  assert.strictEqual(r.c0, 100);
+  assert.strictEqual(r.covered, true);
+  assert.strictEqual(r.short, 0);
+  assert.notStrictEqual(r.move && r.move.kind, 'moveMoney');
+  same(r.autopay, { firstShort: 955, date: '2026-12-07' });
+});
+
+check('autopay: both rooms negative, the move money screen with the autopay shortfall', () => {
+  const r = run({ lab: lab(-954.2, { autopayRoom: -80.5, autopayDate: '2026-12-07' }) });
+  assert.strictEqual(r.R, -80.5);
+  assert.strictEqual(r.c0, 0);
+  assert.strictEqual(r.covered, false);
+  same(r.move, { kind: 'moveMoney', amount: 81 });
+  same(r.autopay, { firstShort: 955, date: '2026-12-07' });
+});
+
+check('autopay: ignored when the room is not below zero, or no autopayRoom is sent', () => {
+  const a = run({ lab: lab(500, { autopayRoom: 90, autopayDate: '2026-12-07' }) });
+  assert.strictEqual(a.R, 500);
+  assert.strictEqual(a.autopay, null);
+  const b = run({ lab: lab(-20) });
+  assert.strictEqual(b.R, -20);
+  assert.strictEqual(b.autopay, null);
+  const c = run({ lab: lab(-20, { autopayRoom: 'lots' }) });
+  assert.strictEqual(c.R, -20);
+  assert.strictEqual(c.autopay, null);
+  const d = run({ lab: lab(-20, { autopayRoom: 140 }) });
+  same(d.autopay, { firstShort: 20, date: null });
 });
 
 check('broken data never throws', () => {

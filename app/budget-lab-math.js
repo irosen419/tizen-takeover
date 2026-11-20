@@ -29,6 +29,10 @@
  * keep goal is kept to the cent. Whole dollar display (room rounded down, a
  * shortfall rounded up) is wholeDown / wholeUp here, done once, on cents.
  *
+ * Autopay days: when lab.room is below zero and lab.autopayRoom is sent, R is
+ * lab.autopayRoom and result.autopay is { firstShort, date } (the whole dollars
+ * short on the 1st, and lab.autopayDate); otherwise result.autopay is null.
+ *
  * compute({ lab, merchants, pace, room, cardDay, session, pref, today }):
  *   lab, merchants, pace, room, cardDay  the snapshot's sections (any absent)
  *   session   { mode: 'cap' | 'keep', cap: null (calculated) | dollars,
@@ -131,8 +135,13 @@
     if (!isNum(lab.room) || !isNum(lab.daysLeft) || lab.daysLeft < 0) return null;
     var D = Math.floor(lab.daysLeft);
     var E = isNum(lab.monthDay) && lab.monthDay >= 1 ? Math.floor(lab.monthDay) : 1;
+    // Short on the 1st but the cards can wait for their autopay days: the
+    // equations then run from the autopay room (still below zero when even
+    // that falls short). The room as sent for the 1st is kept as "first".
+    var byAuto = lab.room < 0 && isNum(lab.autopayRoom);
     return {
-      R: lab.room,
+      R: byAuto ? lab.autopayRoom : lab.room,
+      autopay: byAuto ? { first: lab.room, date: typeof lab.autopayDate === 'string' ? lab.autopayDate : null } : null,
       T: isNum(lab.spentToday) ? lab.spentToday : 0,
       D: D,
       E: E,
@@ -301,6 +310,8 @@
     res.D = L.D;
     res.E = L.E;
     res.cardDate = L.cardDate;
+    // { firstShort, date } when the room is the autopay room, else null.
+    res.autopay = L.autopay ? { firstShort: wholeUp(-L.autopay.first), date: L.autopay.date } : null;
 
     if (L.D === 0) {
       res.reason = 'cardDayToday';
