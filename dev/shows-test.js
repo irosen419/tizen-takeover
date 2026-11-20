@@ -432,6 +432,40 @@ async function main() {
       } finally { await lt.ctx.close(); }
     });
 
+    await check('Watch link test: the App probe row is first, not counted, and OK posts the probe results from a stubbed tizen', async () => {
+      const lt = await env.newPage({});
+      try {
+        await H.openView(lt, 'linktests');
+        const first = await lt.evaluate(() => ({ key: document.querySelector('#panel .lt .lt-row').getAttribute('data-key'), total: document.querySelector('.lt-total').textContent, nums: document.querySelectorAll('.lt-row .lt-num').length }));
+        assert(first.key === 'lt:probe' && /^21 tests/.test(first.total) && first.nums === 21, JSON.stringify(first));
+        const posts = await lt.evaluate(() => {
+          window.tizen = {
+            ApplicationControl: function (op) { this.operation = op; },
+            application: {
+              getAppsInfo: (ok) => ok([{ id: 'nf.app', name: 'Netflix' }, { id: 'x.plain', name: 'Calc' }, { id: 'x.meta', name: 'Guide' }]),
+              getAppMetaData: (id) => id === 'nf.app' ? [{ key: 'a', value: 'b' }] : id === 'x.meta' ? [{ key: 'PreviewEndpoint', value: 'https://e/x' }] : [],
+              findAppControl: (ac, ok) => ok(ac.operation.slice(-4) === 'view' ? [{ id: 'nf.app', name: 'Netflix' }] : [], ac)
+            }
+          };
+          const sent = [];
+          const Lv = window.HUB_LINKTEST._test.state().C.live;
+          const orig = Lv.post;
+          Lv.post = function (path, body, cb) { sent.push({ path: path, result: body.result }); cb(null); };
+          const r = window.HUB_LINKTEST._test.probe();
+          return new Promise((res) => setTimeout(() => { Lv.post = orig; res({ r: r, sent: sent, pending: window.HUB_LINKTEST._test.state().pending }); }, 600));
+        });
+        assert(posts.r === 'started' && posts.pending === null, JSON.stringify(posts));
+        const ids = posts.sent.map((x) => x.result.id).join();
+        assert(ids === 'probe-01,probe-02,probe-ops', ids);
+        const a = posts.sent[0].result;
+        assert(posts.sent.every((x) => x.path === '/linktests' && x.result.outcome === 'error' && x.result.name === 'App probe'), JSON.stringify(posts.sent));
+        assert(a.app === 'Netflix' && a.op === 'a=b' && /^nf\.app view/.test(a.detail), JSON.stringify(a));
+        assert(posts.sent[1].result.app === 'Guide' && posts.sent[1].result.op === 'PreviewEndpoint=https://e/x', JSON.stringify(posts.sent[1]));
+        const s = posts.sent[2].result;
+        assert(/view: nf\.app/.test(s.op) && /eden_resume: none/.test(s.op), JSON.stringify(s));
+      } finally { await lt.ctx.close(); }
+    });
+
     await check('Watch link test: OK fires through /launch-control, the answer is kept and reaches the Pi', async () => {
       const lt = await env.newPage({});
       try {
