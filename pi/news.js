@@ -17,6 +17,11 @@ const SHOW_NAME = 'NPR News Now';
 const MAX_FEED_BYTES = 2 * 1024 * 1024;
 const TIMEOUT_MS = 15000;
 const MAX_REDIRECTS = 3;
+// NPR's audio addresses hop through tracking redirects (prfx.byspotify.com,
+// podtrac) before the MP3. The Pi follows them and hands the TV the last
+// address, so the TV's old browser has one plain request to make.
+const RESOLVE_TIMEOUT_MS = 8000;
+const MAX_AUDIO_REDIRECTS = 6;
 
 function decode(s) {
   return String(s)
@@ -98,4 +103,41 @@ async function latest(feedUrl) {
   return ep;
 }
 
-module.exports = { FEED_URL: FEED_URL, SHOW_NAME: SHOW_NAME, episodes: episodes, newest: newest, playTitle: playTitle, latest: latest, fetchText: fetchText };
+// The address an audio link ends up at after its redirects. Only the
+// response headers are read (the body is dropped at once). Anything that
+// goes wrong (no answer, too many hops, an error code) gives back the
+// address it started with, so the TV can still try it itself.
+function resolveAudio(url) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (u) => { if (!settled) { settled = true; clearTimeout(timer); resolve(u); } };
+    const timer = setTimeout(() => done(url), RESOLVE_TIMEOUT_MS);
+    const hop = (current, hops) => {
+      let req;
+      try {
+        const lib = /^https:/i.test(current) ? https : http;
+        req = lib.get(current, { headers: { 'user-agent': 'home-hub/1 (+podcast reader)', range: 'bytes=0-0' } }, (res) => {
+          const code = res.statusCode;
+          res.destroy();
+          if (code >= 300 && code < 400 && res.headers.location) {
+            let next;
+            try { next = new URL(res.headers.location, current).toString(); } catch (e) { return done(url); }
+            if (!/^https?:\/\//i.test(next) || hops >= MAX_AUDIO_REDIRECTS) return done(url);
+            return hop(next, hops + 1);
+          }
+          done(code >= 200 && code < 300 ? current : url);
+        });
+      } catch (e) { return done(url); }
+      req.on('error', () => done(url));
+    };
+    hop(url, 0);
+  });
+}
+
+// The newest newscast with its audio address already past the redirects.
+async function latestPlayable(feedUrl) {
+  const ep = await latest(feedUrl);
+  return Object.assign({}, ep, { url: await resolveAudio(ep.url) });
+}
+
+module.exports = { FEED_URL: FEED_URL, SHOW_NAME: SHOW_NAME, episodes: episodes, newest: newest, playTitle: playTitle, latest: latest, latestPlayable: latestPlayable, resolveAudio: resolveAudio, fetchText: fetchText };

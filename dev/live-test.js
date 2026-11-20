@@ -5,7 +5,8 @@
  * the real hub in headless Chromium, the preview (dev/preview.js) and the hub
  * server from pi/, all on spare ports with a fresh data folder each run.
  * Checks 4 to 7 run a second time with ?livepoll=1 (the fallback for old
- * browsers), which is check 9. Needs Playwright (require('playwright')).
+ * browsers), which is check 9. Check 10 plays sound in a browser that
+ * refuses autoplay. Needs Playwright (require('playwright')).
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  * Nothing here reaches the internet: the weather services are blocked, so
@@ -543,6 +544,81 @@ async function checkSwitch() {
   await context.close();
 }
 
+// 10. play and stop, in a browser that refuses sound no key press started
+// (as the TV's may). The first key press after loading unlocks sound; a play
+// refused before any key press waits for the next one; stop ends it.
+function silentWav(seconds) {
+  const n = 8000 * seconds;
+  const b = Buffer.alloc(44 + n);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n, 4); b.write('WAVE', 8); b.write('fmt ', 12);
+  b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(8000, 24);
+  b.writeUInt32LE(8000, 28); b.writeUInt16LE(1, 32); b.writeUInt16LE(8, 34); b.write('data', 36);
+  b.writeUInt32LE(n, 40); b.fill(128, 44);
+  return b;
+}
+
+async function checkPlay() {
+  if (!pi) await startPi();
+  const wav = silentWav(30);
+  const audio = await new Promise((resolve) => {
+    const s = http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wav.length }); res.end(wav); });
+    s.listen(0, '127.0.0.1', () => { extraServers.push(s); resolve('http://127.0.0.1:' + s.address().port + '/news.wav'); });
+  });
+  // Headless Chromium plays sound whatever the autoplay flag says, so the
+  // TV's refusal is acted out: play() is refused (NotAllowedError) unless a
+  // key went down in the last second (Chrome's "transient activation") or
+  // this element already played once after a key (then it stays unlocked).
+  const watchAudio = (context) => context.addInitScript(() => {
+    let keyAt = 0;
+    window.addEventListener('keydown', () => { keyAt = Date.now(); }, true);
+    const realPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      if (!this.__unlocked && Date.now() - keyAt > 1000) {
+        const e = new Error('play() can only be started by a user gesture');
+        e.name = 'NotAllowedError';
+        return Promise.reject(e);
+      }
+      this.__unlocked = true;
+      return realPlay.call(this);
+    };
+    const Real = window.Audio;
+    window.Audio = function () { const a = new Real(); window.__hubAudio = a; return a; };
+  });
+  const playing = (page) => page.evaluate(() => { const a = window.__hubAudio; return !!(a && !a.paused && /news\.wav$/.test(a.getAttribute('src') || '')); });
+
+  // Refused before any key press: it waits, and the next key starts it.
+  let context = await newContext();
+  await watchAudio(context);
+  let page = await openHub(context, liveQuery(false));
+  await until(async () => (await look.state(page)) === 'live', 10000, 'not live');
+  let r = await command('play', { url: audio, title: 'NPR News Now, 7pm ET' });
+  assert(r.ok && r.delivered === 1, 'play: ' + JSON.stringify(r));
+  await until(async () => (await look.toast(page)) === 'Press any button on the remote to start the sound', 5000, 'no key-press toast');
+  assert(!(await playing(page)), 'played without a key press');
+  await page.keyboard.press('Shift');
+  await until(() => playing(page), 5000, 'the key press did not start it');
+  await until(async () => (await look.toast(page)) === 'Playing: NPR News Now, 7pm ET', 3000, 'no Playing toast');
+  r = await command('stop');
+  assert(r.delivered === 1, 'stop: ' + JSON.stringify(r));
+  await until(() => page.evaluate(() => window.__hubAudio.paused && !window.__hubAudio.getAttribute('src')), 3000, 'stop did not stop it');
+  noErrors(context, true);
+  await context.close();
+
+  // A key press first unlocks sound, so a later play starts at once.
+  context = await newContext();
+  await watchAudio(context);
+  page = await openHub(context, liveQuery(false));
+  await until(async () => (await look.state(page)) === 'live', 10000, 'not live (2)');
+  await page.keyboard.press('Shift');
+  await until(() => page.evaluate(() => !!window.__hubAudio && !window.__hubAudio.getAttribute('src')), 3000, 'the silent unlock did not finish');
+  await sleep(300);
+  r = await command('play', { url: audio });
+  await until(() => playing(page), 5000, 'the unlocked play did not start');
+  await until(async () => (await look.toast(page)) === 'Playing', 3000, 'no Playing toast (no title)');
+  noErrors(context, true);
+  await context.close();
+}
+
 /* ---------- run ---------- */
 
 async function main() {
@@ -578,6 +654,7 @@ async function main() {
   await check('9c. Fallback: TV off then on', () => check6(true));
   await check('9d. Fallback: server stops and comes back', () => check7(true));
   await check('9e. Push line fails three times: the fallback takes over', checkSwitch);
+  await check('10. play waits for a key press when sound is refused; a first key press unlocks it; stop ends it', checkPlay);
 }
 
 main().catch((e) => {
