@@ -20,6 +20,7 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - Set or change a to-do's notes: `./hub todo notes "Buy milk" "Oat, not dairy"` (id or exact title); `--clear` removes them
 - Tick a to-do: `./hub todo done "Buy milk"` (id or exact title)
 - Remove a to-do: `./hub todo remove "Buy milk"` (id or exact title)
+- Calendar to-dos: the Pi itself turns events titled `TODO:` (optional), `TODO!:` (must) and `TODO~:` (passive; a trailing number 0-30 is its lead in days) into to-dos on every calendar refresh, no Claude task (`pi/todoconvert.js`). `TODO:` events (today or tomorrow, not repeating, no guests) are then hidden from the hub calendar, not deleted. Ledger: `data/todo-converter.json`. Force it now: `./hub calendar refresh`
 - Calendars and the next event: `./hub calendar status`
 - Read the calendars again now: `./hub calendar refresh`
 - Tile layout on the home screen: `./hub layout show`; a new one: `./hub layout set layout.json` (a JSON list of `{"widget":"weather","x":0,"y":0,"w":3,"h":2}` on the 12 x 6 grid; `-` reads it from input); back to the built-in one: `./hub layout reset`
