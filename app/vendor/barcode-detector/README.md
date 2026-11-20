@@ -1,0 +1,1 @@
+Vendored, unmodified: barcode-detector 3.2.4 (dist/iife/ponyfill.js, renamed barcode-detector.js) and zxing-wasm 3.1.7 (dist/reader/zxing_reader.wasm), both MIT (LICENSE-*). Loaded by app/scan.js on the phone only, the first time Scan is tapped, with the .wasm served by the Pi (never a CDN). The TV never loads these files.

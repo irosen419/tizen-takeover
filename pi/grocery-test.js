@@ -128,6 +128,16 @@ async function main() {
     assert.strictEqual(r.data.items[1].extra, undefined);
   });
 
+  await check('items carry upc: empty for a typed name, kept when canonical, dropped when not', () => {
+    let l = grocery.applyOps([], [{ op: 'add', name: 'Milk' }, { op: 'add', name: 'Cola', upc: '0036000291452' }], 1);
+    assert.deepStrictEqual(l.map((i) => i.upc), ['0036000291452', '']);
+    l = grocery.applyOps(l, [{ op: 'add', name: 'milk', upc: '96385074' }], 2);
+    assert.strictEqual(l.length, 2, 'a typed item of that name takes the upc');
+    assert.strictEqual(l.find((i) => i.name === 'Milk').upc, '96385074');
+    assert.throws(() => grocery.applyOps(l, [{ op: 'add', name: 'X', upc: '0036' }], 3), /8 or 13 digits/);
+    assert.strictEqual(grocery.cleanItem({ name: 'Old' }, 1).upc, '');
+  });
+
   await check('match: by id, then by name in any case; listLines', () => {
     const items = [{ id: 'g1', name: 'Milk', done: false }, { id: 'g2', name: 'Eggs', done: true }];
     assert.strictEqual(grocery.match(items, 'g2').name, 'Eggs');
@@ -164,6 +174,7 @@ async function main() {
       assert.strictEqual(r.json.ok, true);
       assert.deepStrictEqual(Object.keys(r.json.grocery).sort(), ['data', 'rev']);
       assert.strictEqual(r.json.grocery.data.items.length, 2);
+      assert.deepStrictEqual(r.json.products, {}, 'no scanned items, no products');
       assert.strictEqual(r.json.todo, undefined);
       assert.strictEqual(r.json.resources, undefined);
     }

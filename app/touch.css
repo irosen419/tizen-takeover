@@ -4,7 +4,7 @@
  * come from docs/design-tokens.css (night look). Animate only transform and
  * opacity; text keeps line-height 1.3 or more so accents never clip.
  * Sections: tokens, page, menu, phone view, tablet panes, widgets (.gx =
- * Groceries, app/widgets/grocery.js).
+ * Groceries, app/widgets/grocery.js), the barcode scanner (.sc, app/scan.js).
  */
 
 :root {
@@ -51,7 +51,7 @@ button:disabled { cursor: default; }
 :focus-visible { outline: 2px solid var(--ok-sky); outline-offset: 2px; }
 h1, h2, p { margin: 0; }
 
-.t-ic, .gx-ic {
+.t-ic, .gx-ic, .sc-ic {
   width: 1.25em; height: 1.25em; flex: none;
   fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
 }
@@ -185,7 +185,7 @@ h1, h2, p { margin: 0; }
 .gx-big-word { color: var(--text-2); font-size: 1.25rem; }
 .gx-cart { color: var(--text-3); font-size: 0.9375rem; font-weight: 500; }
 
-.gx-add { display: flex; gap: 8px; }
+.gx-add { display: flex; gap: 8px; container-type: inline-size; }
 .gx-input {
   flex: 1; min-width: 0; min-height: 56px; padding: 0 18px;
   border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--card-2);
@@ -200,7 +200,19 @@ h1, h2, p { margin: 0; }
   background: var(--text); color: var(--page); font-size: 1rem; font-weight: 600;
   transition: transform 120ms var(--ease);
 }
-.gx-add-btn:active, .gx-chip:active, .gx-clear:active { transform: scale(0.97); }
+.gx-add-btn:active, .gx-chip:active, .gx-clear:active, .gx-scan:active { transform: scale(0.97); }
+/* Scan: beside Add, quieter than it. The word drops when the row is narrow. */
+.gx-scan {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 56px; min-width: 56px; padding: 0 16px; border: 1px solid var(--line); border-top-color: var(--lift);
+  border-radius: var(--r-ctl); background: var(--card-2); color: var(--text); font-size: 1rem; font-weight: 500;
+  transition: transform 120ms var(--ease);
+}
+.gx-scan .gx-ic { font-size: 22px; color: var(--ok-sky); }
+@container (max-width: 520px) {
+  .gx-scan { padding: 0; width: 56px; }
+  .gx-scan-word { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 .gx-note { min-height: 1.35em; margin: 8px 2px 0; color: var(--text-3); font-size: 0.875rem; }
 .gx-note.is-said { color: var(--text-2); }
 
@@ -240,7 +252,18 @@ h1, h2, p { margin: 0; }
   width: 28px; height: 28px; border: 2px solid var(--text-3); border-radius: 50%; color: var(--page);
 }
 .gx-box .gx-ic { font-size: 16px; stroke-width: 2.6; opacity: 0; transform: scale(0.6); transition: opacity 160ms var(--ease), transform 200ms var(--ease); }
-.gx-name { flex: 1; min-width: 0; padding: 2px 0; overflow-wrap: anywhere; }
+.gx-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.gx-name { min-width: 0; padding: 2px 0; overflow-wrap: anywhere; }
+.gx-sub { color: var(--text-3); font-size: 0.875rem; line-height: var(--lh); overflow-wrap: anywhere; }
+/* A scanned product's picture: packs are shot on white, so it sits on white. */
+.gx-thumb {
+  flex: none; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  width: 44px; height: 44px; margin-left: -4px; border-radius: 10px; background: #fff;
+}
+.gx-thumb img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.gx-thumb.is-none { background: var(--card-2); color: var(--text-3); box-shadow: inset 0 1px 0 var(--lift); }
+.gx-thumb.is-none .gx-ic { font-size: 20px; }
+.gx-row.is-done .gx-thumb { opacity: 0.5; }
 .gx-del {
   flex: none; display: flex; align-items: center; justify-content: center;
   width: var(--tap); height: var(--tap); border: 0; border-radius: 50%; background: transparent; color: var(--text-3);
@@ -282,6 +305,184 @@ h1, h2, p { margin: 0; }
   flex: none; min-height: var(--tap); padding: 0 16px; border: 0; border-radius: 12px;
   background: transparent; color: var(--ok-sky); font-weight: 600;
 }
+
+/* ---------- the barcode scanner (.sc, app/scan.js) ----------
+ * Full screen over everything: the camera full bleed, a window to aim
+ * through, "type the number" docked at the bottom, and a sheet that rises
+ * for the product (its picture and name lead) or the not-found form. */
+
+body.sc-open { overflow: hidden; }
+.sc {
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 30; overflow: hidden;
+  background: #000; color: var(--text);
+  opacity: 0; transform: translateY(18px);
+  transition: opacity 180ms var(--ease), transform 260ms var(--ease);
+}
+.sc.is-on { opacity: 1; transform: none; }
+.sc-stage { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+.sc-video { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+
+.sc-frame {
+  position: absolute; left: 50%; top: 40%; width: 84vw; max-width: 420px; height: 48vw; max-height: 240px;
+  transform: translate(-50%, -50%); border-radius: 22px;
+  box-shadow: 0 0 0 200vmax rgba(0, 0, 0, 0.5);
+}
+.sc-corner { position: absolute; width: 30px; height: 30px; border: 0 solid #fff; }
+.sc-corner.is-tl { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; border-top-left-radius: 22px; }
+.sc-corner.is-tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; border-top-right-radius: 22px; }
+.sc-corner.is-bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; border-bottom-left-radius: 22px; }
+.sc-corner.is-br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; border-bottom-right-radius: 22px; }
+.sc-line {
+  position: absolute; left: 10%; right: 10%; top: 50%; height: 2px; margin-top: -1px; border-radius: 2px;
+  background: var(--ok-sky); box-shadow: 0 0 12px rgba(83, 182, 235, 0.8); opacity: 0;
+}
+.sc[data-camera="on"][data-state="scan"] .sc-line { animation: sc-sweep 1.8s var(--ease) infinite alternate; }
+@keyframes sc-sweep { from { opacity: 0.25; transform: translateY(-28px); } to { opacity: 0.9; transform: translateY(28px); } }
+.sc-aim {
+  position: absolute; left: 24px; right: 24px; top: calc(40% + 24vw + 18px);
+  color: rgba(255, 255, 255, 0.86); font-size: 1rem; font-weight: 500; line-height: var(--lh); text-align: center;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+@media (min-width: 875px) { .sc-aim { top: calc(40% + 138px); } }
+
+.sc-msg { display: none; }
+.sc.is-nocam .sc-video, .sc.is-nocam .sc-frame, .sc.is-nocam .sc-aim { display: none; }
+.sc.is-nocam .sc-stage { background: radial-gradient(120% 60% at 50% 0%, rgba(83, 182, 235, 0.12), rgba(83, 182, 235, 0) 60%), var(--page); }
+.sc.is-nocam .sc-msg {
+  display: block; position: absolute; left: 0; right: 0; top: calc(env(safe-area-inset-top) + 96px);
+  max-width: 440px; margin: 0 auto; padding: 0 28px; text-align: center;
+}
+.sc-msg-ic { font-size: 40px; color: var(--ok-sky); stroke-width: 1.5; }
+.sc-msg-text { margin-top: 14px; color: var(--text); font-size: 1.125rem; font-weight: 300; line-height: 1.4; }
+
+.sc-top {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: calc(env(safe-area-inset-top) + 10px) 12px 24px;
+  background: linear-gradient(rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0));
+}
+.sc-round {
+  flex: none; display: flex; align-items: center; justify-content: center;
+  width: var(--tap); height: var(--tap); padding: 0; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 50%;
+  background: rgba(20, 22, 28, 0.62); color: #fff;
+}
+.sc-round .sc-ic { font-size: 22px; }
+.sc-round:active { transform: scale(0.94); }
+.sc-torch.is-lit { background: #fff; color: #000; }
+.sc-title { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.sc-title-word { font-size: 1rem; font-weight: 500; line-height: var(--lh); }
+.sc-title-dest { color: rgba(255, 255, 255, 0.66); font-size: 0.875rem; line-height: var(--lh); }
+
+.sc-dock {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 40px calc(env(safe-area-inset-right) + 16px) calc(env(safe-area-inset-bottom) + 16px) calc(env(safe-area-inset-left) + 16px);
+  background: linear-gradient(rgba(5, 5, 6, 0), rgba(5, 5, 6, 0.9) 38%, var(--page));
+  transition: opacity 160ms var(--ease);
+}
+.sc-dock[aria-hidden="true"] { opacity: 0; pointer-events: none; }
+.sc-dock-label, .sc-dock-row, .sc-dock-msg { display: block; max-width: 520px; margin-left: auto; margin-right: auto; }
+.sc-dock-label { margin-bottom: 8px; color: var(--text-2); font-size: 0.875rem; font-weight: 500; }
+.sc-dock-row { display: flex; gap: 8px; }
+.sc-dock-msg { min-height: 1.35em; margin-top: 8px; color: var(--text-3); font-size: 0.875rem; }
+.sc-dock-msg.is-bad { color: #fdc3be; }
+.sc-input {
+  width: 100%; min-width: 0; min-height: 52px; padding: 0 16px;
+  border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--card-2);
+  color: var(--text); font-size: 1.125rem; line-height: var(--lh); caret-color: var(--ok-sky);
+  -webkit-appearance: none; appearance: none;
+}
+.sc-input::placeholder { color: var(--text-3); opacity: 1; }
+.sc-input:focus { border-color: var(--ok-sky); outline: none; }
+.sc-type { flex: 1; font-variant-numeric: tabular-nums; letter-spacing: 0.04em; }
+
+.sc-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 52px; padding: 0 18px; border: 1px solid var(--line); border-radius: var(--r-ctl);
+  background: var(--card-2); color: var(--text); font-size: 1rem; font-weight: 500; line-height: var(--lh); text-align: center;
+  transition: transform 120ms var(--ease);
+}
+.sc-btn:active { transform: scale(0.97); }
+.sc-btn:disabled { opacity: 0.5; }
+.sc-look { flex: none; }
+.sc-primary { width: 100%; min-height: 56px; margin-top: 18px; border: 0; background: var(--text); color: var(--page); font-size: 1.0625rem; font-weight: 600; }
+.sc-primary .sc-ic { font-size: 20px; stroke-width: 2.2; }
+.sc-quiet { background: transparent; color: var(--text); }
+.sc-pair { display: flex; gap: 8px; margin-top: 8px; }
+.sc-pair .sc-btn { flex: 1; min-width: 0; padding: 4px 12px; }
+
+.sc-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; max-height: 90%; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  padding: 26px calc(env(safe-area-inset-right) + 20px) calc(env(safe-area-inset-bottom) + 20px) calc(env(safe-area-inset-left) + 20px);
+  border-top: 1px solid var(--lift); border-radius: 26px 26px 0 0; background: #111318;
+  opacity: 0; transform: translateY(104%); pointer-events: none;
+  transition: transform 300ms var(--ease), opacity 160ms var(--ease);
+}
+.sc-sheet.is-on { opacity: 1; transform: none; pointer-events: auto; }
+.sc-sheet::before {
+  content: ''; position: absolute; top: 9px; left: 50%; width: 38px; height: 4px; margin-left: -19px;
+  border-radius: 2px; background: rgba(255, 255, 255, 0.18);
+}
+@media (min-width: 600px) {
+  .sc-sheet { left: 50%; right: auto; width: 520px; margin-left: -260px; }
+}
+
+.sc-looking { display: flex; align-items: center; gap: 12px; }
+.sc-spin {
+  flex: none; width: 22px; height: 22px; border: 2px solid rgba(255, 255, 255, 0.18); border-top-color: var(--ok-sky); border-radius: 50%;
+  animation: sc-spin 800ms linear infinite;
+}
+@keyframes sc-spin { to { transform: rotate(360deg); } }
+.sc-looking-word { font-size: 1.25rem; font-weight: 300; line-height: 1.3; }
+.sc-code { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--text-2); font-size: 0.9375rem; line-height: var(--lh); }
+.sc-code .sc-ic { font-size: 18px; color: var(--text-3); }
+.sc-code-digits { font-variant-numeric: tabular-nums; letter-spacing: 0.06em; }
+
+/* The product: picture first, then the name; the brand sits quietly above it. */
+.sc-card { display: flex; align-items: center; gap: 16px; }
+.sc-photo {
+  flex: none; display: flex; align-items: center; justify-content: center; overflow: hidden;
+  width: 64px; height: 64px; border-radius: 14px; background: #fff;
+}
+.sc-photo.is-big { width: 112px; height: 112px; border-radius: 18px; }
+.sc-photo img { display: block; width: 100%; height: 100%; padding: 6%; object-fit: contain; }
+.sc-photo.is-none { background: var(--card-2); color: var(--text-3); box-shadow: inset 0 1px 0 var(--lift); }
+.sc-photo.is-none .sc-ic { font-size: 26px; }
+.sc-photo.is-big.is-none .sc-ic { font-size: 40px; }
+.sc-card-text { flex: 1; min-width: 0; }
+.sc-brand { color: var(--text-2); font-size: 0.9375rem; font-weight: 500; line-height: var(--lh); overflow-wrap: anywhere; }
+.sc-name { margin: 2px 0 0; font-size: 1.5rem; font-weight: 400; line-height: 1.3; overflow-wrap: anywhere; }
+.sc-meta { margin-top: 6px; color: var(--text-3); font-size: 0.9375rem; line-height: var(--lh); }
+.sc-size { color: var(--text-2); }
+.sc-meta-code { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sc-size + .sc-meta-code::before { content: '·'; margin: 0 7px; color: var(--text-3); }
+.sc-note {
+  display: flex; align-items: baseline; gap: 10px; margin-top: 16px; color: var(--text-2); font-size: 0.9375rem; line-height: var(--lh);
+}
+.sc-note::before { content: ''; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--ok-optional); transform: translateY(-1px); }
+
+.sc-form-title { font-size: 1.5rem; font-weight: 300; line-height: 1.3; }
+.sc-form-text { margin-top: 2px; color: var(--text-2); font-size: 0.9375rem; line-height: var(--lh); }
+.sc-form { margin-top: 6px; }
+.sc-field { display: block; margin-top: 12px; }
+.sc-field-label { display: block; margin-bottom: 6px; color: var(--text-2); font-size: 0.875rem; font-weight: 500; line-height: var(--lh); }
+.sc-pick { position: relative; display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.sc-pick-btn { flex: 1; min-width: 0; }
+.sc-file { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.sc-form-msg { min-height: 1.35em; margin-top: 10px; color: #fdc3be; font-size: 0.9375rem; line-height: var(--lh); }
+.sc-form .sc-primary { margin-top: 6px; }
+.sc-cancel { width: 100%; margin-top: 8px; border-color: transparent; color: var(--text-2); }
+
+.sc-toast {
+  position: absolute; left: 50%; top: calc(env(safe-area-inset-top) + 74px); z-index: 2;
+  display: flex; align-items: center; gap: 8px; max-width: calc(100% - 32px); padding: 10px 18px 10px 14px;
+  border: 1px solid var(--line); border-top-color: var(--lift); border-radius: 999px; background: rgba(23, 26, 32, 0.94);
+  font-size: 1rem; font-weight: 500; line-height: var(--lh);
+  opacity: 0; transform: translate(-50%, -10px); pointer-events: none;
+  transition: opacity 160ms var(--ease), transform 220ms var(--ease);
+}
+.sc-toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+.sc-toast .sc-ic { font-size: 18px; color: var(--ok-passive); stroke-width: 2.4; }
+.sc-toast.is-bad { color: #fdc3be; }
 
 /* Less motion asked for: everything arrives at once. */
 @media (prefers-reduced-motion: reduce) {

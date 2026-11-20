@@ -12,7 +12,10 @@
  *
  * ctx (from app/touch.js): t(key, english, vars), data() -> { items } or null
  * before the first answer, status() -> 'loading' | 'ok' | 'offline',
- * send(ops, optimisticData, done(err)), reduced() -> true for less motion.
+ * send(ops, optimisticData, done(err)), reduced() -> true for less motion,
+ * products() -> { upc: product } for scanned items (brand, size, thumbnail).
+ * Scan (app/scan.js) is registered as the 'grocery' destination: a scanned
+ * product is added as { op: 'add', upc } and the Pi fills in the name.
  * Item names are what people typed: never translated, never logged.
  * Plain ES5 throughout: the TV's browser is Chromium 63 class.
  *
@@ -47,6 +50,12 @@
   function find(items, name) {
     var k = key(name);
     for (var i = 0; i < items.length; i++) if (items[i].name.toLowerCase() === k) return items[i];
+    return null;
+  }
+
+  function byUpc(items, upc) {
+    if (!upc) return null;
+    for (var i = 0; i < items.length; i++) if (items[i].upc === upc) return items[i];
     return null;
   }
 
@@ -94,13 +103,25 @@
     for (var i = 0; i < ops.length; i++) {
       var o = ops[i], at;
       if (o.op === 'add') {
-        var hit = find(list, o.name);
+        // As the Pi (pi/grocery.js applyOps): the same code first; then the
+        // same name with no code (it takes this one) or the same code; a
+        // different product under the same name gets its own row.
+        var hit = byUpc(list, o.upc);
+        if (!hit) {
+          var k = key(o.name);
+          for (var j = 0; j < list.length && !hit; j++) {
+            if (list[j].name.toLowerCase() === k && (!o.upc || !list[j].upc || list[j].upc === o.upc)) hit = list[j];
+          }
+        }
         if (hit) {
           at = byId(list, hit.id);
-          if (hit.done) list[at] = copy(hit, { done: false, doneAt: null });
+          if (hit.done) list[at] = copy(list[at], { done: false, doneAt: null });
+          if (o.upc && !hit.upc) list[at] = copy(list[at], { upc: o.upc });
         } else {
           tmpSeq += 1;
-          list.unshift({ id: 'tmp-' + tmpSeq, name: norm(o.name), done: false, doneAt: null, addedAt: now, pending: true });
+          var item = { id: 'tmp-' + tmpSeq, name: norm(o.name).slice(0, MAX_NAME), done: false, doneAt: null, addedAt: now, pending: true };
+          if (o.upc) item.upc = o.upc;
+          list.unshift(item);
         }
       } else if (o.op === 'check') {
         at = byId(list, o.id);
@@ -124,7 +145,7 @@
 
   var Logic = {
     MAX_NAME: MAX_NAME, norm: norm, key: key, find: find, sorted: sorted,
-    counts: counts, parseAdd: parseAdd, applyLocal: applyLocal
+    counts: counts, parseAdd: parseAdd, applyLocal: applyLocal, byUpc: byUpc
   };
   root.HUB_GROCERY = Logic;
   if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
@@ -137,6 +158,8 @@
     check: 'M5 12.5l4.2 4.2L19 7',
     cross: 'M7 7l10 10M17 7L7 17',
     plus: 'M12 5v14M5 12h14',
+    camera: 'M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.5-2h5.6l1.5 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z M12 10a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z',
+    bars: 'M5 6v12 M8 6v12 M10.5 6v12 M14 6v12 M16.5 6v12 M19 6v12',
     basket: 'M4 9h16l-1.6 9.2a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8z M8.5 9l3.5-5 3.5 5 M9.5 13v3 M14.5 13v3'
   };
 
@@ -174,6 +197,15 @@
     try { root.localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 24))); } catch (e) { /* no storage */ }
   }
 
+  // Products this page just scanned, so a new row shows its picture before
+  // the next /touch/state brings the Pi's copy.
+  var scanned = {};
+  function productOf(ctx, upc) {
+    if (!upc) return null;
+    var all = ctx.products ? ctx.products() || {} : {};
+    return all[upc] || scanned[upc] || null;
+  }
+
   function renderTouch(host, ctx) {
     var T = ctx.t;
     var view = el('div', 'gx');
@@ -207,6 +239,16 @@
     addBtn.appendChild(el('span', 'gx-add-word', T('grocery.addButton', 'Add')));
     form.appendChild(label);
     form.appendChild(input);
+    var scanBtn = null;
+    if (root.HUB_SCAN && ctx.call) {
+      scanBtn = el('button', 'gx-scan');
+      scanBtn.type = 'button';
+      scanBtn.setAttribute('aria-label', T('grocery.scanLabel', 'Scan a barcode'));
+      scanBtn.appendChild(icon('camera'));
+      scanBtn.appendChild(el('span', 'gx-scan-word', T('grocery.scan', 'Scan')));
+      scanBtn.addEventListener('click', function () { root.HUB_SCAN.open(ctx, { destination: 'grocery', returnFocus: scanBtn }); });
+      form.appendChild(scanBtn);
+    }
     form.appendChild(addBtn);
     view.appendChild(form);
     var note = el('p', 'gx-note', T('grocery.addHint', 'Commas add several at once.'));
@@ -308,7 +350,29 @@
       var box = el('span', 'gx-box');
       box.appendChild(icon('check'));
       tick.appendChild(box);
-      tick.appendChild(el('span', 'gx-name', item.name));
+      var p = productOf(ctx, item.upc);
+      if (item.upc) {
+        // A scanned product: its picture, then the name, then "Brand · size".
+        var th = el('span', 'gx-thumb');
+        if (p && p.image) {
+          var img = el('img');
+          img.alt = '';
+          img.loading = 'lazy';
+          img.onerror = function () { th.innerHTML = ''; th.className = 'gx-thumb is-none'; th.appendChild(icon('bars')); };
+          img.src = p.image;
+          th.appendChild(img);
+        } else {
+          th.className = 'gx-thumb is-none';
+          th.appendChild(icon('bars'));
+        }
+        tick.appendChild(th);
+        li.className += ' has-product';
+      }
+      var text = el('span', 'gx-text');
+      text.appendChild(el('span', 'gx-name', item.name));
+      var sub = p ? [p.brand, p.size].filter(function (x) { return x; }).join(' · ') : '';
+      if (sub) text.appendChild(el('span', 'gx-sub', sub));
+      tick.appendChild(text);
       var del = el('button', 'gx-del');
       del.type = 'button';
       del.setAttribute('aria-label', T('grocery.remove', 'Remove {name}', { name: item.name }));
@@ -423,6 +487,26 @@
     if (!data || !data.items) return '';
     var c = counts(data.items);
     return c.left ? t('grocery.summary', '{n} to get', { n: c.left }) : t('grocery.emptyTitle', 'Nothing to get');
+  }
+
+  // Where a scan can go (app/scan.js): onto this list, by code.
+  if (root.HUB_SCAN) {
+    root.HUB_SCAN.register('grocery', {
+      label: function (t) { return t('grocery.destLabel', 'Groceries'); },
+      note: function (product, ctx, t) {
+        var d = ctx.data && ctx.data();
+        var hit = byUpc(d && d.items ? d.items : [], product.upc);
+        if (!hit) return '';
+        return hit.done ? t('grocery.scanTicked', 'In the cart already; adding puts it back on the list.') : t('grocery.scanAlready', 'Already on the list.');
+      },
+      add: function (product, ctx, done) {
+        scanned[product.upc] = product;
+        var d = ctx.data && ctx.data();
+        var items = d && d.items ? d.items : [];
+        var name = root.HUB_SCAN.line(product) || product.upc;
+        ctx.send([{ op: 'add', upc: product.upc }], { items: applyLocal(items, [{ op: 'add', name: name, upc: product.upc }], Date.now()) }, done);
+      }
+    });
   }
 
   /* ---------- the TV tile and panel ---------- */

@@ -103,7 +103,7 @@ async function main() {
         return r.width && (r.height < 47.5 || r.width < 47.5);
       }).map((b) => b.className));
       assert(!small.length, 'targets under 48 px: ' + small.join(', '));
-      await page.evaluate(() => fetch('/grocery/ops', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      await page.evaluate(() => fetch('/grocery/ops', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Hub-Touch': '1' },
         body: JSON.stringify({ ops: ['Oat milk', 'Eggs', 'Sourdough bread', 'Bananas', 'Coffee beans', 'Spinach'].map((n) => ({ op: 'add', name: n })) }) }));
       await page.evaluate(() => window.HUB_TOUCH.poll());
       await page.waitForFunction(() => /6 to get/.test(document.querySelector('.t-row-datum').textContent));
@@ -157,7 +157,7 @@ async function main() {
     await check('a change from elsewhere (Claude) shows within a poll', async () => {
       const page = await open(phone, '/app/touch.html#/grocery');
       await page.waitForSelector('.gx-row');
-      await page.evaluate(() => fetch('/grocery/ops', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ops: [{ op: 'add', name: 'Lemons' }] }) }));
+      await page.evaluate(() => fetch('/grocery/ops', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Hub-Touch': '1' }, body: JSON.stringify({ ops: [{ op: 'add', name: 'Lemons' }] }) }));
       await page.waitForFunction(() => /Lemons/.test(document.querySelector('.gx-list').textContent), null, { timeout: 5000 });
       await page.ctx.close();
     });

@@ -1248,8 +1248,8 @@
        "pr": "PR 134",
        "summary": "A copy of All sounds whose page adds Echo controls: a speaker switch, Play/Pause, Next, a volume stepper, Stop and quick starts.",
        "details": [
-        "The tile looks the same as All sounds. The page adds a speaker switch (Echo Show, Echo Dot, Everywhere; each shows what that speaker plays underneath), a round Play/Pause, Next, a volume stepper (\u2212 40% +), Stop and one-press starts: Resume audiobook, KERA 90.1, NPR newscast, Spotify, Pandora and Amazon Music. All sounds stays untouched as the backup.",
-        "Picking a speaker shows that speaker's own playback. Everywhere lists one row per speaker (what it plays, its volume, its own Play/Pause and \u2212/+) above an All speakers transport; quick starts there play one thing on every speaker.",
+        "The tile looks the same as All sounds. The page adds a speaker switch (Echo Show, Echo Dot, Everywhere; each shows what that speaker plays underneath), a round Play/Pause, Next, a volume stepper (− 40% +), Stop and one-press starts: Resume audiobook, KERA 90.1, NPR newscast, Spotify, Pandora and Amazon Music. All sounds stays untouched as the backup.",
+        "Picking a speaker shows that speaker's own playback. Everywhere lists one row per speaker (what it plays, its volume, its own Play/Pause and −/+) above an All speakers transport; quick starts there play one thing on every speaker.",
         "Presses go to the Pi as POST /echo/run with presets only (no search text from the TV). Each speaker's state, volume and playback come back in the allsounds resource (echos, target), so the page follows within seconds. Tried alone in the 'Sound control test' layout (hub v0.39.3, server 0.24.2)."
        ],
        "files": [
@@ -1675,7 +1675,8 @@
          "summary": "The grocery list: up to 200 items, each a name (60 characters) and a tick. Ticked items stay 48 hours, then go.",
          "details": [
           "Written by the touch app and the TV (both POST /grocery/ops; the TV's page is another origin, so server 0.26.1 answers its preflight), by ./hub grocery and by the mailbox's grocery.* commands (both through POST /api/grocery/ops). Ops: add (a name already there is not doubled; a ticked one comes back), check, remove, clear.",
-          "Reaches the TV over the live line like every resource. The log counts changes ('screen' or 'touch app') and never names an item."
+          "Reaches the TV over the live line like every resource. The log counts changes ('screen' or 'touch app') and never names an item.",
+          "Items carry an optional upc (a catalog key). { op: add, upc } with no name takes \"Brand Name\" from the products catalog; the same code is not doubled (a ticked one comes back), and a typed item of the same name gets the code. /touch/state carries the catalog products of the codes on the list."
          ],
          "files": [
           "pi/grocery.js",
@@ -1691,6 +1692,11 @@
           {
            "to": "pi.mailbox.commands.grocery",
            "label": "Claude adds and ticks",
+           "dir": "in"
+          },
+          {
+           "to": "pi.products",
+           "label": "product names and the export",
            "dir": "in"
           },
           {
@@ -1965,9 +1971,9 @@
          "title": "Groceries",
          "kind": "component",
          "status": "unverified",
-         "summary": "Add, list, tick, remove and clear grocery items.",
+         "summary": "Add, list, tick, remove, clear and export grocery items.",
          "details": [
-          "grocery.add {items: up to 20 names}, grocery.list, grocery.done and grocery.remove {id or name}, grocery.clear. The same words as ./hub grocery."
+          "grocery.add {items: up to 20 names}, grocery.list, grocery.done and grocery.remove {id or name}, grocery.clear, grocery.export (counts and one \"Brand Name Size\" search line per item to get). The same words as ./hub grocery."
          ],
          "files": [
           "pi/mailbox.js",
@@ -2614,13 +2620,62 @@
      ]
     },
     {
+     "id": "pi.products",
+     "title": "Products catalog",
+     "kind": "component",
+     "status": "unverified",
+     "summary": "The barcode service: a scanned code (EAN-13, UPC-A, UPC-E, EAN-8) becomes a product (brand, name, size, a thumbnail on the Pi), shared by every scanner. Where a scan goes is the caller's choice.",
+     "details": [
+      "Codes are checked (check digit) and kept as one 13-digit key (8 for EAN-8). Lookup: the catalog in data/products.json, then Open Food Facts, Open Products Facts and UPCitemdb, each with its own rate limit (a source at its limit is skipped; one failing never fails the lookup). A web hit is saved with its thumbnail in data/products/; a miss is remembered in memory for 24 hours. Manual entries from the phone (brand, name, size, an optional photo) always win. At most 5000 products.",
+      "Pictures from the web: https only, a host name that resolves only to public addresses (the connection is pinned to it), no redirects, image type and bytes checked, at most 400 KB. Photos from the phone: JPEG, at most 150 KB.",
+      "Touch routes GET /products/lookup, POST /products/save, GET /products/image/<code>; control GET /api/products, /api/products/image and /api/grocery/export (the list for a shopping run, with a \"Brand Name Size\" search text per item). The log counts; it never names a product or a code."
+     ],
+     "files": [
+      "pi/products.js",
+      "pi/products-test.js",
+      "pi/server.js"
+     ],
+     "talksTo": [
+      {
+       "to": "pi.touchapp.shell",
+       "label": "lookups and hand-typed products from the Scan button",
+       "dir": "in"
+      },
+      {
+       "to": "ext.product-data.off",
+       "label": "food lookups, 15 a minute",
+       "dir": "out"
+      },
+      {
+       "to": "ext.product-data.opf",
+       "label": "non-food lookups, 15 a minute",
+       "dir": "out"
+      },
+      {
+       "to": "ext.product-data.upcitemdb",
+       "label": "backup lookups, 100 a day",
+       "dir": "out"
+      },
+      {
+       "to": "pi.server.resources.grocery",
+       "label": "names scanned items; the shopping export",
+       "dir": "out"
+      }
+     ],
+     "notes": [
+      "Nothing has run against the live sources or on the real Pi yet."
+     ],
+     "children": []
+    },
+    {
      "id": "pi.tailscale",
      "title": "Tailscale",
      "kind": "service",
      "status": "unverified",
      "summary": "The private network that lets Ian's phone reach the Pi away from home, at its 100.x address or its .ts.net name.",
      "details": [
-      "The server treats Tailscale's 100.x range (100.64/10) and its IPv6 range like the home network and accepts a .ts.net Host. Whether Tailscale runs on the Pi is not confirmed yet."
+      "The server treats Tailscale's 100.x range (100.64/10) and its IPv6 range like the home network and accepts a .ts.net Host. Whether Tailscale runs on the Pi is not confirmed yet.",
+      "For the camera the touch app must be opened over HTTPS: `tailscale serve --bg 8097` on the Pi proxies https://<machine>.<tailnet>.ts.net to the hub (requests arrive from loopback). Never funnel. The machine name shows in public certificate logs, so it stays generic."
      ],
      "files": [
       "pi/server.js"
@@ -2630,6 +2685,28 @@
        "to": "pi.touchapp",
        "label": "phone to Pi, port 8097",
        "dir": "both"
+      }
+     ],
+     "children": [
+      {
+       "id": "pi.tailscale.serve",
+       "title": "HTTPS address",
+       "kind": "component",
+       "status": "planned",
+       "summary": "tailscale serve gives the Pi an HTTPS name on the tailnet, so a phone may use its camera for the Scan button.",
+       "details": [
+        "One-time: MagicDNS and HTTPS Certificates on in the Tailscale admin console, then `tailscale serve --bg 8097` on the Pi. Certificates renew by themselves. Ian runs it; not set up yet."
+       ],
+       "files": [
+        "pi/README.md"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.touchapp",
+         "label": "HTTPS to port 8097 through loopback",
+         "dir": "out"
+        }
+       ]
       }
      ]
     },
@@ -3219,6 +3296,79 @@
      ],
      "notes": [
       "Live TVmaze calls have not run from the real Pi yet."
+     ]
+    },
+    {
+     "id": "ext.product-data",
+     "title": "Product databases",
+     "kind": "external",
+     "status": "unverified",
+     "summary": "Free barcode lookups the Pi makes for a scan it does not know yet; only the barcode number is sent, with a generic User-Agent and no account.",
+     "details": [
+      "Asked in order, each only when the one before has nothing. The Pi keeps every hit, so a product is looked up on the web once."
+     ],
+     "files": [
+      "pi/products.js"
+     ],
+     "talksTo": [
+      {
+       "to": "pi.products",
+       "label": "brand, name, size and a thumbnail",
+       "dir": "out"
+      }
+     ],
+     "children": [
+      {
+       "id": "ext.product-data.off",
+       "title": "Open Food Facts",
+       "kind": "external",
+       "status": "unverified",
+       "summary": "Open food product data (packaged food). No key; 15 reads a minute from the Pi. Data ODbL, pictures CC-BY-SA.",
+       "files": [
+        "pi/products.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.products",
+         "label": "food products",
+         "dir": "out"
+        }
+       ]
+      },
+      {
+       "id": "ext.product-data.opf",
+       "title": "Open Products Facts",
+       "kind": "external",
+       "status": "unverified",
+       "summary": "The same open database for non-food things (cleaning, paper goods). Same API and limits as Open Food Facts.",
+       "files": [
+        "pi/products.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.products",
+         "label": "non-food products",
+         "dir": "out"
+        }
+       ]
+      },
+      {
+       "id": "ext.product-data.upcitemdb",
+       "title": "UPCitemdb",
+       "kind": "external",
+       "status": "unverified",
+       "summary": "Broad US retail lookups on the free trial: 6 a minute and 100 a day; asked last.",
+       "files": [
+        "pi/products.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.products",
+         "label": "retail products",
+         "dir": "out"
+        }
+       ]
+      }
      ]
     },
     {
@@ -5375,6 +5525,41 @@
     {
      "node": "tv.widgets.grocery",
      "say": "The TV's Groceries tile gets it over the live line; a tick on the TV goes back the same way"
+    }
+   ]
+  },
+  {
+   "id": "flow.scan-grocery",
+   "title": "Scanning a product onto the list",
+   "summary": "Ian scans a can on his phone; it lands on the grocery list as Brand Name, with its picture.",
+   "steps": [
+    {
+     "node": "pi.tailscale.serve",
+     "say": "The phone opens the Pi's HTTPS address, so the camera may run"
+    },
+    {
+     "node": "pi.touchapp.shell",
+     "say": "Scan reads the barcode on the phone; no picture leaves it"
+    },
+    {
+     "node": "pi.products",
+     "say": "GET /products/lookup checks the code and looks in the catalog first"
+    },
+    {
+     "node": "ext.product-data.off",
+     "say": "Not there: Open Food Facts, then Open Products Facts, then UPCitemdb"
+    },
+    {
+     "node": "pi.products",
+     "say": "A hit is saved with its thumbnail; a miss opens the quick form, saved as manual"
+    },
+    {
+     "node": "pi.server.resources.grocery",
+     "say": "POST /grocery/ops { op: add, upc } names the item from the catalog"
+    },
+    {
+     "node": "pi.mailbox.commands.grocery",
+     "say": "grocery.export gives a shopping run one search line per item"
     }
    ]
   }

@@ -614,6 +614,8 @@ const COMMANDS = {
   'grocery.done': { args: { id: [V.text(40), false], name: [V.text(grocery.MAX_NAME), false] }, check: oneOfIdOrName, run: groceryChange('done') },
   'grocery.remove': { args: { id: [V.text(40), false], name: [V.text(grocery.MAX_NAME), false] }, check: oneOfIdOrName, run: groceryChange('remove') },
   'grocery.clear': { args: {}, run: (a, ctx) => hubctl.groceryClear(ctx.call) },
+  // Counts and one search text ("Brand Name Size") per item to get.
+  'grocery.export': { args: {}, run: (a, ctx) => hubctl.groceryExport(ctx.call) },
   'calendar.status': {
     args: {},
     run: async (a, ctx) => {

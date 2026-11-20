@@ -9,12 +9,18 @@
  *   GET  /live/events    the push line (Server-Sent Events)
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
- *   GET  /touch/state    the touch app's data (grocery; no screen is registered)
- *   POST /grocery/ops    grocery changes made in the touch app or on the TV (the TV's
- *                        page is on another origin, so this route also answers the
- *                        browser's OPTIONS preflight for an Origin on HUB_ORIGINS)
+ *   GET  /touch/state    the touch app's data (grocery, and the catalog products of the
+ *                        codes on it; no screen is registered)
+ *   POST /grocery/ops    grocery changes made in the touch app or on the TV (it answers the
+ *                        browser's OPTIONS preflight for an Origin on HUB_ORIGINS) ({ op: 'add', upc } names
+ *                        the item from the products catalog)
+ *   GET  /products/lookup?upc=<code>&format=<hint>   a scanned code: the catalog, then the
+ *                        web (products.js) -> { ok, upc, found, product }; needs a same-host
+ *                        Origin, Sec-Fetch-Site: same-origin or X-Hub-Touch: 1; 10 web lookups a minute per phone
+ *   POST /products/save  { upc, brand, name, size?, photo? } a product typed in by hand
+ *   GET  /products/image/<upc>   a product's saved thumbnail
  *   GET  /, /app/...     the touch app (app/touch.html) and the files it loads, read only
- *                        (the three touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
+ *                        (the touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
  *   POST /linktests      one watch link test answer from the About panel
  *   POST /tvremote/run   start a two-step launch from the Pi (tvremote.js): { id, appId, ... }
  *   POST /shows/watched  the TV marks an episode watched: { id, season, number }
@@ -34,6 +40,10 @@
  *   POST /api/todo/ops   several to-do changes at once
  *   GET  /api/grocery    the grocery list (grocery.js)
  *   POST /api/grocery/ops  grocery changes: add, check, remove, clear
+ *   GET  /api/grocery/export   the list for a shopping run: each item with its product's
+ *                        brand, name, size and a "search" text (products.js)
+ *   GET  /api/products?upc=<code>   look a code up (the catalog, then the web)
+ *   GET  /api/products/image?upc=<code>   a product's saved thumbnail (JPEG, PNG or WebP)
  *   GET  /api/layout     the home-screen tile layout (null = the hub's own)
  *   POST /api/layout     set it, { layout: [...] }, or { layout: null } to reset
  *   GET  /api/awws       the A World Worth Saving snapshot (awws.js)
@@ -116,8 +126,9 @@ const allsounds = require('./allsounds');
 const echo = require('./echo');
 const translate = require('./translate');
 const grocery = require('./grocery');
+const products = require('./products');
 
-const SERVER_VERSION = '0.26.1';
+const SERVER_VERSION = '0.27.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -125,6 +136,7 @@ const DEFAULT_ORIGINS = ['http://127.0.0.1:8081'];
 const MIN_TOKEN = 24;
 const BODY_LIMIT = 8 * 1024;
 const AWWS_BODY_LIMIT = 64 * 1024; // POST /api/awws and /api/budget only; a snapshot is at most 48 KB
+const PRODUCT_BODY_LIMIT = 220 * 1024; // POST /products/save only: a photo of at most 150 KB, as base64
 const MAX_SSE = 20;
 const MAX_POLLS = 20;
 const MAX_COMMANDS = 20;
@@ -868,6 +880,12 @@ function start(options) {
     return !!host && (origin === 'http://' + host || origin === 'https://' + host);
   }
 
+  function touchProof(req) {
+    const origin = req.headers.origin;
+    if (origin) return originOk(req);
+    return req.headers['sec-fetch-site'] === 'same-origin' || req.headers['x-hub-touch'] === '1';
+  }
+
   function readBody(req, res, cb, limitBytes) {
     const limit = limitBytes || BODY_LIMIT;
     const tooLarge = 'request body too large (at most ' + Math.round(limit / 1024) + ' KB)';
@@ -926,12 +944,58 @@ function start(options) {
     return state.resources.todo.data.items;
   }
 
+  /* --- the products catalog (products.js): barcodes, shared by every scanner --- */
+
+  // opt.products may hold { request, resolve, now, web: false, ... } for tests.
+  const catalog = products.createCatalog(Object.assign({}, isObj(opt.products) ? opt.products : {}, {
+    dataDir: dataDir, log: log,
+    keep: () => state.resources.grocery.data.items.map((i) => i.upc).filter(Boolean)
+  }));
+
+  // An add op with a upc: the code is checked and, with no name, the name
+  // comes from the catalog ("Brand Name"). Other ops pass through.
+  function withProducts(ops) {
+    if (!Array.isArray(ops)) return ops;
+    return ops.map((o) => {
+      if (!isObj(o) || o.op !== 'add' || o.upc === undefined || o.upc === null || o.upc === '') return o;
+      const key = catalog.toKey(o.upc);
+      const out = Object.assign({}, o, { upc: key });
+      if (o.name === undefined || o.name === null || (typeof o.name === 'string' && !o.name.trim())) {
+        const p = catalog.get(key);
+        if (!p) throw bad("that barcode isn't in the product catalog yet");
+        out.name = products.lineName(p);
+      }
+      return out;
+    });
+  }
+
+  // { upc: product } for every code on the grocery list (catalog only).
+  function groceryProducts() {
+    return catalog.forUpcs(state.resources.grocery.data.items.map((i) => i.upc).filter(Boolean));
+  }
+
+  // Sends a product's saved thumbnail, or 404.
+  function sendProductImage(req, res, code, extra) {
+    let key = null;
+    try { key = catalog.toKey(code); } catch (e) { key = null; }
+    const img = key ? catalog.imageFile(key) : null;
+    if (!img) return sendJson(res, 404, { ok: false, error: 'no picture' }, extra);
+    return fs.readFile(img.file, (err, data) => {
+      if (err) return sendJson(res, 404, { ok: false, error: 'no picture' }, extra);
+      res.writeHead(200, Object.assign({
+        'Content-Type': img.type, 'Content-Length': data.length,
+        'Cache-Control': 'private, max-age=2592000', 'X-Content-Type-Options': 'nosniff'
+      }, extra || {}));
+      return res.end(req.method === 'HEAD' ? undefined : data);
+    });
+  }
+
   // Applies grocery ops: saves, bumps rev, tells every screen. Throws a 400
   // error (nothing changes) when an op is wrong.
   function groceryOps(body) {
     if (!isObj(body)) throw bad('the body must be a JSON object');
     const cur = state.resources.grocery.data.items;
-    const items = grocery.applyOps(cur, body.ops, Date.now());
+    const items = grocery.applyOps(cur, withProducts(body.ops), Date.now());
     const changed = JSON.stringify(items) !== JSON.stringify(cur);
     if (changed) changeResource('grocery', { items: items });
     return { ok: true, rev: state.rev, changed: changed, items: state.resources.grocery.data.items };
@@ -1382,6 +1446,9 @@ function start(options) {
     '/api/todo/ops': ['POST'],
     '/api/grocery': ['GET'],
     '/api/grocery/ops': ['POST'],
+    '/api/grocery/export': ['GET'],
+    '/api/products': ['GET'],
+    '/api/products/image': ['GET'],
     '/api/layout': ['GET', 'POST'],
     '/api/awws': ['GET', 'POST'],
     '/api/awws/resync': ['POST'],
@@ -1648,6 +1715,21 @@ function start(options) {
           const r = groceryOps(body);
           return reply(200, r, 'grocery, rev ' + state.rev);
         }
+        if (route === '/api/grocery/export') {
+          const r = products.exportList(state.resources.grocery.data.items, catalog.get, Date.now());
+          return reply(200, r, r.items.length + ' items');
+        }
+        if (route === '/api/products' || route === '/api/products/image') {
+          const q = query || new URLSearchParams();
+          if (route === '/api/products/image') {
+            // Over HTTP control() sends the picture itself; this answers the mailbox.
+            const key = catalog.toKey(q.get('upc') || '');
+            const img = catalog.imageFile(key);
+            return reply(img ? 200 : 404, img ? { ok: true, upc: key, type: img.type } : { ok: false, error: 'no picture' });
+          }
+          catalog.lookup(q.get('upc') || '', q.get('format') || '').then((r) => reply(200, r, r.found ? 'found' : 'not found')).catch(failed);
+          return undefined;
+        }
         if (route === '/api/todo' && method === 'GET') {
           return reply(200, { ok: true, rev: state.rev, items: todoItems() });
         }
@@ -1702,6 +1784,11 @@ function start(options) {
     if (!tokenOk) return done(503, { ok: false, error: 'no token set on the server' });
     if (!checkToken(req)) return done(401, { ok: false, error: 'wrong token' });
     if (ROUTES[route] && ROUTES[route].indexOf(req.method) < 0) res.setHeader('Allow', ROUTES[route].join(', '));
+    if (route === '/api/products/image' && req.method === 'GET') {
+      req.resume();
+      log('control GET ' + route + (door === 'tunnel' ? ' (side door)' : ''), true);
+      return sendProductImage(req, res, query.get('upc') || '');
+    }
     const run = (body) => api(req.method, route, body, query).then((r) => done(r.status, r.body, r.note));
     if (req.method !== 'POST' || route === '/api/calendar/refresh' || route === '/api/shows/refresh' || !ROUTES[route]) {
       req.resume(); // no body is needed
@@ -1717,7 +1804,7 @@ function start(options) {
   const TYPES = {
     '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
     '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
-    '.webp': 'image/webp', '.woff2': 'font/woff2', '.ico': 'image/x-icon'
+    '.webp': 'image/webp', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.wasm': 'application/wasm'
   };
 
   // Home, Tailscale and loopback addresses only, whatever HUB_TV_IPS says:
@@ -1752,12 +1839,10 @@ function start(options) {
     });
   }
 
-  // GET /touch/state and POST /grocery/ops. Unlike /live/state this never
-  // registers the caller as a screen (so a phone is not taken for the TV) and
-  // carries only what the touch app shows. The TV's grocery tile posts here
-  // too: its page is on another origin (HUB_ORIGINS), so the browser asks
-  // first with OPTIONS; the answer is the same as the screen routes give.
-  function touch(req, res, route) {
+  // GET /touch/state, POST /grocery/ops and the products routes (the TV's grocery tile posts to /grocery/ops too, from another origin, so the browser asks with OPTIONS first). Unlike
+  // /live/state this never registers the caller as a screen (so a phone is
+  // not taken for the TV) and carries only what the touch app shows.
+  function touch(req, res, route, query) {
     const cors = corsHeaders(req);
     if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
     if (req.method === 'OPTIONS' && route === '/grocery/ops') {
@@ -1770,12 +1855,43 @@ function start(options) {
       res.writeHead(204, h);
       return res.end();
     }
-    const want = route === '/grocery/ops' ? 'POST' : 'GET';
-    if (req.method !== want) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
+    const image = route.indexOf('/products/image/') === 0;
+    const want = route === '/grocery/ops' || route === '/products/save' ? 'POST' : 'GET';
+    const okMethod = req.method === want || (image && req.method === 'HEAD');
+    if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
-      return sendJson(res, 200, { ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev, grocery: state.resources.grocery }, cors);
+      return sendJson(res, 200, {
+        ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev,
+        grocery: state.resources.grocery, products: groceryProducts()
+      }, cors);
+    }
+    if (image) {
+      let code = '';
+      try { code = decodeURIComponent(route.slice('/products/image/'.length)); } catch (e) { code = ''; }
+      if (!/^\d{8,14}$/.test(code)) return sendJson(res, 404, { ok: false, error: 'not found' }, cors);
+      return sendProductImage(req, res, code, cors);
     }
     if (!originOk(req)) return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    if (route === '/products/lookup') {
+      // A GET that may call the web: it needs proof it comes from the app's
+      // own page (a same-host Origin, Sec-Fetch-Site: same-origin, or the
+      // X-Hub-Touch: 1 header the app sends, which another site's page
+      // cannot send without a preflight this server never allows).
+      if (!touchProof(req)) return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+      let p;
+      try { p = catalog.lookup(query.get('upc') || '', query.get('format') || '', { client: plainAddress(clientAddress(req)) }); } catch (e) { return fail(res, e, cors); }
+      return p.then((r) => sendJson(res, 200, r, cors), (e) => fail(res, e, cors));
+    }
+    if (route === '/products/save') {
+      return readBody(req, res, (body) => {
+        try {
+          const product = catalog.save(body);
+          sendJson(res, 200, { ok: true, product: product }, cors);
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      }, PRODUCT_BODY_LIMIT);
+    }
     return readBody(req, res, (body) => {
       try {
         const r = groceryOps(body);
@@ -1978,7 +2094,7 @@ function start(options) {
     '/echo/run': 1
   };
 
-  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1 };
+  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/products/lookup': 1, '/products/save': 1 };
 
   function handler(door) {
     return (req, res) => {
@@ -1999,7 +2115,7 @@ function start(options) {
         }
         if (route === '/api' || route.indexOf('/api/') === 0) return control(req, res, route, door, url.searchParams);
         if (door === 'main' && (route === '/' || route.indexOf('/app/') === 0)) return appFile(req, res, route, url.searchParams);
-        if (door === 'main' && TOUCH_ROUTES[route]) return touch(req, res, route);
+        if (door === 'main' && (TOUCH_ROUTES[route] || route.indexOf('/products/image/') === 0)) return touch(req, res, route, url.searchParams);
         if (door === 'main' && SCREEN_ROUTES[route]) return screen(req, res, route, url.searchParams);
         return sendJson(res, 404, { ok: false, error: 'not found' });
       } catch (e) {
@@ -2086,6 +2202,7 @@ function start(options) {
     shows: tracker,
     allsounds: sounds,
     echo: echoCtl,
+    products: catalog,
     _debug: () => {
       forgetOld();
       return {
@@ -2119,6 +2236,7 @@ function start(options) {
     tracker.close();
     sounds.close();
     lights.close();
+    catalog.close();
     if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));
