@@ -94,6 +94,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const calendar = require('./calendar');
+const todoconvert = require('./todoconvert');
 const awws = require('./awws');
 const budget = require('./budget');
 const mailbox = require('./mailbox');
@@ -670,7 +671,22 @@ function start(options) {
   const calList = calendar.checkCalendars(
     Array.isArray(opt.calendars) ? opt.calendars : calendar.calendarsFromEnv(opt.calendarEnv || {}), log, allowHttp);
   const calWaitMs = opt.calendarWait || 25000;
+  // Calendar events titled TODO: / TODO!: / TODO~: become to-dos right here,
+  // each time the calendars are read (todoconvert.js; no Claude task).
+  const todoConv = opt.todoConvert === false ? null : todoconvert.create({
+    dataDir: dataDir, log: log, tz: calTz,
+    items: () => todoItems(),
+    add: (list) => {
+      const now = Date.now();
+      const items = purgeOld(todoItems(), now);
+      if (items.length + list.length > MAX_ITEMS) return false;
+      const made = list.map((r) => normalizeItem(Object.assign({ id: newTodoId(), done: false, doneAt: null, createdAt: now }, r), now));
+      return changeTodo(made.concat(items)) || made.length === 0;
+    }
+  });
   const calReader = calendar.createReader({
+    convert: todoConv ? (events, t) => todoConv.convert(events, t) : null,
+    hide: todoConv ? (ev) => todoConv.hides(ev) : null,
     calendars: calList,
     tz: calTz,
     refreshMs: calendar.refreshMinutes(opt.refreshMinutes, log) * 60000,
