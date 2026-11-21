@@ -540,7 +540,7 @@ Spotify's rules can limit how often the Pi may ask; if it asks for a pause the P
 
 ## All sounds (test widget)
 
-The "All sounds" test widget on the TV (the "All sounds test" layout) shows what plays anywhere: the Echo speakers through Home Assistant, and Spotify (Spotify wins when both play). `allsounds.js` reads Home Assistant's REST API (`GET /api/states`, every 5 seconds while something plays, 20 seconds otherwise, backing off up to 2 minutes when it cannot get through) and keeps the `allsounds` resource; it changes nothing for Now Playing.
+The Now Playing widget on the TV (its expanded and full-screen pages) shows what plays anywhere: the Echo speakers through Home Assistant, and Spotify (Spotify wins when both play). `allsounds.js` reads Home Assistant's REST API (`GET /api/states`, every 5 seconds while something plays, 20 seconds otherwise, backing off up to 2 minutes when it cannot get through) and keeps the `allsounds` resource; it changes nothing for Now Playing.
 
 Setup (once):
 
@@ -582,7 +582,7 @@ allsounds: Home Assistant working again
 allsounds: unexpected problem
 ```
 
-Commands: `./hub allsounds status` (state, source, speaker, title and artist), `./hub show allsounds` (the page on the TV). Tests: `node pi/allsounds-test.js` (against the pretend Home Assistant in `dev/mock-ha.js`).
+Commands: `./hub allsounds status` (state, source, speaker, title and artist), `./hub show nowplaying` (the page on the TV). Tests: `node pi/allsounds-test.js` (against the pretend Home Assistant in `dev/mock-ha.js`).
 
 | What you see | What it means | What to do |
 |---|---|---|

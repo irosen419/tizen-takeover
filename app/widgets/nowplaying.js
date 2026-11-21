@@ -29,7 +29,7 @@
  * that is not Spotify: what the TV itself plays (window.HUB_AUDIO.now(),
  * ./hub play, ./hub news) and the Pi's "allsounds" resource (an Echo, TuneIn,
  * Pandora...; pi/allsounds.js), read by the same rules as the All sounds
- * widget (allsounds.js view()). Spotify playing or paused wins; otherwise
+ * widget it replaced (allsounds.js, removed). Spotify playing or paused wins; otherwise
  * another sound playing or paused shows instead, and a playing one beats a
  * paused Spotify. It shows the picture, the label, the title, the artist and
  * album lines, the platform as a quiet "(Pandora)", a quiet note ("Started

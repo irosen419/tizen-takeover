@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.46.4';
+  var BUILD = 'v0.47.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1183,6 +1183,8 @@
       var e = raw[i];
       if (!e || typeof e !== 'object') continue;
       var id = e.widget;
+      // The retired All sounds widget is Now Playing now: a layout saved with it keeps its tile.
+      if (id === 'allsounds') id = 'nowplaying';
       if (typeof id !== 'string' || !TILE_ID_RE.test(id) || seen.hasOwnProperty(id)) continue;
       if (!isWhole(e.x) || !isWhole(e.y) || !isWhole(e.w) || !isWhole(e.h)) continue;
       if (e.x < 0 || e.y < 0 || e.w < 1 || e.h < 1 || e.x + e.w > GRID_COLS || e.y + e.h > GRID_ROWS) continue;
