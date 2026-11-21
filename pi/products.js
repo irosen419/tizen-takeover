@@ -61,6 +61,17 @@ const INVALID = "that isn't a valid barcode number";
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 const IMAGE_EXTS = ['jpg', 'png', 'webp'];
 const IMAGE_TYPES = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+// Store house brands, by company prefix (the first 6 digits of the UPC-A). A web hit that names
+// no brand gets one from here; the pencil still wins. Only prefixes known to be one chain's.
+const HOUSE_BRANDS = {
+  '021130': 'Signature Select', '011110': 'Kroger', '078742': 'Great Value',
+  '096619': 'Kirkland Signature', '099482': '365', '085239': 'Good & Gather', '041220': 'H-E-B'
+};
+function houseBrand(key) {
+  const k = String(key || '');
+  return k.length === 13 && k[0] === '0' ? (HOUSE_BRANDS[k.slice(1, 7)] || '') : '';
+}
+
 const SOURCES = ['off', 'opf', 'upcitemdb', 'manual'];
 
 function isObj(v) {
@@ -604,6 +615,7 @@ function createCatalog(options) {
           if (!prod.size && more.product.size) prod = Object.assign({}, prod, { size: more.product.size });
           if (!images.length) images = more.images.slice();
         }
+        if (!prod.brand) { const hb = houseBrand(key); if (hb) prod = Object.assign({}, prod, { brand: hb }); }
         // The first picture that downloads, inside the budget.
         let image = null, why = images.length ? 'failed' : 'none offered';
         for (let k = 0; k < images.length && !image; k++) {
