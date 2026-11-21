@@ -68,10 +68,24 @@ function writeAll(version) {
   if (!DRY) out.forEach((o) => fs.writeFileSync(abs(o[0]), o[1]));
 }
 
+const cmp = (a, b) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
+
 function mainVersion() {
   const ref = opt('from') || 'origin/main';
   try {
-    return JSON.parse(cp.execSync('git show ' + ref + ':package.json', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString()).version;
+    const top = JSON.parse(cp.execSync('git show ' + ref + ':package.json', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString()).version;
+    // A bad merge once reverted the label (0.44.1 -> 0.29.21 in PR 146), and counting from that
+    // would keep it low. So also look at the last few versions of package.json and count from the highest.
+    let best = top;
+    try {
+      const log = cp.execSync('git log ' + ref + ' -n 40 -p --format= -- package.json', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 24 }).toString();
+      (log.match(/^[+-]\s+"version": "\d+\.\d+\.\d+"/gm) || []).forEach((l) => {
+        const v = l.match(/\d+\.\d+\.\d+/)[0];
+        if (cmp(v, best) > 0) best = v;
+      });
+    } catch (e) { /* history unavailable (shallow clone): use the tip */ }
+    if (best !== top) console.error('note: ' + ref + ' says ' + top + ' but its recent history reached ' + best + '; counting from ' + best);
+    return best;
   } catch (e) {
     return JSON.parse(read('package.json')).version;
   }
