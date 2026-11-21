@@ -25,14 +25,32 @@
  * the Pi cannot be reached. The last song is also kept on this TV
  * (localStorage) for the times the Pi is away.
  *
- * Full screen, while a song plays or is paused, a visualizer fills the panel
- * (nowplaying-viz.js), in the album's colors and at the song's tempo, and
- * the page shrinks to a small card in the upper left (fitCard). At the still
- * wash level, without nowplaying-viz.js, or with HUB_CONFIG.widgets.
- * nowplaying.visualizer false, the page keeps its big picture layout. The Pi
- * adds the song's "vibe" (data.vibe) a moment after the song; it is not part
- * of signature(), so it changes the visualizer in place, never redraws the
- * page.
+ * The page (expanded and full screen, never the tile) also shows sound
+ * that is not Spotify: what the TV itself plays (window.HUB_AUDIO.now(),
+ * ./hub play, ./hub news) and the Pi's "allsounds" resource (an Echo, TuneIn,
+ * Pandora...; pi/allsounds.js), read by the same rules as the All sounds
+ * widget (allsounds.js view()). Spotify playing or paused wins; otherwise
+ * another sound playing or paused shows instead, and a playing one beats a
+ * paused Spotify. It shows the picture, the label, the title, the artist and
+ * album lines, the platform as a quiet "(Pandora)", a quiet note ("Started
+ * from the hub", "May be out of date") and an "On {device}" chip, with no
+ * progress bar or times (no length is known). pageView() picks; its own
+ * signature (pageSignature()) redraws only the page when it changes.
+ *
+ * The visualizer (nowplaying-viz.js) runs only when asked: while a sound
+ * plays or is paused, the page has a "Visualizer" button (role=button,
+ * data-autofocus, OK goes through onSelect). On the expanded page it sets
+ * vizWanted and switches to full screen, so the visualizer always opens full
+ * screen; in full screen it turns it on and off ("Hide visualizer"). It runs
+ * only while vizWanted, full screen and a sound plays or is paused; leaving
+ * full screen or closing the page forgets vizWanted. With it on, the album's
+ * colors and the song's tempo drive it (a sound without a vibe gets a calm
+ * middle, without a readable picture the mood's colors), and the page
+ * shrinks to a small card in the upper left (fitCard). At the still wash
+ * level the page keeps its big picture layout. HUB_CONFIG.widgets.nowplaying
+ * .visualizer false (or ?viz=off) is a hard off: no button. The Pi adds the
+ * song's "vibe" (data.vibe) a moment after the song; it is not part of
+ * signature(), so it changes the visualizer in place, never redraws the page.
  *
  * A new song (another track id or title than the last one this run) shows
  * the tile's "New song" activity chip (ctx.activity('nowplaying'), see
@@ -58,6 +76,11 @@
   var SONG_CHIP_GAP_MS = 8000;
   var songKey = null;      // the song of the last data this run with one ('' none yet); null before any data
   var songChipAt = -Infinity;   // when the last "New song" chip was asked for
+  var sounds = null;       // the Pi's "allsounds" data (any sound in the house), or null
+  var lastPageSig = '';    // pageSignature() when the page was last drawn
+  var vizWanted = false;   // the Visualizer button asked for it (full screen only)
+  var vizPress = 0;        // counts presses, so an old press's check never undoes a new one
+  var otherAt = { key: '', pos: 0, at: 0, playing: false };   // where a non-Spotify sound is, counted here
 
   /* ---------- small helpers ---------- */
 
@@ -237,8 +260,95 @@
     return v;
   }
 
+  /* ---------- other sounds (the page only) ---------- */
+
+  function str(x, max) {
+    var s = typeof x === 'string' ? x : '';
+    return s.length > max ? s.slice(0, max) : s;
+  }
+
+  // Only absolute https pictures (http on a laptop preview), as allsounds.js.
+  function artUrl(s) {
+    s = str(s, 600);
+    if (/^https:\/\/[^\s"'<>\\]+$/i.test(s)) return s;
+    if (/^http:\/\/127\.0\.0\.1[:\/][^\s"'<>\\]*$/i.test(s)) return s;
+    return '';
+  }
+
+  // A sound playing or paused that is not Spotify's own data, by the rules
+  // of allsounds.js view(): the TV's own sound first, then the Pi's
+  // "allsounds". null when there is none.
+  function otherView() {
+    var tv = null;
+    try { tv = window.HUB_AUDIO && typeof window.HUB_AUDIO.now === 'function' ? window.HUB_AUDIO.now() : null; } catch (e) { tv = null; }
+    if (tv && tv.state) {
+      // "NPR News Now, 8pm ET": the show as the title, the rest below it.
+      var whole = str(tv.title, 200);
+      var cut = whole.indexOf(', ');
+      return {
+        kind: tv.state === 'playing' ? 'playing' : 'paused',
+        title: (cut > 0 ? whole.substring(0, cut) : whole) || T('nowplaying.tvSound', 'Sound on the TV'),
+        sub: cut > 0 ? whole.substring(cut + 2) : '', album: '', source: '', art: '',
+        device: T('nowplaying.tv', 'Living room TV'),
+        note: tv.state === 'waiting' ? T('nowplaying.tvWaiting', 'Press any button to start it') : ''
+      };
+    }
+    var live = C && C.live ? C.live : null;
+    if (!live) return null;
+    var liveState = 'off';
+    try { liveState = live.status().state; } catch (e) { liveState = 'off'; }
+    var d = sounds;
+    if (liveState !== 'live' && !(d && liveState === 'connecting')) return null;
+    if (!d || typeof d !== 'object') return null;
+    if ((d.state !== 'playing' && d.state !== 'paused') || !(d.title || d.source || d.device)) return null;
+    var o = { kind: d.state, source: str(d.source, 30), device: str(d.device, 60) };
+    var title = str(d.title, 200);
+    var artist = str(d.artist, 120);
+    var album = str(d.album, 120);
+    // A radio show: the show, then the station. No title at all: the app, or plain words.
+    o.title = title || o.source || (d.state === 'playing' ? T('nowplaying.unknown', 'Something is playing') : T('nowplaying.unknownPaused', 'Something is paused'));
+    o.sub = title ? artist || album : '';
+    o.album = title && artist && album ? album : '';
+    o.art = title ? artUrl(d.art) : '';
+    var stale = d.state === 'playing' && d.from === 'echo' && d.stale === true && !!title;
+    var started = d.from === 'echo' && d.started === true;
+    o.note = stale ? T('nowplaying.stale', 'May be out of date') : started ? T('nowplaying.started', 'Started from the hub') : '';
+    return o;
+  }
+
+  // Counts where a non-Spotify sound is from when this TV first saw it
+  // (nobody says), so the visualizer's scenes still move along.
+  function noteOther(o) {
+    var key = o.title + '\n' + o.device + '\n' + o.source;
+    var t = now();
+    var playing = o.kind === 'playing';
+    if (key !== otherAt.key) { otherAt = { key: key, pos: 0, at: t, playing: playing }; return; }
+    if (playing !== otherAt.playing) {
+      if (otherAt.playing) otherAt.pos += Math.max(0, t - otherAt.at);
+      otherAt.at = t;
+      otherAt.playing = playing;
+    }
+  }
+
+  // What the page shows: Spotify playing or paused wins, then another sound
+  // (a playing one beats a paused Spotify), then Spotify's own words.
+  function pageView() {
+    var v = view();
+    var o = otherView();
+    if (!o) return v;
+    var sp = v.kind === 'playing' || v.kind === 'paused';
+    if (sp && !(v.kind === 'paused' && o.kind === 'playing' && o.source !== 'Spotify')) return v;
+    noteOther(o);
+    return {
+      kind: o.kind, other: o, label: o.kind === 'playing' ? T('nowplaying.label.now', 'Now playing') : T('nowplaying.label.paused', 'Paused'),
+      track: { id: null, kind: 'sound', title: o.title, artist: o.sub, album: o.album, art: o.art, artSmall: o.art, artTiny: o.art, durationMs: 0 },
+      title: '', sub: '', hint: '', dim: false, device: o.device, shuffle: false, repeat: 'off', moving: o.kind === 'playing'
+    };
+  }
+
   // The song's position now, in ms, going by when the data arrived.
   function position(v) {
+    if (v && v.other) return otherAt.pos + (otherAt.playing ? Math.max(0, now() - otherAt.at) : 0);
     if (!data || !v.track) return 0;
     var p = data.progressMs || 0;
     if (v.kind === 'playing') p += Math.max(0, now() - gotAt);
@@ -252,7 +362,7 @@
   // another song.
   function vibeOf(v) {
     var x = data && data.vibe;
-    if (!x || typeof x !== 'object' || !v.track || v.track.kind === 'episode') return null;
+    if (!x || typeof x !== 'object' || !v.track || v.other || v.track.kind === 'episode') return null;
     if (v.kind !== 'playing' && v.kind !== 'paused') return null;
     if (x.id && x.id !== v.track.id) return null;
     if ((x.source !== 'features' && x.source !== 'genres') || typeof x.energy !== 'number' || typeof x.valence !== 'number') return null;
@@ -485,10 +595,12 @@
   /* ---------- the page ---------- */
 
   function drawPage(body, ctx) {
-    var v = view();
+    var v = pageView();
+    lastPageSig = pageSignature(v);
     var full = ctx.mode && ctx.mode() === 'full';
     var hasSong = !!v.track && v.kind !== 'signin' && v.kind !== 'off';
-    var root = el('div', 'np-page np-k-' + v.kind + (full ? ' is-full' : ''), body);
+    var sounding = hasSong && (v.kind === 'playing' || v.kind === 'paused');
+    var root = el('div', 'np-page np-k-' + v.kind + (v.other ? ' np-other' : '') + (full ? ' is-full' : ''), body);
     page = { root: root, v: v, full: full, hasSong: hasSong };
 
     var art = hasSong ? artBox(root, v, 'np-art-page', true) : artBox(root, { track: null, dim: true }, 'np-art-page', false);
@@ -500,8 +612,20 @@
     eq(head, v);
     el('span', 'np-label-text', head, v.label);
     if (v.kind === 'offline') el('span', 'np-tag', head, T('nowplaying.tagOffline', 'Offline'));
+    if (v.other && v.other.source) {
+      // The platform, quiet, after the label: only its name gives way.
+      var plat = el('span', 'np-plat', head);
+      el('span', 'np-plat-b', plat, '(');
+      el('span', 'np-plat-name', plat, v.other.source);
+      el('span', 'np-plat-b', plat, ')');
+    }
 
-    if (hasSong) {
+    if (v.other) {
+      page.title = el('div', 'np-title', info, v.track.title);
+      page.note = v.other.note ? el('div', 'np-quiet-note', info, v.other.note) : null;
+      page.artist = v.track.artist ? el('div', 'np-artist', info, v.track.artist) : null;
+      page.album = v.track.album ? el('div', 'np-album', info, v.track.album) : null;
+    } else if (hasSong) {
       page.title = el('div', 'np-title', info, v.track.title);
       page.artist = el('div', 'np-artist', info, v.track.artist || '');
       page.album = el('div', 'np-album', info, v.track.album || (v.track.kind === 'episode' ? T('nowplaying.podcast', 'Podcast') : ''));
@@ -515,7 +639,11 @@
 
     var foot = el('div', 'np-foot', info);
     page.foot = foot;
-    if (hasSong && (v.kind === 'playing' || v.kind === 'paused')) {
+    if (v.other) {
+      // No length is known: no times, no bar; the speaker as a chip.
+      page.chips = el('div', 'np-chips', foot);
+      if (v.device) el('span', 'np-chip', page.chips, T('nowplaying.chipOn', 'On {device}', { device: v.device }));
+    } else if (sounding) {
       var times = el('div', 'np-times', foot);
       page.elapsed = el('span', 'np-elapsed', times);
       page.total = el('span', 'np-total', times, clock(v.track.durationMs || 0));
@@ -531,8 +659,10 @@
     } else if (hasSong && v.kind === 'idle') {
       el('div', 'np-chips', foot);
     }
+    // The Visualizer button, while something plays or is paused.
+    if (sounding && canViz(v)) vizButton(foot, full && vizWanted);
     // Full screen with the visualizer moving: a small card in the upper left.
-    page.compact = full && hasSong && (v.kind === 'playing' || v.kind === 'paused') && safe(vizCompact)() === true;
+    page.compact = full && sounding && vizWanted && safe(vizCompact)() === true;
     if (page.compact) root.className += ' np-card';
     pageTick();
     fitPage(body);
@@ -581,7 +711,7 @@
     clamp(page.title, 2);
     if (page.artist) clamp(page.artist, 1);
     if (page.album) clamp(page.album, 1);
-    var limit = 15.5 * r;
+    var limit = 15.5 * r + outer(page.vizRow);
     if (page.root.offsetHeight > limit && page.album) page.album.style.display = 'none';
     if (page.root.offsetHeight > limit && page.chips) page.chips.style.display = 'none';
     if (page.root.offsetHeight > limit) clamp(page.title, 1);
@@ -606,6 +736,57 @@
     var t = clock(position(v));
     if (page.elapsed.textContent !== t) page.elapsed.textContent = t;
     page.fill.style.transform = 'scaleX(' + fraction(v).toFixed(4) + ')';
+  }
+
+  /* ---------- the Visualizer button ---------- */
+
+  // False when the visualizer is off for good here (HUB_CONFIG.widgets.
+  // nowplaying.visualizer false, ?viz=off) or not loaded: no button then.
+  function canViz(v) {
+    var V = window.HUB_NP_VIZ;
+    if (!V || !V.sync || !v || !v.track) return false;
+    if (C && C.config && C.config.visualizer === false) return false;
+    try { return !V.plan || V.plan(vizChoice(v)) !== 'off'; } catch (e) { return false; }
+  }
+
+  // A pill under the chips: a small waveform mark and a word. OK goes
+  // through onSelect (data-np="viz"); data-key keeps the focus on it when
+  // the page is drawn again, data-autofocus puts it there when it opens.
+  function vizButton(parent, on) {
+    var row = el('div', 'np-actions', parent);
+    var b = el('div', 'f np-viz-btn' + (on ? ' is-on' : ''), row);
+    b.setAttribute('data-key', 'np:viz');
+    b.setAttribute('data-np', 'viz');
+    b.setAttribute('data-autofocus', '');
+    b.setAttribute('role', 'button');
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    var word = on ? T('nowplaying.vizHide', 'Hide visualizer') : T('nowplaying.viz', 'Visualizer');
+    b.setAttribute('aria-label', word);
+    var mark = el('span', 'np-viz-ic', b);
+    mark.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false">' +
+      '<path d="M3.5 12h1.5M7.5 8v8M11 5v14M14.5 9v6M18 7v10M20.5 12h.5"/></svg>';
+    el('span', 'np-viz-tx', b, word);
+    page.vizRow = row;
+    page.vizBtn = b;
+    return b;
+  }
+
+  // OK on the button: from the expanded page the visualizer always opens
+  // full screen; in full screen it is turned on or off.
+  function pressViz(ctx) {
+    if (!page || !page.vizBtn) return;
+    var mode = ctx.mode ? ctx.mode() : null;
+    if (mode === 'full') {
+      vizWanted = !vizWanted;
+      ctx.redrawPanel();
+      return;
+    }
+    vizWanted = true;
+    if (ctx.setMode) ctx.setMode('full');
+    // The hub ignores a switch while it is still moving: forget it then
+    // (only this press's own check counts).
+    var n = ++vizPress;
+    setTimeout(function () { if (n === vizPress && (!ctx.isOpen || !ctx.isOpen() || ctx.mode() !== 'full')) vizWanted = false; }, 1500);
   }
 
   /* ---------- the visualizer (full screen only) ---------- */
@@ -634,7 +815,9 @@
     var V = window.HUB_NP_VIZ;
     if (!V || !V.sync) return;
     var v = page && page.v;
-    var ok = !!page && page.full && page.hasSong && (v.kind === 'playing' || v.kind === 'paused') &&
+    // A hard off (config, ?viz=off) still goes to V.sync, which only notes
+    // it (the About panel says "off (config)") and draws nothing.
+    var ok = (vizWanted || (!!page && !canViz(v))) && !!page && page.full && page.hasSong && (v.kind === 'playing' || v.kind === 'paused') &&
       !!C && C.isOpen && C.isOpen() && C.mode && C.mode() === 'full';
     var body = page && page.root.parentNode;
     var host = body && body.parentNode;
@@ -711,6 +894,14 @@
       v.dim, v.device, v.shuffle, v.repeat, data && data.problem]);
   }
 
+  // The part of what the page shows that needs it drawn again (the tile has
+  // signature()): which sound, its words, and whether the button can show.
+  function pageSignature(pv) {
+    var v = pv || pageView();
+    var o = v.other;
+    return JSON.stringify([o ? 1 : 0, v.kind, v.label, o && [o.title, o.sub, o.album, o.source, o.device, o.art, o.note], v.track ? canViz(v) : false]);
+  }
+
   // What makes a song this song: its id and title ('' when none plays).
   function songOf(d) {
     var t = d && typeof d === 'object' ? d.track : null;
@@ -758,10 +949,18 @@
   function refresh(force) {
     if (!C) return;
     var sig = signature();
+    var open = !!page && !!C.isOpen && C.isOpen();
     if (!force && sig === lastSig) {
       var i;
       for (i = 0; i < tiles.length; i++) { tiles[i].v = view(); paintBar(tiles[i]); }
-      if (page) { page.v = view(); pageTick(); safe(vizSync)(); }
+      if (page) {
+        var pv = pageView();
+        // Another sound came or went, or changed: the page only.
+        if (open && pageSignature(pv) !== lastPageSig) { C.redrawPanel(); return; }
+        page.v = pv;
+        pageTick();
+        safe(vizSync)();
+      }
       return;
     }
     lastSig = sig;
@@ -786,9 +985,20 @@
         var held = ctx.live.get('nowplaying');
         if (held) { data = held; gotAt = now(); songChanged(held); }
         ctx.live.on('nowplaying', safe(function (d, rev) { changed(d, rev); }));
+        // Any other sound in the house (the page shows it when Spotify is quiet).
+        var heldSounds = ctx.live.get('allsounds');
+        if (heldSounds && typeof heldSounds === 'object') sounds = heldSounds;
+        ctx.live.on('allsounds', safe(function (d) {
+          sounds = d && typeof d === 'object' ? d : null;
+          refresh(false);
+        }));
         // The line to the Pi going or coming changes what is true to say.
         ctx.live.onStatus(safe(function () { refresh(false); }));
       }
+      // Sound the TV itself plays (./hub play, ./hub news).
+      try {
+        if (window.HUB_AUDIO && typeof window.HUB_AUDIO.onChange === 'function') window.HUB_AUDIO.onChange(safe(function () { refresh(false); }));
+      } catch (e) { /* the TV's own sound simply doesn't show */ }
       timer = setInterval(safe(tick), 1000);
       // A language change: the words are drawn again.
       try {
@@ -823,11 +1033,20 @@
       }
     },
 
+    // OK on the page's Visualizer button.
+    onSelect: safe(function (target, ctx) {
+      if (target && target.getAttribute && target.getAttribute('data-np') === 'viz') pressViz(ctx);
+    }),
+
     onMode: function (mode, ctx) {
+      // Out of full screen the visualizer is forgotten: the button asks again.
+      if (mode !== 'full') { vizWanted = false; vizPress++; }
       ctx.redrawPanel();
     },
 
     onClose: function (ctx) {
+      vizWanted = false;
+      vizPress++;
       page = null;
       safe(vizSync)();
     },

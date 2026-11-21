@@ -559,4 +559,79 @@
 }
 .np-quiet.np-headed .hub-quiet-line { margin-top: 0.7rem; }
 
+/* ---------- another sound on the page (the TV, an Echo...) ----------
+   The platform as a quiet "(Pandora)" after the label (only the name gives
+   way), and a quiet note under the title. Same type as a Spotify song. */
+.np-plat {
+  display: flex;
+  align-items: center;
+  flex: 0 100 auto;
+  min-width: 0;
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.np-plat-b { flex: 0 0 auto; }
+.np-plat-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.np-quiet-note {
+  margin-top: 0.3rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel.is-full .np-plat { font-size: 0.95rem; }
+.panel.is-full .np-quiet-note { font-size: 1.25rem; }
+.panel.is-full .np-page.np-card .np-plat { font-size: 0.7rem; }
+.panel.is-full .np-page.np-card .np-quiet-note { margin-top: 0.1rem; font-size: 0.8rem; line-height: 1.4; }
+
+/* ---------- the Visualizer button ----------
+   A pill under the chips: a small waveform mark and a word, quiet at rest
+   (a hairline, the glass showing through), the page's focus look when
+   focused (white edge, the lighter card), and a soft green mark while the
+   visualizer is on (the equalizer's green). Its own line, so a longer
+   Spanish word only makes the pill wider; it never wraps or clips. Focus
+   is an instant swap; nothing animates but a press (transform). */
+.np-actions { display: flex; margin-top: 0.75rem; min-width: 0; }
+.np-viz-btn {
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.38rem 1rem 0.42rem 0.75rem;
+  border: var(--edge) solid rgba(255, 255, 255, 0.14);
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  font-weight: 500;
+  color: var(--text);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-transition: -webkit-transform 120ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: transform 120ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.np-viz-ic { flex: 0 0 auto; width: 1.2rem; height: 1.2rem; margin-right: 0.5rem; color: var(--text-2); }
+.np-viz-ic svg { display: block; width: 100%; height: 100%; }
+.np-viz-tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 0.1rem 0; margin: -0.1rem 0; }
+.np-viz-btn.is-on .np-viz-ic { color: #7be0a0; }
+.np-viz-btn.is-focused { border-color: var(--focus); background: var(--card-2); }
+.np-viz-btn.is-focused .np-viz-ic { color: var(--text); }
+.np-viz-btn.is-focused.is-on .np-viz-ic { color: #7be0a0; }
+.np-viz-btn.is-pressed { -webkit-transform: scale(0.96); transform: scale(0.96); }
+.panel.is-full .np-actions { margin-top: 1rem; }
+.panel.is-full .np-viz-btn { font-size: 1.15rem; padding: 0.45rem 1.25rem 0.5rem 0.95rem; }
+.panel.is-full .np-viz-ic { width: 1.45rem; height: 1.45rem; margin-right: 0.6rem; }
+.npv-on .np-viz-btn { background: rgba(8, 9, 16, 0.4); border-color: rgba(255, 255, 255, 0.24); }
+.npv-on .np-viz-btn.is-focused { border-color: var(--focus); background: rgba(23, 26, 32, 0.9); }
+/* In the small card: a compact pill. */
+.panel.is-full .np-page.np-card .np-actions { margin-top: 0.6rem; }
+.panel.is-full .np-page.np-card .np-viz-btn { font-size: 0.85rem; padding: 0.25rem 0.85rem 0.3rem 0.6rem; }
+.panel.is-full .np-page.np-card .np-viz-ic { width: 1rem; height: 1rem; margin-right: 0.4rem; }
 .css-end { top: 0; }

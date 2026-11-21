@@ -144,6 +144,17 @@
     'nowplaying.chipRepeat': 'Repetir',
     'nowplaying.chipExplicit': 'Explícito',
     'nowplaying.broken': 'No se pudo mostrar Reproduciendo.',
+    // Other sounds on the page (the TV, an Echo...), as allsounds.* below.
+    'nowplaying.tvSound': 'Sonido en el televisor',
+    'nowplaying.tv': 'Televisor de la sala',
+    'nowplaying.tvWaiting': 'Pulsa cualquier botón para empezar',
+    'nowplaying.unknown': 'Algo está sonando',
+    'nowplaying.unknownPaused': 'Algo está en pausa',
+    'nowplaying.stale': 'Puede que no esté al día',
+    'nowplaying.started': 'Iniciado desde el hub',
+    // The page's button that opens the visualizer full screen.
+    'nowplaying.viz': 'Visualizador',
+    'nowplaying.vizHide': 'Ocultar visualizador',
 
     /* ---- Clay wanderers' status in the About panel (app/clay.js) ----
      * Key 'clay.<name>'; scene names and error messages stay as they are. */
