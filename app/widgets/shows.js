@@ -149,6 +149,9 @@
     seasonLine: 'Season {s} · {w} of {n} watched',
     allLine: 'All {n} episodes watched',
     watchNext: 'Watch {code}',
+    pgNoEps: 'No episodes listed yet',
+    pgNoEpsLine: 'Date not announced yet. The list fills in once it is.',
+    pgOpen: 'Open {service}',
     caughtUp: 'I’m caught up',
     seenAll: 'I’ve seen it all',
     caughtDone: 'You’re caught up',
@@ -1657,7 +1660,7 @@
     if (want) pick = want;
     // Back from a show page: the chip it was opened from.
     if (S.backKey) {
-      var chips = root.querySelectorAll('.sh-page');
+      var chips = root.querySelectorAll('.sh-page, .sh-card');
       for (var c = 0; c < chips.length; c++) if (chips[c].getAttribute('data-key') === S.backKey) pick = chips[c];
       S.backKey = null;
     }
@@ -1676,7 +1679,8 @@
     if (key.indexOf('sh:') !== 0) return false;
     var p = key.split(':');
     if (p[1] === 'pg') return selectPage(p);
-    if (p[1] === 'page') {
+    if (p[1] === 'page' || p[1] === 'soon') {
+      // A Coming soon card opens the show page too, dated or not.
       if (findShow(p[2])) openPage(p[2], key);
       return true;
     }
@@ -1940,7 +1944,8 @@
     var top = el('div', 'sh-pg-top', root);
     var back = el('div', 'sh-pg-back f', top);
     // While the list is still coming, the chip has a key of its own, so focus moves to Watch when it arrives.
-    back.setAttribute('data-key', fl.length ? 'sh:pg:back' : 'sh:pg:back:wait');
+    var noList = !fl.length && P.state === 'ok' && !!d;
+    back.setAttribute('data-key', fl.length || noList ? 'sh:pg:back' : 'sh:pg:back:wait');
     back.setAttribute('role', 'button');
     el('span', 'sh-pg-back-arrow', back);
     el('span', 'sh-pg-back-text', back, word('title'));
@@ -1959,6 +1964,18 @@
       el('span', 'sh-pg-meta-text', meta, nSeasons === 1 ? word('seasonsOne') : word('seasonsN', { n: nSeasons }));
     }
     var firstFocus = null;
+    if (noList) {
+      // A show with no episode listed (a new season with no date yet): say so, and still open its app.
+      var nm = el('div', 'sh-msg', root);
+      el('div', 'sh-msg-head', nm, word('pgNoEps'));
+      el('div', 'sh-msg-line', nm, word('pgNoEpsLine'));
+      var svc = watchApp(show);
+      if (svc) {
+        var ob = pgBtn(el('div', 'sh-pg-acts sh-pg-acts-solo', root), 'sh:pg:open', 'is-main', word('pgOpen', { service: svc }), 'play');
+        ob.setAttribute('data-autofocus', '');
+      } else back.setAttribute('data-autofocus', '');
+      return;
+    }
     if (!fl.length) {
       var st = P.state === 'old' || P.state === 'lost' ? 'page' + cap(P.state) : 'loading';
       var w = stateWords(st);
@@ -2077,6 +2094,7 @@
       if (S.C) S.C.redrawPanel();
       return true;
     }
+    if (what === 'open') { watch(show, [], null); return true; }
     if (what === 'watch') {
       var nx = nextToWatch(pg.id, fl, t);
       if (nx) watch(show, [{ season: nx.season, number: nx.number, name: nx.name, airstamp: nx.airstamp }], null);
@@ -2210,7 +2228,9 @@
     var firstEp = document.querySelector('.sh-pg-row');
     var watchBtn = pgNode('sh:pg:watch');
     var caught = pgNode('sh:pg:caught');
-    if (key === 'sh:pg:back') return dir === 'down' ? (watchBtn || caught || sea || undefined) : undefined;
+    var openBtn = pgNode('sh:pg:open');
+    if (key === 'sh:pg:back') return dir === 'down' ? (watchBtn || openBtn || caught || sea || undefined) : undefined;
+    if (key === 'sh:pg:open') return dir === 'down' ? undefined : pgNode('sh:pg:back') || undefined;
     if (key === 'sh:pg:watch') return dir === 'down' ? (caught || sea || undefined) : pgNode('sh:pg:back') || undefined;
     if (key === 'sh:pg:caught') return dir === 'down' ? (sea || undefined) : (watchBtn || pgNode('sh:pg:back') || undefined);
     if (key.indexOf('sh:pg:season:') === 0) return dir === 'down' ? (firstEp || undefined) : (caught || watchBtn || pgNode('sh:pg:back') || undefined);

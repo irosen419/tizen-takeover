@@ -1965,6 +1965,34 @@ async function main() {
     } finally { await own.stop(); }
   });
 
+  await check('A Coming soon card (dated or no date yet) opens the show page, not the app', async () => {
+    const own = await H.start({});
+    const errs = pageErrors;
+    try {
+      const p = await own.newPage({});
+      try {
+        await H.openSchedule(p, 'soon');
+        for (const id of ['the-bear', 'severance']) {
+          const before = own.launches.length;
+          await H.focusKey(p, 'sh:soon:' + id);
+          await H.key(p, 'Enter');
+          await H.until(() => p.evaluate(() => !!document.querySelector('.sh-pg-title')), 4000, 'the show page did not open for ' + id);
+          assert(own.launches.length === before, 'the app opened for ' + id);
+          await H.key(p, 'Escape');
+          await H.until(() => p.evaluate(() => !document.querySelector('.sh-pg-title')), 4000, 'Back did not close the page');
+          await H.until(() => p.evaluate((k) => { const f = document.querySelector('#panel .is-focused'); return !!f && f.getAttribute('data-key') === k; }, 'sh:soon:' + id), 4000, 'Back did not return to the card ' + id);
+        }
+        // A show with an empty episode list: the page says so and still offers the app.
+        await p.route(/\/shows\/episodes\?id=zz/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, id: 'zz', seasons: [], progress: { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null } }) }));
+        await p.evaluate(() => { const T = window.HUB_SHOWS._test; T.setData({ v: 1, updatedAt: '2026-11-17T12:00:00Z', shows: [{ id: 'zz', name: 'Zed Show', service: 'Netflix', checkedAt: '2026-11-17T12:00:00Z', upcoming: [] }] }); localStorage.setItem('homeHub.showEps.v1.zz', JSON.stringify({ ok: true, id: 'zz', seasons: [], progress: { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null } })); T.openPage('zz'); });
+        await p.waitForTimeout(300);
+        const s = await p.evaluate(() => ({ head: (document.querySelector('.sh-msg-head') || {}).textContent, btn: !!document.querySelector('[data-key="sh:pg:open"]'), html: ((document.querySelector('#panel .sh')||{}).textContent||'none').slice(0,200), pageState: window.HUB_SHOWS._test.pageState() }));
+        assert(s.head === 'No episodes listed yet' && s.btn, JSON.stringify(s));
+        assert(errs(p).length === 0, errs(p).join(' | '));
+      } finally { await p.ctx.close(); }
+    } finally { await own.stop(); }
+  });
+
   await check('No Ready to watch when nothing is started: no group, no count on the tab', async () => {
     const own = await H.start();
     try {

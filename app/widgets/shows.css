@@ -757,4 +757,8 @@
 .sh-pg-ep.is-in .sh-pg-upto { display: block; }
 .sh-pg-upto.is-focused { border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
 
+/* No episode listed yet: the open-app button sits under the message. */
+.sh-pg-acts-solo { flex-direction: row; margin: 1.2rem 0 0; padding-top: 0; }
+.sh-pg-acts-solo .sh-pg-btn { max-width: 100%; }
+
 .css-end { top: 0; }
