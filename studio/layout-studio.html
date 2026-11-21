@@ -2109,7 +2109,11 @@ a.ar-file:hover { border-color: var(--accent); color: var(--accent); }
       state.generalSent = gen;
       renderSide(); renderSizes();
       submitState = { mode: 'sent' }; renderSubmit();
-      if (db) db.doc('drafts/current').set({ state: JSON.stringify(state), cur: cur, savedAt: Date.now() }).then(function () { dirty = false; savedAt = Date.now(); updateStatus(); }).catch(function () {});
+      // The draft is what reopens the page, so a failed save must not be silent: retry once, then say so.
+      if (db) {
+        var saveDraft = function () { return db.doc('drafts/current').set({ state: JSON.stringify(state), cur: cur, savedAt: Date.now() }); };
+        saveDraft().catch(saveDraft).then(function () { dirty = false; savedAt = Date.now(); updateStatus(); }).catch(function (e) { flash('Sent, but this page could not save its draft (' + (e && e.message || 'try again') + '). Press Save before closing.'); });
+      }
     }).catch(function (e) {
       submitState = { mode: 'fallback', reason: (e && e.message) || 'Could not send to Claude.' }; renderSubmit();
     });

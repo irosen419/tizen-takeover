@@ -342,7 +342,9 @@
       return;
     }
     if (card.layout === 'row') {
-      px = Math.min(room.h, room.w * (card.strip ? 0.4 : 0.42));
+      // A strip keeps the same room Now Playing gives its bar, so the picture
+      // stays small and the title gets more width.
+      px = Math.min(room.h - (card.strip ? 0.9 * r : 0), room.w * (card.strip ? 0.4 : 0.42));
       px = sizeArt(card.art, Math.max(2.4 * r, px));
       card.text.style.width = Math.max(0, room.w - px - 1.1 * r) + 'px';
       fitRowText(card, room.h);
