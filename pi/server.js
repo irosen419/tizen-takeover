@@ -128,7 +128,7 @@ const translate = require('./translate');
 const grocery = require('./grocery');
 const products = require('./products');
 
-const SERVER_VERSION = '0.27.2';
+const SERVER_VERSION = '0.27.3';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
