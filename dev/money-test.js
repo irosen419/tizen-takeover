@@ -489,7 +489,7 @@ async function main() {
         await H.key(page, 'ArrowUp');
         await H.until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
         const names = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.switcher-item'), (n) => n.textContent));
-        assert(names.length === 9 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
+        assert(names.length === 11 && names.indexOf('Main') >= 0 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -505,6 +505,9 @@ async function main() {
         const ids = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#grid .cell'), (c) => c.getAttribute('data-widget')));
         assert(!ids.some((id) => ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'].indexOf(id) >= 0), 'money tiles: ' + ids.join(', '));
         assert(await page.evaluate(() => window.HUB_GUEST.on()), 'Guest mode is off after the reload');
+        // Guest mode off again: back on the Budget layout it came from.
+        await page.evaluate(() => window.HUB_GUEST.set(false));
+        await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0 && !!document.querySelector('.cell[data-widget="budget-goals"]'), null, { timeout: 15000 });
       } finally { await page.ctx.close(); }
     });
 
@@ -1231,7 +1234,7 @@ async function main() {
       });
     }
 
-    await check('the switcher: eleven pills, all whole; "Budget" switches and back', async () => {
+    await check('the switcher: thirteen pills, all whole; "Budget" switches and back', async () => {
       const page = await env.newPage({ storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.focusTile(page, await page.evaluate(() => {
@@ -1254,7 +1257,7 @@ async function main() {
           }) };
         });
         const names = bar.items.map((i) => i.name);
-        assert(names.length === 11 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
+        assert(names.length === 13 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
         assert(!bar.over, 'the bar overflows');
         for (const it of bar.items) assert(it.l >= 0 && it.r <= bar.w && !it.cut, 'pill cut: ' + it.name);
         for (let i = 0; i < 9; i++) {

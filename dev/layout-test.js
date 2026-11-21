@@ -516,6 +516,57 @@ async function checkBudgetLayout() {
 
 /* ---------- run ---------- */
 
+// SWAPPED with Ambience and Entertainment trading rows: the Pi's Main after a Studio submit.
+const NEWER = SWAPPED.map((e) => e.widget === 'ambience' ? Object.assign({}, e, { y: 5 }) : e.widget === 'entertainment' ? Object.assign({}, e, { y: 4 }) : e);
+
+async function pickPill(page, name) {
+  await page.keyboard.press('ArrowUp');
+  await until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the bar did not open');
+  await page.evaluate((n) => {
+    Array.prototype.filter.call(document.querySelectorAll('.switcher-item'), (x) => x.textContent === n)[0].click();
+  }, name);
+  await waitIdle(page);
+  await sleep(500);
+}
+
+async function checkMainFollowsPi() {
+  await setLayout(SWAPPED);
+  const context = await newContext();
+  const page = await openHub(context, liveQuery());
+  await until(async () => (await look.live(page)) === 'live', 8000, 'the hub did not go live');
+  await until(() => cellAt(page, 'weather', 0, 5, 3, 1), 4000, 'the Pi layout did not show');
+  await waitIdle(page);
+  // Another layout from the bar: it stays while the Pi's Main changes behind it.
+  await pickPill(page, 'Default');
+  await until(() => cellAt(page, 'weather', 9, 0, 3, 2), 4000, 'Default did not show');
+  await setLayout(NEWER);
+  await sleep(1500);
+  assert(await cellAt(page, 'weather', 9, 0, 3, 2), 'Default changed when the Pi changed');
+  // Guest mode on and off keeps the layout on screen.
+  await page.evaluate(() => window.HUB_GUEST.set(true));
+  await sleep(800);
+  assert(await cellAt(page, 'weather', 9, 0, 3, 2), 'Guest mode on changed Default');
+  await page.evaluate(() => window.HUB_GUEST.set(false));
+  await sleep(800);
+  assert(await cellAt(page, 'weather', 9, 0, 3, 2), 'Guest mode off changed Default');
+  // Back to Main: it is the Pi's newest layout, not a copy.
+  await pickPill(page, 'Main');
+  await until(() => cellAt(page, 'entertainment', 3, 4, 6, 1), 4000, 'Main is not the Pi\'s latest layout');
+  // Main follows the Pi live, also with Guest mode on.
+  await page.evaluate(() => window.HUB_GUEST.set(true));
+  await setLayout(SWAPPED);
+  await until(() => cellAt(page, 'entertainment', 3, 5, 6, 1), 4000, 'Main did not follow the Pi');
+  await page.evaluate(() => window.HUB_GUEST.set(false));
+  await sleep(800);
+  assert(await cellAt(page, 'entertainment', 3, 5, 6, 1), 'Guest mode off changed Main');
+  // Main stays on the bar in Guest mode, and a reload comes back to it.
+  await page.evaluate(() => window.HUB_GUEST.set(true));
+  await pickPill(page, 'Main');
+  await page.evaluate(() => window.HUB_GUEST.set(false));
+  assert(page.loads === 1, 'reloaded: ' + page.loads);
+  noErrors(context);
+}
+
 async function main() {
   PAGE_PORT = await spare();
   LIVE_PORT = await spare();
@@ -540,6 +591,7 @@ async function main() {
   await check('5. A new set of widgets reloads once; the reset reloads once more', checkReload);
   await check('6. A layout that cannot be saved does not reload in a loop', checkNoLoop);
   await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, Goals 4 x 3, Calendar, no gaps, OK opens it full screen', checkBudgetLayout);
+  await check('8b. The bar\'s Main follows the Pi; another layout stays put; Guest mode on/off never changes either', checkMainFollowsPi);
   await check('8. Focus starts on the top-left tile; a layout arriving refocuses it unless the remote was just used', checkTopLeftFocus);
 }
 
