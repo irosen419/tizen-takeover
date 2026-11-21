@@ -10,10 +10,15 @@
  * long Spanish text with accents is whole, line heights leave room for
  * accents), every state (playing, paused, nothing playing, not connected,
  * not set up, Spotify down, the Pi lost, an old Pi), the page and its full
- * screen, the progress moving, and a changed song arriving by itself.
+ * screen, the progress moving, and a changed song arriving by itself. The
+ * page (not the tile) also shows a sound that is not Spotify (the TV's own,
+ * the Pi's "allsounds"), with its Visualizer button.
  *
- * The visualizer (app/widgets/nowplaying-viz.js): only full screen while a
- * song plays or is paused, edge to edge, with the song as a small card in
+ * The visualizer (app/widgets/nowplaying-viz.js): only after the page's
+ * Visualizer button is pressed (Full screen alone no longer starts it; the
+ * button on the small page opens full screen with it on, in full screen it
+ * turns it off and on, leaving full screen forgets it), only full screen
+ * while a song plays or is paused, edge to edge, with the song as a small card in
  * the upper left (long Spanish words fit it); the canvas changes while
  * playing, settles and stops its loop when paused, hidden or closed; a vibe
  * arriving late changes it in place; calm and hard songs get different kinds
@@ -40,13 +45,14 @@ const path = require('path');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
 const mockSpotify = require('./mock-spotify');
+const mockHa = require('./mock-ha');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'preview-token-not-a-secret-000000';
 const SHOTS = process.env.SHOTS || '';
 const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
 
-let PAGE_PORT, PAGE, preview = null, browser = null, mock = null;
+let PAGE_PORT, PAGE, preview = null, browser = null, mock = null, ha = null;
 const pis = [];
 const tmp = [];
 const results = [];
@@ -80,7 +86,9 @@ async function check(name, fn) {
 
 /* ---------- servers ---------- */
 
-async function startPi(env) {
+// withHa: the Pi also reads a pretend Home Assistant (dev/mock-ha.js), so
+// "allsounds" has an Echo in it.
+async function startPi(env, withHa) {
   const port = await spare();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-np-test-'));
   tmp.push(dir);
@@ -91,7 +99,9 @@ async function startPi(env) {
       SPOTIFY_CLIENT_ID: mock.clientId, SPOTIFY_CLIENT_SECRET: mock.clientSecret,
       SPOTIFY_REDIRECT_URI: 'http://127.0.0.1:' + port + '/spotify/callback'
     },
-    spotify: { accounts: mock.url, api: mock.url, vibe: mock.url, allowHttp: true, playMs: 400, idleMs: 400, awayMs: 400 }
+    spotify: { accounts: mock.url, api: mock.url, vibe: mock.url, allowHttp: true, playMs: 400, idleMs: 400, awayMs: 400 },
+    allsoundsEnv: withHa ? { HA_URL: ha.url, HA_TOKEN: ha.token } : {},
+    allsounds: { allowHttp: true, manual: true, timeoutMs: 400 }
   });
   await h.ready;
   const pi = { h: h, port: port, url: 'http://127.0.0.1:' + port, dir: dir };
@@ -182,6 +192,13 @@ const tileText = (page) => page.evaluate(() => {
   return { label: t('.np-label-text') || t('.tile-title'), title: t('.np-title') || state, artist: t('.np-artist'), note: t('.np-note') };
 });
 
+// The hub's own Full screen button (the page's Visualizer button has the
+// focus when a song plays, so Enter would press that one).
+async function pressFullBtn(page, want) {
+  await page.evaluate(() => document.querySelector('#panel .panel-btn').click());
+  await until(() => page.evaluate((w) => window.HUB_TEST.mode() === w && !window.HUB_TEST.busy(), want), 5000, 'the mode did not become ' + want);
+}
+
 const waitTitle = (page, title) => until(async () => (await tileText(page)).title === title, 6000, 'the tile never showed "' + title + '"');
 
 // Anything that sticks out of the tile, or a line height too tight for accents.
@@ -257,6 +274,7 @@ async function main() {
   PAGE_PORT = await spare();
   PAGE = 'http://127.0.0.1:' + PAGE_PORT;
   mock = await mockSpotify.start({});
+  ha = await mockHa.start({ token: 'ha-test-token-not-a-secret' });
   preview = childProcess.spawn(process.execPath, [path.join(__dirname, 'preview.js')], {
     env: Object.assign({}, process.env, { HUB_PAGE_PORT: String(PAGE_PORT), HUB_SERVICE_PORT: '8095', HUB_LIVE_PORT: 'off' }),
     stdio: 'ignore'
@@ -373,9 +391,10 @@ async function main() {
     });
     assert(!over.length, 'sticks out of the page: ' + over.join(','));
     await shot(s.page, 'np-page-playing.jpg');
-    // Full screen: Enter on the Full screen button.
-    await s.page.keyboard.press('Enter');
-    await until(() => s.page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() && !!document.querySelector('.np-page.is-full')), 4000, 'full screen did not open');
+    // Full screen: the hub's Full screen button (no visualizer then).
+    await pressFullBtn(s.page, 'full');
+    await until(() => s.page.evaluate(() => !!document.querySelector('.np-page.is-full')), 4000, 'full screen did not open');
+    assert((await s.page.evaluate(() => document.querySelectorAll('.npv, .np-card').length)) === 0, 'Full screen alone starts no visualizer');
     await sleep(600);
     const fullOk = await s.page.evaluate(() => {
       const panel = document.getElementById('panel').getBoundingClientRect();
@@ -397,8 +416,8 @@ async function main() {
       await s.page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
       await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy() && !!document.querySelector('.np-page .np-title')), 4000, 'page');
       if (full) {
-        await s.page.keyboard.press('Enter');
-        await until(() => s.page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() && !!document.querySelector('.np-page.is-full')), 4000, 'full');
+        await pressFullBtn(s.page, 'full');
+        await until(() => s.page.evaluate(() => !!document.querySelector('.np-page.is-full')), 4000, 'full');
       }
       await sleep(500);
       const bad = await s.page.evaluate(() => {
@@ -423,7 +442,7 @@ async function main() {
       });
       assert(!bad.length, (full ? 'full: ' : 'page: ') + bad.join('; '));
       await shot(s.page, 'np-page-long-spanish' + (full ? '-full' : '') + '.jpg');
-      if (full) await s.page.keyboard.press('Enter'); // back to the page: the button is still focused
+      if (full) await pressFullBtn(s.page, 'panel');
       await sleep(300);
       // The switch back is busy for 80 + 240 ms; a close sent before then is ignored.
       await until(() => s.page.evaluate(() => window.HUB_TEST.mode() !== 'full' && !window.HUB_TEST.busy()), 4000, 'back to the page');
@@ -587,6 +606,9 @@ async function main() {
 
 const VIZ = () => window.HUB_NP_VIZ.debug();
 
+// Opens the page and presses OK: on the Visualizer button (it has the focus
+// while a song plays), which opens full screen with the visualizer on; with
+// no button (nothing playing, the visualizer off) on the Full screen button.
 async function openFull(page) {
   await page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
   await until(() => page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy() && !!document.querySelector('.np-page .np-title')), 5000, 'the page did not open');
@@ -696,6 +718,181 @@ async function vizChecks() {
     mock.set('playing');
     assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
     await s.context.close();
+  });
+
+  // The page's Visualizer button: { text, pressed, focused, on } or null.
+  const vizBtn = (page) => page.evaluate(() => {
+    const b = document.querySelector('.np-page .np-viz-btn');
+    return b ? { text: b.textContent, pressed: b.getAttribute('aria-pressed'), role: b.getAttribute('role'), focused: b.classList.contains('is-focused'), on: b.classList.contains('is-on') } : null;
+  });
+  const vizCount = (page) => page.evaluate(() => document.querySelectorAll('.npv, .np-card').length);
+
+  await check('visualizer button: Full screen alone starts nothing; the button on the small page opens full screen with it on; in full screen it turns off and on; leaving forgets it', async () => {
+    await playSong(pi, 0);
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=classic' });
+    await waitTitle(s.page, 'Golden Hour Drive');
+    assert((await s.page.evaluate(() => document.querySelectorAll('.np-viz-btn').length)) === 0, 'no button on the tile');
+    await s.page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
+    await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy() && !!document.querySelector('.np-viz-btn')), 4000, 'no button on the page');
+    let b = await vizBtn(s.page);
+    assert(b.text === 'Visualizer' && b.pressed === 'false' && b.role === 'button' && b.focused && !b.on, 'small page: ' + JSON.stringify(b));
+    assert((await vizCount(s.page)) === 0, 'nothing runs on the small page');
+    await shot(s.page, 'np-btn-page-en.png');
+    // The hub's Full screen button: full screen, no visualizer.
+    await pressFullBtn(s.page, 'full');
+    await sleep(400);
+    assert((await vizCount(s.page)) === 0, 'Full screen alone starts no visualizer');
+    b = await vizBtn(s.page);
+    assert(b && b.text === 'Visualizer', 'the button in full screen: ' + JSON.stringify(b));
+    await pressFullBtn(s.page, 'panel');
+    // The button (a click goes the same way as OK): full screen, with the visualizer.
+    await s.page.evaluate(() => document.querySelector('.np-viz-btn').click());
+    await until(() => s.page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() && !!document.querySelector('#panel > .npv .npv-canvas') && !!document.querySelector('.np-card')), 5000, 'the button did not open the visualizer full screen');
+    b = await vizBtn(s.page);
+    assert(b.text === 'Hide visualizer' && b.pressed === 'true' && b.on && b.focused, 'full, on: ' + JSON.stringify(b));
+    // The button sits inside the card, whole.
+    const inCard = await s.page.evaluate(() => {
+      const c = document.querySelector('.np-card').getBoundingClientRect();
+      const r = document.querySelector('.np-viz-btn').getBoundingClientRect();
+      const t = document.querySelector('.np-viz-tx');
+      return r.left >= c.left - 1 && r.right <= c.right + 1 && r.bottom <= c.bottom + 1 && t.scrollWidth <= t.clientWidth + 1;
+    });
+    assert(inCard, 'the button is whole inside the card');
+    // In full screen: off, then on again.
+    await s.page.keyboard.press('Enter');
+    await until(async () => (await vizCount(s.page)) === 0, 4000, 'it did not turn off');
+    assert((await s.page.evaluate(() => window.HUB_TEST.mode())) === 'full', 'still full screen');
+    assert(!(await s.page.evaluate(VIZ)).loop, 'the loop stopped');
+    b = await vizBtn(s.page);
+    assert(b.text === 'Visualizer' && !b.on && b.focused, 'full, off: ' + JSON.stringify(b));
+    assert((await layout(s.page)).art.w > 450, 'the big picture is back');
+    await s.page.keyboard.press('Enter');
+    await until(() => s.page.evaluate(() => !!document.querySelector('#panel > .npv .npv-canvas') && !!document.querySelector('.np-card')), 4000, 'it did not turn on again');
+    // Leaving full screen forgets it: Full screen again starts nothing.
+    await leaveFull(s.page);
+    assert((await vizCount(s.page)) === 0, 'gone on the small page');
+    await pressFullBtn(s.page, 'full');
+    await sleep(400);
+    assert((await vizCount(s.page)) === 0, 'forgotten after leaving full screen');
+    await pressFullBtn(s.page, 'panel');
+    // Closing forgets it too.
+    await s.page.evaluate(() => document.querySelector('.np-viz-btn').click());
+    await until(() => s.page.evaluate(() => !!document.querySelector('.np-card') && !window.HUB_TEST.busy()), 5000, 'on again');
+    await closePage(s.page);
+    await s.page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
+    await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy()), 4000, 'page');
+    await pressFullBtn(s.page, 'full');
+    await sleep(400);
+    assert((await vizCount(s.page)) === 0, 'forgotten after closing');
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+  });
+
+  await check('visualizer button: Spanish words fit, on the small page, full screen and the card', async () => {
+    mock.set('long');
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=classic', locale: 'es-ES' });
+    await until(async () => /^Canción para una mañana/.test((await tileText(s.page)).title || ''), 6000, 'no long song');
+    await s.page.evaluate(() => window.HUB_I18N.setLang('es'));
+    const fits = () => s.page.evaluate(() => {
+      const b = document.querySelector('.np-viz-btn');
+      const t = b.querySelector('.np-viz-tx');
+      const info = document.querySelector('.np-info').getBoundingClientRect();
+      const body = document.querySelector('.panel-body').getBoundingClientRect();
+      const r = b.getBoundingClientRect();
+      const cs = getComputedStyle(t);
+      const out = [];
+      if (t.scrollWidth > t.clientWidth + 1) out.push('the word is cut: ' + t.textContent);
+      if (r.right > info.right + 1) out.push('past the right');
+      if (r.bottom > body.bottom + 1) out.push('below the page');
+      if (parseFloat(cs.lineHeight) < parseFloat(cs.fontSize) * 1.3) out.push('line height too tight');
+      if (Math.round(r.height / parseFloat(cs.lineHeight)) > 2) out.push('wraps');
+      return { text: t.textContent, out: out };
+    });
+    await s.page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
+    await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy() && !!document.querySelector('.np-viz-btn')), 4000, 'no button');
+    await sleep(300);
+    let f = await fits();
+    assert(f.text === 'Visualizador' && !f.out.length, 'small page: ' + JSON.stringify(f));
+    await shot(s.page, 'np-btn-page-es.png');
+    await s.page.keyboard.press('Enter');
+    await until(() => s.page.evaluate(() => !!document.querySelector('.np-card') && window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy()), 5000, 'no card');
+    await sleep(300);
+    f = await fits();
+    assert(f.text === 'Ocultar visualizador' && !f.out.length, 'card: ' + JSON.stringify(f));
+    await shot(s.page, 'np-btn-full-viz-es.png');
+    await s.page.keyboard.press('Enter');
+    await until(async () => (await vizCount(s.page)) === 0, 4000, 'off');
+    f = await fits();
+    assert(f.text === 'Visualizador' && !f.out.length, 'full: ' + JSON.stringify(f));
+    mock.set('playing');
+    await s.page.evaluate(() => window.HUB_I18N.setLang('en'));
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+  });
+
+  await check('another sound: the TV\'s own sound shows on the page (never the tile) while Spotify is quiet, with the button and the visualizer; Spotify playing wins', async () => {
+    await playSong(pi, 0);
+    mock.set('idle');
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    const s = await open(pi, ONLY(3, 2), { query: '&viz=classic' });
+    await until(async () => (await tileText(s.page)).label === 'Last played', 5000, 'idle');
+    // The TV plays something (./hub news), as hub.js's HUB_AUDIO says.
+    await s.page.evaluate(() => { window.HUB_AUDIO.now = () => ({ state: 'playing', title: 'NPR News Now, 8pm ET, November 19' }); });
+    await s.page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
+    await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy() && !!document.querySelector('.np-page .np-title')), 4000, 'page');
+    const read = () => s.page.evaluate(() => {
+      const t = (c) => { const e = document.querySelector('.np-page ' + c); return e ? e.textContent : null; };
+      return { label: t('.np-label-text'), title: t('.np-title'), artist: t('.np-artist'), chips: Array.prototype.map.call(document.querySelectorAll('.np-page .np-chip'), (e) => e.textContent), bar: document.querySelectorAll('.np-page .np-bar, .np-page .np-times').length, other: !!document.querySelector('.np-page.np-other'), btn: !!document.querySelector('.np-viz-btn') };
+    });
+    const a = await read();
+    assert(a.other && a.label === 'Now playing' && a.title === 'NPR News Now' && a.artist === '8pm ET, November 19', JSON.stringify(a));
+    assert(a.chips.join('|') === 'On Living room TV' && a.bar === 0 && a.btn, JSON.stringify(a));
+    const t = await tileText(s.page);
+    assert(t.label === 'Last played' && t.title === 'Golden Hour Drive', 'the tile stays Spotify: ' + JSON.stringify(t));
+    await s.page.keyboard.press('Enter');
+    await until(() => s.page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() && !!document.querySelector('#panel > .npv .npv-canvas')), 5000, 'no visualizer for the TV sound');
+    const d = await s.page.evaluate(VIZ);
+    assert(d.id === 'NPR News Now' && d.loop && !d.vibe && d.tempo === 100, JSON.stringify(d));
+    await shot(s.page, 'np-other-tv-full-viz.png');
+    // Spotify starts: it wins, and the visualizer stays on.
+    mock.set('playing');
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    await until(async () => (await read()).title === 'Golden Hour Drive', 6000, 'Spotify did not win');
+    assert(!(await read()).other && (await s.page.evaluate(() => !!document.querySelector('.np-card'))), 'Spotify, with the card');
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+  });
+
+  await check('another sound: an Echo from "allsounds" (platform, speaker chip) shows on the page by itself while Spotify is quiet', async () => {
+    mock.set('idle');
+    const x = await startPi('signed-in', true);
+    await control(x, 'POST', '/api/spotify/refresh', {});
+    ha.set('idle');
+    await x.h.allsounds.poll();
+    const s = await open(x, ONLY(3, 2), { query: '&viz=classic' });
+    await until(async () => (await tileText(s.page)).title === 'Nothing playing', 5000, 'idle');
+    await s.page.evaluate(() => window.HUB_TEST.openPanel('nowplaying'));
+    await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'nowplaying' && !window.HUB_TEST.busy()), 4000, 'page');
+    assert((await s.page.evaluate(() => document.querySelectorAll('.np-viz-btn').length)) === 0, 'no button while nothing plays');
+    ha.set('pandora');
+    await x.h.allsounds.poll();
+    await x.h.allsounds.poll();
+    await until(() => s.page.evaluate(() => !!document.querySelector('.np-page.np-other .np-viz-btn')), 6000, 'the Echo never showed on the page');
+    const r = await s.page.evaluate(() => {
+      const t = (c) => { const e = document.querySelector('.np-page ' + c); return e ? e.textContent : null; };
+      return { title: t('.np-title'), artist: t('.np-artist'), plat: t('.np-plat'), chip: t('.np-chip') };
+    });
+    assert(r.title === 'Golden Hour Drive' && r.artist === 'The Lanterns' && r.plat === '(Pandora)' && r.chip === "On Ian's Echo Show", JSON.stringify(r));
+    assert((await tileText(s.page)).title === 'Nothing playing', 'the tile stays Spotify');
+    await shot(s.page, 'np-other-echo-page.png');
+    ha.set('idle');
+    await x.h.allsounds.poll();
+    await until(() => s.page.evaluate(() => !document.querySelector('.np-page.np-other')), 6000, 'it did not go away');
+    assert(s.errors.length === 0, 'page errors: ' + s.errors.join(' | '));
+    await s.context.close();
+    await stopPi(x);
+    mock.set('playing');
   });
 
   await check('visualizer: the canvas moves while playing; paused, it settles and its loop stops; playing again, it moves', async () => {
@@ -1248,6 +1445,7 @@ main().then(() => vizChecks()).catch((e) => {
   try { if (browser) await browser.close(); } catch (e) { /* ignore */ }
   for (const p of pis.slice()) { try { await stopPi(p); } catch (e) { /* ignore */ } }
   try { if (mock) await mock.close(); } catch (e) { /* ignore */ }
+  try { if (ha) await ha.close(); } catch (e) { /* ignore */ }
   if (preview) preview.kill();
   tmp.forEach((d) => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* ignore */ } });
   const passed = results.filter(Boolean).length;
