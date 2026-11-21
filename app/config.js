@@ -117,15 +117,18 @@ var HUB_CONFIG = {
   layouts: [
     { id: 'stock', name: 'Default', layout: null },
     { id: 'main', name: 'Main', layout: [
-      { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
-      { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
-      { widget: 'todo',          x: 0, y: 2, w: 3, h: 4 },
-      { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },
-      { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
-      { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
-      { widget: 'ambience',      x: 3, y: 4, w: 3, h: 2 },
-      { widget: 'mirror',        x: 6, y: 4, w: 3, h: 2 },
-      { widget: 'entertainment', x: 9, y: 4, w: 3, h: 2 }
+      { widget: 'today',          x: 0, y: 0, w: 3, h: 1 },
+      { widget: 'entertainment',  x: 0, y: 5, w: 3, h: 1 },
+      { widget: 'weather',        x: 0, y: 2, w: 3, h: 2 },
+      { widget: 'todo',           x: 3, y: 3, w: 3, h: 2 },
+      { widget: 'calendar',       x: 3, y: 0, w: 3, h: 3 },
+      { widget: 'awws',           x: 6, y: 0, w: 3, h: 3 },
+      { widget: 'ambience',       x: 3, y: 5, w: 3, h: 1 },
+      { widget: 'wotd',           x: 0, y: 1, w: 3, h: 1 },
+      { widget: 'budget-room',    x: 9, y: 3, w: 3, h: 3 },
+      { widget: 'investments',    x: 9, y: 0, w: 3, h: 3 },
+      { widget: 'allsounds',      x: 0, y: 4, w: 3, h: 1 },
+      { widget: 'grocery',        x: 6, y: 3, w: 3, h: 3 }
     ] },
     { id: 'get-ready', name: 'Get ready', layout: [
       { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },

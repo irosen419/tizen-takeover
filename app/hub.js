@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.46.2';
+  var BUILD = 'v0.46.3';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1419,7 +1419,19 @@
   // Clock page closes). Any other layout stays; its money tiles say "Hidden
   // for guests".
   function guestLayout(on) {
-    if (!on) return;
+    if (!on) {
+      // Guest mode off: a layout that only Guest mode swapped in gives way to the Pi's again.
+      var c = readChoice();
+      if (c && c.guest) {
+        saveChoice(null);
+        var raw = window.HUB_LIVE && typeof window.HUB_LIVE.get === 'function' ? window.HUB_LIVE.get('layout') : null;
+        var back = usableLayout(raw && raw.layout);
+        saveLayout(back);
+        pendingLayout = back;
+        layoutChance();
+      }
+      return;
+    }
     var src = cfg.layouts;
     if (!src || Object.prototype.toString.call(src) !== '[object Array]') return;
     var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
@@ -1432,7 +1444,7 @@
     var safe = switcherPresets();
     if (!safe.length) return;
     var live = window.HUB_LIVE && typeof window.HUB_LIVE.get === 'function' ? window.HUB_LIVE.get('layout') : null;
-    saveChoice({ id: safe[0].name, piSig: layoutSig(live && live.layout) });
+    saveChoice({ id: safe[0].name, piSig: layoutSig(live && live.layout), guest: true });
     saveLayout(safe[0].layout);
     pendingLayout = safe[0].layout;
     layoutChance();
