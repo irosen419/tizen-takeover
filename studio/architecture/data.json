@@ -897,9 +897,10 @@
        "title": "Now Playing",
        "kind": "component",
        "status": "live",
-       "summary": "Tile: album picture, song, artist and progress line. Panel: big picture, album, time, device. Full: visualizer.",
+       "summary": "Tile: album picture, song, artist and progress line. Expanded and full screen: any sound in the house (Spotify, an Echo, the TV), plus a Visualizer button that opens the visualizer full screen.",
        "details": [
-        "The Pi is the only thing that talks to Spotify and pushes the nowplaying resource on change; the TV holds no Spotify secret. Shows Last played when nothing plays. A New song chip shows when the track changes (at most one per 8 s)."
+        "The Pi is the only thing that talks to Spotify and pushes the nowplaying resource on change; the TV holds no Spotify secret. Shows Last played when nothing plays. A New song chip shows when the track changes (at most one per 8 s).",
+        "This is the former All sounds widget, folded in (hub v0.4x): the Pi's allsounds resource (Echo speakers through Home Assistant, Spotify winning when both play) and the sound the TV plays itself (window.HUB_AUDIO) feed the same page. A layout saved with the old 'allsounds' widget now shows Now Playing."
        ],
        "files": [
         "app/widgets/nowplaying.js",
@@ -910,6 +911,11 @@
         {
          "to": "pi.spotify",
          "label": "nowplaying resource over the live line",
+         "dir": "in"
+        },
+        {
+         "to": "pi.allsounds",
+         "label": "allsounds resource over the live line",
          "dir": "in"
         }
        ],
@@ -1216,31 +1222,6 @@
        ]
       },
       {
-       "id": "tv.widgets.allsounds",
-       "title": "All sounds",
-       "kind": "component",
-       "status": "unverified",
-       "summary": "Shows any audio playing at home, Spotify first, otherwise what an Echo reports through Home Assistant.",
-       "details": [
-        "The Pi reads Home Assistant's Alexa Media Player states and folds in Spotify into an allsounds resource. Tracks that may have ended get a may be out of date label. Tried in its own one-widget test layout.",
-        "When the hub started what plays (Echo controls), it shows the app and the speaker with a quiet 'Started from the hub' line (hub v0.38.0).",
-        "Sound the TV plays itself (./hub play, ./hub news) comes first, with 'Living room TV' as the speaker, the show as the title and the rest (8pm ET, November 19) below it. The hub tells the widget directly through window.HUB_AUDIO, so it needs no Pi round trip (hub v0.38.5)."
-       ],
-       "files": [
-        "app/widgets/allsounds.js"
-       ],
-       "talksTo": [
-        {
-         "to": "pi.allsounds",
-         "label": "allsounds resource over the live line",
-         "dir": "in"
-        }
-       ],
-       "notes": [
-        "Audible, NPR briefings and skills are not reported by the Echo. Real attribute names and TV rendering unverified."
-       ]
-      },
-      {
        "id": "tv.widgets.soundctl",
        "title": "Sound control",
        "kind": "component",
@@ -1250,7 +1231,7 @@
        "details": [
         "The tile looks the same as All sounds. The page adds a speaker switch (Echo Show, Echo Dot, Everywhere; each shows what that speaker plays underneath), a round Play/Pause, Next, a volume stepper (− 40% +), Stop and one-press starts: Resume audiobook, KERA 90.1, NPR newscast, Spotify, Pandora and Amazon Music. All sounds stays untouched as the backup.",
         "Picking a speaker shows that speaker's own playback. Everywhere lists one row per speaker (what it plays, its volume, its own Play/Pause and −/+) above an All speakers transport; quick starts there play one thing on every speaker.",
-        "Presses go to the Pi as POST /echo/run with presets only (no search text from the TV). Each speaker's state, volume and playback come back in the allsounds resource (echos, target), so the page follows within seconds. Tried alone in the 'Sound control test' layout (hub v0.39.3, server 0.24.2)."
+        "Presses go to the Pi as POST /echo/run with presets only (no search text from the TV). Each speaker's state, volume and playback come back in the allsounds resource (echos, target), so the page follows within seconds. Not on any built-in layout now (the test layouts were removed); it can still be placed from the Studio tray (hub v0.39.3, server 0.24.2)."
        ],
        "files": [
         "app/widgets/soundctl.js",

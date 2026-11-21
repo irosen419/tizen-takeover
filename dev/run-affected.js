@@ -60,7 +60,7 @@ const RULES = [
   [/^app\/widgets\/(budget|budget-lab)\.(js|css)$/, ['dev/budget-receipt-test.js', 'dev/budget-lab-math-test.js', 'dev/money-test.js']],
   [/^app\/widgets\/(today|clock)\.(js|css)$/, ['dev/clock-test.js']],
   [/^app\/widgets\/(nowplaying|nowplaying-viz)\.(js|css)$/, ['dev/nowplaying-test.js', 'dev/nowplaying-chip-test.js']],
-  [/^app\/widgets\/(allsounds|soundctl|ambience)\.(js|css)$/, ['dev/allsounds-test.js', 'dev/soundctl-test.js', 'dev/ambience-test.js']],
+  [/^app\/widgets\/(soundctl|ambience)\.(js|css)$/, ['dev/soundctl-test.js', 'dev/ambience-test.js']],
   [/^app\/widgets\/(architecture|architecture-data)\.(js|css)$|^studio\/architecture\//, ['dev/architecture-test.js', 'dev/architecture-tv-test.js', 'dev/studio-sync-test.js']],
   [/^app\/widgets\/(awws)\.(js|css)$|^pi\/awws\.js$/, ['dev/awws-test.js', 'dev/i18n-es-awws-test.js', 'pi/awws-test.js']],
   [/^app\/widgets\/(todo)\.(js|css)$/, ['dev/todo-levels-test.js', 'dev/todo-completed-test.js', 'dev/todo-bulk-test.js']],

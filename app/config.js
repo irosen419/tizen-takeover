@@ -127,7 +127,7 @@ var HUB_CONFIG = {
       { widget: 'wotd',           x: 0, y: 1, w: 3, h: 1 },
       { widget: 'budget-room',    x: 9, y: 3, w: 3, h: 3 },
       { widget: 'investments',    x: 9, y: 0, w: 3, h: 3 },
-      { widget: 'allsounds',      x: 0, y: 4, w: 3, h: 1 },
+      { widget: 'nowplaying',      x: 0, y: 4, w: 3, h: 1 },
       { widget: 'grocery',        x: 6, y: 3, w: 3, h: 3 }
     ] },
     { id: 'get-ready', name: 'Get ready', layout: [
@@ -169,17 +169,6 @@ var HUB_CONFIG = {
       { widget: 'calendar',      x: 4, y: 3, w: 4, h: 3 },
       { widget: 'today',         x: 8, y: 3, w: 4, h: 1 },
       { widget: 'entertainment', x: 8, y: 4, w: 4, h: 2 }
-    ] },
-    /* A test layout: the All sounds widget (app/widgets/allsounds.js) on its
-       own, filling the screen, to try it before it joins any real layout.
-       New widgets can be tried the same way: one layout, one widget. */
-    { id: 'allsounds-test', name: 'All sounds test', layout: [
-      { widget: 'allsounds',     x: 0, y: 0, w: 12, h: 6 }
-    ] },
-    /* A test layout: Sound control (app/widgets/soundctl.js, All sounds plus
-       the Echo controls) on its own, filling the screen. */
-    { id: 'soundctl-test', name: 'Sound control test', layout: [
-      { widget: 'soundctl',      x: 0, y: 0, w: 12, h: 6 }
     ] },
     // Plant sun alone, to try it out (a new widget gets a layout of its own first).
     { id: 'plant-wall', name: 'Plants', layout: [

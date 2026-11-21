@@ -41,7 +41,7 @@
     'awws-reach': ['awws.titles.reach', 'Reach'], 'awws-money': ['awws.titles.money', 'Earned vs spent'],
     'budget-room': ['budget.titles.room', 'Daily room'], 'budget-card': ['budget.titles.card', 'Card day'],
     'budget-goals': ['budget.titles.goals', 'Goals'], 'budget-lab': ['budgetLab.titles.lab', 'Budget lab'],
-    allsounds: ['allsounds.title', 'All sounds'], soundctl: ['soundctl.title', 'Sound control'],
+    soundctl: ['soundctl.title', 'Sound control'],
     sunpath: ['sunpath.title', 'Plant sun'], architecture: ['touch.name.architecture', 'Architecture'],
     investments: ['investments.title', 'Investments'], shows: ['shows.title', 'Schedule']
   };
