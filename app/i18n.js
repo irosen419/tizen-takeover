@@ -1248,7 +1248,7 @@
     'shows.nothingToday': 'Hoy no se emite nada.',
     'shows.nothingWeek': 'Esta semana no se emite nada.',
     'shows.nothingMonth': 'No se emite nada más este mes.',
-    'shows.nothingSoon': 'Todavía no hay fechas de temporada.',
+    'shows.nothingSoon': 'Todavía no hay nada con fecha.',
     'shows.nextAiring': 'Lo próximo: {name} · {when}',
     'shows.tonight': 'Esta noche: {name} {time}',
     'shows.todayLine': 'Hoy: {name} {time}',
