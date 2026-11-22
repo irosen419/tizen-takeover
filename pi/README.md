@@ -345,6 +345,29 @@ The Pi can read your Google calendars and send the coming events to the TV. Each
 
 The secret address is like a key: anyone who has it can read that calendar. Keep it only in `.env` on the Pi. Never put it in git, a chat, an email or a screenshot.
 
+### Calendar to-dos, and deleting ticked events
+
+Events titled `TODO:` (optional), `TODO!:` (must) and `TODO~:` (passive) become to-dos on every calendar refresh (`todoconvert.js`). Once the to-do is ticked:
+
+| Event | After the tick |
+|---|---|
+| `TODO:` | deleted from Google Calendar (hidden from the hub calendar as soon as it is a to-do) |
+| `TODO!:`, `TODO~:` | stays on the calendar |
+| description has `#keep` | stays (a `TODO:` event then also stays on the hub calendar) |
+| description has `#remove` | deleted, even for `TODO!:` and `TODO~:` |
+
+Only that day's occurrence of a repeating event is deleted, never the series. A to-do removed without a tick deletes nothing. The delete happens at the next calendar refresh (within about 5 minutes). Google keeps deleted events in the calendar's Trash for 30 days.
+
+The calendars are read through their secret iCal links, which cannot change anything, so deleting uses a Google service account (`gcal.js`). Set it up once, on a computer:
+
+1. console.cloud.google.com: create a project (`home-hub`).
+2. APIs & Services, Library: enable **Google Calendar API**.
+3. IAM & Admin, Service accounts: **Create** (`hub-calendar`, no roles). Open it, **Keys**, **Add key**, **JSON**. Copy its email (`...iam.gserviceaccount.com`).
+4. Google Calendar on the web, for each calendar with TODO events: Settings and sharing, Share with specific people, add that email with **Make changes to events**.
+5. On the Pi, paste the downloaded file into `data/google-calendar-key.json` (`nano data/google-calendar-key.json`), then `chmod 600 data/google-calendar-key.json`. No restart needed: the next refresh finds it.
+
+No key file: nothing is deleted. A calendar not shared with the account: the event stays (the log counts it as "not shared with the hub"). Log line, counts only: `Calendar to-dos: 1 ticked event deleted from the calendar, 0 not shared with the hub, 0 to try again`. Never commit or print the key file (`data/` is ignored by git).
+
 ### Set up a calendar
 
 1. On a computer (not the phone app), open [Google Calendar](https://calendar.google.com).

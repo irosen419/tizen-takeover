@@ -7,6 +7,7 @@ const path = require('path');
 const http = require('http');
 const cal = require('./calendar');
 const conv = require('./todoconvert');
+const gcalMod = require('./gcal');
 
 const TZ = 'America/Chicago';
 const NOW = Date.parse('2026-11-20T15:00:00Z'); // 9 AM Friday, Chicago
@@ -182,7 +183,142 @@ async function main() {
     const titles = data.events.map((e) => e.title);
     assert.ok(!titles.includes('TODO: Buy milk'));
     assert.ok(titles.includes('TODO!: Take weekly shot') && titles.includes('TODO: Weekly thing') && titles.includes('Dinner'));
-    assert.ok(data.events.every((e) => !('_rec' in e)));
+    assert.ok(data.events.every((e) => !('_rec' in e) && !('_gid' in e)));
+  });
+
+  // ---- Deleting a ticked to-do's event (gcal.js) ----
+  const GICS = 'BEGIN:VCALENDAR\nVERSION:2.0\n' + [
+    vevent('g1@google.com', 'TODO: Change out ice', 'DTSTART;VALUE=DATE:20261121'),
+    vevent('g2@google.com', 'TODO: Keep this one', 'DTSTART;VALUE=DATE:20261121', 'DESCRIPTION:Look back later #keep\n'),
+    vevent('g3@google.com', 'TODO!: Take weekly shot', 'DTSTART;TZID=America/Chicago:20261120T200000', 'RRULE:FREQ=WEEKLY\n'),
+    vevent('g4@google.com', 'TODO~: Return parcel', 'DTSTART;VALUE=DATE:20261121', 'RRULE:FREQ=WEEKLY\nDESCRIPTION:#remove\n'),
+    vevent('imported-uid-5', 'TODO: Imported', 'DTSTART;VALUE=DATE:20261121')
+  ].join('') + 'END:VCALENDAR\n';
+  const gevents = () => cal.expandEvents(cal.parseIcs(GICS), { cal: 1, tz: TZ, window: cal.windowFor(NOW, TZ), details: 'show' }).events;
+  function fakeRemover(answer) {
+    const calls = [];
+    return { calls: calls, ready: () => true, remove: (c, e) => { calls.push(c + ' ' + e); return Promise.resolve(answer || 'deleted'); } };
+  }
+  function makeG(dir, items, logs, remover) {
+    return conv.create({
+      dataDir: dir, tz: TZ, log: (s) => logs && logs.push(s), items: () => items,
+      add: (list) => { list.forEach((r) => store(items, r)); return true; },
+      remover: remover, calendarId: (n) => (n === 1 ? 'ian@example.com' : '')
+    });
+  }
+  function store(items, r) { items.unshift(Object.assign({ done: false }, r)); }
+
+  await check('event ids: one-off, repeating all-day and timed, non-Google', () => {
+    assert.strictEqual(gcalMod.eventId('abc123@google.com', 'D20000', false), 'abc123');
+    assert.strictEqual(gcalMod.eventId('abc123@google.com', 'D' + cal.parseDayText('2026-11-21'), true), 'abc123_20261121');
+    assert.strictEqual(gcalMod.eventId('abc123@google.com', 'T' + Date.parse('2026-11-21T02:00:00Z'), true), 'abc123_20261121T020000Z');
+    assert.strictEqual(gcalMod.eventId('imported-uid', 'D1', false), null);
+  });
+
+  await check('rules: TODO: deletes, !/~ keep, #keep and #remove win', () => {
+    assert.strictEqual(conv.deletesOnDone('optional', ''), true);
+    assert.strictEqual(conv.deletesOnDone('must', 'x'), false);
+    assert.strictEqual(conv.deletesOnDone('passive', ''), false);
+    assert.strictEqual(conv.deletesOnDone('optional', 'see later #keep'), false);
+    assert.strictEqual(conv.deletesOnDone('must', '#remove'), true);
+    assert.strictEqual(conv.deletesOnDone('optional', 'no#keep here'), true);
+  });
+
+  await check('a ticked to-do deletes its event once; untouched ones wait; removed ones never delete', async () => {
+    const dir = tmp();
+    const items = [];
+    const logs = [];
+    const r = fakeRemover();
+    const c = makeG(dir, items, logs, r);
+    c.convert(gevents(), NOW);
+    assert.strictEqual(items.length, 5);
+    assert.strictEqual(c.pending(), 2); // ice and parcel (#remove); not #keep, not the shot, not the imported one
+    c.convert(gevents(), NOW + 60000);
+    await c.settled();
+    assert.strictEqual(r.calls.length, 0); // nothing ticked yet
+    items.find((i) => i.title === 'Change out ice').done = true;
+    items.find((i) => i.title === 'TODO!: Take weekly shot').done = true; // kept: no delete
+    c.convert(gevents(), NOW + 120000);
+    await c.settled();
+    assert.deepStrictEqual(r.calls, ['ian@example.com g1']);
+    assert.strictEqual(logs[logs.length - 1], 'Calendar to-dos: 1 ticked event deleted from the calendar, 0 not shared with the hub, 0 to try again');
+    c.convert(gevents(), NOW + 180000);
+    await c.settled();
+    assert.strictEqual(r.calls.length, 1); // not again
+    // The parcel to-do is removed without a tick: its delete is dropped.
+    items.splice(items.findIndex((i) => i.title === 'TODO~: Return parcel'), 1);
+    c.convert(gevents(), NOW + 240000);
+    await c.settled();
+    assert.strictEqual(c.pending(), 0);
+    assert.strictEqual(r.calls.length, 1);
+    const text = fs.readFileSync(path.join(dir, 'todo-converter.json'), 'utf8');
+    assert.ok(!/ice|parcel|shot/i.test(text));
+  });
+
+  await check('#remove on a repeating event deletes only that day; denied is dropped; retry waits', async () => {
+    const items = [];
+    const logs = [];
+    const r = fakeRemover('denied');
+    const c = makeG(tmp(), items, logs, r);
+    c.convert(gevents(), NOW);
+    items.find((i) => i.title === 'TODO~: Return parcel').done = true;
+    c.convert(gevents(), NOW + 60000);
+    await c.settled();
+    assert.deepStrictEqual(r.calls, ['ian@example.com g4_20261121']);
+    assert.ok(/0 ticked events deleted from the calendar, 1 not shared with the hub/.test(logs[logs.length - 1]));
+    assert.strictEqual(c.pending(), 1); // only ice left
+    const r2 = fakeRemover('retry');
+    const items2 = [];
+    const logs2 = [];
+    const c2 = makeG(tmp(), items2, logs2, r2);
+    c2.convert(gevents(), NOW);
+    items2.find((i) => i.title === 'Change out ice').done = true;
+    c2.convert(gevents(), NOW + 60000); await c2.settled();
+    c2.convert(gevents(), NOW + 120000); await c2.settled();
+    assert.strictEqual(r2.calls.length, 2);
+    assert.strictEqual(c2.pending(), 2);
+    assert.strictEqual(logs2.filter((l) => /to try again/.test(l)).length, 1); // said once
+  });
+
+  await check('#keep leaves a TODO: event on the hub calendar; no key file = no deletes', async () => {
+    const items = [];
+    const c = makeG(tmp(), items, null, { ready: () => false, remove: () => { throw new Error('called'); } });
+    const list = gevents();
+    c.convert(list, NOW);
+    const hidden = list.filter((e) => c.hides(e)).map((e) => e.title).sort();
+    assert.deepStrictEqual(hidden, ['TODO: Change out ice', 'TODO: Imported']);
+    items.forEach((i) => { i.done = true; });
+    c.convert(list, NOW + 60000);
+    await c.settled();
+    assert.strictEqual(c.pending(), 2);
+  });
+
+  await check('gcal: signs in once, deletes, maps answers; no key = not ready', async () => {
+    const dir = tmp();
+    assert.strictEqual(gcalMod.create({ dataDir: dir }).ready(), false);
+    const pair = require('crypto').generateKeyPairSync('rsa', { modulusLength: 2048 });
+    fs.writeFileSync(path.join(dir, 'google-calendar-key.json'), JSON.stringify({
+      client_email: 'hub@p.iam.gserviceaccount.com', private_key: pair.privateKey.export({ type: 'pkcs8', format: 'pem' }), token_uri: 'https://oauth2.googleapis.com/token'
+    }));
+    const seen = [];
+    let answer = 204;
+    const g = gcalMod.create({ dataDir: dir, request: (m, u, h, b) => {
+      seen.push(m + ' ' + u);
+      if (m === 'POST') {
+        const jwt = /assertion=([^&]+)/.exec(b)[1].split('.');
+        const ok = require('crypto').verify('RSA-SHA256', Buffer.from(jwt[0] + '.' + jwt[1]), pair.publicKey, Buffer.from(jwt[2].replace(/-/g, '+').replace(/_/g, '/'), 'base64'));
+        return Promise.resolve(ok ? { status: 200, body: '{"access_token":"t","expires_in":3600}' } : { status: 400, body: '' });
+      }
+      assert.strictEqual(h.Authorization, 'Bearer t');
+      return Promise.resolve({ status: answer, body: answer === 403 ? '{"error":{"errors":[{"reason":"forbidden"}]}}' : '' });
+    } });
+    assert.strictEqual(g.ready(), true);
+    assert.strictEqual(await g.remove('ian@example.com', 'g1'), 'deleted');
+    assert.strictEqual(seen[1], 'DELETE https://www.googleapis.com/calendar/v3/calendars/ian%40example.com/events/g1?sendUpdates=none');
+    answer = 410; assert.strictEqual(await g.remove('c', 'e'), 'gone');
+    answer = 403; assert.strictEqual(await g.remove('c', 'e'), 'denied');
+    answer = 500; assert.strictEqual(await g.remove('c', 'e'), 'retry');
+    assert.strictEqual(seen.filter((x) => x.indexOf('POST') === 0).length, 1); // token reused
   });
 
   dirs.forEach((d) => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* fine */ } });

@@ -113,6 +113,7 @@ const path = require('path');
 const crypto = require('crypto');
 const calendar = require('./calendar');
 const todoconvert = require('./todoconvert');
+const gcal = require('./gcal');
 const awws = require('./awws');
 const budget = require('./budget');
 const mailbox = require('./mailbox');
@@ -703,6 +704,10 @@ function start(options) {
   const todoConv = opt.todoConvert === false ? null : todoconvert.create({
     dataDir: dataDir, log: log, tz: calTz,
     items: () => todoItems(),
+    // A ticked to-do's event is deleted in Google through a service account
+    // (gcal.js, key in data/google-calendar-key.json); no key, no deletes.
+    remover: opt.gcal === false ? null : (opt.gcal || gcal.create({ dataDir: dataDir })),
+    calendarId: (cal) => { const c = calList.find((x) => x.cal === cal); return c ? calendar.ownerOf(c.url) : ''; },
     add: (list) => {
       const now = Date.now();
       const items = purgeOld(todoItems(), now);

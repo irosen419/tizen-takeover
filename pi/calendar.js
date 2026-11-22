@@ -44,6 +44,7 @@
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const gcal = require('./gcal');
 
 const DEFAULT_TZ = 'America/Chicago';
 const DEFAULT_REFRESH_MINUTES = 5;
@@ -746,6 +747,10 @@ function expandEvents(parsed, opts) {
     }
     if (seen.has(ev.id)) return;
     if (rec) ev._rec = true; // repeating; only the to-do converter reads it, shareNotes drops it
+    // This occurrence's Google event id (none for other feeds): only the to-do
+    // converter reads it, to delete a ticked event; shareNotes drops it.
+    const gid = gcal.eventId(uid, key, !!rec);
+    if (gid) ev._gid = gid;
     seen.add(ev.id);
     out.push(ev);
   }
