@@ -124,7 +124,7 @@
     nothingToday: 'Nothing airs today.',
     nothingWeek: 'Nothing airs this week.',
     nothingMonth: 'Nothing more airs this month.',
-    nothingSoon: 'No season dates yet.',
+    nothingSoon: 'Nothing with a date yet.',
     nextAiring: 'Next up: {name} · {when}',
     tonight: 'Tonight: {name} {time}',
     todayLine: 'Today: {name} {time}',
@@ -621,6 +621,33 @@
     return out;
   }
 
+  // The Coming soon tab: every show with a date ahead, soonest first. A show's
+  // next episode (as Your shows says it), or else its dated new season. Shows
+  // with no date yet are not coming soon: they stay in Your shows, where
+  // their row says "Season 3 · no date yet".
+  function comingSoon(d, t) {
+    var out = [];
+    var back = returning(d, t);
+    var list = showsOf(d);
+    for (var i = 0; i < list.length; i++) {
+      var next = nextFor(list[i], t);
+      var ret = null;
+      for (var j = 0; j < back.length; j++) if (back[j].show === list[i] && back[j].ms !== null) ret = back[j];
+      if (next && (!ret || next.ms <= ret.ms)) {
+        out.push({ show: list[i], ms: next.ms, ep: next.ep, season: next.ep.season, days: Math.round((dayStart(next.ms) - dayStart(t)) / DAY) });
+      } else if (ret) out.push(ret);
+    }
+    out.sort(function (a, b) { return (a.ms - b.ms) || (a.show.name < b.show.name ? -1 : 1); });
+    return out;
+  }
+
+  // A show's undated return ("Season 3 · no date yet"), or null.
+  function undatedFor(d, s, t) {
+    var back = returning(d, t);
+    for (var i = 0; i < back.length; i++) if (back[i].show === s && back[i].ms === null) return back[i];
+    return null;
+  }
+
   // Shows started and not caught up, with aired episodes not marked watched
   // ("Ready to watch" on Coming soon): [{ show, n, left, next }], by title.
   // Started = a "watched up to" point or any episode marked; a show never
@@ -678,7 +705,7 @@
     var range;
     if (tab === 'today') { to = addDays(from, 1); range = longDay(t); }
     else if (tab === 'month') { to = monthEnd(t); range = monthTitle(t); }
-    else if (tab === 'soon') { return { tab: tab, range: '', groups: [], soon: returning(d, t), shows: showsOf(d), ready: readyList(d) }; }
+    else if (tab === 'soon') { return { tab: tab, range: '', groups: [], soon: comingSoon(d, t), shows: showsOf(d), ready: readyList(d) }; }
     else { tab = 'week'; from = weekStart(t); to = addDays(from, 7); range = rangeText(from, to); }
     var groups = groupByDay(airings(d, from, to), t);
     return { tab: tab, range: range, groups: groups, soon: returning(d, t), from: from, to: to };
@@ -1464,6 +1491,7 @@
   }
 
   function soonText(r) {
+    if (r.ep) return word('nextLine', { code: epCode([r.ep]), when: whenText(r.ms, now(), r.ep.dayOnly) });
     if (r.ms === null) return r.season ? word('returnsNoDate', { n: r.season }) : word('newSeason');
     return word('returns', { n: r.season, date: dayDate(r.ms) });
   }
@@ -1568,6 +1596,7 @@
       var next = nextFor(s, t);
       if (next) line = word('nextLine', { code: epCode([next.ep]), when: whenText(next.ms, t, next.ep.dayOnly) });
       var meta = el('div', 'sh-meta', info);
+      if (!line) { var nd = undatedFor(S.data, s, t); if (nd) line = soonText(nd); }
       el('span', 'sh-meta-text', meta, line || (s.checkedAt ? '' : (s.error || '')));
       var rd = readyFor(S.data, s.id);
       if (rd) el('span', 'sh-chip is-ready', meta, word('nToWatch', { n: rd.n }));
@@ -2178,6 +2207,28 @@
     return items[at - 1] || undefined;
   }
 
+  // Left and Right on the tabs switch the tab at once (no OK needed). Past
+  // the first or last tab: the usual move (into the apps column, say).
+  function tabMove(dir, from) {
+    var i = TABS.indexOf(from) + (dir === 'right' ? 1 : -1);
+    if (i < 0 || i >= TABS.length) return undefined;
+    S.tab = TABS[i];
+    store(TAB_KEY, S.tab);
+    if (S.C) S.C.redrawPanel();
+    return document.querySelector('.sh .sh-tab[data-key="sh:tab:' + S.tab + '"]') || true;
+  }
+
+  // The line (row, Also on, check, show page) holding the focus is drawn as
+  // one box: is-lit on the line, is-in when the row itself has the focus.
+  function lightLine(target) {
+    var lit = document.querySelectorAll('.sh-line.is-lit');
+    for (var i = 0; i < lit.length; i++) lit[i].className = lit[i].className.replace(/\s*\bis-(lit|in)\b/g, '');
+    if (!target || !target.getAttribute || S.page) return;
+    var line = lineOf(target);
+    if (!line || !/\bsh-line\b/.test(line.className)) return;
+    line.className += ' is-lit' + (/\bsh-(row|show)\b/.test(target.className) ? ' is-in' : '');
+  }
+
   // Down from any tab goes to the first thing of the listing below (the "Did you finish?"
   // strip or the first row), never sideways into the apps column; Up from the first line of
   // the listing goes back to the tab on show.
@@ -2220,7 +2271,11 @@
   // for the usual move by position.
   function onMove(dir, from) {
     if (!from) return undefined;
-    if (!S.page && (dir === 'left' || dir === 'right')) return lineMove(dir, from);
+    if (!S.page && (dir === 'left' || dir === 'right')) {
+      var fk = from.getAttribute('data-key') || '';
+      if (fk.indexOf('sh:tab:') === 0) return tabMove(dir, fk.slice(7));
+      return lineMove(dir, from);
+    }
     if (dir !== 'up' && dir !== 'down') return undefined;
     if (!S.page) return listingMove(dir, from);
     var key = from.getAttribute('data-key') || '';
@@ -2297,6 +2352,7 @@
     renderPanel: renderPanel,
     onSelect: onSelect,
     onFocus: onFocus,
+    lightLine: lightLine,
     onMove: onMove,
     onBack: onBack,
     closePage: function () { S.page = null; S.backKey = null; P.seq++; },
