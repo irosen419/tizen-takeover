@@ -20,7 +20,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.bu-sep { color: var(--text-3); }
 .bu-tile .is-ok, .bu-panel .is-ok { color: var(--bu-ok); }
 .bu-tile .is-under, .bu-panel .is-under { color: var(--bu-under); }
 .bu-tile .is-neg, .bu-panel .is-neg { color: var(--bu-neg); }
@@ -510,7 +509,6 @@
 .bu-rc .bu-pline { padding: 0 0.9rem; font-size: 1.25rem; }
 .bu-rc .bu-rhint { margin-top: 0.2rem; padding-left: 0.9rem; font-size: 1.25rem; }
 .bu-rc .bu-psec.is-after { margin-top: 0.9rem; }
-.bu-rc .bu-prow-you { margin-left: 0.4rem; font-size: 0.95rem; color: var(--text-3); }
 .bu-rc .bu-rhead .bu-pline { padding: 0; }
 /* level 2 */
 .bu-rdetail { padding-left: 2rem; }
