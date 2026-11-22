@@ -969,13 +969,6 @@
     el('span', 'bu-tabhint', bar, O.tabHint);
   }
 
-  function olCells(row, vals, cls) {
-    for (var i = 0; i < vals.length; i++) {
-      var cell = el('span', 'bu-ramt bu-ocell' + (cls ? ' ' + cls : ''), row);
-      if (typeof vals[i] === 'string') cell.textContent = vals[i]; else vals[i](cell);
-    }
-  }
-
   function olRow(sign, label, vals, cls, tones) {
     var row = el('div', 'bu-rrow bu-orow' + (cls ? ' ' + cls : ''));
     el('span', 'bu-rsign', row, sign);
