@@ -2540,7 +2540,7 @@
      "title": "Pi serves the app",
      "kind": "component",
      "status": "unverified",
-     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state and POST /grocery/ops (the TV posts there too).",
+     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state (grocery and to-dos), POST /grocery/ops (the TV posts there too) and POST /touch/todo/ops (server 0.29.0; the same ops as the TV's /todo/ops, with the app's X-Hub-Touch proof).",
      "details": [
       "Docker mounts ../app read only at /webapp (HUB_APP_DIR). Only known file types, no dotfiles, nothing outside the folder.",
       "Home, Tailscale and loopback addresses only, even when HUB_TV_IPS names the TV; a phone is never counted as a screen. A POST needs no token but must come from the page's own address (same-Host Origin) or HUB_ORIGINS."
@@ -2560,6 +2560,11 @@
        "to": "pi.server.resources.grocery",
        "label": "reads and changes the grocery list",
        "dir": "both"
+      },
+      {
+       "to": "pi.server.resources.todo",
+       "label": "reads and changes the to-do list",
+       "dir": "both"
       }
      ],
      "children": [
@@ -2570,7 +2575,7 @@
        "status": "unverified",
        "summary": "Home Hub on a phone, tablet or computer: a menu of every widget, then one widget per view on a phone, side by side on a tablet.",
        "details": [
-        "Tizen in the user agent = TV; else phone under 600 px, tablet under 1200, desktop above; ?as=phone|tablet|tv overrides. Widgets with renderTouch open (Groceries first); the rest say TV only.",
+        "Tizen in the user agent = TV; else phone under 600 px, tablet under 1200, desktop above; ?as=phone|tablet|tv overrides. Widgets with renderTouch open (Groceries, then To-do: app/widgets/todo-touch.js, the TV's levels, Coming up and Completed, a tray to move or remove); the rest say TV only.",
         "Polls /touch/state every 3 s (paused while hidden), changes are drawn at once and rolled back if the Pi says no. English and Spanish from app/i18n.js. The TV never loads it."
        ],
        "files": [
@@ -2578,12 +2583,13 @@
         "app/touch.js",
         "app/touch.css",
         "app/widgets/grocery.js",
+        "app/widgets/todo-touch.js",
         "dev/touch-test.js"
        ],
        "talksTo": [
         {
          "to": "pi.touchapp",
-         "label": "polls /touch/state, posts /grocery/ops",
+         "label": "polls /touch/state, posts /grocery/ops and /touch/todo/ops",
          "dir": "both"
         },
         {
