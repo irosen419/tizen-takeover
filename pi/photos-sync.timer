@@ -1,0 +1,10 @@
+# Runs photos-sync.service every 30 minutes (and 2 minutes after boot).
+[Unit]
+Description=Home Hub photo album sync, every 30 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=30min
+
+[Install]
+WantedBy=timers.target

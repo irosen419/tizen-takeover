@@ -984,6 +984,18 @@ const COMMANDS = {
       return { message: lines(msg), data: { enabled: r.enabled, paused: r.paused, cached: r.cached, cap: r.cap, today: r.today, month: r.month, all: r.all, lastError: r.lastError } };
     }
   },
+  // The photo album (photos.js): counts, the last sync time and whether it
+  // went well; never a file name or an id.
+  'photos.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/photos');
+      return {
+        message: hubctl.photosStatusText(r),
+        data: { count: r.count || 0, newCount: r.newCount || 0, lastRun: r.lastRun || null, ok: typeof r.syncOk === 'boolean' ? r.syncOk : null }
+      };
+    }
+  },
   'log.tail': {
     args: { lines: [V.number(1, 200), false], errors: [V.bool(), false] },
     check: (a) => {
