@@ -949,6 +949,29 @@
   var DAY_TO = 18;
   var theme = { look: '', source: 'auto', sunrise: '', sunset: '', timer: null, fading: false };
 
+  // The choice made on the Clock page: 'auto' (sun), 'day' (Light) or 'night'
+  // (Dark), kept on this screen in localStorage so each screen can differ.
+  // ?theme= on the address still wins; this beats HUB_CONFIG.theme.
+  var LOOK_KEY = 'homeHub.look';
+  function savedLook() {
+    try {
+      var v = window.localStorage && window.localStorage.getItem(LOOK_KEY);
+      return v === 'day' || v === 'night' ? v : 'auto';
+    } catch (e) { return 'auto'; }
+  }
+  window.HUB_LOOK = {
+    get: savedLook,
+    set: function (v) {
+      try {
+        if (window.localStorage) {
+          if (v === 'day' || v === 'night') window.localStorage.setItem(LOOK_KEY, v);
+          else window.localStorage.removeItem(LOOK_KEY);
+        }
+      } catch (e) { /* not kept; still applies until the page reloads */ }
+      checkTheme();
+    }
+  };
+
   function sunTimes() {
     try {
       var rec = widgetById('weather');
@@ -961,8 +984,9 @@
     var q = readQuery('theme');
     var source = 'URL';
     if (q !== 'day' && q !== 'night') {
-      q = cfg.theme;
-      source = 'config';
+      q = savedLook();
+      source = 'chosen';
+      if (q === 'auto') { q = cfg.theme; source = 'config'; }
     }
     if (q === 'day' || q === 'night') return { look: q, source: source, sunrise: '', sunset: '' };
     var sun = sunTimes();

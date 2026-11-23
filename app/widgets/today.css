@@ -223,6 +223,15 @@
 .clock-page.is-full .clock-opt { padding: 0.6rem 0.8rem; font-size: 1.1rem; }
 .clock-controls.is-tight .clock-group + .clock-group { margin-top: 0.6rem; }
 .clock-page.is-full .clock-controls.is-tight .clock-group + .clock-group { margin-top: 1rem; }
+/* Three-part pills (Look): tighter parts and no dot (the fill marks the choice), so Spanish "Oscuro" fits. */
+.clock-seg.is-three .clock-opt { padding-left: 0.1rem; padding-right: 0.1rem; font-size: 0.8rem; }
+.clock-seg.is-three .clock-opt.is-selected .clock-opt-dot { display: none; }
+
+/* Five groups (Face, Clock, Look, Language, Guest mode): one more notch closer. */
+.clock-controls.is-tighter .clock-group + .clock-group { margin-top: 0.3rem; }
+.clock-controls.is-tighter .clock-group-label { margin-bottom: 0.2rem; }
+.clock-controls.is-tighter .clock-opt { padding-top: 0.2rem; padding-bottom: 0.2rem; }
+.clock-page.is-full .clock-controls.is-tighter .clock-group + .clock-group { margin-top: 0.7rem; }
 
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }
