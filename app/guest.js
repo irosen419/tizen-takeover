@@ -41,7 +41,7 @@
   var SIGN = '[+\\-\\u2212]?';
   var NUM = '\\d[\\d,]*(?:\\.\\d+)?';
   var CASH = SIGN + '[$\\u20ac\\u00a3]\\s?' + NUM + '(?:\\s?[kKmM]\\b)?';                  // $42, −$12, +$8,111, $1.2k, €9
-  var CODE = SIGN + '\\b(?:USD|EUR|GBP|CAD|AUD|MXN)\\s' + NUM;                             // EUR 1,200 (awws.js money())
+  var CODE = SIGN + '\\b[A-Z]{3}\\s' + NUM;                             // EUR 1,200 (awws.js money())
   var PERCENT = SIGN + NUM + '\\s?%';                                                      // not used yet
   var MATCHERS = [CASH, CODE];
   var RE = new RegExp(MATCHERS.join('|'), 'g');
@@ -85,7 +85,7 @@
     for (var n = node; n && n.nodeType !== 9; n = n.parentNode) {
       if (n.nodeType !== 1) continue;
       if (hasClass(n, 'cell') || n.id === 'panel') return isMoneyWidget(n) ? n : null;
-      if (hasClass(n, 'bu-alert')) return n;
+      if (hasClass(n, 'bu-alert') || n.id === 'toast') return n;
     }
     return null;
   }
@@ -95,6 +95,8 @@
     var i;
     var cells = document.querySelectorAll('.cell[data-widget]');
     for (i = 0; i < cells.length; i++) if (isMoneyWidget(cells[i])) out.push(cells[i]);
+    var toast = document.getElementById('toast');
+    if (toast) out.push(toast);
     var panel = document.getElementById('panel');
     if (panel && isMoneyWidget(panel)) out.push(panel);
     var alerts = document.querySelectorAll('.bu-alert');
