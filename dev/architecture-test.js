@@ -55,14 +55,14 @@ const mapBad = [];
 check('every Big picture box opens a real group', mapBad.length === 0, mapBad.join(', '));
 
 // Privacy: no secrets or personal details in the shipped data.
-const lower = raw;
+const lower = raw + JSON.stringify(require('../studio/codemap').parse(fs.readFileSync(path.join(root, 'docs/CODE-MAP.md'), 'utf8'))); // the code map ships too
 const leaks = [];
 if (/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[a-z]{2,}/.test(lower)) leaks.push('an email address');
 if (/\b(?:\d{1,3}\.){3}\d{1,3}\b/.test(lower.replace(/127\.0\.0\.1/g, ''))) leaks.push('an IP address');
 if (/\b[0-9a-f]{32}\b/i.test(lower)) leaks.push('a 32-character id (Cloudflare account?)');
 if (/(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{16,}|xox[bp]-|AKIA[0-9A-Z]{12,}|Bearer\s+[A-Za-z0-9._-]{16,})/.test(lower)) leaks.push('a token');
 if (/api\.cloudflare\.com\/client\/v4\/accounts\//.test(lower)) leaks.push('a Cloudflare account URL');
-check('the data holds no email, IP address, account id or token', leaks.length === 0, leaks.join(', '));
+check('the data and the code map hold no email, IP address, account id or token', leaks.length === 0, leaks.join(', '));
 
 // The diagrams: run the layout engine from arch.js (it is pure, no DOM) on every group and every part
 // with parts, closed and with everything open, and check the drawing is sound.

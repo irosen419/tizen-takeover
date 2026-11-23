@@ -15,7 +15,7 @@
  *                                                      in the reading order, else the part's main file
  *   files   [{ path, read: i } | { path, flow: [i, j] }, also: [flow i, ...]]
  *   fixes   [i]                                         codemap.fixes[i]
- *   recipe  { i, step } | absent                        codemap.recipes[i], the step that names the file
+ *   recipe  { i } | absent                              codemap.recipes[i], for adding one like it
  * A part with no files of its own uses its parts' files; a top-level group with none
  * instead gets { folders: [i, ...], read: [i, ...] }: the code-map folders most of its
  * parts live in, and the steps of the reading order about its parts' files.
@@ -74,6 +74,7 @@ function parse(md) {
     const st = (c[3].match(/`([^`]+)`/) || [])[1] || '';
     let where = clean(c[2]);
     if (/^same$/i.test(where) && folders.length) where = folders[folders.length - 1].where; // "same" as the row above
+    if (/^n\/a$/i.test(where)) where = ''; // docs run nowhere
     if (p) folders.push({ path: p, lang: clean(c[1]), where: where, start: st });
   });
 
@@ -180,12 +181,16 @@ function forPart(n, M, top) {
   const fixes = [], code = files.filter((f) => !/\.md$/.test(f)); // a shared doc is no clue to what broke
   M.fixes.forEach((x, i) => { if (code.some((f) => x.paths.some((p) => names(p, f)))) fixes.push(i); });
 
-  // A recipe the main file belongs to: a step naming it exactly beats one naming it by pattern.
-  let recipe = null, rank = 0;
-  if (got.own) M.recipes.forEach((rc, i) => rc.steps.forEach((s, j) => s.paths.forEach((p) => {
-    const k = names(p, files[0]);
-    if (k >= 2 && k > rank) { rank = k; recipe = { i: i, step: j }; }
-  })));
+  // A recipe for adding one like it: the recipe's subject (the first path it names) is a
+  // pattern like app/widgets/<id>.js that the main file fits, and the file is not one the
+  // recipes name outright (pi/server.js is where Pi data is wired in, not a new one).
+  // attach() then keeps it only on the part that owns the file (see keepRecipes).
+  let recipe = null;
+  if (got.own) M.recipes.forEach((rc, i) => {
+    const subject = (rc.steps[0] && rc.steps[0].paths[0]) || '';
+    const named = M.recipes.some((r2) => r2.steps.some((s) => s.paths.some((q) => names(q, files[0]) === 3)));
+    if (!recipe && /</.test(subject) && names(subject, files[0]) === 2 && !named) recipe = { i: i };
+  });
 
   if (start.read < 0 && start.folder < 0 && !startFlows.length && !list.length && !fixes.length && !recipe) return null;
   const out = { start: start };
@@ -212,10 +217,42 @@ function forGroup(files, M) {
   return out;
 }
 
+// A recipe for adding one like it belongs on the part that owns its main file, not on
+// every part that mentions it: the part must sit in the top-level group that holds most
+// of the recipe's folder (app/widgets/ -> The TV, pi/ -> The Raspberry Pi), and be the
+// shallowest part with that main file (the To-do widget, not its lead-times feature).
+function keepRecipes(parts, where, M) {
+  const owner = {}; // folder row -> top-level group with most files in it
+  M.folders.forEach((d, i) => {
+    const count = {};
+    Object.keys(where).forEach((id) => { const w = where[id]; if (w.main && folderOf(w.main, M) === i) count[w.top] = (count[w.top] || 0) + 1; });
+    owner[i] = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
+  });
+  const best = {};
+  Object.keys(parts).forEach((id) => {
+    const e = parts[id], w = where[id];
+    if (!e.recipe) return;
+    const subject = M.recipes[e.recipe.i].steps[0].paths[0];
+    if (owner[folderOf(subject.replace(/<[^>]+>/g, 'x'), M)] !== w.top) { delete e.recipe; return; }
+    const b = best[w.main];
+    if (!b || w.depth < where[b].depth) best[w.main] = id;
+  });
+  Object.keys(parts).forEach((id) => { const e = parts[id]; if (e.recipe && best[where[id].main] !== id) delete e.recipe; });
+}
+
 function attach(data, md) {
   const M = parse(md);
   const parts = {};
-  (function walk(list, top) { list.forEach((n) => { const e = forPart(n, M, top); if (e) parts[n.id] = e; walk(n.children || [], false); }); })(data.tree || [], true);
+  const where = {};
+  (function walk(list, top, depth) {
+    list.forEach((n) => {
+      const e = forPart(n, M, !top);
+      if (e) parts[n.id] = e;
+      where[n.id] = { top: top || n.id, depth: depth, main: filesOf(n).files[0] };
+      walk(n.children || [], top || n.id, depth + 1);
+    });
+  })(data.tree || [], null, 0);
+  keepRecipes(parts, where, M);
   // The pages only need the words; the paths were for matching.
   M.read.forEach((r) => { delete r.about; delete r.paths; });
   M.flows.forEach((f) => f.says.forEach((s) => { delete s.paths; }));

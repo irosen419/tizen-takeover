@@ -4,7 +4,7 @@
  * remote. The same data the Layout Studio's Architecture page draws:
  * studio/architecture/data.json, written for the TV by
  * node studio/build-architecture.js into app/widgets/architecture-data.js
- * (var HUB_ARCH = {...};, about 170 KB).
+ * (var HUB_ARCH = {...};, about 200 KB with the code map).
  *
  *   tile       a tiny drawn map of the seven Big picture boxes and the status
  *              counts. It needs no data file: the counts and boxes sit in
@@ -772,7 +772,7 @@
 
   /* The code map (docs/CODE-MAP.md, matched to the part's files by studio/codemap.js
      when the data file is built): where to start reading, what the map says about
-     its files, what to check when it breaks and the recipe it belongs to. */
+     its files, what to check when it breaks and the recipe for adding one like it. */
 
   // Text with `code` spans, built as nodes (never innerHTML: the words are data).
   function codeText(cls, parent, text) {
@@ -789,10 +789,11 @@
     r.setAttribute('data-key', key);
     return r;
   }
+  function runsOn(f) { return f.lang + (f.where ? '  \u00b7  runs on ' + f.where : ''); }
   function cmFolderLine(parent, f) {
     var w = div('ar-cm-in', parent);
     span('ar-cm-code', w, f.path);
-    w.appendChild(document.createTextNode('  ' + f.lang + '  \u00b7  runs on ' + f.where));
+    w.appendChild(document.createTextNode('  ' + runsOn(f)));
   }
 
   function drawCodeMap(scroll, n) {
@@ -806,7 +807,7 @@
         var f = CM.folders[e.folders[i]];
         row = cmRow(scroll, 'd:cm:dir' + i, 'ar-cm-file');
         div('ar-cm-path', row, f.path);
-        div('ar-cm-note', row, f.lang + '  \u00b7  runs on ' + f.where);
+        div('ar-cm-note', row, runsOn(f));
         if (f.start) {
           var st = div('ar-cm-also', row, 'Start at ');
           span('ar-cm-code', st, f.start);
@@ -861,13 +862,12 @@
     }
     if (e.recipe) {
       var rc = CM.recipes[e.recipe.i];
-      div('ar-dr-label', scroll, 'Recipe: ' + rc.title);
+      div('ar-dr-label', scroll, 'To add one like it: ' + rc.title);
       row = cmRow(scroll, 'd:cm:recipe', 'ar-cm-recipe');
       for (i = 0; i < rc.steps.length; i++) {
-        var li = div('ar-cm-li' + (i === e.recipe.step ? ' is-here' : ''), row);
+        var li = div('ar-cm-li', row);
         span('ar-cm-num', li, (i + 1) + '.');
-        var body = codeText('ar-cm-litext', li, rc.steps[i].text);
-        if (i === e.recipe.step) span('ar-cm-here', body, 'this part');
+        codeText('ar-cm-litext', li, rc.steps[i].text);
       }
     }
   }

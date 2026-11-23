@@ -614,11 +614,12 @@ async function checkCodeMap() {
     await page.evaluate((x) => window.HUB_ARCHITECTURE.goto(x, true), id);
     await settle(page);
     const keys = [];
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 60; i++) {
       const k = (await focusKey(page)) || '';
+      const sc = (await st(page)).scroll;
       if (k.indexOf('d:cm:') === 0 && keys.indexOf(k) < 0) keys.push(k);
       await press(page, 'ArrowDown');
-      if (await focusKey(page) === k) break;
+      if (await focusKey(page) === k && (await st(page)).scroll === sc) break;     // a tall row scrolls before focus moves
     }
     return keys;
   };
@@ -632,11 +633,14 @@ async function checkCodeMap() {
   // The code map sits after Files and before Notes or Talks to.
   const order = await page.evaluate(() => [].map.call(document.querySelectorAll('#panel .ar-dr-scroll .f'), (e) => e.getAttribute('data-key')).join(' '));
   assert(/d:files d:cm:start/.test(order) && !/d:cm:\S+ .*d:files/.test(order), 'order: ' + order);
-  // The To-do widget: its main file and the Add a widget recipe with one step marked.
+  // The To-do widget: its main file and the Add a widget recipe.
   keys = await cmKeys('tv.widgets.todo');
   assert(keys.indexOf('d:cm:recipe') >= 0 && keys.indexOf('d:cm:fix0') >= 0, 'to-do keys: ' + keys.join(','));
   assert(/main file/.test(await text('.ar-cm-start')) && /app\/widgets\/todo\.js/.test(await text('.ar-cm-start')), 'to-do start');
-  assert(await page.evaluate(() => document.querySelectorAll('#panel .ar-cm-li').length) >= 5 && await page.evaluate(() => document.querySelectorAll('#panel .ar-cm-li.is-here').length) === 1, 'recipe steps');
+  assert(await page.evaluate(() => document.querySelectorAll('#panel .ar-cm-li').length) >= 5 && /To add one like it: Add a widget/.test(await text('.ar-dr-label')), 'recipe steps');
+  // The Live server is where Pi data is wired in, not a new Pi module: no recipe.
+  keys = await cmKeys('pi.server');
+  assert(keys.indexOf('d:cm:recipe') < 0, 'the Live server shows a recipe');
   // The TV group: folders first, then its steps of the reading order.
   keys = await cmKeys('tv');
   assert(keys[0] === 'd:cm:dir0' && keys.some((k) => /^d:cm:read/.test(k)), 'tv keys: ' + keys.join(','));
@@ -693,12 +697,15 @@ async function checkFit(grow) {
   // Code map rows (start, files, fixes, recipe; a group's folders and reading order), each looked at with focus on it.
   for (const id of ['pi.server', 'tv.hub', 'tv.widgets.todo', 'tv']) {
     await page.evaluate((x) => window.HUB_ARCHITECTURE.goto(x, true), id);
-    for (let i = 0; i < 40; i++) {
+    let looked = 0;
+    for (let i = 0; i < 60; i++) {
       const k = (await focusKey(page)) || '';
-      if (k.indexOf('d:cm:') === 0) await look('code map ' + id + ' ' + k);
+      const sc = (await st(page)).scroll;
+      if (k.indexOf('d:cm:') === 0) { await look('code map ' + id + ' ' + k); looked++; }
       await press(page, 'ArrowDown');
-      if (await focusKey(page) === k) break;
+      if (await focusKey(page) === k && (await st(page)).scroll === sc) break;     // a tall row scrolls before focus moves
     }
+    if (!looked) problems.push('code map ' + id + ': no code map row was reached');
   }
   await press(page, 'Escape');
   await page.evaluate(() => window.HUB_ARCHITECTURE.flow('flow.pr-to-tv', 3));

@@ -449,12 +449,9 @@ body:not(.motion-fade) .ar-drawer { -webkit-animation: ar-slide 180ms ease-out; 
 .ar-cm-step .ar-cm-n { margin-top: 0.1rem; }
 .ar-cm-steptext { flex: 1 1 0; min-width: 0; }
 .ar-cm-when { font-weight: 700; line-height: 1.45; padding: 0.04rem 0; color: #f6c06b; }
-.ar-cm-li { display: flex; align-items: flex-start; color: var(--text-2); padding: 0.1rem 0; }
-.ar-cm-li.is-here { color: var(--text); }
+.ar-cm-li { display: flex; align-items: flex-start; color: var(--text); padding: 0.1rem 0; }
 .ar-cm-num { flex: 0 0 auto; min-width: 1.6rem; font-weight: 700; }
-.ar-cm-li.is-here .ar-cm-num { color: #aab1ff; }
 .ar-cm-litext { flex: 1 1 0; min-width: 0; line-height: 1.5; }
-.ar-cm-here { display: inline-block; margin-left: 0.5rem; padding: 0 0.45rem; border-radius: 0.5rem; background: #8d96ff; color: #0d0f1a; font-size: 0.85rem; font-weight: 800; line-height: 1.5; letter-spacing: 0.04em; text-transform: uppercase; }
 
 /* ---------- loading and failure ---------- */
 

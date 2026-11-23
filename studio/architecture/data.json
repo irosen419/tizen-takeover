@@ -1297,7 +1297,7 @@
        "status": "unverified",
        "summary": "This map on the TV: Big picture, group diagrams and a detail drawer, all driven by the remote, plus the data flows stepped one by one.",
        "details": [
-        "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 170 KB of data (app/widgets/architecture-data.js) loads only when the widget is first opened.",
+        "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 200 KB of data (app/widgets/architecture-data.js, with the code map) loads only when the widget is first opened.",
         "The data is the same studio/architecture/data.json the Studio page draws: node studio/build-architecture.js writes both, and its --check fails when either is out of date.",
         "The drawer's Code map section (from docs/CODE-MAP.md, matched by studio/codemap.js) is one row per item, read with Up and Down: where to start, the map's notes on other files, what to check when it breaks and the recipe."
        ],

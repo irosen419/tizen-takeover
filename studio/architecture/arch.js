@@ -680,9 +680,10 @@
   function cmPath(p) {
     return /[<\s]/.test(p) ? '<span class="ar-cm-path">' + esc(p) + '</span>' : '<a class="ar-cm-path" target="_blank" rel="noopener" href="' + esc(REPO + p.replace(/\/$/, '')) + '">' + esc(p) + '</a>';
   }
+  function cmRuns(f) { return f.lang + (f.where ? ' · runs on ' + f.where : ''); }
   function cmFolder(i) {
     var f = CM.folders[i]; if (!f) return '';
-    return '<span class="ar-cm-where"><code>' + esc(f.path) + '</code> ' + esc(f.lang) + ' · runs on ' + esc(f.where) + '</span>';
+    return '<span class="ar-cm-where"><code>' + esc(f.path) + '</code> ' + esc(cmRuns(f)) + '</span>';
   }
   function cmFlow(ij) { var f = CM.flows[ij[0]], s = f && f.says[ij[1]]; return s ? '<p>' + cmText(s.text) + '</p>' : ''; }
   function codeMapHtml(n) {
@@ -694,7 +695,7 @@
       h += '<p class="ar-cm-sub">Where this group\u2019s code lives, and where the map starts each folder.</p><ul class="ar-cm-files">';
       e.folders.forEach(function (i) {
         var f = CM.folders[i];
-        h += '<li><div class="ar-cm-row">' + cmPath(f.path) + '</div><p>' + esc(f.lang) + ' · runs on ' + esc(f.where) + '</p>' + (f.start ? '<p class="ar-cm-also">Start at ' + cmPath(f.start) + '</p>' : '') + '</li>';
+        h += '<li><div class="ar-cm-row">' + cmPath(f.path) + '</div><p>' + esc(cmRuns(f)) + '</p>' + (f.start ? '<p class="ar-cm-also">Start at ' + cmPath(f.start) + '</p>' : '') + '</li>';
       });
       h += '</ul>';
       if (e.read) {
@@ -731,8 +732,8 @@
     }
     if (e.recipe) {
       var rc = CM.recipes[e.recipe.i];
-      h += '<details class="ar-cm-recipe"><summary><span>Recipe: ' + esc(rc.title) + '</span><small>' + plural(rc.steps.length, 'step') + '</small></summary><ol>' + rc.steps.map(function (st, j) {
-        return '<li' + (j === e.recipe.step ? ' class="is-here"' : '') + '>' + cmText(st.text) + (j === e.recipe.step ? ' <em>\u2190 this part</em>' : '') + '</li>';
+      h += '<details class="ar-cm-recipe"><summary><span>To add one like it: ' + esc(rc.title) + '</span><small>' + plural(rc.steps.length, 'step') + '</small></summary><ol>' + rc.steps.map(function (st) {
+        return '<li>' + cmText(st.text) + '</li>';
       }).join('') + '</ol></details>';
     }
     return h + '</div>';
