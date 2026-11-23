@@ -206,6 +206,17 @@ var HUB_CONFIG = {
     { id: 'groceries', name: 'Groceries', layout: [
       { widget: 'pantry',        x: 0, y: 0, w: 6, h: 6 },
       { widget: 'list',          x: 6, y: 0, w: 6, h: 6 }
+    ] },
+    /* Photos: friends' photos as a slideshow (app/widgets/photos.js), from
+       the Pi's /photos/list (needs the Pi's photo album), among everyday
+       tiles. OK on it opens the thumbnail grid in full screen. */
+    { id: 'photos', name: 'Photos', layout: [
+      { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
+      { widget: 'photos',        x: 3, y: 0, w: 6, h: 4 },
+      { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
+      { widget: 'calendar',      x: 0, y: 2, w: 3, h: 4 },
+      { widget: 'todo',          x: 9, y: 2, w: 3, h: 4 },
+      { widget: 'entertainment', x: 3, y: 4, w: 6, h: 2 }
     ] }
   ],
 
@@ -545,6 +556,14 @@ var HUB_CONFIG = {
      * item goes on the grocery list by itself. Needs Pi server 0.30.0.
      */
     pantry: { touch: true },
+
+    /*
+     * Photo album: friends' photos from the Pi (app/widgets/photos.js).
+     *   seconds  how long each photo shows on the tile (3 or more; 12 by default)
+     * The photos come from the hub server (live.server above). The tile is on
+     * the "Photos" layout; OK opens the grid and the viewer in full screen.
+     */
+    photos: { seconds: 12 },
 
     sunpath: {
       roofAngle: 40,

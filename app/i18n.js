@@ -66,6 +66,7 @@
     'hub.layout.architecture-test': 'Arquitectura del hub',
     'hub.layout.grocery-test': 'Prueba del súper',
     'hub.layout.groceries': 'Compras',
+    'hub.layout.photos': 'Fotos',
     /* The About strip's group and row names (key 'hub.about.<name>' with the
      * English words joined, 'This hub' = ThisHub). The values come from the
      * hub's own status lines and stay as they are. */
@@ -1767,7 +1768,24 @@
     'pantry.unit.kg': 'kg',
     'pantry.unit.ml': 'ml',
     'pantry.unit.l': 'l',
-    'pantry.unit.gal': 'gal'
+    'pantry.unit.gal': 'gal',
+
+    /* ---- Photo album (app/widgets/photos.js). Month names come from this
+     * file's lists ("noviembre de 2026", capitalized at the start). ---- */
+    'photos.title': 'Álbum de fotos',
+    'photos.titleShort': 'Fotos',
+    'photos.loading': 'Cargando fotos…',
+    'photos.empty': 'Todavía no hay fotos',
+    'photos.emptyHint': 'Aquí aparecerán las fotos que compartan tus amigos.',
+    'photos.offline': 'Las fotos se guardan en la Pi',
+    'photos.offlineHint': 'Volverán a aparecer cuando se pueda llegar a la Pi.',
+    'photos.month': '{month} de {year}',
+    'photos.count': '{n} de {total}',
+    'photos.countOne': '1 foto',
+    'photos.countAll': '{n} fotos',
+    'photos.photoOf': 'Foto de {month}',
+    'photos.tipView': 'Izquierda y derecha para ver más',
+    'photos.backGrid': 'Atrás para ver todas las fotos'
   };
 
   var DAYS = {

@@ -70,6 +70,7 @@ Support folders: `dev/` (tests, screenshot scripts, laptop preview, version tool
 | --- | --- | --- |
 | Screen routes (`SCREEN_ROUTES`) | `/live/*`, `/todo/ops`, `/shows/*`, `/echo/run`, `/guest/pin`, ... | home-network addresses (or `HUB_TV_IPS`), no token |
 | Touch routes (`TOUCH_ROUTES`) and the touch app files (`/`, `/app/...`) | `/touch/state`, `/touch/todo/ops`, `/grocery/ops`, `/pantry/screen-ops`, `/products/*` | home and Tailscale addresses |
+| Photo album (`photoRoute()`, `pi/photos.js`; files from `pi/photos-sync.sh` on the Pi host) | `GET /photos/list`, `GET /photos/img/<id>?size=full\|thumb` | home and Tailscale addresses |
 | Control API (`control()`) | `/api/*` | bearer token |
 | Side door | control API only, on `127.0.0.1` at `HUB_TUNNEL_PORT` | local processes, bearer token |
 | `/health` | none | anyone |

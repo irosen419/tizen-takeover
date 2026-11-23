@@ -1,0 +1,18 @@
+# Photo album sync (pi/photos-sync.sh): copies new photos from the wall
+# calendar over adb. A systemd user unit; install (pi/README.md, "Photo album"):
+#   mkdir -p ~/.config/systemd/user
+#   cp pi/photos-sync.service pi/photos-sync.timer ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now photos-sync.timer
+# %h is your home folder; change the path if the repo lives elsewhere.
+[Unit]
+Description=Home Hub photo album sync from the wall calendar
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/code/tizen-takeover/pi
+ExecStart=/bin/sh %h/code/tizen-takeover/pi/photos-sync.sh
+# Environment=PHOTOS_ADB_ADDR=192.168.1.208:5555
+Nice=10
+TimeoutStartSec=30min

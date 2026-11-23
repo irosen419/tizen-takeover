@@ -1420,6 +1420,34 @@
        "notes": [
         "Needs Pi server 0.30.0. Not yet tried on the TV."
        ]
+      },
+      {
+       "id": "tv.widgets.photos",
+       "title": "Photos (TV)",
+       "kind": "component",
+       "status": "draft",
+       "summary": "Friends' photos on the TV: a slideshow on the tile (about 12 s each, crossfaded, with the month), and in full screen a thumbnail grid by month with a big viewer.",
+       "details": [
+        "Widget id 'photos' (app/widgets/photos.js and .css), on its own \"Photos\" layout. It fetches GET /photos/list at boot and every 10 minutes from the hub server the live line uses; an unchanged rev changes nothing. Images come from GET /photos/img/<id>?size=thumb|full.",
+        "A photo close to the tile's shape covers it; any other is shown whole over a blurred copy of itself (static, never animated). OK opens the grid; OK on a thumbnail opens the viewer (Left/Right for the previous/next, Back to the grid). No Pi, no photos: a quiet frame says so.",
+        "Words in English and Spanish (app/i18n.js)."
+       ],
+       "files": [
+        "app/widgets/photos.js",
+        "app/widgets/photos.css",
+        "dev/photos-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.photos",
+         "label": "GET /photos/list and /photos/img/<id>",
+         "dir": "in"
+        }
+       ],
+       "notes": [
+        "Not yet tried on the TV or against the real Pi."
+       ],
+       "pr": "new PR"
       }
      ]
     },
@@ -2880,6 +2908,94 @@
      ]
     },
     {
+     "id": "pi.photos",
+     "title": "Photo album",
+     "kind": "component",
+     "status": "draft",
+     "summary": "Friends' photos, copied from the wall calendar onto the Pi and handed to the TV and the tablet, read only.",
+     "details": [
+      "pi/photos.js is the one storage adapter (list, readOriginal, readThumb, stat), so an R2 store can replace the local folder later without touching server.js. Ids are the first 12 hex digits of the SHA-1 of the file name; file names never leave photos.js, not in an answer or a log line.",
+      "Routes in server.js (photoRoute()): GET /photos/list (newest first, at most 500, with a rev) and GET /photos/img/<id>?size=full|thumb (cached a day, immutable). Home and Tailscale addresses only, the touch door's trust. GET /api/photos gives counts and the last sync for ./hub photos status and the mailbox's photos.status.",
+      "Only images (WebP, JPEG, PNG); width and height read from the file's own header, the month from its modified time. Videos are skipped for now."
+     ],
+     "files": [
+      "pi/photos.js",
+      "pi/photos-test.js",
+      "pi/server.js",
+      "pi/hubctl.js",
+      "pi/mailbox.js"
+     ],
+     "talksTo": [
+      {
+       "to": "tv.widgets.photos",
+       "label": "the list and the images",
+       "dir": "out"
+      },
+      {
+       "to": "pi.hubctl",
+       "label": "./hub photos status (GET /api/photos)",
+       "dir": "out"
+      },
+      {
+       "to": "pi.mailbox",
+       "label": "photos.status from Claude",
+       "dir": "in"
+      },
+      {
+       "to": "pi.tailscale",
+       "label": "the tablet reads it over Tailscale",
+       "dir": "out"
+      }
+     ],
+     "notes": [
+      "Not yet run on the real Pi: the first sync and the routes are untested there."
+     ],
+     "pr": "new PR",
+     "children": [
+      {
+       "id": "pi.photos.store",
+       "title": "data/photos",
+       "kind": "data",
+       "status": "draft",
+       "summary": "The local folder store: orig/ (the files as pulled), thumb/ (480 px wide), index.json (rebuilt after each sync) and state.json (the last sync's counts).",
+       "files": [
+        "pi/photos.js"
+       ],
+       "talksTo": [],
+       "pr": "new PR"
+      },
+      {
+       "id": "pi.photos.sync",
+       "title": "Calendar sync script",
+       "kind": "script",
+       "status": "draft",
+       "summary": "pi/photos-sync.sh on the Pi host (the hub's container has no adb): adb pulls new images from the calendar's /sdcard/CloudAlbum, makes thumbnails and rebuilds the index.",
+       "details": [
+        "Never deletes anything, on the calendar or on the Pi; only pulls files that are not there yet. Prints counts only. A calendar that is off or away is not an error.",
+        "Run by a systemd user unit, photos-sync.service, from photos-sync.timer (see sched.timers.photos-sync). Install steps in pi/README.md, \"Photo album\"."
+       ],
+       "files": [
+        "pi/photos-sync.sh",
+        "pi/photos-sync.service",
+        "pi/photos-sync.timer"
+       ],
+       "talksTo": [
+        {
+         "to": "ext.ecalendar",
+         "label": "adb pull from /sdcard/CloudAlbum",
+         "dir": "in"
+        },
+        {
+         "to": "pi.photos.store",
+         "label": "new files, thumbnails, index",
+         "dir": "out"
+        }
+       ],
+       "pr": "new PR"
+      }
+     ]
+    },
+    {
      "id": "pi.tailscale",
      "title": "Tailscale",
      "kind": "service",
@@ -3509,6 +3625,25 @@
      "notes": [
       "Live TVmaze calls have not run from the real Pi yet."
      ]
+    },
+    {
+     "id": "ext.ecalendar",
+     "title": "Wall calendar (eCalendar)",
+     "kind": "external",
+     "status": "draft",
+     "summary": "The Dragon Touch wall calendar. Friends send photos to its eCalendar app's cloud album; the app keeps them in /sdcard/CloudAlbum, where the Pi copies them from over adb.",
+     "details": [
+      "The cloud album is the source: the hub never writes to the calendar or to the eCalendar cloud. adb over the home network must be on (its address is a setting, PHOTOS_ADB_ADDR)."
+     ],
+     "files": [],
+     "talksTo": [
+      {
+       "to": "pi.photos.sync",
+       "label": "new photos, pulled over adb",
+       "dir": "out"
+      }
+     ],
+     "pr": "new PR"
     },
     {
      "id": "ext.product-data",
@@ -4282,6 +4417,25 @@
          "dir": "out"
         }
        ]
+      },
+      {
+       "id": "sched.timers.photos-sync",
+       "title": "Photo sync",
+       "kind": "task",
+       "status": "draft",
+       "summary": "A systemd user timer on the Pi host runs the calendar sync every 30 minutes (and 2 minutes after boot).",
+       "files": [
+        "pi/photos-sync.timer",
+        "pi/photos-sync.service"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.photos.sync",
+         "label": "runs photos-sync.sh",
+         "dir": "out"
+        }
+       ],
+       "pr": "new PR"
       }
      ]
     },
@@ -5821,6 +5975,33 @@
     {
      "node": "pi.pantry",
      "say": "A known product counts one up; a new one is made from the catalog, brand by key"
+    }
+   ]
+  },
+  {
+   "id": "flow.photo-to-screen",
+   "title": "Friend's photo to the screen",
+   "summary": "A friend sends a photo to the calendar's cloud album; within half an hour it is in the TV's slideshow.",
+   "steps": [
+    {
+     "node": "ext.ecalendar",
+     "say": "A friend sends a photo to the eCalendar cloud album; the calendar saves it in /sdcard/CloudAlbum"
+    },
+    {
+     "node": "sched.timers.photos-sync",
+     "say": "Every 30 minutes the Pi host's timer starts the sync"
+    },
+    {
+     "node": "pi.photos.sync",
+     "say": "adb pulls only the new images, makes thumbnails and rebuilds the index"
+    },
+    {
+     "node": "pi.photos",
+     "say": "The album's rev changes; GET /photos/list hands out the new list"
+    },
+    {
+     "node": "tv.widgets.photos",
+     "say": "Within 10 minutes the tile fetches the list and the new photo joins the slideshow"
     }
    ]
   }
