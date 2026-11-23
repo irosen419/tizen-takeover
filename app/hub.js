@@ -953,21 +953,24 @@
   // (Dark), kept on this screen in localStorage so each screen can differ.
   // ?theme= on the address still wins; this beats HUB_CONFIG.theme.
   var LOOK_KEY = 'homeHub.look';
+  var lookNow = null;   // the choice held in memory too, for a TV whose localStorage fails
   function savedLook() {
+    if (lookNow) return lookNow;
     try {
       var v = window.localStorage && window.localStorage.getItem(LOOK_KEY);
       return v === 'day' || v === 'night' ? v : 'auto';
     } catch (e) { return 'auto'; }
   }
   window.HUB_LOOK = {
-    get: savedLook,
+    get: function () { return savedLook(); },
     set: function (v) {
+      lookNow = v === 'day' || v === 'night' ? v : 'auto';
       try {
         if (window.localStorage) {
           if (v === 'day' || v === 'night') window.localStorage.setItem(LOOK_KEY, v);
           else window.localStorage.removeItem(LOOK_KEY);
         }
-      } catch (e) { /* not kept; still applies until the page reloads */ }
+      } catch (e) { /* not kept; lookNow still holds it until the page reloads */ }
       checkTheme();
     }
   };

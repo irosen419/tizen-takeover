@@ -509,8 +509,15 @@ async function checkLook() {
   await clockPage.pick(page, 'lang-es');
   label = await page.evaluate(() => document.querySelectorAll('.clock-group-label')[2].textContent);
   assert(label === 'Aspecto', 'Spanish label: ' + label);
-  const bad = await controlsFit(page);
+  let bad = await controlsFit(page);
   assert(!bad.length, 'Spanish panel: ' + bad.join('; '));
+  await page.evaluate(() => document.querySelector('#panel .panel-btn').click());
+  await until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() &&
+    !!document.querySelector('.clock-page.is-full')), 4000, 'no full screen');
+  bad = await controlsFit(page);
+  assert(!bad.length, 'Spanish full screen: ' + bad.join('; '));
+  const fs = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.clock-opt')).fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize));
+  assert(fs > 1, 'full screen pills shrank: ' + fs + 'rem');
   noErrors(page);
 }
 
