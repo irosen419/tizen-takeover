@@ -6,8 +6,10 @@
 # git fetch.
 #
 # Each run:
-#   - pi/data/autopull.off exists: does nothing (logs "off" once).
-#   - another run is still going (the lock): does nothing.
+#   - the off switch exists (see below): does nothing (logs "off" once).
+#   - another run is still going (the lock): does nothing (logs "skipped: another run is active").
+#   - the state folder cannot be created or written: says so on stderr (the
+#     journal) and in the log if it can, and exits 1. Never silent.
 #   - failed a short while ago: waits (5 min x 2^failures, at most 6 h).
 #   - not on main, or files changed by hand on the Pi: skips (logged once).
 #   - fetches origin main; already there: nothing, no log line.
@@ -18,33 +20,47 @@
 #     the budget user service if there is one, the same order as hubup in
 #     pi/aliases.sh.
 #
-# Log: pi/data/autopull.log, one line per action, counts only (never a file
-# name or a commit message), the newest 200 lines. State (failures, the last
-# reason logged, a restart still owed): pi/data/autopull.state.
+# Everything it writes lives in a folder the Pi user owns (pi/data is owned by
+# root on the Pi, so it is not used): ~/.local/state/tizen-takeover/autopull/
+#   autopull.log    one line per action, counts only (never a file name or a
+#                   commit message), the newest 200 lines. Problems start "ERROR".
+#   autopull.state  failures, the last reason logged, a restart still owed
+#   autopull.off    the kill switch (hubauto off). The old pi/data/autopull.off
+#                   still works too (only read, never written).
 #
 # For tests: AUTOPULL_REPO (the checkout; default: two folders up from here),
-# AUTOPULL_DATA (default: pi/data), AUTOPULL_NOW (seconds, for the backoff)
+# AUTOPULL_STATE (default: the folder above), AUTOPULL_NOW (seconds, for the backoff)
 # and AUTOPULL_RESTART_CMD (run as "$AUTOPULL_RESTART_CMD hub", "... budget"
 # and "... has-budget" instead of docker compose and systemctl).
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 REPO=${AUTOPULL_REPO:-$(cd "$HERE/../.." && pwd)}
-DATA=${AUTOPULL_DATA:-$REPO/pi/data}
+DATA=${AUTOPULL_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/tizen-takeover/autopull}
 BRANCH=main
 FAKE=${AUTOPULL_RESTART_CMD:-}
 LOG=$DATA/autopull.log
 STATE=$DATA/autopull.state
 OFF=$DATA/autopull.off
+OLD_OFF=$REPO/pi/data/autopull.off
 LOCK=$DATA/autopull.lock
 export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/bin/true LC_ALL=C
 
-mkdir -p "$DATA" || exit 1
+# Loud, never silent: stderr goes to the journal; the log too when it can.
+die() {
+  echo "autopull: ERROR: $1" >&2
+  printf '%s ERROR %s\n' "$(date '+%Y-%m-%d %H:%M')" "$1" >> "$LOG" 2>/dev/null
+  exit 1
+}
+
+mkdir -p "$DATA" 2>/dev/null || die "cannot create the state folder $DATA (fix: mkdir -p $DATA)"
+[ -w "$DATA" ] || die "cannot write to the state folder $DATA (fix: sudo chown -R $(id -un): $DATA)"
+( : >> "$LOG" ) 2>/dev/null || die "cannot write the log $LOG (fix: sudo chown $(id -un): $LOG)"
 
 now() { echo "${AUTOPULL_NOW:-$(date +%s)}"; }
 
 say() {
-  printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M')" "$1" >> "$LOG"
+  printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M')" "$1" >> "$LOG" || echo "autopull: ERROR: cannot write the log $LOG" >&2
   if [ "$(wc -l < "$LOG")" -gt 200 ]; then
     tail -n 200 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
   fi
@@ -54,8 +70,11 @@ say() {
 if ! mkdir "$LOCK" 2>/dev/null; then
   if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +30 2>/dev/null)" ]; then
     rmdir "$LOCK" 2>/dev/null
-    mkdir "$LOCK" 2>/dev/null || exit 0
+    mkdir "$LOCK" 2>/dev/null || die "cannot create the lock $LOCK"
   else
+    # The folder is writable (checked above), so a lock that is there means a run is going.
+    [ -d "$LOCK" ] || die "cannot create the lock $LOCK"
+    printf '%s skipped: another run is active\n' "$(date '+%Y-%m-%d %H:%M')" >> "$LOG"
     exit 0
   fi
 fi
@@ -72,7 +91,8 @@ PENDING=$(get pending)
 
 save() {
   printf 'fails=%s\nlast=%s\nreason=%s\npending=%s\n' "$FAILS" "$LAST" "$REASON" "$PENDING" > "$STATE.tmp" &&
-    mv "$STATE.tmp" "$STATE"
+    mv "$STATE.tmp" "$STATE" ||
+    echo "autopull: ERROR: cannot write the state file $STATE" >&2
 }
 
 # A reason to skip: logged only when it differs from the last one.
@@ -95,7 +115,7 @@ fail() {
   FAILS=$((FAILS + 1))
   LAST=$(now)
   REASON=fail
-  say "$1 ($FAILS in a row; next try in $(( $(backoff) / 60 )) min)"
+  say "ERROR $1 ($FAILS in a row; next try in $(( $(backoff) / 60 )) min)"
   save
   exit 0
 }
@@ -125,8 +145,8 @@ restart_all() {
 }
 
 # --- the run ---
-if [ -f "$OFF" ]; then
-  note off "off (pi/data/autopull.off is there)"
+if [ -f "$OFF" ] || [ -f "$OLD_OFF" ]; then
+  note off "off (the autopull.off switch is there)"
 fi
 if [ "$REASON" = off ]; then say "on again"; REASON=; save; fi
 

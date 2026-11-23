@@ -807,7 +807,7 @@ def check_repos():
             if os.path.realpath(repo) == os.path.realpath(REPO_DIR):
                 # The hub's auto-pull timer (pi/autopull/) fetches every 5 minutes even when it
                 # can't merge, so judge it by how old the commit it hasn't merged is.
-                hint = ' (auto-pull timer: see pi/data/autopull.log; pi/data/autopull.off turns it off)'
+                hint = ' (auto-pull timer: run hubauto; hubauto off turns it off)'
                 rc, ct = git(repo, 'log', '-1', '--format=%ct', remote_sha)
                 if rc == 0 and ct.strip().isdigit():
                     since = max(moved, int(ct.strip()))

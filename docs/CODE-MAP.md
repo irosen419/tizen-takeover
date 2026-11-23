@@ -117,7 +117,7 @@ More detail: "Writing a widget" in `README.md` and the top of `app/hub.js`.
 | Symptom | Look at |
 | --- | --- |
 | TV blank or old after a merge | `app/update.js` (held commit, jsDelivr cache), About panel's Version check row |
-| Wall tablet or phone old after a merge | the auto-pull log, pi/data/autopull.log on the Pi (`hubauto`), and its kill switch pi/data/autopull.off; `app/appver.js` (About panel's Version check row, the dot on the Clock tile) |
+| Wall tablet or phone old after a merge | the auto-pull log, ~/.local/state/tizen-takeover/autopull/autopull.log on the Pi (`hubauto`), and its kill switch autopull.off in the same folder; `app/appver.js` (About panel's Version check row, the dot on the Clock tile) |
 | A tile shows an error box | that widget's file in `app/widgets/`; `hub.js` wraps every widget call in try/catch |
 | Live dot not green | `app/live.js` status text; `./hub log --errors` on the Pi; `docs/live-updates.md` |
 | A mailbox command failed | `outbox/<id>.json`, then `COMMANDS` in `pi/mailbox.js`; `dev/hub-remote.js status` |

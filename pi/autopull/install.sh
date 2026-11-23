@@ -10,7 +10,8 @@
 #   pi/autopull/install.sh --remove turn it off and remove the unit files
 #
 # Runs as the normal user (no sudo). To pause it without removing it:
-# touch pi/data/autopull.off (rm it to go on). Log: pi/data/autopull.log.
+# hubauto off (hubauto on to go on). Log and state live in
+# ~/.local/state/tizen-takeover/autopull/ (hubauto shows them).
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -20,7 +21,7 @@ if [ "${1:-}" = "--remove" ]; then
   systemctl --user disable --now hub-autopull.timer 2>/dev/null || true
   rm -f "$UNIT_DIR/hub-autopull.timer" "$UNIT_DIR/hub-autopull.service"
   systemctl --user daemon-reload
-  echo "Home Hub auto-pull removed. Its log stays in pi/data/autopull.log."
+  echo "Home Hub auto-pull removed. Its log stays in ~/.local/state/tizen-takeover/autopull/."
   exit 0
 fi
 
@@ -31,6 +32,8 @@ fi
 
 chmod +x "$HERE/autopull.sh" 2>/dev/null || true
 mkdir -p "$UNIT_DIR"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/tizen-takeover/autopull"
+mkdir -p "$STATE_DIR" || { echo "Cannot create $STATE_DIR"; exit 1; }
 cat > "$UNIT_DIR/hub-autopull.service" <<UNIT
 [Unit]
 Description=Home Hub auto-pull (tizen-takeover pi/autopull)
@@ -73,5 +76,5 @@ fi
 if [ "${1:-}" = "--run" ]; then
   echo "Pulling once now..."
   systemctl --user start hub-autopull.service || true
-  tail -n 3 "$HERE/../data/autopull.log" 2>/dev/null || echo "  already up to date (nothing logged)"
+  tail -n 3 "$STATE_DIR/autopull.log" 2>/dev/null || echo "  already up to date (nothing logged)"
 fi

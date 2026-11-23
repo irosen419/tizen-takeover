@@ -5,7 +5,7 @@
  *
  * Each check makes a bare repository in a temp folder as "origin", a clone of
  * it as the Pi's checkout and another clone to push from, then runs the real
- * script with AUTOPULL_REPO, AUTOPULL_DATA and a fake AUTOPULL_RESTART_CMD
+ * script with AUTOPULL_REPO, AUTOPULL_STATE and a fake AUTOPULL_RESTART_CMD
  * that writes down what it was asked to restart. Needs sh and git; nothing
  * leaves this computer. Prints one line per check and "N passed, M failed".
  */
@@ -77,7 +77,7 @@ function setup() {
   fs.chmodSync(fake, 0o755);
   const t = { root, origin, dev, pi, data, calls, fake };
   t.run = (extra) => cp.spawnSync('sh', [SCRIPT], {
-    env: Object.assign({}, GIT_ENV, { AUTOPULL_REPO: pi, AUTOPULL_DATA: data, AUTOPULL_RESTART_CMD: fake }, extra || {}),
+    env: Object.assign({}, GIT_ENV, { AUTOPULL_REPO: pi, AUTOPULL_STATE: data, AUTOPULL_RESTART_CMD: fake }, extra || {}),
     encoding: 'utf8', timeout: 60000
   });
   t.push = (files, msg) => {
@@ -207,6 +207,51 @@ async function main() {
     assert.ok(/on again$/.test(t.lines()[1]), t.log());
   });
 
+  await check('old switch pi/data/autopull.off in the checkout still stops it', async () => {
+    const t = setup();
+    write(t.pi, 'pi/data/autopull.off', '');
+    const before = t.head();
+    t.push({ 'app/x.js': '1\n' });
+    t.run();
+    assert.strictEqual(t.head(), before);
+    assert.ok(/ off \(/.test(t.lines()[0]), t.log());
+  });
+
+  await check('a state folder that cannot be created fails loudly (stderr, exit 1), never silently', async () => {
+    const t = setup();
+    const blocker = path.join(t.root, 'blocker');
+    fs.writeFileSync(blocker, 'a file where a folder should be');
+    const before = t.head();
+    t.push({ 'app/x.js': '1\n' });
+    const r = t.run({ AUTOPULL_STATE: path.join(blocker, 'autopull') });
+    assert.strictEqual(r.status, 1, 'exit code ' + r.status);
+    assert.ok(/ERROR: cannot create the state folder/.test(r.stderr), r.stderr);
+    assert.strictEqual(t.head(), before);
+  });
+
+  await check('a read-only state folder fails loudly and names the fix', async () => {
+    if (process.getuid && process.getuid() === 0) return; // root ignores permissions
+    const t = setup();
+    fs.mkdirSync(t.data, { recursive: true });
+    fs.chmodSync(t.data, 0o555);
+    const r = t.run();
+    fs.chmodSync(t.data, 0o755);
+    assert.strictEqual(r.status, 1);
+    assert.ok(/ERROR: cannot write to the state folder .*chown/.test(r.stderr), r.stderr);
+  });
+
+  await check('an unwritable log is an error too, and the run does not go on', async () => {
+    if (process.getuid && process.getuid() === 0) return;
+    const t = setup();
+    fs.mkdirSync(t.data, { recursive: true });
+    const log = path.join(t.data, 'autopull.log');
+    fs.writeFileSync(log, '');
+    fs.chmodSync(log, 0o444);
+    const r = t.run();
+    assert.strictEqual(r.status, 1);
+    assert.ok(/ERROR: cannot write the log/.test(r.stderr), r.stderr);
+  });
+
   await check('another run holding the lock: does nothing; an hour-old lock is cleared', async () => {
     const t = setup();
     const lock = path.join(t.data, 'autopull.lock');
@@ -215,7 +260,7 @@ async function main() {
     t.push({ 'app/x.js': '1\n' });
     t.run();
     assert.strictEqual(t.head(), before);
-    assert.strictEqual(t.log(), '');
+    assert.ok(/skipped: another run is active$/.test(t.lines()[0]), t.log());
     const old = new Date(Date.now() - 3600 * 1000);
     fs.utimesSync(lock, old, old);
     t.run();
