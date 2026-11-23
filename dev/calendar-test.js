@@ -305,9 +305,9 @@ check('guests: "1 guest" / "3 guests", nothing without, nothing in Guest mode; g
 });
 
 check('to-do prefix is hidden and the level kept', () => {
-  const n = T.normalize({ events: ['TODO!: Shot', 'todo: Call', 'TODO~: Visit', 'TODO:', 'Todoist'].map((t, i) => (
+  const n = T.normalize({ events: ['TODO!: Shot', 'TODO: Call', 'TODO~: Visit 5', 'TODO:', 'Todoist', 'Todo: mom'].map((t, i) => (
     { id: 't' + i, cal: 1, title: t, start: '2026-11-21', end: '2026-11-21', allDay: true })) }, z);
-  same(n.map((e) => e.title).sort(), ['Call', 'TODO:', 'Todoist', 'Visit', 'Shot'].sort());
+  same(n.map((e) => e.title).sort(), ['Call', 'TODO:', 'Todoist', 'Todo: mom', 'Visit', 'Shot'].sort());
   same(n.filter((e) => e.todo).map((e) => e.todo).sort(), ['must', 'optional', 'passive']);
 });
 
