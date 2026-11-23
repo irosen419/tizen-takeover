@@ -1979,6 +1979,20 @@
           "pi/mailbox.js",
           "pi/hubctl.js"
          ]
+        },
+        {
+         "id": "pi.mailbox.commands.pantry",
+         "title": "Pantry",
+         "kind": "component",
+         "status": "unverified",
+         "summary": "Add to the pantry, set a count or restock point, list it, list what is low.",
+         "details": [
+          "pantry.add {name or upc, brand, qty, location, restockAt, autoAdd}, pantry.set {id or name, qty, restockAt, location, autoAdd}, pantry.list, pantry.low. The same words as ./hub pantry. A count that drops to low puts the item on the grocery list."
+         ],
+         "files": [
+          "pi/mailbox.js",
+          "pi/hubctl.js"
+         ]
         }
        ]
       }
@@ -2559,7 +2573,7 @@
      "title": "Pi serves the app",
      "kind": "component",
      "status": "unverified",
-     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state and POST /grocery/ops (the TV posts there too).",
+     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state, POST /grocery/ops (the TV posts there too) and POST /pantry/ops.",
      "details": [
       "Docker mounts ../app read only at /webapp (HUB_APP_DIR). Only known file types, no dotfiles, nothing outside the folder.",
       "Home, Tailscale and loopback addresses only, even when HUB_TV_IPS names the TV; a phone is never counted as a screen. A POST needs no token but must come from the page's own address (same-Host Origin) or HUB_ORIGINS."
@@ -2579,6 +2593,11 @@
        "to": "pi.server.resources.grocery",
        "label": "reads and changes the grocery list",
        "dir": "both"
+      },
+      {
+       "to": "pi.pantry",
+       "label": "reads and changes the pantry",
+       "dir": "both"
       }
      ],
      "children": [
@@ -2597,12 +2616,13 @@
         "app/touch.js",
         "app/touch.css",
         "app/widgets/grocery.js",
-        "dev/touch-test.js"
+        "dev/touch-test.js",
+        "app/widgets/pantry.js"
        ],
        "talksTo": [
         {
          "to": "pi.touchapp",
-         "label": "polls /touch/state, posts /grocery/ops",
+         "label": "polls /touch/state, posts /grocery/ops and /pantry/ops",
          "dir": "both"
         },
         {
@@ -2616,6 +2636,34 @@
          "dir": "in"
         }
        ]
+      },
+      {
+       "id": "pi.touchapp.pantry",
+       "title": "Pantry view",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "The phone view of the pantry: Stock | Usual items (search ignores accents and case), place chips, rows with a stepper, a cart button and a Low badge with the restock value.",
+       "details": [
+        "A row opens a bottom sheet: place, 'buy more when I have' (a number box), how many to buy, the auto-add switch, substitution mode, brand and category picked from the Pi's lists or created once (never a second spelling), size and unit (a select).",
+        "English and Spanish; chips wrap and nothing has a fixed width, for the 25% longer Spanish. No TV tile yet (PR 2)."
+       ],
+       "files": [
+        "app/widgets/pantry.js",
+        "app/widgets/pantry.css",
+        "dev/pantry-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.pantry",
+         "label": "reads the pantry, posts /pantry/ops",
+         "dir": "both"
+        },
+        {
+         "to": "pi.products",
+         "label": "Scan, with an Add to chip: Pantry or Groceries",
+         "dir": "out"
+        }
+       ]
       }
      ]
     },
@@ -2624,7 +2672,7 @@
      "title": "Products catalog",
      "kind": "component",
      "status": "unverified",
-     "summary": "The barcode service: a scanned code (EAN-13, UPC-A, UPC-E, EAN-8) becomes a product (brand, name, size, a thumbnail on the Pi), shared by every scanner. Where a scan goes is the caller's choice.",
+     "summary": "The barcode service: a scanned code (EAN-13, UPC-A, UPC-E, EAN-8) becomes a product (brand, name, size, a thumbnail on the Pi), shared by every scanner. Where a scan goes is the caller's choice (the Add to chip: Groceries or Pantry).",
      "details": [
       "Codes are checked (check digit) and kept as one 13-digit key (8 for EAN-8). Lookup: the catalog in data/products.json, then Open Food Facts, Open Products Facts and UPCitemdb, each with its own rate limit (a source at its limit is skipped; one failing never fails the lookup). A web hit is saved with its thumbnail in data/products/; a miss is remembered in memory for 24 hours. Manual entries from the phone (brand, name, size, an optional photo) always win. At most 5000 products.",
       "Pictures from the web: https only, a host name that resolves only to public addresses (the connection is pinned to it), no redirects, image type and bytes checked, at most 400 KB. Photos from the phone: JPEG, at most 150 KB.",
@@ -2660,12 +2708,77 @@
        "to": "pi.server.resources.grocery",
        "label": "names scanned items; the shopping export",
        "dir": "out"
+      },
+      {
+       "to": "pi.pantry",
+       "label": "a scan to the pantry counts one up or makes the product",
+       "dir": "out"
       }
      ],
      "notes": [
       "Nothing has run against the live sources or on the real Pi yet."
      ],
      "children": []
+    },
+    {
+     "id": "pi.pantry",
+     "title": "Pantry",
+     "kind": "component",
+     "status": "unverified",
+     "summary": "What is at home, in SQLite on the Pi: products with a brand, categories, a place, how many are left and when that counts as low. A low item goes on the grocery list by itself, once.",
+     "details": [
+      "pi/pantrydb.js on Node's built-in node:sqlite (data/pantry.db, WAL, foreign keys on, STRICT tables). Brands and categories are their own tables, unique by a key (lowercase, accents and punctuation stripped), so 'Heinz' and 'heinz' are one brand; products point at them by id. Units, places, substitution modes and list sources are CHECK-constrained enums.",
+      "The pantry is a filter, not a table: owned products, zero meaning out. 'Usual items' are owned products plus anything that was ever on a list.",
+      "Auto-add: after a quantity change, an owned product with auto_add on and quantity at or under restock_at gets one grocery row (source auto), never a second; if that row is removed while still low, it is held until the count rises above restock_at once. restock_at starts from a small table by kind (eggs 6, paper goods 1, ...) and is editable per product.",
+      "The grocery list stays the list everyone edits; every change is mirrored into the pantry's open list (one list_items row per grocery row), so GET /api/grocery/export can add fromPantry and reason (low, manual).",
+      "Ops (POST /api/pantry/ops, touch POST /pantry/ops): add, adjust, set, edit, want, remove, brand, category, listQty, listMode. The log counts; it never names a product, a brand or a code.",
+      "The TV (PR 2) reads it as the live resource \"pantry\" (rev + the same data as the phone, with the open list) and writes through POST /pantry/screen-ops, the same trust as its POST /grocery/ops (home address, a listed Origin, the preflight answered, no token)."
+     ],
+     "files": [
+      "pi/pantrydb.js",
+      "pi/pantrydb-test.js",
+      "pi/server.js"
+     ],
+     "talksTo": [
+      {
+       "to": "pi.server.resources.grocery",
+       "label": "auto-adds low items; mirrors the list",
+       "dir": "both"
+      },
+      {
+       "to": "pi.touchapp.pantry",
+       "label": "/touch/state carries the pantry; POST /pantry/ops",
+       "dir": "both"
+      },
+      {
+       "to": "pi.mailbox.commands.pantry",
+       "label": "Claude adds and sets counts",
+       "dir": "in"
+      },
+      {
+       "to": "tv.live",
+       "label": "live resource pantry (the TV tile comes in PR 2)",
+       "dir": "out"
+      }
+     ],
+     "children": [
+      {
+       "id": "pi.pantry.db",
+       "title": "pantry.db",
+       "kind": "data",
+       "status": "unverified",
+       "summary": "brands, categories, category_products, products, replacements, lists (one open), list_items (checked follows the grocery tick both ways).",
+       "details": [
+        "Moved once from data/products.json (the catalog) and the grocery list; both JSON files are kept, with copies in data/pantry-backup/. products.json stays the barcode lookup cache."
+       ],
+       "files": [
+        "pi/pantrydb.js"
+       ]
+      }
+     ],
+     "notes": [
+      "Needs Node 22.13 or newer in the container (node:22-alpine); an older image turns the pantry off and grocery keeps working. Not yet run on the Pi."
+     ]
     },
     {
      "id": "pi.tailscale",
@@ -5560,6 +5673,52 @@
     {
      "node": "pi.mailbox.commands.grocery",
      "say": "grocery.export gives a shopping run one search line per item"
+    }
+   ]
+  },
+  {
+   "id": "flow.pantry-low",
+   "title": "Eggs run low",
+   "summary": "Ian taps minus on eggs; at 6 they go on the grocery list by themselves, once.",
+   "steps": [
+    {
+     "node": "pi.touchapp.pantry",
+     "say": "Ian taps minus on Eggs in the Pantry view"
+    },
+    {
+     "node": "pi.pantry",
+     "say": "POST /pantry/ops: 6 left is at the restock point, auto-add is on"
+    },
+    {
+     "node": "pi.server.resources.grocery",
+     "say": "One grocery row, source auto; never a second while it is on the list"
+    },
+    {
+     "node": "pi.pantry.db",
+     "say": "The open list mirrors the row, so the export says fromPantry, reason low"
+    },
+    {
+     "node": "tv.widgets.grocery",
+     "say": "The TV's Groceries tile gets it over the live line"
+    }
+   ]
+  },
+  {
+   "id": "flow.scan-pantry",
+   "title": "Scanning into the pantry",
+   "summary": "After a shop, Ian scans a can with Add to: Pantry; it counts one up.",
+   "steps": [
+    {
+     "node": "pi.touchapp.pantry",
+     "say": "Scan opens on Pantry from the Pantry view (the pick is remembered per view)"
+    },
+    {
+     "node": "pi.products",
+     "say": "The code is looked up as for groceries"
+    },
+    {
+     "node": "pi.pantry",
+     "say": "A known product counts one up; a new one is made from the catalog, brand by key"
     }
    ]
   }
