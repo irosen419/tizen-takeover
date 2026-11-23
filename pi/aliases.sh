@@ -27,14 +27,23 @@ hublog() { ( cd "$HUB_REPO/pi" && ./hub log "$@" ); }       # hublog --errors, h
 hubhub() { ( cd "$HUB_REPO/pi" && ./hub "$@" ); }           # any ./hub command from anywhere
 hubdocker() { ( cd "$HUB_REPO/pi" && docker compose "$@" ); }  # hubdocker ps, hubdocker logs --tail 50 hub
 
-# hubauto: is the auto-pull timer (pi/autopull/) on, and its last 5 log lines.
-# hubauto off | on: pause it or let it go on (the pi/data/autopull.off switch).
+# hubauto: is the auto-pull timer (pi/autopull/) on, its last status, last 5 log lines
+# and last error. hubauto off | on: pause it or let it go on (the autopull.off switch).
+# Its files live in ~/.local/state/tizen-takeover/autopull/ (pi/data is root-owned).
 hubauto() {
+  local d="${XDG_STATE_HOME:-$HOME/.local/state}/tizen-takeover/autopull" old="$HUB_REPO/pi/data/autopull.off"
   case "${1:-}" in
-    off) touch "$HUB_REPO/pi/data/autopull.off" && echo "auto-pull: off (hubauto on to resume)"; return;;
-    on) rm -f "$HUB_REPO/pi/data/autopull.off" && echo "auto-pull: on";;
+    off) mkdir -p "$d" && touch "$d/autopull.off" && echo "auto-pull: off (hubauto on to resume)"; return;;
+    on) rm -f "$d/autopull.off" "$old" 2>/dev/null; [ -f "$old" ] && { echo "cannot remove $old (sudo rm $old)"; return 1; }; echo "auto-pull: on";;
   esac
-  if [ -f "$HUB_REPO/pi/data/autopull.off" ]; then echo "auto-pull: off (switch file there)"; else echo "auto-pull: on"; fi
+  if [ -f "$d/autopull.off" ] || [ -f "$old" ]; then echo "auto-pull: off (switch file there)"; else echo "auto-pull: on"; fi
   systemctl --user is-active --quiet hub-autopull.timer && echo "timer: running" || echo "timer: not installed (pi/autopull/install.sh --run)"
-  tail -n 5 "$HUB_REPO/pi/data/autopull.log" 2>/dev/null || echo "no log yet"
+  echo "last status: $(sed -n 's/^reason=//p' "$d/autopull.state" 2>/dev/null | head -n 1 | grep . || echo unknown)"
+  if [ -f "$d/autopull.log" ]; then
+    tail -n 5 "$d/autopull.log"
+    echo "last error: $(grep ERROR "$d/autopull.log" | tail -n 1 | grep . || echo none)"
+  else
+    echo "no log yet; last service lines:"
+    journalctl --user -u hub-autopull.service -n 3 --no-pager 2>/dev/null || echo "  (no journal)"
+  fi
 }

@@ -21,7 +21,7 @@
 - The TV updates itself (`app/update.js`). The Pi pulls `main` every 5 minutes (`pi/autopull/autopull.sh`, a systemd user timer); nobody runs `hubup` after a merge.
 - Only `app/`, `docs/`, `dev/`, `studio/` changed: no restart. The hub serves `app/` fresh and `app/appver.js` reloads the wall tablet and phone when they sit idle (About panel: Version check row; a dot on the Clock tile).
 - A server file in `pi/` changed: the timer restarts the hub, then the budget app (the order `hubup` uses). Tests, notes and `pi/aliases.sh` restart nothing.
-- Pause it: `touch pi/data/autopull.off` (or `hubauto off`); `hubauto` shows the last log lines (`pi/data/autopull.log`, counts only).
+- Pause it: `hubauto off`; `hubauto` shows the last status, log lines and last error (`~/.local/state/tizen-takeover/autopull/autopull.log`, counts only).
 - `hubup` is only for the first install or when a pull is stuck (files changed by hand on the Pi, or the Pi has its own commits). Install once:
   ```
   cd ~/code/tizen-takeover && git pull && pi/autopull/install.sh --run
