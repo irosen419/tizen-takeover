@@ -1507,6 +1507,29 @@
     'grocery.scanAlready': 'Ya está en la lista.',
     'grocery.scanTicked': 'Ya está en el carrito; al agregarlo vuelve a la lista.',
 
+    /* ---- To-do on the phone (app/widgets/todo-touch.js). Section names,
+     * dates and the MUST pill reuse the TV's todo.* keys above. Titles and
+     * notes are what people type and stay as typed. */
+    'todo.touch.toDo': 'por hacer',
+    'todo.touch.add': 'Añadir',
+    'todo.touch.addLabel': 'Añadir una tarea',
+    'todo.touch.levelLabel': 'Añadirla a',
+    'todo.touch.moveLabel': 'Mover a',
+    'todo.touch.tick': 'Marcar {t}',
+    'todo.touch.untick': 'Desmarcar {t}',
+    'todo.touch.moreFor': 'Más opciones para {t}',
+    'todo.touch.fromCal': 'De tu calendario',
+    'todo.touch.removed': 'Se quitó {t}',
+    'todo.touch.undo': 'Deshacer',
+    'todo.touch.later': 'Más adelante · {n}',
+    'todo.touch.saveFailed': 'No se guardó: {why}',
+    'todo.touch.offline': 'No se puede conectar con el hub. Se muestra la última lista; los cambios no se guardarán.',
+    'todo.touch.loading': 'Cargando la lista…',
+    'todo.touch.emptyText': 'Añade una arriba. Los eventos del calendario que empiezan con TODO: también aparecen aquí.',
+    'todo.touch.summary': '{n} por hacer',
+    'todo.touch.summaryMust': '{n} clave para hoy',
+    'todo.touch.summaryClear': 'Todo listo',
+
     /* ---- Barcode scanner (app/scan.js, touch app only). Codes, brands and
      * product names stay as the Pi sends them. */
     'scan.title': 'Escanear un código',

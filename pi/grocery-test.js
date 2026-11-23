@@ -167,7 +167,7 @@ async function main() {
     assert.strictEqual((await request(P, 'GET', '/api/grocery/ops', { token: TOKEN })).status, 405);
   });
 
-  await check('GET /touch/state: the grocery list only, from loopback and a Tailscale address', async () => {
+  await check('GET /touch/state: the grocery and to-do lists only, from loopback and a Tailscale address', async () => {
     for (const ip of [null, '100.101.102.103', '192.168.1.20', 'fd7a:115c:a1e0::5']) {
       const r = await request(P, 'GET', '/touch/state', { headers: ip ? { 'x-test-ip': ip } : {} });
       assert.strictEqual(r.status, 200, String(ip));
@@ -175,8 +175,10 @@ async function main() {
       assert.deepStrictEqual(Object.keys(r.json.grocery).sort(), ['data', 'rev']);
       assert.strictEqual(r.json.grocery.data.items.length, 2);
       assert.deepStrictEqual(r.json.products, {}, 'no scanned items, no products');
-      assert.strictEqual(r.json.todo, undefined);
+      assert.deepStrictEqual(Object.keys(r.json.todo).sort(), ['data', 'rev']);
+      assert.ok(Array.isArray(r.json.todo.data.items));
       assert.strictEqual(r.json.resources, undefined);
+      assert.strictEqual(r.json.layout, undefined);
     }
     for (const ip of ['8.8.8.8', '100.128.0.1', '100.63.0.1']) {
       assert.strictEqual((await request(P, 'GET', '/touch/state', { headers: { 'x-test-ip': ip } })).status, 403, ip);
@@ -202,6 +204,33 @@ async function main() {
     assert.strictEqual(bad.status, 400);
     assert.strictEqual((await request(P, 'GET', '/grocery/ops')).status, 405);
     assert.strictEqual((await request(P, 'POST', '/grocery/ops', { headers: { 'x-test-ip': '8.8.8.8' }, body: { ops: [{ op: 'clear' }] } })).status, 403);
+  });
+
+  await check('POST /touch/todo/ops: the touch app\'s to-do changes need its proof, are saved, and are logged without titles', async () => {
+    const touchHd = { 'x-test-ip': '100.70.0.9', 'X-Hub-Touch': '1' };
+    const item = { id: 'tphone1', title: 'Private dentist call', level: 'must', section: 'now', done: false, doneAt: null, createdAt: Date.now() };
+    let r = await request(P, 'POST', '/touch/todo/ops', { headers: touchHd, body: { ops: [{ op: 'add', item: item, at: 'top' }] } });
+    assert.strictEqual(r.status, 200, r.text);
+    assert.strictEqual(r.json.items[0].id, 'tphone1');
+    assert.strictEqual(r.json.items[0].level, 'must');
+    r = await request(P, 'POST', '/touch/todo/ops', { headers: touchHd, body: { ops: [{ op: 'set', id: 'tphone1', fields: { done: true, doneAt: Date.now() } }] } });
+    assert.strictEqual(r.json.items[0].done, true);
+    r = await request(P, 'POST', '/touch/todo/ops', { headers: touchHd, body: { ops: [{ op: 'set', id: 'tphone1', fields: { level: 'passive' }, to: 'end' }] } });
+    assert.strictEqual(r.json.items.find((i) => i.id === 'tphone1').level, 'passive');
+    const saved = JSON.parse(fs.readFileSync(path.join(h.dataDir || '', 'state.json'), 'utf8'));
+    assert.ok(saved.resources.todo.data.items.some((i) => i.id === 'tphone1'));
+    assert.ok(h.lines.some((l) => /touch app changed the to-do list/.test(l)));
+    assert.ok(!h.lines.some((l) => /dentist/.test(l)), 'a title in the log');
+    const st = await request(P, 'GET', '/touch/state', { headers: { 'x-test-ip': '100.70.0.9' } });
+    assert.ok(st.json.todo.data.items.some((i) => i.id === 'tphone1'), 'the state carries it');
+    // No proof (another site's form post), a foreign Origin, a wrong method, a bad op, an address off the network.
+    assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: { 'x-test-ip': '100.70.0.9' }, body: { ops: [] } })).status, 403);
+    assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: { 'X-Hub-Touch': '1', Origin: 'http://evil.example', Host: '192.168.1.219:8097' }, body: { ops: [] } })).status, 403);
+    assert.strictEqual((await request(P, 'GET', '/touch/todo/ops', { headers: touchHd })).status, 405);
+    assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: touchHd, body: { ops: [{ op: 'zap' }] } })).status, 400);
+    assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: { 'x-test-ip': '8.8.8.8', 'X-Hub-Touch': '1' }, body: { ops: [] } })).status, 403);
+    r = await request(P, 'POST', '/touch/todo/ops', { headers: touchHd, body: { ops: [{ op: 'remove', id: 'tphone1' }] } });
+    assert.ok(!r.json.items.some((i) => i.id === 'tphone1'));
   });
 
   await check('Origin: a foreign site is refused; the page\'s own address (http or https) and a listed one are allowed', async () => {
@@ -307,6 +336,8 @@ async function main() {
       assert.strictEqual((await request(h2.port, 'GET', '/touch/state', { headers: hd })).status, 200);
       assert.strictEqual((await request(h2.port, 'GET', '/app/touch.html', { headers: hd })).status, 200);
       assert.strictEqual((await request(h2.port, 'POST', '/grocery/ops', { headers: hd, body: { ops: [{ op: 'add', name: 'Tea' }] } })).status, 200);
+      assert.strictEqual((await request(h2.port, 'POST', '/touch/todo/ops', { headers: Object.assign({ 'X-Hub-Touch': '1' }, hd), body: { ops: [{ op: 'add', item: { title: 'Tea' } }] } })).status, 200);
+      assert.strictEqual((await request(h2.port, 'POST', '/todo/ops', { headers: hd, body: { ops: [] } })).status, 403, 'the TV door stays shut');
     }
     assert.strictEqual((await request(h2.port, 'GET', '/touch/state', { headers: { 'x-test-ip': '8.8.8.8' } })).status, 403);
     await stop(h2);

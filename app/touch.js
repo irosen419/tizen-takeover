@@ -7,10 +7,12 @@
  *             desktop (three). ?as=phone|tablet|tv overrides.
  *   widgets   every widget in app/config.js (the layouts and the widgets
  *             settings). One with renderTouch (window.HUB_WIDGETS, e.g.
- *             app/widgets/grocery.js) opens here; the rest say "TV only".
+ *             app/widgets/grocery.js, app/widgets/todo-touch.js) opens
+ *             here; the rest say "TV only".
  *   phone     opens on the menu; #/<id> shows one widget with a back button.
  *   data      GET /touch/state every 3 s (paused while the tab is hidden);
- *             changes POST /<resource>/ops with an optimistic update. The
+ *             changes POST /<resource>/ops (or the widget's opsPath, e.g.
+ *             /touch/todo/ops) with an optimistic update. The
  *             state's products (catalog entries for codes on the lists)
  *             reach widgets as ctx.products(); ctx.call() reaches the rest
  *             of the Pi (app/scan.js: product lookup and save).
@@ -169,12 +171,12 @@
     if (document.hidden) { if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; } } else poll();
   });
 
-  function sendOps(res, ops, optimistic, cb) {
+  function sendOps(res, path, ops, optimistic, cb) {
     var before = store.data[res];
     store.data[res] = optimistic;
     store.pending += 1;
     refresh();
-    request('POST', '/' + res + '/ops', { ops: ops }).then(function (j) {
+    request('POST', path || '/' + res + '/ops', { ops: ops }).then(function (j) {
       store.pending -= 1;
       setStatus('ok');
       // The last answer holds every change before it, so only it is drawn.
@@ -204,7 +206,7 @@
       lang: function () { return I && I.lang ? I.lang() : 'en'; },
       data: function () { return store.data[res] || null; },
       status: function () { return store.status; },
-      send: function (ops, optimistic, cb) { sendOps(res, ops, optimistic, cb || function () {}); },
+      send: function (ops, optimistic, cb) { sendOps(res, w.opsPath, ops, optimistic, cb || function () {}); },
       // Any other call to the Pi (product lookup, save): resolves to its JSON.
       call: request,
       products: function () { return store.products; },
