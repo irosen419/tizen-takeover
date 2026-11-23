@@ -44,6 +44,7 @@
  *   POST /shows/upto     the TV marks a show watched up to an episode: { id, season, number }
  *   POST /shows/caughtup the TV marks a show caught up (every aired episode): { id }
  *   GET  /shows/episodes?id=<show id>  a show's seasons and episodes with watched flags and progress
+ *   POST /tv/launch      open an app, key or webhook on the TV from a tablet or phone (tvlaunch.js): 202 at once
  *   POST /echo/run       the Echo controls from the TV (soundctl.js): presets only, rate limited
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
  *                        from the TV (ambience.js): saved ids only, rate limited
@@ -78,6 +79,8 @@
  *   POST /api/shows/upto      { show, episode }: watched up to and including that episode
  *   POST /api/shows/caughtup  { show }: watched every episode aired so far
  *   GET  /api/linktests  the TV's watch link test answers (linktests.js)
+ *   GET  /api/tv         what Home Assistant knows about the TV and the last launch (tvlaunch.js)
+ *   POST /api/tv/launch  the same body as POST /tv/launch
  *   GET  /api/tvremote   the TV remote from the Pi: paired or not, last run and its steps (tvremote.js)
  *   POST /api/tvremote/run   start a run, the same body as POST /tvremote/run
  *   GET  /api/status     version, rev, connected screens, calendar summary
@@ -147,6 +150,7 @@ const spotify = require('./spotify');
 const shows = require('./shows');
 const linktests = require('./linktests');
 const tvremote = require('./tvremote');
+const tvlaunch = require('./tvlaunch');
 const ambience = require('./ambience');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
@@ -158,7 +162,7 @@ const pantrydb = require('./pantrydb');
 const guestpin = require('./guestpin');
 const photos = require('./photos');
 
-const SERVER_VERSION = '0.32.0';
+const SERVER_VERSION = '0.33.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -706,6 +710,9 @@ function start(options) {
   // The TV's remote from the Pi (tvremote.js). HUB_TV_REMOTE_IP (opt.tvRemoteIp)
   // names the TV; otherwise the address its screen calls from.
   const remote = tvremote.create(Object.assign({ dataDir: dataDir, log: log, host: opt.tvRemoteIp || '' }, isObj(opt.tvremote) ? opt.tvremote : {}));
+
+  // Open things on the TV from the Pi (tvlaunch.js): Home Assistant first, then the remote link.
+  const tvLauncher = tvlaunch.create(Object.assign({ config: tvlaunch.configFromEnv(opt.tvLaunchEnv || {}), remote: remote, log: log }, isObj(opt.tvlaunch) ? opt.tvlaunch : {}));
 
   let state = loadState(dataDir, log);
   // The Guest mode PIN (guestpin.js): a hash in data/guest-pin.json, wrong tries counted in memory.
@@ -1650,6 +1657,8 @@ function start(options) {
     '/api/shows/upto': ['POST'],
     '/api/shows/caughtup': ['POST'],
     '/api/linktests': ['GET'],
+    '/api/tv': ['GET'],
+    '/api/tv/launch': ['POST'],
     '/api/tvremote': ['GET'],
     '/api/tvremote/run': ['POST'],
     '/api/allsounds': ['GET'],
@@ -1890,6 +1899,11 @@ function start(options) {
             }, finished ? (w.r.changed ? 'changed' : 'no change') : 'still reading');
           }).catch(failed);
           return undefined;
+        }
+        if (route === '/api/tv') { tvLauncher.status().then((s) => reply(200, { ok: true, tv: s })).catch(failed); return undefined; }
+        if (route === '/api/tv/launch') {
+          const r = tvLauncher.launch(body);
+          return reply(202, { ok: true, queued: r.queued }, 'tv launch queued');
         }
         if (route === '/api/tvremote') return reply(200, Object.assign({ ok: true }, remote.status()));
         if (route === '/api/tvremote/run') {
@@ -2220,7 +2234,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/echo/run' || route === '/awws/resync' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2285,6 +2299,19 @@ function start(options) {
           remote.seen(address);
           const r = remote.run(body, remote.address() || undefined);
           sendJson(res, 200, { ok: true, started: true, paired: r.paired }, cors);
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
+    }
+    if (route === '/tv/launch') {
+      // A tablet or phone asks the Pi to open something on the TV. The reply is
+      // at once; the work goes on in the background (tvlaunch.js). This is not
+      // the TV's own address, so nothing here is saved as the TV's.
+      return readBody(req, res, (body) => {
+        try {
+          const r = tvLauncher.launch(body);
+          sendJson(res, 202, { ok: true, queued: r.queued }, cors);
         } catch (e) {
           fail(res, e, cors);
         }
@@ -2395,7 +2422,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/awws/resync': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
     '/echo/run': 1, '/guest/pin': 1
   };
@@ -2609,6 +2636,7 @@ if (require.main === module) {
     },
     allsoundsEnv: env,
     echoEnv: env,
+    tvLaunchEnv: env,
     ambienceEnv: env,
     // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
     // or systemd (Restart=always) starts the server again, with any new code.

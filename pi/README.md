@@ -374,6 +374,10 @@ The TV refuses remote key presses it sends to itself, so some Watch link test ro
 - The log says only what was done, for example `tvremote: netflix-2step-dial: opened app (ok), Enter (ok), DIAL Netflix -> HTTP 201`; never the link or the token.
 - Tests: `node pi/tvremote-test.js` (a fake TV and a fake DIAL port).
 
+### Opening apps on the TV from a tablet or phone (`tvlaunch.js`, server 0.33.0)
+
+`POST /tv/launch` (from the tablet or phone hub) answers 202 at once. In the background the Pi asks Home Assistant to turn the TV on if it is off, waits until it has stayed on, then opens the app with `select_source`, using the name in the TV's source list. An app that list lacks, or that did not open, goes through the Pi's own remote link (above). It needs `HA_TOKEN` (as for Ambience); `TV_ENTITY` in `.env` names the TV (set it if the default does not fit). Without a token only apps work, through the remote link. The mailbox `tv.status` shows the TV's state, the app names Home Assistant can open and the last launch; `tv.launch {"kind":"app","name":"Netflix"}` sends the TV a command. Tests: `node pi/tvlaunch-test.js`.
+
 ### After pulling this change
 
 It adds `shows.js`, `shows-seed.json` and `linktests.js` next to `server.js` and makes the server version 0.6.0. A restart is enough, with no rebuild and no change to `.env`:

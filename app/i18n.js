@@ -57,7 +57,7 @@
     'hub.tvOpening': 'Abriendo {name} en la TV…',
     'hub.tvOpenFailed': 'No se pudo abrir {name} en la TV ({why}).',
     'hub.tvNoPi': 'no se llega a la Pi',
-    'hub.tvNoRoute': 'la Pi todavía no puede hacerlo',
+    'hub.tvOldPi': 'la Pi necesita actualizarse',
     'hub.widgetProblem': '{name} tuvo un problema ({hook}).',
     'hub.layoutPicked': 'Diseño {name}',
     'hub.didntWork': 'No funcionó ({why}).',

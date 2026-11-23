@@ -335,7 +335,7 @@ function sheetUp(page) {
       // A Pi without the route yet: a plain failure line.
       tv.mode = 'missing';
       await p.click('#panel .ent-item:has-text("Hulu")');
-      await H.until(() => p.evaluate(() => /Couldn.t open Hulu on the TV \(the Pi can.t do that yet\)/.test(document.getElementById('toast').textContent)), 3000, 'no failure toast');
+      await H.until(() => p.evaluate(() => /Couldn.t open Hulu on the TV \(the Pi needs an update\)/.test(document.getElementById('toast').textContent)), 3000, 'no failure toast');
       // The Pi's real answer: 202, queued; the work goes on there. Success, the toast stays.
       tv.mode = 'queued';
       await p.click('#panel .ent-item:has-text("Disney+")');

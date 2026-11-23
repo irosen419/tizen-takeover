@@ -139,7 +139,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.59.0';
+  var BUILD = 'v0.60.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -3741,7 +3741,7 @@
     toast(hubWord('tvOpening', 'Opening {name} on the TV…', { name: name }), 15000);
     L.post('/tv/launch', req, function (err, data, code) {
       if ((!err && data && data.ok !== false) || (code === 202 && !(data && data.ok === false))) return done(null);
-      var why = code === 404 ? hubWord('tvNoRoute', 'the Pi can’t do that yet') : (data && typeof data.error === 'string' && data.error) || String(err || 'HTTP ' + code);
+      var why = code === 404 ? hubWord('tvOldPi', 'the Pi needs an update') : (data && typeof data.error === 'string' && data.error) || String(err || 'HTTP ' + code);
       toast(hubWord('tvOpenFailed', 'Couldn’t open {name} on the TV ({why}).', { name: name, why: why }), 8000);
       done(why);
     });
