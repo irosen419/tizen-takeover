@@ -29,6 +29,12 @@
  *                        home addresses, or only HUB_TV_IPS when set, a listed Origin, OPTIONS answered):
  *                        { action: 'status' | 'check' | 'set', pin }.
  *                        Only a salted scrypt hash is kept (data/guest-pin.json); 3 wrong in a row lock it
+ *   GET  /photos/list    the photo album (photos.js): { ok, rev, count, items: [{ id, w, h, month }] },
+ *                        newest first, at most 500; rev changes only when the album does
+ *   GET  /photos/img/<id>?size=full|thumb   one photo (image/webp, image/jpeg or image/png),
+ *                        Cache-Control: public, max-age=86400, immutable; id is 12 hex digits.
+ *                        Both are read only, on the touch door's trust (home and Tailscale
+ *                        addresses, even when HUB_TV_IPS is set), so the TV and the tablet can read
  *   GET  /, /app/...     the touch app (app/touch.html) and the files it loads, read only
  *                        (the touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
  *   POST /linktests      one watch link test answer from the About panel
@@ -117,6 +123,8 @@
  *   POST /api/translate  { to: "es", texts: [...] } -> { map } (translate.js; the TV uses POST /translate)
  *   GET  /api/translate/usage -> lines, Gemini calls, tokens and estimated cost today, this month, in all
  *   GET  /api/guest-pin  -> { set, locked_for } (never the PIN or its hash)
+ *   GET  /api/photos     -> { count, lastRun, syncOk, newCount, store }: the photo album and its last
+ *                        sync from the wall calendar (photos-sync.sh on the Pi host); counts only
  *   POST /api/guest-pin/reset -> { removed }: forget the Guest mode PIN; the TV asks for a new one (./hub guest-pin reset)
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
@@ -146,6 +154,7 @@ const grocery = require('./grocery');
 const products = require('./products');
 const pantrydb = require('./pantrydb');
 const guestpin = require('./guestpin');
+const photos = require('./photos');
 
 const SERVER_VERSION = '0.31.0';
 const PROTOCOL = 1;
@@ -699,6 +708,18 @@ function start(options) {
   let state = loadState(dataDir, log);
   // The Guest mode PIN (guestpin.js): a hash in data/guest-pin.json, wrong tries counted in memory.
   const guestPin = guestpin.create(Object.assign({ dataDir: dataDir, log: log }, isObj(opt.guestpin) ? opt.guestpin : {}));
+  // The photo album (photos.js): data/photos/, filled by photos-sync.sh on the
+  // Pi host. Logs counts only, never a file name or an id.
+  const album = photos.createLocalStore({ dir: path.join(dataDir, 'photos') });
+  let albumRev = null;
+  function albumList() {
+    return album.list().then((v) => {
+      if (albumRev !== null && v.rev !== albumRev) log('photos: the album now has ' + v.count + ' photos');
+      albumRev = v.rev;
+      return v;
+    });
+  }
+  albumList().then((v) => { if (v.count) log('photos: ' + v.count + ' in the album'); }, () => {});
   const sse = new Set();      // { res, since, address }
   const polls = new Set();    // { res, epoch, rev, cursor, timer, address }
   const pollSeen = new Map(); // address -> { since, last }
@@ -1639,7 +1660,8 @@ function start(options) {
     '/api/translate': ['POST'],
     '/api/translate/usage': ['GET'],
     '/api/guest-pin': ['GET'],
-    '/api/guest-pin/reset': ['POST']
+    '/api/guest-pin/reset': ['POST'],
+    '/api/photos': ['GET']
   };
 
   function statusBody() {
@@ -1728,6 +1750,12 @@ function start(options) {
         if (route === '/api/translate/usage') return reply(200, Object.assign({ ok: true }, translator.info()));
         if (route === '/api/guest-pin') return reply(200, Object.assign({ ok: true }, guestPin.status()));
         if (route === '/api/guest-pin/reset') return reply(200, { ok: true, removed: guestPin.reset() });
+        if (route === '/api/photos') {
+          album.stat().then((st) => reply(200, {
+            ok: true, store: album.kind, count: st.count, lastRun: st.lastRun, syncOk: st.ok, newCount: st.newCount
+          })).catch(failed);
+          return undefined;
+        }
         if (route === '/api/status') return reply(200, statusBody());
         if (route === '/api/log') return reply(200, logBody(query));
         if (route === '/api/calendar') {
@@ -2012,6 +2040,42 @@ function start(options) {
       res.writeHead(200, { 'Content-Type': type, 'Content-Length': data.length, 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
       return res.end(req.method === 'HEAD' ? undefined : data);
     });
+  }
+
+  // GET /photos/list and GET /photos/img/<id>: the photo album, read only.
+  // The touch door's trust (home and Tailscale addresses, a safe Host), so the
+  // TV and a tablet on Tailscale both read it. Nothing is logged per request.
+  function photoRoute(req, res, route, query) {
+    const cors = corsHeaders(req);
+    if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      return sendJson(res, 405, { ok: false, error: 'use GET for ' + route }, Object.assign({ Allow: 'GET, HEAD' }, cors));
+    }
+    if (route === '/photos/list') {
+      return albumList().then((v) => sendJson(res, 200, {
+        ok: true, rev: v.rev, count: v.count,
+        items: v.items.map((i) => ({ id: i.id, w: i.w, h: i.h, month: i.month }))
+      }, cors), (e) => fail(res, e, cors));
+    }
+    const id = route.slice('/photos/img/'.length);
+    const size = query.get('size') || 'full';
+    if (!photos.isId(id)) return sendJson(res, 404, { ok: false, error: 'not found' }, cors);
+    if (size !== 'full' && size !== 'thumb') return sendJson(res, 400, { ok: false, error: 'size is full or thumb' }, cors);
+    return (size === 'thumb' ? album.readThumb(id) : album.readOriginal(id)).then((f) => {
+      if (!f || !f.type) return sendJson(res, 404, { ok: false, error: 'not found' }, cors);
+      const headers = Object.assign({
+        'Content-Type': f.type, 'Content-Length': f.size,
+        'Cache-Control': 'public, max-age=86400, immutable', 'X-Content-Type-Options': 'nosniff'
+      }, cors);
+      if (req.method === 'HEAD') { res.writeHead(200, headers); return res.end(); }
+      const stream = fs.createReadStream(f.file);
+      stream.on('error', () => {
+        if (!res.headersSent) sendJson(res, 404, { ok: false, error: 'not found' }, cors);
+        else res.destroy();
+      });
+      stream.once('open', () => res.writeHead(200, headers));
+      return stream.pipe(res);
+    }, (e) => fail(res, e, cors));
   }
 
   // GET /touch/state, POST /grocery/ops and the products routes (the TV's grocery tile posts to /grocery/ops too, from another origin, so the browser asks with OPTIONS first). Unlike
@@ -2338,6 +2402,7 @@ function start(options) {
         }
         if (route === '/api' || route.indexOf('/api/') === 0) return control(req, res, route, door, url.searchParams);
         if (door === 'main' && (route === '/' || route.indexOf('/app/') === 0)) return appFile(req, res, route, url.searchParams);
+        if (door === 'main' && (route === '/photos/list' || route.indexOf('/photos/img/') === 0)) return photoRoute(req, res, route, url.searchParams);
         if (door === 'main' && (TOUCH_ROUTES[route] || route.indexOf('/products/image/') === 0)) return touch(req, res, route, url.searchParams);
         if (door === 'main' && SCREEN_ROUTES[route]) return screen(req, res, route, url.searchParams);
         return sendJson(res, 404, { ok: false, error: 'not found' });

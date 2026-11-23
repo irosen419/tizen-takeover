@@ -1,0 +1,339 @@
+/* Photo album (app/widgets/photos.js). Every class starts with ph-.
+
+   The tile is a picture window: the photo sits where the glass window sits
+   (0.66rem in from the tile's edge, concentric corners), with a soft inner
+   shadow, a month caption on a gradient at the bottom only, and a hairline
+   that fills while the photo shows. Two stacked layers crossfade by opacity;
+   the blurred fill behind a contained photo is blurred once (a static
+   layer, never animated). No grid, no flex gap; only opacity and transform
+   animate. Text keeps a line-height of 1.35 or more so accents never clip. */
+
+/* ---------- the tile ---------- */
+
+.ph-tile { position: static; }
+.ph-frame {
+  position: absolute;
+  top: 0.5rem; right: 0.5rem; bottom: 0.5rem; left: 0.5rem;
+  border-radius: 1.1rem;
+  overflow: hidden;
+  background: #0a0b0e;
+  /* its own layer, so the rounded clip holds over the fading layers */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+.is-glass .ph-frame { border-radius: calc(var(--r-outer) - 0.66rem); }
+
+.ph-stage {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  overflow: hidden;
+}
+.ph-layer {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  overflow: hidden;
+  opacity: 0;
+  -webkit-transition: opacity 1.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: opacity 1.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: opacity;
+}
+.ph-layer.is-on { opacity: 1; }
+.ph-stage.is-quick .ph-layer { -webkit-transition-duration: 0.35s; transition-duration: 0.35s; }
+.ph-stage.is-instant .ph-layer { -webkit-transition: none; transition: none; }
+
+.ph-img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.ph-cover .ph-img { object-fit: cover; object-position: 50% 40%; }
+/* The blurred fill: the same photo, larger, blurred once and dimmed. */
+.ph-fill {
+  position: absolute;
+  top: -10%; left: -10%;
+  width: 120%;
+  height: 120%;
+  object-fit: cover;
+  -webkit-filter: blur(1.4rem) saturate(1.15);
+  filter: blur(1.4rem) saturate(1.15);
+  opacity: 0.6;
+}
+.ph-cover .ph-fill { display: none; }
+.ph-fill:not([src]) { display: none; }
+
+/* The soft inner frame: a hairline and a shadow falling inwards from the top. */
+.ph-rim {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 0.06rem rgba(255, 255, 255, 0.09), inset 0 0.15rem 1.4rem rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+}
+
+/* The caption: a month, on a gradient at the bottom only. */
+.ph-cap {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  padding: 2.4rem 1.2rem 0.95rem;
+  background: -webkit-linear-gradient(bottom, rgba(0, 0, 0, 0.58), rgba(0, 0, 0, 0.22) 55%, rgba(0, 0, 0, 0));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.58), rgba(0, 0, 0, 0.22) 55%, rgba(0, 0, 0, 0));
+  pointer-events: none;
+}
+.ph-cap-text {
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 0.06rem 0;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 0.04rem 0.4rem rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-ww .ph-cap-text { font-size: 1rem; }
+.tile-h3 .ph-cap { padding: 3rem 1.5rem 1.2rem; }
+.ph-tile-strip .ph-cap { padding: 1.4rem 0.9rem 0.5rem; }
+.ph-tile-strip .ph-cap-text { font-size: 0.8rem; }
+
+/* The hairline: fills while a photo shows (a transform, one per photo). */
+.ph-bar-track {
+  position: absolute;
+  left: 1.2rem; right: 1.2rem; bottom: 0.5rem;
+  height: 0.08rem;
+  border-radius: 0.08rem;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  pointer-events: none;
+}
+.ph-bar {
+  height: 100%;
+  background: rgba(255, 255, 255, 0.5);
+  -webkit-transform-origin: 0 50%;
+  transform-origin: 0 50%;
+  -webkit-transform: scaleX(0);
+  transform: scaleX(0);
+  -webkit-transition-property: -webkit-transform;
+  transition-property: transform;
+  -webkit-transition-timing-function: linear;
+  transition-timing-function: linear;
+}
+.ph-bar.is-running { -webkit-transform: scaleX(1); transform: scaleX(1); }
+.tile-h1 .ph-bar-track,
+.ph-tile-one .ph-bar-track,
+.motion-fade .ph-bar-track { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ph-bar-track { display: none; }
+  .ph-layer { -webkit-transition-duration: 0.35s; transition-duration: 0.35s; }
+}
+
+/* ---------- waiting, empty, no Pi ---------- */
+
+.ph-frame-quiet { background: rgba(10, 12, 16, 0.35); }
+.ph-quiet {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.2rem;
+  text-align: center;
+}
+.ph-quiet-art {
+  position: relative;
+  width: 4.2rem;
+  height: 3.4rem;
+  margin-bottom: 0.9rem;
+  flex: 0 0 auto;
+}
+.ph-quiet-card {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0.7rem;
+  border: 0.08rem solid rgba(255, 255, 255, 0.16);
+}
+.ph-quiet-back {
+  background: rgba(255, 255, 255, 0.03);
+  -webkit-transform: rotate(-7deg) translate(-0.35rem, 0.1rem);
+  transform: rotate(-7deg) translate(-0.35rem, 0.1rem);
+}
+.ph-quiet-front {
+  background: rgba(20, 23, 30, 0.85);
+  -webkit-transform: rotate(4deg) translate(0.3rem, 0);
+  transform: rotate(4deg) translate(0.3rem, 0);
+}
+.ph-quiet-icon {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 1.8rem; height: 1.8rem;
+  margin: -0.9rem 0 0 -0.9rem;
+  color: var(--text-2);
+}
+.ph-quiet-icon svg { width: 100%; height: 100%; display: block; }
+.ph-quiet-head {
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text);
+  max-width: 100%;
+}
+.ph-quiet-hint {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-2);
+  max-width: 22rem;
+}
+.ph-quiet-loading .ph-quiet-head { color: var(--text-2); font-weight: 400; }
+.tile-h1 .ph-quiet { -webkit-flex-direction: row; flex-direction: row; text-align: left; }
+.tile-h1 .ph-quiet-art { width: 3rem; height: 2.4rem; margin: 0 1rem 0 0; }
+.tile-h1 .ph-quiet-icon { width: 1.3rem; height: 1.3rem; margin: -0.65rem 0 0 -0.65rem; }
+/* 1 column: the empty frames alone (one icon), no words. */
+.ph-tile-one .ph-quiet { padding: 0.5rem; }
+.ph-tile-one .ph-quiet-head,
+.ph-tile-one .ph-quiet-hint { display: none; }
+.ph-tile-one .ph-quiet-art { width: 2.6rem; height: 2.1rem; margin: 0; }
+.ph-tile-one .ph-quiet-icon { width: 1.1rem; height: 1.1rem; margin: -0.55rem 0 0 -0.55rem; }
+
+/* ---------- full screen: the grid ---------- */
+
+.ph-panel { position: relative; height: 100%; }
+.panel-body.ph-scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.panel-body.ph-scroll::-webkit-scrollbar { width: 0; height: 0; }
+.ph-grid { padding: 0.2rem 0 1.2rem; }
+.ph-month {
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 0.1rem 0 0.4rem;
+  margin: 0.9rem 0 0.8rem;
+  color: var(--text-2);
+  border-bottom: 0.06rem solid var(--hair, rgba(255, 255, 255, 0.09));
+}
+.ph-month:first-child { margin-top: 0; }
+.ph-row { font-size: 0; line-height: 0; }
+.ph-thumb {
+  position: relative;
+  display: inline-block;
+  vertical-align: top;
+  width: -webkit-calc((100% - 2.1rem) / 4);
+  width: calc((100% - 2.1rem) / 4);
+  height: 7.4rem;
+  margin: 0 0.7rem 0.7rem 0;
+  border-radius: 0.8rem;
+  border: var(--edge, 0.16rem) solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.ph-thumb:nth-child(4n) { margin-right: 0; }
+.is-full .ph-thumb {
+  width: -webkit-calc((100% - 3.75rem) / 6);
+  width: calc((100% - 3.75rem) / 6);
+  height: 8.8rem;
+  margin: 0 0.75rem 0.75rem 0;
+}
+.is-full .ph-thumb:nth-child(4n) { margin-right: 0.75rem; }
+.is-full .ph-thumb:nth-child(6n) { margin-right: 0; }
+.ph-thumb img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 35%;
+  border-radius: 0.64rem;
+  opacity: 0;
+  -webkit-transition: opacity 0.3s ease;
+  transition: opacity 0.3s ease;
+}
+.ph-thumb.is-loaded img { opacity: 1; }
+/* Focus: a plain border swap, instant. */
+.ph-thumb.is-focused { border-color: var(--focus, #ffffff); }
+
+/* ---------- full screen: the viewer ---------- */
+
+.ph-panel.is-viewing { height: 100%; }
+.ph-viewer {
+  position: relative;
+  height: 100%;
+  border-radius: 1.4rem;
+  overflow: hidden;
+  background: #08090b;
+  border: var(--edge, 0.16rem) solid rgba(255, 255, 255, 0.06);
+  box-sizing: border-box;
+  cursor: pointer;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+.ph-viewer.is-focused { border-color: rgba(255, 255, 255, 0.16); }
+.ph-viewer .ph-fill { opacity: 0.5; }
+.ph-nav {
+  position: absolute;
+  top: 50%;
+  width: 3rem;
+  height: 3rem;
+  margin-top: -1.5rem;
+  border-radius: 1.5rem;
+  background: rgba(0, 0, 0, 0.32);
+  border: 0.06rem solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.85);
+  pointer-events: none;
+}
+.ph-nav-prev { left: 1.2rem; }
+.ph-nav-next { right: 1.2rem; }
+.ph-nav-icon { position: absolute; top: 0.75rem; left: 0.75rem; width: 1.5rem; height: 1.5rem; }
+.ph-nav-icon svg { width: 100%; height: 100%; display: block; }
+.ph-nav-next .ph-nav-icon { -webkit-transform: rotate(180deg); transform: rotate(180deg); }
+.ph-view-foot {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  padding: 3.6rem 1.8rem 1.2rem;
+  background: -webkit-linear-gradient(bottom, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.24) 55%, rgba(0, 0, 0, 0));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.24) 55%, rgba(0, 0, 0, 0));
+  color: #ffffff;
+  pointer-events: none;
+}
+.ph-view-month {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 1.35rem;
+  font-weight: 500;
+  line-height: 1.4;
+  padding-top: 0.06rem;
+}
+.ph-view-count {
+  flex: 0 0 auto;
+  margin-left: 1rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
+  font-variant-numeric: tabular-nums;
+}
+.ph-view-tip {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  padding-left: 1.5rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.55);
+  text-align: right;
+}
+
+/* ---------- full screen: waiting, empty, no Pi ---------- */
+
+.ph-panel-quiet { position: relative; height: 100%; min-height: 16rem; }
+.ph-panel-quiet .ph-quiet-art { width: 6.4rem; height: 5.2rem; margin-bottom: 1.4rem; }
+.ph-panel-quiet .ph-quiet-icon { width: 2.6rem; height: 2.6rem; margin: -1.3rem 0 0 -1.3rem; }
+.ph-panel-quiet .ph-quiet-head { font-size: 1.4rem; }
+.ph-panel-quiet .ph-quiet-hint { font-size: 1rem; max-width: 30rem; }
+
+.css-end { top: 0; }

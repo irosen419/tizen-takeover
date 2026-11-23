@@ -63,6 +63,7 @@
  *   ./hub ambience reset             back to the defaults (no lights)
  *   ./hub guest-pin status           is a Guest mode PIN set (never the PIN itself)
  *   ./hub guest-pin reset            forget it; the TV asks for a new PIN next time
+ *   ./hub photos status              the photo album: how many photos, the last sync from the wall calendar
  *   ./hub status                     is the server up, which screens are on
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub log [--errors] [--lines 120]   the server's recent log lines (50 unless --lines says)
@@ -673,6 +674,23 @@ async function guestPinCommand(args) {
   if (sub === 'status') return say(guestPinStatusText(await call('GET', '/api/guest-pin')));
   if (sub === 'reset') return say(guestPinResetText(await call('POST', '/api/guest-pin/reset', {})));
   stop('Use one of: guest-pin status, guest-pin reset. Run ./hub help for examples.');
+}
+
+/* ---------- Photo album ---------- */
+
+// The line for ./hub photos status (and the mailbox's photos.status), from
+// GET /api/photos. Counts and a time only, never a file name.
+function photosStatusText(r) {
+  const head = 'Photo album: ' + plural(r.count || 0, 'photo') + '.';
+  if (!r.lastRun) return head + ' Never synced from the wall calendar (see pi/README.md, "Photo album").';
+  const at = Date.parse(r.lastRun);
+  const t = isNaN(at) ? r.lastRun : new Date(at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return head + ' Last sync ' + t + ' (' + (r.syncOk === false ? 'some files could not be copied' : 'ok') + ', ' + (r.newCount || 0) + ' new).';
+}
+
+async function photosCommand(args) {
+  if (args[0] !== 'status') stop('Use: ./hub photos status. Run ./hub help for examples.');
+  say(photosStatusText(await call('GET', '/api/photos')));
 }
 
 /* ---------- TV show schedule ---------- */
@@ -1407,6 +1425,7 @@ const HELP = [
   '  ./hub ambience reset        back to the defaults (no lights)',
   '  ./hub guest-pin status     is a Guest mode PIN set (the TV asks for it to turn Guest mode on or off)',
   '  ./hub guest-pin reset      forget the PIN; the TV asks you to create a new one next time',
+  '  ./hub photos status        the photo album: how many photos, and the last sync from the wall calendar',
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
@@ -1704,6 +1723,7 @@ async function main(argv) {
   if (cmd === 'linktests') return linktestsCommand(rest);
   if (cmd === 'tvremote') return tvremoteCommand(rest);
   if (cmd === 'guest-pin') return guestPinCommand(rest);
+  if (cmd === 'photos') return photosCommand(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'log') return logCommand(rest);
@@ -1754,6 +1774,7 @@ module.exports = {
   awwsShowLines: awwsShowLines,
   guestPinStatusText: guestPinStatusText,
   guestPinResetText: guestPinResetText,
+  photosStatusText: photosStatusText,
   budgetShowLines: budgetShowLines,
   showsListLines: showsListLines,
   statusLines: statusLines,
