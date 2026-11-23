@@ -10,7 +10,8 @@
  * shows the picture and "Brand · size"; not found -> the form (with a
  * photo) saves and the next scan finds it; typing the number; the calm
  * message without a secure address; Spanish fits 25% longer with accents
- * unclipped; and the vendored polyfill really decodes an EAN-13 picture
+ * unclipped; the Add to chip (Groceries | Pantry, remembered per view); and
+ * the vendored polyfill really decodes an EAN-13 picture
  * with the wasm served by the Pi while nothing leaves localhost.
  * SCAN_SHOTS=dir/ keeps screenshots (device scale 2). Needs Playwright.
  * Prints one line per check and "N passed, M failed".
@@ -383,6 +384,36 @@ async function main() {
       const head = await page.evaluate(() => fetch('/app/vendor/barcode-detector/zxing_reader.wasm', { method: 'HEAD', headers: { 'X-Hub-Touch': '1' } }).then((r) => r.headers.get('content-type')));
       assert(head === 'application/wasm', 'wasm type ' + head);
       await ctx.close();
+    });
+
+    await check('Add to chip: Groceries | Pantry; a pick goes to the pantry and is remembered for the view that opened Scan', async () => {
+      const page = await open();
+      await openScanner(page);
+      await show(page, KNOWN);
+      await page.waitForSelector('.sc-sheet.is-on .sc-dests');
+      let chips = await page.$$eval('.sc-dest', (b) => b.map((x) => x.textContent + ':' + x.getAttribute('aria-pressed')));
+      assert(chips.join(',') === 'Groceries:true,Pantry:false', chips.join(','));
+      await page.click('.sc-dest[data-dest="pantry"]');
+      assert((await page.textContent('.sc-add')) === 'Add to Pantry', await page.textContent('.sc-add'));
+      assert((await page.textContent('.sc-title-dest')) === 'Pantry', 'title follows the pick');
+      await shot(page, 'scan-dest-pantry-en.png');
+      await page.click('.sc-add');
+      await page.waitForSelector('.sc-toast.is-on');
+      await page.waitForFunction(() => document.querySelector('.sc').getAttribute('data-state') === 'scan');
+      await page.waitForTimeout(500);
+      const got = hub.pantry.ownedList().find((p) => p.upc === KNOWN);
+      assert(got && got.qty === 1 && got.brand, JSON.stringify(got));
+      await page.click('.sc-close');
+      await openScanner(page);
+      await show(page, KNOWN);
+      await page.waitForSelector('.sc-sheet.is-on .sc-dests');
+      chips = await page.$$eval('.sc-dest', (b) => b.map((x) => x.textContent + ':' + x.getAttribute('aria-pressed')));
+      assert(chips.join(',') === 'Groceries:false,Pantry:true', 'remembered: ' + chips.join(','));
+      assert(/At home: 1/.test(await page.textContent('.sc-note')), 'pantry note');
+      const small = await page.evaluate(() => Array.prototype.filter.call(document.querySelectorAll('.sc-dest'), (b) => b.getBoundingClientRect().height < 43.5).length);
+      assert(!small, 'chips under 44 px');
+      assert(!page.errors.length, page.errors.join('; '));
+      await page.ctx.close();
     });
 
     await check('files: scan.js and grocery.js are ES5; vendor README names the versions; the TV never loads the scanner', async () => {
