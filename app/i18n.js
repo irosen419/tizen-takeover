@@ -1731,6 +1731,7 @@
     'pantry.err.long': 'Es demasiado largo',
     'pantry.err.number': 'Escribe un número, 0 o más',
     'pantry.err.whole': 'Escribe un número entero, 1 o más',
+    'pantry.err.whole0': 'Escribe un número entero, 0 o más',
     'pantry.unit.oz': 'oz',
     'pantry.unit.fl_oz': 'oz líq.',
     'pantry.unit.lb': 'lb',

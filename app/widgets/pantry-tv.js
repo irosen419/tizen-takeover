@@ -115,13 +115,14 @@
         if (s === '' || s === null) return { value: null };
         n = Number(s);
         return isFinite(n) && n > 0 && n < 100000 ? { value: Math.round(n * 100) / 100 } : { error: 'number' };
+      // Whole numbers on the Pi (pantrydb.js): 0 to 9999 left, restock at 0 to 999.
       case 'quantity_remaining':
       case 'restock_at':
         n = Number(s);
-        return s !== '' && isFinite(n) && n >= 0 && n < 10000 ? { value: Math.round(n * 100) / 100 } : { error: 'number' };
+        return s !== '' && isFinite(n) && n >= 0 && n <= (field === 'restock_at' ? 999 : 9999) && Math.floor(n) === n ? { value: n } : { error: 'whole0' };
       case 'purchase_quantity':
         n = Number(s);
-        return s !== '' && isFinite(n) && n >= 1 && n < 1000 && Math.floor(n) === n ? { value: n } : { error: 'whole' };
+        return s !== '' && isFinite(n) && n >= 1 && n <= 99 && Math.floor(n) === n ? { value: n } : { error: 'whole' };
       case 'unit': return has(UNITS, s) ? { value: s } : { error: 'choice' };
       case 'substitution_mode': return has(MODES, s) ? { value: s } : { error: 'choice' };
       case 'location': return has(LOCATIONS, s) ? { value: s } : { error: 'choice' };
@@ -835,7 +836,8 @@
       name: ['pantry.err.name', 'A product needs a name'],
       long: ['pantry.err.long', 'That’s too long'],
       number: ['pantry.err.number', 'Type a number, 0 or more'],
-      whole: ['pantry.err.whole', 'Type a whole number, 1 or more']
+      whole: ['pantry.err.whole', 'Type a whole number, 1 or more'],
+      whole0: ['pantry.err.whole0', 'Type a whole number, 0 or more']
     };
 
     function onSubmit(target, ctx) {

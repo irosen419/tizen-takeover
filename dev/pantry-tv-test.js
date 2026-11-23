@@ -290,7 +290,8 @@ async function main() {
       assert(order[order.length - 1] === 1, 'ticked not last: ' + order);
       assert(P.clean('size', '15.5').value === 15.5 && P.clean('size', '').value === null && P.clean('size', '-1').error, 'size');
       assert(P.clean('purchase_quantity', '2').value === 2 && P.clean('purchase_quantity', '1.5').error && P.clean('purchase_quantity', '0').error, 'purchase quantity');
-      assert(P.clean('quantity_remaining', '0').value === 0 && P.clean('quantity_remaining', 'x').error, 'remaining');
+      assert(P.clean('quantity_remaining', '0').value === 0 && P.clean('quantity_remaining', 'x').error && P.clean('quantity_remaining', '1.5').error === 'whole0', 'remaining (whole numbers, as the Pi)');
+      assert(P.clean('restock_at', '1000').error && P.clean('purchase_quantity', '100').error, 'the Pi\'s limits');
       assert(P.clean('unit', 'fl_oz').value === 'fl_oz' && P.clean('unit', 'cup').error, 'unit');
       assert(P.clean('substitution_mode', 'contact_me').value && P.clean('location', 'garage').error, 'enums');
       assert(P.clean('name', '  ').error === 'name', 'empty name');
