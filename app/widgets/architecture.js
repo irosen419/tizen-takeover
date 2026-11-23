@@ -4,7 +4,7 @@
  * remote. The same data the Layout Studio's Architecture page draws:
  * studio/architecture/data.json, written for the TV by
  * node studio/build-architecture.js into app/widgets/architecture-data.js
- * (var HUB_ARCH = {...};, about 170 KB).
+ * (var HUB_ARCH = {...};, about 200 KB with the code map).
  *
  *   tile       a tiny drawn map of the seven Big picture boxes and the status
  *              counts. It needs no data file: the counts and boxes sit in
@@ -25,7 +25,8 @@
  *                 Details. A "Details" pill on the head opens the drawer for
  *                 the group or part itself.
  *   Details       a drawer on the right (about 40%) over the dimmed diagram:
- *                 status, summary, details, files, notes and "Talks to" links
+ *                 status, summary, details, files, the code map (where to start
+ *                 reading, from docs/CODE-MAP.md), notes and "Talks to" links
  *                 (OK jumps to that part). Up and Down move through its rows;
  *                 text taller than the drawer scrolls (a transform).
  * Back goes up one level and closes the widget at the Big picture. Focus is
@@ -769,6 +770,108 @@
     return r;
   }
 
+  /* The code map (docs/CODE-MAP.md, matched to the part's files by studio/codemap.js
+     when the data file is built): where to start reading, what the map says about
+     its files, what to check when it breaks and the recipe for adding one like it. */
+
+  // Text with `code` spans, built as nodes (never innerHTML: the words are data).
+  function codeText(cls, parent, text) {
+    var el = div(cls, parent), bits = String(text || '').split(String.fromCharCode(96)), i; // a backtick
+    for (i = 0; i < bits.length; i++) {
+      if (!bits[i]) continue;
+      if (i % 2) span('ar-cm-code', el, bits[i]);
+      else el.appendChild(document.createTextNode(bits[i]));
+    }
+    return el;
+  }
+  function cmRow(parent, key, cls) {
+    var r = div('ar-dr-row f ar-cm-row ' + (cls || ''), parent);
+    r.setAttribute('data-key', key);
+    return r;
+  }
+  function runsOn(f) { return f.lang + (f.where ? '  \u00b7  runs on ' + f.where : ''); }
+  function cmFolderLine(parent, f) {
+    var w = div('ar-cm-in', parent);
+    span('ar-cm-code', w, f.path);
+    w.appendChild(document.createTextNode('  ' + runsOn(f)));
+  }
+
+  function drawCodeMap(scroll, n) {
+    var CM = D && D.codemap, e = CM && CM.parts && CM.parts[n.id];
+    if (!e) return;
+    var total = CM.read.length, i, r, x, row;
+    var lab = div('ar-dr-label ar-cm-label', scroll, 'Code map');
+    span('ar-cm-src', lab, CM.src);
+    if (e.folders) {
+      for (i = 0; i < e.folders.length; i++) {
+        var f = CM.folders[e.folders[i]];
+        row = cmRow(scroll, 'd:cm:dir' + i, 'ar-cm-file');
+        div('ar-cm-path', row, f.path);
+        div('ar-cm-note', row, runsOn(f));
+        if (f.start) {
+          var st = div('ar-cm-also', row, 'Start at ');
+          span('ar-cm-code', st, f.start);
+        }
+      }
+      if (e.read) {
+        div('ar-dr-label', scroll, 'Its steps in the reading order');
+        for (i = 0; i < e.read.length; i++) {
+          r = CM.read[e.read[i]];
+          row = cmRow(scroll, 'd:cm:read' + i, 'ar-cm-step');
+          span('ar-cm-n', row, String(r.n));
+          codeText('ar-cm-steptext', row, r.text);
+        }
+      }
+      return;
+    }
+    var s = e.start, sr = s.read >= 0 ? CM.read[s.read] : null;
+    row = cmRow(scroll, 'd:cm:start', 'ar-cm-start');
+    var eb = div('ar-cm-eyebrow', row);
+    if (sr) span('ar-cm-n', eb, String(sr.n));
+    span('', eb, sr ? 'Start here  \u00b7  step ' + sr.n + ' of ' + total : 'Start here  \u00b7  main file');
+    div('ar-cm-path ar-cm-big', row, s.path);
+    if (sr) codeText('ar-cm-note', row, sr.text);
+    else if (s.flow) {
+      var fl = CM.flows[s.flow[0]];
+      codeText('ar-cm-note', row, fl.title + '. ' + fl.says[s.flow[1]].text);
+    }
+    if (s.folder >= 0) cmFolderLine(row, CM.folders[s.folder]);
+    var files = e.files || [];
+    if (files.length) div('ar-dr-label', scroll, 'Also in the map');
+    for (i = 0; i < files.length; i++) {
+      x = files[i];
+      row = cmRow(scroll, 'd:cm:f' + i, 'ar-cm-file');
+      var head = div('ar-cm-head', row);
+      span('ar-cm-path', head, x.path);
+      span('ar-cm-tag', head, x.read !== undefined ? 'Step ' + CM.read[x.read].n : CM.flows[x.flow[0]].title);
+      codeText('ar-cm-note', row, x.read !== undefined ? CM.read[x.read].text : CM.flows[x.flow[0]].says[x.flow[1]].text);
+      if (x.also) {
+        var names = [];
+        for (var a = 0; a < x.also.length; a++) names.push('\u201c' + CM.flows[x.also[a]].title + '\u201d');
+        div('ar-cm-also', row, 'Also in ' + names.join(', '));
+      }
+    }
+    if (e.more) div('ar-cm-also ar-cm-more', scroll, '+' + e.more + ' more in the map');
+    var fixes = e.fixes || [];
+    if (fixes.length) div('ar-dr-label', scroll, 'When something looks wrong');
+    for (i = 0; i < fixes.length; i++) {
+      x = CM.fixes[fixes[i]];
+      row = cmRow(scroll, 'd:cm:fix' + i, 'ar-cm-fix');
+      div('ar-cm-when', row, x.when);
+      codeText('ar-cm-note', row, x.look);
+    }
+    if (e.recipe) {
+      var rc = CM.recipes[e.recipe.i];
+      div('ar-dr-label', scroll, 'To add one like it: ' + rc.title);
+      row = cmRow(scroll, 'd:cm:recipe', 'ar-cm-recipe');
+      for (i = 0; i < rc.steps.length; i++) {
+        var li = div('ar-cm-li', row);
+        span('ar-cm-num', li, (i + 1) + '.');
+        codeText('ar-cm-litext', li, rc.steps[i].text);
+      }
+    }
+  }
+
   function drawDrawer(root) {
     var n = byId[S.node];
     var dim = div('ar-dim', root);
@@ -815,6 +918,7 @@
       fr.setAttribute('data-key', 'd:files');
       for (i = 0; i < files.length; i++) div('ar-dr-file', fr, files[i]);
     }
+    drawCodeMap(scroll, n);
     var notes = n.notes || [];
     if (notes.length) div('ar-dr-label', scroll, 'Notes');
     for (i = 0; i < notes.length; i++) paragraphRow(scroll, 'd:note' + i, 'ar-dr-text ar-dr-note', notes[i]);

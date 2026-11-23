@@ -674,6 +674,70 @@
     STATUS.forEach(function (s) { h += '<div>' + pill(s.id) + '<span>' + esc(s.hint) + '.</span></div>'; });
     return h + '</div>';
   }
+  /* the code map (docs/CODE-MAP.md, matched to this part's files by studio/codemap.js at build time) */
+  var CM = D.codemap || null;
+  function cmText(s) { return esc(s).replace(/`([^`]+)`/g, '<code>$1</code>'); }
+  function cmPath(p) {
+    return /[<\s]/.test(p) ? '<span class="ar-cm-path">' + esc(p) + '</span>' : '<a class="ar-cm-path" target="_blank" rel="noopener" href="' + esc(REPO + p.replace(/\/$/, '')) + '">' + esc(p) + '</a>';
+  }
+  function cmRuns(f) { return f.lang + (f.where ? ' · runs on ' + f.where : ''); }
+  function cmFolder(i) {
+    var f = CM.folders[i]; if (!f) return '';
+    return '<span class="ar-cm-where"><code>' + esc(f.path) + '</code> ' + esc(cmRuns(f)) + '</span>';
+  }
+  function cmFlow(ij) { var f = CM.flows[ij[0]], s = f && f.says[ij[1]]; return s ? '<p>' + cmText(s.text) + '</p>' : ''; }
+  function codeMapHtml(n) {
+    var e = CM && CM.parts && CM.parts[n.id];
+    if (!e) return '';
+    var total = CM.read.length;
+    var h = '<div class="ar-sec ar-cm"><div class="ar-cm-head"><h4>Code map</h4>' + cmPath(CM.src) + '</div>';
+    if (e.folders) {
+      h += '<p class="ar-cm-sub">Where this group\u2019s code lives, and where the map starts each folder.</p><ul class="ar-cm-files">';
+      e.folders.forEach(function (i) {
+        var f = CM.folders[i];
+        h += '<li><div class="ar-cm-row">' + cmPath(f.path) + '</div><p>' + esc(cmRuns(f)) + '</p>' + (f.start ? '<p class="ar-cm-also">Start at ' + cmPath(f.start) + '</p>' : '') + '</li>';
+      });
+      h += '</ul>';
+      if (e.read) {
+        h += '<h5>Its steps in the reading order</h5><ul class="ar-cm-files ar-cm-steps">';
+        e.read.forEach(function (i) { var r = CM.read[i]; h += '<li><span class="ar-cm-n" aria-label="Step ' + r.n + ' of ' + total + '">' + r.n + '</span><p>' + cmText(r.text) + '</p></li>'; });
+        h += '</ul>';
+      }
+      return h + '</div>';
+    }
+    var s = e.start, r = s.read >= 0 ? CM.read[s.read] : null, fl = s.flow ? CM.flows[s.flow[0]] : null;
+    h += '<div class="ar-cm-start">';
+    h += '<div class="ar-cm-eyebrow">' + (r ? '<span class="ar-cm-n" aria-hidden="true">' + r.n + '</span>Start here · step ' + r.n + ' of ' + total : 'Start here · main file') + '</div>';
+    h += cmPath(s.path);
+    if (r) h += '<p>' + cmText(r.text) + '</p>';
+    else if (fl) h += '<p><b>' + esc(fl.title) + '.</b> ' + cmText(fl.says[s.flow[1]].text) + '</p>';
+    if (s.folder >= 0) h += '<p class="ar-cm-in">' + cmFolder(s.folder) + '</p>';
+    h += '</div>';
+    if (e.files) {
+      h += '<h5>Also in the map</h5><ul class="ar-cm-files">';
+      e.files.forEach(function (x) {
+        var tag = x.read !== undefined ? 'Step ' + CM.read[x.read].n : CM.flows[x.flow[0]].title;
+        h += '<li><div class="ar-cm-row">' + cmPath(x.path) + '<span class="ar-cm-tag">' + esc(tag) + '</span></div>';
+        h += x.read !== undefined ? '<p>' + cmText(CM.read[x.read].text) + '</p>' : cmFlow(x.flow);
+        if (x.also) h += '<p class="ar-cm-also">Also in the flow' + (x.also.length > 1 ? 's' : '') + ' ' + x.also.map(function (i) { return '\u201c' + esc(CM.flows[i].title) + '\u201d'; }).join(', ') + '</p>';
+        h += '</li>';
+      });
+      h += '</ul>';
+      if (e.more) h += '<p class="ar-cm-also">' + plural(e.more, 'more file') + ' in the map.</p>';
+    }
+    if (e.fixes) {
+      h += '<h5>When something looks wrong</h5><ul class="ar-cm-fixes">';
+      e.fixes.forEach(function (i) { var x = CM.fixes[i]; h += '<li><b>' + esc(x.when) + '</b><p>' + cmText(x.look) + '</p></li>'; });
+      h += '</ul>';
+    }
+    if (e.recipe) {
+      var rc = CM.recipes[e.recipe.i];
+      h += '<details class="ar-cm-recipe"><summary><span>To add one like it: ' + esc(rc.title) + '</span><small>' + plural(rc.steps.length, 'step') + '</small></summary><ol>' + rc.steps.map(function (st) {
+        return '<li>' + cmText(st.text) + '</li>';
+      }).join('') + '</ol></details>';
+    }
+    return h + '</div>';
+  }
   function renderDetail() {
     var el = document.getElementById('arDetail'), n = S.sel && byId[S.sel], h = '';
     el.classList.toggle('is-open', !!(n && S.sheet));
@@ -698,6 +762,7 @@
     if ((n.files || []).length) h += '<div class="ar-sec"><h4>Key files</h4><div class="ar-files">' + n.files.map(function (f) {
       return /^\(PR/.test(f) || /\s/.test(f) ? '<span class="ar-file">' + esc(f) + '</span>' : '<a class="ar-file" target="_blank" rel="noopener" href="' + esc(REPO + f.replace(/\/$/, '')) + '">' + esc(f) + '</a>';
     }).join('') + '</div></div>';
+    h += codeMapHtml(n);
     var seen = {}, rows = [];
     (n.talksTo || []).forEach(function (t) { var k = t.to + '|' + t.label; if (byId[t.to] && !seen[k]) { seen[k] = 1; rows.push({ id: t.to, label: t.label, dir: t.dir || 'out' }); } });
     (inc[n.id] || []).forEach(function (t) { var k = t.other + '|' + t.label; if (!seen[k]) { seen[k] = 1; rows.push({ id: t.other, label: t.label, dir: t.dir }); } });

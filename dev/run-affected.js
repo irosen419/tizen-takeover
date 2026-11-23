@@ -18,7 +18,8 @@
  *   3. any suite whose source mentions the changed file (dev/awws-harness.js);
  *   4. the RULES below for shared files (hub.js, config.js, studio, ...);
  *   5. an unknown file under app/ runs the CORE set.
- * Plain docs and images (*.md, *.png, *.jpg) run nothing.
+ * Plain docs and images (*.md, *.png, *.jpg) run nothing, except docs/CODE-MAP.md
+ * (the Architecture page is built from it: the codemap and architecture suites).
  */
 const fs = require('fs');
 const path = require('path');
@@ -118,6 +119,9 @@ function pick(files) {
       add(dir + '/' + stem + '-test.js', f);
       if (f.indexOf('app/') === 0) ALL.filter((s) => s.indexOf('dev/' + stem + '-') === 0).forEach((s) => add(s, f));
     }
+    // The code map is a doc, but the Architecture page is built from it.
+    if (f === 'docs/CODE-MAP.md') ['dev/codemap-test.js', 'dev/architecture-test.js', 'dev/architecture-tv-test.js'].forEach((x) => add(x, f));
+    if (/^studio\/codemap\.js$/.test(f)) ['dev/codemap-test.js', 'dev/architecture-test.js', 'dev/architecture-tv-test.js'].forEach((x) => add(x, f));
     if (DOCS.test(f)) return;
     ALL.forEach((s) => { if (s !== f && suiteMentions(s, f)) add(s, f); });
     let ruled = false;

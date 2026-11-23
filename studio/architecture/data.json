@@ -1297,8 +1297,9 @@
        "status": "unverified",
        "summary": "This map on the TV: Big picture, group diagrams and a detail drawer, all driven by the remote, plus the data flows stepped one by one.",
        "details": [
-        "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 170 KB of data (app/widgets/architecture-data.js) loads only when the widget is first opened.",
-        "The data is the same studio/architecture/data.json the Studio page draws: node studio/build-architecture.js writes both, and its --check fails when either is out of date."
+        "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 200 KB of data (app/widgets/architecture-data.js, with the code map) loads only when the widget is first opened.",
+        "The data is the same studio/architecture/data.json the Studio page draws: node studio/build-architecture.js writes both, and its --check fails when either is out of date.",
+        "The drawer's Code map section (from docs/CODE-MAP.md, matched by studio/codemap.js) is one row per item, read with Up and Down: where to start, the map's notes on other files, what to check when it breaks and the recipe."
        ],
        "files": [
         "app/widgets/architecture.js",
@@ -4359,13 +4360,16 @@
      "details": [
       "The map lives in studio/architecture/data.json. arch.js and arch.css draw it, and node studio/build-architecture.js copies all three into the Studio file, which is published as one page.",
       "dev/architecture-test.js fails when a link or a file path is wrong, or when a secret, address or email slips into the data.",
-      "The TV widget (app/widgets/architecture.js) draws the same data.json with the remote: build-architecture.js also writes app/widgets/architecture-data.js and a small summary of status counts for the tile."
+      "The TV widget (app/widgets/architecture.js) draws the same data.json with the remote: build-architecture.js also writes app/widgets/architecture-data.js and a small summary of status counts for the tile.",
+      "Every part's detail drawer (Studio and TV) also shows a Code map section: where to start reading, what docs/CODE-MAP.md says about the part's files, what to check when it breaks and the recipe it belongs to. studio/codemap.js reads the map and matches it to each part's files when build-architecture.js runs, so the drawer follows the map; dev/codemap-test.js fails when the pages are behind it."
      ],
      "files": [
       "studio/architecture/data.json",
       "studio/architecture/arch.js",
       "studio/architecture/arch.css",
       "studio/build-architecture.js",
+      "studio/codemap.js",
+      "docs/CODE-MAP.md",
       "dev/architecture-test.js",
       "app/widgets/architecture-data.js"
      ],
