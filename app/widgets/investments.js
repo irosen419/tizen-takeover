@@ -14,14 +14,9 @@
  *                 OK opens it in place: the trend, every account and every
  *                 top holding.
  *
- * The owner approved dollar figures here on 2026-11-19. GUEST MODE shows no
- * dollar figure anywhere: only percentages (the gain against cost, each
- * account's and holding's share) and the shape of the trend, with no axis.
- * The percentages are worked out when the data arrives, BEFORE the dollars
- * are dropped: in Guest mode this file keeps only that derived copy, deletes
- * its own saved copy (homeHub.investments.v1) and draws from it alone. Turning
- * Guest mode off reads the Pi's latest copy again. (The TV still receives the
- * whole snapshot on the live line, as budget.js says; nothing here keeps it.)
+ * The owner approved dollar figures here on 2026-11-19. Guest mode (guest.js)
+ * blurs every dollar amount on the tile and the panel; the percentages, the
+ * names and the trend's shape (no axis, no figure) stay readable.
  *
  * This widget is in no layout. Put it on one with Layout Studio or
  * "./hub layout". With no investments section it says "Waiting for the budget
@@ -59,7 +54,6 @@
     accountsHead: 'Accounts',
     holdingsHead: 'Top holdings',
     byAccount: 'By account',
-    guestNote: 'Guest mode: percentages only.',
     nothing: 'Nothing to show yet.',
     states: {
       off: { head: 'Needs the Pi',
@@ -269,8 +263,8 @@
 
   /* ---------- the data: dollars, and the copy with no dollars ---------- */
 
-  // S.m holds the figures in dollars, null in Guest mode. S.g holds only
-  // percentages and the trend's shape and is always safe to draw.
+  // S.m holds the figures in dollars. S.g holds the percentages and the
+  // trend's shape that the drawing reads beside them.
   var S = { ctx: null, m: null, g: null, sentAt: NaN, fromCache: false, bound: false, sig: '', timer: null };
 
   function pctOf(part, whole) { return whole > 0 ? part / whole * 100 : null; }
@@ -337,8 +331,8 @@
     return m;
   }
 
-  // The same, with every dollar left out.
-  function guestOf(m) {
+  // The percentages and the trend's shape alone.
+  function sharesOf(m) {
     var g = { gainPct: m.gainPct, accounts: [], top: [], shape: m.shape, up: m.up, days: m.days, gainSign: m.gain === null ? 0 : m.gain > 0 ? 1 : m.gain < 0 ? -1 : 0 };
     var i;
     for (i = 0; i < m.accounts.length; i++) g.accounts.push({ label: m.accounts[i].label, pct: m.accounts[i].pct, gainPct: m.accounts[i].gainPct });
@@ -346,9 +340,8 @@
     return g;
   }
 
-  // What to draw now: the dollars while allowed, else the percentages alone.
+  // What to draw now.
   function view() {
-    if (guestOn()) return S.g ? { money: false, g: S.g } : null;
     if (!S.m) return null;
     return { money: true, m: S.m, g: S.g };
   }
@@ -360,10 +353,6 @@
   }
 
   function allowed() { return config().show !== false; }
-
-  function guestOn() {
-    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
-  }
 
   function L() {
     var x = window.HUB_LIVE;
@@ -413,14 +402,14 @@
   function saveCache(section, sentAt) {
     try {
       if (!window.localStorage) return;
-      if (section && !guestOn()) window.localStorage.setItem(CACHE_KEY, JSON.stringify({ v: 1, at: now(), sentAt: sentAt, section: section }));
+      if (section) window.localStorage.setItem(CACHE_KEY, JSON.stringify({ v: 1, at: now(), sentAt: sentAt, section: section }));
       else window.localStorage.removeItem(CACHE_KEY);
     } catch (e) { /* the copy in memory still works */ }
   }
 
   function setModel(m, sentAt) {
-    S.g = m ? guestOf(m) : null;
-    S.m = m && !guestOn() ? m : null;
+    S.g = m ? sharesOf(m) : null;
+    S.m = m || null;
     S.sentAt = m ? sentAt : NaN;
   }
 
@@ -430,8 +419,6 @@
     var sent = parseIso(d.sentAt);
     var sec = isNaN(sent) ? null : d.investments;
     var m = derive(sec);
-    // The dollars are worked into percentages above; from here Guest mode
-    // keeps only the percentages and does not save anything.
     setModel(m, sent);
     S.fromCache = false;
     saveCache(m ? sec : null, d.sentAt);
@@ -441,7 +428,7 @@
   function signature() {
     var key;
     try { key = JSON.stringify([S.m, S.g]); } catch (e) { key = String(now()); }
-    return [guestOn(), emptyState(), lineState(), todayNum(), asOfText(), key].join('|');
+    return [emptyState(), lineState(), todayNum(), asOfText(), key].join('|');
   }
 
   function refresh() {
@@ -491,20 +478,6 @@
     schedule();
   }
 
-  // Guest mode on: the dollars and the saved copy go. Off: the Pi's latest.
-  function onGuest(on) {
-    if (!allowed()) return;
-    if (on) {
-      S.m = null;
-      saveCache(null, '');
-    } else {
-      readLatest(L());
-    }
-    S.sig = '';
-    refresh();
-  }
-  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(onGuest); } catch (e) { /* no Guest mode on this page */ }
-
   /* ---------- drawing ---------- */
 
   function sizeOf(ctx) {
@@ -544,24 +517,16 @@
 
   function dim(root) { if (staleAt()) root.className += ' is-stale'; }
 
-  // The big figure: the total, or in Guest mode the gain percent.
-  function heroText(v) {
-    if (v.money) return cash(v.m.total);
-    return v.g.gainPct === null ? '' : signedPct(v.g.gainPct);
-  }
+  // The big figure: the total.
+  function heroText(v) { return cash(v.m.total); }
 
-  function heroTone(v) {
-    if (v.money) return '';
-    return v.g.gainPct === null ? '' : tone(v.g.gainSign);
-  }
+  function heroTone() { return ''; }
 
   // The gain against cost, in the forms to try (longest first).
   function gainForms(v) {
     var m = v.m;
     var g = v.g;
     var pct = g.gainPct === null ? null : signedPct(g.gainPct);
-    // In Guest mode the big figure already is the percent: nothing more to say.
-    if (!v.money) return [];
     if (m.gain === null) return [];
     var amount = signedCash(m.gain);
     var forms = [];
@@ -570,7 +535,7 @@
     return forms;
   }
 
-  function gainTone(v) { return v.money ? (v.m.gain === null ? '' : tone(v.m.gain)) : (v.g.gainPct === null ? '' : tone(v.g.gainSign)); }
+  function gainTone(v) { return v.m.gain === null ? '' : tone(v.m.gain); }
 
   function hero(parent, v, cap) {
     var box = el('div', 'iv-hero', parent);
@@ -586,7 +551,7 @@
     if (cap && cap.parentNode && (cap.offsetLeft <= box.numEl.offsetLeft + 1 || overW(cap))) box.removeChild(cap);
   }
 
-  function heroCap(v) { return v.money ? STRINGS.totalCap : STRINGS.vsCost; }
+  function heroCap() { return STRINGS.totalCap; }
 
   var SVGNS = 'http://www.w3.org/2000/svg';
 
@@ -648,26 +613,17 @@
     return box;
   }
 
-  // A holding: ticker, name, value (not in Guest mode) and its share.
+  // A holding: ticker, name, value and its share.
   function holdRow(i, v, wide, panel) {
     var t = v.g.top[i];
     var row = el('div', 'iv-row' + (panel ? ' iv-psec f' : ''));
     el('span', 'iv-tk iv-cut', row, t.ticker);
     el('span', 'iv-nm iv-cut' + (wide ? '' : ' is-hidden'), row, t.name);
-    if (v.money) el('span', 'iv-val', row, cash(v.m.top[i].value));
+    el('span', 'iv-val', row, cash(v.m.top[i].value));
     el('span', 'iv-pct', row, t.pct === null ? '' : sharePct(t.pct));
     if (panel) {
-      var gt;
-      var gtone = '';
-      if (v.money) {
-        var gv = v.m.top[i].gain;
-        gt = gv === null ? '' : signedCash(gv);
-        gtone = gv === null ? '' : tone(gv);
-      } else {
-        gt = t.gainPct === null ? '' : signedPct(t.gainPct);
-        gtone = t.gainPct === null ? '' : tone(t.gainPct);
-      }
-      el('span', 'iv-gn ' + gtone, row, gt);
+      var gv = v.m.top[i].gain;
+      el('span', 'iv-gn ' + (gv === null ? '' : tone(gv)), row, gv === null ? '' : signedCash(gv));
     }
     return row;
   }
@@ -678,21 +634,10 @@
     var top = el('div', 'iv-arow-top', row);
     el('span', 'iv-dot is-s' + (i % SEGS), top);
     el('span', 'iv-arow-label iv-cut', top, a.label);
-    if (v.money) el('span', 'iv-val', top, cash(v.m.accounts[i].value));
+    el('span', 'iv-val', top, cash(v.m.accounts[i].value));
     el('span', 'iv-pct', top, a.pct === null ? '' : sharePct(a.pct));
-    var gt = '';
-    var gtone = '';
-    if (v.money) {
-      var gv = v.m.accounts[i].gain;
-      if (gv !== null) {
-        gt = signedCash(gv) + (a.gainPct !== null ? STRINGS.sep + signedPct(a.gainPct) : '');
-        gtone = tone(gv);
-      }
-    } else if (a.gainPct !== null) {
-      gt = signedPct(a.gainPct) + ' ' + STRINGS.vsCost;
-      gtone = tone(a.gainPct);
-    }
-    if (gt) el('div', 'iv-arow-gain ' + gtone, row, gt);
+    var gv = v.m.accounts[i].gain;
+    if (gv !== null) el('div', 'iv-arow-gain ' + tone(gv), row, signedCash(gv) + (a.gainPct !== null ? STRINGS.sep + signedPct(a.gainPct) : ''));
     return row;
   }
 
@@ -702,7 +647,7 @@
     var num = el('span', 'iv-strip-num ' + heroTone(v), line, heroText(v));
     num.style.flexShrink = '0';
     var gain = el('span', 'iv-strip-gain ' + gainTone(v), line);
-    var forms = v.money ? gainForms(v) : [STRINGS.vsCost];
+    var forms = gainForms(v);
     for (var i = 0; i < forms.length && size.cols >= 3; i++) {
       gain.textContent = forms[i];
       if (!overW(line)) break;
@@ -727,8 +672,7 @@
       fitWidth(n);
       var f = gainForms(v);
       var c = el('div', 'iv-solo-cap ' + gainTone(v), root);
-      if (v.money && v.g.gainPct !== null) c.textContent = signedPct(v.g.gainPct);
-      else if (!v.money) c.textContent = STRINGS.vsCost;
+      if (v.g.gainPct !== null) c.textContent = signedPct(v.g.gainPct);
       else if (f.length) c.textContent = f[f.length - 1];
       if (!c.textContent || overW(c)) root.removeChild(c);
       return;
@@ -803,7 +747,6 @@
         wrap.appendChild(hr);
       }
     }
-    if (!v.money) el('div', 'iv-note iv-guest', wrap, STRINGS.guestNote);
   }
 
   function broken(body) {
@@ -869,7 +812,7 @@
   window.HUB_INVESTMENTS_TEST = {
     STRINGS: EN,
     derive: derive,
-    guestOf: guestOf,
+    sharesOf: sharesOf,
     state: function () { return { m: S.m, g: S.g }; }
   };
 

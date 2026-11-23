@@ -12,9 +12,9 @@
  *   - gain colors: green up, coral down;
  *   - the panel: every account and every top holding;
  *   - old data dims and says "as of"; no section says "Waiting for the budget app";
- *   - Guest mode: no dollar sign and no dollar figure anywhere (tile, panel,
- *     the saved copy, the widget's memory), percentages and the trend shape
- *     only; turning it on and off live; Off brings the figures back;
+ *   - Guest mode: every dollar figure blurred (tile, panel, full screen, a
+ *     new snapshot), nothing else: percentages, names and the trend stay
+ *     readable; nothing is dropped; turning it on and off live;
  *   - Spanish, and Spanish 25% longer with accents: nothing clipped;
  *   - app/widgets/investments.js is plain ES5, in no layout, and every
  *     English string has a Spanish one.
@@ -36,7 +36,7 @@ const SEEN = { 'homeHub.budget.seen.v1': '["a-1042"]' };
 // The test page runs in the day theme, where gains and losses take the deep shades.
 const GREEN = 'rgb(23, 112, 58)';
 const CORAL = 'rgb(179, 38, 30)';
-// Any of these showing in Guest mode is a leaked dollar figure.
+// Any of these readable in Guest mode is a leaked dollar figure.
 const FIGURES = /\$|48,2|48\.2|30,1|30\.1|18,1|21,0|9,8|7,4|40,1|8,1|5,2|2,9|3,1|1,2|2,1|5,6/;
 
 let passed = 0;
@@ -155,6 +155,26 @@ function open(env, o) {
 
 function text(page, sel) {
   return page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s), (n) => n.textContent).join(' | '), sel);
+}
+
+// What a guest can read: the text without the Guest mode blur spans.
+function seen(page, sel) {
+  return page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s), (n) => {
+    const c = n.cloneNode(true);
+    Array.prototype.forEach.call(c.querySelectorAll('.guest-blur'), (b) => b.parentNode.removeChild(b));
+    return c.textContent;
+  }).join(' | '), sel);
+}
+
+// Each blur is one dollar amount and draws blurred.
+async function blursOk(page, sel, label) {
+  const b = await page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s + ' .guest-blur'), (n) => {
+    const cs = getComputedStyle(n);
+    return { t: n.textContent, ok: cs.webkitTextFillColor === 'rgba(0, 0, 0, 0)' && cs.textShadow !== 'none' };
+  }), sel);
+  assert(b.length, label + ': nothing blurred');
+  const bad = b.filter((x) => !/^[+\-\u2212]?\$\d[\d,]*(\.\d+)?$/.test(x.t) || !x.ok);
+  assert(!bad.length, label + ': ' + JSON.stringify(bad));
 }
 
 function snap(mut, sentAt) {
@@ -323,64 +343,63 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode: no dollar figure anywhere, percentages and the trend shape only, nothing kept', async () => {
+    await check('Guest mode: every dollar figure blurred, percentages, names and the trend readable, nothing dropped', async () => {
       const cache = JSON.stringify({ v: 1, at: H.MONDAY, sentAt: FRESH, section: snap().investments });
       for (const sz of [[1, 2], [6, 1], [3, 2], [4, 2], [6, 4], [9, 6]]) {
         const page = await open(env, { w: sz[0], h: sz[1], storage: { 'homeHub.guest.v1': 'on', 'homeHub.investments.v1': cache } });
         try {
-          const t = await text(page, SEL);
+          const t = await seen(page, SEL);
           assert(t && !FIGURES.test(t), sz.join('x') + ': ' + t);
+          assert(/\$48,211/.test(await text(page, SEL)), sz.join('x') + ': the total is gone');
+          await blursOk(page, SEL, sz.join('x'));
           if (sz[0] >= 3 && sz[1] >= 2) assert(/\+20\.2%/.test(t), sz.join('x') + ': no gain percent: ' + t);
           if (sz[1] >= 4) assert(/62%/.test(t) && /44%/.test(t), sz.join('x') + ': no shares: ' + t);
           if (sz[0] >= 4 && sz[1] >= 2) assert(await page.evaluate((s) => !!document.querySelector(s + ' svg polyline'), SEL), sz.join('x') + ': no trend shape');
           const svg = await page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s + ' svg text'), (n) => n.textContent).join(''), SEL);
           assert(!svg, 'text on the trend: ' + svg);
-          const kept = await page.evaluate(() => ({ cache: localStorage.getItem('homeHub.investments.v1'), state: JSON.stringify(window.HUB_INVESTMENTS_TEST.state()) }));
-          assert(kept.cache === null, 'the saved copy was kept');
-          assert(!/48210|30110|8110|21000|"value"|"total"/.test(kept.state) && !/"m":\{/.test(kept.state), 'dollars in memory: ' + kept.state.slice(0, 150));
           noErrors(page);
         } finally { await page.ctx.close(); }
       }
       const page = await open(env, { w: 3, h: 2, storage: { 'homeHub.guest.v1': 'on' } });
       try {
         await H.openPanel(page, 'investments');
-        const p = await text(page, '#panel .panel-body');
+        const p = await seen(page, '#panel');
         assert(p && !FIGURES.test(p), 'panel: ' + p);
-        assert(/Roth Contributory IRA/.test(p) && /62%/.test(p) && /VTI/.test(p) && /44%/.test(p) && /\+20\.2%/.test(p) && /Guest mode: percentages only/.test(p), 'panel lacks percentages: ' + p);
-        const html = await page.evaluate(() => document.querySelector('#panel .panel-body').innerHTML);
-        assert(!/\$\d/.test(html), 'dollars in the markup');
+        assert(/Roth Contributory IRA/.test(p) && /62%/.test(p) && /VTI/.test(p) && /44%/.test(p) && /\+20\.2%/.test(p), 'panel lacks percentages: ' + p);
+        await blursOk(page, '#panel', 'panel');
         await H.fullScreen(page);
-        assert(!FIGURES.test(await text(page, '#panel .panel-body')), 'full screen shows a figure');
+        assert(!FIGURES.test(await seen(page, '#panel')), 'full screen shows a figure: ' + await seen(page, '#panel'));
+        await blursOk(page, '#panel', 'full screen');
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode turned on and off live: the dollars go at once and come back', async () => {
+    await check('Guest mode turned on and off live: the dollars blur at once and come back sharp, the text unchanged', async () => {
       const page = await open(env, { w: 6, h: 4 });
       try {
-        assert(/\$48,211/.test(await text(page, SEL)), 'no figure first');
-        assert(await page.evaluate(() => !!localStorage.getItem('homeHub.investments.v1')), 'no saved copy first');
+        const before = await text(page, SEL);
+        assert(/\$48,211/.test(before), 'no figure first');
         await page.evaluate(() => window.HUB_GUEST.set(true));
-        await H.sleep(500);
-        let t = await text(page, SEL);
+        await H.sleep(300);
+        const t = await seen(page, SEL);
         assert(!FIGURES.test(t) && /\+20\.2%/.test(t), 'after On: ' + t);
-        assert(await page.evaluate(() => localStorage.getItem('homeHub.investments.v1') === null), 'saved copy kept in Guest mode');
+        assert(await text(page, SEL) === before, 'the text changed');
         await page.evaluate(() => window.HUB_GUEST.set(false));
-        await H.sleep(500);
-        t = await text(page, SEL);
-        assert(/\$48,211/.test(t), 'after Off: ' + t);
+        await H.sleep(300);
+        assert(await text(page, SEL) === before && !(await page.evaluate(() => !!document.querySelector('.guest-blur'))), 'after Off: ' + await text(page, SEL));
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode: a new snapshot arriving keeps no dollars either', async () => {
+    await check('Guest mode: a new snapshot arriving is blurred too', async () => {
       const page = await open(env, { w: 4, h: 2, storage: { 'homeHub.guest.v1': 'on' } });
       try {
         await env.setBudget(snap((i) => { i.total = 51234.5; i.gain = 11134.5; }));
         await H.sleep(800);
-        const t = await text(page, SEL);
-        assert(/\+27\.8%/.test(t) && !FIGURES.test(t), t);
-        assert(await page.evaluate(() => localStorage.getItem('homeHub.investments.v1') === null && window.HUB_INVESTMENTS_TEST.state().m === null), 'kept dollars');
+        const t = await seen(page, SEL);
+        assert(/\+27\.8%/.test(t) && !/\$|51,2|11,1/.test(t), t);
+        assert(/\$51,235/.test(await text(page, SEL)), 'the new total is not drawn: ' + await text(page, SEL));
+        await blursOk(page, SEL, 'new snapshot');
         noErrors(page);
       } finally { await page.ctx.close(); await env.setBudget(snap()); }
     });
@@ -426,11 +445,12 @@ async function main() {
       }
     });
 
-    await check('Spanish in Guest mode: percentages only, accents whole', async () => {
+    await check('Spanish in Guest mode: dollars blurred, percentages readable, accents whole', async () => {
       const page = await open(env, { w: 6, h: 4, lang: 'es', long: true, storage: { 'homeHub.guest.v1': 'on' } });
       try {
-        const t = await text(page, SEL);
+        const t = await seen(page, SEL);
         assert(!FIGURES.test(t) && /62%/.test(t), t);
+        await blursOk(page, SEL, 'es');
         const p = await page.evaluate(inspect, [SEL, 0.85]);
         assert(!p.length, p.slice(0, 4).join('; '));
         noErrors(page);

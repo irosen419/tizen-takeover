@@ -193,7 +193,7 @@ An older server drops `lead` on `todo add` (the mailbox refuses it) and has no `
 
 Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0` or later.
 
-Server 0.18.0 keeps one more optional section, `investments` (the portfolio total, its accounts, the top holdings and one total per day for a trend line), for the Investments tile. The owner approved dollar figures for it on 2026-11-19; the TV hides them in guest mode. `./hub budget show` prints counts and dates for it, never a name or an amount. An older server drops it and keeps the rest. After pulling: `docker compose restart hub`; `./hub status` should say `version 0.16.0` or later.
+Server 0.18.0 keeps one more optional section, `investments` (the portfolio total, its accounts, the top holdings and one total per day for a trend line), for the Investments tile. The owner approved dollar figures for it on 2026-11-19; the TV blurs them in guest mode. `./hub budget show` prints counts and dates for it, never a name or an amount. An older server drops it and keeps the rest. After pulling: `docker compose restart hub`; `./hub status` should say `version 0.16.0` or later.
 
 ## Ambience (the room's lights)
 

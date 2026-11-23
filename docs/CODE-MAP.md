@@ -122,6 +122,7 @@ More detail: "Writing a widget" in `README.md` and the top of `app/hub.js`.
 | Spanish text clips | `app/i18n.js` and the widget's CSS; `dev/i18n-es-test.js` |
 | Layout looks old | the Pi's saved layout beats `app/config.js` (`docs/live-updates.md`, "Tile layout from the Pi"); the Studio keeps its own draft |
 | Phone app differs from TV | `app/touch.js` and the widget's `renderTouch` |
+| A dollar amount readable in Guest mode | `app/guest.js` (blurs amounts on the money tiles, panels and banner: `MONEY`, `MATCHERS`), `.guest-blur` in `app/style.css`; `dev/money-test.js` |
 
 ## 9. Glossary
 

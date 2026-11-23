@@ -6,7 +6,8 @@
  * behind it (rent among the bills, each card's autopay), the Back hint says
  * "Back to the receipt", Back returns with focus on that line and a second
  * Back closes; the lines add up to the bottom line; a receipt that does not
- * add up is ignored (the old tile); Guest mode hides all of it; Spanish.
+ * add up is ignored (the old tile); Guest mode blurs every amount and keeps
+ * the words; Spanish.
  * Needs Playwright and port 8095 free. Every figure is made up.
  */
 'use strict';
@@ -38,6 +39,12 @@ async function inject(page, s) {
 
 const focusedKey = (page) => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f && f.getAttribute('data-key'); });
 const panelText = (page) => page.evaluate(() => document.querySelector('#panel .panel-body').textContent);
+// What a guest can read: the text without the Guest mode blur spans.
+const readable = (page, sel) => page.evaluate((s) => {
+  const c = document.querySelector(s).cloneNode(true);
+  Array.prototype.forEach.call(c.querySelectorAll('.guest-blur'), (b) => b.parentNode.removeChild(b));
+  return c.textContent;
+}, sel);
 
 async function main() {
   const env = await H.start({});
@@ -109,12 +116,12 @@ async function main() {
         const t = await page.evaluate(() => document.querySelector('.cell[data-widget="budget-card"] .tile-body').textContent);
         assert(!/Left to spend/.test(t) && /Short \$897/.test(t), t);
       });
-      await check('Guest mode hides the receipt', async () => {
+      await check('Guest mode blurs the receipt\'s amounts and keeps its words', async () => {
         await inject(page, snap('autopay'));
         await page.evaluate(() => window.HUB_GUEST.set(true));
         await H.sleep(400);
-        const t = await page.evaluate(() => document.querySelector('.cell[data-widget="budget-card"] .tile-body').textContent);
-        assert(/Hidden for guests/.test(t) && !/Checking now|5,210/.test(t), t);
+        const t = await readable(page, '.cell[data-widget="budget-card"] .tile-body');
+        assert(/Checking now/.test(t) && !/\$\s?\d|5,210/.test(t), t);
         await page.evaluate(() => window.HUB_GUEST.set(false));
       });
       await check('outlook math: catch-up day, behind case, savings', async () => {
@@ -129,7 +136,7 @@ async function main() {
         assert(r.save[0] === 2630 && r.note === 2083 && r.save[1] === 1178, JSON.stringify(r.save));
         assert(r.bCatch === null, 'never caught up at $400 a day');
       });
-      await check('outlook page: Right opens it, Down changes the daily amount, Left returns, Guest hides it', async () => {
+      await check('outlook page: Right opens it, Down changes the daily amount, Left returns, Guest blurs its amounts', async () => {
         await inject(page, snap('autopay', (x) => { x.cardDay.outlook = H.budgetSample.snapshot({ receipt: 'autopay', outlook: true }).cardDay.outlook; }));
         await H.openPanel(page, 'budget-card');
         let t = await panelText(page);
@@ -144,8 +151,8 @@ async function main() {
         assert(/Checking now/.test(await panelText(page)), 'back on the receipt');
         await H.key(page, 'ArrowRight'); await H.sleep(300);
         await page.evaluate(() => window.HUB_GUEST.set(true)); await H.sleep(400);
-        t = await panelText(page);
-        assert(/Hidden for guests/.test(t) && !/\$/.test(t), t);
+        t = await readable(page, '#panel .panel-body');
+        assert(/a day/.test(t) && !/\$\s?\d/.test(t), t);
         await page.evaluate(() => window.HUB_GUEST.set(false)); await H.sleep(300);
         while (await page.evaluate(() => window.HUB_TEST.open())) { await H.key(page, 'Escape'); await H.sleep(400); }
       });

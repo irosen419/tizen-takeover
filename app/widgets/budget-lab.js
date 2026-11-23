@@ -16,8 +16,9 @@
  *
  * Every figure comes from app/budget-lab-math.js (HUB_BUDGET_LAB_MATH): this
  * file has no arithmetic of its own, only the words, the drawing and the
- * keys. The data, Guest mode and widgets.budget.show come from budget.js
- * through window.HUB_BUDGET, so they stay in one place.
+ * keys. The data and widgets.budget.show come from budget.js through
+ * window.HUB_BUDGET, so they stay in one place. Guest mode (guest.js) blurs
+ * the dollar amounts here like on every money tile; the chart's shapes stay.
  *
  * Merchants (row 6): up to five slider rows, the label on its own line above
  * the track ("Amazon · $495 so far · cut $40"), $1 a press with the same hold
@@ -30,8 +31,7 @@
  * Session: the cap, the mode, the keep goal and the cuts, in this file's memory only,
  * until the hub reloads. Saved: one localStorage key, homeHub.budget.capPref.v1
  * = { v: 1, cardDate, keep, at }, a keep amount re-averaged each morning and
- * dropped when card day moves on. Guest mode hides it all and clears the
- * session; it never deletes the saved cap (a preference, not Pi data).
+ * dropped when card day moves on.
  *
  * Keys: Left and Right on the cap slider change it ($1 a press; a held key
  * speeds up to $5 after 0.8 s and $25 after 2 s, keep goal $5, $25, $100,
@@ -365,7 +365,7 @@
     var b = B();
     if (!b) return 'waiting';
     var k = b.state();
-    return k === 'guest' || k === 'hidden' || !snapshot() ? k : 'waiting';
+    return k === 'hidden' || !snapshot() ? k : 'waiting';
   }
 
   function stateText(key) {
@@ -1375,18 +1375,6 @@
     } catch (e) { warn('redraw: ' + (e && e.message)); }
   }
 
-  // Guest mode: nothing of the session survives for a guest to bring back by
-  // turning it off. The saved cap stays (a preference); it is hidden with the rest.
-  function onGuest(on) {
-    if (on) {
-      LAB.session = newSession();
-      LAB.hold = null;
-      LAB.refs = null;
-      chartStop();
-    }
-    redraw();
-  }
-
   function onLang() {
     localizeStrings();
     var ctx = LAB.ctx;
@@ -1404,8 +1392,6 @@
     LAB.bound = true;
     try { if (B()) B().onChange(redraw); } catch (e) { warn('budget: ' + (e && e.message)); }
   }
-
-  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(function (on) { try { onGuest(on); } catch (e) { warn('guest: ' + (e && e.message)); } }); } catch (e) { /* no Guest mode on this page */ }
 
   try {
     var lx = I18N();

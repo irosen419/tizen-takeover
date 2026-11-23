@@ -438,7 +438,7 @@
       var lang = I18N().lang();
       group(controls, I18N().t('lang.label', 'Language'), [['lang-en', 'English', lang === 'en'], ['lang-es', 'Español', lang === 'es']]);
     }
-    // Guest mode (guest.js): On hides every money figure until it is off again.
+    // Guest mode (guest.js): On blurs every dollar amount until it is off again.
     if (window.HUB_GUEST) {
       var guest = window.HUB_GUEST.on();
       var gt = function (k, en) { return I18N() ? I18N().t(k, en) : en; };

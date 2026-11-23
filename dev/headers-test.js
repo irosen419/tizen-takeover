@@ -32,10 +32,9 @@
  *     opened; 60 s by default; never on focus; static (no lap, no fades) in
  *     fade mode; none with motionFx.edge off.
  *   - Guest mode (app/guest.js): the money tiles keep the same header (the
- *     same title and short title, in English, Spanish and Spanish +25%)
- *     while their bodies say "Hidden for guests"; turning it on takes the
- *     edge off the money tiles at once and a budget sent then raises none,
- *     while other tiles keep theirs; the Clock page with its four control
+ *     same title and short title, in English, Spanish and Spanish +25%) and
+ *     the same body text, with their dollar amounts blurred; turning it on
+ *     leaves every accent edge as it was; the Clock page with its four control
  *     groups (Face, Clock, Language, Guest mode) fits its panel, every group
  *     inside, at the panel's size and full screen, in English and Spanish.
  *
@@ -549,32 +548,44 @@ function edgeOn(p, id) {
       return t ? t.textContent : null;
     }), MONEY);
 
-    await check('Guest mode: the money tiles keep the same header (title or short title, icon), English, Spanish and Spanish +25%; their bodies say hidden', async () => {
+    await check('Guest mode: the money tiles keep the same header (title or short title, icon) and body text, English, Spanish and Spanish +25%; their amounts blur', async () => {
       const lays = [LAYOUTS['awws-money'], LAYOUTS.budget, grid(3, 2, MONEY), grid(2, 2, MONEY), grid(6, 3, MONEY.slice(0, 4)), grid(6, 3, MONEY.slice(4))];
       for (const lay of lays) {
         for (const v of [{ lang: 'en' }, { lang: 'es' }, { lang: 'es', grow: true }]) {
           const off = await page(env, { layout: lay, lang: v.lang, grow: v.grow });
           const before = await titlesOf(off);
+          const ids = MONEY.filter((id) => lay.some((e) => e.widget === id));
+          const bodiesOf = (q) => q.evaluate((list) => list.map((id) => {
+            const c = document.querySelector('.cell[data-widget="' + id + '"] .tile-body');
+            return c ? c.textContent : null;
+          }), ids);
+          const bodies = await bodiesOf(off);
           await off.context().close();
           const p = await page(env, { layout: lay, lang: v.lang, grow: v.grow, storage: GUEST });
           const r = await headerProblems(p, !v.grow);
           const after = await titlesOf(p);
-          const hidden = await p.evaluate((ids) => ids.filter((id) => {
+          const bodiesOn = await bodiesOf(p);
+          // A tile with an amount: none of it readable.
+          const hidden = await p.evaluate((list) => list.filter((id) => {
             const c = document.querySelector('.cell[data-widget="' + id + '"] .tile-body');
-            return c && !/Hidden for guests|Oculto para invitados|Guest mode is on|Modo invitados activado/.test(c.textContent);
-          }), MONEY.filter((id) => lay.some((e) => e.widget === id)));
+            if (!c || !/\$\d/.test(c.textContent)) return false;
+            const k = c.cloneNode(true);
+            Array.prototype.forEach.call(k.querySelectorAll('.guest-blur'), (b) => b.parentNode.removeChild(b));
+            return /\$\s?\d/.test(k.textContent);
+          }), ids);
           const errs = H.errorsOf(p, true);
           await p.context().close();
           const where = lay.map((e) => e.widget + ' ' + e.w + 'x' + e.h).join(', ') + ' ' + v.lang + (v.grow ? ' +25%' : '');
           assert(!r.bad.length, where + ': ' + r.bad.join('; '));
           assert(JSON.stringify(before) === JSON.stringify(after), where + ': titles changed: ' + JSON.stringify([before, after]));
-          assert(!hidden.length, where + ': not hidden: ' + hidden.join(', '));
+          assert(JSON.stringify(bodies) === JSON.stringify(bodiesOn), where + ': bodies changed: ' + JSON.stringify([bodies, bodiesOn]).slice(0, 300));
+          assert(!hidden.length, where + ': an amount not blurred: ' + hidden.join(', '));
           assert(!errs.length, where + ': console: ' + errs.join(' | '));
         }
       }
     });
 
-    await check('Guest mode: turning it on takes the edge off the money tiles; a budget sent then raises none; other tiles keep theirs', async () => {
+    await check('Guest mode: turning it on leaves every edge as it was, money tiles too, and the headers', async () => {
       const lay = [
         { widget: 'budget-room', x: 0, y: 0, w: 3, h: 3 }, { widget: 'budget-card', x: 3, y: 0, w: 3, h: 3 }, { widget: 'todo', x: 6, y: 0, w: 3, h: 6 },
         { widget: 'calendar', x: 9, y: 0, w: 3, h: 6 }, { widget: 'awws-money', x: 0, y: 3, w: 6, h: 3 }
@@ -590,15 +601,11 @@ function edgeOn(p, id) {
       await H.sleep(300);
       const st = await edges(p);
       const headsOn = await titlesOf(p);
-      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
-      await H.sleep(2500);
-      const st2 = await edges(p);
-      const chips = await p.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.fx-chip'), (c) => c.closest('.cell').getAttribute('data-widget')));
       await p.evaluate(() => window.HUB_GUEST.set(false));
       await p.context().close();
-      assert(!st.some((e) => MONEY.indexOf(e.widget) >= 0), 'an edge stayed on a money tile: ' + JSON.stringify(st));
-      assert(st.some((e) => e.widget === 'todo'), 'the To-do edge went too: ' + JSON.stringify(st));
-      assert(!st2.some((e) => MONEY.indexOf(e.widget) >= 0) && !chips.some((w) => MONEY.indexOf(w) >= 0), 'a budget in Guest mode raised news: ' + JSON.stringify({ st2, chips }));
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
+      const on = st.map((e) => e.widget);
+      assert(on.indexOf('budget-room') >= 0 && on.indexOf('budget-card') >= 0 && on.indexOf('todo') >= 0, 'an edge went: ' + JSON.stringify(st));
       assert(JSON.stringify(heads) === JSON.stringify(headsOn), 'the headers changed: ' + JSON.stringify([heads, headsOn]));
     });
 

@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.51.0';
+  var BUILD = 'v0.52.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1430,9 +1430,6 @@
         var lm = liveMain();
         if (lm) list = lm.list;      // the Pi's Main (null = built-in); config.js's copy is only for before it has said
       }
-      // Guest mode: the money layouts ("AWWS money", "Budget") leave the bar.
-      // Main never does: its money tiles hide themselves.
-      if (!live && guestOn() && window.HUB_GUEST.hasMoney(list || cfg.layout)) continue;
       out.push({ name: p.name, id: typeof p.id === 'string' ? p.id : '', layout: list, live: live });
     }
     return out;
@@ -1440,77 +1437,33 @@
 
   function presetSig(p) { return layoutSig(p.layout || cfg.layout); }
 
-  function guestOn() {
-    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
-  }
-
-  // Guest mode turned on while a money layout from the bar is on screen: the
-  // first layout in the bar without money takes its place (applied once the
-  // Clock page closes). Any other layout stays; its money tiles say "Hidden
-  // for guests".
-  function guestLayout(on) {
-    if (!on) {
-      // Guest mode off: a layout that only Guest mode swapped in gives way to the Pi's again.
-      // It returns to the layout that was on screen before, as it is now.
-      var c = readChoice();
-      if (c && c.guest) {
-        var all = switcherPresets();
-        var from = null;
-        for (var a = 0; a < all.length; a++) {
-          if (c.from && (all[a].id || all[a].name) === c.from) from = all[a];
-        }
-        var back;
-        if (from && !from.live) {
-          saveChoice({ id: from.id || from.name });
-          back = from.layout;
-        } else {
-          saveChoice(null);
-          var lm = liveMain();
-          back = lm ? lm.list : null;
-        }
-        saveLayout(back);
-        pendingLayout = back;
-        layoutChance();
-      }
-      return;
+  // Guest mode off, on a TV where an older version swapped a
+  // money layout out for Guest mode: back to the layout it came from. Guest
+  // mode now only blurs the amounts (guest.js) and never changes the layout.
+  function guestRestore(on) {
+    if (on) return;
+    var c = readChoice();
+    if (!c || !c.guest) return;
+    var all = switcherPresets();
+    var from = null;
+    for (var a = 0; a < all.length; a++) {
+      if (c.from && (all[a].id || all[a].name) === c.from) from = all[a];
     }
-    var src = cfg.layouts;
-    if (!src || Object.prototype.toString.call(src) !== '[object Array]') return;
-    var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
-    var onMoney = false;
-    var fromId = '';
-    for (var i = 0; i < src.length; i++) {
-      var list = src[i] && src[i].layout ? usableLayout(src[i].layout) : null;
-      if (src[i] && src[i].id !== 'main' && list && window.HUB_GUEST.hasMoney(list) && layoutSig(list) === current) {
-        onMoney = true;
-        fromId = src[i].id || src[i].name;
-        break;
-      }
+    var back;
+    if (from && !from.live) {
+      saveChoice({ id: from.id || from.name });
+      back = from.layout;
+    } else {
+      saveChoice(null);
+      var lm = liveMain();
+      back = lm ? lm.list : null;
     }
-    if (!onMoney) return;
-    var safe = switcherPresets();
-    if (!safe.length) return;
-    saveChoice({ id: safe[0].id || safe[0].name, live: safe[0].live, guest: true, from: fromId });
-    saveLayout(safe[0].layout);
-    pendingLayout = safe[0].layout;
+    saveLayout(back);
+    pendingLayout = back;
     layoutChance();
   }
 
-  // Guest mode turned on: a money tile has nothing to see any more, so its
-  // accent edge (motion.js) goes at once. Its header stays as it is.
-  function guestEdges(on) {
-    if (!on) return;
-    for (var i = 0; i < widgets.length; i++) {
-      if (widgets[i].tile && window.HUB_GUEST.MONEY.indexOf(widgets[i].w.id) >= 0) fxCall('accentClear', [widgets[i].tile]);
-    }
-  }
-
-  try {
-    if (window.HUB_GUEST) {
-      window.HUB_GUEST.onChange(guestLayout);
-      window.HUB_GUEST.onChange(guestEdges);
-    }
-  } catch (e) { /* no Guest mode on this page */ }
+  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(guestRestore); } catch (e) { /* no Guest mode on this page */ }
 
   // A preset's name in the hub's language (key 'hub.layout.<id>'); a layout
   // named by the owner, with no Spanish for its id, keeps its own name.
@@ -2439,6 +2392,8 @@
     // The panel is as tall as its content. The first time a widget opens,
     // its content is built here, before anything moves, and measured; after
     // that the height is known and the build waits for the first frame.
+    // Which widget the panel shows: Guest mode (guest.js) blurs a money one.
+    panelEl.setAttribute('data-panel-widget', rec.w.id);
     panelEl.className = 'panel is-shown' + (direct ? ' is-full is-direct' : wideClass(rec));
     panelEl.style.transition = 'none';
     panelEl.style.opacity = '0';
@@ -2542,6 +2497,7 @@
 
     function done() {
       panelEl.className = 'panel';
+      panelEl.removeAttribute('data-panel-widget');
       panelEl.style.transition = 'none';
       panelEl.style.transform = '';
       panelEl.style.opacity = '0';
