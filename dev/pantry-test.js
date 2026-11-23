@@ -5,7 +5,9 @@
  * off) on a throwaway data folder and drives the touch app at phone size in
  * headless Chromium. Checks: Stock lists owned items low first with the
  * Low badge and its restock value; the stepper changes the count and a drop
- * to the restock point puts the item on the grocery list (the cart fills);
+ * to the restock point puts the item on the grocery list (the pill turns
+ * "On list", with "Added to list for you"); the pill says "Add to list" when
+ * off, each tap and Undo shows one toast and Undo sends the opposite op;
  * place chips filter; Usual items search ignores case and accents; the row
  * sheet saves place, restock, auto-add, mode, unit, and picks an existing
  * brand for a differently spelled one (never a second brand), refusing a
@@ -110,7 +112,7 @@ async function main() {
       await page.ctx.close();
     });
 
-    await check('stepper: one less takes Eggs to 6, which puts them on the grocery list once (the cart fills)', async () => {
+    await check('stepper: one less takes Eggs to 6, which puts them on the grocery list once (the pill says On list); toast and Undo', async () => {
       const page = await open();
       const eggs = byName('Eggs');
       const row = '.px-row[data-id="' + eggs.id + '"]';
@@ -124,11 +126,38 @@ async function main() {
       await page.waitForTimeout(500);
       assert(groceryItems().filter((i) => i.name === 'Eggs').length === 1, 'never a second row');
       assert((await page.textContent(row + ' .px-badge')) === 'Low · buy at 6', 'eggs default to 6');
-      // The cart button takes it off by hand.
+      // On the list because the hub put it there: the pill and a badge say so.
+      assert((await page.textContent(row + ' .px-cart')) === 'On list', 'pill on: ' + await page.textContent(row + ' .px-cart'));
+      assert((await page.textContent(row + ' .px-auto')) === 'Added to list for you', 'auto badge');
+      assert(!(await page.isVisible('.px-toast')), 'no toast before a tap');
+      // The pill takes it off by hand, with a toast and Undo.
       await page.click(row + ' .px-cart');
       await page.waitForFunction((r) => document.querySelector(r + ' .px-cart').getAttribute('aria-pressed') === 'false', row);
       await page.waitForTimeout(300);
       assert(!groceryItems().some((i) => i.name === 'Eggs'), 'off the list');
+      assert((await page.textContent(row + ' .px-cart')) === 'Add to list', 'pill off: ' + await page.textContent(row + ' .px-cart'));
+      assert(!(await page.$(row + ' .px-auto')), 'no auto badge off the list');
+      assert(await page.getAttribute(row + ' .px-cart', 'aria-label') === 'Add to list: Eggs. Tap to put it on the grocery list', 'aria-label kept');
+      await page.waitForSelector('.px-toast.is-on .px-undo', { state: 'visible' });
+      assert((await page.textContent('.px-toast-text')) === 'Eggs taken off the list', await page.textContent('.px-toast-text'));
+      assert(await page.getAttribute('.px-toast', 'role') === 'status' && await page.getAttribute('.px-toast', 'aria-live') === 'polite', 'toast is a polite status');
+      assert((await page.$$('.px-toast')).length === 1, 'one toast');
+      // Undo sends the opposite op and says so.
+      const sent = [];
+      page.on('request', (r) => { if (/\/pantry\/ops/.test(r.url())) sent.push(r.postDataJSON()); });
+      await page.click('.px-undo');
+      await page.waitForFunction((r) => document.querySelector(r + ' .px-cart').getAttribute('aria-pressed') === 'true', row);
+      await page.waitForTimeout(300);
+      assert(sent.length === 1 && sent[0].ops.length === 1 && sent[0].ops[0].op === 'want' && sent[0].ops[0].id === eggs.id && sent[0].ops[0].on === true, 'undo op: ' + JSON.stringify(sent));
+      assert(byName('Eggs').onList && groceryItems().filter((i) => i.name === 'Eggs').length === 1, 'back on the list once');
+      assert((await page.textContent('.px-toast-text')) === 'Eggs put on the list', 'toast after undo: ' + await page.textContent('.px-toast-text'));
+      assert((await page.textContent(row + ' .px-cart')) === 'On list', 'pill back on');
+      // Another tap replaces the toast (still one); it goes after about 5 s.
+      await page.click(row + ' .px-cart');
+      await page.waitForFunction(() => document.querySelector('.px-toast-text').textContent === 'Eggs taken off the list');
+      await page.waitForTimeout(300);
+      assert(!groceryItems().some((i) => i.name === 'Eggs') && sent.length === 2 && sent[1].ops[0].on === false, 'off again');
+      await page.waitForSelector('.px-toast', { state: 'hidden', timeout: 7000 });
       assert(!page.errors.length, page.errors.join('; '));
       await page.ctx.close();
     });
@@ -246,9 +275,20 @@ async function main() {
           const root = document.querySelector(s);
           return root.innerText + ' ' + Array.prototype.map.call(root.querySelectorAll('[aria-label], [placeholder]'), (n) => (n.getAttribute('aria-label') || '') + ' ' + (n.getAttribute('placeholder') || '')).join(' ');
         }, scope);
-        return ['Stock', 'Usual', 'All', 'Fridge', 'Freezer', 'Other', 'Low', 'Buy at', 'at home', 'Add', 'Scan', 'Search', 'Edit', 'One less', 'One more', 'grocery list', 'Save', 'Remove', 'Brand', 'Category', 'Size', 'Unit', 'Close', 'Place', 'automatically', 'None']
+        return ['Add to list', 'On list', 'Undo', 'put on', 'taken off', 'Stock', 'Usual', 'All', 'Fridge', 'Freezer', 'Other', 'Low', 'Buy at', 'at home', 'Add', 'Scan', 'Search', 'Edit', 'One less', 'One more', 'grocery list', 'Save', 'Remove', 'Brand', 'Category', 'Size', 'Unit', 'Close', 'Place', 'automatically', 'None']
           .filter((w) => new RegExp('\\b' + w + '\\b').test(t));
       };
+      // The list pill, its toast and Undo, in Spanish.
+      const row0 = '.px-row:first-child';
+      const was = await page.getAttribute(row0 + ' .px-cart', 'aria-pressed') === 'true';
+      assert((await page.textContent(row0 + ' .px-cart')) === (was ? 'En la lista' : 'A la lista'), 'es pill: ' + await page.textContent(row0 + ' .px-cart'));
+      await page.click(row0 + ' .px-cart');
+      await page.waitForSelector('.px-toast.is-on .px-undo', { state: 'visible' });
+      assert(/^\S.* se (agregó a|quitó de) la lista$/.test(await page.textContent('.px-toast-text')), 'es toast: ' + await page.textContent('.px-toast-text'));
+      assert((await page.textContent('.px-undo')) === 'Deshacer', 'es undo');
+      await page.click('.px-undo');
+      await page.waitForFunction((a) => document.querySelector(a[0] + ' .px-cart').getAttribute('aria-pressed') === a[1], [row0, String(was)]);
+      assert((await page.textContent(row0 + ' .px-cart')) === (was ? 'En la lista' : 'A la lista'), 'es pill after undo');
       let left = await english('.px');
       assert(!left.length, 'English left: ' + left.join(', '));
       assert((await page.textContent('.px-row.is-low .px-badge')).indexOf('Por acabarse') === 0, 'badge');
@@ -274,7 +314,7 @@ async function main() {
         if (document.documentElement.scrollWidth > window.innerWidth) out.push('page scrolls sideways');
         return out;
       }, sel);
-      let bad = await inflate('.px-big-word, .px-total, .px-seg-btn, .px-chip, .px-btn-word, .px-badge, .px-at, .px-where, .px-brand, .px-name');
+      let bad = await inflate('.px-big-word, .px-total, .px-seg-btn, .px-chip, .px-btn-word, .px-badge, .px-at, .px-where, .px-brand, .px-name, .px-toast-text, .px-undo');
       assert(!bad.length, 'view: ' + bad.join('; '));
       await shot(page, 'pantry-stock-es-125.png');
       await page.reload();

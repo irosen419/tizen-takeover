@@ -7,8 +7,10 @@
  *   window.HUB_PANTRY   shared logic, no DOM: fold (search key), sorting,
  *                       counts and the local copy of a few ops (optimistic).
  *   renderTouch         Stock | Usual items, place chips, rows (photo, brand
- *                       over name, a - n + stepper, a cart button, a Low
- *                       badge with the restock value) and a bottom sheet to
+ *                       over name, a - n + stepper, an "Add to list" /
+ *                       "On list" pill with a toast and Undo, a Low badge
+ *                       with the restock value, "Added to list for you" when
+ *                       the hub put it there) and a bottom sheet to
  *                       edit place, "buy more at", auto-add, substitution,
  *                       brand and category (picked from the Pi's lists or
  *                       created once, never typed twice), size and unit.
@@ -294,6 +296,18 @@
     var empty = el('div', 'px-empty');
     view.appendChild(empty);
 
+    // One toast at a time, after the list pill or its Undo: says what changed.
+    var toast = el('div', 'px-toast');
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    var toastText = el('span', 'px-toast-text');
+    var undoBtn = el('button', 'px-undo', T('pantry.undo', 'Undo'));
+    undoBtn.type = 'button';
+    toast.appendChild(toastText);
+    toast.appendChild(undoBtn);
+    view.appendChild(toast);
+    var toastTimer = null, lastWant = null;
+
     function data() { var d = ctx.data(); if (d) lastData = d; return d; }
     function products() { var d = data(); return d && d.products ? d.products : []; }
     function productById(id) { var l = products(); for (var i = 0; i < l.length; i++) if (l[i].id === id) return l[i]; return null; }
@@ -304,6 +318,26 @@
         if (err) { failMsg = T('pantry.saveFailed', 'That didn’t save: {why}', { why: err }); render(); }
       });
     }
+
+    // Put on or take off the grocery list, then say so with an Undo.
+    function want(id, name, on) {
+      send([{ op: 'want', id: id, on: on }]);
+      lastWant = { id: id, name: name, on: on };
+      toastText.textContent = on ? T('pantry.toastOn', '{name} put on the list', { name: name }) : T('pantry.toastOff', '{name} taken off the list', { name: name });
+      toast.className = 'px-toast is-on' + (ctx.reduced && ctx.reduced() ? ' is-calm' : '');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(hideToast, 5000);
+    }
+    function hideToast() {
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = null;
+      lastWant = null;
+      toast.className = toast.className.replace(/ ?\bis-on\b/g, '');
+    }
+    undoBtn.addEventListener('click', function () {
+      var w = lastWant;
+      if (w) want(w.id, w.name, !w.on);
+    });
 
     function setTab(t) {
       tab = t;
@@ -356,8 +390,8 @@
       if (p.low) meta.appendChild(el('span', 'px-badge', T('pantry.lowAt', 'Low · buy at {n}', { n: amount(p.restockAt) })));
       else if (p.owned) meta.appendChild(el('span', 'px-at', T('pantry.buyAt', 'Buy at {n}', { n: amount(p.restockAt) })));
       else meta.appendChild(el('span', 'px-at', T('pantry.notHere', 'Not at home')));
+      if (p.onList && p.listSource === 'auto') meta.appendChild(el('span', 'px-badge px-auto', T('pantry.autoAdded', 'Added to list for you')));
       if (!place && p.owned) meta.appendChild(el('span', 'px-where', placeName(T, p.location)));
-      if (p.onList && p.listSource === 'auto') meta.appendChild(el('span', 'px-where', T('pantry.autoAdded', 'Added for you')));
       li.appendChild(meta);
 
       var ctl = el('div', 'px-ctl');
@@ -378,11 +412,11 @@
       step.appendChild(qty);
       step.appendChild(plus);
       ctl.appendChild(step);
-      var cart = btn('px-cart' + (p.onList ? ' is-on' : ''), null, 'cart');
+      var cart = btn('px-cart' + (p.onList ? ' is-on' : ''), p.onList ? T('pantry.listOn', 'On list') : T('pantry.listAdd', 'Add to list'), p.onList ? 'check' : 'plus');
       cart.setAttribute('aria-pressed', p.onList ? 'true' : 'false');
-      cart.setAttribute('aria-label', p.onList ? T('pantry.cartOff', 'Take {name} off the grocery list', { name: p.name }) : T('pantry.cartOn', 'Put {name} on the grocery list', { name: p.name }));
+      cart.setAttribute('aria-label', p.onList ? T('pantry.cartOff', 'On list: {name}. Tap to take it off the grocery list', { name: p.name }) : T('pantry.cartOn', 'Add to list: {name}. Tap to put it on the grocery list', { name: p.name }));
       cart.disabled = !!p.pending;
-      cart.addEventListener('click', function () { send([{ op: 'want', id: p.id, on: !p.onList }]); });
+      cart.addEventListener('click', function () { want(p.id, p.name, !p.onList); });
       ctl.appendChild(cart);
       li.appendChild(ctl);
       return li;
@@ -697,6 +731,7 @@
       update: render,
       destroy: function () {
         if (sheet) sheet.close();
+        if (toastTimer) clearTimeout(toastTimer);
         if (view.parentNode) view.parentNode.removeChild(view);
       }
     };

@@ -64,11 +64,12 @@
 .px-banner.is-on { display: block; }
 .px.is-offline .px-add, .px.is-offline .px-ctl { opacity: 0.55; }
 
-/* A row: picture and "brand over name" on top, the Low badge and the
- * stepper and cart under it. Two tiers keep Spanish names readable at 360 px. */
+/* A row: picture and "brand over name" on top, the Low badge under it, then
+ * the stepper and the list pill. Three tiers on a phone keep Spanish names
+ * and the labelled pill whole at 360 px; one line from 560 px. */
 .px-list { list-style: none; margin: 14px 0 0; padding: 0; }
 .px-row {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "open open" "meta ctl";
+  display: grid; grid-template-columns: minmax(0, 1fr); grid-template-areas: "open" "meta" "ctl";
   align-items: center; column-gap: 10px; row-gap: 4px;
   padding: 10px 0 12px; border-bottom: 1px solid var(--hair);
 }
@@ -98,9 +99,10 @@
   display: inline-flex; align-items: center; min-height: 26px; padding: 2px 10px; border-radius: 999px;
   background: rgba(214, 162, 10, 0.16); color: #f1c84b; font-size: 0.8125rem; font-weight: 600; line-height: 1.4;
 }
+.px-badge.px-auto { background: rgba(83, 182, 235, 0.16); color: var(--ok-sky); }
 .px-at, .px-where { color: var(--text-3); font-size: 0.8125rem; line-height: 1.4; }
 
-.px-ctl { grid-area: ctl; display: flex; align-items: center; gap: 6px; }
+.px-ctl { grid-area: ctl; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0 0 60px; }
 .px-step { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
 .px-step-btn {
   display: flex; align-items: center; justify-content: center; width: 44px; height: 44px;
@@ -110,16 +112,38 @@
 .px-step-btn:disabled { color: var(--text-3); opacity: 0.5; }
 .px-step-btn:active:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
 .px-qty { min-width: 30px; text-align: center; font-size: 1.0625rem; line-height: 1.35; font-variant-numeric: tabular-nums; }
+/* The list pill: outlined "+ Add to list", blue "On list" with a tick. */
 .px-cart {
-  display: flex; align-items: center; justify-content: center; width: 44px; height: 44px;
-  border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--text-2);
+  flex: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; padding: 6px 16px 6px 12px; border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--text); font-size: 0.9375rem; font-weight: 500; line-height: 1.35; white-space: nowrap;
 }
-.px-cart .px-ic { font-size: 20px; }
-.px-cart.is-on { border-color: transparent; background: var(--ok-sky); color: var(--page); }
+.px-cart .px-ic { font-size: 17px; stroke-width: 2.2; }
+.px-cart.is-on { border-color: transparent; background: var(--ok-sky); color: var(--page); font-weight: 600; }
+.px-cart:disabled { opacity: 0.5; }
 
 @media (min-width: 560px) {
   .px-row { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "open meta ctl"; }
   .px-meta { padding-left: 0; justify-content: flex-end; }
+  .px-ctl { flex-wrap: nowrap; padding: 0; }
+}
+
+/* "Eggs put on the list · Undo": one at a time, above the safe area. */
+.px-toast {
+  position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 5;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  max-width: 480px; margin: 0 auto; padding: 4px 4px 4px 18px;
+  border: 1px solid var(--line); border-top-color: var(--lift); border-radius: 16px; background: #1b1e25;
+  opacity: 0; transform: translateY(12px); pointer-events: none; visibility: hidden;
+  transition: opacity 180ms var(--ease), transform 220ms var(--ease), visibility 0s linear 220ms;
+}
+.px-toast.is-on { opacity: 1; transform: none; pointer-events: auto; visibility: visible; transition-delay: 0s; }
+.px-toast.is-calm { transform: none; transition: opacity 120ms linear, visibility 0s linear 120ms; }
+.px-toast.is-calm.is-on { transition-delay: 0s; }
+.px-toast-text { min-width: 0; font-size: 0.9375rem; line-height: 1.4; overflow-wrap: anywhere; }
+.px-undo {
+  flex: none; min-height: var(--tap); padding: 0 16px; border: 0; border-radius: 12px;
+  background: transparent; color: var(--ok-sky); font-size: 0.9375rem; font-weight: 600; line-height: 1.35;
 }
 
 .px-empty { padding: 36px 12px 20px; text-align: center; }
