@@ -2,6 +2,8 @@
 
 A custom home screen that runs as a [TizenBrew](https://github.com/reisxd/TizenBrew) app module. One screen of widget tiles, remote friendly.
 
+New to the code? Start with [docs/CODE-MAP.md](docs/CODE-MAP.md).
+
 ![The Home Hub home screen: a grid of dark widget tiles](docs/screenshots/1-home.png)
 
 Out of the box:
@@ -140,7 +142,7 @@ The tile changes as soon as you pick, behind the page. All three choices are rem
 
 The hub's own facts live in the **About panel**: press Left on a tile at the left edge of the home screen and a narrow strip slides in from the left, in the same glass as the layout bar. Right or Back closes it. It can't open over a panel, a full-screen page or the layout bar. It shows, in groups:
 
-- **This hub:** **Version** (for example `v0.50.0 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), **Look** (`night (auto, until 7:04 AM)`: the look and when it changes; see [Day and night](#day-and-night)), **Picture** (the picture's title and credit; see [Backgrounds](#backgrounds)), then **Weather picture** when the weather picture is still or off (see Weather), and **Scripts** only when one of the hub's script files failed to load: `logos.js loaded on a later try` (it was fetched again and the page loaded again by itself) or `logos.js did not load` (see [When a file fails to load](#when-a-file-fails-to-load)).
+- **This hub:** **Version** (for example `v0.50.1 (newest)`; `(newest)` means GitHub confirmed this is the newest commit of the branch), **Browser** (`Chrome 63 · Tizen 5.0`) and **Motion** (`push (auto, 57 fps) · extras on`; `measuring` means auto is still timing, `(config)` or `(URL)` means the mode was set by hand, and the end says whether the [motion extras](#motion-extras) run), **Look** (`night (auto, until 7:04 AM)`: the look and when it changes; see [Day and night](#day-and-night)), **Picture** (the picture's title and credit; see [Backgrounds](#backgrounds)), then **Weather picture** when the weather picture is still or off (see Weather), and **Scripts** only when one of the hub's script files failed to load: `logos.js loaded on a later try` (it was fetched again and the page loaded again by itself) or `logos.js did not load` (see [When a file fails to load](#when-a-file-fails-to-load)).
 - **Updates**, only when there is something to say: **Live updates** (see [Live updates](#live-updates)) and **Version check** (see [Updating](#updating)).
 - **Now Playing:** **Visualizer**, once the full-screen page has been shown: the level (`radiant`, `sharp`, `sharp-lite`, `classic`, `classic-lite`, `glows` or `still wash`), the frame rate it measured, at the canvas levels how long a frame takes to draw (`14 ms a frame`; a 30 fps frame has 33 ms, so this shows the headroom), the tempo with where it came from (`124 BPM from features`, `guessed from genres` or `(no vibe)`) and, for the classic levels, the scene last shown (`kaleidoscope`). See [Now Playing](#now-playing).
 - **Wanderers:** the clay wanderers: **Now** (what they are doing, or when they are due back), **Visits**, **Last visit**, **Drawing** (how the last visit was drawn: `Smooth, 58 frames a second`, or `Stepped: the screen managed 14 frames a second` when the TV couldn't keep up), **Loading** (how long the files took) and **Last problem** (only when there was one). See "If they don't show up" in [docs/clay.md](docs/clay.md).
@@ -629,22 +631,6 @@ A script can't be put back afterwards, because the scripts after it have already
 
 ## How it works
 
-- `app/index.html` is the loader TizenBrew opens. It runs `update.js`, which moves on to the newest commit's `hub.html` (see [Updating](#updating)).
-- `app/hub.html` is the hub's page. It loads, in order: `update.js`, `config.js`, `guest.js`, `icons.js`, `logos.js`, the files in `widgets/` (with `budget-lab-math.js` just before `widgets/budget.js`), `live.js`, `clay.js`, `agents.js`, `motion.js`, then `hub.js`.
-- `app/update.js` finds the newest commit for the loader. On the hub's page it checks for newer ones, and goes back to the last good one if a new one doesn't start.
-- `app/live.js` keeps the line to the Pi's server for live updates. It does nothing until `hub.js` starts it.
-- `app/config.js` holds the settings.
-- `app/i18n.js` holds the hub's languages (`HUB_I18N`: English and Latin American Spanish, with its own Spanish day and month names); a missing Spanish string falls back to the English the widget gives. Its Spanish table has one commented section per widget (`wotd.`, `budget.`, `awws.` keys); `HUB_I18N.localize(STRINGS, 'budget')` turns a widget's English STRINGS into the hub's language, so translating more of a widget is adding its keys there.
-- `app/icons.js` holds the white line icons; `app/logos.js` the app logos.
-- `app/widgets/` holds one file per widget: `today.js` (the Clock, with its page's styles in `today.css`), `entertainment.js`, `todo.js` (with its styles in `todo.css`), `weather.js` (with its styles in `weather.css`) `wotd.js` (Word of the day, with `wotd.css`; its words are in `app/wotd-data.js`) and `planned.js` (the "Soon" placeholders).
-- `app/hub.js` builds the home screen, moves focus, opens panels and runs the animations.
-- `app/style.css` holds the hub's styles; a widget can bring its own stylesheet, like `widgets/todo.css`.
-- `app/backgrounds/` holds the background pictures: `backgrounds.js` (the day and night lists), `day/`, `night/` and `ocean.jpg`.
-- `service.js` runs inside TizenBrew's Node service on the TV. It listens on `127.0.0.1:8095` only and lists apps, opens apps, calls webhooks and fetches the weather when the page can’t do it directly.
-- `dev/preview.js` is for previewing on a laptop and isn't used on the TV; `dev/clock-test.js` tests the Clock tile and its faces; `dev/live-test.js` tests live updates end to end; `dev/layout-test.js` tests the tile layout from the Pi; `dev/update-test.js` tests updating; `dev/clay-test.js` tests the clay characters.
-- `pi/` is the live updates server for the Raspberry Pi (see `pi/README.md`).
-- `app/clay.js` brings Ian and Ember on screen now and then (with its own few styles, added only when they first come); `app/clay/` holds their sprites and `sprites.js`, the list of them. `art/clay/` holds how they are made (see `art/clay/README.md`), and `docs/clay.md` how the scenes work. `dev/clay-test.js` tests them; `dev/clay-shots.js` films every scene.
-- `app/agents.js` brings a pixel-art character (Lift) to work on a tile instead of its working or arrival chip (enter, travel, work, reveal, exit), with its styles in `app/agents.css` and its pictures in `app/agents/lift/` (six small WebP files, one per pose plus Wyndle's head, about 52 KB); see [docs/agents.md](docs/agents.md). `art/agents/gen.py` asks Gemini for pose sheets and `art/agents/extract.py` cuts the pictures out of them; the sheets are private reference art kept in the project files, not in this repository. `dev/agents-test.js` tests her; `dev/agents-shots.js` takes before and after pictures and a clip.
-- `app/motion.js` holds the [motion extras](#motion-extras) (the gliding focus ring, the panel stagger, the Now Playing cover's flight, the launch bloom, the activity chips and the quiet waiting tiles); their styles are near the end of `app/style.css`, just before its `.css-end` rule. `dev/motion-test.js`, `dev/working-test.js` and `dev/nowplaying-chip-test.js` test them.
+See [docs/CODE-MAP.md](docs/CODE-MAP.md): where code runs, the folders, what to read first, how a request flows, and recipes for adding a widget.
 
 All of `app/` is plain ES5 JavaScript so the TV's older browser can run it.

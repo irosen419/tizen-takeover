@@ -1,6 +1,6 @@
 # Home Hub: notes for Claude
 
-Custom home screen for Ian's Samsung Tizen TV (TizenBrew module, loaded from jsDelivr `irosen419/tizen-takeover@main`). Plain ES5 on the TV: no CSS grid, no flex gap, animate only transform/opacity. Pi server in `pi/`. Details: `README.md`, `pi/CLAUDE.md`, `pi/README.md`, `docs/`.
+Custom home screen for Ian's Samsung Tizen TV (TizenBrew module, loaded from jsDelivr `irosen419/tizen-takeover@main`). Plain ES5 on the TV: no CSS grid, no flex gap, animate only transform/opacity. Pi server in `pi/`. Details: `docs/CODE-MAP.md` (where things are), `README.md`, `pi/CLAUDE.md`, `pi/README.md`, `docs/`.
 
 ## Layout
 - `app/` TV code: `config.js` (tiles, layouts), `hub.js` (UI), one JS+CSS pair per widget, `i18n` (English + Spanish).
