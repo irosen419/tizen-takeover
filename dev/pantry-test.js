@@ -174,6 +174,13 @@ async function main() {
       await page.fill('.px-restock input', '1000');
       await page.click('.px-sheet .px-primary');
       assert(/from 0 to 999/.test(await page.textContent('.px-restock .px-error')), 'range message');
+      // Whole numbers only (review 4): 2.5 is refused.
+      await page.fill('.px-restock input', '2.5');
+      await page.click('.px-sheet .px-primary');
+      assert(/whole number/.test(await page.textContent('.px-restock .px-error')), 'whole-number message');
+      // The phone's search key keeps other scripts, as keyOf on the Pi (review 1).
+      const keys = await page.evaluate(() => [window.HUB_PANTRY.fold('牛奶'), window.HUB_PANTRY.fold('Café & Co')]);
+      assert(keys[0] === '牛奶' && keys[1] === 'cafe and co', JSON.stringify(keys));
       assert(await page.isVisible('.px-sheet'), 'the sheet stays open');
       await page.fill('.px-restock input', '3');
       await page.click('.px-sheet .px-chip:has-text("Other")');

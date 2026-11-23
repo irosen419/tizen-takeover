@@ -385,6 +385,12 @@ async function main() {
     assert.ok(/Rejected: give at least one of/.test(r.message), r.message);
     r = await run(fake, h, 'pantry.add', { name: 'Rice', location: 'garage' });
     assert.strictEqual(r.ok, false);
+    // Counts are whole numbers (review 4).
+    r = await run(fake, h, 'pantry.add', { name: 'Rice', qty: 1.5 });
+    assert.strictEqual(r.ok, false);
+    assert.ok(/^Rejected: /.test(r.message), r.message);
+    r = await run(fake, h, 'pantry.set', { name: 'Huevos', restockAt: 2.5 });
+    assert.strictEqual(r.ok, false);
   });
 
   await check('todo.add, todo.list, todo.done (title), todo.remove (id)', async () => {

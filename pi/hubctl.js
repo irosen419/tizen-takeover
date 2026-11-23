@@ -1554,7 +1554,7 @@ async function pantryLow(callFn) {
 
 function pantryNumber(v, flag, min, max) {
   const n = Number(v);
-  if (v === true || !isFinite(n) || n < min || n > max) stop('--' + flag + ' must be a number from ' + min + ' to ' + max + '.');
+  if (v === true || !isFinite(n) || n < min || n > max || Math.floor(n) !== n) stop('--' + flag + ' must be a whole number from ' + min + ' to ' + max + '.');
   return n;
 }
 

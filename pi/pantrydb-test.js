@@ -114,10 +114,12 @@ async function main() {
   await check('schema: STRICT types, enums and ranges are enforced by the database itself', () => {
     const p = mem();
     p.applyOps([{ op: 'add', name: 'Rice' }], []);
+    p.syncGrocery([], []);
     const db = p.db;
     const bad = [
       "UPDATE products SET unit = 'cup'", "UPDATE products SET location = 'garage'", "UPDATE products SET substitution_mode = 'any'",
       'UPDATE products SET purchase_quantity = 1.5', 'UPDATE products SET purchase_quantity = 0', 'UPDATE products SET quantity_remaining = -1',
+      'UPDATE products SET quantity_remaining = 1.5', 'UPDATE products SET restock_at = 0.5',
       "UPDATE products SET quantity_remaining = 'lots'", 'UPDATE products SET owned = 2', "UPDATE products SET barcode = '12ab5678'",
       "INSERT INTO brands (name, key) VALUES ('X', '')", "INSERT INTO lists (status, created_at) VALUES ('open', 1)",
       "INSERT INTO lists (status, created_at) VALUES ('shipped', 1)", 'INSERT INTO category_products (category_id, product_id) VALUES (999, 1)'
@@ -143,10 +145,12 @@ async function main() {
     assert.strictEqual(new Set(r.results.map((x) => x.id)).size, 1);
     r = p.applyOps([{ op: 'add', name: 'Ketchup', brand: 'heinz' }, { op: 'category', name: 'condiments' }, { op: 'category', name: 'Condiments' }], []);
     const v = p.view([]).data;
-    assert.deepStrictEqual(v.brands.map((b) => b.name), ['Heinz'], 'the first spelling is kept');
+    assert.deepStrictEqual(v.brands.map((b) => b.name).filter((n) => n !== '***'), ['Heinz'], 'the first spelling is kept');
     assert.strictEqual(v.categories.filter((c) => c.key === 'condiments').length, 1);
     assert.strictEqual(v.products[0].brand, 'Heinz');
-    assert.throws(() => p.applyOps([{ op: 'brand', name: '***' }], []), /letter or a number/);
+    const star = p.applyOps([{ op: 'brand', name: '***' }, { op: 'brand', name: ' *** ' }], []).results;
+    assert.strictEqual(star[0].id, star[1].id, 'a brand of symbols only gets one stable key');
+    assert.throws(() => p.applyOps([{ op: 'brand', name: '   ' }], []), /must not be empty/);
     assert.throws(() => p.applyOps([{ op: 'brand', name: 'x'.repeat(41) }], []), /at most 40/);
     // The same brand and name is one product: a second add counts up.
     r = p.applyOps([{ op: 'add', name: 'KETCHUP', brand: 'Heinz', qty: 2 }], []);
@@ -327,6 +331,109 @@ async function main() {
     p.close();
   });
 
+  await check('review 1: non-Latin and emoji names get a key; one bad row never stops a mirror or the move', () => {
+    assert.strictEqual(pantrydb.keyOf('牛奶'), '牛奶');
+    assert.strictEqual(pantrydb.keyOf('Молоко!'), 'молоко');
+    assert.strictEqual(pantrydb.keyOf('🥚'), '');
+    const p = mem();
+    let r = p.applyOps([{ op: 'add', name: '🥚', qty: 3 }, { op: 'add', name: '牛奶', qty: 2 }, { op: 'add', name: ' 🥚 ' }], []);
+    assert.strictEqual(r.results[2].existed, true, 'the emoji name has a stable key');
+    assert.strictEqual(p.view([]).data.products.length, 2);
+    assert.ok(p.find('牛奶'));
+    const g = [{ id: 'g1', name: '🍞', done: false, addedAt: 1, upc: '' }, { id: 'g2', name: 42, done: false, addedAt: 2, upc: '' }, { id: 'g3', name: 'Milk', done: false, addedAt: 3, upc: '' }];
+    assert.doesNotThrow(() => p.syncGrocery(g, []));
+    const rows = p.db.prepare('SELECT grocery_id FROM list_items ORDER BY grocery_id').all().map((x) => x.grocery_id);
+    assert.deepStrictEqual(rows, ['g1', 'g3'], 'the bad row is skipped, the rest mirror');
+    p.close();
+    // The move: an emoji-only catalog name moves too.
+    const dir = tmp();
+    const file = path.join(dir, 'products.json');
+    fs.writeFileSync(file, JSON.stringify({ v: 1, products: { [COLA]: { name: '🥤', brand: '' }, [CHIPS]: { name: 'Chips', brand: '' } } }));
+    const q = pantrydb.createPantry({ dataDir: dir });
+    const m = q.migrate({ productsFile: file, groceryItems: [{ id: 'g1', name: '🥤', done: false, addedAt: 1, upc: '' }, { id: 'g2', name: null, done: false, addedAt: 1, upc: '' }] });
+    assert.strictEqual(m.products, 2);
+    assert.strictEqual(q.db.prepare("SELECT value FROM meta WHERE key = 'migrated.grocery'").get() !== undefined, true);
+    q.close();
+  });
+
+  await check('review 2: no auto-add on the add that makes a product, nor when it was already low; a drop adds it', () => {
+    const p = mem();
+    let r = p.applyOps([{ op: 'add', name: 'Rice', qty: 1 }], []);
+    assert.strictEqual(r.auto, 0, 'qty 1 at restock 1 on creation: low badge, no row');
+    const rice = p.view([]).data.products[0];
+    assert.strictEqual(rice.low, true);
+    r = p.applyOps([{ op: 'edit', id: rice.id, location: 'other' }, { op: 'add', name: 'Rice', qty: 0 }], []);
+    assert.strictEqual(r.auto, 0, 'already low: no transition');
+    r = p.applyOps([{ op: 'add', name: 'Eggs', qty: 2 }], []);
+    assert.strictEqual(r.auto, 0, 'eggs at 2 (restock 6) on creation: low, not added');
+    const eggs = p.view([]).data.products.find((x) => x.name === 'Eggs');
+    assert.strictEqual(eggs.low, true);
+    p.applyOps([{ op: 'set', id: eggs.id, qty: 8 }], []);
+    r = p.applyOps([{ op: 'adjust', id: eggs.id, by: -2 }], []);
+    assert.strictEqual(r.auto, 1, '8 -> 6 drops to the restock point');
+    // Removed then added again: a fresh add, no row.
+    p.applyOps([{ op: 'set', id: rice.id, qty: 5 }, { op: 'remove', id: rice.id }], []);
+    r = p.applyOps([{ op: 'add', name: 'Rice', qty: 1 }], []);
+    assert.strictEqual(r.auto, 0);
+    p.close();
+  });
+
+  await check('review 3: a damaged products.json is backed up, logged without names and left for the next start', () => {
+    const dir = tmp();
+    const file = path.join(dir, 'products.json');
+    const lines = [];
+    fs.writeFileSync(file, '{"v":1,"products":{"' + COLA + '":{"name":"Secret Cola"');
+    let p = pantrydb.createPantry({ dataDir: dir, log: (x) => lines.push(x) });
+    let m = p.migrate({ productsFile: file, groceryItems: [], backupDir: path.join(dir, 'pantry-backup') });
+    assert.strictEqual(m.products, 0);
+    assert.strictEqual(p.db.prepare("SELECT value FROM meta WHERE key = 'migrated.products'").get(), undefined, 'not marked');
+    assert.ok(fs.existsSync(path.join(dir, 'pantry-backup', 'products.json')), 'the copy is made before the parse');
+    assert.ok(lines.some((x) => /damaged/.test(x)) && !lines.some((x) => /Secret|Cola|0036/.test(x)));
+    // Fixed by the next start: it moves then.
+    fs.writeFileSync(file, JSON.stringify({ v: 1, products: { [COLA]: { name: 'Cola', brand: '' } } }));
+    m = p.migrate({ productsFile: file, groceryItems: [] });
+    assert.strictEqual(m.products, 1);
+    assert.ok(p.db.prepare("SELECT value FROM meta WHERE key = 'migrated.products'").get());
+    p.close();
+    // No file at all: nothing to move, marked done.
+    const d2 = tmp();
+    p = pantrydb.createPantry({ dataDir: d2 });
+    p.migrate({ productsFile: path.join(d2, 'products.json'), groceryItems: [] });
+    assert.ok(p.db.prepare("SELECT value FROM meta WHERE key = 'migrated.products'").get());
+    p.close();
+  });
+
+  await check('review 4: counts and restock points are whole numbers (INTEGER); sizes stay decimal, half gallons read', () => {
+    const p = mem();
+    const bad = [{ op: 'add', name: 'Milk', qty: 1.5 }, { op: 'add', name: 'Milk', restockAt: 0.5 }];
+    bad.forEach((o) => assert.throws(() => p.applyOps([o], []), /whole number/, JSON.stringify(o)));
+    p.applyOps([{ op: 'add', name: 'Milk', qty: 2 }], []);
+    const id = p.view([]).data.products[0].id;
+    [{ op: 'adjust', id: id, by: -0.5 }, { op: 'set', id: id, qty: 1.25 }, { op: 'set', id: id, restockAt: 2.5 }, { op: 'edit', id: id, restockAt: 0.1 }]
+      .forEach((o) => assert.throws(() => p.applyOps([o], []), /whole number/, JSON.stringify(o)));
+    p.applyOps([{ op: 'edit', id: id, size: 0.5, unit: 'gal' }], []);
+    assert.strictEqual(p.view([]).data.products[0].size, 0.5);
+    const cols = p.db.prepare('PRAGMA table_info(products)').all();
+    assert.strictEqual(cols.find((c) => c.name === 'quantity_remaining').type, 'INTEGER');
+    assert.strictEqual(cols.find((c) => c.name === 'restock_at').type, 'INTEGER');
+    assert.deepStrictEqual(pantrydb.parseSize('½ gal'), { size: 0.5, unit: 'gal' });
+    assert.deepStrictEqual(pantrydb.parseSize('1/2 gallon'), { size: 0.5, unit: 'gal' });
+    assert.deepStrictEqual(pantrydb.parseSize('1 1/2 lb'), { size: 1.5, unit: 'lb' });
+    assert.deepStrictEqual(pantrydb.parseSize('1/0 gal'), { size: null, unit: null });
+    p.close();
+  });
+
+  await check('review 5: a 60-character name counts code points the same in grocery.js and lineName', () => {
+    const grocery = require('./grocery');
+    const name = '🥚'.repeat(grocery.MAX_NAME);
+    assert.strictEqual(pantrydb.lineName('', name), name);
+    const l = grocery.applyOps([], [{ op: 'add', name: name }], 1);
+    assert.strictEqual(l[0].name, name, 'grocery takes what lineName makes');
+    assert.throws(() => grocery.applyOps([], [{ op: 'add', name: name + '🥚' }], 1), /at most 60/);
+    const long = pantrydb.lineName('Brand', '🥚'.repeat(70));
+    assert.doesNotThrow(() => grocery.applyOps([], [{ op: 'add', name: long }], 1));
+  });
+
   /* ---------- the server ---------- */
 
   const h = await start();
@@ -421,6 +528,26 @@ async function main() {
     const row = r.json.data.list.find((x) => x.id === p2.listItemId);
     assert.ok(row.checked && g.find((i) => i.id === row.groceryId).done, 'grocery row ticked');
     assert.ok(h.lines.some((l) => /screen changed the pantry/.test(l)), 'logged as a screen');
+  });
+
+  await check('review 6: when the live copy cannot be saved, the answer still carries the fresh pantry and the next read catches up', async () => {
+    const hx = await start();
+    const P2 = hx.port;
+    let r = await request(P2, 'POST', '/api/pantry/ops', { token: TOKEN, body: { ops: [{ op: 'add', name: 'Flour', qty: 4 }] } });
+    const id = r.json.data.products[0].id;
+    // Block the state file's save: its temp name is a folder now.
+    const block = path.join(hx.dataDir, 'state.json.tmp-' + process.pid);
+    fs.mkdirSync(block);
+    r = await request(P2, 'POST', '/api/pantry/ops', { token: TOKEN, body: { ops: [{ op: 'set', id: id, qty: 3 }] } });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.data.products[0].qty, 3, 'the answer has the database as it is');
+    assert.ok(hx.lines.some((x) => /live copy could not be saved/.test(x)));
+    fs.rmdirSync(block);
+    r = await request(P2, 'GET', '/api/pantry', { token: TOKEN });
+    assert.strictEqual(r.json.data.products[0].qty, 3);
+    const live = JSON.parse(fs.readFileSync(path.join(hx.dataDir, 'state.json'), 'utf8'));
+    assert.strictEqual(live.resources.pantry.data.products[0].qty, 3, 'the retry saved the live copy');
+    await stop(hx);
   });
 
   await check('the log counts pantry changes, never a product or brand name', async () => {
