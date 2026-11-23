@@ -534,9 +534,6 @@
     'budget.states.hidden.head': 'Presupuesto oculto',
     'budget.states.hidden.line': 'widgets.budget.show está apagado en config.js, así que esta TV no muestra cifras del presupuesto.',
     'budget.states.hidden.short': 'Apagado en config.js.',
-    'budget.states.guest.head': 'Oculto para invitados',
-    'budget.states.guest.line': 'El modo invitados está activado, así que no se muestran cifras del presupuesto. Apágalo en la página del reloj.',
-    'budget.states.guest.short': 'Modo invitados activado.',
     'budget.broken': '{title}: no se pudo mostrar',
 
     /* ---- Investments tile (app/widgets/investments.js) ----
@@ -560,7 +557,6 @@
     'investments.accountsHead': 'Cuentas',
     'investments.holdingsHead': 'Principales posiciones',
     'investments.byAccount': 'Por cuenta',
-    'investments.guestNote': 'Modo invitados: solo porcentajes.',
     'investments.nothing': 'Todavía no hay nada que mostrar.',
     'investments.states.off.head': 'Necesita la Pi',
     'investments.states.off.line': 'La cartera viene del servidor del hub en la Raspberry Pi. Las actualizaciones en vivo están apagadas en esta TV: pon la dirección de la Pi en live.server de config.js.',
@@ -765,9 +761,6 @@
     'awws.moneyStates.hidden.head': 'Dinero oculto',
     'awws.moneyStates.hidden.line': 'showMoney está apagado en config.js, así que esta TV no muestra cifras de dinero.',
     'awws.moneyStates.hidden.short': 'showMoney está apagado en config.js.',
-    'awws.moneyStates.guest.head': 'Oculto para invitados',
-    'awws.moneyStates.guest.line': 'El modo invitados está activado, así que no se muestran cifras de dinero. Apágalo en la página del reloj.',
-    'awws.moneyStates.guest.short': 'Modo invitados activado.',
     'awws.moneyStates.nodata.head': 'Todavía no hay datos de dinero',
     'awws.moneyStates.nodata.line': 'Las cifras llegan con la próxima sincronización que envíe la sección de dinero. docs/awws-snapshot.md explica cómo.',
     'awws.moneyStates.nodata.short': 'Esperando la próxima sincronización.',

@@ -324,9 +324,9 @@
        "title": "Guest mode",
        "kind": "component",
        "status": "unverified",
-       "summary": "One switch on the Clock page that hides every money figure while guests are over.",
+       "summary": "One switch on the Clock page that blurs every dollar amount while guests are over.",
        "details": [
-        "When on, Earned vs spent and the budget tiles say Hidden for guests, the New charge banner never shows, budget data is dropped as it arrives, and money layouts leave the switcher. Calendars and to-dos stay. The Investments tile is the exception: it shows percentages only (gain, shares, the trend's shape) and keeps no dollar."
+        "When on, every money tile (Earned vs spent, the Glance, the budget tiles, Budget lab, Investments), its panel and the New charge banner keep their layout and data, but each dollar amount is blurred: a MutationObserver wraps the amounts in a blur span as widgets draw. Dates, counts, names and percentages stay readable. Layouts do not change. Calendars hide their notes and guest names."
        ],
        "files": [
         "app/guest.js",
@@ -1032,7 +1032,7 @@
          "status": "unverified",
          "summary": "Tile: net so far with earned and spent, plus monthly bar pairs. Panel: the same with a key. Never a balance.",
          "details": [
-          "The money section comes from Ian's AWWS profit page via the sync routine (totals only). Hidden in Guest mode."
+          "The money section comes from Ian's AWWS profit page via the sync routine (totals only). Guest mode blurs the amounts."
          ],
          "files": [
           "app/widgets/awws.js",
@@ -1075,7 +1075,7 @@
         }
        ],
        "notes": [
-        "Hidden by Guest mode. Not confirmed on the TV."
+        "Guest mode blurs the amounts. Not confirmed on the TV."
        ],
        "children": [
         {
@@ -1126,7 +1126,7 @@
          "status": "unverified",
          "summary": "A stacked set of PRs adding budget math, a lab tile with a cap slider, merchant sliders and a runway chart.",
          "details": [
-          "PR 62's tile shows a pace streak, yesterday against the cap and a suggested move; its panel has a cap slider and a saved cap kept on the TV for the cycle. PR 76 adds the runway chart. Guest mode hides it."
+          "PR 62's tile shows a pace streak, yesterday against the cap and a suggested move; its panel has a cap slider and a saved cap kept on the TV for the cycle. PR 76 adds the runway chart. Guest mode blurs its amounts."
          ],
          "files": [
           "app/widgets/budget-lab.js",
@@ -1144,7 +1144,7 @@
          "pr": "PR 119",
          "summary": "Standalone tile (in no layout): the portfolio total and its gain against cost, a trend line, an allocation bar by account and the top holdings. OK opens every account and holding in place.",
          "details": [
-          "Reads the investments section of the budget snapshot from the live line. Adapts to the tile size: total and gain, then a trend line (hidden under 2 days, with Trend starts building today), then the allocation bar and holdings. Dollar figures were approved for the TV on 2026-11-19. In Guest mode no dollar is drawn or kept: the percentages are worked out when the data arrives, then the dollars are dropped, and only percentages and the trend's shape show."
+          "Reads the investments section of the budget snapshot from the live line. Adapts to the tile size: total and gain, then a trend line (hidden under 2 days, with Trend starts building today), then the allocation bar and holdings. Dollar figures were approved for the TV on 2026-11-19. In Guest mode every dollar amount is blurred; percentages and the trend's shape stay readable."
          ],
          "files": [
           "app/widgets/investments.js",
@@ -1159,7 +1159,7 @@
           },
           {
            "to": "tv.hub.guest",
-           "label": "percentages only when guests are over",
+           "label": "dollar amounts blurred when guests are over",
            "dir": "in"
           }
          ]
@@ -5066,7 +5066,7 @@
   {
    "id": "flow.pi-investments",
    "title": "Investments reach the TV tile",
-   "summary": "The budget app adds the portfolio to the snapshot it already posts; the Pi checks it and the TV draws it, with percentages only in guest mode.",
+   "summary": "The budget app adds the portfolio to the snapshot it already posts; the Pi checks it and the TV draws it, with the dollars blurred in guest mode.",
    "steps": [
     {
      "node": "ext.budget-app.investments",
@@ -5082,7 +5082,7 @@
     },
     {
      "node": "tv.widgets.budget.investments",
-     "say": "The Investments tile draws total, gain, trend, allocation and holdings; in guest mode only percentages"
+     "say": "The Investments tile draws total, gain, trend, allocation and holdings; in guest mode the dollars are blurred"
     }
    ]
   },
