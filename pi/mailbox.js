@@ -445,6 +445,26 @@ function groceryChange(sub) {
   };
 }
 
+// The pantry: a miss (no such item, two of that name) answers ok: false.
+function pantryRun(fn) {
+  return async (a, ctx) => {
+    try {
+      return await fn(a, ctx);
+    } catch (e) {
+      if (e instanceof hubctl.Stop) return { ok: false, message: e.message };
+      throw e;
+    }
+  };
+}
+
+const PANTRY_PLACES = ['fridge', 'freezer', 'pantry', 'other'];
+const PANTRY_ARGS = {
+  qty: [V.number(0, 9999), false],
+  restockAt: [V.number(0, 999), false],
+  location: [V.oneOf(PANTRY_PLACES), false],
+  autoAdd: [V.bool(), false]
+};
+
 function todoChange(sub) {
   return async (args, ctx) => {
     const r = await ctx.call('GET', '/api/todo');
@@ -616,6 +636,22 @@ const COMMANDS = {
   'grocery.clear': { args: {}, run: (a, ctx) => hubctl.groceryClear(ctx.call) },
   // Counts and one search text ("Brand Name Size") per item to get.
   'grocery.export': { args: {}, run: (a, ctx) => hubctl.groceryExport(ctx.call) },
+  // Keep an item in the pantry (a second add of the same one adds to its count).
+  'pantry.add': {
+    args: Object.assign({ name: [V.text(80), false], upc: [V.text(14), false], brand: [V.text(40), false] }, PANTRY_ARGS),
+    check: (a) => { if (a.name === undefined && a.upc === undefined) throw argError('give "name" or "upc"'); },
+    run: pantryRun((a, ctx) => hubctl.pantryAdd(ctx.call, a))
+  },
+  'pantry.set': {
+    args: Object.assign({ id: [V.int(1, 1e9), false], name: [V.text(80), false] }, PANTRY_ARGS),
+    check: (a) => {
+      oneOfIdOrName(a);
+      if (['qty', 'restockAt', 'location', 'autoAdd'].every((k) => a[k] === undefined)) throw argError('give at least one of "qty", "restockAt", "location", "autoAdd"');
+    },
+    run: pantryRun((a, ctx) => hubctl.pantrySet(ctx.call, a.id !== undefined ? String(a.id) : a.name, a))
+  },
+  'pantry.list': { args: {}, run: pantryRun((a, ctx) => hubctl.pantryList(ctx.call)) },
+  'pantry.low': { args: {}, run: pantryRun((a, ctx) => hubctl.pantryLow(ctx.call)) },
   'calendar.status': {
     args: {},
     run: async (a, ctx) => {

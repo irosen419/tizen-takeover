@@ -754,7 +754,9 @@ async function main() {
     r = await request(P, 'GET', '/api/grocery/export', { token: TOKEN });
     assert.strictEqual(r.status, 200);
     assert.deepStrictEqual(Object.keys(r.json).sort(), ['counts', 'generatedAt', 'items', 'ok']);
-    assert.deepStrictEqual(r.json.counts, { left: 3, ticked: 0 });
+    // The pantry adds counts.fromPantry and, per item, fromPantry and reason (nothing else changes).
+    assert.deepStrictEqual(r.json.counts, { left: 3, ticked: 0, fromPantry: 0 });
+    assert.ok(r.json.items.every((i) => i.fromPantry === false && i.reason === ''));
     const cola = r.json.items.find((i) => i.upc === COLA_KEY);
     assert.strictEqual(cola.search, 'Fizz Co Cola 12 fl oz');
     assert.strictEqual(cola.imagePath, '/api/products/image?upc=' + COLA_KEY);
