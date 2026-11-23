@@ -1584,7 +1584,7 @@
     'grocery.tvUnreachable': 'la Pi no respondió',
     'grocery.activity': 'Nuevo en la lista',
 
-    /* ---- Pantry and List (app/widgets/pantry.js) and the product page.
+    /* ---- Pantry and List (app/widgets/pantry-tv.js) and the product page.
      * Product and brand names are data and stay as sent. */
     'pantry.title': 'Despensa',
     'pantry.titleShort': 'Despensa',

@@ -1,12 +1,12 @@
 /*
- * Pantry and List on the TV (app/widgets/pantry.js, pantry.css): node dev/pantry-test.js
+ * Pantry and List on the TV (app/widgets/pantry-tv.js, pantry-tv.css): node dev/pantry-tv-test.js
  *
  * Runs the real hub in headless Chromium against the preview (needs port
  * 8095 free, like the other browser tests). The widgets run on the mock data
- * in HUB_PANTRY.api (the Pi's pantry routes are not built yet), so no Pi
+ * in HUB_PANTRY_TV.api (the Pi's pantry routes are not built yet), so no Pi
  * server is started. Nothing here reaches the internet. Checks:
  *
- *   - pantry.js is plain ES5 and Node can require its logic; the CSS has no
+ *   - pantry-tv.js is plain ES5 and Node can require its logic; the CSS has no
  *     grid, no flex gap, animates only transform and opacity and ends with
  *     .css-end; hub.html loads both before hub.js; every pantry.* key the
  *     file uses has Spanish; the Groceries layout is Pantry left, List right.
@@ -154,7 +154,7 @@ async function focusKey(page, k) {
   assert(await focused(page) === k, 'never reached ' + k + ' (at ' + await focused(page) + ')');
 }
 function toast(page) { return page.evaluate(() => { const t = document.getElementById('toast'); return t ? t.textContent : ''; }); }
-function product(page, id) { return page.evaluate((i) => window.HUB_PANTRY.productById(window.HUB_PANTRY.api.snapshot(), i), id); }
+function product(page, id) { return page.evaluate((i) => window.HUB_PANTRY_TV.productById(window.HUB_PANTRY_TV.api.snapshot(), i), id); }
 
 /* Every fit problem inside root (a tile or the panel). */
 function measure(page, sel) {
@@ -201,19 +201,19 @@ async function main() {
   env.browser = await chromium.launch();
 
   try {
-    await check('pantry.js is plain ES5 and a Node module; hub.html loads it and pantry.css before hub.js; every pantry.* key has Spanish', () => {
+    await check('pantry-tv.js is plain ES5 and a Node module; hub.html loads it and pantry-tv.css before hub.js; every pantry.* key has Spanish', () => {
       let acorn = null;
       for (const p of ['acorn', '/opt/node-tools/node_modules/acorn', '/usr/local/lib/node_modules_global/acorn']) {
         try { acorn = require(p); break; } catch (e) { /* next */ }
       }
-      const text = fs.readFileSync(path.join(ROOT, 'app/widgets/pantry.js'), 'utf8');
+      const text = fs.readFileSync(path.join(ROOT, 'app/widgets/pantry-tv.js'), 'utf8');
       if (acorn) acorn.parse(text, { ecmaVersion: 5 });
       else assert(!/(^|[^.\w])(let|const)\s|=>|`|\bclass\s/.test(text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')), 'ES2015 syntax');
-      const P = require('../app/widgets/pantry.js');
+      const P = require('../app/widgets/pantry-tv.js');
       assert(typeof P.clean === 'function' && typeof P.api.saveProduct === 'function', 'the logic is not exported');
       const hub = fs.readFileSync(path.join(ROOT, 'app/hub.html'), 'utf8');
-      assert(hub.indexOf('widgets/pantry.js') > 0 && hub.indexOf('widgets/pantry.css') > 0, 'hub.html');
-      assert(hub.indexOf('widgets/pantry.js') < hub.indexOf('src="hub.js"'), 'pantry.js after hub.js');
+      assert(hub.indexOf('widgets/pantry-tv.js') > 0 && hub.indexOf('widgets/pantry-tv.css') > 0, 'hub.html');
+      assert(hub.indexOf('widgets/pantry-tv.js') < hub.indexOf('src="hub.js"'), 'pantry.js after hub.js');
       const box = { window: {}, location: { search: '' } };
       box.window = box;
       vm.runInNewContext(I18N, box);
@@ -232,8 +232,8 @@ async function main() {
       assert(es['hub.layout.groceries'], 'no Spanish layout name');
     });
 
-    await check('pantry.css: no grid, no flex gap, only transform and opacity animate, ends with .css-end; the Groceries layout is Pantry left, List right', () => {
-      const css = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'pantry.css'), 'utf8');
+    await check('pantry-tv.css: no grid, no flex gap, only transform and opacity animate, ends with .css-end; the Groceries layout is Pantry left, List right', () => {
+      const css = fs.readFileSync(path.join(ROOT, 'app', 'widgets', 'pantry-tv.css'), 'utf8');
       const bare = css.replace(/\/\*[\s\S]*?\*\//g, '');
       assert(!/display\s*:\s*(inline-)?grid|grid-template/.test(bare), 'CSS grid');
       assert(!/(^|[\s;{])(row-|column-)?gap\s*:/.test(bare), 'flex gap');
@@ -248,7 +248,7 @@ async function main() {
     });
 
     await check('logic: the pantry is a filter of products, 0 left is out, fields are checked, brands match by key, a save can auto-add', async () => {
-      const P = require('../app/widgets/pantry.js');
+      const P = require('../app/widgets/pantry-tv.js');
       P.reset();
       const d = P.api.snapshot();
       const pan = P.pantryOf(d.products);
@@ -350,7 +350,7 @@ async function main() {
       await until(async () => (await product(page, id)).quantity_remaining === was + 1, 2000, 'not saved');
       await until(() => page.evaluate((n) => document.querySelector('#panel [data-key="in:quantity_remaining"]').value === String(n), was + 1), 2000, 'the box did not follow');
       assert(await focused(page) === 'step:quantity_remaining:1', 'focus moved to ' + await focused(page));
-      const outNow = await page.evaluate(() => window.HUB_PANTRY.pantryCounts(window.HUB_PANTRY.api.snapshot().products).out);
+      const outNow = await page.evaluate(() => window.HUB_PANTRY_TV.pantryCounts(window.HUB_PANTRY_TV.api.snapshot().products).out);
       assert(outNow === 4, 'out count ' + outNow);
       await focusKey(page, 'step:quantity_remaining:-1');
       await key(page, 'Enter');
@@ -406,9 +406,9 @@ async function main() {
       await key(page, 'Escape');
       await until(() => page.evaluate(() => !!document.querySelector('#panel .pn-row')), 2000, 'page still open');
       // Yogurt: 2 left, restock at 1, auto-add on, not on the list.
-      const yog = await page.evaluate(() => window.HUB_PANTRY.api.snapshot().products.filter((p) => p.name === 'Plain Greek yogurt')[0].id);
+      const yog = await page.evaluate(() => window.HUB_PANTRY_TV.api.snapshot().products.filter((p) => p.name === 'Plain Greek yogurt')[0].id);
       const before = await page.evaluate(() => document.querySelectorAll('#panel .pn-row').length);
-      await page.evaluate((id) => new Promise((r) => window.HUB_PANTRY.api.saveProduct(id, { quantity_remaining: 1 }, r)), yog);
+      await page.evaluate((id) => new Promise((r) => window.HUB_PANTRY_TV.api.saveProduct(id, { quantity_remaining: 1 }, r)), yog);
       await until(() => page.evaluate((n) => document.querySelectorAll('#panel .pn-row').length === n + 1, before), 2000, 'the list did not grow');
       assert(await page.evaluate(() => !!document.querySelector('#panel .pn-row .pn-chip-auto')), 'no Auto chip');
       assert(!page.ctx.errors.length, 'console: ' + page.ctx.errors.join(' | '));

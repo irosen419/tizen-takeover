@@ -1,7 +1,7 @@
 /*
  * Pantry and List: two TV widgets over the pantry database planned for the
  * Pi (/mnt/project-files/pantry/plan-v2.md: SQLite products, brands, lists,
- * list items). Both share this file and app/widgets/pantry.css.
+ * list items). Both share this file and app/widgets/pantry-tv.css.
  *
  *   pantry   the pantry is a FILTER of products: owned before and not
  *            archived. quantity_remaining 0 = out (an "Out" chip), at or
@@ -20,7 +20,7 @@
  *   tile, 2+ rows   the count big, then the first rows that fit, "+N more"
  *   panel           rows grouped (pantry: Out, Low, In stock); OK opens the page
  *
- * DATA: HUB_PANTRY.api below is the ONLY place that knows where the data
+ * DATA: HUB_PANTRY_TV.api below is the ONLY place that knows where the data
  * comes from. Today it serves MOCK data from memory (nothing is saved
  * anywhere). When the Pi's pantry routes land, replace the bodies of
  * api.load and api.saveProduct (see the comments there); the widgets only
@@ -270,7 +270,7 @@
     // For tests: start again from the mock data.
     reset: function () { store.data = mockData(); emit(); }
   };
-  root.HUB_PANTRY = Logic;
+  root.HUB_PANTRY_TV = Logic;
   if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
   if (typeof document === 'undefined') return;
 
@@ -774,8 +774,8 @@
     icon: 'basket'
   });
 
-  // For the tests (dev/pantry-test.js).
-  root.HUB_PANTRY_TV = { pantry: pantryWidget._state, list: listWidget._state };
+  // For the tests (dev/pantry-tv-test.js).
+  Logic.state = { pantry: pantryWidget._state, list: listWidget._state };
 
   (root.HUB_WIDGETS = root.HUB_WIDGETS || []).push(pantryWidget, listWidget);
 })(typeof window !== 'undefined' ? window : this);

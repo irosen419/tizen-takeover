@@ -1021,7 +1021,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     architecture:  { title: 'Architecture',          sub: 'The map of the whole system: Big picture, group diagrams and a detail drawer, with the data flows' },
     // app/widgets/grocery.js: the grocery list, kept on the Pi. Touch view (app/touch.html) and, since PR 2 of the one-app plan, a TV tile on the "Groceries test" layout.
     grocery:       { title: 'Grocery',               sub: 'The grocery list, kept on the Pi: add, tick, remove and clear on the TV or from a phone or tablet' },
-    // app/widgets/pantry.js: Pantry and List over the pantry database (plan v2), on sample data until the Pi's routes land; on the "Groceries" layout.
+    // app/widgets/pantry-tv.js: Pantry and List over the pantry database (plan v2), on sample data until the Pi's routes land; on the "Groceries" layout.
     pantry:        { title: 'Pantry',                sub: 'Products owned before: what is left, Out and Low flagged; OK on one in full screen opens its product page to edit' },
     list:          { title: 'List',                  sub: 'The open shopping list: each product with its quantity, Auto when the pantry added it; OK in full screen opens the product page' }
   };
@@ -1084,7 +1084,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 2, w: 3, h: 4 }, { id: 'nowplaying', x: 9, y: 2, w: 3, h: 2 },
       { id: 'entertainment', x: 3, y: 4, w: 6, h: 2 }, { id: 'wotd', x: 9, y: 4, w: 3, h: 2 }
     ] },
-    // Pantry (left) and List (right) side by side, app/widgets/pantry.js.
+    // Pantry (left) and List (right) side by side, app/widgets/pantry-tv.js.
     { id: 'groceries', name: 'Groceries', layout: [
       { id: 'pantry', x: 0, y: 0, w: 6, h: 6 }, { id: 'list', x: 6, y: 0, w: 6, h: 6 }
     ] }
@@ -1630,7 +1630,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
                es: 'Dos columnas. A la izquierda: la fecha y el nivel (A1, A2 o B1), la palabra en grande, cómo se dice, el inglés y la categoría. A la derecha: Qué significa (en los dos idiomas, primero el del centro) y Ejemplo (en español y en inglés).' },
       full: { en: 'The same two columns, much bigger.', es: 'Las mismas dos columnas, mucho más grandes.' }
     },
-    // app/widgets/pantry.js: drawn here with the placeholder look; the cells below say what it really shows.
+    // app/widgets/pantry-tv.js: drawn here with the placeholder look; the cells below say what it really shows.
     pantry: plannedEntry({ en: 'Pantry', es: 'Despensa' },
       { en: 'Products owned before, with how many are left; Out and Low flagged. Sample data until the Pi’s pantry routes land.',
         es: 'Los productos que ya se compraron, con cuántos quedan; Agotado y Queda poco marcados. Datos de ejemplo hasta que lleguen las rutas de la despensa en la Pi.' }),
