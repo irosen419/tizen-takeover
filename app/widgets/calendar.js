@@ -395,6 +395,16 @@
           d.notes[ev.note].replace(/\r\n?/g, '\n').replace(/^\s+|\s+$/g, '') : '',
         guestCount: typeof ev.guestCount === 'number' && ev.guestCount >= 1 ? Math.floor(ev.guestCount) : 0,
         guests: [] };
+      // "TODO!:", "TODO:", "TODO~:" are the to-do list's own words: show the title without them,
+      // and remember the level so a row can wear a small box instead.
+      var tm = /^TODO([!~]?):\s*(\S.*)$/.exec(n.title);
+      if (tm) {
+        n.todo = tm[1] === '!' ? 'must' : tm[1] === '~' ? 'passive' : 'optional';
+        n.title = tm[2];
+        // "TODO~: School meeting 3" = shown 3 days ahead; the number is not part of the name.
+        var ld = /^(.*\S) (\d{1,2})$/.exec(n.title);
+        if (n.todo === 'passive' && ld && Number(ld[2]) <= 30) n.title = ld[1];
+      }
       if (n.guestCount && isArr(ev.guests)) {
         for (var gi = 0; gi < ev.guests.length && gi < 25; gi++) if (typeof ev.guests[gi] === 'string' && ev.guests[gi]) n.guests.push(ev.guests[gi]);
       }
@@ -594,6 +604,18 @@
 
   // Owner-typed text in the hub's language (display only; app/i18n-dyn.js).
   function dyn(s) { return (window.HUB_I18N && window.HUB_I18N.dyn) ? window.HUB_I18N.dyn(s) : s; }
+
+  // The small box in front of a title that came from a TODO: event (colour by level, no words).
+  function todoMark(parent, ev) {
+    if (!ev.todo) return null;
+    var m = document.createElement('span');
+    m.className = 'cal-todo is-' + ev.todo;
+    m.setAttribute('aria-hidden', 'true');
+    parent.insertBefore(m, parent.firstChild);
+    return m;
+  }
+
+  function titled(tag, cls, parent, ev) { var n = el(tag, cls, parent, titleOf(ev)); todoMark(n, ev); return n; }
 
   function titleOf(ev) { return ev.title ? dyn(ev.title) : STRINGS.noTitle; }
 
@@ -946,7 +968,7 @@
       var when = el('span', 'cal-strip-when', line);
       if (u.now) el('span', 'cal-now-tag', when, STRINGS.now);
       else when.textContent = timeText(zone, u.ev.s);
-      var st = el('span', 'cal-strip-title', line, titleOf(u.ev));
+      var st = titled('span', 'cal-strip-title', line, u.ev);
       // Guests come last and only when the whole title still fits beside them.
       var gt = guestText(u.ev);
       if (gt) {
@@ -960,11 +982,11 @@
     } else if (a.allDay.length) {
       bar(line, a.allDay[0].cal);
       el('span', 'cal-strip-when cal-trow-tag', line, STRINGS.allDay);
-      el('span', 'cal-strip-title', line, titleOf(a.allDay[0]));
+      titled('span', 'cal-strip-title', line, a.allDay[0]);
     } else if (a.next) {
       bar(line, a.next.cal);
       el('span', 'cal-strip-when', line, relDay(a.next.startDay, a.today) + (a.next.allDay ? '' : ' ' + timeText(zone, a.next.s)));
-      el('span', 'cal-strip-title', line, titleOf(a.next));
+      titled('span', 'cal-strip-title', line, a.next);
     } else {
       el('span', 'cal-strip-title is-quiet', line, a.had ? STRINGS.nothingElse : STRINGS.nothingComing);
     }
@@ -990,7 +1012,7 @@
       bar(row, ev.cal);
       var text = el('div', 'cal-trow-text', row);
       el('div', 'cal-trow-when', text, relDay(ev.startDay, a.today) + (ev.allDay ? ' · ' + STRINGS.allDay : ' ' + timeText(zone, ev.s)));
-      el('div', 'cal-trow-title', text, titleOf(ev));
+      titled('div', 'cal-trow-title', text, ev);
     }
     while (rows.lastChild && rows.scrollHeight > rows.clientHeight + 1) rows.removeChild(rows.lastChild);
     if (!rows.firstChild) {
@@ -1039,7 +1061,7 @@
         var when = relDay(a.next.startDay, a.today) + (a.next.allDay ? '' : ' ' + timeText(zone, a.next.s));
         var nw = el('div', 'cal-next-when', txt, when);
         guestTag(nw, a.next);
-        var nt = el('div', 'cal-next-title', txt, titleOf(a.next));
+        var nt = titled('div', 'cal-next-title', txt, a.next);
         if (notesOf(a.next)) notesMark(nt);
       } else if (!a.had) {
         empty.textContent = STRINGS.nothingComing;
@@ -1080,6 +1102,7 @@
     bar(row, ev.cal);
     el('span', 'cal-trow-tag', row, STRINGS.allDay);
     var line = el('span', 'cal-trow-line', row, titleOf(ev));
+    todoMark(line, ev);
     if (notesOf(ev)) notesMark(line);
     guestTag(line, ev);
     return row;
@@ -1097,7 +1120,8 @@
       when.textContent = timeText(zone, u.ev.s);
     }
     guestTag(when, u.ev);
-    var t = el('div', 'cal-trow-title', text, titleOf(u.ev));
+    var t = titled('div', 'cal-trow-title', text, u.ev);
+    todoMark(t, u.ev);
     if (notesOf(u.ev)) notesMark(t);
     return row;
   }
@@ -1357,7 +1381,8 @@
         var chip = el('div', 'cal-chip' + (ev.id === selId ? ' is-sel' : '') + (isPast(ev, t, td) ? ' is-past' : ''), chips);
         chip.style.backgroundColor = color(ev.cal, 0.24);
         chip.style.borderLeftColor = color(ev.cal);
-        el('span', 'cal-chip-text', chip, titleOf(ev));
+        var ct = el('span', 'cal-chip-text', chip, titleOf(ev));
+        todoMark(ct, ev);
         clickPick(chip, ev.id);
       }
       var rest = de.allDay.length - shown.length;
@@ -1388,7 +1413,7 @@
       var face = el('div', 'cal-ev-face', box);
       face.style.backgroundColor = color(it.ev.cal, 0.26);
       face.style.borderLeftColor = color(it.ev.cal);
-      el('div', 'cal-ev-title', face, titleOf(it.ev));
+      titled('div', 'cal-ev-title', face, it.ev);
       var et = el('div', 'cal-ev-time', face, it.before ? fill(STRINGS.untilT, { t: timeText(zone, it.ev.e) }) : timeText(zone, it.ev.s));
       guestTag(et, it.ev);
       clickPick(box, it.ev.id);
@@ -1451,7 +1476,7 @@
     var dot = el('span', 'cal-swatch', who);
     dot.style.backgroundColor = color(ev.cal);
     el('span', 'cal-detail-calname', who, calName(c || { cal: ev.cal }));
-    el('div', 'cal-detail-title' + (ev.title === 'Busy' ? ' is-busy' : ''), meta, titleOf(ev));
+    titled('div', 'cal-detail-title' + (ev.title === 'Busy' && !ev.todo ? ' is-busy' : ''), meta, ev);
     el('div', 'cal-detail-when', meta, whenText(zone, ev));
     var gtext = guestText(ev);
     if (gtext) el('div', 'cal-detail-guests', meta, gtext);
@@ -1571,13 +1596,13 @@
         if (ev.allDay) {
           item.style.backgroundColor = color(ev.cal, 0.24);
           item.style.borderLeftColor = color(ev.cal);
-          el('div', 'cal-wev-title', item, titleOf(ev));
+          titled('div', 'cal-wev-title', item, ev);
         } else {
           item.style.borderLeftColor = color(ev.cal);
           var startsHere = zone.dayOf(ev.s) === n;
           var wt = el('div', 'cal-wev-time', item, startsHere ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) }));
           guestTag(wt, ev, true);
-          el('div', 'cal-wev-title', item, titleOf(ev));
+          titled('div', 'cal-wev-title', item, ev);
         }
         clickPickDay(item, n, ev.id);
         if (n === selDay && ev.id === selId) selNode = item;
@@ -1593,7 +1618,7 @@
       var sw = el('span', 'cal-swatch', strip);
       sw.style.backgroundColor = color(ev2.cal);
       el('span', 'cal-wdetail-when', strip, whenText(zone, ev2));
-      el('span', 'cal-wdetail-title', strip, titleOf(ev2));
+      titled('span', 'cal-wdetail-title', strip, ev2);
       var extra = [];
       if (guestText(ev2)) extra.push(guestText(ev2));
       if (ev2.location) extra.push(ev2.location);
@@ -1687,7 +1712,7 @@
       var text = el('div', 'cal-mev-text', item);
       var mw = el('div', 'cal-mev-when', text, ev.allDay ? STRINGS.allDay : (zone.dayOf(ev.s) === selDay ? timeText(zone, ev.s) : fill(STRINGS.untilT, { t: timeText(zone, ev.e) })));
       guestTag(mw, ev);
-      el('div', 'cal-mev-title', text, titleOf(ev));
+      titled('div', 'cal-mev-title', text, ev);
       rows.push(item);
     }
     fitRows(box, more, rows);
