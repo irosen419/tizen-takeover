@@ -12,7 +12,8 @@
 #   PHOTOS_DATA_DIR   the hub's data folder (default pi/data)
 #
 # Never deletes anything, on the calendar or here: it only pulls files that
-# are not here yet. Only images (.webp .jpg .jpeg .png); videos are skipped.
+# are not here yet. Searches the album folder at any depth. Only images
+# (.webp .jpg .jpeg .png, any case); videos and ".downloading" are skipped.
 # Prints counts only, never a file name. A calendar that is off or away is
 # not an error: it exits 0 and says nothing.
 set -u
@@ -55,7 +56,10 @@ idof() { printf '%s' "$1" | sha1sum | cut -c1-12; }
 
 LIST="$DIR/.list.$$"
 OK=1
-if $T adb -s "$ADDR" shell ls -1 "'$SRC/'" > "$LIST.raw" 2>/dev/null; then
+# Every file under the album, however deep (eCalendar keeps them around
+# CloudAlbum/cloud/<account>/photos/.../YYYY/MM/), as "size|path". Paths
+# with spaces are fine: the line is split at the first "|" only.
+if $T adb -s "$ADDR" shell "find '$SRC' -type f -exec stat -c '%s|%n' {} + 2>/dev/null; true" > "$LIST.raw" 2>/dev/null; then
   tr -d '\r' < "$LIST.raw" > "$LIST"; rm -f "$LIST.raw"
 else
   rm -f "$LIST" "$LIST.raw"
@@ -65,21 +69,31 @@ fi
 
 NEW=0
 FAILED=0
-while IFS= read -r name; do
-  case "$name" in
-    ''|.*|*/*) continue ;;
+while IFS= read -r line; do
+  size=${line%%|*}
+  rpath=${line#*|}
+  case "$size" in ''|*[!0-9]*) continue ;; esac
+  case "$rpath" in
+    *.downloading|*.downloading/*|*/.downloading/*) continue ;; # partial downloads
   esac
+  name=${rpath##*/}
+  case "$name" in ''|.*) continue ;; esac
   lower=$(printf '%s' "$name" | tr 'A-Z' 'a-z')
   case "$lower" in
-    *.webp|*.jpg|*.jpeg|*.png) ;;
+    *.webp) ext=webp ;;
+    *.jpg|*.jpeg) ext=jpg ;;
+    *.png) ext=png ;;
     *) continue ;;
   esac
-  [ -e "$ORIG/$name" ] && continue
+  # The copy is named by file name + size, not by folder: the same photo in
+  # two folders is one copy, and a moved file is not pulled again.
+  lname="$(idof "$name|$size").$ext"
+  [ -e "$ORIG/$lname" ] && continue
   part="$ORIG/.part-$$"
   # -a keeps the calendar's file time (the album month comes from it).
-  if $TP adb -s "$ADDR" pull -a "$SRC/$name" "$part" >/dev/null 2>&1 ||
-     $TP adb -s "$ADDR" pull "$SRC/$name" "$part" >/dev/null 2>&1; then
-    mv "$part" "$ORIG/$name" && NEW=$((NEW + 1))
+  if $TP adb -s "$ADDR" pull -a "$rpath" "$part" >/dev/null 2>&1 </dev/null ||
+     $TP adb -s "$ADDR" pull "$rpath" "$part" >/dev/null 2>&1 </dev/null; then
+    mv "$part" "$ORIG/$lname" && NEW=$((NEW + 1))
   else
     rm -f "$part"
     FAILED=$((FAILED + 1))
