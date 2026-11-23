@@ -1535,7 +1535,10 @@
 
   // The alerts this TV hasn't dismissed yet, oldest first.
   function pending() {
-    var s = shown() ? section('alerts') : null;
+    // Guest mode: no banner (it names a merchant); it comes back when Guest mode goes off.
+    var gOn = false;
+    try { gOn = !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { gOn = false; }
+    var s = shown() && !gOn ? section('alerts') : null;
     var out = [];
     if (!s || !isArr(s.items)) return out;
     var seen = seenList();
@@ -1687,6 +1690,8 @@
     refreshAll();
     updateBanner();
   }
+
+  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(function () { try { updateBanner(); } catch (e) { warn('guest: ' + (e && e.message)); } }); } catch (e) { /* no Guest mode on this page */ }
 
   try {
     var lx = I18N();

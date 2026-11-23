@@ -433,7 +433,7 @@ async function main() {
     const GUEST_ROW = ROW.slice(0, 6).concat([{ widget: 'today', x: 9, y: 3, w: 3, h: 3 }]);
     const GUEST_CACHE = JSON.stringify({ v: 1, at: H.MONDAY, data: Object.assign(H.budgetSample.snapshot({ sentAt: FRESH }), { receivedAt: FRESH }) });
 
-    await check('Guest mode on: every money tile keeps its figures with each dollar amount blurred (only those); the banner shows; the budget is kept', async () => {
+    await check('Guest mode on: every money tile keeps its figures with each dollar amount blurred (only those); no banner; the budget is kept', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.guest.v1': 'on', 'homeHub.budget.v1': GUEST_CACHE } });
       try {
         for (const id of IDS) {
@@ -442,12 +442,10 @@ async function main() {
         }
         assert(/Covered/.test(await seen(page, tileOf('budget-card'))) && /days left/.test(await seen(page, tileOf('budget-room'))), 'words went with the amounts');
         assert(!/\$\s?\d/.test(await seen(page, tileOf('awws'))), 'the Glance shows an amount');
-        await H.until(() => page.evaluate(() => window.HUB_ALERT.shown()), 3000, 'the banner does not show');
-        assert(!(await has(page, '.bu-alert .guest-blur')), 'the banner (no amount) has a blur');
+        await H.idle(page);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'the banner shows in Guest mode');
         const kept = await page.evaluate(() => ({ store: !!window.HUB_BUDGET_TEST.store.data, cache: !!localStorage.getItem('homeHub.budget.v1') }));
         assert(kept.store && kept.cache, 'budget dropped: ' + JSON.stringify(kept));
-        await H.key(page, 'Enter');
-        await H.idle(page);
         await H.openPanel(page, 'budget-card');
         await allBlurred(page, '#panel', 'card panel');
         await H.key(page, 'Escape');
@@ -468,19 +466,14 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode on: an amount inside the New charge banner is blurred; the merchant stays', async () => {
-      const b = H.budgetSample.snapshot({ sentAt: FRESH });
-      b.alerts.items[0].label = 'Hilltop $42';
-      await env.setBudget(b);
+    await check('Guest mode on: the New charge banner stays away (it names a merchant)', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.guest.v1': 'on' } });
       try {
-        await H.until(() => page.evaluate(() => window.HUB_ALERT.shown()), 3000, 'the banner does not show');
-        const left = await allBlurred(page, '.bu-alert', 'banner');
-        assert(/Hilltop/.test(left), 'banner: ' + left);
+        await H.idle(page);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'the banner shows in Guest mode');
         noErrors(page);
       } finally {
         await page.ctx.close();
-        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
       }
     });
 
