@@ -355,6 +355,58 @@
     preload(imgUrl(it.id, sizeFor(t.stage)));
   }
 
+  /* ---------- a slideshow anywhere (the tablet's Slideshow, hub.js) ---------- */
+
+  // Every photo in turn, full size, in parent (the same stage, crossfade and
+  // blurred fill as the tile). opts.getJSON(url, ms, cb) fetches the list
+  // when this widget is not on the layout; opts.onEmpty() when there is
+  // nothing to show. Returns { stop() }.
+  function slideshow(parent, opts) {
+    opts = opts || {};
+    var st = makeStage(parent, { fit: 'auto', caption: true, full: true });
+    var on = true;
+    var timer = null;
+    var i = S.items.length ? S.index - 1 : -1;
+    function empty() { if (on && typeof opts.onEmpty === 'function') opts.onEmpty(); }
+    function next() {
+      timer = null;
+      if (!on) return;
+      if (!S.items.length) { empty(); return; }
+      var tries = 0;
+      (function go() {
+        i = (i + 1) % S.items.length;
+        show(st, S.items[i], function (ok) {
+          if (!on) return;
+          if (!ok && ++tries < Math.min(5, S.items.length)) { go(); return; }
+          if (!ok && st.front < 0) { empty(); return; }
+          if (S.items.length > 1) {
+            timer = setTimeout(next, seconds() * 1000);
+            preload(imgUrl(S.items[(i + 1) % S.items.length].id, 'full'));
+          }
+        });
+      })();
+    }
+    var base = server();
+    if (S.items.length) next();
+    else if (base && typeof opts.getJSON === 'function') {
+      opts.getJSON(base + '/photos/list', 10000, function (err, data) {
+        if (!on) return;
+        var list = err ? [] : cleanList(data);
+        // Not on the layout (no tile): keep the list for the next time.
+        if (!S.items.length && list.length && !S.ctx) S.items = list;
+        if (S.items.length) next(); else empty();
+      });
+    } else empty();
+    return {
+      stop: function () {
+        on = false;
+        if (timer) clearTimeout(timer);
+        st.want = null;
+        if (st.el.parentNode) st.el.parentNode.removeChild(st.el);
+      }
+    };
+  }
+
   function drawQuiet(body, kind, size) {
     var box = div('ph-quiet ph-quiet-' + kind, body);
     var art = div('ph-quiet-art', box);
@@ -677,6 +729,7 @@
     state: function () { return { state: S.state, index: S.index, count: S.items.length, rev: S.rev, viewing: S.viewing }; },
     advance: function () { clearTimer(); advance(); },
     reload: function () { load(true); },
+    slideshow: slideshow,
     refresh: function () { load(false); }
   };
 

@@ -737,12 +737,19 @@
       if (dir > 0 && pct < 10) pct = 10;
       on = pct > 0;
     }
+    sendLight(id, l, on, pct, dir, t);
+  }
+
+  // Shows the light's new state at once and sends it (a level after the
+  // arrows, or a finger, rest SEND_MS). level: 0 for an on/off, else a level.
+  function sendLight(id, l, on, pct, level, t) {
     var p = pendingLight[id] || {};
     if (p.timer) clearTimeout(p.timer);
     // An "on" from OK keeps the level the Pi knew (pct 0 here means "as it was").
     var showPct = on ? (pct || (l.kind === 'switch' ? 100 : Math.max(10, lastPct(id)))) : 0;
     pendingLight[id] = { on: on, pct: showPct, at: t, timer: null, seq: (p.seq || 0) + 1 };
     paintRow(id);
+    var dir = level;
     var body = { id: id };
     if (!dir) body.on = on;
     else if (on) body.pct = pct;
@@ -771,6 +778,72 @@
 
   var known = {};
   function lastPct(id) { return known[id] || 60; }
+
+  // Tablet mode (ctx.tablet; no remote): a finger on a light's bar sets its
+  // level where it touches, and a drag scrubs it. Never an on/off: the touch
+  // is kept from becoming the click that the hub treats as OK. A tap on the
+  // name still turns it on or off, as OK does. Chrome 52: touch events and a
+  // mouse fallback, no Pointer Events.
+  function setLightAt(id, rect, x) {
+    var l = find(lightsOf(data), id);
+    if (!l || l.kind === 'switch') return;
+    if (!l.reachable) { setNote(T('lightGone', '{name} isn’t answering.', { name: l.name }), 'warn'); return; }
+    var pct = Math.round(Math.max(0, Math.min(1, (x - rect.left) / (rect.width || 1))) * 100);
+    sendLight(id, l, true, Math.max(1, pct), 1, now());
+  }
+
+  function barOf(node) {
+    for (var n = node; n && n.getAttribute; n = n.parentNode) {
+      if (hasClass(n, 'am-bar')) {
+        var row = n.parentNode && n.parentNode.parentNode;
+        var id = row && row.getAttribute ? row.getAttribute('data-light') : null;
+        return id && !hasClass(n, 'am-bar-none') ? { bar: n, row: row, id: id } : null;
+      }
+      if (hasClass(n, 'panel-body')) return null;
+    }
+    return null;
+  }
+
+  function touchBars(body) {
+    if (body.__amTouch) return;
+    body.__amTouch = true;
+    var mouse = null;
+    // The bar is drawn again on every move, so the finger's own target
+    // (which keeps getting its touch events) carries the drag.
+    body.addEventListener('touchstart', function (e) {
+      var b = page && C && C.tablet ? barOf(e.target) : null;
+      if (!b || !e.touches || e.touches.length !== 1) return;
+      e.preventDefault();
+      var rect = b.bar.getBoundingClientRect();
+      var node = e.target;
+      if (C.focus) C.focus(b.row);
+      setLightAt(b.id, rect, e.touches[0].clientX);
+      function move(ev) { if (ev.touches && ev.touches.length) { ev.preventDefault(); setLightAt(b.id, rect, ev.touches[0].clientX); } }
+      function end(ev) {
+        if (ev.cancelable) ev.preventDefault();
+        node.removeEventListener('touchmove', move);
+        node.removeEventListener('touchend', end);
+        node.removeEventListener('touchcancel', end);
+      }
+      node.addEventListener('touchmove', move);
+      node.addEventListener('touchend', end);
+      node.addEventListener('touchcancel', end);
+    });
+    body.addEventListener('mousedown', function (e) {
+      var b = page && C && C.tablet ? barOf(e.target) : null;
+      if (!b) return;
+      e.preventDefault();
+      mouse = { id: b.id, rect: b.bar.getBoundingClientRect() };
+      if (C.focus) C.focus(b.row);
+      setLightAt(mouse.id, mouse.rect, e.clientX);
+    });
+    document.addEventListener('mousemove', function (e) { if (mouse && page) setLightAt(mouse.id, mouse.rect, e.clientX); });
+    document.addEventListener('mouseup', function () { mouse = null; });
+    // The click that follows a press on a bar is not an OK.
+    body.addEventListener('click', function (e) {
+      if (page && C && C.tablet && barOf(e.target)) e.stopPropagation();
+    });
+  }
 
   // Repaints one light's row in place while the arrows are held (the
   // element stays, so focus stays on it).
@@ -882,6 +955,8 @@
       page = null;
       try {
         drawPanel(body, ctx);
+        // Always listening; each touch asks ctx.tablet then (it can turn on a moment after start).
+        touchBars(body);
       } catch (e) {
         if (window.console && console.warn) console.warn('Ambience panel: ' + (e && e.message));
         page = null;

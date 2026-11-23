@@ -124,6 +124,7 @@ More detail: "Writing a widget" in `README.md` and the top of `app/hub.js`.
 | Layout looks old | the Pi's saved layout beats `app/config.js` (`docs/live-updates.md`, "Tile layout from the Pi"); the Studio keeps its own draft |
 | Phone app differs from TV | `app/touch.js` and the widget's `renderTouch` |
 | A dollar amount readable in Guest mode | `app/guest.js` (blurs amounts on the money tiles, panels and banner: `MONEY`, `MATCHERS`), `.guest-blur` in `app/style.css`; `dev/money-test.js` |
+| Wall tablet (Fully Kiosk): panels won't close, no layout menu, an app won't open on the TV | "tablet mode" in `app/hub.js`, `app/tablet.css`, `docs/tablet-mode.md`; `dev/tablet-test.js` |
 | Guest mode PIN pop-up, wrong PIN, forgotten PIN | `app/pin.js` + `app/pin.css` (the pop-up; `choose()` in `app/widgets/today.js` opens it), `POST /guest/pin` in `pi/server.js` -> `pi/guestpin.js` (hash in `data/guest-pin.json`, the lock); `./hub guest-pin reset`; `dev/pin-test.js`, `pi/guestpin-test.js` |
 
 ## 9. Glossary
