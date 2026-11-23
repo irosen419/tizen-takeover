@@ -142,7 +142,7 @@ Routes: touch `POST /pantry/ops` (ops `add`, `adjust`, `set`, `edit`, `want`, `r
 
 ### Guest mode PIN (server 0.31.0)
 
-Turning Guest mode on or off on the TV's Clock page asks for a 4-digit PIN in a pop-up: type it with the number keys on the remote (or the keypad on the screen); it shows dots, never the digits. The first time, the TV asks you to create one and enter it again. The Pi checks it (`pi/guestpin.js`, `POST /guest/pin` from the TV, the same trust as its `/pantry/screen-ops`) and keeps only a salted scrypt hash in `data/guest-pin.json` (mode 0600), never the PIN. Three wrong tries in a row lock it for 30 seconds, then 60, 120, 240 and at most 5 minutes; a right PIN clears that. If the TV can't reach the Pi, nothing changes. The log counts wrong tries and locks, never a PIN.
+Turning Guest mode on or off on the TV's Clock page asks for a 4-digit PIN in a pop-up: type it with the number keys on the remote (or the keypad on the screen); it shows dots, never the digits. The first time, the TV asks you to create one and enter it again. The Pi checks it (`pi/guestpin.js`, `POST /guest/pin` from the TV, a screen route: home addresses, or only the TV when `HUB_TV_IPS` is set (see "Optional: only allow the TV" below), not the phone app's door) and keeps only a salted scrypt hash in `data/guest-pin.json` (mode 0600), never the PIN. Three wrong tries in a row lock it for 30 seconds, then 60, 120, 240 and at most 5 minutes; a right PIN clears that. If the TV can't reach the Pi, nothing changes. The log counts wrong tries and locks, never a PIN.
 
 Forgot the PIN? On the Pi:
 

@@ -17,8 +17,9 @@
  * or the on-screen keypad (arrows and OK, or a click). Only four dots show,
  * never a digit, and there is no text box, so nothing but digits can get
  * in. Back, Escape or Backspace takes the last digit off, or cancels when
- * there is none. The fourth digit sends it. While open, every key is
- * caught here first (capture phase) and kept from the hub's own handler.
+ * there is none (or while the Pi is being asked; its late answer is
+ * dropped). The fourth digit sends it. While open, every key is caught here
+ * first (window, capture phase) and stopped before any other listener.
  *
  * Stages: 'enter' (a PIN is set), 'create' then 'confirm' (none yet: the
  * Pi says so). Wrong: the dots clear with a short nudge and "Wrong PIN".
@@ -303,7 +304,9 @@
   }
 
   function back() {
-    if (S.busy) return;
+    // While a request is out, Back cancels at once with no change; send()
+    // drops the late answer (S is no longer the pop-up it was sent for).
+    if (S.busy) { finish(false); return; }
     if (S.digits.length) {
       S.digits = S.digits.slice(0, -1);
       drawDots();
@@ -341,9 +344,11 @@
 
   function onKey(e) {
     if (!S) return;
-    // Every key is ours while the pop-up shows; the hub never sees it.
+    // Every key is ours while the pop-up shows: no other listener, the hub's
+    // included, sees it.
     e.preventDefault();
     e.stopPropagation();
+    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
     var c = e.keyCode;
     var d = digitOf(e);
     if (d) { if (!e.repeat) digit(d); return; }
@@ -392,7 +397,9 @@
     askStatus();
   }
 
-  document.addEventListener('keydown', onKey, true);
+  // On window, capture phase: the first stop of every key event, ahead of
+  // every listener on document (hub.js and the widgets), capture or not.
+  window.addEventListener('keydown', onKey, true);
 
   window.HUB_PIN = {
     ask: ask,

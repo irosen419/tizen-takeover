@@ -25,8 +25,9 @@
  *   POST /pantry/screen-ops   the same ops from the TV (no token; the same trust as the TV's
  *                        POST /grocery/ops: home addresses, a listed Origin, OPTIONS answered).
  *                        The pantry is also a live resource ("pantry") in /live/state
- *   POST /guest/pin      the Guest mode PIN from the TV's Clock page (guestpin.js; same trust and
- *                        OPTIONS as /pantry/screen-ops): { action: 'status' | 'check' | 'set', pin }.
+ *   POST /guest/pin      the Guest mode PIN from the TV's Clock page (guestpin.js; a screen route:
+ *                        home addresses, or only HUB_TV_IPS when set, a listed Origin, OPTIONS answered):
+ *                        { action: 'status' | 'check' | 'set', pin }.
  *                        Only a salted scrypt hash is kept (data/guest-pin.json); 3 wrong in a row lock it
  *   GET  /, /app/...     the touch app (app/touch.html) and the files it loads, read only
  *                        (the touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
@@ -2019,7 +2020,7 @@ function start(options) {
   function touch(req, res, route, query) {
     const cors = corsHeaders(req);
     if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
-    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/guest/pin')) {
+    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops')) {
       const h = Object.assign({ 'Cache-Control': 'no-store', 'Content-Length': 0 }, cors);
       if (cors['Access-Control-Allow-Origin']) {
         h['Access-Control-Allow-Methods'] = 'POST';
@@ -2030,7 +2031,7 @@ function start(options) {
       return res.end();
     }
     const image = route.indexOf('/products/image/') === 0;
-    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/guest/pin' || route === '/products/save' ? 'POST' : 'GET';
+    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' ? 'POST' : 'GET';
     const okMethod = req.method === want || (image && req.method === 'HEAD');
     if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
@@ -2095,12 +2096,6 @@ function start(options) {
         }
       }, PRODUCT_BODY_LIMIT);
     }
-    if (route === '/guest/pin') {
-      // Never log the PIN; guestpin.js logs wrong tries and locks by count only.
-      return readBody(req, res, (body) => {
-        guestPin.handle(body).then((r) => sendJson(res, 200, r, cors), (e) => fail(res, e, cors));
-      });
-    }
     if (route === '/pantry/ops' || route === '/pantry/screen-ops') {
       return readBody(req, res, (body) => {
         try {
@@ -2142,7 +2137,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/echo/run' || route === '/awws/resync' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/echo/run' || route === '/awws/resync' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2170,6 +2165,14 @@ function start(options) {
     // foreign Origin is refused.
     if (!originOk(req)) {
       return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    }
+    if (route === '/guest/pin') {
+      // The Guest mode PIN: a screen route, so with HUB_TV_IPS set only the TV
+      // (and this Pi) can try PINs; never a phone on the touch door. Never log
+      // the PIN; guestpin.js logs wrong tries and locks by count only.
+      return readBody(req, res, (body) => {
+        guestPin.handle(body).then((r) => sendJson(res, 200, r, cors), (e) => fail(res, e, cors));
+      });
     }
     if (route === '/translate') {
       return readBody(req, res, (body) => {
@@ -2311,10 +2314,10 @@ function start(options) {
   const SCREEN_ROUTES = {
     '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/awws/resync': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
-    '/echo/run': 1
+    '/echo/run': 1, '/guest/pin': 1
   };
 
-  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/guest/pin': 1, '/products/lookup': 1, '/products/save': 1 };
+  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1 };
 
   function handler(door) {
     return (req, res) => {

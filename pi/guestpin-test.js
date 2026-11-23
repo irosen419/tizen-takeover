@@ -5,7 +5,8 @@
  * up to 5 minutes, a right PIN clearing it, the file holding only a salted
  * hash at mode 0600, a damaged file, reset), then the real server over HTTP:
  * POST /guest/pin with no token from a home address and a listed Origin
- * (OPTIONS answered), refused from outside or a foreign Origin, never the
+ * (OPTIONS answered), refused from outside, from a non-TV address when
+ * HUB_TV_IPS is set or a foreign Origin, never the
  * PIN in a log line; GET /api/guest-pin and POST /api/guest-pin/reset with
  * the token; and ./hub guest-pin reset. Only Node, no packages. Prints one
  * line per check, then "N passed, M failed".
@@ -210,6 +211,21 @@ async function main() {
       assert.strictEqual(r.status, 200, r.text);
       assert.deepStrictEqual(r.json, { ok: true, set: false, locked_for: 0 });
       assert.strictEqual(r.headers['access-control-allow-origin'], 'http://127.0.0.1:8081');
+    });
+
+    await check('it is a screen route: with HUB_TV_IPS set, another home address (a phone) is refused and only the TV gets in', async () => {
+      let r;
+      const h2 = await start({ tvIps: '192.168.1.50' });
+      try {
+        r = await request(h2.port, 'POST', '/guest/pin', { headers: Object.assign({}, tv, { 'x-test-ip': '192.168.1.77' }), body: { action: 'status' } });
+        assert.strictEqual(r.status, 403, 'a phone on the LAN got in with HUB_TV_IPS set');
+        r = await request(h2.port, 'POST', '/guest/pin', { headers: Object.assign({}, tv, { 'x-test-ip': '192.168.1.77' }), body: { action: 'check', pin: '1234' } });
+        assert.strictEqual(r.status, 403);
+        r = await request(h2.port, 'POST', '/guest/pin', { headers: tv, body: { action: 'status' } });
+        assert.strictEqual(r.status, 200, 'the TV was refused: ' + r.text);
+      } finally {
+        await stop(h2);
+      }
     });
 
     await check('create, right, wrong, bad input and the lock over HTTP; no PIN or hash in the log', async () => {

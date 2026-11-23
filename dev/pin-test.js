@@ -18,7 +18,8 @@
  *   - Only digits: letters, Shift+digit and other keys are ignored, the
  *     numpad works, the pop-up shows dots and never a typed digit, and the
  *     4th digit sends it by itself.
- *   - Back takes the last digit off; Back with none cancels with no change;
+ *   - Back takes the last digit off; Back with none, or while the Pi is being
+ *     asked, cancels with no change (the late answer is dropped);
  *     the hub never sees the keys (the Clock page stays open).
  *   - Wrong PIN: dots cleared, "Wrong PIN", still open. 3 wrong: "Too many
  *     tries. Try again in 25 s", counting down, digits ignored.
@@ -337,7 +338,7 @@ async function main() {
       await p.ctx.close();
     });
 
-    await check('Back deletes the last digit, Back with none cancels with no change; the hub never sees the keys', async () => {
+    await check('Back deletes the last digit, Back with none (or while checking) cancels with no change; the hub never sees the keys', async () => {
       const p = await open({ pin: '1111' });
       await openClock(p);
       await choose(p, 'on', 'enter');
@@ -356,6 +357,17 @@ async function main() {
       assert(await p.evaluate(() => window.HUB_TEST.open() === 'today'), 'the Back that cancelled also closed the Clock page');
       assert(await focused(p) === 'guest-on', 'focus after cancel: ' + await focused(p));
       assert(!(await p.evaluate(() => window.PIN_STUB.posts.some((x) => x.body.action === 'check'))), 'a check was sent');
+      // Back while the PIN is being checked: closes at once, the late (right) answer changes nothing.
+      await p.evaluate(() => { window.PIN_STUB.delay = 800; });
+      await choose(p, 'on', 'enter');
+      await type(p, '1111');
+      assert((await pin(p)).busy, 'not busy while checking');
+      await key(p, 'Escape');
+      await closed(p);
+      await sleep(1000);
+      assert(!(await guestOn(p)), 'the late answer turned Guest mode on');
+      assert(await p.evaluate(() => window.HUB_TEST.open() === 'today'), 'Back also closed the Clock page');
+      assert(!p.ctx.errors.length, 'console: ' + p.ctx.errors.join(' | '));
       await p.ctx.close();
     });
 
