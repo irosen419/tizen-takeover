@@ -170,13 +170,14 @@ async function pick(page, key) {
       await sleep(80);
       return;
     }
-    // The groups top to bottom: face, hours (Digital only), lang.
-    const order = ['face', 'hours', 'lang'];
+    // The groups top to bottom: face, hours (Digital only), look, lang.
+    const order = ['face', 'hours', 'look', 'lang'];
     const wantGroup = key.split('-')[0];
     const atGroup = at.split('-')[0];
     let k;
     if (order.indexOf(atGroup) < 0) k = 'ArrowDown';
     else if (wantGroup !== atGroup) k = order.indexOf(wantGroup) > order.indexOf(atGroup) ? 'ArrowDown' : 'ArrowUp';
+    else if (wantGroup === 'look') k = ['look-auto', 'look-day', 'look-night'].indexOf(key) > ['look-auto', 'look-day', 'look-night'].indexOf(at) ? 'ArrowRight' : 'ArrowLeft';
     else k = /analog|24|-es$/.test(key) ? 'ArrowRight' : 'ArrowLeft';
     await page.keyboard.press(k);
     await sleep(80);

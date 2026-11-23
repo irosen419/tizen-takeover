@@ -956,5 +956,18 @@
 .tile-w1 .cal-strip-title { display: none; }
 .tile-w1 .cal-strip-when { margin: 0 auto; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 0.85rem; }
 
+/* To-do events: a small box in front of the title (the TODO: words are hidden). */
+.cal-todo {
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-right: 0.45em;
+  vertical-align: -0.02em;
+  border: 0.13em solid var(--text-3);
+  border-radius: 0.18em;
+}
+.cal-todo.is-must { border-color: var(--ok-must); background-color: var(--ok-must); }
+.cal-todo.is-passive { border-style: dashed; opacity: 0.7; }
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }

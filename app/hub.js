@@ -139,7 +139,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.55.0';
+  var BUILD = 'v0.56.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -949,6 +949,32 @@
   var DAY_TO = 18;
   var theme = { look: '', source: 'auto', sunrise: '', sunset: '', timer: null, fading: false };
 
+  // The choice made on the Clock page: 'auto' (sun), 'day' (Light) or 'night'
+  // (Dark), kept on this screen in localStorage so each screen can differ.
+  // ?theme= on the address still wins; this beats HUB_CONFIG.theme.
+  var LOOK_KEY = 'homeHub.look';
+  var lookNow = null;   // the choice held in memory too, for a TV whose localStorage fails
+  function savedLook() {
+    if (lookNow) return lookNow;
+    try {
+      var v = window.localStorage && window.localStorage.getItem(LOOK_KEY);
+      return v === 'day' || v === 'night' ? v : 'auto';
+    } catch (e) { return 'auto'; }
+  }
+  window.HUB_LOOK = {
+    get: function () { return savedLook(); },
+    set: function (v) {
+      lookNow = v === 'day' || v === 'night' ? v : 'auto';
+      try {
+        if (window.localStorage) {
+          if (v === 'day' || v === 'night') window.localStorage.setItem(LOOK_KEY, v);
+          else window.localStorage.removeItem(LOOK_KEY);
+        }
+      } catch (e) { /* not kept; lookNow still holds it until the page reloads */ }
+      checkTheme();
+    }
+  };
+
   function sunTimes() {
     try {
       var rec = widgetById('weather');
@@ -961,8 +987,9 @@
     var q = readQuery('theme');
     var source = 'URL';
     if (q !== 'day' && q !== 'night') {
-      q = cfg.theme;
-      source = 'config';
+      q = savedLook();
+      source = 'chosen';
+      if (q === 'auto') { q = cfg.theme; source = 'config'; }
     }
     if (q === 'day' || q === 'night') return { look: q, source: source, sunrise: '', sunset: '' };
     var sun = sunTimes();

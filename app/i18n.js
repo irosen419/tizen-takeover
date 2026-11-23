@@ -347,6 +347,12 @@
     'soundctl.hintSpeaker': 'OK controla este altavoz',
     'soundctl.hintQuick': 'OK lo inicia en {device}',
 
+    /* ---- The Look choice on the Clock page (app/widgets/today.js, app/hub.js) ---- */
+    'look.label': 'Aspecto',
+    'look.auto': 'Auto',
+    'look.light': 'Claro',
+    'look.dark': 'Oscuro',
+
     /* ---- Guest mode on the Clock page (app/guest.js, app/widgets/today.js) ---- */
     'guest.label': 'Modo invitados',
     'guest.off': 'No',
