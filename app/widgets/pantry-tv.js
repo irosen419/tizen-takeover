@@ -107,14 +107,14 @@
         return s.length > 80 ? { error: 'long' } : { value: s };
       case 'brand':
         s = String(s || '').replace(/\s+/g, ' ');
-        return s.length > 60 ? { error: 'long' } : { value: s };
+        return s.length > 40 ? { error: 'long' } : { value: s };
       case 'notes':
         s = String(s || '').replace(/\s+/g, ' ');
         return s.length > 200 ? { error: 'long' } : { value: s };
       case 'size':
         if (s === '' || s === null) return { value: null };
         n = Number(s);
-        return isFinite(n) && n > 0 && n < 100000 ? { value: Math.round(n * 100) / 100 } : { error: 'number' };
+        return isFinite(n) && n >= 0.01 && n < 100000 ? { value: Math.round(n * 100) / 100 } : { error: 'number' };
       // Whole numbers on the Pi (pantrydb.js): 0 to 9999 left, restock at 0 to 999.
       case 'quantity_remaining':
       case 'restock_at':
