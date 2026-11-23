@@ -198,6 +198,14 @@ var HUB_CONFIG = {
       { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
       { widget: 'entertainment', x: 3, y: 4, w: 6, h: 2 },
       { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 }
+    ] },
+    /* Groceries: Pantry (left) and List (right) side by side
+       (app/widgets/pantry-tv.js), over the Pi's pantry (live resource
+       "pantry", needs Pi server 0.30.0). OK on a pantry row, or Details on
+       a list row, opens the product page; OK on a list row ticks it. */
+    { id: 'groceries', name: 'Groceries', layout: [
+      { widget: 'pantry',        x: 0, y: 0, w: 6, h: 6 },
+      { widget: 'list',          x: 6, y: 0, w: 6, h: 6 }
     ] }
   ],
 

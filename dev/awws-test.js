@@ -564,7 +564,7 @@ async function main() {
           return { items: items, over: b.scrollWidth > b.clientWidth + 1, width: window.innerWidth,
             active: (document.querySelector('.switcher-item.is-active') || {}).textContent };
         });
-        assert(bar.items.length === 10, 'layouts: ' + bar.items.map((i) => i.name).join(', '));
+        assert(bar.items.length === 11, 'layouts: ' + bar.items.map((i) => i.name).join(', '));
         assert(!bar.over, 'the bar overflows');
         for (const it of bar.items) assert(it.left >= 0 && it.right <= bar.width && !it.cut, 'pill cut: ' + it.name);
         const was = bar.active;

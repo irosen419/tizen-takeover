@@ -1350,6 +1350,70 @@
        "notes": [
         "Writes need Pi server 0.26.1 (it answers the TV's CORS preflight); an older server shows the list but every change says it didn't save. Not yet tried on the TV."
        ]
+      },
+      {
+       "id": "tv.widgets.pantry",
+       "title": "Pantry (TV)",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "The pantry on the TV: Out and Low counts on the tile; rows under Out, Running low and In stock; OK on a row opens its product page to edit with the remote. Left half of the \"Groceries\" layout.",
+       "details": [
+        "Its own file (app/widgets/pantry-tv.js, HUB_PANTRY_TV), shared with List; the phone's pantry view is app/widgets/pantry.js, and hub.html loads only the TV file, so the id 'pantry' is registered once per page.",
+        "The product page: brand, name, size and unit, remaining (set), buy more when I have, how many to buy, auto-add, where it lives, substitution, notes. Each change is posted at once to POST /pantry/screen-ops, shown at once and taken back with a toast if the Pi refuses or does not answer. The Back chip says \"Back for the list\" (hub backHint)."
+       ],
+       "files": [
+        "app/widgets/pantry-tv.js",
+        "app/widgets/pantry-tv.css",
+        "dev/pantry-tv-test.js",
+        "dev/pantry-tv-live-stub.js"
+       ],
+       "talksTo": [
+        {
+         "to": "tv.live",
+         "label": "pantry resource in over the live line",
+         "dir": "in"
+        },
+        {
+         "to": "pi.pantry",
+         "label": "POST /pantry/screen-ops: set, edit",
+         "dir": "out"
+        }
+       ],
+       "notes": [
+        "Needs Pi server 0.30.0 (the pantry resource and the screen route). Not yet tried on the TV."
+       ]
+      },
+      {
+       "id": "tv.widgets.list",
+       "title": "List (TV)",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "The pantry's open shopping list on the TV: to get first, ticked rows dimmed under In the cart. OK ticks a row; Right, then OK on Details, opens the product page. Right half of the \"Groceries\" layout.",
+       "details": [
+        "Same file and data as Pantry (TV). Each row carries Auto (the pantry added it) and Out chips and ×quantity; the tile counts what is still to get and \"N in the cart\".",
+        "A tick posts op check (list_item_id, checked) to POST /pantry/screen-ops; the Pi ticks the grocery row too, so the phone's Groceries follows."
+       ],
+       "files": [
+        "app/widgets/pantry-tv.js",
+        "app/widgets/pantry-tv.css",
+        "dev/pantry-tv-test.js",
+        "dev/pantry-tv-live-stub.js"
+       ],
+       "talksTo": [
+        {
+         "to": "tv.live",
+         "label": "pantry resource in over the live line",
+         "dir": "in"
+        },
+        {
+         "to": "pi.pantry",
+         "label": "POST /pantry/screen-ops: check",
+         "dir": "out"
+        }
+       ],
+       "notes": [
+        "Needs Pi server 0.30.0. Not yet tried on the TV."
+       ]
       }
      ]
     },
@@ -2638,7 +2702,7 @@
        "summary": "The phone view of the pantry: Stock | Usual items (search ignores accents and case), place chips, rows with a stepper, a cart button and a Low badge with the restock value.",
        "details": [
         "A row opens a bottom sheet: place, 'buy more when I have' (a number box), how many to buy, the auto-add switch, substitution mode, brand and category picked from the Pi's lists or created once (never a second spelling), size and unit (a select).",
-        "English and Spanish; chips wrap and nothing has a fixed width, for the 25% longer Spanish. No TV tile yet (PR 2)."
+        "English and Spanish; chips wrap and nothing has a fixed width, for the 25% longer Spanish. The TV has its own Pantry and List (tv.widgets.pantry, tv.widgets.list)."
        ],
        "files": [
         "app/widgets/pantry.js",
