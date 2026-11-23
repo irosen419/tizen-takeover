@@ -459,8 +459,8 @@ function pantryRun(fn) {
 
 const PANTRY_PLACES = ['fridge', 'freezer', 'pantry', 'other'];
 const PANTRY_ARGS = {
-  qty: [V.number(0, 9999), false],
-  restockAt: [V.number(0, 999), false],
+  qty: [V.int(0, 9999), false],
+  restockAt: [V.int(0, 999), false],
   location: [V.oneOf(PANTRY_PLACES), false],
   autoAdd: [V.bool(), false]
 };

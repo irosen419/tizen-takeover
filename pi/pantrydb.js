@@ -22,9 +22,10 @@
  * Pantry ops that put something on the list (want, auto-add) answer with the
  * grocery ops to run; server.js runs them and mirrors the result back.
  *
- * Auto-add: after a quantity change, an owned, not archived product with
- * auto_add = 1 and quantity_remaining <= restock_at gets one grocery row
- * (source auto), never a second. When an auto row leaves the list while the
+ * Auto-add: when a quantity drops to or under restock_at (it was above it
+ * before the change), an owned, not archived product with auto_add = 1 gets
+ * one grocery row (source auto), never a second. The add that first puts a
+ * product in the pantry never adds a row, even at its restock point. When an auto row leaves the list while the
  * product is still low, auto_held = 1 and it is not added again until the
  * quantity has gone above restock_at once.
  *
@@ -35,6 +36,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // Loaded on first use, so ./hub (which only needs keyOf) never touches it.
 let sqlite;
@@ -99,10 +101,20 @@ function bad(msg) {
 
 // The matching key: lowercase, accents stripped, "&" read as "and",
 // apostrophes dropped, other punctuation and spaces folded to one space.
+// Letters and digits of any script stay ("牛奶", "молоко").
 function keyOf(s) {
-  return String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  return String(s == null ? '' : s).normalize('NFD').replace(/\p{M}/gu, '')
     .toLowerCase().replace(/&/g, ' and ').replace(/['\u2018\u2019`]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ').trim();
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+// keyOf, or a stable key from the text itself when it has no letter or
+// digit (an emoji-only name): never empty for non-empty text.
+function nameKey(s) {
+  const k = keyOf(s);
+  if (k) return k;
+  const t = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  return t ? 'u' + crypto.createHash('sha1').update(t).digest('hex').slice(0, 12) : '';
 }
 
 function cleanText(raw, max, what) {
@@ -115,7 +127,6 @@ function cleanText(raw, max, what) {
 function cleanName(raw, max, what) {
   const t = cleanText(raw, max, what);
   if (!t) throw bad('"' + what + '" must not be empty');
-  if (!keyOf(t)) throw bad('"' + what + '" needs a letter or a number');
   return t;
 }
 
@@ -140,12 +151,15 @@ const UNIT_WORDS = {
   ml: 'ml', l: 'l', liter: 'l', liters: 'l', litre: 'l', litres: 'l', gal: 'gal', gallon: 'gal', gallons: 'gal',
   ct: 'count', count: 'count', pc: 'count', pcs: 'count', each: 'count', pack: 'pack', pk: 'pack', packs: 'pack'
 };
+// "1/2 gal", "½ gal" and "1 1/2 lb" read as decimals (size is a REAL).
+const VULGAR = { '\u00bc': ' 1/4', '\u00bd': ' 1/2', '\u00be': ' 3/4' };
 function parseSize(text) {
-  const m = /^\s*(\d+(?:[.,]\d+)?)\s*([a-z][a-z _.]*?)\.?\s*$/i.exec(String(text || ''));
+  const t = String(text || '').replace(/[\u00bc\u00bd\u00be]/g, (c) => VULGAR[c]);
+  const m = /^\s*(\d+(?:[.,]\d+)?|(?:(\d+)\s+)?(\d+)\s*\/\s*(\d+))\s*([a-z][a-z _.]*?)\.?\s*$/i.exec(t);
   if (!m) return { size: null, unit: null };
-  const n = Number(m[1].replace(',', '.'));
-  const u = UNIT_WORDS[m[2].toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim()];
-  if (!(n > 0) || !u) return { size: null, unit: null };
+  const n = m[4] ? Math.round(((m[2] ? Number(m[2]) : 0) + Number(m[3]) / Number(m[4])) * 1000) / 1000 : Number(m[1].replace(',', '.'));
+  const u = UNIT_WORDS[m[5].toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim()];
+  if (!(n > 0) || !isFinite(n) || !u) return { size: null, unit: null };
   return { size: n, unit: u };
 }
 
@@ -221,8 +235,8 @@ const SCHEMA = [
     photo TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '' CHECK (length(notes) <= ${MAX_NOTES}),
     archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
-    quantity_remaining REAL NOT NULL DEFAULT 0 CHECK (quantity_remaining >= 0 AND quantity_remaining <= ${MAX_QTY}),
-    restock_at REAL NOT NULL DEFAULT 1 CHECK (restock_at >= 0 AND restock_at <= ${MAX_RESTOCK}),
+    quantity_remaining INTEGER NOT NULL DEFAULT 0 CHECK (quantity_remaining >= 0 AND quantity_remaining <= ${MAX_QTY}),
+    restock_at INTEGER NOT NULL DEFAULT 1 CHECK (restock_at >= 0 AND restock_at <= ${MAX_RESTOCK}),
     purchase_quantity INTEGER NOT NULL DEFAULT 1 CHECK (purchase_quantity BETWEEN 1 AND ${MAX_BUY}),
     auto_add INTEGER NOT NULL DEFAULT 1 CHECK (auto_add IN (0, 1)),
     auto_held INTEGER NOT NULL DEFAULT 0 CHECK (auto_held IN (0, 1)),
@@ -317,6 +331,23 @@ function createPantry(options) {
     }
   }
 
+  // fn inside a savepoint: on a throw only its own changes go back, and
+  // the caller's transaction carries on. True when fn finished.
+  let spN = 0;
+  function guarded(fn) {
+    const sp = 'sp' + (++spN);
+    db.exec('SAVEPOINT ' + sp);
+    try {
+      fn();
+      db.exec('RELEASE ' + sp);
+      return true;
+    } catch (e) {
+      db.exec('ROLLBACK TO ' + sp);
+      db.exec('RELEASE ' + sp);
+      return false;
+    }
+  }
+
   if (metaGet('schema') === null) {
     tx(() => {
       metaSet('schema', 1);
@@ -337,7 +368,7 @@ function createPantry(options) {
       return raw;
     }
     const name = cleanName(raw, MAX_BRAND, 'brand');
-    const k = keyOf(name);
+    const k = nameKey(name);
     const hit = one('SELECT id FROM brands WHERE key = ?', k);
     if (hit) return hit.id;
     return Number(run('INSERT INTO brands (name, key) VALUES (?, ?)', name, k).lastInsertRowid);
@@ -349,7 +380,7 @@ function createPantry(options) {
       return raw;
     }
     const name = cleanName(raw, MAX_CATEGORY, 'category');
-    const k = keyOf(name);
+    const k = nameKey(name);
     const hit = one('SELECT id FROM categories WHERE key = ?', k);
     if (hit) return hit.id;
     const max = one('SELECT COALESCE(MAX(sort), 0) AS m FROM categories').m;
@@ -387,8 +418,8 @@ function createPantry(options) {
     return p;
   }
 
-  function findByName(bid, nameKey) {
-    return one('SELECT * FROM products WHERE name_key = ? AND brand_id IS ?', nameKey, bid) || null;
+  function findByName(bid, nk) {
+    return one('SELECT * FROM products WHERE name_key = ? AND brand_id IS ?', nk, bid) || null;
   }
 
   function findByBarcode(upc) { return upc ? one('SELECT * FROM products WHERE barcode = ?', upc) || null : null; }
@@ -413,7 +444,7 @@ function createPantry(options) {
     const r = run(`INSERT INTO products (brand_id, name, name_key, barcode, size, unit, photo, notes, quantity_remaining, restock_at,
       purchase_quantity, auto_add, substitution_mode, location, owned, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    f.brandId || null, f.name, keyOf(f.name), f.barcode || null, f.size || null, f.unit || null, f.photo || '', f.notes || '',
+    f.brandId || null, f.name, nameKey(f.name), f.barcode || null, f.size || null, f.unit || null, f.photo || '', f.notes || '',
     f.quantity || 0, restock, f.purchaseQuantity || 1, f.autoAdd === 0 ? 0 : 1, f.substitutionMode || 'similar',
     f.location || 'pantry', f.owned ? 1 : 0, t, t);
     const pid = Number(r.lastInsertRowid);
@@ -427,7 +458,7 @@ function createPantry(options) {
     const sz = parseSize(cp.size);
     return {
       name: Array.from(name).slice(0, MAX_NAME).join('').trim() || cp.upc,
-      brandId: cp.brand && keyOf(cp.brand) ? brandId(Array.from(cp.brand).slice(0, MAX_BRAND).join('').trim()) : null,
+      brandId: cp.brand && cp.brand.trim() ? brandId(Array.from(cp.brand).slice(0, MAX_BRAND).join('').trim()) : null,
       barcode: cp.upc, size: sz.size, unit: sz.unit, photo: cp.image || ''
     };
   }
@@ -451,7 +482,7 @@ function createPantry(options) {
     return tx(() => {
       const f = catalogFields(cp);
       run('UPDATE products SET brand_id = ?, name = ?, name_key = ?, size = COALESCE(?, size), unit = COALESCE(?, unit), photo = ?, updated_at = ? WHERE id = ?',
-        f.brandId, f.name, keyOf(f.name), f.size, f.unit, f.photo, now(), p.id);
+        f.brandId, f.name, nameKey(f.name), f.size, f.unit, f.photo, now(), p.id);
       bump();
       return true;
     });
@@ -481,10 +512,13 @@ function createPantry(options) {
       const present = {};
       let changed = false;
       let held = 0;
+      let skipped = 0;
       list.forEach((it) => {
         if (!it || typeof it.id !== 'string') return;
         present[it.id] = 1;
-        const nk = keyOf(it.name);
+        // One row that does not fit never stops the rest of the mirror.
+        if (!guarded(() => {
+        const nk = nameKey(it.name);
         if (byG[it.id]) {
           const tick = it.done ? 1 : 0;
           if (byG[it.id].checked !== tick) {
@@ -516,12 +550,14 @@ function createPantry(options) {
         run('INSERT INTO list_items (list_id, product_id, quantity, source, added_at, grocery_id, checked) VALUES (?, ?, ?, ?, ?, ?, ?)',
           lid, pid, pp ? pp.purchase_quantity : 1, source, typeof it.addedAt === 'number' ? Math.round(it.addedAt) : now(), it.id, it.done ? 1 : 0);
         changed = true;
+        })) skipped++;
       });
+      if (skipped) log('pantry: ' + skipped + ' grocery rows could not be mirrored');
       // A hint whose row was already there (the grocery list did not double
       // it): that row now belongs to the pantry product, when it pointed at a
       // typed placeholder that is not in the pantry.
       h.forEach((x) => {
-        const it = list.find((g) => g && ((x.upc && g.upc === x.upc) || keyOf(g.name) === x.nameKey));
+        const it = list.find((g) => g && ((x.upc && g.upc === x.upc) || nameKey(g.name) === x.nameKey));
         const row = it ? one('SELECT li.id, p.owned, p.id AS pid FROM list_items li JOIN products p ON p.id = li.product_id WHERE li.grocery_id = ?', it.id) : null;
         if (row && row.pid !== x.productId && row.owned === 0) {
           run('UPDATE list_items SET product_id = ?, source = ? WHERE id = ?', x.productId, x.source === 'auto' ? 'auto' : 'manual', row.id);
@@ -550,14 +586,19 @@ function createPantry(options) {
     const op = { op: 'add', name: line };
     if (p.barcode) op.upc = p.barcode;
     out.grocery.push(op);
-    out.hints.push({ productId: p.id, source: source, upc: p.barcode || '', nameKey: keyOf(line) });
+    out.hints.push({ productId: p.id, source: source, upc: p.barcode || '', nameKey: nameKey(line) });
   }
 
   // Auto-add for the products an op batch touched.
-  function autoCheck(ids, out) {
+  // before: { pid: { fresh, low, qty } } from the start of the batch. Only a
+  // drop to or under the restock point adds a row: never the add that puts a
+  // product in the pantry, nor one that was already low.
+  function autoCheck(ids, out, before) {
     ids.forEach((pid) => {
       const p = product(pid);
-      if (!p || !isLow(p) || !p.auto_add || p.auto_held) return;
+      const b = before[pid];
+      if (!p || !b || b.fresh || b.low || p.quantity_remaining >= b.qty) return;
+      if (!isLow(p) || !p.auto_add || p.auto_held) return;
       if (onList(pid) || out.hints.some((x) => x.productId === pid)) return;
       want(p, 'auto', out);
       out.auto++;
@@ -566,14 +607,14 @@ function createPantry(options) {
 
   function editFields(p, o) {
     const set = {};
-    if (o.name !== undefined) { set.name = cleanName(o.name, MAX_NAME, 'name'); set.name_key = keyOf(set.name); }
+    if (o.name !== undefined) { set.name = cleanName(o.name, MAX_NAME, 'name'); set.name_key = nameKey(set.name); }
     if (o.brand !== undefined) set.brand_id = brandId(o.brand);
     if (o.brandId !== undefined) set.brand_id = o.brandId === null ? null : brandId(idOf(o.brandId, 'brandId'));
     if (o.size !== undefined) set.size = o.size === null ? null : num(o.size, 'size', 0.001, 100000);
     if (o.unit !== undefined) set.unit = o.unit === null ? null : oneOf(o.unit, UNITS, 'unit');
     if (o.notes !== undefined) set.notes = o.notes === null ? '' : cleanText(o.notes, MAX_NOTES, 'notes');
     if (o.location !== undefined) set.location = oneOf(o.location, LOCATIONS, 'location');
-    if (o.restockAt !== undefined) set.restock_at = num(o.restockAt, 'restockAt', 0, MAX_RESTOCK);
+    if (o.restockAt !== undefined) set.restock_at = int(o.restockAt, 'restockAt', 0, MAX_RESTOCK);
     if (o.purchaseQuantity !== undefined) set.purchase_quantity = int(o.purchaseQuantity, 'purchaseQuantity', 1, MAX_BUY);
     if (o.autoAdd !== undefined) set.auto_add = bool(o.autoAdd, 'autoAdd');
     if (o.substitutionMode !== undefined) set.substitution_mode = oneOf(o.substitutionMode, MODES, 'substitutionMode');
@@ -619,22 +660,30 @@ function createPantry(options) {
     if (ops.length > MAX_OPS) throw bad('at most ' + MAX_OPS + ' ops at a time');
     const out = { changed: false, grocery: [], hints: [], auto: 0, results: [] };
     const touched = [];
+    const before = {};
+    // The product as it was before this batch first changed it.
+    function mark(pid) {
+      if (before[pid]) return;
+      const p = product(pid);
+      before[pid] = { fresh: !p || p.owned !== 1 || p.archived !== 0, low: isLow(p), qty: p ? p.quantity_remaining : 0 };
+    }
     const gItems = Array.isArray(groceryItems) ? groceryItems : [];
     tx(() => {
       ops.forEach((o) => {
         if (!isObj(o) || typeof o.op !== 'string') throw bad('each op needs an "op"');
         if (o.op === 'add') {
           const upc = upcOf(o.upc);
-          const qty = o.qty === undefined ? 1 : num(o.qty, 'qty', 0, MAX_QTY);
+          const qty = o.qty === undefined ? 1 : int(o.qty, 'qty', 0, MAX_QTY);
           let pid;
           if (upc) {
             pid = productForUpc(upc, o.name ? cleanName(o.name, MAX_NAME, 'name') : '');
           } else {
             const name = cleanName(o.name, MAX_NAME, 'name');
             const bid = o.brandId !== undefined && o.brandId !== null ? brandId(idOf(o.brandId, 'brandId')) : (o.brand ? brandId(o.brand) : null);
-            const hit = findByName(bid, keyOf(name));
-            pid = hit ? hit.id : insertProduct({ name: name, brandId: bid, categoryIds: categoryList(o), restockAt: o.restockAt === undefined ? undefined : num(o.restockAt, 'restockAt', 0, MAX_RESTOCK) });
+            const hit = findByName(bid, nameKey(name));
+            pid = hit ? hit.id : insertProduct({ name: name, brandId: bid, categoryIds: categoryList(o), restockAt: o.restockAt === undefined ? undefined : int(o.restockAt, 'restockAt', 0, MAX_RESTOCK) });
           }
+          mark(pid);
           const p = product(pid);
           const set = editFields(p, { location: o.location, restockAt: o.restockAt, autoAdd: o.autoAdd, size: o.size, unit: o.unit, purchaseQuantity: o.purchaseQuantity, substitutionMode: o.substitutionMode });
           const wasHere = p.owned === 1 && p.archived === 0;
@@ -648,18 +697,21 @@ function createPantry(options) {
           out.results.push({ op: 'add', id: pid, existed: wasHere });
         } else if (o.op === 'adjust') {
           const p = mustProduct(o.id);
-          const by = num(o.by, 'by', -MAX_QTY, MAX_QTY);
+          mark(p.id);
+          const by = int(o.by, 'by', -MAX_QTY, MAX_QTY);
           update(p.id, { quantity_remaining: Math.max(0, Math.min(MAX_QTY, p.quantity_remaining + by)), owned: 1, archived: 0 });
           touched.push(p.id);
         } else if (o.op === 'set') {
           const p = mustProduct(o.id);
+          mark(p.id);
           const set = editFields(p, { restockAt: o.restockAt });
-          if (o.qty !== undefined) { set.quantity_remaining = num(o.qty, 'qty', 0, MAX_QTY); set.owned = 1; set.archived = 0; }
+          if (o.qty !== undefined) { set.quantity_remaining = int(o.qty, 'qty', 0, MAX_QTY); set.owned = 1; set.archived = 0; }
           if (!Object.keys(set).length) throw bad('"set" needs "qty" or "restockAt"');
           update(p.id, set);
           touched.push(p.id);
         } else if (o.op === 'edit') {
           const p = mustProduct(o.id);
+          mark(p.id);
           const fields = {};
           ['name', 'brand', 'brandId', 'size', 'unit', 'notes', 'location', 'restockAt', 'purchaseQuantity', 'autoAdd', 'substitutionMode', 'lastPrice', 'preferredStore', 'archived'].forEach((k) => { if (o[k] !== undefined) fields[k] = o[k]; });
           update(p.id, editFields(p, fields));
@@ -686,6 +738,7 @@ function createPantry(options) {
           }
         } else if (o.op === 'remove') {
           const p = mustProduct(o.id);
+          mark(p.id);
           update(p.id, { owned: 0, archived: 1, quantity_remaining: 0, auto_held: 0 });
         } else if (o.op === 'brand') {
           out.results.push({ op: 'brand', id: brandId(o.name) });
@@ -711,7 +764,7 @@ function createPantry(options) {
         }
       });
       touched.forEach(settle);
-      autoCheck(touched.filter((x, i) => touched.indexOf(x) === i), out);
+      autoCheck(touched.filter((x, i) => touched.indexOf(x) === i), out, before);
       bump();
       out.changed = true;
     });
@@ -784,7 +837,7 @@ function createPantry(options) {
       const p = product(Number(what));
       return p ? rowOut(p, listedMap(), {}) : null;
     }
-    const k = keyOf(what);
+    const k = nameKey(what);
     if (!k) return null;
     const hits = all('SELECT p.*, b.key AS bkey FROM products p LEFT JOIN brands b ON b.id = p.brand_id WHERE p.archived = 0 ORDER BY p.owned DESC, p.updated_at DESC')
       .filter((p) => p.name_key === k || (p.bkey && keyOf(p.bkey + ' ' + p.name) === k));
@@ -821,30 +874,43 @@ function createPantry(options) {
     if (metaGet('migrated.products') === null) {
       res.skipped = false;
       let list = {};
+      let ready = true;
       if (o.productsFile) {
+        let text = null;
         try {
-          const raw = JSON.parse(fs.readFileSync(o.productsFile, 'utf8'));
-          list = isObj(raw) && isObj(raw.products) ? raw.products : {};
-          if (o.backupDir) {
-            fs.mkdirSync(o.backupDir, { recursive: true });
-            const dest = path.join(o.backupDir, 'products.json');
-            if (!fs.existsSync(dest)) fs.copyFileSync(o.productsFile, dest);
-          }
+          text = fs.readFileSync(o.productsFile, 'utf8');
         } catch (e) {
-          if (e.code !== 'ENOENT') log('pantry: the catalog could not be read for the move (' + (e.code || 'damaged') + ')');
+          if (e.code !== 'ENOENT') { ready = false; log('pantry: the catalog could not be read for the move (' + (e.code || 'error') + '); trying again next start'); }
+        }
+        if (text !== null) {
+          // The copy comes first, so even a file that will not parse is kept.
+          if (o.backupDir) {
+            try {
+              fs.mkdirSync(o.backupDir, { recursive: true });
+              const dest = path.join(o.backupDir, 'products.json');
+              if (!fs.existsSync(dest)) fs.writeFileSync(dest, text);
+            } catch (e) { ready = false; log('pantry: could not keep a copy of the catalog (' + (e.code || 'error') + '); trying again next start'); }
+          }
+          try {
+            const raw = JSON.parse(text);
+            if (!isObj(raw) || (raw.products !== undefined && !isObj(raw.products))) throw new Error('shape');
+            list = isObj(raw.products) ? raw.products : {};
+          } catch (e) {
+            ready = false;
+            log('pantry: the catalog is damaged, left for the next start');
+          }
         }
       }
-      tx(() => {
+      if (ready) tx(() => {
         Object.keys(list).forEach((k) => {
           const cp = list[k];
           if (!isObj(cp) || !/^(\d{8}|\d{13})$/.test(k) || findByBarcode(k)) return;
           if (typeof cp.name !== 'string' && typeof cp.brand !== 'string') return;
-          if (!keyOf(cp.name) && !keyOf(cp.brand)) return;
-          try {
-            insertProduct(catalogFields({ upc: k, brand: typeof cp.brand === 'string' ? cp.brand.replace(CONTROL_RE, ' ').trim() : '', name: typeof cp.name === 'string' ? cp.name.replace(CONTROL_RE, ' ').trim() : '', size: cp.size, image: cp.image ? '/products/image/' + k : '' }));
-            res.products++;
-          } catch (e) { /* one bad product never stops the rest */ }
+          if (!nameKey(cp.name) && !nameKey(cp.brand)) return;
+          if (guarded(() => insertProduct(catalogFields({ upc: k, brand: typeof cp.brand === 'string' ? cp.brand.replace(CONTROL_RE, ' ').trim() : '', name: typeof cp.name === 'string' ? cp.name.replace(CONTROL_RE, ' ').trim() : '', size: cp.size, image: cp.image ? '/products/image/' + k : '' })))) res.products++;
+          else res.failed = (res.failed || 0) + 1;
         });
+        if (res.failed) log('pantry: ' + res.failed + ' catalog products were left out of the move');
         metaSet('migrated.products', now());
       });
     }

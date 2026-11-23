@@ -31,11 +31,15 @@
 
   /* ---------- logic ---------- */
 
-  // The same key the Pi uses (pantrydb.js keyOf): case, accents and punctuation folded.
+  // The same key the Pi uses (pantrydb.js keyOf): case, accents and punctuation
+  // folded; letters and digits of any script kept. An engine without Unicode
+  // property escapes (older TVs) keeps every non-ASCII character instead.
+  var NOT_WORD = /[^a-z0-9\u00aa-\uffff]+/g, MARKS = /[\u0300-\u036f]/g;
+  try { NOT_WORD = new RegExp('[^\\p{L}\\p{N}]+', 'gu'); MARKS = new RegExp('\\p{M}', 'gu'); } catch (e) { /* keep the fallback */ }
   function fold(s) {
     var t = String(s == null ? '' : s);
-    if (t.normalize) t = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    return t.toLowerCase().replace(/&/g, ' and ').replace(/['\u2018\u2019\u0060]/g, '').replace(/[^a-z0-9]+/g, ' ').replace(/^\s+|\s+$/g, '');
+    if (t.normalize) t = t.normalize('NFD').replace(MARKS, '');
+    return t.toLowerCase().replace(/&/g, ' and ').replace(/['\u2018\u2019\u0060]/g, '').replace(NOT_WORD, ' ').replace(/^\s+|\s+$/g, '');
   }
 
   function matches(p, q) {
@@ -276,7 +280,7 @@
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       var name = addIn.value.replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
-      if (!name || !fold(name)) return;
+      if (!name) return;
       addIn.value = '';
       send([{ op: 'add', name: name, qty: 1, location: place || 'pantry' }]);
     });
@@ -506,7 +510,7 @@
         return { wrap: w, input: inp, err: err, min: min, max: max, whole: whole };
       }
       var nums = el('div', 'px-pair');
-      var fRestock = numberField(T('pantry.restockAt', 'Buy more when I have'), T('pantry.restockHint', 'At this many or fewer it shows Low.'), draft.restockAt, 0, 999, false, 'px-restock');
+      var fRestock = numberField(T('pantry.restockAt', 'Buy more when I have'), T('pantry.restockHint', 'At this many or fewer it shows Low.'), draft.restockAt, 0, 999, true, 'px-restock');
       var fBuy = numberField(T('pantry.buyQty', 'How many to buy'), '', draft.buy, 1, 99, true, 'px-buy');
       nums.appendChild(fRestock.wrap);
       nums.appendChild(fBuy.wrap);

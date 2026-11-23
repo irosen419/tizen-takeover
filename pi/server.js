@@ -974,17 +974,25 @@ function start(options) {
   if (opt.pantry !== false && pantrydb.available()) {
     try {
       pantry = pantrydb.createPantry({ dataDir: dataDir, log: log, catalogGet: (upc) => catalog.get(upc) });
-      const m = pantry.migrate({
-        productsFile: path.join(dataDir, 'products.json'),
-        groceryItems: state.resources.grocery.data.items,
-        backupDir: path.join(dataDir, 'pantry-backup')
-      });
-      if (!m.skipped) log('pantry: moved ' + m.products + ' catalog products and ' + m.grocery + ' grocery rows into pantry.db');
-      else pantry.syncGrocery(state.resources.grocery.data.items, []);
     } catch (e) {
       log('pantry: off, the database could not open (' + (e.code || e.message) + ')');
       if (pantry) pantry.close();
       pantry = null;
+    }
+    // A move or mirror that fails is logged and tried again next start; the
+    // pantry itself stays on.
+    if (pantry) {
+      try {
+        const m = pantry.migrate({
+          productsFile: path.join(dataDir, 'products.json'),
+          groceryItems: state.resources.grocery.data.items,
+          backupDir: path.join(dataDir, 'pantry-backup')
+        });
+        if (!m.skipped) log('pantry: moved ' + m.products + ' catalog products and ' + m.grocery + ' grocery rows into pantry.db');
+        else pantry.syncGrocery(state.resources.grocery.data.items, []);
+      } catch (e) {
+        log('pantry: the move into pantry.db stopped (' + (e.code || e.message) + '); trying again next start');
+      }
     }
   } else if (opt.pantry !== false) {
     log('pantry: off (this Node has no node:sqlite; it needs Node 22.13 or newer: docker compose pull)');
@@ -1013,21 +1021,31 @@ function start(options) {
   // so the TV reads it over the live line like every other one. pantry.db
   // stays the source; the copy in state is redrawn when the database's own
   // rev moves (publishPantry), never edited.
+  // Returns null when the copy is current, else { ok, data }. When the copy
+  // cannot be saved, ok is false and publishedDbRev stays behind, so the next
+  // change (or GET /api/pantry) tries again; data is still the fresh view.
   let publishedDbRev = -1;
   function publishPantry(atStart) {
-    if (!pantry) { delete state.resources.pantry; return false; }
+    if (!pantry) { delete state.resources.pantry; return null; }
     const dbRev = pantry.rev();
-    if (dbRev === publishedDbRev && state.resources.pantry) return false;
+    if (dbRev === publishedDbRev && state.resources.pantry) return null;
     const data = pantry.view(state.resources.grocery.data.items).data;
+    if (atStart) { state.resources.pantry = { rev: state.rev, data: data }; publishedDbRev = dbRev; return { ok: true, data: data }; }
+    try {
+      changeResource('pantry', data);
+    } catch (e) {
+      log('pantry: the live copy could not be saved; trying again on the next change');
+      return { ok: false, data: data };
+    }
     publishedDbRev = dbRev;
-    if (atStart) { state.resources.pantry = { rev: state.rev, data: data }; return true; }
-    changeResource('pantry', data);
-    return true;
+    return { ok: true, data: data };
   }
   publishPantry(true);
 
   // The pantry for the phone, the TV and the API: { rev, data }.
   function pantryView() {
+    const pub = publishPantry();
+    if (pub && !pub.ok) return { rev: state.rev, data: pub.data };
     return state.resources.pantry || { rev: 0, data: null, off: true };
   }
 
@@ -1053,9 +1071,11 @@ function start(options) {
       }
       mirrorGrocery(r.hints);
     }
-    publishPantry();
+    const pub = publishPantry();
     if (r.auto) log('pantry: ' + r.auto + ' low ' + (r.auto === 1 ? 'item' : 'items') + ' added to grocery');
-    const v = pantryView();
+    // The caller always gets the database as it now is, even when the live
+    // copy could not be saved (the phone then never shows stale counts).
+    const v = pub && !pub.ok ? { rev: state.rev, data: pub.data } : pantryView();
     return { ok: true, rev: v.rev, data: v.data, results: r.results, auto: r.auto, groceryAdded: Math.max(0, added) };
   }
 
@@ -2045,7 +2065,7 @@ function start(options) {
           // The grocery rows for this code take the corrected "Brand Name", so the TV tile shows the brand too.
           const cur = state.resources.grocery.data.items;
           const line = products.lineName(product);
-          let lineOk = !!line && Array.from(line).length === line.length && line.length <= grocery.MAX_NAME;
+          let lineOk = !!line && Array.from(line).length <= grocery.MAX_NAME;
           const next = cur.map((i) => {
             if (!lineOk || i.upc !== product.upc || i.name === line) return i;
             // Never make two rows with the same name (name commands pick the first).
