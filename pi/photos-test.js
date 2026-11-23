@@ -343,6 +343,51 @@ async function main() {
     assert.ok(!/rm -[rf]*\s+"\$ORIG\/\$name"/.test(text));
   });
 
+  await check('photos-sync.sh with a fake adb: deep folders, spaces, .downloading, dedupe, names stay out of the log', () => {
+    const cp = require('child_process');
+    const root = tmp();
+    const cal = path.join(root, 'cal', 'CloudAlbum');
+    const deep = path.join(cal, 'cloud', 'acct 1', 'photos', 'a', 'b', 'c', 'd', '2026', '11');
+    fs.mkdirSync(deep, { recursive: true });
+    fs.mkdirSync(path.join(cal, 'cloud', 'acct 1', 'photos', '.downloading'), { recursive: true });
+    fs.writeFileSync(path.join(deep, 'one photo.WEBP'), webpVP8(40, 30));
+    fs.writeFileSync(path.join(deep, 'two.jpg'), jpeg(20, 10));
+    fs.writeFileSync(path.join(deep, 'clip.mp4'), 'x');
+    fs.writeFileSync(path.join(cal, 'top.png'), png(8, 6));
+    fs.mkdirSync(path.join(cal, 'copy'), { recursive: true });
+    fs.writeFileSync(path.join(cal, 'copy', 'top.png'), png(8, 6)); // same name and size elsewhere
+    fs.writeFileSync(path.join(cal, 'cloud', 'acct 1', 'photos', '.downloading', 'part.webp'), webpVP8(9, 9));
+    const bin = path.join(root, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'adb'), [
+      '#!/bin/sh',
+      'echo "$@" >> "$ADB_LOG"',
+      '[ "$1" = "-s" ] && shift 2',
+      'case "$1" in',
+      '  connect) exit 0 ;;',
+      '  get-state) echo device ;;',
+      '  shell) shift; sh -c "$*" ;;',
+      '  pull) shift; [ "$1" = "-a" ] && shift; cp "$1" "$2" ;;',
+      'esac', ''].join('\n'), { mode: 0o755 });
+    const data = path.join(root, 'data');
+    const env = Object.assign({}, process.env, {
+      PATH: bin + path.delimiter + process.env.PATH, PHOTOS_SRC: cal, PHOTOS_DATA_DIR: data, ADB_LOG: path.join(root, 'adb.log')
+    });
+    const run = () => cp.execFileSync('sh', [path.join(__dirname, 'photos-sync.sh')], { env: env, encoding: 'utf8' });
+    const out = run();
+    assert.strictEqual(out.trim(), 'photos: 3 in the album, 3 new');
+    assert.ok(!/one photo|two|top|acct/.test(out));
+    const orig = fs.readdirSync(path.join(data, 'photos', 'orig'));
+    assert.strictEqual(orig.length, 3);
+    assert.ok(orig.every((n) => /^[0-9a-f]{12}\.(webp|jpg|png)$/.test(n)), orig.join());
+    const idx = JSON.parse(fs.readFileSync(path.join(data, 'photos', 'index.json'), 'utf8'));
+    assert.strictEqual(idx.items.length, 3);
+    assert.ok(!fs.readFileSync(path.join(root, 'adb.log'), 'utf8').includes('.downloading/part'));
+    assert.strictEqual(run().trim(), 'photos: 3 in the album, 0 new'); // new files only
+    assert.ok(!/\b(rm|delete)\b/.test(fs.readFileSync(path.join(root, 'adb.log'), 'utf8')));
+    assert.ok(fs.existsSync(path.join(deep, 'one photo.WEBP'))); // never deletes on the calendar
+  });
+
   dirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true }));
   console.log(passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
