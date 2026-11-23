@@ -382,6 +382,21 @@ async function main() {
       await page.ctx.close();
     });
 
+    await check('to-do logic: a tick over 24 hours old is not shown (the TV may not have purged it); levels from prefixes', async () => {
+      const L = require('../app/widgets/todo-touch.js');
+      const now = Date.now(), today = L.dayOf(new Date(now));
+      const s = L.sections([
+        { id: 'a', title: 'Old', done: true, doneAt: now - 50 * 3600e3 },
+        { id: 'b', title: 'New', done: true, doneAt: now - 3600e3 },
+        { id: 'c', title: 'TODO!: Shot' },
+        { id: 'd', title: 'TODO~: Meeting', due: L.addDays(today, 5), lead: 3 },
+        { id: 'e', title: 'TODO~: Soon', due: L.addDays(today, 3), lead: 3 }
+      ], today, now);
+      assert(s.done.map((i) => i.id).join() === 'b', 'done: ' + s.done.map((i) => i.id));
+      assert(s.must.length === 1 && s.mustToday.length === 1 && L.shownTitle(s.must[0]) === 'Shot', 'must');
+      assert(s.later.map((i) => i.id).join() === 'd' && s.coming.map((i) => i.id).join() === 'e', 'coming/later');
+    });
+
     await check('files: touch.css ends with .css-end; grocery.js and todo-touch.js are plain ES5; the TV pages never load touch.js or touch.css', async () => {
       const css = fs.readFileSync(path.join(ROOT, 'app/touch.css'), 'utf8');
       assert(/\.css-end \{ top: 0; \}\s*$/.test(css), 'touch.css end marker');

@@ -86,11 +86,13 @@
 
   // The view's sections for a day ('YYYY-MM-DD'): list order within each,
   // the newest tick first in done.
-  function sections(items, today) {
+  function sections(items, today, nowMs) {
+    var cut = (typeof nowMs === 'number' ? nowMs : new Date().getTime()) - DONE_KEEP_MS;
     var out = { must: [], optional: [], coming: [], later: [], done: [], mustToday: [], late: false };
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
-      if (it.done) { out.done.push(it); continue; }
+      // Ticked over 24 hours ago: gone (the Pi drops it on the next change).
+      if (it.done) { if (!(typeof it.doneAt === 'number' && it.doneAt < cut)) out.done.push(it); continue; }
       var lv = levelOf(it);
       if (lv === 'passive') {
         if (!it.due || it.due <= addDays(today, leadOf(it))) out.coming.push(it);
@@ -296,7 +298,7 @@
     var showLater = false;
     var popId = null;         // the row whose tick plays its pop on the next draw
     var failMsg = '';
-    var lastRemoved = null, toastTimer = null, dayTimer = null;
+    var lastRemoved = null, toastTimer = null, dayTimer = null, failTimer = null;
     var rows = {};
 
     function items() { var d = ctx.data(); return d && d.items ? d.items : []; }
@@ -305,7 +307,12 @@
     function send(ops) {
       failMsg = '';
       ctx.send(ops, { items: applyLocal(items(), ops, Date.now()) }, function (err) {
-        if (err) { failMsg = T('todo.touch.saveFailed', 'That didn’t save: {why}', { why: err }); render(); }
+        if (!err) return;
+        failMsg = T('todo.touch.saveFailed', 'That didn’t save: {why}', { why: err });
+        // The list is right again after the rollback, so the note goes after a while.
+        if (failTimer) clearTimeout(failTimer);
+        failTimer = setTimeout(function () { failMsg = ''; render(); }, 8000);
+        render();
       });
     }
 
@@ -524,8 +531,8 @@
       var m = s.mustToday.length;
       alert.style.display = m ? '' : 'none';
       if (m) {
-        alertText.textContent = (m === 1 ? T('todo.alertOne', '{n} must-do today: {t}') : T('todo.alertMany', '{n} must-dos today: {t}'))
-          .replace('{n}', String(m)).replace('{t}', shownTitle(s.mustToday[0]));
+        var av = { n: m, t: shownTitle(s.mustToday[0]) };
+        alertText.textContent = m === 1 ? T('todo.alertOne', '{n} must-do today: {t}', av) : T('todo.alertMany', '{n} must-dos today: {t}', av);
         var p = ctx.reduced() ? 0 : pulse(s);
         glow.style.opacity = String(p);
         glow.style.display = p > 0 ? '' : 'none';
@@ -588,6 +595,7 @@
       update: render,
       destroy: function () {
         if (toastTimer) clearTimeout(toastTimer);
+        if (failTimer) clearTimeout(failTimer);
         if (dayTimer) clearInterval(dayTimer);
         if (view.parentNode) view.parentNode.removeChild(view);
       }
