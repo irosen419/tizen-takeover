@@ -802,8 +802,17 @@ def check_repos():
             moved = os.path.getmtime(logs_head) if os.path.exists(logs_head) else 0
             fetched = os.path.getmtime(fetch_head) if os.path.exists(fetch_head) else 0
             # Stuck = behind GitHub while nothing has pulled for a while.
-            if now - max(moved, fetched) > LIMITS['repo_stale_hours'] * 3600:
-                flag('warn', 'auto-update', '%s is behind GitHub and has not pulled in over %d hours' % (name, LIMITS['repo_stale_hours']))
+            since = max(moved, fetched)
+            hint = ''
+            if os.path.realpath(repo) == os.path.realpath(REPO_DIR):
+                # The hub's auto-pull timer (pi/autopull/) fetches every 5 minutes even when it
+                # can't merge, so judge it by how old the commit it hasn't merged is.
+                hint = ' (auto-pull timer: see pi/data/autopull.log; pi/data/autopull.off turns it off)'
+                rc, ct = git(repo, 'log', '-1', '--format=%ct', remote_sha)
+                if rc == 0 and ct.strip().isdigit():
+                    since = max(moved, int(ct.strip()))
+            if now - since > LIMITS['repo_stale_hours'] * 3600:
+                flag('warn', 'auto-update', '%s is behind GitHub and has not pulled in over %d hours%s' % (name, LIMITS['repo_stale_hours'], hint))
         if r.get('changedFiles'):
             flag('warn', 'auto-update', '%s has %d changed file(s) on the Pi, which can block a pull' % (name, r['changedFiles']))
         if r.get('worktrees') and r['worktrees'] > 1:

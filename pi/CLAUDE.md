@@ -37,6 +37,7 @@ to-do, run `./hub ...` from this folder and report the one-line result back.
 - What plays anywhere (Echo speakers through Home Assistant, and Spotify), for Now Playing: `./hub allsounds status` (state, source, speaker, title and artist only)
 - Guest mode PIN (server 0.31.0; the TV asks for it to turn Guest mode on or off, the Pi keeps only a hash): `./hub guest-pin status`; forgot it: `./hub guest-pin reset` (the TV then asks to create a new one). Never ask for, print or log a PIN. Not in the mailbox
 - Is the server up, which screens are on: `./hub status`
+- The auto-pull timer (server 0.32.0, `autopull/`): the Pi pulls `main` every 5 minutes and restarts the hub (then the budget app) only when a server file in `pi/` changed. `hubauto` shows its last log lines (`data/autopull.log`, counts only); `hubauto off|on` pauses it (`data/autopull.off`). `GET /health` and `/api/status` carry `app`, the hub version the Pi serves
 - Is the Claude mailbox (Cloudflare R2) connected: `./hub mailbox status`
 - The server's recent log lines: `./hub log` (last 50); only problems: `./hub log --errors`; more: `./hub log --lines 120` (1 to 200)
 - All commands: `./hub help`

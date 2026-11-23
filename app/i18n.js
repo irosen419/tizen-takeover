@@ -91,6 +91,10 @@
     'hub.about.LastProblem': 'Último problema',
     'hub.about.NowPlaying': 'Reproduciendo',
     'hub.about.Visualizer': 'Visualizador',
+    /* The Version check row on pages the Pi serves (app/appver.js). */
+    'appver.current': 'Al día',
+    'appver.available': 'Hay versión nueva: v{v} (toca para recargar)',
+    'appver.unreachable': 'Sin conexión con la Pi',
 
     /* ---- Weather tile header (app/widgets/weather.js) ----
      * The title is the place's name, as the lookup sends it (not translated);
