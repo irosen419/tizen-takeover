@@ -1,30 +1,35 @@
 /*
- * Pantry and List: two TV widgets over the pantry database planned for the
- * Pi (/mnt/project-files/pantry/plan-v2.md: SQLite products, brands, lists,
- * list items). Both share this file and app/widgets/pantry-tv.css.
+ * Pantry and List: two TV widgets over the pantry on the Pi (pi/pantrydb.js,
+ * SQLite). Both share this file and app/widgets/pantry-tv.css. The phone's
+ * pantry view is a different file (app/widgets/pantry.js, window.HUB_PANTRY);
+ * hub.html loads only this one, touch.html only that one, so the widget id
+ * 'pantry' is never registered twice on one page.
  *
- *   pantry   the pantry is a FILTER of products: owned before and not
- *            archived. quantity_remaining 0 = out (an "Out" chip), at or
- *            under restock_at = low.
- *   list     the open list's items (product, quantity, auto or manual).
+ *   pantry   the products owned and not archived. 0 left = out (an "Out"
+ *            chip), at or under the restock point = low.
+ *   list     the open list (product, quantity, Auto when the pantry added
+ *            it): to get first, then ticked rows, dimmed, under In the cart.
  *
- * In full screen, OK on a row (in either widget) opens that product's page:
- * brand, name, size, unit, remaining, restock at, buy quantity, auto-add,
+ * In full screen, OK on a pantry row opens that product's page: brand, name,
+ * size, unit, remaining, restock point, how many to buy, auto-add,
  * substitution, where it lives and notes, each editable with the remote
  * (number boxes with - and + beside them, choice pills, text boxes). Changes
  * save as they are made. Back closes the page and focus goes back to the row.
  * OK on a row in the small panel switches to full screen and opens the page.
+ * A List row is two stops: the row itself (OK ticks or unticks it, the
+ * Pi's op "check") and a Details button on its right (OK opens the page).
  *
- *   tile, 1 column  pantry: the out count; list: the count to buy
+ *   tile, 1 column  pantry: the out count; list: the count still to get
  *   tile, strip     "3 out · 2 low" / "8 to buy · Whole milk"
  *   tile, 2+ rows   the count big, then the first rows that fit, "+N more"
- *   panel           rows grouped (pantry: Out, Low, In stock); OK opens the page
+ *   panel           rows grouped (pantry: Out, Low, In stock; list: To get,
+ *                   In the cart)
  *
- * DATA: HUB_PANTRY_TV.api below is the ONLY place that knows where the data
- * comes from. Today it serves MOCK data from memory (nothing is saved
- * anywhere). When the Pi's pantry routes land, replace the bodies of
- * api.load and api.saveProduct (see the comments there); the widgets only
- * call api.load, api.snapshot, api.saveProduct and api.on.
+ * DATA: HUB_PANTRY_TV.api below is the one place that knows where the data
+ * comes from: the live resource "pantry" (ctx.live.get / on) and POST
+ * /pantry/screen-ops (ctx.live.post) for edits and ticks. A change shows at
+ * once; the Pi's answer replaces it, a refusal takes it back with a toast.
+ * Tests stub the live line with dev/pantry-tv-live-stub.js.
  *
  * Product and brand names are data, never translated and never logged.
  * Plain ES5: the TV's browser is Chromium 63 class.
@@ -125,128 +130,171 @@
     return { error: 'field' };
   }
 
-  /* ---------- the data adapter: MOCK today, the Pi later ---------- */
+  /* ---------- the data: the Pi's live resource "pantry" ---------- */
 
-  // Realistic sample data in the shape of plan-v2's tables (brands,
-  // products, the open list and its items). MOCK ONLY.
-  function mockData() {
-    var brands = [
-      [1, 'Organic Valley'], [2, 'Kerrygold'], [3, 'Chobani'], [4, 'Barilla'], [5, 'Rao’s'], [6, 'King Arthur'],
-      [7, 'Heinz'], [8, 'La Colombe'], [9, 'Goya'], [10, 'Cholula'], [11, 'Kirkland Signature'], [12, 'Dave’s Killer Bread'],
-      [13, 'Simply'], [14, 'Tide'], [15, 'Mutti'], [16, 'Oatly']
-    ];
-    // id, brand_id, name, size, unit, location, remaining, restock_at, buy, auto, mode, owned, notes
-    var rows = [
-      [1, 1, 'Whole milk', 0.5, 'gal', 'fridge', 0, 1, 2, 1, 'similar', 1, ''],
-      [2, 2, 'Salted butter', 8, 'oz', 'fridge', 1, 1, 2, 1, 'similar', 1, ''],
-      [3, 3, 'Plain Greek yogurt', 32, 'oz', 'fridge', 2, 1, 1, 1, 'preselected', 1, ''],
-      [4, 1, 'Large brown eggs', 12, 'count', 'fridge', 0, 1, 1, 1, 'similar', 1, 'Pasture raised if they have it'],
-      [5, 4, 'Spaghetti', 16, 'oz', 'pantry', 3, 1, 2, 1, 'similar', 1, ''],
-      [6, 5, 'Marinara sauce', 24, 'oz', 'pantry', 1, 1, 2, 1, 'contact_me', 1, 'Only Rao’s'],
-      [7, 6, 'All-purpose flour', 5, 'lb', 'pantry', 1, 0, 1, 0, 'similar', 1, ''],
-      [8, 7, 'Tomato ketchup', 32, 'oz', 'fridge', 1, 0, 1, 1, 'similar', 1, ''],
-      [9, 8, 'Whole bean coffee', 12, 'oz', 'pantry', 0, 1, 2, 0, 'refund', 1, 'Corsica blend'],
-      [10, 9, 'Black beans', 15.5, 'oz', 'pantry', 6, 2, 4, 1, 'similar', 1, ''],
-      [11, 10, 'Hot sauce', 5, 'fl_oz', 'pantry', 1, 0, 1, 0, 'similar', 1, ''],
-      [12, 11, 'Frozen blueberries', 3, 'lb', 'freezer', 1, 0, 1, 1, 'similar', 1, ''],
-      [13, 11, 'Chicken thighs', 4, 'lb', 'freezer', 2, 1, 1, 1, 'contact_me', 1, ''],
-      [14, 12, '21 Whole Grains bread', 27, 'oz', 'pantry', 0, 0, 1, 1, 'similar', 1, ''],
-      [15, 0, 'Bananas', 1, 'count', 'other', 0, 2, 6, 1, 'similar', 1, ''],
-      [16, 13, 'Orange juice', 52, 'fl_oz', 'fridge', 1, 1, 1, 1, 'similar', 1, 'No pulp'],
-      [17, 14, 'Pods laundry detergent', 42, 'count', 'other', 1, 0, 1, 0, 'preselected', 1, ''],
-      [18, 15, 'Tomato paste', 4.5, 'oz', 'pantry', 2, 1, 2, 1, 'similar', 1, ''],
-      [19, 16, 'Oat milk', 64, 'fl_oz', 'fridge', 0, 0, 1, 0, 'similar', 0, ''],
-      [20, 0, 'Sourdough boule', 1, 'count', 'pantry', 0, 0, 1, 0, 'refund', 0, '']
-    ];
-    var products = [];
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
+  // The Pi (pi/pantrydb.js view(), resource "pantry" over the live line)
+  // sends { products: [{ id, name, brand, brandId, size, unit, notes, qty,
+  // restockAt, buy, autoAdd, mode, location, owned, low, onList, listItemId,
+  // checked, ... }], brands, categories, list: [{ id, productId, quantity,
+  // source, checked, ... }], counts }. The widgets draw from the shape below
+  // (the columns' own names), so this is the one place that maps them.
+  function isArray(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
+
+  function fromServer(d) {
+    if (!d || !isArray(d.products)) return null;
+    var products = [], items = [], i;
+    for (i = 0; i < d.products.length; i++) {
+      var p = d.products[i];
+      if (!p || typeof p.id !== 'number' || typeof p.name !== 'string') continue;
       products.push({
-        id: r[0], brand_id: r[1] || null, name: r[2], barcode: null, size: r[3], unit: r[4], photo: null, notes: r[12],
-        archived: 0, quantity_remaining: r[6], restock_at: r[7], purchase_quantity: r[8], auto_add: r[9],
-        substitution_mode: r[10], last_price: null, preferred_store: null, location: r[5], owned: r[11]
+        id: p.id, name: p.name, brand: typeof p.brand === 'string' ? p.brand : '', brand_id: p.brandId || null,
+        size: typeof p.size === 'number' ? p.size : null, unit: p.unit || null, notes: p.notes || '',
+        location: p.location || 'pantry', quantity_remaining: Number(p.qty) || 0, restock_at: Number(p.restockAt) || 0,
+        purchase_quantity: Number(p.buy) || 1, auto_add: p.autoAdd ? 1 : 0, substitution_mode: p.mode || 'similar',
+        owned: p.owned ? 1 : 0, archived: 0
       });
     }
-    var b = [];
-    for (var j = 0; j < brands.length; j++) b.push({ id: brands[j][0], name: brands[j][1], key: brandKey(brands[j][1]) });
-    // list_items: id, product_id, quantity, source
-    var items = [[1, 1, 2, 'auto'], [2, 4, 1, 'auto'], [3, 15, 6, 'manual'], [4, 14, 1, 'auto'], [5, 16, 1, 'auto'],
-      [6, 19, 1, 'manual'], [7, 6, 2, 'manual'], [8, 20, 1, 'manual']];
-    var li = [];
-    for (var k = 0; k < items.length; k++) {
-      li.push({ id: items[k][0], list_id: 1, product_id: items[k][1], quantity: items[k][2], mode_override: null, source: items[k][3], added_at: 1763900000000 - k * 3600000 });
+    var list = isArray(d.list) ? d.list : [];
+    for (i = 0; i < list.length; i++) {
+      var r = list[i];
+      if (!r || typeof r.id !== 'number' || typeof r.productId !== 'number') continue;
+      items.push({ id: r.id, product_id: r.productId, quantity: Number(r.quantity) || 1, source: r.source === 'auto' ? 'auto' : 'manual', checked: !!r.checked });
     }
-    return { brands: b, products: products, list: { id: 1, status: 'open', items: li } };
+    return { brands: isArray(d.brands) ? d.brands : [], products: products, list: { items: items } };
   }
 
-  var store = { data: null, subs: [], seq: 100 };
+  // A product page change as the Pi's ops (POST /pantry/screen-ops):
+  // Remaining is "set" (qty), the rest one "edit".
+  var EDIT_NAME = { restock_at: 'restockAt', purchase_quantity: 'purchaseQuantity', substitution_mode: 'substitutionMode',
+    location: 'location', name: 'name', size: 'size', unit: 'unit', notes: 'notes' };
+  function opsFor(id, changes) {
+    var ops = [], edit = { op: 'edit', id: id }, any = false;
+    for (var k in changes) {
+      if (!Object.prototype.hasOwnProperty.call(changes, k)) continue;
+      var v = changes[k];
+      if (k === 'quantity_remaining') ops.push({ op: 'set', id: id, qty: v });
+      else if (k === 'auto_add') { edit.autoAdd = !!v; any = true; }
+      else if (k === 'brand') { if (v) edit.brand = v; else edit.brandId = null; any = true; }
+      else if (EDIT_NAME[k]) { edit[EDIT_NAME[k]] = v; any = true; }
+    }
+    if (any) ops.push(edit);
+    return ops;
+  }
+
+  // The TV's guess at what the Pi will answer, drawn until it does.
+  function applyLocal(data, ops) {
+    var out = { brands: data.brands, products: data.products.slice(0), list: { items: data.list.items.slice(0) } };
+    for (var i = 0; i < ops.length; i++) {
+      var o = ops[i], j;
+      if (o.op === 'check') {
+        for (j = 0; j < out.list.items.length; j++) {
+          if (out.list.items[j].id === o.list_item_id) out.list.items[j] = copy(out.list.items[j], { checked: !!o.checked });
+        }
+        continue;
+      }
+      for (j = 0; j < out.products.length; j++) {
+        var p = out.products[j];
+        if (p.id !== o.id) continue;
+        var n = copy(p);
+        if (o.op === 'set') { n.quantity_remaining = o.qty; n.owned = 1; }
+        if (o.op === 'edit') {
+          for (var k in EDIT_NAME) if (o[EDIT_NAME[k]] !== undefined) n[k] = o[EDIT_NAME[k]];
+          if (o.autoAdd !== undefined) n.auto_add = o.autoAdd ? 1 : 0;
+          if (o.brand !== undefined) {
+            // A brand the Pi knows keeps its first spelling (pantrydb.js brands.key).
+            n.brand_id = brandIdFor(data, o.brand);
+            n.brand = n.brand_id ? brandName(data, { brand_id: n.brand_id }) : o.brand;
+          }
+          if (o.brandId === null) { n.brand = ''; n.brand_id = null; }
+        }
+        out.products[j] = n;
+      }
+    }
+    return out;
+  }
+
+  function brandIdFor(data, name) {
+    var k = brandKey(name);
+    for (var i = 0; i < data.brands.length; i++) if (brandKey(data.brands[i].name) === k) return data.brands[i].id;
+    return null;
+  }
+
+  // server: the Pi's last pantry (mapped); pending: ops posted and not yet answered.
+  var store = { server: null, pending: [], subs: [], L: null, hooked: false };
 
   function emit() {
     for (var i = 0; i < store.subs.length; i++) {
-      try { store.subs[i](store.data); } catch (e) { /* one listener's problem */ }
+      try { store.subs[i](); } catch (e) { /* one listener's problem */ }
     }
   }
 
-  function brandFor(data, name) {
-    var k = brandKey(name);
-    if (!k) return null;
-    for (var i = 0; i < data.brands.length; i++) if (data.brands[i].key === k) return data.brands[i].id;
-    store.seq += 1;
-    data.brands.push({ id: store.seq, name: name, key: k });
-    return store.seq;
-  }
-
-  // plan-v2's auto-add: an owned, live product with auto_add on and at or
-  // under restock_at gets one open-list row (source auto), never two.
-  function autoAdd(data, p) {
-    if (!p.owned || p.archived || !p.auto_add || p.quantity_remaining > p.restock_at) return;
-    for (var i = 0; i < data.list.items.length; i++) if (data.list.items[i].product_id === p.id) return;
-    store.seq += 1;
-    data.list.items.unshift({ id: store.seq, list_id: data.list.id, product_id: p.id, quantity: p.purchase_quantity || 1,
-      mode_override: null, source: 'auto', added_at: new Date().getTime() });
+  function take(raw) {
+    var d = fromServer(raw);
+    if (!d) return false;
+    store.server = d;
+    return true;
   }
 
   var api = {
-    mock: true,
-
-    // Fetch everything once; cb(err, data). data = { brands, products, list: { id, status, items } }.
-    // REAL: read ctx.live.get('pantry') (and ctx.live.on('pantry', ...) to
-    // keep store.data fresh and call emit()), or GET the Pi's screen route
-    // for the pantry with ctx.getJSON(ctx.pi('/pantry/state')).
+    // Hooks the live line once (both widgets call it); cb(err) when there is data or none yet.
     load: function (ctx, cb) {
-      if (!store.data) store.data = mockData();
-      setTimeout(function () { cb(null, store.data); }, 0);
-    },
-
-    // The last data, or null before load.
-    snapshot: function () { return store.data; },
-
-    // changes: { field: value } already checked with clean(); brand is a name
-    // (the Pi resolves it to brand_id by key). cb(err, product).
-    // REAL: ctx.live.post('/pantry/products/' + id, changes, cb) and take
-    // the answer's product (and list) into store.data, then emit().
-    saveProduct: function (id, changes, cb) {
-      var data = store.data;
-      var p = null, i;
-      for (i = 0; data && i < data.products.length; i++) if (data.products[i].id === id) p = data.products[i];
-      if (!p) { setTimeout(function () { cb('not found'); }, 0); return; }
-      var next = copy(p);
-      for (var k in changes) {
-        if (!Object.prototype.hasOwnProperty.call(changes, k)) continue;
-        if (k === 'brand') next.brand_id = brandFor(data, changes[k]);
-        else next[k] = changes[k];
+      var L = ctx && ctx.live;
+      if (L && !store.hooked) {
+        store.hooked = true;
+        store.L = L;
+        try {
+          take(L.get('pantry'));
+          L.on('pantry', function (data) { if (take(data)) emit(); });
+        } catch (e) { /* the tile says it waits */ }
       }
-      if (changes.hasOwnProperty('quantity_remaining') && next.quantity_remaining > 0) next.owned = 1;
-      data.products[data.products.indexOf(p)] = next;
-      autoAdd(data, next);
-      setTimeout(function () { cb(null, next); emit(); }, 0);
+      setTimeout(function () { cb(store.server ? null : 'no pantry yet'); }, 0);
     },
 
-    // fn(data) after every change.
+    // What the TV shows: the Pi's pantry with the changes on their way applied. null before any.
+    snapshot: function () {
+      var d = store.server;
+      if (!d) return null;
+      for (var i = 0; i < store.pending.length; i++) d = applyLocal(d, store.pending[i].ops);
+      return d;
+    },
+
+    // 'live' | 'connecting' | 'off' ... from the live line, for the waiting text.
+    liveState: function () {
+      try { return store.L ? (store.L.status() || {}).state || 'off' : 'off'; } catch (e) { return 'off'; }
+    },
+
+    // Posts ops to the Pi. Shown at once; the Pi's answer replaces the view,
+    // a refusal or no answer takes the change back: cb(null) or cb({ code, text }),
+    // code 0 when the Pi did not answer.
+    send: function (ops, cb) {
+      var L = store.L;
+      if (!store.server || !ops.length) return;
+      if (!L || typeof L.post !== 'function') { setTimeout(function () { cb({ code: 0, text: '' }); }, 0); return; }
+      var entry = { ops: ops };
+      store.pending.push(entry);
+      emit();
+      L.post('/pantry/screen-ops', { ops: ops }, function (err, data, code) {
+        var at = store.pending.indexOf(entry);
+        if (at >= 0) store.pending.splice(at, 1);
+        var ok = !err && data && data.ok !== false && take(data.data);
+        emit();
+        cb(ok ? null : { code: code || 0, text: String(err || (code ? 'HTTP ' + code : '')) });
+      });
+    },
+
+    // changes: { field: value } already checked with clean(); brand is a name.
+    saveProduct: function (id, changes, cb) { api.send(opsFor(id, changes), cb); },
+
+    // A list row ticked or unticked while shopping (the grocery row follows on the Pi).
+    check: function (itemId, checked, cb) { api.send([{ op: 'check', list_item_id: itemId, checked: !!checked }], cb); },
+
+    // fn() after every change.
     on: function (fn) { store.subs.push(fn); }
   };
 
   function brandName(data, p) {
+    if (!p) return '';
+    if (p.brand) return p.brand;
     if (!data || !p.brand_id) return '';
     for (var i = 0; i < data.brands.length; i++) if (data.brands[i].id === p.brand_id) return data.brands[i].name;
     return '';
@@ -264,11 +312,19 @@
     return null;
   }
 
+  // The open list: unticked first, then ticked, each in the Pi's order.
+  function listOf(data) {
+    var a = [], b = [];
+    for (var i = 0; i < data.list.items.length; i++) (data.list.items[i].checked ? b : a).push(data.list.items[i]);
+    return a.concat(b);
+  }
+
   var Logic = {
     UNITS: UNITS, MODES: MODES, LOCATIONS: LOCATIONS, api: api, brandKey: brandKey, stateOf: stateOf,
     pantryOf: pantryOf, pantryCounts: pantryCounts, clean: clean, brandName: brandName, productById: productById,
-    // For tests: start again from the mock data.
-    reset: function () { store.data = mockData(); emit(); }
+    fromServer: fromServer, opsFor: opsFor, applyLocal: applyLocal, listOf: listOf,
+    // For tests: forget the Pi's copy and the live line.
+    reset: function () { store.server = null; store.pending = []; store.L = null; store.hooked = false; }
   };
   root.HUB_PANTRY_TV = Logic;
   if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
@@ -304,8 +360,8 @@
   function sizeText(p) { return p.size ? num(p.size) + ' ' + unitWord(p.unit) : ''; }
 
   var LOC_EN = { fridge: 'Fridge', freezer: 'Freezer', pantry: 'Pantry', other: 'Other' };
-  function locWord(l) { return tr('pantry.loc.' + l, LOC_EN[l] || l); }
-  var MODE_EN = { similar: 'Something similar', preselected: 'My pick', refund: 'Refund it', contact_me: 'Ask me' };
+  function locWord(l) { return tr('pantry.place.' + l, LOC_EN[l] || l); }
+  var MODE_EN = { similar: 'Something similar', preselected: 'My picks', refund: 'Refund it', contact_me: 'Ask me' };
   function modeWord(m) { return tr('pantry.mode.' + m, MODE_EN[m] || m); }
 
   function chip(kind, parent) {
@@ -366,14 +422,28 @@
             qty: st === 'out' ? '' : tr('pantry.left', '{n} left', { n: num(p.quantity_remaining) }) });
         }
       } else {
-        for (i = 0; i < d.list.items.length; i++) {
-          var it = d.list.items[i];
+        var items = listOf(d);
+        for (i = 0; i < items.length; i++) {
+          var it = items[i];
           p = productById(d, it.product_id);
           if (!p) continue;
-          out.push({ key: 'item:' + it.id, product: p, state: stateOf(p), item: it, qty: '×' + it.quantity });
+          out.push({ key: 'item:' + it.id, product: p, state: stateOf(p), item: it, ticked: it.checked, qty: '×' + it.quantity });
         }
       }
       return out;
+    }
+
+    // The list's rows still to get (not ticked).
+    function toGet(all) {
+      var n = 0;
+      for (var i = 0; i < all.length; i++) if (!all[i].ticked) n++;
+      return n;
+    }
+
+    // Before any data: Loading while the live line is on its way, else where the pantry lives.
+    function waitWord() {
+      var st = api.liveState();
+      return st === 'off' || st === 'refused' || st === 'needsupdate' ? tr('pantry.tvNoPi', 'The pantry lives on the Pi') : tr('pantry.tvLoading', 'Loading…');
     }
 
     function title(p) {
@@ -384,9 +454,10 @@
     /* --- the tile --- */
 
     function tileRow(r, parent) {
-      var row = el('div', 'pn-trow', null, parent);
+      var row = el('div', 'pn-trow' + (r.ticked ? ' is-ticked' : ''), null, parent);
       el('span', 'pn-tname', title(r.product), row);
-      if (kind === 'pantry' && r.state === 'out') chip('out', row);
+      if (kind === 'list' && r.state === 'out' && !r.ticked) { chip('out', row); el('span', 'pn-tqty', r.qty, row); }
+      else if (kind === 'pantry' && r.state === 'out') chip('out', row);
       else if (kind === 'pantry' && r.state === 'low') { chip('low', row); el('span', 'pn-tqty', r.qty, row); }
       else el('span', 'pn-tqty', r.qty, row);
       return row;
@@ -401,12 +472,13 @@
       var all = rows();
       if (!all) {
         box.className += ' hub-dormant';
-        el('div', 'pn-msg', one ? '–' : tr('pantry.loading', 'Loading…'), box);
+        el('div', 'pn-msg', one ? '–' : waitWord(), box);
         return;
       }
       var d = data();
       var c = pantryCounts(d.products);
-      var big = kind === 'pantry' ? c.out : all.length;
+      var left = kind === 'list' ? toGet(all) : 0;
+      var big = kind === 'pantry' ? c.out : left;
       if (one) { el('div', 'pn-one-num', String(big), box); return; }
       if (tier === 'strip') {
         var line = el('div', 'pn-strip', null, box);
@@ -418,8 +490,10 @@
           if (line.scrollWidth > line.clientWidth + 1) { line.removeChild(dot); line.removeChild(rest); }
         } else if (!all.length) {
           el('span', 'pn-strip-rest', tr('pantry.listEmpty', 'Nothing to buy'), line);
+        } else if (!left) {
+          el('span', 'pn-strip-rest', tr('pantry.allInCart', 'All in the cart'), line);
         } else {
-          el('span', 'pn-strip-num', tr('pantry.toBuyN', '{n} to buy', { n: all.length }), line);
+          el('span', 'pn-strip-num', tr('pantry.toBuyN', '{n} to buy', { n: left }), line);
           el('span', 'pn-strip-dot', '·', line);
           el('span', 'pn-strip-rest pn-tname', title(all[0].product), line);
         }
@@ -434,7 +508,7 @@
         if (c.low) { chip('low', sum); el('span', 'pn-sum-n', String(c.low), sum); }
         if (!c.out && !c.low) el('span', 'pn-sum-ok', tr('pantry.allStocked', 'All stocked'), sum);
       } else {
-        el('span', 'pn-hero-num', String(all.length), hero);
+        el('span', 'pn-hero-num', String(left), hero);
         el('span', 'pn-hero-cap', tr('pantry.toBuy', 'to buy'), hero);
         if (!all.length) { el('div', 'pn-hint', tr('pantry.listEmptyHint', 'Out items with auto-add on land here.'), box); return; }
       }
@@ -442,7 +516,13 @@
       var made = [];
       var show = kind === 'pantry' ? all.slice(0) : all;
       for (var i = 0; i < show.length; i++) made.push(tileRow(show[i], list));
-      var footFor = function (n) { return n ? tr('pantry.more', '+{n} more', { n: n }) : ''; };
+      var cart = kind === 'list' ? all.length - left : 0;
+      var footFor = function (n) {
+        var parts = [];
+        if (n) parts.push(tr('pantry.moreN', '+{n} more', { n: n }));
+        if (cart) parts.push(tr('pantry.inCartN', '{n} in the cart', { n: cart }));
+        return parts.join(' · ');
+      };
       var foot = el('div', 'pn-foot', footFor(0), box);
       fitRows(body, list, foot, made, footFor);
       if (!foot.textContent) foot.style.display = 'none';
@@ -463,58 +543,92 @@
 
     /* --- the panel: rows --- */
 
+    function tickKey(r) { return (r.ticked ? 'untick:' : 'tick:') + r.item.id; }
+
+    // Pantry: the row is one focusable (OK opens the product). List: the row
+    // is a tick box (OK ticks or unticks it) and a Details button on its right
+    // (OK opens the product). Returns the focusable that takes first focus.
     function panelRow(r, parent) {
-      var row = el('div', 'pn-row f', null, parent);
-      row.setAttribute('data-key', r.key);
-      row.setAttribute('role', 'button');
-      var main = el('div', 'pn-row-main', null, row);
+      var list = kind === 'list';
+      var row = el('div', 'pn-row' + (list ? ' pn-lrow' : ' f') + (r.ticked ? ' is-ticked' : ''), null, parent);
+      var hit = row;
+      if (list) {
+        hit = el('div', 'pn-tick f', null, row);
+        hit.setAttribute('data-key', tickKey(r));
+        hit.setAttribute('aria-pressed', r.ticked ? 'true' : 'false');
+        hit.setAttribute('aria-label', tr(r.ticked ? 'pantry.untick' : 'pantry.tick', r.ticked ? 'Untick {name}' : 'Tick {name}', { name: title(r.product) }));
+        el('span', 'pn-box', null, hit);
+      } else {
+        row.setAttribute('data-key', r.key);
+      }
+      hit.setAttribute('role', 'button');
+      var main = el('div', 'pn-row-main', null, hit);
       var b = brandName(data(), r.product);
       el('span', 'pn-name', r.product.name, main);
       var meta = [];
       if (b) meta.push(b);
       if (sizeText(r.product)) meta.push(sizeText(r.product));
-      if (kind === 'pantry') meta.push(locWord(r.product.location));
+      if (!list) meta.push(locWord(r.product.location));
       el('span', 'pn-meta', meta.join(' · '), main);
-      var side = el('div', 'pn-row-side', null, row);
-      if (kind === 'list' && r.item.source === 'auto') chip('auto', side);
+      var side = el('div', 'pn-row-side', null, hit);
+      if (list && r.item.source === 'auto') chip('auto', side);
       if (r.state === 'out' || r.state === 'low') chip(r.state, side);
       if (r.qty) el('span', 'pn-qty', r.qty, side);
-      if (S.back === r.key) row.setAttribute('data-autofocus', '');
-      return row;
+      if (list) {
+        var det = btn(row, r.key, tr('pantry.details', 'Details'), 'pn-det', tr('pantry.detailsOf', 'Details of {name}', { name: title(r.product) }));
+        if (S.back === r.key) det.setAttribute('data-autofocus', '');
+        if (S.focusAfter === tickKey(r)) hit.setAttribute('data-autofocus', '');
+      } else if (S.back === r.key) {
+        row.setAttribute('data-autofocus', '');
+      }
+      return hit;
     }
 
     function renderList(box, ctx) {
       var all = rows();
       var d = data();
-      if (kind === 'pantry') {
+      var list = kind === 'list';
+      var left = list ? toGet(all) : 0;
+      if (!list) {
         var c = pantryCounts(d.products);
         ctx.setSub(tr('pantry.sub', '{n} items · {out} out · {low} low', { n: c.total, out: c.out, low: c.low }));
+      } else if (!all.length) {
+        ctx.setSub(tr('pantry.listEmpty', 'Nothing to buy'));
       } else {
-        ctx.setSub(all.length ? tr('pantry.toBuyN', '{n} to buy', { n: all.length }) : tr('pantry.listEmpty', 'Nothing to buy'));
+        var sub = left ? tr('pantry.toBuyN', '{n} to buy', { n: left }) : tr('pantry.allInCart', 'All in the cart');
+        if (left && all.length > left) sub += ' · ' + tr('pantry.inCartN', '{n} in the cart', { n: all.length - left });
+        ctx.setSub(sub);
       }
-      if (api.mock) el('div', 'pn-mock', tr('pantry.mock', 'Sample data: the pantry on the Pi is on its way.'), box);
-      el('div', 'pn-tip', ctx.mode() === 'full' ? tr('pantry.tipFull', 'OK on a product to see and edit it.') : tr('pantry.tipPanel', 'OK on a product opens it full screen.'), box);
-      var groups = kind === 'pantry'
+      var tip = list ? tr('pantry.tipList', 'OK ticks or unticks · Right, then OK on Details, for the product.')
+        : ctx.mode() === 'full' ? tr('pantry.tipFull', 'OK on a product to see and edit it.') : tr('pantry.tipPanel', 'OK on a product opens it full screen.');
+      el('div', 'pn-tip', tip, box);
+      var groups = !list
         ? [['out', tr('pantry.secOut', 'Out')], ['low', tr('pantry.secLow', 'Running low')], ['ok', tr('pantry.secOk', 'In stock')]]
-        : [['all', tr('pantry.secList', 'On the list')]];
+        : [['get', tr('pantry.secList', 'To get')], ['cart', tr('pantry.secCart', 'In the cart')]];
       var first = true;
+      var steered = !!S.back || !!S.focusAfter;
       for (var g = 0; g < groups.length; g++) {
         var mine = [];
-        for (var i = 0; i < all.length; i++) if (groups[g][0] === 'all' || all[i].state === groups[g][0]) mine.push(all[i]);
+        var gk = groups[g][0];
+        for (var i = 0; i < all.length; i++) {
+          var r = all[i];
+          if (list ? (gk === 'cart') === !!r.ticked : r.state === gk) mine.push(r);
+        }
         if (!mine.length) continue;
-        var sec = el('div', 'pn-sec pn-sec-' + groups[g][0], null, box);
+        var sec = el('div', 'pn-sec pn-sec-' + gk, null, box);
         var head = el('div', 'pn-sec-head', null, sec);
         el('span', 'pn-sec-name', groups[g][1], head);
         el('span', 'pn-sec-count', String(mine.length), head);
         var wrap = el('div', 'pn-rows', null, sec);
         for (var j = 0; j < mine.length; j++) {
-          var row = panelRow(mine[j], wrap);
-          if (first && !S.back) row.setAttribute('data-autofocus', '');
+          var hit = panelRow(mine[j], wrap);
+          if (first && !steered) hit.setAttribute('data-autofocus', '');
           first = false;
         }
       }
-      if (first) el('div', 'pn-empty', kind === 'pantry' ? tr('pantry.pantryEmpty', 'Nothing in the pantry yet') : tr('pantry.listEmpty', 'Nothing to buy'), box);
+      if (first) el('div', 'pn-empty', !list ? tr('pantry.pantryEmpty', 'Nothing in the pantry yet') : tr('pantry.listEmpty', 'Nothing to buy'), box);
       S.back = null;
+      S.focusAfter = null;
     }
 
     /* --- the product page --- */
@@ -547,9 +661,9 @@
     }
 
     function stepper(parent, name, value, label) {
-      btn(parent, 'step:' + name + ':-1', '−', 'pn-step', tr('pantry.less', 'Less: {what}', { what: label }));
+      btn(parent, 'step:' + name + ':-1', '−', 'pn-step', tr('pantry.lessOf', 'Less: {what}', { what: label }));
       input(parent, name, 'number', num(value), label);
-      btn(parent, 'step:' + name + ':1', '+', 'pn-step', tr('pantry.more1', 'More: {what}', { what: label }));
+      btn(parent, 'step:' + name + ':1', '+', 'pn-step', tr('pantry.moreOf', 'More: {what}', { what: label }));
     }
 
     function pills(parent, name, values, current, word) {
@@ -587,23 +701,23 @@
 
       var Lrem = tr('pantry.f.remaining', 'Remaining');
       stepper(field(left, Lrem, 'is-step'), 'quantity_remaining', p.quantity_remaining, Lrem);
-      var Lres = tr('pantry.f.restock', 'Restock at');
+      var Lres = tr('pantry.restockAt', 'Buy more when I have');
       stepper(field(left, Lres, 'is-step'), 'restock_at', p.restock_at, Lres);
-      var Lbuy = tr('pantry.f.buy', 'Buy quantity');
+      var Lbuy = tr('pantry.buyQty', 'How many to buy');
       stepper(field(left, Lbuy, 'is-step'), 'purchase_quantity', p.purchase_quantity, Lbuy);
       pills(field(left, tr('pantry.f.auto', 'Add to the list when low')), 'auto_add', ['1', '0'], p.auto_add ? '1' : '0',
         function (v) { return v === '1' ? tr('pantry.on', 'On') : tr('pantry.off', 'Off'); });
       pills(field(left, tr('pantry.f.location', 'Where it lives')), 'location', LOCATIONS, p.location, locWord);
 
-      var Lb = tr('pantry.f.brand', 'Brand');
+      var Lb = tr('pantry.brand', 'Brand');
       input(field(right, Lb, 'is-text'), 'brand', 'text', b, Lb);
       var Ln = tr('pantry.f.name', 'Name');
       input(field(right, Ln, 'is-text'), 'name', 'text', p.name, Ln);
-      var Ls = tr('pantry.f.size', 'Size');
+      var Ls = tr('pantry.size', 'Size');
       var sz = field(right, Ls, 'is-size');
       input(sz, 'size', 'number', p.size == null ? '' : num(p.size), Ls);
       pills(sz, 'unit', UNITS, p.unit, unitWord);
-      pills(field(right, tr('pantry.f.mode', 'If the store is out')), 'substitution_mode', MODES, p.substitution_mode, modeWord);
+      pills(field(right, tr('pantry.modeLabel', 'If it is out')), 'substitution_mode', MODES, p.substitution_mode, modeWord);
       var Lno = tr('pantry.f.notes', 'Notes');
       var notes = input(field(right, Lno, 'is-text'), 'notes', 'text', p.notes || '', Lno);
       notes.setAttribute('placeholder', tr('pantry.notesHint', 'Anything to remember'));
@@ -620,7 +734,7 @@
       var box = el('div', 'pn-panel pn-panel-' + kind + (full ? ' is-full' : ''), null, body);
       if (!data()) {
         ctx.setSub('');
-        el('div', 'pn-msg pn-panel-msg hub-dormant', tr('pantry.loading', 'Loading…'), box);
+        el('div', 'pn-msg pn-panel-msg hub-dormant', waitWord(), box);
         return;
       }
       if (S.page !== null && full) renderPage(box, ctx);
@@ -653,18 +767,42 @@
       ctx.redrawPanel();
     }
 
+    // A refusal or no answer: the change is already taken back, say why.
+    function failed(ctx, err) {
+      if (!err) return;
+      var why = err.code ? err.text : tr('grocery.tvUnreachable', 'the Pi didn’t answer');
+      if (window.console && console.warn) console.warn('Pantry: the Pi did not take a change (' + (err.code || 'no answer') + ')');
+      ctx.toast(tr('pantry.saveFailed', 'That didn’t save: {why}', { why: why }), 4500);
+    }
+
     function save(ctx, changes) {
       var id = S.page;
       S.saving += 1;
       api.saveProduct(id, changes, function (err) {
         S.saving -= 1;
-        if (err) ctx.toast(tr('pantry.saveFailed', 'That didn’t save: {why}', { why: String(err) }), 4500);
+        failed(ctx, err);
       });
+    }
+
+    // OK on a list row: tick or untick it. Focus goes to the next row of the
+    // same section (the row itself moves to the other section).
+    function tick(itemId, ctx) {
+      var all = rows() || [], me = null, i;
+      for (i = 0; i < all.length; i++) if (all[i].item && all[i].item.id === itemId) me = all[i];
+      if (!me) return;
+      var same = [];
+      for (i = 0; i < all.length; i++) if (!!all[i].ticked === !!me.ticked) same.push(all[i]);
+      var at = same.indexOf(me);
+      var next = same[at + 1] || same[at - 1] || null;
+      S.focusAfter = next ? tickKey(next) : (me.ticked ? 'tick:' : 'untick:') + itemId;
+      api.check(itemId, !me.ticked, function (err) { failed(ctx, err); });
     }
 
     function onSelect(target, ctx) {
       var k = target.getAttribute('data-key') || '';
       if (S.page === null) {
+        var t = /^(un)?tick:(\d+)$/.exec(k);
+        if (t) { tick(Number(t[2]), ctx); return; }
         var pid = productOfKey(k);
         if (pid !== null) openPage(pid, k, ctx);
         return;
@@ -721,10 +859,8 @@
       init: function (ctx) {
         S.C = ctx;
         api.on(function () { try { refresh(); } catch (e) { /* next draw */ } });
-        api.load(ctx, function (err) {
-          if (err) { if (window.console && console.warn) console.warn('Pantry: no data (' + err + ')'); return; }
-          refresh();
-        });
+        // No data yet is normal (the live line is on its way); the tile waits quietly.
+        api.load(ctx, function () { refresh(); });
         var I = root.HUB_I18N;
         if (I && typeof I.onChange === 'function') {
           I.onChange(function () {
@@ -736,6 +872,8 @@
       renderPanel: renderPanel,
       onSelect: onSelect,
       onSubmit: onSubmit,
+      // The hub's Back chip: on the product page Back goes to the list, not out of full screen.
+      backHint: function () { return S.page !== null ? tr('pantry.backList', 'Back for the list') : null; },
       onBack: function (ctx) {
         if (S.page === null) return false;
         closePage(ctx);
@@ -746,7 +884,7 @@
         ctx.redrawPanel();
       },
       onStatus: function (ctx) { ctx.redrawTile(); },
-      onClose: function () { S.panel = null; S.page = null; S.back = null; }
+      onClose: function () { S.panel = null; S.page = null; S.back = null; S.focusAfter = null; }
     });
     var en = w.titleEn, enShort = w.shortEn;
     try {

@@ -33,6 +33,9 @@
  *                                          // Full screen button). Return the element to focus,
  *                                          // true to stay put, or nothing to move by position.
  *     onBack: function (ctx) { return false; }, // true = the widget used Back itself
+ *     backHint: function (ctx) {},         // the Back chip's words while onBack would use
+ *                                          // Back itself (e.g. "Back for the list"), or
+ *                                          // nothing for the hub's own
  *     openView: function (name, ctx) {},   // asked to show one of its own views before its
  *                                          // panel opens (the About panel's watch link test
  *                                          // asks entertainment for 'linktests'); false = no
@@ -2123,7 +2126,9 @@
     if (!open) return;
     if (typing === undefined) typing = !!typingBox();
     // A small chip like the Full screen button, but never focusable.
-    panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : mode === 'full' && !isDirect(open.w) ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
+    // A widget that uses Back itself (a page inside its panel) can say what Back does.
+    var own = !typing && typeof open.w.backHint === 'function' ? call(open, 'backHint', [open.ctx]) : null;
+    panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : own ? String(own) : mode === 'full' && !isDirect(open.w) ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
   }
 
   function panelFocusables() {

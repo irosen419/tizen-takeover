@@ -156,13 +156,6 @@
 
 .pn-panel { padding: 0.2rem 0 0.6rem; }
 .pn-panel-msg { padding: 1rem 0.9rem; }
-.pn-mock {
-  margin: 0 0.9rem 0.3rem;
-  font-size: 0.8rem;
-  line-height: 1.35;
-  color: var(--pn-low);
-  word-wrap: break-word;
-}
 .pn-tip {
   margin: 0 0.9rem 0.2rem;
   font-size: 0.85rem;
@@ -217,6 +210,53 @@
   text-align: right;
   white-space: nowrap;
 }
+
+/* List rows: the tick box (OK ticks) and Details (OK opens the product).
+   Ticked rows sit under In the cart, dimmed and struck through. */
+.pn-row.pn-lrow { padding: 0; cursor: default; }
+.pn-tick {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.8rem;
+  border: var(--edge) solid transparent;
+  cursor: pointer;
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+.pn-tick.is-focused { background: var(--card-2); border-color: var(--focus); }
+.pn-box {
+  position: relative;
+  flex: 0 0 auto;
+  width: 1.3rem;
+  height: 1.3rem;
+  margin-right: 0.8rem;
+  border-radius: 0.35rem;
+  border: 0.12rem solid var(--text-3);
+  -webkit-box-sizing: border-box;
+  box-sizing: border-box;
+}
+.is-ticked .pn-box { background: var(--pn-ok); border-color: var(--pn-ok); }
+.is-ticked .pn-box:after {
+  content: '';
+  position: absolute;
+  left: 0.33rem;
+  top: 0.08rem;
+  width: 0.32rem;
+  height: 0.66rem;
+  border: solid #111418;
+  border-width: 0 0.15rem 0.15rem 0;
+  -webkit-transform: rotate(45deg);
+  transform: rotate(45deg);
+}
+.is-ticked .pn-row-main, .is-ticked .pn-row-side { opacity: 0.55; }
+.is-ticked .pn-name { text-decoration: line-through; }
+.pn-lrow .pn-det { margin: 0 0.5rem 0 0.4rem; font-size: 0.9rem; }
+.pn-trow.is-ticked { opacity: 0.55; }
+.pn-trow.is-ticked .pn-tname { text-decoration: line-through; }
+.pn-sec-cart .pn-sec-name { color: var(--pn-ok); }
 
 /* Full screen: two columns of rows, bigger. */
 .pn-panel.is-full .pn-row { flex-basis: 50%; }

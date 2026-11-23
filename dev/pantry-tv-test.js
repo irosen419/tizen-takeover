@@ -2,31 +2,38 @@
  * Pantry and List on the TV (app/widgets/pantry-tv.js, pantry-tv.css): node dev/pantry-tv-test.js
  *
  * Runs the real hub in headless Chromium against the preview (needs port
- * 8095 free, like the other browser tests). The widgets run on the mock data
- * in HUB_PANTRY_TV.api (the Pi's pantry routes are not built yet), so no Pi
- * server is started. Nothing here reaches the internet. Checks:
+ * 8095 free, like the other browser tests). The live line is stubbed:
+ * app/live.js is served as dev/pantry-tv-live-stub.js, which sends the
+ * resource "pantry" in the Pi's shape (pi/pantrydb.js view()) and answers
+ * POST /pantry/screen-ops like pi/server.js. No Pi server is started and
+ * nothing reaches the internet. Checks:
  *
- *   - pantry-tv.js is plain ES5 and Node can require its logic; the CSS has no
- *     grid, no flex gap, animates only transform and opacity and ends with
- *     .css-end; hub.html loads both before hub.js; every pantry.* key the
- *     file uses has Spanish; the Groceries layout is Pantry left, List right.
- *   - The logic: the pantry is a filter (owned, not archived), 0 left = out,
- *     the field checks, the brand key, auto-add on a save.
+ *   - pantry-tv.js is plain ES5 and Node can require its logic; the CSS has
+ *     no grid, no flex gap, animates only transform and opacity and ends
+ *     with .css-end; hub.html loads pantry-tv.js (never the phone's
+ *     pantry.js) and touch.html the other way round; every pantry.* key the
+ *     file uses has Spanish and no key is listed twice; the Groceries layout
+ *     is Pantry left, List right.
+ *   - The logic: the Pi's rows map to the widget's shape, page changes map
+ *     to the Pi's ops (set, edit), a tick is shown at once (applyLocal), the
+ *     list puts ticked rows last, 0 left = out, the field checks.
  *   - The Groceries layout in English and in Spanish with every pantry text
  *     25% longer (Á É ñ ¿ ¡), and each tile at 1x1, 3x1, 3x2 and 6x6: what
  *     each size shows, nothing outside the tile, nothing cut sideways but a
  *     name, every text line at least 1.3 times its type.
  *   - The panel: Out rows carry an Out chip; OK on a row in the small panel
- *     goes full screen with the product page; + and - change Remaining and
- *     the tile follows; a pill picks the unit; a number box saves on Enter;
- *     a bad number is a toast and changes nothing; Back closes the page with
- *     focus on the row it came from, Back again shrinks to the panel.
- *   - From the List: OK on a row opens that product; Remaining to 0 on a
- *     product with auto-add puts it on the list (Auto chip).
- *   - The product page in Spanish +25%: nothing cut or outside the screen.
+ *     goes full screen with the product page and the Back chip says "Back
+ *     for the list"; + and - post "set" and the tile follows; a pill and a
+ *     number box post "edit"; a bad number is a toast and posts nothing;
+ *     Back closes the page with focus on the row it came from.
+ *   - The List: OK ticks a row (op "check"), it moves under In the cart,
+ *     dimmed, focus on the next row, the counts follow; OK unticks it; Right
+ *     then OK on Details opens the product; a refusal takes the tick back
+ *     with a toast; a quantity drop on an auto-add product adds a row (Auto).
+ *   - Spanish +25%: the product page and a ticked List, nothing cut.
  *
  * --shots <folder> (or PANTRY_SHOTS) saves pictures at device scale 2: the
- * Groceries layout, both panels and the product page in English and Spanish.
+ * Groceries layout, the product page and a ticked List, English and Spanish.
  * Prints one line per check and "N passed, M failed".
  */
 'use strict';
@@ -41,6 +48,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const OCEAN_JPG = fs.readFileSync(path.join(ROOT, 'app', 'backgrounds', 'ocean.jpg'));
+const STUB = fs.readFileSync(path.join(__dirname, 'pantry-tv-live-stub.js'), 'utf8');
 const argShots = process.argv.indexOf('--shots');
 const SHOTS = argShots > 0 ? process.argv[argShots + 1] : (process.env.PANTRY_SHOTS || '');
 let passed = 0;
@@ -99,6 +107,7 @@ async function open(o) {
     if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') return route.abort();
     return route.fallback();
   });
+  await context.route(/\/live\.js(\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: 'application/javascript', body: STUB }));
   if (o.grow) await context.route(/\/i18n\.js(\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: 'application/javascript', body: I18N + GROW }));
   const page = await context.newPage();
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text())) context.errors.push(m.text()); });
@@ -155,6 +164,8 @@ async function focusKey(page, k) {
 }
 function toast(page) { return page.evaluate(() => { const t = document.getElementById('toast'); return t ? t.textContent : ''; }); }
 function product(page, id) { return page.evaluate((i) => window.HUB_PANTRY_TV.productById(window.HUB_PANTRY_TV.api.snapshot(), i), id); }
+function lastOps(page) { return page.evaluate(() => { const p = window.PANTRY_STUB.posts; return p.length ? Object.assign({ path: p[p.length - 1].path }, p[p.length - 1].body) : null; }); }
+function hint(page) { return page.evaluate(() => { const h = document.querySelector('#panel .panel-hint'); return h ? h.textContent : ''; }); }
 
 /* Every fit problem inside root (a tile or the panel). */
 function measure(page, sel) {
@@ -201,7 +212,7 @@ async function main() {
   env.browser = await chromium.launch();
 
   try {
-    await check('pantry-tv.js is plain ES5 and a Node module; hub.html loads it and pantry-tv.css before hub.js; every pantry.* key has Spanish', () => {
+    await check('pantry-tv.js is plain ES5 and a Node module; hub.html loads it (not the phone\'s pantry.js), touch.html the other way; every pantry.* key has Spanish, none twice', () => {
       let acorn = null;
       for (const p of ['acorn', '/opt/node-tools/node_modules/acorn', '/usr/local/lib/node_modules_global/acorn']) {
         try { acorn = require(p); break; } catch (e) { /* next */ }
@@ -210,21 +221,29 @@ async function main() {
       if (acorn) acorn.parse(text, { ecmaVersion: 5 });
       else assert(!/(^|[^.\w])(let|const)\s|=>|`|\bclass\s/.test(text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '')), 'ES2015 syntax');
       const P = require('../app/widgets/pantry-tv.js');
-      assert(typeof P.clean === 'function' && typeof P.api.saveProduct === 'function', 'the logic is not exported');
+      assert(typeof P.clean === 'function' && typeof P.api.saveProduct === 'function' && typeof P.api.check === 'function', 'the logic is not exported');
+      assert(!/mockData|api\.mock|pantry\.mock/.test(text), 'mock data left in the widget');
       const hub = fs.readFileSync(path.join(ROOT, 'app/hub.html'), 'utf8');
+      const touch = fs.readFileSync(path.join(ROOT, 'app/touch.html'), 'utf8');
       assert(hub.indexOf('widgets/pantry-tv.js') > 0 && hub.indexOf('widgets/pantry-tv.css') > 0, 'hub.html');
-      assert(hub.indexOf('widgets/pantry-tv.js') < hub.indexOf('src="hub.js"'), 'pantry.js after hub.js');
+      assert(hub.indexOf('widgets/pantry.js') < 0 && touch.indexOf('widgets/pantry-tv.js') < 0 && touch.indexOf('widgets/pantry.js') > 0, 'one pantry widget per page');
+      assert(hub.indexOf('widgets/pantry-tv.js') < hub.indexOf('src="hub.js"'), 'pantry-tv.js after hub.js');
+      assert(hub.indexOf('pantry-tv-live-stub') < 0, 'the test stub is in hub.html');
       const box = { window: {}, location: { search: '' } };
       box.window = box;
       vm.runInNewContext(I18N, box);
       const es = box.HUB_I18N.strings.es;
+      const esBlock = I18N.slice(I18N.indexOf('var ES = {'));
+      const seen = {}, twice = [];
+      (esBlock.match(/^\s*'pantry\.[\w.]+':/gm) || []).forEach((k) => { k = k.trim(); if (seen[k]) twice.push(k); seen[k] = 1; });
+      assert(!twice.length, 'listed twice: ' + twice.join(', '));
       const keys = {};
       let m;
       const re = /tr\('(pantry\.[\w.]+)'/g;
       while ((m = re.exec(text))) if (!/\.$/.test(m[1])) keys[m[1]] = 1;
       ['pantry.title', 'pantry.titleShort', 'pantry.listTitle', 'pantry.listTitleShort'].forEach((k) => { keys[k] = 1; });
       P.UNITS.forEach((u) => { keys['pantry.unit.' + u] = 1; });
-      P.LOCATIONS.forEach((u) => { keys['pantry.loc.' + u] = 1; });
+      P.LOCATIONS.forEach((u) => { keys['pantry.place.' + u] = 1; });
       P.MODES.forEach((u) => { keys['pantry.mode.' + u] = 1; });
       const missing = Object.keys(keys).filter((k) => !es[k]);
       assert(Object.keys(keys).length > 50, 'only ' + Object.keys(keys).length + ' keys found');
@@ -247,16 +266,28 @@ async function main() {
       assert(JSON.stringify(g.layout) === JSON.stringify(GROCERIES), JSON.stringify(g.layout));
     });
 
-    await check('logic: the pantry is a filter of products, 0 left is out, fields are checked, brands match by key, a save can auto-add', async () => {
+    await check('logic: the Pi\'s rows map to the widget\'s shape; page changes become set and edit ops; a tick shows at once; ticked rows last', async () => {
       const P = require('../app/widgets/pantry-tv.js');
-      P.reset();
-      const d = P.api.snapshot();
+      const box = { window: {}, setTimeout: setTimeout, Date: Date, JSON: JSON };
+      box.window = box;
+      vm.runInNewContext(STUB, box);
+      const d = P.fromServer(box.PANTRY_STUB.data);
+      assert(d && d.products.length === 20 && d.list.items.length === 8, 'mapped ' + (d && d.products.length));
+      const milk = P.productById(d, 1);
+      assert(milk.quantity_remaining === 0 && milk.restock_at === 1 && milk.purchase_quantity === 2 && milk.auto_add === 1 && P.brandName(d, milk) === 'Organic Valley', JSON.stringify(milk));
       const pan = P.pantryOf(d.products);
-      assert(pan.every((p) => p.owned && !p.archived), 'an unowned product in the pantry');
-      assert(pan.length === d.products.filter((p) => p.owned).length && pan.length < d.products.length, 'pantry ' + pan.length);
+      assert(pan.every((p) => p.owned) && pan.length === 18, 'pantry ' + pan.length);
       assert(P.stateOf(pan[0]) === 'out', 'out first: ' + pan[0].name);
       const c = P.pantryCounts(d.products);
-      assert(c.out === pan.filter((p) => p.quantity_remaining === 0).length && c.low > 0, JSON.stringify(c));
+      assert(c.out === 5 && c.low > 0, JSON.stringify(c));
+      const ops = P.opsFor(5, { quantity_remaining: 2, purchase_quantity: 3, auto_add: 0, substitution_mode: 'refund', brand: '' });
+      assert(JSON.stringify(ops) === JSON.stringify([{ op: 'set', id: 5, qty: 2 }, { op: 'edit', id: 5, purchaseQuantity: 3, autoAdd: false, substitutionMode: 'refund', brandId: null }]), JSON.stringify(ops));
+      assert(JSON.stringify(P.opsFor(5, { unit: 'lb' })) === JSON.stringify([{ op: 'edit', id: 5, unit: 'lb' }]), 'unit');
+      const local = P.applyLocal(d, [{ op: 'check', list_item_id: 1, checked: true }, { op: 'set', id: 5, qty: 0 }, { op: 'edit', id: 5, brand: 'barilla' }]);
+      assert(local.list.items[0].checked && !d.list.items[0].checked, 'the tick changed the Pi\'s copy or did not show');
+      assert(P.productById(local, 5).quantity_remaining === 0 && P.productById(local, 5).brand_id === 4, 'local set or brand');
+      const order = P.listOf(local).map((i) => i.id);
+      assert(order[order.length - 1] === 1, 'ticked not last: ' + order);
       assert(P.clean('size', '15.5').value === 15.5 && P.clean('size', '').value === null && P.clean('size', '-1').error, 'size');
       assert(P.clean('purchase_quantity', '2').value === 2 && P.clean('purchase_quantity', '1.5').error && P.clean('purchase_quantity', '0').error, 'purchase quantity');
       assert(P.clean('quantity_remaining', '0').value === 0 && P.clean('quantity_remaining', 'x').error, 'remaining');
@@ -264,15 +295,7 @@ async function main() {
       assert(P.clean('substitution_mode', 'contact_me').value && P.clean('location', 'garage').error, 'enums');
       assert(P.clean('name', '  ').error === 'name', 'empty name');
       assert(P.brandKey('Rao’s') === P.brandKey('raos') && P.brandKey('Héinz') === 'heinz', 'brand key');
-      const spaghetti = d.products.filter((p) => p.name === 'Spaghetti')[0];
-      const before = d.list.items.length;
-      await new Promise((r) => P.api.saveProduct(spaghetti.id, { quantity_remaining: 0, brand: 'barilla' }, r));
-      const after = P.api.snapshot();
-      const row = after.list.items.filter((i) => i.product_id === spaghetti.id)[0];
-      assert(after.list.items.length === before + 1 && row && row.source === 'auto' && row.quantity === spaghetti.purchase_quantity, 'no auto row');
-      assert(P.productById(after, spaghetti.id).brand_id === spaghetti.brand_id && after.brands.length === d.brands.length, 'barilla made a second brand');
-      await new Promise((r) => P.api.saveProduct(spaghetti.id, { quantity_remaining: 0 }, r));
-      assert(P.api.snapshot().list.items.length === before + 1, 'a second auto row');
+      assert(P.fromServer(null) === null && P.fromServer({}) === null, 'no data is null');
     });
 
     for (const v of [{ name: 'English', lang: 'en' }, { name: 'Spanish +25%', lang: 'es', grow: true }]) {
@@ -323,7 +346,7 @@ async function main() {
       }));
       assert(s.secs.join() === 'Out,Running low,In stock', s.secs.join());
       assert(s.outRows === 5 && s.outChips === 5, JSON.stringify(s));
-      assert(s.mock, 'no sample-data note');
+      assert(!s.mock, 'the sample-data note is still there');
       assert(/^prod:\d+$/.test(await focused(page)), 'focus ' + await focused(page));
     });
 
@@ -339,6 +362,7 @@ async function main() {
       ['in:brand', 'in:name', 'in:size', 'pick:unit:fl_oz', 'in:quantity_remaining', 'in:restock_at', 'in:purchase_quantity', 'pick:auto_add:1', 'pick:auto_add:0',
         'pick:substitution_mode:contact_me', 'pick:location:freezer', 'in:notes', 'step:quantity_remaining:1'].forEach((x) => assert(keys.indexOf(x) >= 0, 'no ' + x));
       assert(await focused(page) === 'in:quantity_remaining', 'focus ' + await focused(page));
+      assert(/Back for the list/.test(await hint(page)), 'Back chip: ' + await hint(page));
       env.pageFrom = k;
     });
 
@@ -348,6 +372,9 @@ async function main() {
       await focusKey(page, 'step:quantity_remaining:1');
       await key(page, 'Enter');
       await until(async () => (await product(page, id)).quantity_remaining === was + 1, 2000, 'not saved');
+      const set = await lastOps(page);
+      assert(set.path === '/pantry/screen-ops' && JSON.stringify(set.ops) === JSON.stringify([{ op: 'set', id: id, qty: was + 1 }]), JSON.stringify(set));
+      await until(() => page.evaluate(() => window.PANTRY_STUB.posts.length && !document.querySelector('.is-pending') && window.HUB_PANTRY_TV.api.snapshot() && true), 2000, 'no answer');
       await until(() => page.evaluate((n) => document.querySelector('#panel [data-key="in:quantity_remaining"]').value === String(n), was + 1), 2000, 'the box did not follow');
       assert(await focused(page) === 'step:quantity_remaining:1', 'focus moved to ' + await focused(page));
       const outNow = await page.evaluate(() => window.HUB_PANTRY_TV.pantryCounts(window.HUB_PANTRY_TV.api.snapshot().products).out);
@@ -361,6 +388,8 @@ async function main() {
       await focusKey(page, 'pick:unit:lb');
       await key(page, 'Enter');
       await until(async () => (await product(page, id)).unit === 'lb', 2000, 'unit not saved');
+      assert(JSON.stringify((await lastOps(page)).ops) === JSON.stringify([{ op: 'edit', id: id, unit: 'lb' }]), JSON.stringify(await lastOps(page)));
+      await until(() => page.evaluate((i) => window.PANTRY_STUB.data.products.filter((p) => p.id === i)[0].unit === 'lb', id), 2000, 'the Pi did not take the unit');
       assert(await page.evaluate(() => document.querySelector('#panel [data-key="pick:unit:lb"]').className.indexOf('is-on') >= 0), 'pill not on');
     });
 
@@ -372,12 +401,15 @@ async function main() {
       await page.keyboard.type('5');
       await key(page, 'Enter');
       await until(async () => (await product(page, id)).purchase_quantity === 5, 2000, 'not saved');
+      assert(JSON.stringify((await lastOps(page)).ops) === JSON.stringify([{ op: 'edit', id: id, purchaseQuantity: 5 }]), JSON.stringify(await lastOps(page)));
+      const posts = await page.evaluate(() => window.PANTRY_STUB.posts.length);
       await key(page, 'Enter');
       await page.keyboard.press('Control+A');
       await page.keyboard.type('2.5');
       await key(page, 'Enter');
       await until(async () => /whole number/.test(await toast(page)), 2000, 'no toast');
       assert((await product(page, id)).purchase_quantity === 5, 'changed');
+      assert(await page.evaluate(() => window.PANTRY_STUB.posts.length) === posts, 'a bad number was posted');
       await until(() => page.evaluate(() => document.querySelector('#panel [data-key="in:purchase_quantity"]').value === '5'), 2000, 'the box kept the bad number');
     });
 
@@ -396,47 +428,113 @@ async function main() {
       await settle(page);
     });
 
-    await check('List: OK on a row opens that product; Remaining to 0 on an auto-add product puts it on the list (Auto chip)', async () => {
+    await check('List: OK ticks a row (op check); it moves under In the cart, dimmed; focus on the next row; counts follow; OK unticks', async () => {
       await openPanel(page, 'list');
-      const k = await focused(page);
-      assert(/^item:\d+$/.test(k), 'focus ' + k);
+      assert(await focused(page) === 'tick:1', 'focus ' + await focused(page));
+      assert(/Back to close/.test(await hint(page)), 'Back chip: ' + await hint(page));
       await key(page, 'Enter');
-      await until(() => page.evaluate(() => !!document.querySelector('#panel .pn-page')), 4000, 'no page');
+      await until(() => page.evaluate(() => !!document.querySelector('#panel .pn-sec-cart [data-key="untick:1"]')), 2000, 'not under In the cart');
+      const op = await lastOps(page);
+      assert(op.path === '/pantry/screen-ops' && JSON.stringify(op.ops) === JSON.stringify([{ op: 'check', list_item_id: 1, checked: true }]), JSON.stringify(op));
+      assert(await focused(page) === 'tick:2', 'focus ' + await focused(page));
+      const s = await page.evaluate(() => ({
+        secs: [].map.call(document.querySelectorAll('#panel .pn-sec-head'), (n) => n.querySelector('.pn-sec-name').textContent + ' ' + n.querySelector('.pn-sec-count').textContent),
+        dim: parseFloat(getComputedStyle(document.querySelector('#panel .pn-sec-cart .pn-row-main')).opacity),
+        struck: getComputedStyle(document.querySelector('#panel .pn-sec-cart .pn-name')).textDecorationLine,
+        sub: (document.querySelector('#panel .panel-sub') || {}).textContent || document.querySelector('#panel').innerText.slice(0, 200),
+        tile: document.querySelector('.cell[data-widget="list"] .tile-body').innerText.replace(/\s+/g, ' ')
+      }));
+      assert(s.secs.join('|') === 'To get 7|In the cart 1', s.secs.join('|'));
+      assert(s.dim < 0.8 && s.struck === 'line-through', JSON.stringify(s));
+      assert(/7 to buy · 1 in the cart/.test(s.sub), 'sub: ' + s.sub);
+      assert(/^7 to buy\b/.test(s.tile.trim()) || /\b7\b/.test(s.tile) && /1 in the cart/.test(s.tile), 'tile: ' + s.tile);
+      await until(() => page.evaluate(() => window.PANTRY_STUB.data.list[0].checked === true), 2000, 'the Pi did not take the tick');
+      await focusKey(page, 'untick:1');
+      await key(page, 'Enter');
+      await until(() => page.evaluate(() => !document.querySelector('#panel .pn-sec-cart')), 2000, 'still ticked');
+      assert(JSON.stringify((await lastOps(page)).ops) === JSON.stringify([{ op: 'check', list_item_id: 1, checked: false }]), 'untick op');
+      await until(() => page.evaluate(() => window.PANTRY_STUB.data.list[0].checked === false), 2000, 'the Pi did not take the untick');
+    });
+
+    await check('List: Right then OK on Details opens the product; Back goes back to Details', async () => {
+      await focusKey(page, 'tick:2');
+      await key(page, 'ArrowRight');
+      assert(await focused(page) === 'item:2', 'Right went to ' + await focused(page));
+      await key(page, 'Enter');
+      await until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full' && !!document.querySelector('#panel .pn-page')), 4000, 'no page');
       await settle(page);
+      const name = await page.evaluate(() => document.querySelector('#panel .pn-ph-name').textContent);
+      assert(name === 'Large brown eggs', name);
+      assert(/Back for the list/.test(await hint(page)), 'Back chip: ' + await hint(page));
       await key(page, 'Escape');
-      await until(() => page.evaluate(() => !!document.querySelector('#panel .pn-row')), 2000, 'page still open');
+      await until(() => page.evaluate(() => !document.querySelector('#panel .pn-page') && !!document.querySelector('#panel .pn-row')), 2000, 'page still open');
+      assert(await focused(page) === 'item:2', 'focus ' + await focused(page));
+      assert(/Back to shrink/.test(await hint(page)), 'Back chip: ' + await hint(page));
+    });
+
+    await check('List: a refusal takes the tick back with a toast; an Out product on the list is flagged', async () => {
+      await page.evaluate(() => { window.PANTRY_STUB.refuse = 'nope'; });
+      await focusKey(page, 'tick:3');
+      await key(page, 'Enter');
+      assert(await page.evaluate(() => !!document.querySelector('#panel [data-key="untick:3"]')), 'not shown at once');
+      await until(async () => /didn’t save: nope/.test(await toast(page)), 3000, 'no toast');
+      await until(() => page.evaluate(() => !!document.querySelector('#panel [data-key="tick:3"]') && !document.querySelector('#panel .pn-sec-cart')), 2000, 'the tick stayed');
+      await page.evaluate(() => { window.PANTRY_STUB.refuse = ''; });
+      const flagged = await page.evaluate(() => [].filter.call(document.querySelectorAll('#panel .pn-lrow'), (r) => r.querySelector('.pn-chip-out')).length);
+      assert(flagged === 4, 'Out chips on the list: ' + flagged);
+    });
+
+    await check('List: a quantity drop on an auto-add product adds a row (Auto chip)', async () => {
       // Yogurt: 2 left, restock at 1, auto-add on, not on the list.
-      const yog = await page.evaluate(() => window.HUB_PANTRY_TV.api.snapshot().products.filter((p) => p.name === 'Plain Greek yogurt')[0].id);
-      const before = await page.evaluate(() => document.querySelectorAll('#panel .pn-row').length);
-      await page.evaluate((id) => new Promise((r) => window.HUB_PANTRY_TV.api.saveProduct(id, { quantity_remaining: 1 }, r)), yog);
-      await until(() => page.evaluate((n) => document.querySelectorAll('#panel .pn-row').length === n + 1, before), 2000, 'the list did not grow');
-      assert(await page.evaluate(() => !!document.querySelector('#panel .pn-row .pn-chip-auto')), 'no Auto chip');
+      const before = await page.evaluate(() => document.querySelectorAll('#panel .pn-lrow').length);
+      await page.evaluate(() => new Promise((r) => window.HUB_PANTRY_TV.api.saveProduct(3, { quantity_remaining: 1 }, r)));
+      await until(() => page.evaluate((n) => document.querySelectorAll('#panel .pn-lrow').length === n + 1, before), 2000, 'the list did not grow');
+      const op = await lastOps(page);
+      assert(JSON.stringify(op.ops) === JSON.stringify([{ op: 'set', id: 3, qty: 1 }]), JSON.stringify(op));
+      assert(await page.evaluate(() => [].some.call(document.querySelectorAll('#panel .pn-lrow'), (r) => /Greek yogurt/.test(r.textContent) && r.querySelector('.pn-chip-auto'))), 'no Auto chip');
       assert(!page.ctx.errors.length, 'console: ' + page.ctx.errors.join(' | '));
     });
     await page.ctx.close();
 
-    await check('the product page in Spanish +25%: nothing cut or outside the screen', async () => {
+    await check('Spanish +25%: the product page and a ticked List in full screen, nothing cut or outside the screen', async () => {
       const p = await open({ lang: 'es', grow: true });
       await openPanel(p, 'pantry');
       await key(p, 'Enter');
       await until(() => p.evaluate(() => !!document.querySelector('#panel .pn-page')), 4000, 'no page');
       await settle(p);
-      const r = await measure(p, '#panel');
-      assert(!r.problems.length, r.problems.slice(0, 4).join(', '));
+      let r = await measure(p, '#panel');
+      assert(!r.problems.length, 'page: ' + r.problems.slice(0, 4).join(', '));
       const over = await p.evaluate(() => { const b = document.querySelector('#panel .pn-page').getBoundingClientRect(); return b.right > window.innerWidth + 1; });
       assert(!over, 'wider than the screen');
+      await p.evaluate(() => window.HUB_TEST.closePanel());
+      await settle(p);
+      await openPanel(p, 'list');
+      await key(p, 'Enter');
+      await key(p, 'Enter');
+      await until(() => p.evaluate(() => document.querySelectorAll('#panel .pn-sec-cart .pn-lrow').length === 2), 3000, 'not ticked');
+      // Full screen the remote's way: Details, then Back to the list.
+      await focusKey(p, 'item:3');
+      await key(p, 'Enter');
+      await until(() => p.evaluate(() => window.HUB_TEST.mode() === 'full' && !!document.querySelector('#panel .pn-page')), 4000, 'no page');
+      await settle(p);
+      await key(p, 'Escape');
+      await until(() => p.evaluate(() => !document.querySelector('#panel .pn-page')), 2000, 'page still open');
+      await settle(p);
+      r = await measure(p, '#panel');
+      assert(!r.problems.length, 'list: ' + r.problems.slice(0, 4).join(', '));
+      assert(/En el carrito/.test(r.text) && /Detalles/.test(r.text), r.text.slice(0, 120));
       assert(!p.ctx.errors.length, 'console: ' + p.ctx.errors.join(' | '));
       await p.ctx.close();
     });
 
     if (SHOTS) {
-      await check('pictures (device scale 2): the Groceries layout, both panels, the product page, EN and ES', async () => {
+      await check('pictures (device scale 2): the Groceries layout, the product page and a ticked List, EN and ES', async () => {
         for (const lang of ['en', 'es']) {
           const p = await open({ lang: lang, scale: 2 });
+          await p.evaluate(() => Promise.all([1, 2, 5].map((id) => new Promise((r) => window.HUB_PANTRY_TV.api.check(id, true, r)))));
+          await sleep(600);
           await shot(p, 'groceries-layout-' + lang + '.png');
           await openPanel(p, 'pantry');
-          await sleep(600);
-          await shot(p, 'pantry-panel-' + lang + '.png', '#panel');
           await key(p, 'Enter');
           await until(() => p.evaluate(() => !!document.querySelector('#panel .pn-page')), 4000, 'no page');
           await settle(p);
@@ -444,15 +542,21 @@ async function main() {
           await shot(p, 'product-page-' + lang + '.png');
           await key(p, 'Escape');
           await settle(p);
-          await sleep(400);
-          await shot(p, 'pantry-full-' + lang + '.png');
           await key(p, 'Escape');
           await settle(p);
           await p.evaluate(() => window.HUB_TEST.closePanel());
           await settle(p);
           await openPanel(p, 'list');
           await sleep(600);
-          await shot(p, 'list-panel-' + lang + '.png', '#panel');
+          await shot(p, 'list-ticked-panel-' + lang + '.png', '#panel');
+          await focusKey(p, 'item:3');
+          await key(p, 'Enter');
+          await until(() => p.evaluate(() => window.HUB_TEST.mode() === 'full' && !!document.querySelector('#panel .pn-page')), 4000, 'no page');
+          await settle(p);
+          await key(p, 'Escape');
+          await settle(p);
+          await sleep(400);
+          await shot(p, 'list-ticked-full-' + lang + '.png');
           await p.ctx.close();
         }
       });
