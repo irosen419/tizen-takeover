@@ -539,6 +539,13 @@ var HUB_CONFIG = {
      */
     grocery: { touch: true },
 
+    /*
+     * Pantry: what is at home, kept on the Pi in SQLite (app/widgets/pantry.js,
+     * pi/pantrydb.js). Phone and tablet only for now (no TV tile yet); a low
+     * item goes on the grocery list by itself. Needs Pi server 0.30.0.
+     */
+    pantry: { touch: true },
+
     sunpath: {
       roofAngle: 40,
       gapFeet: 2.0,

@@ -180,7 +180,8 @@
       store.pending -= 1;
       setStatus('ok');
       // The last answer holds every change before it, so only it is drawn.
-      if (!store.pending && j.items) { store.data[res] = { items: j.items }; store.rev[res] = j.rev; }
+      // A list resource answers { items, rev }; the pantry answers { data, rev }.
+      if (!store.pending && (j.data || j.items)) { store.data[res] = j.data || { items: j.items }; store.rev[res] = j.rev; }
       refresh();
       cb(null);
     }, function (e) {
@@ -210,6 +211,8 @@
       // Any other call to the Pi (product lookup, save): resolves to its JSON.
       call: request,
       products: function () { return store.products; },
+      // Another widget's copy (the scan card's note for the other destination).
+      peek: function (r) { return store.data[r] || null; },
       // Draws again now and asks the Pi for its newest copy.
       refresh: function () { refresh(); poll(); },
       reduced: reduced

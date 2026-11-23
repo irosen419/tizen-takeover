@@ -1,11 +1,16 @@
 /*
  * Scan a barcode on the phone (the touch app only; the TV never loads this).
  *
- *   HUB_SCAN.register(id, { label(t), add(product, ctx, done(err)), note?(product, ctx, t) })
+ *   HUB_SCAN.register(id, { label(t), chip?(t), add(product, ctx, done(err)), note?(product, ctx, t) })
  *                         where a scan can go. The grocery list registers
- *                         'grocery' (app/widgets/grocery.js); a pantry can
- *                         register 'pantry' later without touching this file.
- *   HUB_SCAN.open(ctx, { destination: 'grocery', returnFocus: el })
+ *                         'grocery' (app/widgets/grocery.js), the pantry
+ *                         'pantry' (app/widgets/pantry.js). add() gets the
+ *                         opening view's ctx, which may belong to the other one.
+ *   HUB_SCAN.open(ctx, { destination: 'grocery', destinations: ['pantry', 'grocery'], returnFocus: el })
+ *                         destinations: an "Add to" chip on the card picks
+ *                         one; the pick is remembered on this phone for the
+ *                         view that opened Scan (localStorage, best effort),
+ *                         else it starts on destination.
  *                         full-screen overlay: rear camera, torch when the
  *                         phone has one, a "type the number" box. A code is
  *                         looked up on the Pi (GET /products/lookup); found ->
@@ -184,13 +189,26 @@
 
   /* ---------- the overlay ---------- */
 
+  // The last "Add to" pick per opening view, on this phone only.
+  function recall(view) {
+    try { return root.localStorage.getItem('hub.scan.dest.' + view) || ''; } catch (e) { return ''; }
+  }
+  function remember(view, id) {
+    try { root.localStorage.setItem('hub.scan.dest.' + view, id); } catch (e) { /* private mode: not kept */ }
+  }
+
   var current = null;
 
   function open(ctx, opts) {
     opts = opts || {};
     if (current) current.close();
     var T = ctx.t;
-    var dest = destinations[opts.destination || 'grocery'];
+    var choices = [];
+    (opts.destinations || []).forEach(function (id) { if (destinations[id] && choices.indexOf(id) < 0) choices.push(id); });
+    var destId = opts.destination || choices[0] || 'grocery';
+    var picked = choices.length > 1 ? recall(ctx.id) : '';
+    if (picked && choices.indexOf(picked) >= 0) destId = picked;
+    var dest = destinations[destId];
     var destLabel = dest && dest.label ? dest.label(T) : '';
     var state = 'scan', stream = null, track = null, det = null, timer = null, toastTimer = null;
     var busy = false, closed = false, torchOn = false, lastCode = '', lastAt = 0, found = null;
@@ -225,7 +243,8 @@
     closeBtn.setAttribute('aria-label', T('scan.close', 'Close'));
     var title = el('div', 'sc-title');
     title.appendChild(el('span', 'sc-title-word', opts.edit ? T('scan.editHead', 'Edit product') : T('scan.title', 'Scan a barcode')));
-    if (destLabel && !opts.edit) title.appendChild(el('span', 'sc-title-dest', destLabel));
+    var titleDest = el('span', 'sc-title-dest', destLabel);
+    if (destLabel && !opts.edit) title.appendChild(titleDest);
     var torchBtn = button('sc-round sc-torch', null, 'torch');
     torchBtn.setAttribute('aria-label', T('scan.torchOn', 'Turn the light on'));
     torchBtn.setAttribute('aria-pressed', 'false');
@@ -462,6 +481,7 @@
       text.appendChild(meta);
       card.appendChild(text);
       sheet.appendChild(card);
+      if (choices.length > 1) sheet.appendChild(destChips(p));
       var note = dest && dest.note ? dest.note(p, ctx, T) : '';
       if (note) sheet.appendChild(el('p', 'sc-note', note));
       var add = button('sc-btn sc-primary sc-add', T('scan.addTo', 'Add to {dest}', { dest: destLabel }), 'plus');
@@ -477,6 +497,35 @@
       row.appendChild(done);
       sheet.appendChild(row);
       add.focus();
+    }
+
+    // "Add to: Groceries | Pantry": switching redraws the card for that place.
+    function destChips(p) {
+      var row = el('div', 'sc-dests');
+      row.setAttribute('role', 'group');
+      var word = el('span', 'sc-dests-word', T('scan.addToLabel', 'Add to'));
+      word.id = 'sc-dests-' + Math.floor(Math.random() * 1e6);
+      row.setAttribute('aria-labelledby', word.id);
+      row.appendChild(word);
+      choices.forEach(function (id) {
+        var d = destinations[id];
+        var b = button('sc-dest' + (id === destId ? ' is-on' : ''), d.chip ? d.chip(T) : d.label(T));
+        b.setAttribute('aria-pressed', id === destId ? 'true' : 'false');
+        b.setAttribute('data-dest', id);
+        b.addEventListener('click', function () {
+          if (id === destId) return;
+          destId = id;
+          dest = destinations[id];
+          destLabel = dest.label ? dest.label(T) : '';
+          titleDest.textContent = destLabel;
+          remember(ctx.id, id);
+          showFound(p);
+          var again = sheet.querySelector('.sc-dest[data-dest="' + id + '"]');
+          if (again) again.focus();
+        });
+        row.appendChild(b);
+      });
+      return row;
     }
 
     function addFound() {
@@ -646,7 +695,7 @@
       if (opts.returnFocus && opts.returnFocus.focus) { try { opts.returnFocus.focus(); } catch (e) { /* gone */ } }
     }
 
-    var api = { close: close, lookup: lookup, state: function () { return state; } };
+    var api = { close: close, lookup: lookup, state: function () { return state; }, destination: function () { return destId; } };
     current = api;
     if (opts.edit) {
       box.className += ' is-edit';
