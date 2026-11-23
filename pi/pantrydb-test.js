@@ -235,6 +235,47 @@ async function main() {
     p.close();
   });
 
+  await check('list_items.checked: op check ticks a row and its grocery row; a grocery tick is mirrored back', () => {
+    const p = mem();
+    p.applyOps([{ op: 'add', name: 'Rice', qty: 1 }], []);
+    const id = p.view([]).data.products[0].id;
+    const r = p.applyOps([{ op: 'want', id: id, on: true }], []);
+    let g = [{ id: 'g1', name: 'Rice', done: false, addedAt: 1, upc: '' }];
+    p.syncGrocery(g, r.hints);
+    let v = p.view(g).data;
+    assert.strictEqual(v.list.length, 1);
+    assert.strictEqual(v.list[0].checked, false);
+    const li = v.list[0].id;
+    assert.strictEqual(v.products[0].listItemId, li);
+    const c = p.applyOps([{ op: 'check', list_item_id: li, checked: true }], g);
+    assert.deepStrictEqual(c.grocery, [{ op: 'check', id: 'g1', done: true }]);
+    v = p.view(g).data;
+    assert.strictEqual(v.list[0].checked, true);
+    assert.strictEqual(v.products[0].inCart, true);
+    // The grocery list unticks it (phone or TV): mirrored back.
+    g = [{ id: 'g1', name: 'Rice', done: false, addedAt: 1, upc: '' }];
+    p.syncGrocery(g, []);
+    assert.strictEqual(p.view(g).data.list[0].checked, false);
+    g[0].done = true;
+    p.syncGrocery(g, []);
+    assert.strictEqual(p.view(g).data.list[0].checked, true);
+    assert.throws(() => p.applyOps([{ op: 'check', list_item_id: 999, checked: true }], g), /no row on the open list/);
+    assert.throws(() => p.applyOps([{ op: 'check', list_item_id: li, checked: 1 }], g), /true or false/);
+    assert.throws(() => p.db.prepare('UPDATE list_items SET checked = 2').run(), /CHECK/);
+    p.close();
+  });
+
+  await check('an older pantry.db without list_items.checked gets the column', () => {
+    const dir = tmp();
+    const { DatabaseSync } = require('node:sqlite');
+    const old = new DatabaseSync(path.join(dir, 'pantry.db'));
+    old.exec('CREATE TABLE list_items (id INTEGER PRIMARY KEY, list_id INTEGER NOT NULL, product_id INTEGER NOT NULL, quantity INTEGER NOT NULL DEFAULT 1, mode_override TEXT, source TEXT NOT NULL DEFAULT \'manual\', added_at INTEGER NOT NULL, grocery_id TEXT UNIQUE) STRICT');
+    old.close();
+    const p = pantrydb.createPantry({ dataDir: dir });
+    assert.ok(p.db.prepare('PRAGMA table_info(list_items)').all().some((c) => c.name === 'checked'));
+    p.close();
+  });
+
   await check('syncGrocery: typed rows link to one product by key, scanned rows by code; export info', () => {
     const p = mem({ catalogGet: (upc) => (upc === COLA ? { upc: COLA, brand: 'Fizz Co', name: 'Cola', size: '12 fl oz', image: '' } : null) });
     p.applyOps([{ op: 'add', name: 'Café', qty: 1 }], []);
@@ -345,6 +386,41 @@ async function main() {
     assert.strictEqual(r.json.auto, 0);
     r = await request(P, 'POST', '/pantry/ops', { headers: phone, body: { ops: [{ op: 'want', id: pid, on: true }] } });
     assert.strictEqual(r.json.groceryAdded, 1, 'the cart button still adds it by hand');
+  });
+
+  await check('the TV: POST /pantry/screen-ops (no token, listed Origin, preflight), pantry is a live resource in /live/state and /live/poll', async () => {
+    const tv = { Origin: 'http://127.0.0.1:8081', 'x-test-ip': '192.168.1.50' };
+    let r = await request(P, 'OPTIONS', '/pantry/screen-ops', { headers: tv });
+    assert.strictEqual(r.status, 204);
+    assert.strictEqual(r.headers['access-control-allow-origin'], 'http://127.0.0.1:8081');
+    assert.ok(/POST/.test(r.headers['access-control-allow-methods']));
+    r = await request(P, 'OPTIONS', '/pantry/screen-ops', { headers: { Origin: 'http://evil.example', 'x-test-ip': '192.168.1.50' } });
+    assert.ok(!r.headers['access-control-allow-origin'], 'no CORS header for a foreign site');
+    r = await request(P, 'GET', '/live/state', { headers: { 'x-test-ip': '192.168.1.50' } });
+    assert.strictEqual(r.status, 200);
+    const live = r.json.resources.pantry;
+    assert.ok(live && typeof live.rev === 'number' && Array.isArray(live.data.products) && Array.isArray(live.data.list), 'pantry resource');
+    const rice = live.data.products.find((x) => x.name === 'Eggs');
+    const before = r.json.rev;
+    r = await request(P, 'POST', '/pantry/screen-ops', { headers: Object.assign({}, tv, { Origin: 'http://evil.example' }), body: { ops: [{ op: 'adjust', id: rice.id, by: 1 }] } });
+    assert.strictEqual(r.status, 403);
+    r = await request(P, 'POST', '/pantry/screen-ops', { headers: Object.assign({}, tv, { 'x-test-ip': '8.8.8.8' }), body: { ops: [{ op: 'adjust', id: rice.id, by: 1 }] } });
+    assert.strictEqual(r.status, 403);
+    r = await request(P, 'POST', '/pantry/screen-ops', { headers: tv, body: { ops: [{ op: 'adjust', id: rice.id, by: 1 }] } });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.headers['access-control-allow-origin'], 'http://127.0.0.1:8081');
+    assert.ok(r.json.rev > before, 'rev moved');
+    r = await request(P, 'GET', '/live/poll?rev=' + before + '&epoch=' + encodeURIComponent((await request(P, 'GET', '/live/state', { headers: { 'x-test-ip': '192.168.1.50' } })).json.epoch) + '&wait=0', { headers: { 'x-test-ip': '192.168.1.50' } });
+    assert.strictEqual(r.status, 200);
+    assert.ok(r.json.resources && r.json.resources.pantry, 'the poll carries the changed pantry: ' + Object.keys(r.json.resources || {}).join(','));
+    // A list row ticked from the TV ticks the grocery row too.
+    const p2 = r.json.resources.pantry.data.products.find((x) => x.listItemId);
+    r = await request(P, 'POST', '/pantry/screen-ops', { headers: tv, body: { ops: [{ op: 'check', list_item_id: p2.listItemId, checked: true }] } });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    const g = (await request(P, 'GET', '/api/grocery', { token: TOKEN })).json.items;
+    const row = r.json.data.list.find((x) => x.id === p2.listItemId);
+    assert.ok(row.checked && g.find((i) => i.id === row.groceryId).done, 'grocery row ticked');
+    assert.ok(h.lines.some((l) => /screen changed the pantry/.test(l)), 'logged as a screen');
   });
 
   await check('the log counts pantry changes, never a product or brand name', async () => {

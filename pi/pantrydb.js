@@ -11,7 +11,9 @@
  *                                           the pantry is a filter (owned = 1)
  *   replacements(product_id, replacement_id, rank 1-5)
  *   lists(id, status open|ordered, ...)     one open list at a time
- *   list_items(list_id, product_id, quantity, mode_override, source, added_at, grocery_id)
+ *   list_items(list_id, product_id, quantity, mode_override, source, added_at, grocery_id, checked)
+ *                                           checked = ticked while shopping; it follows the
+ *                                           grocery row's tick both ways
  *
  * The grocery list (pi/grocery.js, resource "grocery" in state.json) stays
  * the list the TV, the phone, ./hub and the mailbox change; every change is
@@ -261,7 +263,8 @@ const SCHEMA = [
     mode_override TEXT CHECK (mode_override IS NULL OR mode_override IN (${MODES.map((u) => "'" + u + "'").join(', ')})),
     source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'auto')),
     added_at INTEGER NOT NULL,
-    grocery_id TEXT UNIQUE
+    grocery_id TEXT UNIQUE,
+    checked INTEGER NOT NULL DEFAULT 0 CHECK (checked IN (0, 1))
   ) STRICT`,
   'CREATE INDEX IF NOT EXISTS list_items_product ON list_items(product_id)'
 ];
@@ -283,6 +286,10 @@ function createPantry(options) {
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA busy_timeout = 2000');
   SCHEMA.forEach((s) => db.exec(s));
+  // A database made before list_items.checked gets the column.
+  if (!db.prepare('PRAGMA table_info(list_items)').all().some((c) => c.name === 'checked')) {
+    db.exec('ALTER TABLE list_items ADD COLUMN checked INTEGER NOT NULL DEFAULT 0 CHECK (checked IN (0, 1))');
+  }
 
   const q = {};
   function st(sql) { if (!q[sql]) q[sql] = db.prepare(sql); return q[sql]; }
@@ -479,6 +486,11 @@ function createPantry(options) {
         present[it.id] = 1;
         const nk = keyOf(it.name);
         if (byG[it.id]) {
+          const tick = it.done ? 1 : 0;
+          if (byG[it.id].checked !== tick) {
+            run('UPDATE list_items SET checked = ? WHERE id = ?', tick, byG[it.id].id);
+            changed = true;
+          }
           // A code added to a typed row later: point the row at that product.
           const cur = product(byG[it.id].product_id);
           if (it.upc && cur && cur.barcode !== it.upc) {
@@ -501,8 +513,8 @@ function createPantry(options) {
           pid = p ? p.id : insertProduct({ name: Array.from(it.name).slice(0, MAX_NAME).join('') });
         }
         const pp = product(pid);
-        run('INSERT INTO list_items (list_id, product_id, quantity, source, added_at, grocery_id) VALUES (?, ?, ?, ?, ?, ?)',
-          lid, pid, pp ? pp.purchase_quantity : 1, source, typeof it.addedAt === 'number' ? Math.round(it.addedAt) : now(), it.id);
+        run('INSERT INTO list_items (list_id, product_id, quantity, source, added_at, grocery_id, checked) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          lid, pid, pp ? pp.purchase_quantity : 1, source, typeof it.addedAt === 'number' ? Math.round(it.addedAt) : now(), it.id, it.done ? 1 : 0);
         changed = true;
       });
       // A hint whose row was already there (the grocery list did not double
@@ -679,6 +691,15 @@ function createPantry(options) {
           out.results.push({ op: 'brand', id: brandId(o.name) });
         } else if (o.op === 'category') {
           out.results.push({ op: 'category', id: categoryId(o.name) });
+        } else if (o.op === 'check') {
+          // A list row ticked or unticked while shopping; the grocery row follows.
+          const lid = o.list_item_id !== undefined ? o.list_item_id : o.listItemId;
+          if (typeof lid !== 'number' || !isFinite(lid) || lid < 1 || Math.floor(lid) !== lid) throw bad('"list_item_id" must be a list row id');
+          const checked = bool(o.checked, 'checked');
+          const row = one('SELECT * FROM list_items WHERE id = ? AND list_id = ?', lid, openListId());
+          if (!row) throw bad('no row on the open list has that id');
+          run('UPDATE list_items SET checked = ? WHERE id = ?', checked, row.id);
+          if (row.grocery_id && gItems.some((g) => g.id === row.grocery_id)) out.grocery.push({ op: 'check', id: row.grocery_id, done: !!checked });
         } else if (o.op === 'listQty' || o.op === 'listMode') {
           const p = mustProduct(o.id);
           const row = onList(p.id);
@@ -686,7 +707,7 @@ function createPantry(options) {
           if (o.op === 'listQty') run('UPDATE list_items SET quantity = ? WHERE id = ?', int(o.quantity, 'quantity', 1, MAX_BUY), row.id);
           else run('UPDATE list_items SET mode_override = ? WHERE id = ?', o.mode === null ? null : oneOf(o.mode, MODES, 'mode'), row.id);
         } else {
-          throw bad('unknown op (use add, adjust, set, edit, want, remove, brand, category, listQty or listMode)');
+          throw bad('unknown op (use add, adjust, set, edit, want, remove, brand, category, check, listQty or listMode)');
         }
       });
       touched.forEach(settle);
@@ -711,7 +732,7 @@ function createPantry(options) {
       upc: p.barcode || '', size: p.size, unit: p.unit, photo: cp && cp.image ? cp.image : p.photo, notes: p.notes,
       qty: p.quantity_remaining, restockAt: p.restock_at, buy: p.purchase_quantity, autoAdd: !!p.auto_add, held: !!p.auto_held,
       mode: p.substitution_mode, location: p.location, owned: !!p.owned, low: isLow(p),
-      onList: !!li, inCart: !!(g && g.done), listSource: li ? li.source : '', listQty: li ? li.quantity : 0, modeOverride: li ? li.mode_override : null,
+      onList: !!li, listItemId: li ? li.id : null, checked: !!(li && li.checked), inCart: !!((g && g.done) || (li && li.checked)), listSource: li ? li.source : '', listQty: li ? li.quantity : 0, modeOverride: li ? li.mode_override : null,
       replacements: all('SELECT replacement_id FROM replacements WHERE product_id = ? ORDER BY rank', p.id).map((r) => r.replacement_id),
       updatedAt: p.updated_at
     };
@@ -739,6 +760,8 @@ function createPantry(options) {
         brands: all('SELECT id, name, key FROM brands ORDER BY name COLLATE NOCASE'),
         categories: all('SELECT id, name, key, sort FROM categories ORDER BY sort, id'),
         kinds: KINDS,
+        list: all('SELECT id, product_id AS productId, quantity, mode_override AS modeOverride, source, added_at AS addedAt, grocery_id AS groceryId, checked FROM list_items WHERE list_id = ? ORDER BY id', openListId())
+          .map((r) => Object.assign(r, { checked: !!r.checked })),
         counts: { items: products.filter((p) => p.owned).length, low: products.filter((p) => p.low).length, onList: products.filter((p) => p.onList).length }
       }
     };

@@ -20,7 +20,10 @@
  *   POST /products/save  { upc, brand, name, size?, photo? } a product typed in by hand
  *   GET  /products/image/<upc>   a product's saved thumbnail
  *   POST /pantry/ops     pantry changes from the touch app (pantrydb.js): add, adjust, set,
- *                        edit, want, remove, brand, category, listQty, listMode
+ *                        edit, want, remove, brand, category, check, listQty, listMode
+ *   POST /pantry/screen-ops   the same ops from the TV (no token; the same trust as the TV's
+ *                        POST /grocery/ops: home addresses, a listed Origin, OPTIONS answered).
+ *                        The pantry is also a live resource ("pantry") in /live/state
  *   GET  /, /app/...     the touch app (app/touch.html) and the files it loads, read only
  *                        (the touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
  *   POST /linktests      one watch link test answer from the About panel
@@ -1000,9 +1003,26 @@ function start(options) {
     }
   }
 
-  // The pantry for the phone and the API.
+  // The pantry is also a live resource ("pantry": rev + the view's data),
+  // so the TV reads it over the live line like every other one. pantry.db
+  // stays the source; the copy in state is redrawn when the database's own
+  // rev moves (publishPantry), never edited.
+  let publishedDbRev = -1;
+  function publishPantry(atStart) {
+    if (!pantry) { delete state.resources.pantry; return false; }
+    const dbRev = pantry.rev();
+    if (dbRev === publishedDbRev && state.resources.pantry) return false;
+    const data = pantry.view(state.resources.grocery.data.items).data;
+    publishedDbRev = dbRev;
+    if (atStart) { state.resources.pantry = { rev: state.rev, data: data }; return true; }
+    changeResource('pantry', data);
+    return true;
+  }
+  publishPantry(true);
+
+  // The pantry for the phone, the TV and the API: { rev, data }.
   function pantryView() {
-    return pantry ? pantry.view(state.resources.grocery.data.items) : { rev: 0, data: null, off: true };
+    return state.resources.pantry || { rev: 0, data: null, off: true };
   }
 
   // Applies pantry ops, then the grocery rows they ask for (want, auto-add).
@@ -1027,6 +1047,7 @@ function start(options) {
       }
       mirrorGrocery(r.hints);
     }
+    publishPantry();
     if (r.auto) log('pantry: ' + r.auto + ' low ' + (r.auto === 1 ? 'item' : 'items') + ' added to grocery');
     const v = pantryView();
     return { ok: true, rev: v.rev, data: v.data, results: r.results, auto: r.auto, groceryAdded: Math.max(0, added) };
@@ -1095,6 +1116,7 @@ function start(options) {
     if (changed) {
       changeResource('grocery', { items: items });
       mirrorGrocery([]);
+      publishPantry();
     }
     return { ok: true, rev: state.rev, changed: changed, items: state.resources.grocery.data.items };
   }
@@ -1959,7 +1981,7 @@ function start(options) {
   function touch(req, res, route, query) {
     const cors = corsHeaders(req);
     if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
-    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops')) {
+    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops')) {
       const h = Object.assign({ 'Cache-Control': 'no-store', 'Content-Length': 0 }, cors);
       if (cors['Access-Control-Allow-Origin']) {
         h['Access-Control-Allow-Methods'] = 'POST';
@@ -1970,7 +1992,7 @@ function start(options) {
       return res.end();
     }
     const image = route.indexOf('/products/image/') === 0;
-    const want = route === '/grocery/ops' || route === '/pantry/ops' || route === '/products/save' ? 'POST' : 'GET';
+    const want = route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' ? 'POST' : 'GET';
     const okMethod = req.method === want || (image && req.method === 'HEAD');
     if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
@@ -2012,19 +2034,21 @@ function start(options) {
           });
           if (JSON.stringify(next) !== JSON.stringify(cur)) changeResource('grocery', { items: next });
           // The pantry's row for this code takes the correction too.
-          if (pantry) { try { pantry.fromCatalog(product); } catch (e) { log('pantry: could not take a catalog correction (' + (e.code || e.message) + ')'); } }
+          if (pantry) {
+            try { pantry.fromCatalog(product); mirrorGrocery([]); publishPantry(); } catch (e) { log('pantry: could not take a catalog correction (' + (e.code || e.message) + ')'); }
+          }
           sendJson(res, 200, { ok: true, product: product }, cors);
         } catch (e) {
           fail(res, e, cors);
         }
       }, PRODUCT_BODY_LIMIT);
     }
-    if (route === '/pantry/ops') {
+    if (route === '/pantry/ops' || route === '/pantry/screen-ops') {
       return readBody(req, res, (body) => {
         try {
           const r = pantryOps(body);
           sendJson(res, 200, r, cors);
-          log('touch app changed the pantry (rev ' + r.rev + ')');
+          log((route === '/pantry/screen-ops' ? 'screen' : 'touch app') + ' changed the pantry (rev ' + r.rev + ')');
         } catch (e) {
           fail(res, e, cors);
         }
@@ -2232,7 +2256,7 @@ function start(options) {
     '/echo/run': 1
   };
 
-  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/pantry/ops': 1, '/products/lookup': 1, '/products/save': 1 };
+  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1 };
 
   function handler(door) {
     return (req, res) => {
