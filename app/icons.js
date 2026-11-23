@@ -75,6 +75,8 @@ var HUB_ICONS = (function () {
     clock: svg('<circle cx="12" cy="12" r="9.5"/><path d="M12 6.5V12l3.5 2"/>'),
     // Groceries (app/widgets/grocery.js): a basket, the same shape as the touch app's.
     basket: svg('<path d="M4 9h16l-1.6 9.2a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8z"/><path d="M8.5 9l3.5-5 3.5 5"/><path d="M9.5 13v3M14.5 13v3"/>'),
+    // Pantry (app/widgets/pantry.js): a jar with a lid.
+    jar: svg('<path d="M8 3.5h8v3H8z"/><path d="M7.5 6.5h9a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V8a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M6 11h12M6 16h12"/>'),
     wallet: svg('<path d="M19.5 7.5V5.5a2 2 0 0 0-2-2h-12a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2H5.5"/>' +
       '<path d="M16.5 14h.01"/>'),
     // Investments: a line climbing to the right with an arrow head.
