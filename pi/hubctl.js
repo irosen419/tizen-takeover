@@ -61,6 +61,8 @@
  *   ./hub ambience mood <id>         a plant wall mood (WLED)
  *   ./hub ambience set <file.json|->   new lights, scenes and moods (see ambience.example.json)
  *   ./hub ambience reset             back to the defaults (no lights)
+ *   ./hub guest-pin status           is a Guest mode PIN set (never the PIN itself)
+ *   ./hub guest-pin reset            forget it; the TV asks for a new PIN next time
  *   ./hub status                     is the server up, which screens are on
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub log [--errors] [--lines 120]   the server's recent log lines (50 unless --lines says)
@@ -650,6 +652,27 @@ async function awwsCommand(args) {
     return;
   }
   stop('Use one of: awws show, awws set <file.json|->, awws clear, awws resync. Run ./hub help for examples.');
+}
+
+/* ---------- Guest mode PIN ---------- */
+
+// The line for ./hub guest-pin status, from GET /api/guest-pin.
+function guestPinStatusText(r) {
+  if (!r || !r.set) return 'No Guest mode PIN is set. The TV asks for a new one the next time Guest mode is turned on or off.';
+  return 'A Guest mode PIN is set.' + (r.locked_for > 0 ? ' Locked for ' + r.locked_for + ' s after wrong tries.' : '');
+}
+
+function guestPinResetText(r) {
+  return r && r.removed
+    ? 'Guest mode PIN forgotten. The TV asks you to create a new one the next time Guest mode is turned on or off.'
+    : 'No Guest mode PIN was set. The TV asks you to create one the next time Guest mode is turned on or off.';
+}
+
+async function guestPinCommand(args) {
+  const sub = args[0];
+  if (sub === 'status') return say(guestPinStatusText(await call('GET', '/api/guest-pin')));
+  if (sub === 'reset') return say(guestPinResetText(await call('POST', '/api/guest-pin/reset', {})));
+  stop('Use one of: guest-pin status, guest-pin reset. Run ./hub help for examples.');
 }
 
 /* ---------- TV show schedule ---------- */
@@ -1382,6 +1405,8 @@ const HELP = [
   '  ./hub ambience mood dim     a plant wall mood (needs WLED_URL in pi/.env)',
   '  ./hub ambience set file.json   new lights, scenes and moods (see pi/ambience.example.json)',
   '  ./hub ambience reset        back to the defaults (no lights)',
+  '  ./hub guest-pin status     is a Guest mode PIN set (the TV asks for it to turn Guest mode on or off)',
+  '  ./hub guest-pin reset      forget the PIN; the TV asks you to create a new one next time',
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
@@ -1678,6 +1703,7 @@ async function main(argv) {
   if (cmd === 'shows') return showsCommand(rest);
   if (cmd === 'linktests') return linktestsCommand(rest);
   if (cmd === 'tvremote') return tvremoteCommand(rest);
+  if (cmd === 'guest-pin') return guestPinCommand(rest);
   if (cmd === 'status') return status();
   if (cmd === 'mailbox') return mailbox(rest);
   if (cmd === 'log') return logCommand(rest);
@@ -1726,6 +1752,8 @@ module.exports = {
   layoutSetText: layoutSetText,
   layoutResetText: layoutResetText,
   awwsShowLines: awwsShowLines,
+  guestPinStatusText: guestPinStatusText,
+  guestPinResetText: guestPinResetText,
   budgetShowLines: budgetShowLines,
   showsListLines: showsListLines,
   statusLines: statusLines,

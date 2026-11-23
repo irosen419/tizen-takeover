@@ -25,6 +25,10 @@
  *   POST /pantry/screen-ops   the same ops from the TV (no token; the same trust as the TV's
  *                        POST /grocery/ops: home addresses, a listed Origin, OPTIONS answered).
  *                        The pantry is also a live resource ("pantry") in /live/state
+ *   POST /guest/pin      the Guest mode PIN from the TV's Clock page (guestpin.js; a screen route:
+ *                        home addresses, or only HUB_TV_IPS when set, a listed Origin, OPTIONS answered):
+ *                        { action: 'status' | 'check' | 'set', pin }.
+ *                        Only a salted scrypt hash is kept (data/guest-pin.json); 3 wrong in a row lock it
  *   GET  /, /app/...     the touch app (app/touch.html) and the files it loads, read only
  *                        (the touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
  *   POST /linktests      one watch link test answer from the About panel
@@ -112,6 +116,8 @@
  *
  *   POST /api/translate  { to: "es", texts: [...] } -> { map } (translate.js; the TV uses POST /translate)
  *   GET  /api/translate/usage -> lines, Gemini calls, tokens and estimated cost today, this month, in all
+ *   GET  /api/guest-pin  -> { set, locked_for } (never the PIN or its hash)
+ *   POST /api/guest-pin/reset -> { removed }: forget the Guest mode PIN; the TV asks for a new one (./hub guest-pin reset)
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -139,8 +145,9 @@ const translate = require('./translate');
 const grocery = require('./grocery');
 const products = require('./products');
 const pantrydb = require('./pantrydb');
+const guestpin = require('./guestpin');
 
-const SERVER_VERSION = '0.30.0';
+const SERVER_VERSION = '0.31.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -690,6 +697,8 @@ function start(options) {
   const remote = tvremote.create(Object.assign({ dataDir: dataDir, log: log, host: opt.tvRemoteIp || '' }, isObj(opt.tvremote) ? opt.tvremote : {}));
 
   let state = loadState(dataDir, log);
+  // The Guest mode PIN (guestpin.js): a hash in data/guest-pin.json, wrong tries counted in memory.
+  const guestPin = guestpin.create(Object.assign({ dataDir: dataDir, log: log }, isObj(opt.guestpin) ? opt.guestpin : {}));
   const sse = new Set();      // { res, since, address }
   const polls = new Set();    // { res, epoch, rev, cursor, timer, address }
   const pollSeen = new Map(); // address -> { since, last }
@@ -1628,7 +1637,9 @@ function start(options) {
     '/api/ambience/mood': ['POST'],
     '/api/ambience/config': ['GET', 'POST'],
     '/api/translate': ['POST'],
-    '/api/translate/usage': ['GET']
+    '/api/translate/usage': ['GET'],
+    '/api/guest-pin': ['GET'],
+    '/api/guest-pin/reset': ['POST']
   };
 
   function statusBody() {
@@ -1715,6 +1726,8 @@ function start(options) {
           return undefined;
         }
         if (route === '/api/translate/usage') return reply(200, Object.assign({ ok: true }, translator.info()));
+        if (route === '/api/guest-pin') return reply(200, Object.assign({ ok: true }, guestPin.status()));
+        if (route === '/api/guest-pin/reset') return reply(200, { ok: true, removed: guestPin.reset() });
         if (route === '/api/status') return reply(200, statusBody());
         if (route === '/api/log') return reply(200, logBody(query));
         if (route === '/api/calendar') {
@@ -2124,7 +2137,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/echo/run' || route === '/awws/resync' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/echo/run' || route === '/awws/resync' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2152,6 +2165,14 @@ function start(options) {
     // foreign Origin is refused.
     if (!originOk(req)) {
       return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    }
+    if (route === '/guest/pin') {
+      // The Guest mode PIN: a screen route, so with HUB_TV_IPS set only the TV
+      // (and this Pi) can try PINs; never a phone on the touch door. Never log
+      // the PIN; guestpin.js logs wrong tries and locks by count only.
+      return readBody(req, res, (body) => {
+        guestPin.handle(body).then((r) => sendJson(res, 200, r, cors), (e) => fail(res, e, cors));
+      });
     }
     if (route === '/translate') {
       return readBody(req, res, (body) => {
@@ -2293,7 +2314,7 @@ function start(options) {
   const SCREEN_ROUTES = {
     '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/awws/resync': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
-    '/echo/run': 1
+    '/echo/run': 1, '/guest/pin': 1
   };
 
   const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1 };

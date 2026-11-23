@@ -463,10 +463,20 @@
       if (I18N()) I18N().setLang(key.slice(5));
       return;
     }
+    // Guest mode, on or off, only after the PIN (app/pin.js; the Pi checks
+    // it). Without the pop-up, or the Pi, nothing changes: it fails closed.
     if (key === 'guest-on' || key === 'guest-off') {
-      if (!window.HUB_GUEST || window.HUB_GUEST.on() === (key === 'guest-on')) return;
-      window.HUB_GUEST.set(key === 'guest-on');
-      ctx.redrawPanel();
+      var want = key === 'guest-on';
+      if (!window.HUB_GUEST || window.HUB_GUEST.on() === want) return;
+      var P = window.HUB_PIN;
+      if (!P || typeof P.ask !== 'function' || P.isOpen()) return;
+      var post = ctx.live && typeof ctx.live.post === 'function' ? ctx.live.post : null;
+      P.ask({ on: want, post: post }, function (ok) {
+        if (!ok || window.HUB_GUEST.on() === want) return;
+        window.HUB_GUEST.set(want);
+        // Focus stays on the same choice (redrawPanel keeps its data-key).
+        if (ctx.isOpen()) ctx.redrawPanel();
+      });
       return;
     }
     var nextFace = key === 'face-digital' ? 'digital' : key === 'face-analog' ? 'analog' : face;

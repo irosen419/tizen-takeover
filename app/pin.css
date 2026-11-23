@@ -1,0 +1,179 @@
+/* The Guest mode PIN pop-up (app/pin.js), over the Clock page.
+
+   A dark rounded card on a dimmed screen: on the left the lock, the title,
+   what to do, four big dots and one message line; on the right a 3 x 4
+   keypad (rows of flex boxes, margins between keys, no grid, no gap).
+   Night colours in every theme. Only opacity and transform move: the card
+   rises in, a dot fills, a wrong PIN nudges the dots once. The quick-fade
+   rung (body.motion-fade) and reduced motion keep the fades only. */
+
+.pin-wrap {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: 0;
+  z-index: 26;               /* over the panel (13) and the About strip (25), under the toast (30) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3, 4, 6, 0.66);
+  opacity: 0;
+  transition: opacity 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.pin-wrap.is-shown { opacity: 1; }
+
+.pin-card {
+  display: flex;
+  align-items: center;
+  padding: 2.2rem 2.4rem;
+  border-radius: 2.2rem;
+  background: #0e0f12;
+  border: 0.06rem solid rgba(255, 255, 255, 0.10);
+  border-top-color: rgba(255, 255, 255, 0.2);      /* light from above, no shadow */
+  color: #f4f5f7;
+  transform: translateY(0.8rem) scale(0.98);
+  transition: transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.pin-wrap.is-shown .pin-card { transform: none; }
+
+/* ---------- left: what to do, and the dots ---------- */
+
+.pin-info {
+  width: 18rem;
+  flex: 0 0 auto;
+}
+.pin-icon {
+  width: 2.8rem;
+  height: 2.8rem;
+  padding: 0.65rem;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.06rem solid rgba(255, 255, 255, 0.10);
+  color: #f4f5f7;
+}
+.pin-icon svg { display: block; width: 100%; height: 100%; }
+.pin-title {
+  margin-top: 1rem;
+  font-size: 1.55rem;
+  font-weight: 500;
+  line-height: 1.3;
+  padding: 0.06rem 0;        /* accents never touch the edge */
+}
+.pin-sub {
+  margin-top: 0.3rem;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: #a4a8b3;
+  padding: 0.06rem 0;
+}
+.pin-dots {
+  display: flex;
+  margin-top: 1.5rem;
+  transition: opacity 140ms linear;
+}
+.pin-dot {
+  position: relative;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  border: 0.14rem solid rgba(255, 255, 255, 0.34);
+}
+.pin-dot + .pin-dot { margin-left: 1.15rem; }
+.pin-dot-fill {
+  position: absolute;
+  top: -0.14rem; right: -0.14rem; bottom: -0.14rem; left: -0.14rem;
+  border-radius: 50%;
+  background: #f4f5f7;
+  opacity: 0;
+  transform: scale(0.35);
+  transition: opacity 120ms linear, transform 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.pin-dot.is-filled { border-color: #f4f5f7; }
+.pin-dot.is-filled .pin-dot-fill { opacity: 1; transform: none; }
+.pin-card.is-busy .pin-dots { opacity: 0.55; }
+
+/* Wrong PIN, or the two new PINs differ: coral rings and one short nudge. */
+.pin-dots.is-wrong .pin-dot { border-color: #fb817a; }
+.pin-dots.is-wrong { animation: pin-nudge 300ms cubic-bezier(0.2, 0.7, 0.2, 1) 1; }
+@keyframes pin-nudge {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-0.5rem); }
+  55% { transform: translateX(0.4rem); }
+  80% { transform: translateX(-0.15rem); }
+  100% { transform: translateX(0); }
+}
+
+/* One message line (two in Spanish if it must): wrong, locked, can't reach. */
+.pin-msg {
+  min-height: 2.6rem;
+  margin-top: 1rem;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: #a4a8b3;
+  opacity: 0;
+  transition: opacity 140ms linear;
+}
+.pin-msg.is-shown { opacity: 1; }
+.pin-msg.is-error { color: #fb817a; }
+.pin-hint {
+  margin-top: 0.3rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: #6c7180;
+}
+
+/* ---------- right: the keypad ---------- */
+
+.pin-pad {
+  flex: 0 0 auto;
+  margin-left: 2.6rem;
+}
+.pin-row { display: flex; }
+.pin-row + .pin-row { margin-top: 0.5rem; }
+.pin-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 5.2rem;
+  height: 3.2rem;
+  padding: 0 0.15rem;
+  border-radius: 1.1rem;
+  border: 0.16rem solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 1.5rem;
+  font-weight: 300;
+  line-height: 1.3;
+  color: #f4f5f7;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";
+}
+.pin-key + .pin-key { margin-left: 0.5rem; }
+.pin-key-word {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #a4a8b3;
+  background: transparent;
+}
+/* Focus: the same white pill as every other button in the hub; instant. */
+.pin-key.is-focused {
+  background: #fff;
+  border-color: #fff;
+  color: #050506;
+}
+.pin-key.is-pressed { opacity: 0.7; }
+
+/* ---------- the quick-fade rung and reduced motion: fades only ---------- */
+
+.motion-fade .pin-card,
+.motion-fade .pin-wrap.is-shown .pin-card { transform: none; transition: none; }
+.motion-fade .pin-dot-fill { transform: none; transition: opacity 120ms linear; }
+.motion-fade .pin-dots.is-wrong { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .pin-card, .pin-wrap.is-shown .pin-card { transform: none; transition: none; }
+  .pin-dot-fill { transform: none; transition: opacity 120ms linear; }
+  .pin-dots.is-wrong { animation: none; }
+}
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }

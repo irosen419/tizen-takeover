@@ -20,7 +20,8 @@
  *   budget data over 2 hours old (AWWS over 31 hours): "as of" under the title, and the tile dims;
  *   showMoney false hides every money figure; budget.show false hides the
  *   budget tiles and the banner;
- *   Guest mode (app/guest.js): every money tile, its panel and the banner
+ *   Guest mode (app/guest.js; turned on and off through the PIN pop-up,
+ *   app/pin.js, against the real Pi server): every money tile, its panel and the banner
  *   keep their words with each dollar amount blurred (and only those), the
  *   blur really draws, nothing is dropped; the Clock page's Off / On turns
  *   it on and off live and is remembered, Off leaves the text as it was; the
@@ -495,7 +496,7 @@ async function main() {
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode from the Clock page: On blurs the amounts at once, Off takes the blur off, and it is remembered', async () => {
+    await check('Guest mode from the Clock page: On (after creating the PIN) blurs the amounts at once, Off (after the PIN) takes the blur off, and it is remembered', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const before = {};
@@ -513,8 +514,16 @@ async function main() {
         });
         assert(inside, 'the Guest mode row runs out of the panel');
         await page.click('#panel [data-key="guest-on"]');
+        // The PIN pop-up (app/pin.js) against the real Pi server: no PIN yet,
+        // so it asks to create one, then to enter it again.
+        await H.until(() => page.evaluate(() => !!window.HUB_PIN.state() && window.HUB_PIN.state().stage === 'create' && !window.HUB_PIN.state().busy), 4000, 'no PIN pop-up asking to create a PIN');
+        assert(!(await has(page, '#panel [data-key="guest-on"].is-selected')), 'On before the PIN');
+        await page.keyboard.type('2468');
+        await H.until(() => page.evaluate(() => window.HUB_PIN.state() && window.HUB_PIN.state().stage === 'confirm'), 3000, 'no confirm step');
+        await page.keyboard.type('2468');
+        await H.until(() => page.evaluate(() => !window.HUB_PIN.isOpen()), 4000, 'the PIN pop-up stayed open');
         await H.sleep(300);
-        assert(await has(page, '#panel [data-key="guest-on"].is-selected'), 'On is not selected after the click');
+        assert(await has(page, '#panel [data-key="guest-on"].is-selected'), 'On is not selected after the PIN');
         assert((await page.evaluate(() => localStorage.getItem('homeHub.guest.v1'))) === 'on', 'not remembered');
         assert(!(await has(page, '#panel .guest-blur')), 'the Clock page has a blur');
         for (const id of IDS) {
@@ -522,6 +531,9 @@ async function main() {
           assert(await text(page, tileOf(id)) === before[id], 'after On, ' + id + ' changed its text');
         }
         await page.click('#panel [data-key="guest-off"]');
+        await H.until(() => page.evaluate(() => !!window.HUB_PIN.state() && window.HUB_PIN.state().stage === 'enter' && !window.HUB_PIN.state().busy), 4000, 'no PIN pop-up for Off');
+        await page.keyboard.type('2468');
+        await H.until(() => page.evaluate(() => !window.HUB_PIN.isOpen()), 4000, 'the PIN pop-up stayed open after Off');
         await H.sleep(300);
         assert((await page.evaluate(() => localStorage.getItem('homeHub.guest.v1'))) === null, 'Off not remembered');
         assert(!(await has(page, '.guest-blur')), 'a blur stayed after Off');
