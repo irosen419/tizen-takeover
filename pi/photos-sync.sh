@@ -28,7 +28,8 @@ THUMB="$DIR/thumb"
 command -v adb >/dev/null 2>&1 || { echo "photos: adb is not installed (sudo apt install android-tools-adb)"; exit 1; }
 
 T=""
-command -v timeout >/dev/null 2>&1 && T="timeout 20"
+TP=""
+command -v timeout >/dev/null 2>&1 && { T="timeout 20"; TP="timeout 120"; }
 
 # Reachable? Quietly done when not.
 $T adb connect "$ADDR" >/dev/null 2>&1
@@ -54,8 +55,10 @@ idof() { printf '%s' "$1" | sha1sum | cut -c1-12; }
 
 LIST="$DIR/.list.$$"
 OK=1
-if ! $T adb -s "$ADDR" shell ls -1 "$SRC/" 2>/dev/null | tr -d '\r' > "$LIST"; then
-  rm -f "$LIST"
+if $T adb -s "$ADDR" shell ls -1 "'$SRC/'" > "$LIST.raw" 2>/dev/null; then
+  tr -d '\r' < "$LIST.raw" > "$LIST"; rm -f "$LIST.raw"
+else
+  rm -f "$LIST" "$LIST.raw"
   echo "photos: could not list the calendar's album"
   exit 0
 fi
@@ -74,8 +77,8 @@ while IFS= read -r name; do
   [ -e "$ORIG/$name" ] && continue
   part="$ORIG/.part-$$"
   # -a keeps the calendar's file time (the album month comes from it).
-  if timeout 120 adb -s "$ADDR" pull -a "$SRC/$name" "$part" >/dev/null 2>&1 ||
-     timeout 120 adb -s "$ADDR" pull "$SRC/$name" "$part" >/dev/null 2>&1; then
+  if $TP adb -s "$ADDR" pull -a "$SRC/$name" "$part" >/dev/null 2>&1 ||
+     $TP adb -s "$ADDR" pull "$SRC/$name" "$part" >/dev/null 2>&1; then
     mv "$part" "$ORIG/$name" && NEW=$((NEW + 1))
   else
     rm -f "$part"
@@ -106,7 +109,7 @@ done
 if command -v node >/dev/null 2>&1; then
   node "$HERE/photos.js" index "$DATA" --new "$NEW" --ok "$OK"
 else
-  docker run --rm -v "$HERE:/app:ro" -v "$DATA:/data" -w /app node:22-alpine \
+  docker run --rm --user "$(id -u):$(id -g)" -v "$HERE:/app:ro" -v "$DATA:/data" -w /app node:22-alpine \
     node photos.js index /data --new "$NEW" --ok "$OK"
 fi
 [ "$FAILED" -gt 0 ] && echo "photos: $FAILED could not be copied (tried again next run)"

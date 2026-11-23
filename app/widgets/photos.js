@@ -143,10 +143,16 @@
       }
       if (!force && S.rev !== null && data.rev === S.rev && S.state !== 'offline') return;
       var current = S.items[S.index] ? S.items[S.index].id : null;
+      var viewedId = (S.viewing >= 0 && S.items[S.viewing]) ? S.items[S.viewing].id : null;
       S.rev = data.rev === undefined ? null : data.rev;
       S.items = cleanList(data);
       S.index = 0;
       for (var i = 0; current !== null && i < S.items.length; i++) if (S.items[i].id === current) { S.index = i; break; }
+      if (viewedId !== null) {
+        var vi = -1;
+        for (var k = 0; k < S.items.length; k++) if (S.items[k].id === viewedId) { vi = k; break; }
+        if (vi >= 0) S.viewing = vi;
+      }
       if (S.viewing >= S.items.length) S.viewing = S.items.length - 1;
       var was = S.state;
       S.state = S.items.length ? 'ok' : 'empty';
@@ -321,6 +327,7 @@
     clearTimer();
     if (S.state !== 'ok' || S.items.length < 2 || !S.tile || !S.tile.stage) return;
     S.timer = setTimeout(advance, seconds() * 1000);
+    restartBar();
   }
 
   function advance() {
