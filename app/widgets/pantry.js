@@ -315,7 +315,7 @@
     function send(ops) {
       failMsg = '';
       ctx.send(ops, applyLocal(data(), ops), function (err) {
-        if (err) { failMsg = T('pantry.saveFailed', 'That didn’t save: {why}', { why: err }); render(); }
+        if (err) { hideToast(); failMsg = T('pantry.saveFailed', 'That didn’t save: {why}', { why: err }); render(); }
       });
     }
 
