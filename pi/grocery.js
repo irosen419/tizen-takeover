@@ -57,7 +57,7 @@ function cleanName(raw) {
   if (typeof raw !== 'string') throw bad('"name" must be text');
   const name = raw.replace(CONTROL_RE, ' ').replace(/\s+/g, ' ').trim();
   if (!name) throw bad('"name" must not be empty');
-  if (name.length > MAX_NAME) throw bad('"name" is at most ' + MAX_NAME + ' characters');
+  if (Array.from(name).length > MAX_NAME) throw bad('"name" is at most ' + MAX_NAME + ' characters');
   return name;
 }
 

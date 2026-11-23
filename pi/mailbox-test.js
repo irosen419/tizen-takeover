@@ -357,6 +357,42 @@ async function main() {
     assert.strictEqual(r.data.items.length, 1);
   });
 
+  await check('pantry.add, pantry.set (auto-add when low), pantry.list, pantry.low', async () => {
+    let r = await run(fake, h, 'pantry.add', { name: 'Paper towels', qty: 2, location: 'pantry' });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.strictEqual(r.message, 'Added "Paper towels" to the pantry: 2 left, buy at 1, pantry.');
+    assert.strictEqual(r.data.low, false);
+    r = await run(fake, h, 'pantry.add', { name: 'Huevos', qty: 12, restockAt: 6, location: 'fridge', brand: 'Vital Farms' });
+    assert.strictEqual(r.message, 'Added "Vital Farms Huevos" to the pantry: 12 left, buy at 6, fridge.');
+    r = await run(fake, h, 'pantry.set', { name: 'paper towels', qty: 1 });
+    assert.strictEqual(r.ok, true, r.message);
+    assert.ok(/It is low, so it went on the grocery list\.$/.test(r.message), r.message);
+    assert.strictEqual(r.data.autoAdded, 1);
+    r = await run(fake, h, 'grocery.list');
+    assert.ok(r.data.items.some((i) => i.name === 'Paper towels'), 'auto-added row');
+    r = await run(fake, h, 'pantry.set', { name: 'PAPER TOWELS', qty: 0 });
+    assert.strictEqual(r.data.autoAdded, 0, 'never a second row');
+    r = await run(fake, h, 'pantry.low');
+    assert.strictEqual(r.data.low, 1);
+    assert.ok(/^1 low in the pantry\.\n\[low\] Paper towels \(0 left, buy at 1, pantry, on the grocery list\)   id \d+$/.test(r.message), r.message);
+    r = await run(fake, h, 'pantry.list');
+    assert.deepStrictEqual(r.data.counts, { items: 2, low: 1 });
+    r = await run(fake, h, 'pantry.set', { name: 'Caviar', qty: 1 });
+    assert.strictEqual(r.ok, false);
+    assert.ok(/No pantry item has the id or name "Caviar"/.test(r.message), r.message);
+    r = await run(fake, h, 'pantry.set', { name: 'Huevos' });
+    assert.strictEqual(r.ok, false);
+    assert.ok(/Rejected: give at least one of/.test(r.message), r.message);
+    r = await run(fake, h, 'pantry.add', { name: 'Rice', location: 'garage' });
+    assert.strictEqual(r.ok, false);
+    // Counts are whole numbers (review 4).
+    r = await run(fake, h, 'pantry.add', { name: 'Rice', qty: 1.5 });
+    assert.strictEqual(r.ok, false);
+    assert.ok(/^Rejected: /.test(r.message), r.message);
+    r = await run(fake, h, 'pantry.set', { name: 'Huevos', restockAt: 2.5 });
+    assert.strictEqual(r.ok, false);
+  });
+
   await check('todo.add, todo.list, todo.done (title), todo.remove (id)', async () => {
     let r = await run(fake, h, 'todo.add', { title: 'Buy milk', section: 'next', due: '2026-12-24' });
     assert.strictEqual(r.ok, true);

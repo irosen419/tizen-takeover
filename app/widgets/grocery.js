@@ -249,7 +249,7 @@
       scanBtn.setAttribute('aria-label', T('grocery.scanLabel', 'Scan a barcode'));
       scanBtn.appendChild(icon('camera'));
       scanBtn.appendChild(el('span', 'gx-scan-word', T('grocery.scan', 'Scan')));
-      scanBtn.addEventListener('click', function () { root.HUB_SCAN.open(ctx, { destination: 'grocery', returnFocus: scanBtn }); });
+      scanBtn.addEventListener('click', function () { root.HUB_SCAN.open(ctx, { destination: 'grocery', destinations: ['grocery', 'pantry'], returnFocus: scanBtn }); });
       form.appendChild(scanBtn);
     }
     form.appendChild(addBtn);
@@ -508,14 +508,24 @@
   if (root.HUB_SCAN) {
     root.HUB_SCAN.register('grocery', {
       label: function (t) { return t('grocery.destLabel', 'Groceries'); },
+      chip: function (t) { return t('grocery.destChip', 'Groceries'); },
       note: function (product, ctx, t) {
-        var d = ctx.data && ctx.data();
+        // Opened from another view: its data() is not this list, so peek at the list.
+        var d = ctx.id === 'grocery' ? ctx.data && ctx.data() : ctx.peek && ctx.peek('grocery');
         var hit = byUpc(d && d.items ? d.items : [], product.upc);
         if (!hit) return '';
         return hit.done ? t('grocery.scanTicked', 'In the cart already; adding puts it back on the list.') : t('grocery.scanAlready', 'Already on the list.');
       },
       add: function (product, ctx, done) {
         scanned[product.upc] = product;
+        if (ctx.id !== 'grocery') {
+          // Opened from the pantry: post straight to the list; the next poll shows it.
+          ctx.call('POST', '/grocery/ops', { ops: [{ op: 'add', upc: product.upc }] }).then(function () {
+            if (ctx.refresh) ctx.refresh();
+            done(null);
+          }, function (e) { done(e && e.message ? e.message : 'error'); });
+          return;
+        }
         var d = ctx.data && ctx.data();
         var items = d && d.items ? d.items : [];
         var name = root.HUB_SCAN.line(product) || product.upc;

@@ -9,8 +9,8 @@
  *   GET  /live/events    the push line (Server-Sent Events)
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
- *   GET  /touch/state    the touch app's data (grocery, to-dos, and the catalog products of the
- *                        codes on it; no screen is registered)
+ *   GET  /touch/state    the touch app's data (grocery, to-dos, the catalog products of the
+ *                        codes on it, and the pantry; no screen is registered)
  *   POST /touch/todo/ops to-do changes made in the touch app (the same ops as /todo/ops)
  *   POST /grocery/ops    grocery changes made in the touch app or on the TV (it answers the
  *                        browser's OPTIONS preflight for an Origin on HUB_ORIGINS) ({ op: 'add', upc } names
@@ -20,6 +20,11 @@
  *                        Origin, Sec-Fetch-Site: same-origin or X-Hub-Touch: 1; 10 web lookups a minute per phone
  *   POST /products/save  { upc, brand, name, size?, photo? } a product typed in by hand
  *   GET  /products/image/<upc>   a product's saved thumbnail
+ *   POST /pantry/ops     pantry changes from the touch app (pantrydb.js): add, adjust, set,
+ *                        edit, want, remove, brand, category, check, listQty, listMode
+ *   POST /pantry/screen-ops   the same ops from the TV (no token; the same trust as the TV's
+ *                        POST /grocery/ops: home addresses, a listed Origin, OPTIONS answered).
+ *                        The pantry is also a live resource ("pantry") in /live/state
  *   GET  /, /app/...     the touch app (app/touch.html) and the files it loads, read only
  *                        (the touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
  *   POST /linktests      one watch link test answer from the About panel
@@ -42,7 +47,11 @@
  *   GET  /api/grocery    the grocery list (grocery.js)
  *   POST /api/grocery/ops  grocery changes: add, check, remove, clear
  *   GET  /api/grocery/export   the list for a shopping run: each item with its product's
- *                        brand, name, size and a "search" text (products.js)
+ *                        brand, name, size and a "search" text (products.js), and
+ *                        fromPantry / reason (low, manual or '') from the pantry
+ *   GET  /api/pantry     the pantry (pantrydb.js, SQLite data/pantry.db): products, brands, categories
+ *   POST /api/pantry/ops pantry changes (the same ops as POST /pantry/ops)
+ *   GET  /api/pantry/low the pantry items at or under their restock point
  *   GET  /api/products?upc=<code>   look a code up (the catalog, then the web)
  *   GET  /api/products/image?upc=<code>   a product's saved thumbnail (JPEG, PNG or WebP)
  *   GET  /api/layout     the home-screen tile layout (null = the hub's own)
@@ -129,8 +138,9 @@ const echo = require('./echo');
 const translate = require('./translate');
 const grocery = require('./grocery');
 const products = require('./products');
+const pantrydb = require('./pantrydb');
 
-const SERVER_VERSION = '0.29.0';
+const SERVER_VERSION = '0.30.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -955,8 +965,134 @@ function start(options) {
   // opt.products may hold { request, resolve, now, web: false, ... } for tests.
   const catalog = products.createCatalog(Object.assign({}, isObj(opt.products) ? opt.products : {}, {
     dataDir: dataDir, log: log,
-    keep: () => state.resources.grocery.data.items.map((i) => i.upc).filter(Boolean)
+    keep: () => state.resources.grocery.data.items.map((i) => i.upc).filter(Boolean).concat(pantry ? pantry.barcodes() : [])
   }));
+
+  /* --- the pantry (pantrydb.js): SQLite, the grocery list mirrored into its open list --- */
+
+  let pantry = null;
+  if (opt.pantry !== false && pantrydb.available()) {
+    try {
+      pantry = pantrydb.createPantry({ dataDir: dataDir, log: log, catalogGet: (upc) => catalog.get(upc) });
+    } catch (e) {
+      log('pantry: off, the database could not open (' + (e.code || e.message) + ')');
+      if (pantry) pantry.close();
+      pantry = null;
+    }
+    // A move or mirror that fails is logged and tried again next start; the
+    // pantry itself stays on.
+    if (pantry) {
+      try {
+        const m = pantry.migrate({
+          productsFile: path.join(dataDir, 'products.json'),
+          groceryItems: state.resources.grocery.data.items,
+          backupDir: path.join(dataDir, 'pantry-backup')
+        });
+        if (!m.skipped) log('pantry: moved ' + m.products + ' catalog products and ' + m.grocery + ' grocery rows into pantry.db');
+        else pantry.syncGrocery(state.resources.grocery.data.items, []);
+      } catch (e) {
+        log('pantry: the move into pantry.db stopped (' + (e.code || e.message) + '); trying again next start');
+      }
+    }
+  } else if (opt.pantry !== false) {
+    log('pantry: off (this Node has no node:sqlite; it needs Node 22.13 or newer: docker compose pull)');
+  }
+
+  function needPantry() {
+    if (pantry) return pantry;
+    const e = new Error('the pantry is off on this server (it needs Node 22.13 or newer)');
+    e.status = 503;
+    throw e;
+  }
+
+  // Mirrors the grocery list into the pantry's open list. Never fails a
+  // grocery change: a problem is logged (no names) and the next change tries again.
+  function mirrorGrocery(hints) {
+    if (!pantry) return 0;
+    try {
+      return pantry.syncGrocery(state.resources.grocery.data.items, hints || []);
+    } catch (e) {
+      log('pantry: could not mirror the grocery list (' + (e.code || e.message) + ')');
+      return 0;
+    }
+  }
+
+  // The pantry is also a live resource ("pantry": rev + the view's data),
+  // so the TV reads it over the live line like every other one. pantry.db
+  // stays the source; the copy in state is redrawn when the database's own
+  // rev moves (publishPantry), never edited.
+  // Returns null when the copy is current, else { ok, data }. When the copy
+  // cannot be saved, ok is false and publishedDbRev stays behind, so the next
+  // change (or GET /api/pantry) tries again; data is still the fresh view.
+  let publishedDbRev = -1;
+  function publishPantry(atStart) {
+    if (!pantry) { delete state.resources.pantry; return null; }
+    const dbRev = pantry.rev();
+    if (dbRev === publishedDbRev && state.resources.pantry) return null;
+    const data = pantry.view(state.resources.grocery.data.items).data;
+    if (atStart) { state.resources.pantry = { rev: state.rev, data: data }; publishedDbRev = dbRev; return { ok: true, data: data }; }
+    try {
+      changeResource('pantry', data);
+    } catch (e) {
+      log('pantry: the live copy could not be saved; trying again on the next change');
+      return { ok: false, data: data };
+    }
+    publishedDbRev = dbRev;
+    return { ok: true, data: data };
+  }
+  publishPantry(true);
+
+  // The pantry for the phone, the TV and the API: { rev, data }.
+  function pantryView() {
+    const pub = publishPantry();
+    if (pub && !pub.ok) return { rev: state.rev, data: pub.data };
+    return state.resources.pantry || { rev: 0, data: null, off: true };
+  }
+
+  // Applies pantry ops, then the grocery rows they ask for (want, auto-add).
+  // Throws a 400 error (nothing changes) when an op is wrong.
+  function pantryOps(body) {
+    if (!isObj(body)) throw bad('the body must be a JSON object');
+    const p = needPantry();
+    // A scanned code is checked and made canonical the way grocery adds are.
+    const ops = Array.isArray(body.ops) ? body.ops.map((o) => (isObj(o) && o.op === 'add' && typeof o.upc === 'string' && o.upc ? Object.assign({}, o, { upc: catalog.toKey(o.upc) }) : o)) : body.ops;
+    const r = p.applyOps(ops, state.resources.grocery.data.items);
+    let added = 0;
+    if (r.grocery.length) {
+      try {
+        const cur = state.resources.grocery.data.items;
+        const items = grocery.applyOps(cur, r.grocery, Date.now());
+        if (JSON.stringify(items) !== JSON.stringify(cur)) {
+          added = items.length - cur.length;
+          changeResource('grocery', { items: items });
+        }
+      } catch (e) {
+        log('pantry: the grocery list refused ' + r.grocery.length + ' rows (' + e.message + ')');
+      }
+      mirrorGrocery(r.hints);
+    }
+    const pub = publishPantry();
+    if (r.auto) log('pantry: ' + r.auto + ' low ' + (r.auto === 1 ? 'item' : 'items') + ' added to grocery');
+    // The caller always gets the database as it now is, even when the live
+    // copy could not be saved (the phone then never shows stale counts).
+    const v = pub && !pub.ok ? { rev: state.rev, data: pub.data } : pantryView();
+    return { ok: true, rev: v.rev, data: v.data, results: r.results, auto: r.auto, groceryAdded: Math.max(0, added) };
+  }
+
+  // GET /api/grocery/export with the pantry's fromPantry and reason on each row.
+  function groceryExport() {
+    const r = products.exportList(state.resources.grocery.data.items, catalog.get, Date.now());
+    const info = pantry ? pantry.groceryInfo() : {};
+    let n = 0;
+    r.items.forEach((i) => {
+      const x = info[i.id] || { fromPantry: false, reason: '' };
+      i.fromPantry = x.fromPantry;
+      i.reason = x.reason;
+      if (x.fromPantry) n++;
+    });
+    r.counts.fromPantry = n;
+    return r;
+  }
 
   // An add op with a upc: the code is checked and, with no name, the name
   // comes from the catalog ("Brand Name"). Other ops pass through.
@@ -1003,7 +1139,11 @@ function start(options) {
     const cur = state.resources.grocery.data.items;
     const items = grocery.applyOps(cur, withProducts(body.ops), Date.now());
     const changed = JSON.stringify(items) !== JSON.stringify(cur);
-    if (changed) changeResource('grocery', { items: items });
+    if (changed) {
+      changeResource('grocery', { items: items });
+      mirrorGrocery([]);
+      publishPantry();
+    }
     return { ok: true, rev: state.rev, changed: changed, items: state.resources.grocery.data.items };
   }
 
@@ -1453,6 +1593,9 @@ function start(options) {
     '/api/grocery': ['GET'],
     '/api/grocery/ops': ['POST'],
     '/api/grocery/export': ['GET'],
+    '/api/pantry': ['GET'],
+    '/api/pantry/ops': ['POST'],
+    '/api/pantry/low': ['GET'],
     '/api/products': ['GET'],
     '/api/products/image': ['GET'],
     '/api/layout': ['GET', 'POST'],
@@ -1722,8 +1865,21 @@ function start(options) {
           return reply(200, r, 'grocery, rev ' + state.rev);
         }
         if (route === '/api/grocery/export') {
-          const r = products.exportList(state.resources.grocery.data.items, catalog.get, Date.now());
+          const r = groceryExport();
           return reply(200, r, r.items.length + ' items');
+        }
+        if (route === '/api/pantry') {
+          needPantry();
+          const v = pantryView();
+          return reply(200, { ok: true, rev: v.rev, data: v.data }, v.data.counts.items + ' items');
+        }
+        if (route === '/api/pantry/ops') {
+          const r = pantryOps(body);
+          return reply(200, r, 'pantry, rev ' + r.rev);
+        }
+        if (route === '/api/pantry/low') {
+          const items = needPantry().lowList();
+          return reply(200, { ok: true, items: items }, items.length + ' low');
         }
         if (route === '/api/products' || route === '/api/products/image') {
           const q = query || new URLSearchParams();
@@ -1851,7 +2007,7 @@ function start(options) {
   function touch(req, res, route, query) {
     const cors = corsHeaders(req);
     if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
-    if (req.method === 'OPTIONS' && route === '/grocery/ops') {
+    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops')) {
       const h = Object.assign({ 'Cache-Control': 'no-store', 'Content-Length': 0 }, cors);
       if (cors['Access-Control-Allow-Origin']) {
         h['Access-Control-Allow-Methods'] = 'POST';
@@ -1862,13 +2018,13 @@ function start(options) {
       return res.end();
     }
     const image = route.indexOf('/products/image/') === 0;
-    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/products/save' ? 'POST' : 'GET';
+    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' ? 'POST' : 'GET';
     const okMethod = req.method === want || (image && req.method === 'HEAD');
     if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
       return sendJson(res, 200, {
         ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev,
-        grocery: state.resources.grocery, todo: state.resources.todo, products: groceryProducts()
+        grocery: state.resources.grocery, todo: state.resources.todo, products: groceryProducts(), pantry: pantryView()
       }, cors);
     }
     if (image) {
@@ -1909,7 +2065,7 @@ function start(options) {
           // The grocery rows for this code take the corrected "Brand Name", so the TV tile shows the brand too.
           const cur = state.resources.grocery.data.items;
           const line = products.lineName(product);
-          let lineOk = !!line && Array.from(line).length === line.length && line.length <= grocery.MAX_NAME;
+          let lineOk = !!line && Array.from(line).length <= grocery.MAX_NAME;
           const next = cur.map((i) => {
             if (!lineOk || i.upc !== product.upc || i.name === line) return i;
             // Never make two rows with the same name (name commands pick the first).
@@ -1917,11 +2073,26 @@ function start(options) {
             return Object.assign({}, i, { name: line });
           });
           if (JSON.stringify(next) !== JSON.stringify(cur)) changeResource('grocery', { items: next });
+          // The pantry's row for this code takes the correction too.
+          if (pantry) {
+            try { pantry.fromCatalog(product); mirrorGrocery([]); publishPantry(); } catch (e) { log('pantry: could not take a catalog correction (' + (e.code || e.message) + ')'); }
+          }
           sendJson(res, 200, { ok: true, product: product }, cors);
         } catch (e) {
           fail(res, e, cors);
         }
       }, PRODUCT_BODY_LIMIT);
+    }
+    if (route === '/pantry/ops' || route === '/pantry/screen-ops') {
+      return readBody(req, res, (body) => {
+        try {
+          const r = pantryOps(body);
+          sendJson(res, 200, r, cors);
+          log((route === '/pantry/screen-ops' ? 'screen' : 'touch app') + ' changed the pantry (rev ' + r.rev + ')');
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
     }
     return readBody(req, res, (body) => {
       try {
@@ -2125,7 +2296,7 @@ function start(options) {
     '/echo/run': 1
   };
 
-  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/products/lookup': 1, '/products/save': 1 };
+  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1 };
 
   function handler(door) {
     return (req, res) => {
@@ -2234,6 +2405,7 @@ function start(options) {
     allsounds: sounds,
     echo: echoCtl,
     products: catalog,
+    pantry: pantry,
     _debug: () => {
       forgetOld();
       return {
@@ -2268,6 +2440,7 @@ function start(options) {
     sounds.close();
     lights.close();
     catalog.close();
+    if (pantry) pantry.close();
     if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));

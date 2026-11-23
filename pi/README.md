@@ -125,6 +125,21 @@ For a shopping run (the export): `./hub grocery export` prints one search line p
 
 The TV has a grocery tile too (on the "Groceries test" layout). It reads the list over the live line like every other widget and posts its changes to the same `POST /grocery/ops`. Its page is on another origin, so that needs server 0.26.1 (it answers the browser's preflight): run `hubup` once, then `./hub status` should say `version 0.26.1`. With an older server the TV shows the list but a change says it didn't save and goes back. The log says `screen changed the grocery list` for the TV and `touch app changed the grocery list` for a phone, never an item's name.
 
+### The pantry (server 0.30.0)
+
+What is at home, on the phone (menu: **Pantry**): Stock (what you have, low items first) and Usual items (everything you keep or have bought, with a search that ignores case and accents), place chips (Fridge, Freezer, Pantry, Other), a − n + stepper, a cart button, and a Low badge with the restock point ("Low · buy at 6"). Tap a row for its settings: place, "buy more when I have", how many to buy, the auto-add switch, what to do if it is out, brand and category (picked from the list, or added once: "heinz" finds "Heinz", never a second brand), size and unit. Scan has an **Add to** chip, Groceries or Pantry, remembered on the phone for each view.
+
+When a count drops to or under its restock point, the Pi puts the item on the grocery list itself, once (never on the add that first puts it in the pantry: a new item at its restock point just shows Low). Counts and restock points are whole numbers; a size may be a decimal (0.5 gal, "½ gal"). Remove that row while it is still low and it stays off until the count has gone above the restock point again. The starting restock point comes from the kind of item (eggs 6, milk and bread 1, frozen and canned 2, paper goods 1, ...), and each item can change its own.
+
+Storage is SQLite in `data/pantry.db` (Node's built-in `node:sqlite`, Node 22.13 or newer; `docker compose pull` gets a newer `node:22-alpine` if the log says `pantry: off`). On the first start it copies the catalog (`data/products.json`) and the grocery list in once, keeps copies in `data/pantry-backup/`, and leaves both JSON files as they are (`products.json` stays the barcode lookup cache). The grocery list keeps working the same way everywhere; every change to it is mirrored into the pantry's open list, so `GET /api/grocery/export` adds `fromPantry` and `reason` (`low`, `manual` or empty) to each item and `counts.fromPantry`.
+
+- `./hub pantry add "Eggs" --qty 12 --at 6 --place fridge` (`--brand "Vital Farms"`, `--auto off` optional; adding the same item again adds to its count)
+- `./hub pantry set "Eggs" --qty 2` (id or name; `--at 6`, `--place freezer`, `--auto on|off`)
+- `./hub pantry list`, `./hub pantry low`
+- Mailbox: `pantry.add {"name": "Eggs", "qty": 12, "restockAt": 6, "location": "fridge"}` (or `"upc"`; `brand`, `autoAdd` optional), `pantry.set {"name": "Eggs", "qty": 2}` (or `"id"`; `qty`, `restockAt`, `location`, `autoAdd`), `pantry.list`, `pantry.low`
+
+Routes: touch `POST /pantry/ops` (ops `add`, `adjust`, `set`, `edit`, `want`, `remove`, `brand`, `category`, `check`, `listQty`, `listMode`); the TV's `POST /pantry/screen-ops` (the same ops, the same trust as its `/grocery/ops`); control `GET /api/pantry`, `POST /api/pantry/ops`, `GET /api/pantry/low`. `/touch/state` and the live line carry `pantry` (rev and data). The log counts changes and low items added; it never names a product, a brand or a code. After pulling: `hubup`, then `./hub status` should say `version 0.30.0`. Nothing changes in `.env`.
+
 ## Tile layout
 
 Where each tile sits on the home screen can be changed from the Pi, without editing `app/config.js`:

@@ -19,6 +19,9 @@
  *   ./hub todo remove <id or exact title>
  *   ./hub grocery add "Milk" "Eggs"    (one item per quoted name, up to 20)
  *   ./hub grocery list | done <id or name> | remove <id or name> | clear | export
+ *   ./hub pantry add "Eggs" [--qty 12] [--at 6] [--place fridge] [--brand "Vital Farms"] [--auto off]
+ *   ./hub pantry set <id or name> [--qty 2] [--at 6] [--place fridge] [--auto on|off]
+ *   ./hub pantry list | low
  *   ./hub calendar status            each calendar, and the next event
  *   ./hub calendar refresh           read the calendars again now
  *   ./hub layout show                the home-screen tile layout
@@ -83,6 +86,7 @@ const linktests = require('./linktests');
 const tvremote = require('./tvremote');
 const news = require('./news');
 const grocery = require('./grocery');
+const pantrydb = require('./pantrydb');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
@@ -1332,6 +1336,9 @@ const HELP = [
   '  ./hub grocery done "Milk"   tick an item, by id or name; ./hub grocery remove "Milk" takes it off',
   '  ./hub grocery clear         drop every ticked item',
   '  ./hub grocery export        what to search a store for, one line per item to get (brand, name, size)',
+  '  ./hub pantry add "Eggs" --qty 12 --at 6 --place fridge   keep an item in the pantry (--brand, --auto off optional)',
+  '  ./hub pantry set "Eggs" --qty 2   change how many are left (--at sets "buy more at", --place, --auto on|off)',
+  '  ./hub pantry list           what is at home, low items marked; ./hub pantry low lists only the low ones',
   '  ./hub calendar status       each calendar, and the next event',
   '  ./hub calendar refresh      read the calendars again now (after adding an event)',
   '  ./hub layout show           the home-screen tile layout',
@@ -1449,6 +1456,145 @@ async function groceryExport(callFn) {
   };
 }
 
+/* ---------- pantry (shared with mailbox.js) ---------- */
+
+const PANTRY_PLACES = ['fridge', 'freezer', 'pantry', 'other'];
+
+function amount(n) { return String(Math.round(n * 1000) / 1000); }
+
+function pantryLine(p) {
+  const name = p.brand ? pantrydb.lineName(p.brand, p.name) : p.name;
+  const bits = [amount(p.qty) + ' left', 'buy at ' + amount(p.restockAt), p.location];
+  if (!p.autoAdd) bits.push('auto-add off');
+  if (p.onList) bits.push(p.inCart ? 'in the cart' : 'on the grocery list');
+  return (p.low ? '[low] ' : '      ') + name + ' (' + bits.join(', ') + ')   id ' + p.id;
+}
+
+async function pantryData(callFn) {
+  return (await callFn('GET', '/api/pantry')).data || { products: [] };
+}
+
+// An owned product by id or name ("Name" or "Brand Name", any case or accents).
+function pantryMatch(list, what) {
+  const w = String(what).trim();
+  if (/^\d+$/.test(w)) {
+    const hit = list.find((p) => p.id === Number(w));
+    if (hit) return hit;
+  }
+  const k = pantrydb.keyOf(w);
+  const hits = list.filter((p) => p.owned && (pantrydb.keyOf(p.name) === k || (p.brand && pantrydb.keyOf(p.brand + ' ' + p.name) === k)));
+  if (hits.length > 1) stop('More than one pantry item is called "' + w + '"; use its id (./hub pantry list).');
+  if (!hits.length) stop('No pantry item has the id or name "' + w + '". Run ./hub pantry list to see them.');
+  return hits[0];
+}
+
+function pantryAutoText(r) {
+  return r.auto ? ' It is low, so it went on the grocery list.' : '';
+}
+
+// a: { name, upc, brand, qty, location, restockAt, autoAdd }
+async function pantryAdd(callFn, a) {
+  const op = { op: 'add' };
+  ['name', 'upc', 'brand', 'qty', 'location', 'restockAt', 'autoAdd'].forEach((k) => { if (a[k] !== undefined) op[k] = a[k]; });
+  const r = await callFn('POST', '/api/pantry/ops', { ops: [op] });
+  const id = r.results && r.results[0] ? r.results[0].id : null;
+  const p = (r.data && r.data.products || []).find((x) => x.id === id);
+  if (!p) return { message: 'Added to the pantry.', data: { id: id } };
+  const name = p.brand ? pantrydb.lineName(p.brand, p.name) : p.name;
+  return {
+    message: (r.results[0].existed ? 'Added ' + amount(a.qty === undefined ? 1 : a.qty) + ' more "' + name + '": ' : 'Added "' + name + '" to the pantry: ') +
+      amount(p.qty) + ' left, buy at ' + amount(p.restockAt) + ', ' + p.location + '.' + pantryAutoText(r),
+    data: { id: p.id, name: p.name, brand: p.brand, qty: p.qty, restockAt: p.restockAt, low: p.low, onList: p.onList, autoAdded: r.auto || 0 }
+  };
+}
+
+// a: { qty, restockAt, location, autoAdd } (at least one)
+async function pantrySet(callFn, what, a) {
+  const p = pantryMatch((await pantryData(callFn)).products || [], what);
+  const ops = [];
+  if (a.qty !== undefined || a.restockAt !== undefined) {
+    const o = { op: 'set', id: p.id };
+    if (a.qty !== undefined) o.qty = a.qty;
+    if (a.restockAt !== undefined) o.restockAt = a.restockAt;
+    ops.push(o);
+  }
+  if (a.location !== undefined || a.autoAdd !== undefined) {
+    const o = { op: 'edit', id: p.id };
+    if (a.location !== undefined) o.location = a.location;
+    if (a.autoAdd !== undefined) o.autoAdd = a.autoAdd;
+    ops.push(o);
+  }
+  if (!ops.length) stop('Say what to change: --qty, --at, --place or --auto.');
+  const r = await callFn('POST', '/api/pantry/ops', { ops: ops });
+  const after = (r.data && r.data.products || []).find((x) => x.id === p.id) || p;
+  return {
+    message: 'Pantry: ' + pantryLine(after).trim() + '.' + pantryAutoText(r),
+    data: { id: after.id, name: after.name, qty: after.qty, restockAt: after.restockAt, location: after.location, autoAdd: after.autoAdd, low: after.low, onList: after.onList, autoAdded: r.auto || 0 }
+  };
+}
+
+function pantrySummary(p) {
+  return { id: p.id, name: p.name, brand: p.brand, qty: p.qty, restockAt: p.restockAt, location: p.location, low: p.low, onList: p.onList, autoAdd: p.autoAdd };
+}
+
+async function pantryList(callFn) {
+  const d = await pantryData(callFn);
+  const owned = (d.products || []).filter((p) => p.owned);
+  owned.sort((x, y) => (PANTRY_PLACES.indexOf(x.location) - PANTRY_PLACES.indexOf(y.location)) || (Number(y.low) - Number(x.low)) || x.name.localeCompare(y.name));
+  const low = owned.filter((p) => p.low).length;
+  const head = owned.length ? owned.length + ' in the pantry, ' + low + ' low.' : 'The pantry is empty.';
+  return { message: [head].concat(owned.map(pantryLine)).join('\n'), data: { counts: { items: owned.length, low: low }, items: owned.map(pantrySummary) } };
+}
+
+async function pantryLow(callFn) {
+  const items = (await callFn('GET', '/api/pantry/low')).items || [];
+  const head = items.length ? items.length + ' low in the pantry.' : 'Nothing in the pantry is low.';
+  return { message: [head].concat(items.map(pantryLine)).join('\n'), data: { low: items.length, items: items.map(pantrySummary) } };
+}
+
+function pantryNumber(v, flag, min, max) {
+  const n = Number(v);
+  if (v === true || !isFinite(n) || n < min || n > max || Math.floor(n) !== n) stop('--' + flag + ' must be a whole number from ' + min + ' to ' + max + '.');
+  return n;
+}
+
+function pantryOpts(o) {
+  const a = {};
+  if (o.qty !== undefined) a.qty = pantryNumber(o.qty, 'qty', 0, 9999);
+  if (o.at !== undefined) a.restockAt = pantryNumber(o.at, 'at', 0, 999);
+  if (o.place !== undefined) {
+    if (PANTRY_PLACES.indexOf(o.place) < 0) stop('--place is one of ' + PANTRY_PLACES.join(', ') + '.');
+    a.location = o.place;
+  }
+  if (o.auto !== undefined) {
+    if (o.auto !== 'on' && o.auto !== 'off') stop('--auto is on or off.');
+    a.autoAdd = o.auto === 'on';
+  }
+  return a;
+}
+
+async function pantryCmd(args) {
+  const sub = args[0];
+  const a = parseArgs(args.slice(1), ['qty', 'at', 'place', 'auto', 'brand']);
+  const what = a.words.join(' ').trim();
+  if (sub === 'add') {
+    if (!what) stop('Say what to add, for example: ./hub pantry add "Eggs" --qty 12 --at 6 --place fridge');
+    const o = pantryOpts(a.opts);
+    o.name = what;
+    if (typeof a.opts.brand === 'string') o.brand = a.opts.brand;
+    say((await pantryAdd(call, o)).message);
+    return;
+  }
+  if (sub === 'set') {
+    if (!what) stop('Say which item, by its id or name. Run ./hub pantry list to see them.');
+    say((await pantrySet(call, what, pantryOpts(a.opts))).message);
+    return;
+  }
+  if (sub === 'list') { (await pantryList(call)).message.split('\n').forEach(say); return; }
+  if (sub === 'low') { (await pantryLow(call)).message.split('\n').forEach(say); return; }
+  stop('Use one of: pantry add, pantry set, pantry list, pantry low. Run ./hub help for examples.');
+}
+
 async function groceryCmd(args) {
   const sub = args[0];
   const rest = args.slice(1);
@@ -1524,6 +1670,7 @@ async function main(argv) {
   }
   if (cmd === 'todo') return todo(rest);
   if (cmd === 'grocery') return groceryCmd(rest);
+  if (cmd === 'pantry') return pantryCmd(rest);
   if (cmd === 'calendar') return calendar(rest);
   if (cmd === 'layout') return layout(rest);
   if (cmd === 'awws') return awwsCommand(rest);
@@ -1564,6 +1711,10 @@ module.exports = {
   groceryChange: groceryChange,
   groceryClear: groceryClear,
   groceryExport: groceryExport,
+  pantryAdd: pantryAdd,
+  pantrySet: pantrySet,
+  pantryList: pantryList,
+  pantryLow: pantryLow,
   todoAddText: todoAddText,
   todoListLines: todoListLines,
   todoChangeText: todoChangeText,

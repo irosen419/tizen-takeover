@@ -100,7 +100,8 @@ async function main() {
       const ids = seen.map((s) => s.id);
       const missing = configIds().filter((id) => ids.indexOf(id) < 0);
       assert(!missing.length, 'missing: ' + missing.join(', '));
-      seen.slice(2).forEach((s) => assert(s.tv && s.badge === 'TV only' && s.disabled && s.tag === 'LI', JSON.stringify(s)));
+      assert(seen[2].id === 'pantry' && !seen[2].tv && seen[2].tag === 'A', JSON.stringify(seen[2]));
+      seen.slice(3).forEach((s) => assert(s.tv && s.badge === 'TV only' && s.disabled && s.tag === 'LI', JSON.stringify(s)));
       assert(ids.indexOf('budget') < 0, 'the budget settings group is not a widget');
       // Every row is a big target.
       const small = await page.evaluate(() => Array.prototype.filter.call(document.querySelectorAll('button, a'), (b) => {

@@ -417,6 +417,14 @@ body.sc-open { overflow: hidden; }
 .sc-primary .sc-ic { font-size: 20px; stroke-width: 2.2; }
 .sc-quiet { background: transparent; color: var(--text); }
 .sc-pair { display: flex; gap: 8px; margin-top: 8px; }
+/* "Add to: Groceries | Pantry" (scan.js destChips): chips wrap, never a fixed width. */
+.sc-dests { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+.sc-dests-word { color: var(--text-3); font-size: 0.875rem; font-weight: 500; line-height: var(--lh); margin-right: 2px; }
+.sc-dest {
+  min-height: 44px; padding: 4px 16px; border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--text-2); font-size: 0.9375rem; line-height: var(--lh);
+}
+.sc-dest.is-on { border-color: transparent; background: var(--text); color: var(--page); font-weight: 600; }
 .sc-pair .sc-btn { flex: 1; min-width: 0; padding: 4px 12px; }
 
 .sc-sheet {
