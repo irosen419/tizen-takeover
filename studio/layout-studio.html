@@ -1020,7 +1020,10 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     // app/widgets/architecture.js (v0.30.1): the Architecture map on the TV, driven by the remote; alone on the "Hub architecture" layout.
     architecture:  { title: 'Architecture',          sub: 'The map of the whole system: Big picture, group diagrams and a detail drawer, with the data flows' },
     // app/widgets/grocery.js: the grocery list, kept on the Pi. Touch view (app/touch.html) and, since PR 2 of the one-app plan, a TV tile on the "Groceries test" layout.
-    grocery:       { title: 'Grocery',               sub: 'The grocery list, kept on the Pi: add, tick, remove and clear on the TV or from a phone or tablet' }
+    grocery:       { title: 'Grocery',               sub: 'The grocery list, kept on the Pi: add, tick, remove and clear on the TV or from a phone or tablet' },
+    // app/widgets/pantry.js: Pantry and List over the pantry database (plan v2), on sample data until the Pi's routes land; on the "Groceries" layout.
+    pantry:        { title: 'Pantry',                sub: 'Products owned before: what is left, Out and Low flagged; OK on one in full screen opens its product page to edit' },
+    list:          { title: 'List',                  sub: 'The open shopping list: each product with its quantity, Auto when the pantry added it; OK in full screen opens the product page' }
   };
   var BASE = [
     { id: 'today', x: 0, y: 0, w: 3, h: 2 }, { id: 'entertainment', x: 3, y: 0, w: 6, h: 2 }, { id: 'weather', x: 9, y: 0, w: 3, h: 2 },
@@ -1080,6 +1083,10 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       { id: 'today', x: 0, y: 0, w: 3, h: 2 }, { id: 'grocery', x: 3, y: 0, w: 3, h: 4 }, { id: 'calendar', x: 6, y: 0, w: 3, h: 4 },
       { id: 'weather', x: 9, y: 0, w: 3, h: 2 }, { id: 'todo', x: 0, y: 2, w: 3, h: 4 }, { id: 'nowplaying', x: 9, y: 2, w: 3, h: 2 },
       { id: 'entertainment', x: 3, y: 4, w: 6, h: 2 }, { id: 'wotd', x: 9, y: 4, w: 3, h: 2 }
+    ] },
+    // Pantry (left) and List (right) side by side, app/widgets/pantry.js.
+    { id: 'groceries', name: 'Groceries', layout: [
+      { id: 'pantry', x: 0, y: 0, w: 6, h: 6 }, { id: 'list', x: 6, y: 0, w: 6, h: 6 }
     ] }
   ];
   // A preset hides the Stock tiles it leaves out, as the TV does.
@@ -1622,8 +1629,31 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       panel: { en: 'Two columns. Left: the date and level (A1, A2 or B1), the word big, how to say it, the English and part of speech. Right: What it means (both languages, the hub’s first) and Example (Spanish, then English).',
                es: 'Dos columnas. A la izquierda: la fecha y el nivel (A1, A2 o B1), la palabra en grande, cómo se dice, el inglés y la categoría. A la derecha: Qué significa (en los dos idiomas, primero el del centro) y Ejemplo (en español y en inglés).' },
       full: { en: 'The same two columns, much bigger.', es: 'Las mismas dos columnas, mucho más grandes.' }
-    }
+    },
+    // app/widgets/pantry.js: drawn here with the placeholder look; the cells below say what it really shows.
+    pantry: plannedEntry({ en: 'Pantry', es: 'Despensa' },
+      { en: 'Products owned before, with how many are left; Out and Low flagged. Sample data until the Pi’s pantry routes land.',
+        es: 'Los productos que ya se compraron, con cuántos quedan; Agotado y Queda poco marcados. Datos de ejemplo hasta que lleguen las rutas de la despensa en la Pi.' }),
+    list: plannedEntry({ en: 'List', es: 'Lista' },
+      { en: 'The open shopping list: each product with its quantity, Auto when the pantry added it. Sample data until the Pi’s pantry routes land.',
+        es: 'La lista de compras abierta: cada producto con su cantidad, Automático cuando lo agregó la despensa. Datos de ejemplo hasta que lleguen las rutas de la despensa en la Pi.' })
   };
+  // Pantry and List are built: what their cells really show.
+  (function () {
+    var page = { en: 'Full screen: two columns of rows, bigger. OK on a row opens the product page: brand, name, size and unit (pills), Remaining, Restock at and Buy quantity (a number box with − and +), Add to the list when low (On / Off), Where it lives, If the store is out, Notes. Changes save as they are made; Back goes back to the row.',
+                 es: 'Pantalla completa: dos columnas de filas, más grandes. OK en una fila abre la página del producto: marca, nombre, tamaño y unidad (botones), Quedan, Reponer al llegar a y Cantidad a comprar (un cuadro de número con − y +), Agregar a la lista cuando quede poco (Sí / No), Dónde se guarda, Si la tienda no lo tiene, Notas. Los cambios se guardan al hacerlos; Atrás vuelve a la fila.' };
+    var p = SIZE_MATRIX.pantry, l = SIZE_MATRIX.list;
+    p.strip = { en: '“5 out · 3 low” (the low part leaves when it does not fit). 1 column: the out count alone.', es: '«5 agotados · 3 con poco» (lo segundo se quita si no cabe). 1 columna: solo los agotados.' };
+    p.standard = { en: 'The pantry count (“18 in the pantry”), the Out and Low chips with their counts, then the first rows that fit and “+N more”.', es: 'La cuenta («18 en la despensa»), las etiquetas Agotado y Queda poco con sus cuentas, luego las primeras filas que quepan y «+N más».' };
+    p.tall = { en: 'Standard with the count big and more rows: out first (an Out chip), then low (Low chip and “1 left”), then the rest with what is left.', es: 'Estándar con la cuenta grande y más filas: primero lo agotado (etiqueta Agotado), luego lo que queda poco (etiqueta y «quedan 1»), luego el resto con lo que queda.' };
+    p.panel = { en: 'Opens in place: rows under Out, Running low and In stock (name, brand · size · where, what is left). OK on a row goes full screen with its product page.', es: 'Se abre en su lugar: filas en Agotados, Queda poco y En existencia (nombre, marca · tamaño · dónde, lo que queda). OK en una fila pasa a pantalla completa con su página de producto.' };
+    p.full = page;
+    l.strip = { en: '“8 to buy · Organic Valley Whole milk” (the first item; a long name ends in “…”). Empty: “Nothing to buy”. 1 column: the count alone.', es: '«8 por comprar · Organic Valley Whole milk» (lo primero; un nombre largo termina en «…»). Vacía: «Nada por comprar». 1 columna: solo la cuenta.' };
+    l.standard = { en: 'The count (“8 to buy”), then the first items with their quantity (×2), and “+N more”.', es: 'La cuenta («8 por comprar»), luego lo primero con su cantidad (×2) y «+N más».' };
+    l.tall = { en: 'Standard with the count big and every item that fits.', es: 'Estándar con la cuenta grande y todo lo que quepa.' };
+    l.panel = { en: 'Opens in place: On the list rows (name, brand · size, Auto chip, ×quantity). OK on a row goes full screen with its product page.', es: 'Se abre en su lugar: filas En la lista (nombre, marca · tamaño, etiqueta Automático, ×cantidad). OK en una fila pasa a pantalla completa con su página de producto.' };
+    l.full = page;
+  })();
   // Architecture is built: say what its cells really show (the placeholder wording above only draws the preview).
   (function () {
     var a = SIZE_MATRIX.architecture;
@@ -1638,7 +1668,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
   })();
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'sunpath', 'ambience', 'ambiance', 'mirror', 'soundctl', 'architecture', 'grocery'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'sunpath', 'ambience', 'ambiance', 'mirror', 'soundctl', 'architecture', 'grocery', 'pantry', 'list'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -2167,12 +2197,13 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
     trend: '<path d="M3 17l5-6 4 3 8-9"/><path d="M15 5h5v5"/>',
     bolt: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+    jar: '<path d="M8 3.5h8v3H8z"/><path d="M7.5 6.5h9a1.5 1.5 0 0 1 1.5 1.5v11a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V8a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M6 11h12M6 16h12"/>',
     basket: '<path d="M4 9h16l-1.6 9.2a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8z"/><path d="M8.5 9l3.5-5 3.5 5M9.5 13v3M14.5 13v3"/>',
     sitemap: '<rect x="8.5" y="3" width="7" height="5.5" rx="1.2"/><rect x="2.5" y="15.5" width="7" height="5.5" rx="1.2"/><rect x="14.5" y="15.5" width="7" height="5.5" rx="1.2"/><path d="M12 8.5v3.5M6 15.5V12h12v3.5"/>'
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
     'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
-    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', 'budget-lab': 'wallet', soundctl: 'music', sunpath: 'plantsun', architecture: 'sitemap', grocery: 'basket' };
+    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', 'budget-lab': 'wallet', soundctl: 'music', sunpath: 'plantsun', architecture: 'sitemap', grocery: 'basket', pantry: 'jar', list: 'basket' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';

@@ -198,6 +198,14 @@ var HUB_CONFIG = {
       { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
       { widget: 'entertainment', x: 3, y: 4, w: 6, h: 2 },
       { widget: 'wotd',          x: 9, y: 4, w: 3, h: 2 }
+    ] },
+    /* Groceries: Pantry (left) and List (right) side by side
+       (app/widgets/pantry.js). Both run on sample data until the pantry
+       database on the Pi lands; OK on a row in full screen opens the
+       product page. */
+    { id: 'groceries', name: 'Groceries', layout: [
+      { widget: 'pantry',        x: 0, y: 0, w: 6, h: 6 },
+      { widget: 'list',          x: 6, y: 0, w: 6, h: 6 }
     ] }
   ],
 
