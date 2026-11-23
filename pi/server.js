@@ -25,6 +25,9 @@
  *   POST /pantry/screen-ops   the same ops from the TV (no token; the same trust as the TV's
  *                        POST /grocery/ops: home addresses, a listed Origin, OPTIONS answered).
  *                        The pantry is also a live resource ("pantry") in /live/state
+ *   POST /guest/pin      the Guest mode PIN from the TV's Clock page (guestpin.js; same trust and
+ *                        OPTIONS as /pantry/screen-ops): { action: 'status' | 'check' | 'set', pin }.
+ *                        Only a salted scrypt hash is kept (data/guest-pin.json); 3 wrong in a row lock it
  *   GET  /, /app/...     the touch app (app/touch.html) and the files it loads, read only
  *                        (the touch routes accept home and Tailscale addresses even when HUB_TV_IPS is set)
  *   POST /linktests      one watch link test answer from the About panel
@@ -112,6 +115,8 @@
  *
  *   POST /api/translate  { to: "es", texts: [...] } -> { map } (translate.js; the TV uses POST /translate)
  *   GET  /api/translate/usage -> lines, Gemini calls, tokens and estimated cost today, this month, in all
+ *   GET  /api/guest-pin  -> { set, locked_for } (never the PIN or its hash)
+ *   POST /api/guest-pin/reset -> { removed }: forget the Guest mode PIN; the TV asks for a new one (./hub guest-pin reset)
  *
  * Node 14 or newer, no npm packages. Run it with: node server.js
  */
@@ -139,8 +144,9 @@ const translate = require('./translate');
 const grocery = require('./grocery');
 const products = require('./products');
 const pantrydb = require('./pantrydb');
+const guestpin = require('./guestpin');
 
-const SERVER_VERSION = '0.30.0';
+const SERVER_VERSION = '0.31.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -690,6 +696,8 @@ function start(options) {
   const remote = tvremote.create(Object.assign({ dataDir: dataDir, log: log, host: opt.tvRemoteIp || '' }, isObj(opt.tvremote) ? opt.tvremote : {}));
 
   let state = loadState(dataDir, log);
+  // The Guest mode PIN (guestpin.js): a hash in data/guest-pin.json, wrong tries counted in memory.
+  const guestPin = guestpin.create(Object.assign({ dataDir: dataDir, log: log }, isObj(opt.guestpin) ? opt.guestpin : {}));
   const sse = new Set();      // { res, since, address }
   const polls = new Set();    // { res, epoch, rev, cursor, timer, address }
   const pollSeen = new Map(); // address -> { since, last }
@@ -1628,7 +1636,9 @@ function start(options) {
     '/api/ambience/mood': ['POST'],
     '/api/ambience/config': ['GET', 'POST'],
     '/api/translate': ['POST'],
-    '/api/translate/usage': ['GET']
+    '/api/translate/usage': ['GET'],
+    '/api/guest-pin': ['GET'],
+    '/api/guest-pin/reset': ['POST']
   };
 
   function statusBody() {
@@ -1715,6 +1725,8 @@ function start(options) {
           return undefined;
         }
         if (route === '/api/translate/usage') return reply(200, Object.assign({ ok: true }, translator.info()));
+        if (route === '/api/guest-pin') return reply(200, Object.assign({ ok: true }, guestPin.status()));
+        if (route === '/api/guest-pin/reset') return reply(200, { ok: true, removed: guestPin.reset() });
         if (route === '/api/status') return reply(200, statusBody());
         if (route === '/api/log') return reply(200, logBody(query));
         if (route === '/api/calendar') {
@@ -2007,7 +2019,7 @@ function start(options) {
   function touch(req, res, route, query) {
     const cors = corsHeaders(req);
     if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
-    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops')) {
+    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/guest/pin')) {
       const h = Object.assign({ 'Cache-Control': 'no-store', 'Content-Length': 0 }, cors);
       if (cors['Access-Control-Allow-Origin']) {
         h['Access-Control-Allow-Methods'] = 'POST';
@@ -2018,7 +2030,7 @@ function start(options) {
       return res.end();
     }
     const image = route.indexOf('/products/image/') === 0;
-    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' ? 'POST' : 'GET';
+    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/guest/pin' || route === '/products/save' ? 'POST' : 'GET';
     const okMethod = req.method === want || (image && req.method === 'HEAD');
     if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
@@ -2082,6 +2094,12 @@ function start(options) {
           fail(res, e, cors);
         }
       }, PRODUCT_BODY_LIMIT);
+    }
+    if (route === '/guest/pin') {
+      // Never log the PIN; guestpin.js logs wrong tries and locks by count only.
+      return readBody(req, res, (body) => {
+        guestPin.handle(body).then((r) => sendJson(res, 200, r, cors), (e) => fail(res, e, cors));
+      });
     }
     if (route === '/pantry/ops' || route === '/pantry/screen-ops') {
       return readBody(req, res, (body) => {
@@ -2296,7 +2314,7 @@ function start(options) {
     '/echo/run': 1
   };
 
-  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1 };
+  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/guest/pin': 1, '/products/lookup': 1, '/products/save': 1 };
 
   function handler(door) {
     return (req, res) => {

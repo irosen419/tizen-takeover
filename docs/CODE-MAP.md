@@ -43,7 +43,7 @@ Support folders: `dev/` (tests, screenshot scripts, laptop preview, version tool
 
 1. `package.json`: the TizenBrew manifest (`appPath`, `hubPage`, `serviceFile`) and the version.
 2. `app/index.html` and `app/update.js` (about 850 lines, read the top comment): the loader. It asks GitHub for the newest commit and opens that commit's `hub.html`.
-3. `app/hub.html`: the script order is the load order (`update.js`, `config.js`, backgrounds, i18n, `guest.js`/`icons.js`/`logos.js`, the widgets with their data files, `live.js`, `clay.js`, `agents.js`, `motion.js`, then `hub.js` last).
+3. `app/hub.html`: the script order is the load order (`update.js`, `config.js`, backgrounds, i18n, `guest.js`/`pin.js`/`icons.js`/`logos.js`, the widgets with their data files, `live.js`, `clay.js`, `agents.js`, `motion.js`, then `hub.js` last).
 4. `app/config.js` (about 550 lines): `HUB_PI`, the built-in `layout`, the saved `layouts`, per-widget `widgets` settings.
 5. Top comment of `app/hub.js` (the file is about 3,600 lines): the widget contract and `ctx`.
 6. `app/widgets/wotd.js` (about 350 lines): a small, complete widget to copy.
@@ -69,7 +69,7 @@ Support folders: `dev/` (tests, screenshot scripts, laptop preview, version tool
 | Door | Routes | Who gets in |
 | --- | --- | --- |
 | Screen routes (`SCREEN_ROUTES`) | `/live/*`, `/todo/ops`, `/shows/*`, `/echo/run`, ... | home-network addresses (or `HUB_TV_IPS`), no token |
-| Touch routes (`TOUCH_ROUTES`) and the touch app files (`/`, `/app/...`) | `/touch/state`, `/touch/todo/ops`, `/grocery/ops`, `/products/*` | home and Tailscale addresses |
+| Touch routes (`TOUCH_ROUTES`) and the touch app files (`/`, `/app/...`) | `/touch/state`, `/touch/todo/ops`, `/grocery/ops`, `/pantry/screen-ops`, `/guest/pin`, `/products/*` | home and Tailscale addresses |
 | Control API (`control()`) | `/api/*` | bearer token |
 | Side door | control API only, on `127.0.0.1` at `HUB_TUNNEL_PORT` | local processes, bearer token |
 | `/health` | none | anyone |
@@ -83,7 +83,7 @@ Support folders: `dev/` (tests, screenshot scripts, laptop preview, version tool
 | Network | `XMLHttpRequest`, not `fetch` | `http`, `fetch` |
 | Shared state | `window.HUB_*` globals | module exports |
 
-The main globals: `HUB_CONFIG` (`config.js`), `HUB_WIDGETS` (every widget), `HUB_I18N` (`i18n.js`, English and Spanish), `HUB_LIVE` (`live.js`), `HUB_GUEST`, `HUB_ICONS`, `HUB_SHOWS`, `HUB_AUDIO`, `HUB_AGENTS`, `HUB_CLAY`, `HUB_FX`, `HUB_UPDATE`, `HUB_BUILD` (the version). `HUB_TEST` is for tests only. The bare `var HUB_PI` in `config.js` is the Pi's address.
+The main globals: `HUB_CONFIG` (`config.js`), `HUB_WIDGETS` (every widget), `HUB_I18N` (`i18n.js`, English and Spanish), `HUB_LIVE` (`live.js`), `HUB_GUEST`, `HUB_PIN` (`pin.js`), `HUB_ICONS`, `HUB_SHOWS`, `HUB_AUDIO`, `HUB_AGENTS`, `HUB_CLAY`, `HUB_FX`, `HUB_UPDATE`, `HUB_BUILD` (the version). `HUB_TEST` is for tests only. The bare `var HUB_PI` in `config.js` is the Pi's address.
 
 Ruby readers: `handler()` is a hand-rolled Rack app with route hashes; a widget is a duck-typed object (implement what you need, skip the rest); each test's `check(name, fn)` is a bare assert, no framework.
 
@@ -123,6 +123,7 @@ More detail: "Writing a widget" in `README.md` and the top of `app/hub.js`.
 | Layout looks old | the Pi's saved layout beats `app/config.js` (`docs/live-updates.md`, "Tile layout from the Pi"); the Studio keeps its own draft |
 | Phone app differs from TV | `app/touch.js` and the widget's `renderTouch` |
 | A dollar amount readable in Guest mode | `app/guest.js` (blurs amounts on the money tiles, panels and banner: `MONEY`, `MATCHERS`), `.guest-blur` in `app/style.css`; `dev/money-test.js` |
+| Guest mode PIN pop-up, wrong PIN, forgotten PIN | `app/pin.js` + `app/pin.css` (the pop-up; `choose()` in `app/widgets/today.js` opens it), `POST /guest/pin` in `pi/server.js` -> `pi/guestpin.js` (hash in `data/guest-pin.json`, the lock); `./hub guest-pin reset`; `dev/pin-test.js`, `pi/guestpin-test.js` |
 
 ## 9. Glossary
 

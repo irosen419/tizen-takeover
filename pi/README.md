@@ -140,6 +140,18 @@ Storage is SQLite in `data/pantry.db` (Node's built-in `node:sqlite`, Node 22.13
 
 Routes: touch `POST /pantry/ops` (ops `add`, `adjust`, `set`, `edit`, `want`, `remove`, `brand`, `category`, `check`, `listQty`, `listMode`); the TV's `POST /pantry/screen-ops` (the same ops, the same trust as its `/grocery/ops`); control `GET /api/pantry`, `POST /api/pantry/ops`, `GET /api/pantry/low`. `/touch/state` and the live line carry `pantry` (rev and data). The log counts changes and low items added; it never names a product, a brand or a code. After pulling: `hubup`, then `./hub status` should say `version 0.30.0`. Nothing changes in `.env`.
 
+### Guest mode PIN (server 0.31.0)
+
+Turning Guest mode on or off on the TV's Clock page asks for a 4-digit PIN in a pop-up: type it with the number keys on the remote (or the keypad on the screen); it shows dots, never the digits. The first time, the TV asks you to create one and enter it again. The Pi checks it (`pi/guestpin.js`, `POST /guest/pin` from the TV, the same trust as its `/pantry/screen-ops`) and keeps only a salted scrypt hash in `data/guest-pin.json` (mode 0600), never the PIN. Three wrong tries in a row lock it for 30 seconds, then 60, 120, 240 and at most 5 minutes; a right PIN clears that. If the TV can't reach the Pi, nothing changes. The log counts wrong tries and locks, never a PIN.
+
+Forgot the PIN? On the Pi:
+
+```
+./hub guest-pin reset
+```
+
+The TV then asks you to create a new one the next time you turn Guest mode on or off. `./hub guest-pin status` says whether one is set. Control API: `GET /api/guest-pin`, `POST /api/guest-pin/reset`. After pulling: `hubup`, then `./hub status` should say `version 0.31.0`. Nothing changes in `.env`.
+
 ## Tile layout
 
 Where each tile sits on the home screen can be changed from the Pi, without editing `app/config.js`:

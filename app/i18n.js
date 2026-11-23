@@ -350,6 +350,19 @@
     'guest.label': 'Modo invitados',
     'guest.off': 'No',
     'guest.on': 'Sí',
+    /* The PIN pop-up before Guest mode turns on or off (app/pin.js). "PIN" stays as is. */
+    'pin.titleOn': 'Activar el modo invitados',
+    'pin.titleOff': 'Desactivar el modo invitados',
+    'pin.enter': 'Escribe tu PIN de 4 dígitos',
+    'pin.create': 'Crea un PIN de 4 dígitos',
+    'pin.confirm': 'Escríbelo otra vez para confirmar',
+    'pin.mismatch': 'Los PIN no coinciden. Empieza de nuevo.',
+    'pin.wrong': 'PIN incorrecto',
+    'pin.locked': 'Demasiados intentos. Inténtalo de nuevo en {n} s',
+    'pin.unreachable': 'No se puede conectar con el hub. Inténtalo de nuevo.',
+    'pin.hint': 'También puedes usar los números del control remoto.',
+    'pin.cancel': 'Cancelar',
+    'pin.delete': 'Borrar',
 
     'wotd.title': 'Palabra del día',
     // Short form: only when "Palabra del día" doesn't fit the tile on one line.

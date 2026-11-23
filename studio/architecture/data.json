@@ -326,12 +326,18 @@
        "status": "unverified",
        "summary": "One switch on the Clock page that blurs every dollar amount while guests are over.",
        "details": [
-        "When on, every money tile (Earned vs spent, the Glance, the budget tiles, Budget lab, Investments), its panel and the New charge banner keep their layout and data, but each dollar amount is blurred: a MutationObserver wraps the amounts in a blur span as widgets draw. Dates, counts, names and percentages stay readable. Layouts do not change. Calendars hide their notes and guest names."
+        "When on, every money tile (Earned vs spent, the Glance, the budget tiles, Budget lab, Investments), its panel and the New charge banner keep their layout and data, but each dollar amount is blurred: a MutationObserver wraps the amounts in a blur span as widgets draw. Dates, counts, names and percentages stay readable. Layouts do not change. Calendars hide their notes and guest names.",
+        "Turning it on or off asks for a 4-digit PIN in a pop-up (app/pin.js): the remote's number keys or an on-screen keypad, dots only. The Pi checks it (POST /guest/pin, pi/guestpin.js) and keeps only a salted hash; 3 wrong tries lock it for a while; ./hub guest-pin reset forgets it."
        ],
        "files": [
         "app/guest.js",
         "app/widgets/today.js",
-        "dev/money-test.js"
+        "dev/money-test.js",
+        "app/pin.js",
+        "app/pin.css",
+        "pi/guestpin.js",
+        "dev/pin-test.js",
+        "pi/guestpin-test.js"
        ],
        "talksTo": [
         {
