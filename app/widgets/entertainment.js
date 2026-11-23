@@ -231,7 +231,7 @@
   function stateOf(item) {
     var cfg = item.cfg;
     if (cfg.kind === 'schedule' && window.HUB_SHOWS) return { text: HUB_SHOWS.entry().sub, missing: false };
-    if (cfg.kind !== 'app') return { text: cfgWord(cfg.sub || ''), missing: false };
+    if (cfg.kind !== 'app' || (C && C.noHelper)) return { text: cfgWord(cfg.sub || ''), missing: false };
     if (item.appId) return { text: cfgWord(cfg.sub || ''), missing: false };
     if (!apps) return { text: lookupFailed ? T('couldntCheck', 'Couldn’t check') : T('looking', 'Looking for it'), missing: false };
     return { text: T('notInstalled', 'Not installed'), missing: true };
@@ -309,6 +309,8 @@
     // The service starts a moment after the page, so keep trying for a while.
     C.service('/apps', 4000, function (err, data) {
       if (!err) { apps = data.apps || []; resolveItems(); return; }
+      // Tablet mode with no service.js: apps open through the Pi (C.launchOnTv); nothing to say.
+      if (C.noHelper) { lookupFailed = true; refresh(); return; }
       if (attempt < 25) return setTimeout(function () { loadApps(attempt + 1); }, 800);
       lookupFailed = true;
       refresh();
@@ -357,12 +359,19 @@
   }
 
   // What shows.js and linktest.js use to find and open apps.
+  // Tablet mode with no service.js (C.noHelper): there is no app list, so an
+  // app is "found" by its names and opened through the Pi; no deep links.
+  function noTv() { return !!(C && C.noHelper && typeof C.launchOnTv === 'function'); }
+
   var host = {
-    findApp: function (match) { return findApp(match); },
-    appsReady: function () { return !!apps; },
+    findApp: function (match) { return noTv() ? (match && match.length ? { id: '', name: match[0] } : null) : findApp(match); },
+    appsReady: function () { return !!apps || noTv(); },
     apps: function () { return apps ? apps.slice() : null; },
-    launch: function (id, label) { launchById(id, label); },
-    launchControl: function (c, cb) { launchControl(c, cb); },
+    launch: function (id, label) {
+      if (noTv()) { C.launchOnTv({ kind: 'app', name: label, match: matchFor(label) || [label] }); return; }
+      launchById(id, label);
+    },
+    launchControl: function (c, cb) { if (noTv()) { cb('no TV helper'); return; } launchControl(c, cb); },
     matchFor: matchFor
   };
 
@@ -447,8 +456,21 @@
     });
   }
 
+  // Tablet mode with no service.js: the Pi turns the TV on and opens it there.
+  function activateOnTv(tc) {
+    var name = cfgWord(tc.label);
+    if (tc.kind === 'app') return C.launchOnTv({ kind: 'app', name: tc.label, match: (tc.match || [tc.label]).slice() });
+    if (tc.kind === 'tizentube') return C.launchOnTv({ kind: 'tizentube', name: tc.label });
+    if (tc.kind === 'input') return C.launchOnTv({ kind: 'key', name: cfgWord(tc.sub || tc.label), key: tc.key });
+    if (tc.kind === 'webhook' && tc.url) return C.launchOnTv({ kind: 'webhook', name: name, url: tc.url });
+    // The list of every app comes from the TV itself.
+    if (tc.kind === 'allApps') { C.toast(T('toastAllAppsTv', 'All apps works on the TV.'), 4000); return true; }
+    return false;
+  }
+
   function activate(item) {
     var tc = item.cfg;
+    if (C.noHelper && typeof C.launchOnTv === 'function' && activateOnTv(tc) !== false) return undefined;
     if (tc.kind === 'app') {
       if (!apps) return C.toast(T('toastStillLooking', 'Still looking for your apps. Try again in a second.'));
       if (!item.appId) return C.toast(T('toastNotOnTv', '{name} isn’t on this TV. Open All apps to see what is.', { name: tc.label }), 4500);

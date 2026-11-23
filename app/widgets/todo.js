@@ -952,8 +952,22 @@
 
     var w = warnText();
     if (w) el('div', 'todo-warn todo-tile-warn', w, wrap);
-    wrap.__fit = { shown: shown, over: wrap.scrollHeight > wrap.clientHeight + 1 };
+    var over = wrap.scrollHeight > wrap.clientHeight + 1;
+    if (!over && C && C.tablet) over = pastTile(wrap);
+    wrap.__fit = { shown: shown, over: over };
     return wrap;
+  }
+
+  // Tablet mode (Chrome 52): the tile's flex box can grow with its content
+  // instead of holding it, so scrollHeight never says it overflows and the
+  // Completed section ran past the tile's bottom. Measure against the tile.
+  function pastTile(wrap) {
+    var tile = wrap.parentNode && wrap.parentNode.parentNode;
+    var last = wrap.lastChild;
+    if (!tile || !last || !tile.getBoundingClientRect) return false;
+    var cs = window.getComputedStyle(tile);
+    var limit = tile.getBoundingClientRect().bottom - (parseFloat(cs.paddingBottom) || 0) - (parseFloat(cs.borderBottomWidth) || 0);
+    return last.getBoundingClientRect().bottom > limit + 1;
   }
 
   // The compact Completed: on the meta line's row, a small green check, the

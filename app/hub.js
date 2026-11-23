@@ -139,7 +139,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.58.1';
+  var BUILD = 'v0.59.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -176,6 +176,10 @@
   var hasPageTizen = (function () {
     try { return typeof tizen !== 'undefined' && !!tizen.application; } catch (e) { return false; }
   })();
+
+  // Tablet mode (a wall tablet with no remote and no service.js): see
+  // "tablet mode" near the end. Off on a TV, and nothing below changes then.
+  var tablet = { on: false, noHelper: false, sheetOn: false, sheet: null, hideTimer: null, show: null };
 
   /* ---------- helpers ---------- */
 
@@ -1877,7 +1881,7 @@
 
   // A click anywhere outside the strip closes it, and does nothing else.
   document.addEventListener('click', function (e) {
-    if (!ab.on || aboutEl.contains(e.target)) return;
+    if (!ab.on || aboutEl.contains(e.target) || tablet.sheetOn) return;
     e.stopPropagation();
     e.preventDefault();
     closeAbout();
@@ -1904,6 +1908,9 @@
       id: w.id,
       config: (cfg.widgets && cfg.widgets[w.id]) || {},
       hasTizen: hasPageTizen,
+      tablet: tablet.on,          // tablet mode (no remote); can turn on a moment after start
+      noHelper: tablet.noHelper,  // tablet mode and service.js does not answer
+      launchOnTv: launchOnTv,     // with noHelper: the Pi opens it on the TV (below)
       toast: toast,
       service: service,
       getJSON: function (url, timeoutMs, cb) { xhrJSON(url, timeoutMs, false, cb); },
@@ -2126,8 +2133,12 @@
       drawPanelHint(false);
     }, true);
     scrimEl.addEventListener('click', function () {
-      if (!busy && open && !frameOpen) closePanel();
+      if (!busy && open && !frameOpen) { if (tablet.on) tabletBack(); else closePanel(); }
     });
+    // Tablet mode: the Back chip is a button too. mousedown keeps a text box's focus,
+    // so a tap while typing stops the typing, as Back does.
+    panel.hint.addEventListener('mousedown', function (e) { if (tablet.on) e.preventDefault(); });
+    panel.hint.addEventListener('click', function () { if (tablet.on) tabletBack(); });
   }
 
   function setPanelSub(text) {
@@ -2185,6 +2196,10 @@
     // A small chip like the Full screen button, but never focusable.
     // A widget that uses Back itself (a page inside its panel) can say what Back does.
     var own = !typing && typeof open.w.backHint === 'function' ? call(open, 'backHint', [open.ctx]) : null;
+    if (tablet.on) {
+      panel.hint.textContent = typing ? hubWord('tapTyping', 'Tap to stop typing') : own ? String(own) : mode === 'full' && !isDirect(open.w) ? hubWord('tapShrink', 'Tap to shrink') : hubWord('tapClose', 'Tap to close');
+      return;
+    }
     panel.hint.textContent = typing ? hubWord('backTyping', 'Back to stop typing') : own ? String(own) : mode === 'full' && !isDirect(open.w) ? hubWord('backShrink', 'Back to shrink') : hubWord('backClose', 'Back to close');
   }
 
@@ -2722,6 +2737,11 @@
       if (isBack(code)) { e.preventDefault(); closeFrame(); }
       return;
     }
+    if (tablet.show) {               // the tablet's Slideshow: Back (or OK) ends it
+      e.preventDefault();
+      if (isBack(code) || code === KEY.ENTER) closeShow();
+      return;
+    }
     var box = typingBox();
     if (box) { typingKey(e, box); return; }
     // A keyboard letter on a focused text box starts typing; the browser then
@@ -2747,6 +2767,8 @@
       dismissAlert();
       return;
     }
+
+    if (tablet.sheetOn) { sheetKey(code, dir); return; }
 
     if (ab.on) {
       if (dir === 'right' || isBack(code)) closeAbout();
@@ -3653,6 +3675,348 @@
   window.HUB_TEST.setFocusKeepMs = function (ms) { FOCUS_KEEP_MS = ms; };
   window.HUB_TEST.focused = function () { return homeIndex >= 0 && widgets[homeIndex] ? widgets[homeIndex].w.id : null; };
 
+  /* ---------- tablet mode ---------- */
+
+  // The hub on a wall tablet (Android, Fully Kiosk, Chrome 52 WebView): no
+  // remote, no Tizen API and no service.js. ?as=tablet turns it on and
+  // ?as=tv keeps it off; otherwise a touch screen with no Tizen API turns it
+  // on once service.js turns out not to answer. Then: the Back chip and the
+  // dark around a panel close it (as Back would), a tab on the bottom edge
+  // pulls up a sheet with About (left) and the layouts (right). With no
+  // service.js, ctx.noHelper tells widgets that nothing can open a TV app
+  // (Entertainment keeps only the Schedule). A TV never gets any of it.
+  // docs/tablet-mode.md; styles in app/tablet.css; dev/tablet-test.js.
+  var CHEVRON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M6 15l6-6 6 6"/></svg>';
+
+  function tabletWanted() {
+    var as = readQuery('as');
+    if (as === 'tv') return 'no';
+    if (as === 'tablet') return 'yes';
+    var ua = navigator.userAgent || '';
+    if (hasPageTizen || /Tizen|Web0S|SMART-TV/i.test(ua)) return 'no';
+    return ('ontouchstart' in window) || /Android/i.test(ua) ? 'maybe' : 'no';
+  }
+
+  function startTablet() {
+    var want = tabletWanted();
+    if (want === 'no') return;
+    if (want === 'yes') tabletOn();
+    service('/ping', 3000, function (err) {
+      if (!err) return;
+      tablet.noHelper = true;
+      tabletOn();
+      if (open) { drawPanelBody(true); refitOpen(); }
+    });
+  }
+
+  function tabletOn() {
+    var i;
+    if (!tablet.on) {
+      tablet.on = true;
+      document.documentElement.classList.add('tablet');
+      document.body.classList.add('tablet');
+      buildSheet();
+    }
+    for (i = 0; i < widgets.length; i++) { widgets[i].ctx.tablet = true; widgets[i].ctx.noHelper = tablet.noHelper; }
+    // Tiles drawn before it turned on (the to-do tile measures differently).
+    for (i = 0; i < widgets.length; i++) drawTile(widgets[i]);
+    if (open) drawPanelHint();
+  }
+
+  // The one way a tablet with no service.js opens something on the TV: the
+  // Pi turns the TV on if it is off, waits for it, then opens it through
+  // Home Assistant (POST /tv/launch). req: { kind: 'app' | 'tizentube' |
+  // 'key' | 'webhook', name, match?, key?, url? }. cb(err) when it answered.
+  function launchOnTv(req, cb) {
+    req = req || {};
+    var name = String(req.name || '');
+    var done = function (err) { if (typeof cb === 'function') { try { cb(err || null); } catch (e) { /* ignore */ } } };
+    var L = liveFacade();
+    if (!L || typeof L.post !== 'function') {
+      toast(hubWord('tvOpenFailed', 'Couldn’t open {name} on the TV ({why}).', { name: name, why: hubWord('tvNoPi', 'the Pi isn’t reachable') }), 6000);
+      return done('no live');
+    }
+    // The Pi answers at once (202, { ok: true, queued: true }) and works on in
+    // the background: the TV can take a minute to wake. docs/tablet-mode.md.
+    toast(hubWord('tvOpening', 'Opening {name} on the TV…', { name: name }), 15000);
+    L.post('/tv/launch', req, function (err, data, code) {
+      if ((!err && data && data.ok !== false) || (code === 202 && !(data && data.ok === false))) return done(null);
+      var why = code === 404 ? hubWord('tvNoRoute', 'the Pi can’t do that yet') : (data && typeof data.error === 'string' && data.error) || String(err || 'HTTP ' + code);
+      toast(hubWord('tvOpenFailed', 'Couldn’t open {name} on the TV ({why}).', { name: name, why: why }), 8000);
+      done(why);
+    });
+  }
+
+  // The Back chip or the dark around the panel, tapped: what Back does.
+  function tabletBack() {
+    if (busy || !open || frameOpen) return;
+    if (alertShown()) { dismissAlert(); return; }
+    if (typingBox()) { stopTyping(); return; }
+    // The tap itself ended the typing (the box lost focus): that was all it did.
+    if (Date.now() - typingEndedAt < 300) return;
+    backInPanel();
+  }
+
+  function buildSheet() {
+    var t = tablet;
+    t.tab = el('div', 'tablet-tab', document.body);
+    t.tab.setAttribute('role', 'button');
+    var pill = el('span', 'tablet-tab-pill', t.tab);
+    el('span', 'tablet-chev', pill).innerHTML = CHEVRON;
+    t.tabLabel = el('span', 'tablet-tab-label', pill);
+    t.sheet = el('div', 'tsheet', document.body);
+    t.sheet.setAttribute('role', 'dialog');
+    t.head = el('div', 'tsheet-head', t.sheet);
+    t.close = el('div', 'tsheet-close', t.head);
+    t.close.setAttribute('role', 'button');
+    el('span', 'tablet-chev is-down', t.close).innerHTML = CHEVRON;
+    t.closeLabel = el('span', 'tsheet-close-label', t.close);
+    var cols = el('div', 'tsheet-cols', t.sheet);
+    var left = el('div', 'tsheet-col tsheet-left', cols);
+    t.setTitle = el('div', 'tsheet-title', left);
+    t.settings = el('div', 'tsheet-settings', left);
+    t.leftTitle = el('div', 'tsheet-title', left);
+    t.left = el('div', 'tsheet-slot', left);
+    var right = el('div', 'tsheet-col tsheet-right', cols);
+    t.rightTitle = el('div', 'tsheet-title', right);
+    t.right = el('div', 'tsheet-slot', right);
+    t.empty = el('div', 'tsheet-empty', right);
+    t.photoTitle = el('div', 'tsheet-title', right);
+    t.showBtn = el('div', 'tsheet-btn tsheet-show', right);
+    t.showBtn.setAttribute('role', 'button');
+    el('span', 'tsheet-btn-icon', t.showBtn).innerHTML = ICONS.photo || '';
+    t.showLabel = el('span', 'tsheet-btn-label', t.showBtn);
+    t.showBtn.addEventListener('click', openShow);
+    t.settings.addEventListener('click', function (e) {
+      for (var n = e.target; n && n !== t.settings; n = n.parentNode) {
+        if (n.getAttribute && n.getAttribute('data-set')) { chooseSetting(n.getAttribute('data-set')); return; }
+      }
+    });
+    sheetWords();
+    try {
+      if (window.HUB_I18N && typeof window.HUB_I18N.onChange === 'function') window.HUB_I18N.onChange(sheetWords);
+    } catch (e) { /* stays in the language it started in */ }
+    t.tab.addEventListener('click', function () { if (t.sheetOn) closeSheet(); else openSheet(); });
+    t.close.addEventListener('click', closeSheet);
+    t.sheet.addEventListener('click', onSheetClick);
+    sheetDrag(t.tab, true);
+    sheetDrag(t.head, false);
+    // A web page full screen (ctx.openFrame): its "Back to return" chip is a button here.
+    t.frameHint = frameWrap.querySelector('.frame-hint');
+    if (t.frameHint) {
+      t.frameHint.setAttribute('role', 'button');
+      t.frameHint.addEventListener('click', function () { if (tablet.on && frameOpen) closeFrame(); });
+      t.frameHint.textContent = hubWord('tapClose', 'Tap to close');
+    }
+  }
+
+  function sheetWords() {
+    var t = tablet;
+    t.tabLabel.textContent = hubWord('tablet.menu', 'Menu');
+    t.closeLabel.textContent = hubWord('tablet.close', 'Close');
+    t.leftTitle.textContent = hubWord('tablet.about', 'About this hub');
+    t.rightTitle.textContent = hubWord('tablet.layouts', 'Layouts');
+    t.empty.textContent = hubWord('tablet.oneLayout', 'Only one layout is saved.');
+    t.setTitle.textContent = hubWord('tablet.settings', 'Settings');
+    t.photoTitle.textContent = hubWord('tablet.photos', 'Photos');
+    t.showLabel.textContent = hubWord('tablet.slideshow', 'Start slideshow');
+    if (t.frameHint) t.frameHint.textContent = hubWord('tapClose', 'Tap to close');
+    drawSettings();
+  }
+
+  // Settings in the sheet: the same choices as the Clock page (app/widgets/today.js),
+  // through the same setters: the look (HUB_LOOK), the language (HUB_I18N) and Guest
+  // mode (HUB_GUEST, only after the PIN, app/pin.js). The Clock page keeps its own.
+  function drawSettings() {
+    var box = tablet.settings;
+    if (!box) return;
+    box.innerHTML = '';
+    var L = window.HUB_I18N;
+    function row(label, opts) {
+      var r = el('div', 'tsheet-set', box);
+      el('div', 'tsheet-set-label', r).textContent = label;
+      var pills = el('div', 'tsheet-set-opts', r);
+      for (var i = 0; i < opts.length; i++) {
+        var o = el('div', 'tsheet-opt' + (opts[i][2] ? ' is-on' : ''), pills);
+        o.setAttribute('data-set', opts[i][0]);
+        o.setAttribute('role', 'button');
+        o.textContent = opts[i][1];
+      }
+    }
+    if (window.HUB_LOOK && typeof window.HUB_LOOK.get === 'function') {
+      var lk = window.HUB_LOOK.get();
+      row(aboutWord('look.label', 'Look'), [['look-auto', aboutWord('look.auto', 'Auto'), lk === 'auto'],
+        ['look-day', aboutWord('look.light', 'Light'), lk === 'day'], ['look-night', aboutWord('look.dark', 'Dark'), lk === 'night']]);
+    }
+    if (L && typeof L.lang === 'function' && typeof L.setLang === 'function') {
+      var lang = L.lang();
+      row(aboutWord('lang.label', 'Language'), [['lang-en', 'English', lang === 'en'], ['lang-es', 'Español', lang === 'es']]);
+    }
+    if (window.HUB_GUEST && typeof window.HUB_GUEST.on === 'function') {
+      var g = window.HUB_GUEST.on();
+      row(aboutWord('guest.label', 'Guest mode'), [['guest-off', aboutWord('guest.off', 'Off'), !g], ['guest-on', aboutWord('guest.on', 'On'), g]]);
+    }
+  }
+
+  function chooseSetting(key) {
+    try {
+      if (key === 'lang-en' || key === 'lang-es') { window.HUB_I18N.setLang(key.slice(5)); drawSettings(); return; }
+      if (key.indexOf('look-') === 0) { window.HUB_LOOK.set(key.slice(5)); drawSettings(); return; }
+      if (key === 'guest-on' || key === 'guest-off') {
+        var want = key === 'guest-on';
+        var P = window.HUB_PIN;
+        if (!window.HUB_GUEST || window.HUB_GUEST.on() === want || !P || typeof P.ask !== 'function' || P.isOpen()) return;
+        var Lv = liveFacade();
+        P.ask({ on: want, post: Lv && typeof Lv.post === 'function' ? Lv.post : undefined }, function (ok) {
+          if (ok && window.HUB_GUEST.on() !== want) window.HUB_GUEST.set(want);
+          drawSettings();
+        });
+      }
+    } catch (e) { /* the choice stays as it was */ }
+  }
+
+  // The Slideshow: every photo full screen (app/widgets/photos.js does the
+  // showing) until a tap anywhere, or Back.
+  function openShow() {
+    if (tablet.show) return;
+    closeSheet();
+    var o = el('div', 'tshow', document.body);
+    var hint = el('div', 'tshow-hint', o);
+    hint.textContent = hubWord('tapClose', 'Tap to close');
+    var show = { el: o, ss: null, timer: null };
+    tablet.show = show;
+    o.addEventListener('click', closeShow);
+    try {
+      show.ss = window.HUB_PHOTOS && typeof window.HUB_PHOTOS.slideshow === 'function' ? window.HUB_PHOTOS.slideshow(o, {
+        getJSON: function (url, ms, cb) { xhrJSON(url, ms, false, cb); },
+        onEmpty: function () { el('div', 'tshow-empty', o).textContent = hubWord('tablet.noPhotos', 'No photos to show yet.'); }
+      }) : null;
+    } catch (e) { show.ss = null; }
+    if (!show.ss) el('div', 'tshow-empty', o).textContent = hubWord('tablet.noPhotos', 'No photos to show yet.');
+    void o.offsetWidth;
+    o.classList.add('is-on');
+    show.timer = setTimeout(function () { hint.classList.add('is-gone'); }, 2500);
+  }
+
+  function closeShow() {
+    var show = tablet.show;
+    if (!show) return;
+    tablet.show = null;
+    clearTimeout(show.timer);
+    try { if (show.ss) show.ss.stop(); } catch (e) { /* gone anyway */ }
+    show.el.classList.remove('is-on');
+    setTimeout(function () { if (show.el.parentNode) show.el.parentNode.removeChild(show.el); }, 320);
+  }
+
+  // Fills the sheet with the About strip and the layout bar themselves (moved
+  // in while it is up) and draws it, still below the screen.
+  function sheetReady() {
+    if (busy || open || frameOpen || typingBox()) return false;
+    clearTimeout(tablet.hideTimer);
+    if (tablet.sheetOn) return true;
+    closeAbout();
+    closeSwitcher();
+    tablet.left.appendChild(aboutEl);
+    tablet.right.appendChild(switcherEl);
+    tablet.sheetOn = true;
+    openAbout();
+    openSwitcher();
+    drawSettings();
+    tablet.empty.style.display = sw.on ? 'none' : '';
+    tablet.sheet.classList.add('is-on');
+    document.body.classList.add('tsheet-up');
+    return true;
+  }
+
+  function openSheet() {
+    if (!sheetReady()) return;
+    void tablet.sheet.offsetWidth;          // so the slide starts from below the screen
+    tablet.sheet.classList.remove('is-dragging');
+    tablet.sheet.style.transform = '';
+    tablet.sheet.classList.add('is-shown');
+  }
+
+  function closeSheet() {
+    if (!tablet.sheetOn) return;
+    tablet.sheetOn = false;
+    closeAbout();
+    closeSwitcher();
+    // Their own hide timers (260 ms) would empty them while the sheet still slides
+    // (300 ms): the sheet's timer below does it once it is down.
+    clearTimeout(ab.hideTimer);
+    clearTimeout(sw.hideTimer);
+    tablet.sheet.classList.remove('is-dragging');
+    tablet.sheet.style.transform = '';
+    tablet.sheet.classList.remove('is-shown');
+    document.body.classList.remove('tsheet-up');
+    clearTimeout(tablet.hideTimer);
+    tablet.hideTimer = setTimeout(function () {
+      if (tablet.sheetOn) return;
+      tablet.sheet.classList.remove('is-on');
+      if (!ab.on) { aboutEl.classList.remove('is-on'); aboutEl.innerHTML = ''; }
+      if (!sw.on) switcherEl.classList.remove('is-on');
+      document.body.insertBefore(switcherEl, toastEl);
+      document.body.insertBefore(aboutEl, toastEl);
+      layoutChance();
+    }, 320);
+  }
+
+  // A layout picked (its pill's own click ran first, and closed the bar):
+  // the sheet goes too. The watch link test row runs as OK would.
+  function onSheetClick(e) {
+    if (!tablet.sheetOn) return;
+    for (var node = e.target; node && node !== tablet.sheet; node = node.parentNode) {
+      if (hasClass(node, 'about-row') && hasClass(node, 'is-action')) { closeSheet(); aboutAction(); return; }
+    }
+    if (!sw.on && tablet.empty.style.display === 'none') closeSheet();
+  }
+
+  // A keyboard on the tablet: Back closes, the arrows and OK work the layouts.
+  function sheetKey(code, dir) {
+    if (isBack(code)) closeSheet();
+    else if ((dir === 'left' || dir === 'right') && sw.on) moveSwitcher(dir);
+    else if (dir === 'up' || dir === 'down') scrollAbout(dir);
+    else if (code === KEY.ENTER && sw.on) chooseLayout();
+  }
+
+  // Drag the tab up to pull the sheet, or its head down to put it away. A
+  // tap (no move) is left to the click.
+  function sheetDrag(node, fromTab) {
+    var d = null;
+    node.addEventListener('touchstart', function (e) {
+      if (!e.touches || e.touches.length !== 1) { d = null; return; }
+      d = { y0: e.touches[0].clientY, h: window.innerHeight || 1, moved: false, at: 0 };
+    });
+    node.addEventListener('touchmove', function (e) {
+      if (!d || !e.touches || !e.touches.length) return;
+      var dy = e.touches[0].clientY - d.y0;
+      if (!d.moved) {
+        if (Math.abs(dy) < 10) return;
+        if (fromTab && !sheetReady()) { d = null; return; }
+        d.moved = true;
+        tablet.sheet.classList.add('is-dragging');
+      }
+      e.preventDefault();
+      d.at = Math.max(0, Math.min(d.h, (fromTab ? d.h : 0) + dy));
+      tablet.sheet.style.transform = 'translate(0, ' + Math.round(d.at) + 'px)';
+    });
+    node.addEventListener('touchend', function (e) {
+      if (!d || !d.moved) { d = null; return; }
+      e.preventDefault();                     // no click after a drag
+      // A pull of more than 15% of the screen either way does it.
+      var up = fromTab ? d.at < d.h * 0.85 : d.at < d.h * 0.15;
+      d = null;
+      if (up) openSheet(); else closeSheet();
+    });
+    node.addEventListener('touchcancel', function () {
+      var was = d;
+      d = null;
+      if (was && was.moved) { if (fromTab) closeSheet(); else openSheet(); }
+    });
+  }
+
+  window.HUB_TEST.tablet = function () { return { on: tablet.on, noHelper: tablet.noHelper, sheet: tablet.sheetOn, show: !!tablet.show }; };
+
   /* ---------- start ---------- */
 
   setupMotion();
@@ -3668,6 +4032,7 @@
   startUpdates();
   startClay();
   startAgents();
+  startTablet();
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {

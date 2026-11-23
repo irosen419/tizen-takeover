@@ -1285,6 +1285,25 @@
     chartSoon();
   }
 
+  // Tablet mode (ctx.tablet; no remote): a tap on the cap's arrows moves it
+  // as Left and Right do, instead of the click that the hub treats as OK (save).
+  function tapArrows(body) {
+    if (body.__blTap) return;
+    body.__blTap = true;
+    body.addEventListener('click', function (e) {
+      var refs = LAB.refs;
+      if (!refs || !LAB.ctx || !LAB.ctx.tablet) return;
+      for (var n = e.target; n && n !== body; n = n.parentNode) {
+        if (n === refs.arrL || n === refs.arrR) {
+          e.stopPropagation();
+          LAB.hold = null;
+          nudge(n === refs.arrL ? 'left' : 'right', 'cap');
+          return;
+        }
+      }
+    });
+  }
+
   function cutOf(refs, node) {
     for (var i = 0; refs.cuts && i < refs.cuts.length; i++) if (refs.cuts[i].node === node) return i;
     return -1;
@@ -1422,7 +1441,7 @@
       }
     },
     renderPanel: function (body, ctx) {
-      try { drawPanel(body, ctx); } catch (e) {
+      try { drawPanel(body, ctx); if (ctx.tablet) tapArrows(body); } catch (e) {
         warn('panel: ' + (e && e.message));
         broken(body);
       }
