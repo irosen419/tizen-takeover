@@ -43,7 +43,7 @@ Support folders: `dev/` (tests, screenshot scripts, laptop preview, version tool
 
 1. `package.json`: the TizenBrew manifest (`appPath`, `hubPage`, `serviceFile`) and the version.
 2. `app/index.html` and `app/update.js` (about 850 lines, read the top comment): the loader. It asks GitHub for the newest commit and opens that commit's `hub.html`.
-3. `app/hub.html`: the script order is the load order (`update.js`, `config.js`, backgrounds, i18n, `guest.js`/`pin.js`/`icons.js`/`logos.js`, the widgets with their data files, `live.js`, `clay.js`, `agents.js`, `motion.js`, then `hub.js` last).
+3. `app/hub.html`: the script order is the load order (`update.js`, `config.js`, backgrounds, i18n, `guest.js`/`pin.js`/`icons.js`/`logos.js`, the widgets with their data files, `live.js`, `clay.js`, `agents.js`, `motion.js`, `appver.js` (newer code on the Pi, for pages the Pi serves), then `hub.js` last).
 4. `app/config.js` (about 550 lines): `HUB_PI`, the built-in `layout`, the saved `layouts`, per-widget `widgets` settings.
 5. Top comment of `app/hub.js` (the file is about 3,600 lines): the widget contract and `ctx`.
 6. `app/widgets/wotd.js` (about 350 lines): a small, complete widget to copy.
@@ -110,13 +110,14 @@ More detail: "Writing a widget" in `README.md` and the top of `app/hub.js`.
 - Suites share fixed ports: run one at a time.
 - Laptop preview: `node dev/preview.js` (serves `app/`, fakes `service.js`, and runs the real Pi server on :8097; open the hub with `?live=http://127.0.0.1:8097`).
 - Version: a PR never changes it. Right before merging, run `node dev/bump.js minor` (or `patch`) (see `docs/process.md`). The Pi server has its own version in `pi/server.js`.
-- Deploy: merge to `main`, then jsDelivr serves it to the TV (the About panel on the Clock page shows the real version). Code in `pi/` needs `hubup` on the Pi (`pi/aliases.sh`). Data changes go through the mailbox and need no restart.
+- Deploy: merge to `main`, then jsDelivr serves it to the TV (the About panel on the Clock page shows the real version). The Pi pulls `main` by itself every 5 minutes (`pi/autopull/autopull.sh`, a systemd user timer from `pi/autopull/install.sh`; test `pi/autopull-test.js`) and restarts the hub, then the budget app, only when a server file in `pi/` changed; pages the Pi serves reload through `app/appver.js` (test `dev/appver-test.js`). `hubup` (`pi/aliases.sh`) is for the first install or a stuck pull. Data changes go through the mailbox and need no restart.
 
 ## 8. Where to look when...
 
 | Symptom | Look at |
 | --- | --- |
 | TV blank or old after a merge | `app/update.js` (held commit, jsDelivr cache), About panel's Version check row |
+| Wall tablet or phone old after a merge | the auto-pull log, pi/data/autopull.log on the Pi (`hubauto`), and its kill switch pi/data/autopull.off; `app/appver.js` (About panel's Version check row, the dot on the Clock tile) |
 | A tile shows an error box | that widget's file in `app/widgets/`; `hub.js` wraps every widget call in try/catch |
 | Live dot not green | `app/live.js` status text; `./hub log --errors` on the Pi; `docs/live-updates.md` |
 | A mailbox command failed | `outbox/<id>.json`, then `COMMANDS` in `pi/mailbox.js`; `dev/hub-remote.js status` |

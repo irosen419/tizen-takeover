@@ -102,7 +102,9 @@
  *   POST /api/ambience/mood    a plant wall mood, { id }
  *   GET  /api/ambience/config  the saved lights, scenes and moods
  *   POST /api/ambience/config  replace them, { config }, or { config: null } for the defaults
- *   GET  /health         no token, just "is it running"
+ *   GET  /health         no token, just "is it running", and app: the BUILD of the
+ *                        hub.js it serves (server 0.32.0; app/appver.js compares it
+ *                        with its own, so the tablet and phone reload after a pull)
  *
  * The Claude mailbox (mailbox.js, off unless HUB_MAILBOX_ settings are in
  * .env) polls a Cloudflare R2 bucket and runs the same control API calls.
@@ -1666,7 +1668,7 @@ function start(options) {
 
   function statusBody() {
     return {
-      ok: true, server: SERVER_VERSION, rev: state.rev, epoch: state.epoch,
+      ok: true, server: SERVER_VERSION, app: appVersion(), rev: state.rev, epoch: state.epoch,
       uptime: Math.round((Date.now() - startedAt) / 1000), screens: screenList(),
       calendar: { configured: calReader.configured, calendars: calList.length, lastRefresh: calReader.lastRefresh() },
       mailbox: mbox ? mbox.info() : { configured: false, problem: mailboxCfg.problem || '' },
@@ -2009,6 +2011,23 @@ function start(options) {
     '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml',
     '.webp': 'image/webp', '.woff2': 'font/woff2', '.ico': 'image/x-icon', '.wasm': 'application/wasm'
   };
+
+  // The version of the hub the Pi serves now: BUILD in appDir/hub.js, read
+  // again only when the file changed (a pull). '' when it can't be read.
+  const appVer = { mtime: -1, size: -1, value: '' };
+  function appVersion() {
+    const file = path.join(appDir, 'hub.js');
+    let st;
+    try { st = fs.statSync(file); } catch (e) { appVer.mtime = -1; appVer.value = ''; return ''; }
+    if (st.mtimeMs === appVer.mtime && st.size === appVer.size) return appVer.value;
+    appVer.mtime = st.mtimeMs;
+    appVer.size = st.size;
+    try {
+      const m = /var BUILD = 'v(\d{1,4}\.\d{1,4}\.\d{1,4})'/.exec(fs.readFileSync(file, 'utf8'));
+      appVer.value = m ? m[1] : '';
+    } catch (e) { appVer.value = ''; }
+    return appVer.value;
+  }
 
   // Home, Tailscale and loopback addresses only, whatever HUB_TV_IPS says:
   // the phone is not the TV. The Host rule is the same as the TV's.
@@ -2398,7 +2417,7 @@ function start(options) {
           if (req.method !== 'GET' && req.method !== 'HEAD') {
             return sendJson(res, 405, { ok: false, error: 'use GET for /health' }, { Allow: 'GET' });
           }
-          return sendJson(res, 200, { ok: true, server: SERVER_VERSION });
+          return sendJson(res, 200, { ok: true, server: SERVER_VERSION, app: appVersion() });
         }
         if (route === '/api' || route.indexOf('/api/') === 0) return control(req, res, route, door, url.searchParams);
         if (door === 'main' && (route === '/' || route.indexOf('/app/') === 0)) return appFile(req, res, route, url.searchParams);

@@ -417,6 +417,18 @@ body {
   color: var(--text);
   word-wrap: break-word;
 }
+.about-row.is-action { cursor: pointer; }
+
+/* A newer version on the Pi (app/appver.js, pages the Pi serves only): one
+   quiet sky dot in the Clock tile's corner. Fades in; never moves. */
+.update-dot {
+  position: absolute; top: 0.9rem; right: 0.9rem;
+  width: 0.5rem; height: 0.5rem; border-radius: 50%;
+  background: #53b6eb; background: var(--ok-sky, #53b6eb);
+  opacity: 0; transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.update-dot.is-on { opacity: 0.85; }
 
 /* ---------- toast ---------- */
 

@@ -20,6 +20,7 @@ const logscrub = require('./logscrub');
 const hubctl = require('./hubctl');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
+const APP_BUILD = (/var BUILD = 'v([\d.]+)'/.exec(fs.readFileSync(path.join(__dirname, '..', 'app', 'hub.js'), 'utf8')) || [])[1];
 const NO_CALENDAR = { configured: false, calendars: 0, timer: false, refreshing: false };
 const NO_SPOTIFY = { timer: false, fails: 0, signedIn: false, pending: false, delay: 0, vibe: { busy: null, queued: null, kept: 0, lookups: 0, waitUntil: 0 } };
 let passed = 0;
@@ -215,8 +216,25 @@ async function main() {
 
   await check('/health answers without a token', async () => {
     const r = await request(P, 'GET', '/health');
-    assert.deepStrictEqual(r.json, { ok: true, server: hubServer.SERVER_VERSION });
+    assert.deepStrictEqual(r.json, { ok: true, server: hubServer.SERVER_VERSION, app: APP_BUILD });
     assert.strictEqual(r.headers['cache-control'], 'no-store');
+  });
+
+  await check('/health and /api/status: app is the BUILD of the hub.js served, read again after a change', async () => {
+    assert.ok(/^\d+\.\d+\.\d+$/.test(APP_BUILD), APP_BUILD);
+    assert.strictEqual((await request(P, 'GET', '/api/status', { token: TOKEN })).json.app, APP_BUILD);
+    const dir = tmpDir();
+    const file = path.join(dir, 'hub.js');
+    fs.writeFileSync(file, "  var BUILD = 'v1.2.3';\n");
+    const h3 = await start({ appDir: dir });
+    try {
+      assert.strictEqual((await request(h3.port, 'GET', '/health')).json.app, '1.2.3');
+      fs.writeFileSync(file, "  var BUILD = 'v1.20.30';\n");
+      fs.utimesSync(file, new Date(), new Date(Date.now() + 5000));
+      assert.strictEqual((await request(h3.port, 'GET', '/api/status', { token: TOKEN })).json.app, '1.20.30');
+      fs.unlinkSync(file);
+      assert.strictEqual((await request(h3.port, 'GET', '/health')).json.app, '');
+    } finally { await stop(h3); }
   });
 
   await check('control API: missing token is 401 "wrong token"', async () => {
