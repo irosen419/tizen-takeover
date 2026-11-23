@@ -338,7 +338,7 @@
   function group(parent, label, opts) {
     var g = div('clock-group', parent);
     div('clock-group-label', g, label);
-    var seg = div('clock-seg', g);
+    var seg = div('clock-seg' + (opts.length > 2 ? ' is-three' : ''), g);
     for (var i = 0; i < opts.length; i++) option(seg, opts[i][0], opts[i][1], opts[i][2]);
     return g;
   }
@@ -432,6 +432,12 @@
     if (face === 'digital') {
       group(controls, T('clock', 'Clock'), [['hours-12', T('hours12', '12-hour'), hours === '12'], ['hours-24', T('hours24', '24-hour'), hours === '24']]);
     }
+    // The look (hub.js HUB_LOOK): Auto follows the sun, Light is the day look, Dark the night look.
+    if (window.HUB_LOOK) {
+      var lk = window.HUB_LOOK.get();
+      var lt = function (k, en) { return I18N() ? I18N().t(k, en) : en; };
+      group(controls, lt('look.label', 'Look'), [['look-auto', lt('look.auto', 'Auto'), lk === 'auto'], ['look-day', lt('look.light', 'Light'), lk === 'day'], ['look-night', lt('look.dark', 'Dark'), lk === 'night']]);
+    }
     // The hub's language (app/i18n.js), on both faces. Each name is in its
     // own language, so it can always be found again; only the label follows.
     if (I18N()) {
@@ -447,6 +453,7 @@
     // Four groups (Digital, with Language and Guest mode): closer together, so
     // the last one stays inside the panel.
     if (controls.children.length >= 4) controls.className += ' is-tight';
+    if (controls.children.length >= 5) controls.className += ' is-tighter';
     // Opened on the face choice: the first thing people change.
     var marked = controls.querySelectorAll('[data-autofocus]');
     for (var i = 1; i < marked.length; i++) marked[i].removeAttribute('data-autofocus');
@@ -461,6 +468,11 @@
     // included (the listener in init redraws it).
     if (key === 'lang-en' || key === 'lang-es') {
       if (I18N()) I18N().setLang(key.slice(5));
+      return;
+    }
+    if (key === 'look-auto' || key === 'look-day' || key === 'look-night') {
+      if (window.HUB_LOOK) window.HUB_LOOK.set(key.slice(5));
+      if (ctx.isOpen()) ctx.redrawPanel();
       return;
     }
     // Guest mode, on or off, only after the PIN (app/pin.js; the Pi checks
