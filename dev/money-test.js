@@ -20,10 +20,11 @@
  *   budget data over 2 hours old (AWWS over 31 hours): "as of" under the title, and the tile dims;
  *   showMoney false hides every money figure; budget.show false hides the
  *   budget tiles and the banner;
- *   Guest mode (app/guest.js): every money tile says "Hidden for guests", no
- *   banner, no budget kept on the TV; the Clock page's Off / On turns it on
- *   and off live and is remembered; the money layouts leave the switcher; a
- *   money layout on screen gives way to one without money;
+ *   Guest mode (app/guest.js): every money tile, its panel and the banner
+ *   keep their words with each dollar amount blurred (and only those), the
+ *   blur really draws, nothing is dropped; the Clock page's Off / On turns
+ *   it on and off live and is remembered, Off leaves the text as it was; the
+ *   layouts stay as they are;
  *   the banner: "New charge: <label>" with no amount, OK dismisses it (no
  *   panel opens), it stays dismissed after a reload, a new charge shows again;
  *   the two layouts in the switcher ("AWWS money" and "Budget"), every pill
@@ -38,8 +39,8 @@
  *   above the track, a press changes text and one transform per changed bar,
  *   a cut stops at its p_i and the five together at combined, locked at a
  *   $0 cap); Put it somewhere filling card day first, then savings, AWWS and
- *   buffer (example B); Guest mode hides it all and clears the session and
- *   its cuts; the runway chart at full screen only (none at panel size): the
+ *   buffer (example B); Guest mode blurs the amounts and keeps the session
+ *   and its cuts; the runway chart at full screen only (none at panel size): the
  *   owed line ends at P and moves with the cap and with a cut, no figure in
  *   it but the gap label ("Covered, $15 spare", "Short by $13"), and during
  *   a held key the owed line's points are written at most every 120 ms (one
@@ -193,6 +194,39 @@ function text(page, sel) {
 }
 
 function has(page, sel) { return page.evaluate((s) => !!document.querySelector(s), sel); }
+
+// The text a guest can read: textContent without the Guest mode blur spans.
+function seen(page, sel) {
+  return page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s), (n) => {
+    const c = n.cloneNode(true);
+    Array.prototype.forEach.call(c.querySelectorAll('.guest-blur'), (b) => b.parentNode.removeChild(b));
+    return c.textContent;
+  }).join(' | '), sel);
+}
+
+// The blurred amounts under sel, and whether each one really draws blurred.
+function blurs(page, sel) {
+  return page.evaluate((s) => {
+    const out = [];
+    document.querySelectorAll(s).forEach((n) => n.querySelectorAll('.guest-blur').forEach((b) => {
+      const cs = getComputedStyle(b);
+      out.push({ t: b.textContent, ok: cs.webkitTextFillColor === 'rgba(0, 0, 0, 0)' && cs.textShadow !== 'none' });
+    }));
+    return out;
+  }, sel);
+}
+
+// Guest mode: every amount is blurred, each blur is an amount, and the blur draws.
+const AMOUNT = /^[+\-\u2212]?\$\d[\d,]*(\.\d+)?$/;
+async function allBlurred(page, sel, label) {
+  const left = await seen(page, sel);
+  assert(!/\$\s?\d/.test(left), label + ' shows a dollar amount: ' + left);
+  const b = await blurs(page, sel);
+  assert(b.length > 0, label + ': nothing blurred');
+  const bad = b.filter((x) => !AMOUNT.test(x.t) || !x.ok);
+  assert(!bad.length, label + ': ' + JSON.stringify(bad));
+  return left;
+}
 
 function tileOf(id) { return '.cell[data-widget="' + id + '"] .tile-body'; }
 function subOf(id) { return '.cell[data-widget="' + id + '"] .tile-sub'; }
@@ -399,51 +433,74 @@ async function main() {
     const GUEST_ROW = ROW.slice(0, 6).concat([{ widget: 'today', x: 9, y: 3, w: 3, h: 3 }]);
     const GUEST_CACHE = JSON.stringify({ v: 1, at: H.MONDAY, data: Object.assign(H.budgetSample.snapshot({ sentAt: FRESH }), { receivedAt: FRESH }) });
 
-    await check('Guest mode on: every money tile says "Hidden for guests", no figure, no banner, no budget kept', async () => {
+    await check('Guest mode on: every money tile keeps its figures with each dollar amount blurred (only those); no banner; the budget is kept', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.guest.v1': 'on', 'homeHub.budget.v1': GUEST_CACHE } });
       try {
         for (const id of IDS) {
-          const t = await text(page, tileOf(id));
-          assert(/Hidden for guests/.test(t) && !/\$/.test(t), id + ': ' + t);
+          const left = await allBlurred(page, tileOf(id), id);
+          assert(!/Hidden for guests/.test(left), id + ': ' + left);
         }
-        assert(!/\$1,841/.test(await text(page, tileOf('awws'))), 'the Glance shows money');
-        await H.sleep(500);
-        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'the banner shows');
-        const kept = await page.evaluate(() => ({ store: window.HUB_BUDGET_TEST.store.data, cache: localStorage.getItem('homeHub.budget.v1') }));
-        assert(kept.store === null && kept.cache === null, 'budget kept: ' + JSON.stringify(kept).slice(0, 120));
+        assert(/Covered/.test(await seen(page, tileOf('budget-card'))) && /days left/.test(await seen(page, tileOf('budget-room'))), 'words went with the amounts');
+        assert(!/\$\s?\d/.test(await seen(page, tileOf('awws'))), 'the Glance shows an amount');
+        await H.idle(page);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'the banner shows in Guest mode');
+        const kept = await page.evaluate(() => ({ store: !!window.HUB_BUDGET_TEST.store.data, cache: !!localStorage.getItem('homeHub.budget.v1') }));
+        assert(kept.store && kept.cache, 'budget dropped: ' + JSON.stringify(kept));
         await H.openPanel(page, 'budget-card');
-        const p = await text(page, '#panel .panel-body');
-        assert(/Hidden for guests/.test(p) && /Clock page/.test(p) && !/\$/.test(p), 'card panel: ' + p);
+        await allBlurred(page, '#panel', 'card panel');
         await H.key(page, 'Escape');
         await H.idle(page);
         await H.openPanel(page, 'awws-money');
-        const m = await text(page, '#panel .panel-body');
-        assert(/Hidden for guests/.test(m) && !/\$/.test(m), 'money panel: ' + m);
+        await allBlurred(page, '#panel', 'money panel');
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        // The Glance keeps its money line, blurred.
+        await H.openPanel(page, 'awws');
+        assert(/Spent \$1,841/.test(await text(page, '#panel')), 'the Glance dropped its money line: ' + await text(page, '#panel'));
+        await allBlurred(page, '#panel', 'Glance panel');
+        await H.key(page, 'Escape');
+        await H.idle(page);
+        // A tile that is not about money keeps its text as it is.
+        assert(!(await has(page, '.cell[data-widget="today"] .guest-blur')), 'the clock has a blur');
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode on: the Investments tile (budget-lab beside it) shows percentages only, no dollar figure, no copy kept', async () => {
+    await check('Guest mode on: the New charge banner stays away (it names a merchant)', async () => {
+      const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.guest.v1': 'on' } });
+      try {
+        await H.idle(page);
+        assert(!(await page.evaluate(() => window.HUB_ALERT.shown())), 'the banner shows in Guest mode');
+        noErrors(page);
+      } finally {
+        await page.ctx.close();
+      }
+    });
+
+    await check('Guest mode on: Investments blurs every dollar; percentages, names and the trend stay; its copy is kept', async () => {
       const inv = JSON.stringify({ v: 1, at: H.MONDAY, sentAt: FRESH, section: H.budgetSample.snapshot({ sentAt: FRESH }).investments });
       const page = await env.newPage({ layout: [{ widget: 'investments', x: 0, y: 0, w: 6, h: 4 }, { widget: 'budget-room', x: 6, y: 0, w: 3, h: 2 }],
-        storage: { 'homeHub.guest.v1': 'on', 'homeHub.investments.v1': inv } });
+        storage: { 'homeHub.guest.v1': 'on', 'homeHub.investments.v1': inv, 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
-        const t = await text(page, tileOf('investments'));
-        assert(/\+20\.2%/.test(t) && /62%/.test(t) && !/\$|48,2|30,1|21,0|8,1/.test(t), 'investments: ' + t);
-        assert(/Hidden for guests/.test(await text(page, tileOf('budget-room'))), 'room is not hidden');
-        const kept = await page.evaluate(() => ({ cache: localStorage.getItem('homeHub.investments.v1'), state: window.HUB_INVESTMENTS_TEST.state() }));
-        assert(kept.cache === null && kept.state.m === null, 'dollars kept: ' + JSON.stringify(kept).slice(0, 120));
+        const t = await allBlurred(page, tileOf('investments'), 'investments');
+        assert(/\+20\.2%/.test(t) && /62%/.test(t) && /VTI/.test(t) && !/48,2|30,1|21,0|8,1/.test(t), 'investments: ' + t);
+        assert(/\$48,211/.test(await text(page, tileOf('investments'))), 'the total is gone');
+        assert(await has(page, tileOf('investments') + ' svg polyline'), 'no trend');
+        await allBlurred(page, tileOf('budget-room'), 'room');
+        assert(await page.evaluate(() => !!localStorage.getItem('homeHub.investments.v1') && !!window.HUB_INVESTMENTS_TEST.state().m), 'dollars dropped');
         await H.openPanel(page, 'investments');
-        const p = await text(page, '#panel .panel-body');
-        assert(/62%/.test(p) && !/\$|48,2|30,1|21,0|8,1/.test(p), 'panel: ' + p);
+        const p = await allBlurred(page, '#panel', 'panel');
+        assert(/62%/.test(p) && /Roth Contributory IRA/.test(p) && !/48,2|30,1|21,0|8,1/.test(p), 'panel: ' + p);
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode from the Clock page: On hides money at once, Off brings it back, and it is remembered', async () => {
+    await check('Guest mode from the Clock page: On blurs the amounts at once, Off takes the blur off, and it is remembered', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
-        assert(/Covered/.test(await text(page, tileOf('budget-card'))), 'no budget to start with');
+        const before = {};
+        for (const id of IDS) before[id] = await text(page, tileOf(id));
+        assert(/Covered/.test(before['budget-card']) && !(await has(page, '.guest-blur')), 'no budget to start with, or a blur');
         await H.openPanel(page, 'today');
         const labels = await text(page, '#panel .clock-group-label');
         assert(/Guest mode/.test(labels), 'no Guest mode row: ' + labels);
@@ -459,25 +516,25 @@ async function main() {
         await H.sleep(300);
         assert(await has(page, '#panel [data-key="guest-on"].is-selected'), 'On is not selected after the click');
         assert((await page.evaluate(() => localStorage.getItem('homeHub.guest.v1'))) === 'on', 'not remembered');
+        assert(!(await has(page, '#panel .guest-blur')), 'the Clock page has a blur');
         for (const id of IDS) {
-          const t = await text(page, tileOf(id));
-          assert(/Hidden for guests/.test(t) && !/\$/.test(t), 'after On, ' + id + ': ' + t);
+          await allBlurred(page, tileOf(id), 'after On, ' + id);
+          assert(await text(page, tileOf(id)) === before[id], 'after On, ' + id + ' changed its text');
         }
         await page.click('#panel [data-key="guest-off"]');
         await H.sleep(300);
         assert((await page.evaluate(() => localStorage.getItem('homeHub.guest.v1'))) === null, 'Off not remembered');
-        await H.until(async () => /Covered/.test(await text(page, tileOf('budget-card'))), 3000, 'the budget did not come back: ' + await text(page, tileOf('budget-card')));
-        assert(/\$/.test(await text(page, tileOf('awws-money'))), 'Earned vs spent did not come back');
+        assert(!(await has(page, '.guest-blur')), 'a blur stayed after Off');
+        for (const id of IDS) assert(await text(page, tileOf(id)) === before[id], 'after Off, ' + id + ' changed its text');
         await H.key(page, 'Escape');
         await H.idle(page);
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode: the money layouts leave the switcher', async () => {
+    await check('Guest mode: the money layouts stay in the switcher', async () => {
       const page = await env.newPage({ storage: { 'homeHub.guest.v1': 'on' } });
       try {
-        await page.evaluate(() => {});
         await H.focusTile(page, await page.evaluate(() => {
           let best = null;
           document.querySelectorAll('#grid .cell').forEach((c) => {
@@ -489,22 +546,26 @@ async function main() {
         await H.key(page, 'ArrowUp');
         await H.until(() => page.evaluate(() => document.querySelectorAll('.switcher-item').length > 0), 3000, 'the switcher did not open');
         const names = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.switcher-item'), (n) => n.textContent));
-        assert(names.length === 9 && names.indexOf('AWWS money') < 0 && names.indexOf('Budget') < 0, 'pills: ' + names.join(', '));
+        assert(names.indexOf('Main') >= 0 && names.indexOf('AWWS money') >= 0 && names.indexOf('Budget') >= 0, 'pills: ' + names.join(', '));
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
 
-    await check('Guest mode turned on while the Budget layout shows: the first layout without money takes its place', async () => {
+    await check('Guest mode turned on while the Budget layout shows: the layout stays, its amounts blur', async () => {
       const budget = C.layouts.filter((l) => l.id === 'budget')[0].layout;
       const page = await env.newPage({ layout: budget, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         assert(await has(page, '.cell[data-widget="budget-goals"]'), 'not on Budget');
+        const ids = () => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#grid .cell'), (c) => c.getAttribute('data-widget')).join(','));
+        const first = await ids();
         await page.evaluate(() => window.HUB_GUEST.set(true));
-        await H.until(() => page.evaluate(() => !document.querySelector('.cell[data-widget="budget-goals"]') && !!window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0), 15000, 'still on Budget');
-        await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 15000 });
-        const ids = await page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#grid .cell'), (c) => c.getAttribute('data-widget')));
-        assert(!ids.some((id) => ['awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab'].indexOf(id) >= 0), 'money tiles: ' + ids.join(', '));
-        assert(await page.evaluate(() => window.HUB_GUEST.on()), 'Guest mode is off after the reload');
+        await H.sleep(1500);
+        assert(await ids() === first, 'the layout changed: ' + await ids());
+        await allBlurred(page, tileOf('budget-goals'), 'goals');
+        await page.evaluate(() => window.HUB_GUEST.set(false));
+        await H.sleep(500);
+        assert(await ids() === first && !(await has(page, '.guest-blur')), 'after Off: ' + await ids());
+        noErrors(page);
       } finally { await page.ctx.close(); }
     });
 
@@ -789,7 +850,7 @@ async function main() {
       }
     });
 
-    await check('Guest mode: Budget lab says "Hidden for guests", forgets the session, keeps the saved cap hidden', async () => {
+    await check('Guest mode: Budget lab keeps the session and the saved cap; its amounts blur on the tile and the panel, and come back sharp', async () => {
       const pref = JSON.stringify({ v: 1, cardDate: '2026-11-19', keep: 3.4, at: FRESH });
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]', [PREF]: pref } });
       try {
@@ -798,26 +859,25 @@ async function main() {
         assert((await session(page)).cap === 66, 'session: ' + JSON.stringify(await session(page)));
         await H.key(page, 'Escape');
         await H.idle(page);
-        assert(/Stay under \$66 today/.test(await text(page, LAB_TILE)) || /Short by/.test(await text(page, LAB_TILE)) || /Skip/.test(await text(page, LAB_TILE)),
-          'the tile does not follow the session: ' + await text(page, LAB_TILE));
+        const sharp = await text(page, LAB_TILE);
         await page.evaluate(() => window.HUB_GUEST.set(true));
         await H.sleep(300);
-        const t = await text(page, LAB_TILE);
-        assert(/Hidden for guests/.test(t) && !/\$/.test(t), 'tile: ' + t);
-        const s = await session(page);
-        assert(s.cap === null && s.keep === null && !Object.keys(s.cuts).length, 'session kept: ' + JSON.stringify(s));
-        assert(await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result() === null && window.HUB_BUDGET.data() === null), 'figures still readable');
+        await allBlurred(page, LAB_TILE, 'tile');
+        assert(await text(page, LAB_TILE) === sharp, 'the tile changed: ' + await text(page, LAB_TILE));
+        assert((await session(page)).cap === 66, 'session dropped: ' + JSON.stringify(await session(page)));
         assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'Guest mode deleted the saved cap');
         await H.openPanel(page, 'budget-lab');
-        const p = await labPanel(page);
-        assert(/Hidden for guests/.test(p) && !/\$/.test(p), 'panel: ' + p);
+        await allBlurred(page, '#panel', 'panel');
+        // A press still works and its new amount is blurred too.
+        await H.key(page, 'ArrowRight');
+        assert((await session(page)).cap === 67, 'press: ' + JSON.stringify(await session(page)));
+        await allBlurred(page, '#panel', 'panel after a press');
         await H.key(page, 'Escape');
         await H.idle(page);
         await page.evaluate(() => window.HUB_GUEST.set(false));
-        await H.until(async () => /a day/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back: ' + await text(page, LAB_TILE));
-        await H.openPanel(page, 'budget-lab');
-        const back = await labPanel(page);
-        assert(/\$62\s*a day/.test(back) && /Saved \$61 a day/.test(back), 'after Guest mode: ' + back);
+        await H.sleep(300);
+        assert(!(await has(page, '.guest-blur')), 'a blur stayed');
+        assert(/\$67/.test(await text(page, LAB_TILE)) || /Short by|Skip/.test(await text(page, LAB_TILE)), 'after Guest mode: ' + await text(page, LAB_TILE));
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -1146,7 +1206,7 @@ async function main() {
       }
     });
 
-    await check('Budget lab runway chart: no runway sent shows the lab\'s waiting words; Guest mode draws none', async () => {
+    await check('Budget lab runway chart: no runway sent shows the lab\'s waiting words; in Guest mode the chart draws with its gap blurred', async () => {
       const b = H.budgetSample.snapshot({ sentAt: FRESH });
       b.runway = null;     // the budget app's way to say the section is gone
       await env.setBudget(b);
@@ -1163,7 +1223,9 @@ async function main() {
         await H.sleep(300);
         await H.openPanel(page, 'budget-lab');
         const p = await labPanel(page);
-        assert(/Hidden for guests/.test(p) && !/\$/.test(p) && !(await has(page, '#panel .bl-chart, #panel .bl-chart-sec, #panel svg polyline')), 'guest full screen: ' + p);
+        assert(await has(page, '#panel .bl-chart svg polyline'), 'guest full screen: no chart: ' + p);
+        await allBlurred(page, '#panel .bl-ch-gap', 'the gap');
+        await allBlurred(page, '#panel', 'guest full screen');
         noErrors(page);
       } finally {
         await page.ctx.close();
@@ -1171,7 +1233,7 @@ async function main() {
       }
     });
 
-    await check('Guest mode: Budget lab hides the merchants and Put it somewhere, and clears the session cuts', async () => {
+    await check('Guest mode: Budget lab keeps the merchants and Put it somewhere with their names, amounts blurred, and the session cuts', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.openPanel(page, 'budget-lab');
@@ -1182,18 +1244,12 @@ async function main() {
         await H.idle(page);
         await page.evaluate(() => window.HUB_GUEST.set(true));
         await H.sleep(300);
-        const s = await session(page);
-        assert(!Object.keys(s.cuts).length && s.cap === null, 'cuts kept: ' + JSON.stringify(s));
+        assert((await session(page)).cuts['Quick Bites Delivery'] === 5, 'cuts dropped: ' + JSON.stringify(await session(page)));
         await H.openPanel(page, 'budget-lab');
-        const p = await labPanel(page);
-        assert(/Hidden for guests/.test(p) && !/\$|Quick Bites|Hilltop|Savings|AWWS/.test(p), 'panel: ' + p);
-        assert(!(await has(page, '#panel .bl-cut, #panel .bl-dest')), 'rows drawn for a guest');
-        await H.key(page, 'Escape');
-        await H.idle(page);
-        await page.evaluate(() => window.HUB_GUEST.set(false));
-        await H.until(async () => /a day/.test(await text(page, LAB_TILE)), 3000, 'the lab did not come back');
-        await H.openPanel(page, 'budget-lab');
-        assert((await cutLabels(page))[1] === 'Quick Bites Delivery · $127 so far · cut $0', 'a cut came back: ' + (await cutLabels(page))[1]);
+        assert(await has(page, '#panel .bl-cut') && await has(page, '#panel .bl-dest'), 'rows not drawn');
+        const p = await allBlurred(page, '#panel', 'panel');
+        assert(/Quick Bites/.test(p) && /Savings/.test(p), 'names: ' + p);
+        assert((await cutLabels(page))[1] === 'Quick Bites Delivery · $127 so far · cut $5', 'cut label: ' + (await cutLabels(page))[1]);
         noErrors(page);
       } finally { await page.ctx.close(); }
     });

@@ -113,7 +113,6 @@
     nextTransferAmt: 'Next transfer {d} · {n}',
     moneyStates: {
       hidden: { head: 'Money is hidden', line: 'showMoney is off in config.js, so no money figures show on this TV.', short: 'showMoney is off in config.js.' },
-      guest: { head: 'Hidden for guests', line: 'Guest mode is on, so no money figures show. Turn it off on the Clock page.', short: 'Guest mode is on.' },
       nodata: { head: 'No money data yet', line: 'The figures arrive with the next sync that sends a money section. docs/awws-snapshot.md says how.', short: 'Waiting for the next sync.' }
     },
     reachLine: '{n} visits this week',
@@ -346,15 +345,11 @@
     return out;
   }
 
-  // Guest mode (guest.js) hides money even when config.js allows it.
-  function guestOn() {
-    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
-  }
+  // Guest mode (guest.js) does not hide money: it blurs the amounts on screen.
+  function showMoney() { return family().showMoney === true; }
 
-  function showMoney() { return family().showMoney === true && !guestOn(); }
-
-  // Why money is not shown: Guest mode, or config.js.
-  function moneyHidden() { return guestOn() ? STRINGS.moneyStates.guest : STRINGS.moneyStates.hidden; }
+  // Why money is not shown: config.js.
+  function moneyHidden() { return STRINGS.moneyStates.hidden; }
 
   /* ---------- measuring ---------- */
 
@@ -2954,16 +2949,6 @@
     redraws: function () { return S.redraws || 0; },
     store: S
   };
-
-  // Guest mode on or off: draw everything again (the Glance's money line too).
-  try {
-    if (window.HUB_GUEST) {
-      window.HUB_GUEST.onChange(function () {
-        S.sig = '';
-        try { refreshAll(); } catch (e) { warn('guest: ' + (e && e.message)); }
-      });
-    }
-  } catch (e) { /* no Guest mode on this page */ }
 
   var list = (window.HUB_WIDGETS = window.HUB_WIDGETS || []);
   list.push(real('awws', 'awws', glanceTile));

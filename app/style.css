@@ -1366,5 +1366,16 @@ body.has-picture {
 .tile.is-focused.fx-lap-focus:not(.is-lifted) { border-color: var(--line); }
 .is-glass .tile.is-focused.fx-lap-focus:not(.is-lifted) { border-color: rgba(255, 255, 255, 0.16); }
 
+/* Guest mode (app/guest.js): a dollar amount is a soft smudge in its own
+   colour (green, coral, ink), still taking its place so nothing moves. No
+   filter and nothing animates: the ink turns transparent and a blurred
+   shadow of the same colour stays. The engines without text-fill-color get
+   transparent ink and a neutral shadow instead. !important: theme.css turns
+   text shadows off inside day glass tiles. */
+.guest-blur { color: transparent !important; text-shadow: 0 0 0.45em rgba(150, 160, 178, 0.95) !important; }
+@supports (-webkit-text-fill-color: transparent) {
+  .guest-blur { color: inherit !important; -webkit-text-fill-color: transparent; text-shadow: 0 0 0.45em !important; }
+}
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }

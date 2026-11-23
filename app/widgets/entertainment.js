@@ -149,19 +149,47 @@
     try { return window.HUB_SHOWS && typeof HUB_SHOWS.toCheck === 'function' ? HUB_SHOWS.toCheck() || 0 : 0; } catch (e) { return 0; }
   }
 
-  // The tile's "N to check": a small pill above the logos, or, where there is
-  // no room for words (a strip, a tile under three columns), only the count in a dot
-  // in the body's corner. Returns the height the pill takes from the logos.
+  // The tile's "N to check". In a strip the head keeps only the TV icon, and
+  // the count goes beside it as a pill with words (where the title was), so it
+  // never sits on a logo and reads as one more app count. Where there is no
+  // room for words (a narrow strip, a tile under three columns) only the count,
+  // in an outlined ring on the head's TV icon. Otherwise a pill above the logos.
+  // Returns the height the pill takes from the logos.
   function putCheck(body, size) {
+    var tile = body.parentNode;
+    var head = tile && tile.querySelector ? tile.querySelector('.tile-head') : null;
+    var old = head ? head.querySelectorAll('.ent-check') : [];
+    for (var i = old.length - 1; i >= 0; i--) old[i].parentNode.removeChild(old[i]);
     var n = toCheck();
     if (!n) return 0;
     var text = '';
     try { text = HUB_SHOWS.checkText(); } catch (e) { text = ''; }
-    var dot = !size || size.tier === 'strip' || size.cols < 3;
-    var pill = el('span', 'ent-check' + (dot ? ' is-dot' : ''), dot ? String(n) : text);
-    if (dot) pill.setAttribute('title', text);
+    var strip = !!size && size.tier === 'strip';
+    var dot = !size || size.width === 'narrow' || size.cols < 3;
+    var icon = head ? head.querySelector('.tile-icon') : null;
+    if (dot) {
+      // On the head's TV icon; a one-column tile has no head (only the TV
+      // mark in the body), so there the ring sits in the body's corner.
+      var ring = el('span', 'ent-check is-dot', String(n));
+      ring.setAttribute('title', text);
+      if (icon && icon.offsetWidth) icon.appendChild(ring);
+      else body.insertBefore(ring, body.firstChild);
+      return 0;
+    }
+    var pill = el('span', 'ent-check' + (strip && head ? ' is-head' : ''), text);
+    if (strip && head) {
+      head.appendChild(pill);
+      // A short strip without room for the words: the ring on the icon.
+      if (pill.scrollWidth > pill.clientWidth + 1 && icon) {
+        head.removeChild(pill);
+        var r2 = el('span', 'ent-check is-dot', String(n));
+        r2.setAttribute('title', text);
+        icon.appendChild(r2);
+      }
+      return 0;
+    }
     body.insertBefore(pill, body.firstChild);
-    return dot ? 0 : pill.offsetHeight + parseFloat(getComputedStyle(pill).marginBottom || '0');
+    return pill.offsetHeight + parseFloat(getComputedStyle(pill).marginBottom || '0');
   }
 
   // The tile's order: apps with something to watch first (most first), the
@@ -767,6 +795,7 @@
     onFocus: function (target) {
       var key = target && target.getAttribute('data-key');
       if (key && key.indexOf('sh:') === 0 && window.HUB_SHOWS && HUB_SHOWS.onFocus) HUB_SHOWS.onFocus(target);
+      if (window.HUB_SHOWS && HUB_SHOWS.lightLine) HUB_SHOWS.lightLine(target);
       if (key && key.indexOf('app:') !== 0) lastKey = key;
     },
 

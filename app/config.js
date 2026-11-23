@@ -117,15 +117,18 @@ var HUB_CONFIG = {
   layouts: [
     { id: 'stock', name: 'Default', layout: null },
     { id: 'main', name: 'Main', layout: [
-      { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
-      { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
-      { widget: 'todo',          x: 0, y: 2, w: 3, h: 4 },
-      { widget: 'calendar',      x: 3, y: 0, w: 3, h: 4 },
-      { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
-      { widget: 'awws',          x: 6, y: 0, w: 3, h: 4 },
-      { widget: 'ambience',      x: 3, y: 4, w: 3, h: 2 },
-      { widget: 'mirror',        x: 6, y: 4, w: 3, h: 2 },
-      { widget: 'entertainment', x: 9, y: 4, w: 3, h: 2 }
+      { widget: 'today',          x: 0, y: 0, w: 3, h: 1 },
+      { widget: 'entertainment',  x: 0, y: 5, w: 3, h: 1 },
+      { widget: 'weather',        x: 0, y: 2, w: 3, h: 2 },
+      { widget: 'todo',           x: 3, y: 3, w: 3, h: 2 },
+      { widget: 'calendar',       x: 3, y: 0, w: 3, h: 3 },
+      { widget: 'awws',           x: 6, y: 0, w: 3, h: 3 },
+      { widget: 'ambience',       x: 3, y: 5, w: 3, h: 1 },
+      { widget: 'wotd',           x: 0, y: 1, w: 3, h: 1 },
+      { widget: 'budget-room',    x: 9, y: 3, w: 3, h: 3 },
+      { widget: 'investments',    x: 9, y: 0, w: 3, h: 3 },
+      { widget: 'nowplaying',      x: 0, y: 4, w: 3, h: 1 },
+      { widget: 'grocery',        x: 6, y: 3, w: 3, h: 3 }
     ] },
     { id: 'get-ready', name: 'Get ready', layout: [
       { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
@@ -166,17 +169,6 @@ var HUB_CONFIG = {
       { widget: 'calendar',      x: 4, y: 3, w: 4, h: 3 },
       { widget: 'today',         x: 8, y: 3, w: 4, h: 1 },
       { widget: 'entertainment', x: 8, y: 4, w: 4, h: 2 }
-    ] },
-    /* A test layout: the All sounds widget (app/widgets/allsounds.js) on its
-       own, filling the screen, to try it before it joins any real layout.
-       New widgets can be tried the same way: one layout, one widget. */
-    { id: 'allsounds-test', name: 'All sounds test', layout: [
-      { widget: 'allsounds',     x: 0, y: 0, w: 12, h: 6 }
-    ] },
-    /* A test layout: Sound control (app/widgets/soundctl.js, All sounds plus
-       the Echo controls) on its own, filling the screen. */
-    { id: 'soundctl-test', name: 'Sound control test', layout: [
-      { widget: 'soundctl',      x: 0, y: 0, w: 12, h: 6 }
     ] },
     // Plant sun alone, to try it out (a new widget gets a layout of its own first).
     { id: 'plant-wall', name: 'Plants', layout: [
@@ -542,7 +534,7 @@ var HUB_CONFIG = {
     /*
      * Pantry: what is at home, kept on the Pi in SQLite (app/widgets/pantry.js,
      * pi/pantrydb.js). Phone and tablet only for now (no TV tile yet); a low
-     * item goes on the grocery list by itself. Needs Pi server 0.28.0.
+     * item goes on the grocery list by itself. Needs Pi server 0.30.0.
      */
     pantry: { touch: true },
 

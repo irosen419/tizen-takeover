@@ -236,7 +236,7 @@ On the TV: the Investments tile (`investments`, standalone, in no layout; add it
 
 ### Privacy for investments
 
-- **Dollar figures for the portfolio total, each account and the top holdings are allowed on the TV: the owner approved them on 2026-11-19** (the second exception to "no balance", after the Card day receipt). Guest mode hides them: the TV derives the percentages it needs first and throws the dollars away before anything is stored.
+- **Dollar figures for the portfolio total, each account and the top holdings are allowed on the TV: the owner approved them on 2026-11-19** (the second exception to "no balance", after the Card day receipt). Guest mode (Clock page) blurs them on screen; percentages stay readable. The TV keeps the figures as it does with Guest mode off.
 - Never account numbers, share counts, purchase dates or a transaction list. A field not named above is dropped.
 - `./hub budget show` and the mailbox's `budget.show` print counts and dates only: `investments  6 accounts, 8 holdings, 31 days of history, 2026-10-19 to 2026-11-18`.
 - The snapshot only travels on the Pi itself (127.0.0.1), never through the mailbox or the cloud.

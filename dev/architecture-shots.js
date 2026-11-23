@@ -14,7 +14,10 @@
  *   08-drawer-talks-to.png     the drawer scrolled to its "Talks to" links
  *   09-flows-list.png          the data flow list
  *   10-flow-step.png           a flow, stepped to its third step
- *   es-*.png                   the Big picture, the Pi, a drawer and a flow with every text 25% longer (accents added)
+ *   11-code-map-pi-server.png  the Live server's drawer at its Code map (step 8 of the reading order)
+ *   12-code-map-widget.png     the To-do widget's drawer at its recipe ("Add a widget")
+ *   13-code-map-group.png      The TV group's drawer at its folders and reading order
+ *   es-*.png                   the Big picture, the Pi, a drawer, a flow and a code map with every text 25% longer (accents added)
  *
  * Needs Playwright and port 8095 free.
  */
@@ -60,6 +63,14 @@ function longer() {
         (v.flows || []).forEach((f) => { f.title = grow(f.title); f.summary = grow(f.summary); f.steps.forEach((s) => { s.say = grow(s.say); }); });
         v.overview.boxes.forEach((b) => { b.title = grow(b.title); b.lines = b.lines.map(grow); });
         v.overview.edges.forEach((e) => { if (e.label) e.label = grow(e.label); });
+        const cm = v.codemap;
+        if (cm) {
+          cm.folders.forEach((f) => { f.lang = grow(f.lang); f.where = grow(f.where); });
+          cm.read.forEach((r) => { r.text = grow(r.text); });
+          cm.flows.forEach((f) => { f.title = grow(f.title); f.says.forEach((x) => { x.text = grow(x.text); }); });
+          cm.fixes.forEach((x) => { x.when = grow(x.when); x.look = grow(x.look); });
+          cm.recipes.forEach((r) => { r.title = grow(r.title); r.steps.forEach((x) => { x.text = grow(x.text); }); });
+        }
       } catch (e) { /* plain text then */ }
     }
   });
@@ -100,7 +111,17 @@ async function main() {
       await page.waitForFunction(() => window.HUB_TEST.open() === 'architecture' && !!document.querySelector('#panel .ar-box'));
       await sleep(300);
     };
-    const full = [{ widget: 'architecture', x: 0, y: 0, w: 12, h: 6 }];
+    // A second, small tile: a one-widget layout opens straight into a window instead of the tile.
+    const full = [{ widget: 'architecture', x: 0, y: 0, w: 12, h: 5 }, { widget: 'today', x: 0, y: 5, w: 3, h: 1 }];
+    // Down through a drawer until the row whose key starts with prefix has focus.
+    const focusKey = async (page, prefix) => {
+      for (let i = 0; i < 60; i++) {
+        const k = await page.evaluate(() => { const f = document.querySelector('#panel .f.is-focused'); return f ? f.getAttribute('data-key') : ''; });
+        if (k.indexOf(prefix) === 0) return;
+        await press(page, 'ArrowDown');
+      }
+      throw new Error('no drawer row ' + prefix);
+    };
 
     // The tile among others.
     let page = await open([
@@ -156,6 +177,13 @@ async function main() {
       if (!grow) {
         await press(page, 'ArrowDown', 30);
         await shot(page, '08-drawer-talks-to.png');
+      }
+      // The code map in a drawer: the Live server (step 8 of the reading order), a widget
+      // (its recipe) and the TV group (its folders and reading order).
+      for (const [id, name, key] of [['pi.server', '11-code-map-pi-server.png', 'd:cm:start'], ['tv.widgets.todo', '12-code-map-widget.png', 'd:cm:recipe'], ['tv', '13-code-map-group.png', 'd:cm:dir0']]) {
+        await page.evaluate((x) => window.HUB_ARCHITECTURE.goto(x, true), id);
+        await focusKey(page, key);
+        if (!grow || id === 'pi.server') await shot(page, pre + name);
       }
       await page.evaluate(() => window.HUB_ARCHITECTURE.flow('flow.tv-live-todo', 2));
       await shot(page, pre + '10-flow-step.png');

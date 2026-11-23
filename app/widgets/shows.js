@@ -124,7 +124,7 @@
     nothingToday: 'Nothing airs today.',
     nothingWeek: 'Nothing airs this week.',
     nothingMonth: 'Nothing more airs this month.',
-    nothingSoon: 'No season dates yet.',
+    nothingSoon: 'Nothing with a date yet.',
     nextAiring: 'Next up: {name} · {when}',
     tonight: 'Tonight: {name} {time}',
     todayLine: 'Today: {name} {time}',
@@ -149,6 +149,9 @@
     seasonLine: 'Season {s} · {w} of {n} watched',
     allLine: 'All {n} episodes watched',
     watchNext: 'Watch {code}',
+    pgNoEps: 'No episodes listed yet',
+    pgNoEpsLine: 'Date not announced yet. The list fills in once it is.',
+    pgOpen: 'Open {service}',
     caughtUp: 'I’m caught up',
     seenAll: 'I’ve seen it all',
     caughtDone: 'You’re caught up',
@@ -618,6 +621,33 @@
     return out;
   }
 
+  // The Coming soon tab: every show with a date ahead, soonest first. A show's
+  // next episode (as Your shows says it), or else its dated new season. Shows
+  // with no date yet are not coming soon: they stay in Your shows, where
+  // their row says "Season 3 · no date yet".
+  function comingSoon(d, t) {
+    var out = [];
+    var back = returning(d, t);
+    var list = showsOf(d);
+    for (var i = 0; i < list.length; i++) {
+      var next = nextFor(list[i], t);
+      var ret = null;
+      for (var j = 0; j < back.length; j++) if (back[j].show === list[i] && back[j].ms !== null) ret = back[j];
+      if (next && (!ret || next.ms <= ret.ms)) {
+        out.push({ show: list[i], ms: next.ms, ep: next.ep, season: next.ep.season, days: Math.round((dayStart(next.ms) - dayStart(t)) / DAY) });
+      } else if (ret) out.push(ret);
+    }
+    out.sort(function (a, b) { return (a.ms - b.ms) || (a.show.name < b.show.name ? -1 : 1); });
+    return out;
+  }
+
+  // A show's undated return ("Season 3 · no date yet"), or null.
+  function undatedFor(d, s, t) {
+    var back = returning(d, t);
+    for (var i = 0; i < back.length; i++) if (back[i].show === s && back[i].ms === null) return back[i];
+    return null;
+  }
+
   // Shows started and not caught up, with aired episodes not marked watched
   // ("Ready to watch" on Coming soon): [{ show, n, left, next }], by title.
   // Started = a "watched up to" point or any episode marked; a show never
@@ -675,7 +705,7 @@
     var range;
     if (tab === 'today') { to = addDays(from, 1); range = longDay(t); }
     else if (tab === 'month') { to = monthEnd(t); range = monthTitle(t); }
-    else if (tab === 'soon') { return { tab: tab, range: '', groups: [], soon: returning(d, t), shows: showsOf(d), ready: readyList(d) }; }
+    else if (tab === 'soon') { return { tab: tab, range: '', groups: [], soon: comingSoon(d, t), shows: showsOf(d), ready: readyList(d) }; }
     else { tab = 'week'; from = weekStart(t); to = addDays(from, 7); range = rangeText(from, to); }
     var groups = groupByDay(airings(d, from, to), t);
     return { tab: tab, range: range, groups: groups, soon: returning(d, t), from: from, to: to };
@@ -1461,6 +1491,7 @@
   }
 
   function soonText(r) {
+    if (r.ep) return word('nextLine', { code: epCode([r.ep]), when: whenText(r.ms, now(), r.ep.dayOnly) });
     if (r.ms === null) return r.season ? word('returnsNoDate', { n: r.season }) : word('newSeason');
     return word('returns', { n: r.season, date: dayDate(r.ms) });
   }
@@ -1565,6 +1596,7 @@
       var next = nextFor(s, t);
       if (next) line = word('nextLine', { code: epCode([next.ep]), when: whenText(next.ms, t, next.ep.dayOnly) });
       var meta = el('div', 'sh-meta', info);
+      if (!line) { var nd = undatedFor(S.data, s, t); if (nd) line = soonText(nd); }
       el('span', 'sh-meta-text', meta, line || (s.checkedAt ? '' : (s.error || '')));
       var rd = readyFor(S.data, s.id);
       if (rd) el('span', 'sh-chip is-ready', meta, word('nToWatch', { n: rd.n }));
@@ -1657,7 +1689,7 @@
     if (want) pick = want;
     // Back from a show page: the chip it was opened from.
     if (S.backKey) {
-      var chips = root.querySelectorAll('.sh-page');
+      var chips = root.querySelectorAll('.sh-page, .sh-card');
       for (var c = 0; c < chips.length; c++) if (chips[c].getAttribute('data-key') === S.backKey) pick = chips[c];
       S.backKey = null;
     }
@@ -1676,7 +1708,8 @@
     if (key.indexOf('sh:') !== 0) return false;
     var p = key.split(':');
     if (p[1] === 'pg') return selectPage(p);
-    if (p[1] === 'page') {
+    if (p[1] === 'page' || p[1] === 'soon') {
+      // A Coming soon card opens the show page too, dated or not.
       if (findShow(p[2])) openPage(p[2], key);
       return true;
     }
@@ -1940,7 +1973,8 @@
     var top = el('div', 'sh-pg-top', root);
     var back = el('div', 'sh-pg-back f', top);
     // While the list is still coming, the chip has a key of its own, so focus moves to Watch when it arrives.
-    back.setAttribute('data-key', fl.length ? 'sh:pg:back' : 'sh:pg:back:wait');
+    var noList = !fl.length && P.state === 'ok' && !!d;
+    back.setAttribute('data-key', fl.length || noList ? 'sh:pg:back' : 'sh:pg:back:wait');
     back.setAttribute('role', 'button');
     el('span', 'sh-pg-back-arrow', back);
     el('span', 'sh-pg-back-text', back, word('title'));
@@ -1959,6 +1993,18 @@
       el('span', 'sh-pg-meta-text', meta, nSeasons === 1 ? word('seasonsOne') : word('seasonsN', { n: nSeasons }));
     }
     var firstFocus = null;
+    if (noList) {
+      // A show with no episode listed (a new season with no date yet): say so, and still open its app.
+      var nm = el('div', 'sh-msg', root);
+      el('div', 'sh-msg-head', nm, word('pgNoEps'));
+      el('div', 'sh-msg-line', nm, word('pgNoEpsLine'));
+      var svc = watchApp(show);
+      if (svc) {
+        var ob = pgBtn(el('div', 'sh-pg-acts sh-pg-acts-solo', root), 'sh:pg:open', 'is-main', word('pgOpen', { service: svc }), 'play');
+        ob.setAttribute('data-autofocus', '');
+      } else back.setAttribute('data-autofocus', '');
+      return;
+    }
     if (!fl.length) {
       var st = P.state === 'old' || P.state === 'lost' ? 'page' + cap(P.state) : 'loading';
       var w = stateWords(st);
@@ -2077,6 +2123,7 @@
       if (S.C) S.C.redrawPanel();
       return true;
     }
+    if (what === 'open') { watch(show, [], null); return true; }
     if (what === 'watch') {
       var nx = nextToWatch(pg.id, fl, t);
       if (nx) watch(show, [{ season: nx.season, number: nx.number, name: nx.name, airstamp: nx.airstamp }], null);
@@ -2160,6 +2207,28 @@
     return items[at - 1] || undefined;
   }
 
+  // Left and Right on the tabs switch the tab at once (no OK needed). Past
+  // the first or last tab: the usual move (into the apps column, say).
+  function tabMove(dir, from) {
+    var i = TABS.indexOf(from) + (dir === 'right' ? 1 : -1);
+    if (i < 0 || i >= TABS.length) return undefined;
+    S.tab = TABS[i];
+    store(TAB_KEY, S.tab);
+    if (S.C) S.C.redrawPanel();
+    return document.querySelector('.sh .sh-tab[data-key="sh:tab:' + S.tab + '"]') || true;
+  }
+
+  // The line (row, Also on, check, show page) holding the focus is drawn as
+  // one box: is-lit on the line, is-in when the row itself has the focus.
+  function lightLine(target) {
+    var lit = document.querySelectorAll('.sh-line.is-lit');
+    for (var i = 0; i < lit.length; i++) lit[i].className = lit[i].className.replace(/\s*\bis-(lit|in)\b/g, '');
+    if (!target || !target.getAttribute || S.page) return;
+    var line = lineOf(target);
+    if (!line || !/\bsh-line\b/.test(line.className)) return;
+    line.className += ' is-lit' + (/\bsh-(row|show)\b/.test(target.className) ? ' is-in' : '');
+  }
+
   // Down from any tab goes to the first thing of the listing below (the "Did you finish?"
   // strip or the first row), never sideways into the apps column; Up from the first line of
   // the listing goes back to the tab on show.
@@ -2202,7 +2271,11 @@
   // for the usual move by position.
   function onMove(dir, from) {
     if (!from) return undefined;
-    if (!S.page && (dir === 'left' || dir === 'right')) return lineMove(dir, from);
+    if (!S.page && (dir === 'left' || dir === 'right')) {
+      var fk = from.getAttribute('data-key') || '';
+      if (fk.indexOf('sh:tab:') === 0) return tabMove(dir, fk.slice(7));
+      return lineMove(dir, from);
+    }
     if (dir !== 'up' && dir !== 'down') return undefined;
     if (!S.page) return listingMove(dir, from);
     var key = from.getAttribute('data-key') || '';
@@ -2210,7 +2283,9 @@
     var firstEp = document.querySelector('.sh-pg-row');
     var watchBtn = pgNode('sh:pg:watch');
     var caught = pgNode('sh:pg:caught');
-    if (key === 'sh:pg:back') return dir === 'down' ? (watchBtn || caught || sea || undefined) : undefined;
+    var openBtn = pgNode('sh:pg:open');
+    if (key === 'sh:pg:back') return dir === 'down' ? (watchBtn || openBtn || caught || sea || undefined) : undefined;
+    if (key === 'sh:pg:open') return dir === 'down' ? undefined : pgNode('sh:pg:back') || undefined;
     if (key === 'sh:pg:watch') return dir === 'down' ? (caught || sea || undefined) : pgNode('sh:pg:back') || undefined;
     if (key === 'sh:pg:caught') return dir === 'down' ? (sea || undefined) : (watchBtn || pgNode('sh:pg:back') || undefined);
     if (key.indexOf('sh:pg:season:') === 0) return dir === 'down' ? (firstEp || undefined) : (caught || watchBtn || pgNode('sh:pg:back') || undefined);
@@ -2277,6 +2352,7 @@
     renderPanel: renderPanel,
     onSelect: onSelect,
     onFocus: onFocus,
+    lightLine: lightLine,
     onMove: onMove,
     onBack: onBack,
     closePage: function () { S.page = null; S.backKey = null; P.seq++; },

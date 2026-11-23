@@ -6,8 +6,8 @@
  * a fresh data folder. Nothing reaches the internet, Home Assistant or
  * Amazon. Needs Playwright (require('playwright')) and port 8095 free.
  *
- * Checks: the "Sound control test" layout in the switcher (the one added pill,
- * the others as before) and the widget filling the screen there; every state
+ * Checks: the switcher (no sound test pills) and the widget filling the screen
+ * when a layout holds it alone; every state
  * (a radio show with its picture, music, paused, nothing playing, not set
  * up, Home Assistant refusing the token or away, the Pi lost) in English and
  * Spanish; several tile sizes in English, Spanish and Spanish 25% longer
@@ -353,12 +353,12 @@ async function main() {
   const pi = await startPi(true);
   const noHa = await startPi(false);
 
-  await check('the switcher: the stock pills as before plus "Sound control test" at the end, none cut; it is the active one', async () => {
+  await check('the switcher: the stock pills only (no sound test pills), none cut; the widget fills the screen when a layout holds it', async () => {
     await house(pi, 'radio');
     const s = await open(pi, TEST_LAYOUT);
     await waitKind(s.page, 'playing', 'Morning Edition');
     const cfg = await s.page.evaluate(() => window.HUB_CONFIG.layouts.map((l) => l.name));
-    assert(cfg.join('|') === 'Default|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|All sounds test|Sound control test|Plants|Ambience test|Hub architecture', 'layouts: ' + cfg.join(', '));
+    assert(cfg.join('|') === 'Default|Main|Get ready|AWWS desk|AWWS one screen|AWWS money|Budget|Plants|Ambience test|Hub architecture|Groceries test', 'layouts: ' + cfg.join(', '));
     // A one-widget layout opens straight into its window: Back to its tile, then Up.
     if (TEST_LAYOUT.length === 1 && TEST_LAYOUT[0].w === 12 && TEST_LAYOUT[0].h === 6) {
       await until(() => s.page.evaluate(() => window.HUB_TEST.open() === 'soundctl' && !window.HUB_TEST.busy()), 5000, 'the one-widget layout did not open');
@@ -383,7 +383,6 @@ async function main() {
     assert(bar.items.map((i) => i.name).join('|') === cfg.join('|'), 'pills: ' + bar.items.map((i) => i.name).join(', '));
     assert(!bar.over, 'the bar overflows');
     for (const it of bar.items) assert(it.l >= 0 && it.r <= bar.w && !it.cut, 'pill cut: ' + it.name);
-    assert(bar.active === 'Sound control test', 'active: ' + bar.active);
     await shot(s.page, 'soundctl-switcher-en.png');
     const cells = await s.page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.cell'), (c) => c.getAttribute('data-widget')).join());
     assert(cells === 'soundctl', 'one widget: ' + cells);
@@ -740,13 +739,6 @@ async function main() {
     const bad = await problems(s.page, '.sc-page');
     assert(!bad.length, bad.join('; '));
     await s.context.close();
-    // The "before" picture is the real All sounds page (allsounds.js, untouched).
-    const old = await open(p, [{ widget: 'allsounds', x: 0, y: 0, w: 3, h: 2 }], { lang: 'en' });
-    await old.page.waitForSelector('.as-tile');
-    await old.page.evaluate(() => window.HUB_TEST.openPanel('allsounds'));
-    await until(() => old.page.evaluate(() => window.HUB_TEST.open() === 'allsounds' && !window.HUB_TEST.busy() && !!document.querySelector('.as-page .as-title')), 5000, 'the All sounds page did not open');
-    await shot(old.page, 'soundctl-panel-before-en.png');
-    await old.context.close();
     const n = await startPi(false);
     const s2 = await open(n, ONLY(3, 2), {});
     await s2.page.waitForSelector('.sc-tile');

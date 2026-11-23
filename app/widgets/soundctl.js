@@ -376,8 +376,6 @@
     return n;
   }
 
-  function hasClass(n, c) { return (' ' + n.className + ' ').indexOf(' ' + c + ' ') >= 0; }
-
   /* ---------- pieces ---------- */
 
   function artBox(parent, v, cls) {

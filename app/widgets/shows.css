@@ -34,8 +34,10 @@
 .tile-wn .ent-count { top: 0.1rem; right: 0.1rem; min-width: 1.2rem; font-size: 0.75rem; line-height: 1.2rem; }
 
 /* "N to check": started episodes waiting for an answer in the Schedule. A
-   pill above the logos; in a strip or a one-column tile only the count, in a
-   dot like the logos' counts, in the body's corner. */
+   pill above the logos; in a strip, the same pill in the head beside the TV
+   icon (the title gives way); where there is no room for words, only the
+   count in an outlined ring on the TV icon, so it never reads as one more
+   app's count (those are filled, on the logos). */
 .ent-check {
   align-self: flex-start;
   margin: 0 0 0.5rem;
@@ -49,22 +51,36 @@
   font-size: 0.85rem; font-weight: 600; line-height: 1.4;
   white-space: nowrap;
 }
+.ent-check.is-head {
+  flex: 0 1 auto;
+  min-width: 0;
+  align-self: center;
+  margin: 0 0 0 0.6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .ent-check.is-dot {
   position: absolute;
   top: 0; left: 0;
   z-index: 3;
-  min-width: 1.35rem;
+  min-width: 1.25rem;
   margin: 0;
-  padding: 0 0.3rem;
-  background: #7fd1ff;
-  border: 0;
+  padding: 0 0.25rem;
+  background: var(--card);
+  border: 0.1rem solid #7fd1ff;
   border-radius: 0.7rem;
-  color: #050506;
+  color: #7fd1ff;
+  font-size: 0.75rem;
   font-weight: 700;
-  line-height: 1.35rem;
+  line-height: 1.05rem;
   text-align: center;
-  box-shadow: 0 0 0 0.12rem var(--card);
 }
+.tile-icon .ent-check.is-dot { top: -0.55rem; left: auto; right: -0.75rem; }
+/* A one-row Entertainment strip: the TV icon says what it is (no "Apps"). */
+.cell[data-widget="entertainment"] .tile-h1 .tile-titles { display: none; }
+.cell[data-widget="entertainment"] .tile-h1 .tile-icon { position: relative; margin-right: 0; }
+.cell[data-widget="entertainment"] .tile-h1 .tile-head { margin-right: 0.9rem; }
+.cell[data-widget="entertainment"] .tile:not(.tile-h1) .tile-icon { position: relative; }
 
 /* ---------- the card before an app opens (no deep link) ---------- */
 
@@ -182,7 +198,14 @@
 .sh-day.is-past .sh-date-day { color: var(--text-3); }
 .sh-rows { flex: 1 1 auto; min-width: 0; }
 
-.sh-line { display: flex; align-items: center; }
+.sh-line { display: flex; align-items: center; padding-right: 0.35rem; border-radius: 0.9rem; }
+/* The line with the focus is one box: the row, Also on, the check and the
+   show page chip inside it. The row's own focus edge becomes the box's; a pill
+   in focus keeps the box quiet and lights up itself. */
+.sh-line.is-lit { background: var(--card-2); box-shadow: inset 0 0 0 var(--edge) rgba(255, 255, 255, 0.22); }
+.sh-line.is-lit.is-in { box-shadow: inset 0 0 0 var(--edge) var(--focus); }
+.sh-line.is-lit .sh-row.is-focused,
+.sh-line.is-lit .sh-show.is-focused { background: transparent; border-color: transparent; }
 .sh-row,
 .sh-show {
   flex: 1 1 auto;
@@ -704,9 +727,11 @@
 .sh-page.is-past { opacity: 0.55; }
 .sh-page-ic { flex: 0 0 auto; box-sizing: border-box; width: 1.5rem; height: 1.5rem; padding: 0.24rem; border-radius: 50%; border: 0.12rem solid rgba(255, 255, 255, 0.4); }
 .sh-page-text { display: none; margin: 0 0.45rem 0 0.5rem; white-space: nowrap; }
-.sh-page.is-focused { opacity: 1; border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
-.sh-page.is-focused .sh-page-text { display: inline; }
-.sh-page.is-focused .sh-page-ic { border-color: #050506; }
+.sh-page.is-focused { opacity: 1; }
+/* Focused: the round chip fills in, in its own place. It never grows a label
+   over the pills on its left (the line's box says which row it belongs to). */
+.sh-page.is-focused .sh-page-ic { border-color: var(--focus); background: #fff; color: #050506; box-shadow: 0 0 0 0.14rem var(--focus); }
+
 
 .sh-pg-top { display: flex; align-items: center; margin-bottom: 0.9rem; }
 .sh-pg-back { display: flex; align-items: center; padding: 0.3rem 0.85rem 0.3rem 0.6rem; border-radius: 1.3rem; border: var(--edge) solid var(--line); background: rgba(255, 255, 255, 0.04); font-size: 0.9rem; line-height: 1.35; color: var(--text-2); cursor: pointer; }
@@ -756,5 +781,9 @@
 .sh-pg-upto { display: none; flex: 0 0 auto; margin-left: 0.4rem; padding: 0.22rem 0.75rem; border-radius: 1rem; border: var(--edge) solid var(--line); background: rgba(255, 255, 255, 0.04); font-size: 0.85rem; line-height: 1.4; color: var(--text-2); white-space: nowrap; cursor: pointer; }
 .sh-pg-ep.is-in .sh-pg-upto { display: block; }
 .sh-pg-upto.is-focused { border-color: var(--focus); background: #fff; color: #050506; font-weight: 600; }
+
+/* No episode listed yet: the open-app button sits under the message. */
+.sh-pg-acts-solo { flex-direction: row; margin: 1.2rem 0 0; padding-top: 0; }
+.sh-pg-acts-solo .sh-pg-btn { max-width: 100%; }
 
 .css-end { top: 0; }

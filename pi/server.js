@@ -9,8 +9,9 @@
  *   GET  /live/events    the push line (Server-Sent Events)
  *   GET  /live/poll      the fallback for browsers without the push line
  *   POST /todo/ops       to-do changes made on the TV
- *   GET  /touch/state    the touch app's data (grocery, the catalog products of the codes
- *                        on it, and the pantry; no screen is registered)
+ *   GET  /touch/state    the touch app's data (grocery, to-dos, the catalog products of the
+ *                        codes on it, and the pantry; no screen is registered)
+ *   POST /touch/todo/ops to-do changes made in the touch app (the same ops as /todo/ops)
  *   POST /grocery/ops    grocery changes made in the touch app or on the TV (it answers the
  *                        browser's OPTIONS preflight for an Origin on HUB_ORIGINS) ({ op: 'add', upc } names
  *                        the item from the products catalog)
@@ -122,6 +123,7 @@ const path = require('path');
 const crypto = require('crypto');
 const calendar = require('./calendar');
 const todoconvert = require('./todoconvert');
+const gcal = require('./gcal');
 const awws = require('./awws');
 const budget = require('./budget');
 const mailbox = require('./mailbox');
@@ -138,7 +140,7 @@ const grocery = require('./grocery');
 const products = require('./products');
 const pantrydb = require('./pantrydb');
 
-const SERVER_VERSION = '0.28.0';
+const SERVER_VERSION = '0.30.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -713,6 +715,10 @@ function start(options) {
   const todoConv = opt.todoConvert === false ? null : todoconvert.create({
     dataDir: dataDir, log: log, tz: calTz,
     items: () => todoItems(),
+    // A ticked to-do's event is deleted in Google through a service account
+    // (gcal.js, key in data/google-calendar-key.json); no key, no deletes.
+    remover: opt.gcal === false ? null : (opt.gcal || gcal.create({ dataDir: dataDir })),
+    calendarId: (cal) => { const c = calList.find((x) => x.cal === cal); return c ? calendar.ownerOf(c.url) : ''; },
     add: (list) => {
       const now = Date.now();
       const items = purgeOld(todoItems(), now);
@@ -1992,13 +1998,13 @@ function start(options) {
       return res.end();
     }
     const image = route.indexOf('/products/image/') === 0;
-    const want = route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' ? 'POST' : 'GET';
+    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' ? 'POST' : 'GET';
     const okMethod = req.method === want || (image && req.method === 'HEAD');
     if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
       return sendJson(res, 200, {
         ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev,
-        grocery: state.resources.grocery, products: groceryProducts(), pantry: pantryView()
+        grocery: state.resources.grocery, todo: state.resources.todo, products: groceryProducts(), pantry: pantryView()
       }, cors);
     }
     if (image) {
@@ -2017,6 +2023,20 @@ function start(options) {
       let p;
       try { p = catalog.lookup(query.get('upc') || '', query.get('format') || '', { client: plainAddress(clientAddress(req)) }); } catch (e) { return fail(res, e, cors); }
       return p.then((r) => sendJson(res, 200, r, cors), (e) => fail(res, e, cors));
+    }
+    if (route === '/touch/todo/ops') {
+      // The to-do list from the touch app: the same ops as the TV's
+      // POST /todo/ops (add, set, remove), only from this app's own page.
+      // The TV still gets the change over its live line.
+      if (!touchProof(req)) return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+      return readBody(req, res, (body) => {
+        try {
+          opsAndReply(res, body, cors);
+          log('touch app changed the to-do list (rev ' + state.rev + ')');
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
     }
     if (route === '/products/save') {
       return readBody(req, res, (body) => {
@@ -2256,7 +2276,7 @@ function start(options) {
     '/echo/run': 1
   };
 
-  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1 };
+  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1 };
 
   function handler(door) {
     return (req, res) => {

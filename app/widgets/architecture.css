@@ -427,6 +427,32 @@ body:not(.motion-fade) .ar-drawer { -webkit-animation: ar-slide 180ms ease-out; 
 .ar-dr-linktitle { font-size: 1.2rem; font-weight: 700; line-height: 1.4; padding: 0.03rem 0; }
 .ar-dr-linklabel { font-size: 0.98rem; line-height: 1.4; color: var(--text-2); padding: 0.03rem 0; }
 
+/* the code map (docs/CODE-MAP.md) */
+.ar-cm-label { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; margin-right: 0.9rem; }
+.ar-cm-src { font-family: Consolas, Menlo, monospace; font-size: 0.85rem; letter-spacing: 0; text-transform: none; color: var(--text-3); margin-left: 0.8rem; }
+.ar-cm-code { font-family: Consolas, Menlo, monospace; font-size: 0.9em; padding: 0 0.15rem; border-radius: 0.3rem; background: rgba(255, 255, 255, 0.08); word-wrap: break-word; }
+.ar-cm-path { font-family: Consolas, Menlo, monospace; font-size: 1.05rem; font-weight: 700; line-height: 1.5; word-wrap: break-word; color: var(--text); }
+.ar-cm-big { font-size: 1.25rem; margin: 0.15rem 0 0.2rem; }
+.ar-cm-note { color: var(--text); line-height: 1.5; padding: 0.04rem 0; }
+.ar-cm-also, .ar-cm-in { margin-top: 0.3rem; font-size: 0.98rem; line-height: 1.45; color: var(--text-2); padding: 0.03rem 0; }
+.ar-cm-more { margin: -0.1rem 0 0.5rem 0.9rem; }
+.ar-cm-start { position: relative; padding-left: 1.2rem; background: rgba(141, 150, 255, 0.1); border-color: rgba(141, 150, 255, 0.3); }
+.ar-cm-start:before { content: ''; position: absolute; left: 0.35rem; top: 0.6rem; bottom: 0.6rem; width: 0.22rem; border-radius: 0.11rem; background: #8d96ff; }
+.ar-cm-start.is-focused { border-color: #fff; }
+.ar-cm-eyebrow { display: flex; align-items: center; font-size: 0.9rem; line-height: 1.4; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #aab1ff; padding: 0.04rem 0; }
+.ar-cm-n { flex: 0 0 auto; display: inline-block; min-width: 1.5rem; height: 1.5rem; margin-right: 0.55rem; padding: 0 0.3rem; border-radius: 0.75rem; background: #8d96ff; color: #0d0f1a; font-size: 0.9rem; line-height: 1.5rem; font-weight: 800; letter-spacing: 0; text-align: center; }
+.ar-cm-file { border-left: 0.14rem solid rgba(255, 255, 255, 0.14); }
+.ar-cm-file.is-focused { border-color: #fff; }
+.ar-cm-head { display: flex; align-items: baseline; flex-wrap: wrap; }
+.ar-cm-tag { margin-left: 0.6rem; padding: 0 0.5rem; border-radius: 0.5rem; border: 0.08rem solid var(--line); font-size: 0.85rem; line-height: 1.5; color: var(--text-2); white-space: nowrap; }
+.ar-cm-step { display: flex; align-items: flex-start; }
+.ar-cm-step .ar-cm-n { margin-top: 0.1rem; }
+.ar-cm-steptext { flex: 1 1 0; min-width: 0; }
+.ar-cm-when { font-weight: 700; line-height: 1.45; padding: 0.04rem 0; color: #f6c06b; }
+.ar-cm-li { display: flex; align-items: flex-start; color: var(--text); padding: 0.1rem 0; }
+.ar-cm-num { flex: 0 0 auto; min-width: 1.6rem; font-weight: 700; }
+.ar-cm-litext { flex: 1 1 0; min-width: 0; line-height: 1.5; }
+
 /* ---------- loading and failure ---------- */
 
 .ar-state { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }

@@ -125,7 +125,7 @@ For a shopping run (the export): `./hub grocery export` prints one search line p
 
 The TV has a grocery tile too (on the "Groceries test" layout). It reads the list over the live line like every other widget and posts its changes to the same `POST /grocery/ops`. Its page is on another origin, so that needs server 0.26.1 (it answers the browser's preflight): run `hubup` once, then `./hub status` should say `version 0.26.1`. With an older server the TV shows the list but a change says it didn't save and goes back. The log says `screen changed the grocery list` for the TV and `touch app changed the grocery list` for a phone, never an item's name.
 
-### The pantry (server 0.28.0)
+### The pantry (server 0.30.0)
 
 What is at home, on the phone (menu: **Pantry**): Stock (what you have, low items first) and Usual items (everything you keep or have bought, with a search that ignores case and accents), place chips (Fridge, Freezer, Pantry, Other), a − n + stepper, a cart button, and a Low badge with the restock point ("Low · buy at 6"). Tap a row for its settings: place, "buy more when I have", how many to buy, the auto-add switch, what to do if it is out, brand and category (picked from the list, or added once: "heinz" finds "Heinz", never a second brand), size and unit. Scan has an **Add to** chip, Groceries or Pantry, remembered on the phone for each view.
 
@@ -138,7 +138,7 @@ Storage is SQLite in `data/pantry.db` (Node's built-in `node:sqlite`, Node 22.13
 - `./hub pantry list`, `./hub pantry low`
 - Mailbox: `pantry.add {"name": "Eggs", "qty": 12, "restockAt": 6, "location": "fridge"}` (or `"upc"`; `brand`, `autoAdd` optional), `pantry.set {"name": "Eggs", "qty": 2}` (or `"id"`; `qty`, `restockAt`, `location`, `autoAdd`), `pantry.list`, `pantry.low`
 
-Routes: touch `POST /pantry/ops` (ops `add`, `adjust`, `set`, `edit`, `want`, `remove`, `brand`, `category`, `check`, `listQty`, `listMode`); the TV's `POST /pantry/screen-ops` (the same ops, the same trust as its `/grocery/ops`); control `GET /api/pantry`, `POST /api/pantry/ops`, `GET /api/pantry/low`. `/touch/state` and the live line carry `pantry` (rev and data). The log counts changes and low items added; it never names a product, a brand or a code. After pulling: `hubup`, then `./hub status` should say `version 0.28.0`. Nothing changes in `.env`.
+Routes: touch `POST /pantry/ops` (ops `add`, `adjust`, `set`, `edit`, `want`, `remove`, `brand`, `category`, `check`, `listQty`, `listMode`); the TV's `POST /pantry/screen-ops` (the same ops, the same trust as its `/grocery/ops`); control `GET /api/pantry`, `POST /api/pantry/ops`, `GET /api/pantry/low`. `/touch/state` and the live line carry `pantry` (rev and data). The log counts changes and low items added; it never names a product, a brand or a code. After pulling: `hubup`, then `./hub status` should say `version 0.30.0`. Nothing changes in `.env`.
 
 ## Tile layout
 
@@ -208,7 +208,7 @@ An older server drops `lead` on `todo add` (the mailbox refuses it) and has no `
 
 Server 0.5.0 also keeps four more optional sections for the Budget lab tile: `lab` (the room to card day), `merchants` (the top 5 merchants this month, with their month-to-date totals), `pace` (one spending total and the morning's cap per day) and `runway` (headroom from today to card day, never a balance). An older server drops them and keeps the rest, so the budget app may send them first. `./hub budget show` prints counts and dates for them, never a merchant name or an amount. After pulling: `docker compose restart hub` (or `sudo systemctl restart home-hub`); `./hub status` should say `version 0.5.0` or later.
 
-Server 0.18.0 keeps one more optional section, `investments` (the portfolio total, its accounts, the top holdings and one total per day for a trend line), for the Investments tile. The owner approved dollar figures for it on 2026-11-19; the TV hides them in guest mode. `./hub budget show` prints counts and dates for it, never a name or an amount. An older server drops it and keeps the rest. After pulling: `docker compose restart hub`; `./hub status` should say `version 0.16.0` or later.
+Server 0.18.0 keeps one more optional section, `investments` (the portfolio total, its accounts, the top holdings and one total per day for a trend line), for the Investments tile. The owner approved dollar figures for it on 2026-11-19; the TV blurs them in guest mode. `./hub budget show` prints counts and dates for it, never a name or an amount. An older server drops it and keeps the rest. After pulling: `docker compose restart hub`; `./hub status` should say `version 0.16.0` or later.
 
 ## Ambience (the room's lights)
 
@@ -359,6 +359,29 @@ The Pi needs to reach `api.tvmaze.com` over HTTPS. If your network blocks it, th
 The Pi can read your Google calendars and send the coming events to the TV. Each calendar has a private link, called the **secret address**. The Pi reads that link every few minutes. Nobody needs to sign in to Google on the Pi.
 
 The secret address is like a key: anyone who has it can read that calendar. Keep it only in `.env` on the Pi. Never put it in git, a chat, an email or a screenshot.
+
+### Calendar to-dos, and deleting ticked events
+
+Events titled `TODO:` (optional), `TODO!:` (must) and `TODO~:` (passive) become to-dos on every calendar refresh (`todoconvert.js`). Once the to-do is ticked:
+
+| Event | After the tick |
+|---|---|
+| `TODO:` | deleted from Google Calendar (hidden from the hub calendar as soon as it is a to-do) |
+| `TODO!:`, `TODO~:` | stays on the calendar |
+| description has `#keep` | stays (a `TODO:` event then also stays on the hub calendar) |
+| description has `#remove` | deleted, even for `TODO!:` and `TODO~:` |
+
+Only that day's occurrence of a repeating event is deleted, never the series. A to-do removed without a tick deletes nothing. The delete happens at the next calendar refresh (within about 5 minutes). Google keeps deleted events in the calendar's Trash for 30 days.
+
+The calendars are read through their secret iCal links, which cannot change anything, so deleting uses a Google service account (`gcal.js`). Set it up once, on a computer:
+
+1. console.cloud.google.com: create a project (`home-hub`).
+2. APIs & Services, Library: enable **Google Calendar API**.
+3. IAM & Admin, Service accounts: **Create** (`hub-calendar`, no roles). Open it, **Keys**, **Add key**, **JSON**. Copy its email (`...iam.gserviceaccount.com`).
+4. Google Calendar on the web, for each calendar with TODO events: Settings and sharing, Share with specific people, add that email with **Make changes to events**.
+5. On the Pi, paste the downloaded file into `data/google-calendar-key.json` (`nano data/google-calendar-key.json`), then `chmod 600 data/google-calendar-key.json`. No restart needed: the next refresh finds it.
+
+No key file: nothing is deleted. A calendar not shared with the account: the event stays (the log counts it as "not shared with the hub"). Log line, counts only: `Calendar to-dos: 1 ticked event deleted from the calendar, 0 not shared with the hub, 0 to try again`. Never commit or print the key file (`data/` is ignored by git).
 
 ### Set up a calendar
 
@@ -555,7 +578,7 @@ Spotify's rules can limit how often the Pi may ask; if it asks for a pause the P
 
 ## All sounds (test widget)
 
-The "All sounds" test widget on the TV (the "All sounds test" layout) shows what plays anywhere: the Echo speakers through Home Assistant, and Spotify (Spotify wins when both play). `allsounds.js` reads Home Assistant's REST API (`GET /api/states`, every 5 seconds while something plays, 20 seconds otherwise, backing off up to 2 minutes when it cannot get through) and keeps the `allsounds` resource; it changes nothing for Now Playing.
+The Now Playing widget on the TV (its expanded and full-screen pages) shows what plays anywhere: the Echo speakers through Home Assistant, and Spotify (Spotify wins when both play). `allsounds.js` reads Home Assistant's REST API (`GET /api/states`, every 5 seconds while something plays, 20 seconds otherwise, backing off up to 2 minutes when it cannot get through) and keeps the `allsounds` resource; it changes nothing for Now Playing.
 
 Setup (once):
 
@@ -597,7 +620,7 @@ allsounds: Home Assistant working again
 allsounds: unexpected problem
 ```
 
-Commands: `./hub allsounds status` (state, source, speaker, title and artist), `./hub show allsounds` (the page on the TV). Tests: `node pi/allsounds-test.js` (against the pretend Home Assistant in `dev/mock-ha.js`).
+Commands: `./hub allsounds status` (state, source, speaker, title and artist), `./hub show nowplaying` (the page on the TV). Tests: `node pi/allsounds-test.js` (against the pretend Home Assistant in `dev/mock-ha.js`).
 
 | What you see | What it means | What to do |
 |---|---|---|

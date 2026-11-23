@@ -324,9 +324,9 @@
        "title": "Guest mode",
        "kind": "component",
        "status": "unverified",
-       "summary": "One switch on the Clock page that hides every money figure while guests are over.",
+       "summary": "One switch on the Clock page that blurs every dollar amount while guests are over.",
        "details": [
-        "When on, Earned vs spent and the budget tiles say Hidden for guests, the New charge banner never shows, budget data is dropped as it arrives, and money layouts leave the switcher. Calendars and to-dos stay. The Investments tile is the exception: it shows percentages only (gain, shares, the trend's shape) and keeps no dollar."
+        "When on, every money tile (Earned vs spent, the Glance, the budget tiles, Budget lab, Investments), its panel and the New charge banner keep their layout and data, but each dollar amount is blurred: a MutationObserver wraps the amounts in a blur span as widgets draw. Dates, counts, names and percentages stay readable. Layouts do not change. Calendars hide their notes and guest names."
        ],
        "files": [
         "app/guest.js",
@@ -897,9 +897,10 @@
        "title": "Now Playing",
        "kind": "component",
        "status": "live",
-       "summary": "Tile: album picture, song, artist and progress line. Panel: big picture, album, time, device. Full: visualizer.",
+       "summary": "Tile: album picture, song, artist and progress line. Expanded and full screen: any sound in the house (Spotify, an Echo, the TV), plus a Visualizer button that opens the visualizer full screen.",
        "details": [
-        "The Pi is the only thing that talks to Spotify and pushes the nowplaying resource on change; the TV holds no Spotify secret. Shows Last played when nothing plays. A New song chip shows when the track changes (at most one per 8 s)."
+        "The Pi is the only thing that talks to Spotify and pushes the nowplaying resource on change; the TV holds no Spotify secret. Shows Last played when nothing plays. A New song chip shows when the track changes (at most one per 8 s).",
+        "This is the former All sounds widget, folded in (hub v0.4x): the Pi's allsounds resource (Echo speakers through Home Assistant, Spotify winning when both play) and the sound the TV plays itself (window.HUB_AUDIO) feed the same page. A layout saved with the old 'allsounds' widget now shows Now Playing."
        ],
        "files": [
         "app/widgets/nowplaying.js",
@@ -910,6 +911,11 @@
         {
          "to": "pi.spotify",
          "label": "nowplaying resource over the live line",
+         "dir": "in"
+        },
+        {
+         "to": "pi.allsounds",
+         "label": "allsounds resource over the live line",
          "dir": "in"
         }
        ],
@@ -1026,7 +1032,7 @@
          "status": "unverified",
          "summary": "Tile: net so far with earned and spent, plus monthly bar pairs. Panel: the same with a key. Never a balance.",
          "details": [
-          "The money section comes from Ian's AWWS profit page via the sync routine (totals only). Hidden in Guest mode."
+          "The money section comes from Ian's AWWS profit page via the sync routine (totals only). Guest mode blurs the amounts."
          ],
          "files": [
           "app/widgets/awws.js",
@@ -1069,7 +1075,7 @@
         }
        ],
        "notes": [
-        "Hidden by Guest mode. Not confirmed on the TV."
+        "Guest mode blurs the amounts. Not confirmed on the TV."
        ],
        "children": [
         {
@@ -1120,7 +1126,7 @@
          "status": "unverified",
          "summary": "A stacked set of PRs adding budget math, a lab tile with a cap slider, merchant sliders and a runway chart.",
          "details": [
-          "PR 62's tile shows a pace streak, yesterday against the cap and a suggested move; its panel has a cap slider and a saved cap kept on the TV for the cycle. PR 76 adds the runway chart. Guest mode hides it."
+          "PR 62's tile shows a pace streak, yesterday against the cap and a suggested move; its panel has a cap slider and a saved cap kept on the TV for the cycle. PR 76 adds the runway chart. Guest mode blurs its amounts."
          ],
          "files": [
           "app/widgets/budget-lab.js",
@@ -1138,7 +1144,7 @@
          "pr": "PR 119",
          "summary": "Standalone tile (in no layout): the portfolio total and its gain against cost, a trend line, an allocation bar by account and the top holdings. OK opens every account and holding in place.",
          "details": [
-          "Reads the investments section of the budget snapshot from the live line. Adapts to the tile size: total and gain, then a trend line (hidden under 2 days, with Trend starts building today), then the allocation bar and holdings. Dollar figures were approved for the TV on 2026-11-19. In Guest mode no dollar is drawn or kept: the percentages are worked out when the data arrives, then the dollars are dropped, and only percentages and the trend's shape show."
+          "Reads the investments section of the budget snapshot from the live line. Adapts to the tile size: total and gain, then a trend line (hidden under 2 days, with Trend starts building today), then the allocation bar and holdings. Dollar figures were approved for the TV on 2026-11-19. In Guest mode every dollar amount is blurred; percentages and the trend's shape stay readable."
          ],
          "files": [
           "app/widgets/investments.js",
@@ -1153,7 +1159,7 @@
           },
           {
            "to": "tv.hub.guest",
-           "label": "percentages only when guests are over",
+           "label": "dollar amounts blurred when guests are over",
            "dir": "in"
           }
          ]
@@ -1216,31 +1222,6 @@
        ]
       },
       {
-       "id": "tv.widgets.allsounds",
-       "title": "All sounds",
-       "kind": "component",
-       "status": "unverified",
-       "summary": "Shows any audio playing at home, Spotify first, otherwise what an Echo reports through Home Assistant.",
-       "details": [
-        "The Pi reads Home Assistant's Alexa Media Player states and folds in Spotify into an allsounds resource. Tracks that may have ended get a may be out of date label. Tried in its own one-widget test layout.",
-        "When the hub started what plays (Echo controls), it shows the app and the speaker with a quiet 'Started from the hub' line (hub v0.38.0).",
-        "Sound the TV plays itself (./hub play, ./hub news) comes first, with 'Living room TV' as the speaker, the show as the title and the rest (8pm ET, November 19) below it. The hub tells the widget directly through window.HUB_AUDIO, so it needs no Pi round trip (hub v0.38.5)."
-       ],
-       "files": [
-        "app/widgets/allsounds.js"
-       ],
-       "talksTo": [
-        {
-         "to": "pi.allsounds",
-         "label": "allsounds resource over the live line",
-         "dir": "in"
-        }
-       ],
-       "notes": [
-        "Audible, NPR briefings and skills are not reported by the Echo. Real attribute names and TV rendering unverified."
-       ]
-      },
-      {
        "id": "tv.widgets.soundctl",
        "title": "Sound control",
        "kind": "component",
@@ -1250,7 +1231,7 @@
        "details": [
         "The tile looks the same as All sounds. The page adds a speaker switch (Echo Show, Echo Dot, Everywhere; each shows what that speaker plays underneath), a round Play/Pause, Next, a volume stepper (− 40% +), Stop and one-press starts: Resume audiobook, KERA 90.1, NPR newscast, Spotify, Pandora and Amazon Music. All sounds stays untouched as the backup.",
         "Picking a speaker shows that speaker's own playback. Everywhere lists one row per speaker (what it plays, its volume, its own Play/Pause and −/+) above an All speakers transport; quick starts there play one thing on every speaker.",
-        "Presses go to the Pi as POST /echo/run with presets only (no search text from the TV). Each speaker's state, volume and playback come back in the allsounds resource (echos, target), so the page follows within seconds. Tried alone in the 'Sound control test' layout (hub v0.39.3, server 0.24.2)."
+        "Presses go to the Pi as POST /echo/run with presets only (no search text from the TV). Each speaker's state, volume and playback come back in the allsounds resource (echos, target), so the page follows within seconds. Not on any built-in layout now (the test layouts were removed); it can still be placed from the Studio tray (hub v0.39.3, server 0.24.2)."
        ],
        "files": [
         "app/widgets/soundctl.js",
@@ -1316,8 +1297,9 @@
        "status": "unverified",
        "summary": "This map on the TV: Big picture, group diagrams and a detail drawer, all driven by the remote, plus the data flows stepped one by one.",
        "details": [
-        "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 170 KB of data (app/widgets/architecture-data.js) loads only when the widget is first opened.",
-        "The data is the same studio/architecture/data.json the Studio page draws: node studio/build-architecture.js writes both, and its --check fails when either is out of date."
+        "Opens straight to full screen (openMode full). Arrow keys move between boxes and cards, OK opens or drills in, Back goes up one level and closes at the Big picture. The tile shows a tiny map and the status counts; the 200 KB of data (app/widgets/architecture-data.js, with the code map) loads only when the widget is first opened.",
+        "The data is the same studio/architecture/data.json the Studio page draws: node studio/build-architecture.js writes both, and its --check fails when either is out of date.",
+        "The drawer's Code map section (from docs/CODE-MAP.md, matched by studio/codemap.js) is one row per item, read with Up and Down: where to start, the map's notes on other files, what to check when it breaks and the recipe."
        ],
        "files": [
         "app/widgets/architecture.js",
@@ -2573,7 +2555,7 @@
      "title": "Pi serves the app",
      "kind": "component",
      "status": "unverified",
-     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state, POST /grocery/ops (the TV posts there too) and POST /pantry/ops.",
+     "summary": "The live server also hands out the touch app: GET / goes to app/touch.html, GET /app/<file> reads app/ read only, plus GET /touch/state (grocery and to-dos), POST /grocery/ops (the TV posts there too) and POST /touch/todo/ops (server 0.29.0; the same ops as the TV's /todo/ops, with the app's X-Hub-Touch proof). POST /pantry/ops changes the pantry.",
      "details": [
       "Docker mounts ../app read only at /webapp (HUB_APP_DIR). Only known file types, no dotfiles, nothing outside the folder.",
       "Home, Tailscale and loopback addresses only, even when HUB_TV_IPS names the TV; a phone is never counted as a screen. A POST needs no token but must come from the page's own address (same-Host Origin) or HUB_ORIGINS."
@@ -2595,6 +2577,11 @@
        "dir": "both"
       },
       {
+       "to": "pi.server.resources.todo",
+       "label": "reads and changes the to-do list",
+       "dir": "both"
+      },
+      {
        "to": "pi.pantry",
        "label": "reads and changes the pantry",
        "dir": "both"
@@ -2608,7 +2595,7 @@
        "status": "unverified",
        "summary": "Home Hub on a phone, tablet or computer: a menu of every widget, then one widget per view on a phone, side by side on a tablet.",
        "details": [
-        "Tizen in the user agent = TV; else phone under 600 px, tablet under 1200, desktop above; ?as=phone|tablet|tv overrides. Widgets with renderTouch open (Groceries first); the rest say TV only.",
+        "Tizen in the user agent = TV; else phone under 600 px, tablet under 1200, desktop above; ?as=phone|tablet|tv overrides. Widgets with renderTouch open (Groceries, then To-do: app/widgets/todo-touch.js, the TV's levels, Coming up and Completed, a tray to move or remove); the rest say TV only.",
         "Polls /touch/state every 3 s (paused while hidden), changes are drawn at once and rolled back if the Pi says no. English and Spanish from app/i18n.js. The TV never loads it."
        ],
        "files": [
@@ -2616,13 +2603,14 @@
         "app/touch.js",
         "app/touch.css",
         "app/widgets/grocery.js",
+        "app/widgets/todo-touch.js",
         "dev/touch-test.js",
         "app/widgets/pantry.js"
        ],
        "talksTo": [
         {
          "to": "pi.touchapp",
-         "label": "polls /touch/state, posts /grocery/ops and /pantry/ops",
+         "label": "polls /touch/state, posts /grocery/ops and /touch/todo/ops",
          "dir": "both"
         },
         {
@@ -2634,6 +2622,11 @@
          "to": "tv.hub.i18n",
          "label": "the same Spanish table",
          "dir": "in"
+        },
+        {
+         "to": "pi.pantry",
+         "label": "posts /pantry/ops",
+         "dir": "out"
         }
        ]
       },
@@ -2672,7 +2665,7 @@
      "title": "Products catalog",
      "kind": "component",
      "status": "unverified",
-     "summary": "The barcode service: a scanned code (EAN-13, UPC-A, UPC-E, EAN-8) becomes a product (brand, name, size, a thumbnail on the Pi), shared by every scanner. Where a scan goes is the caller's choice (the Add to chip: Groceries or Pantry).",
+     "summary": "The barcode service: a scanned code (EAN-13, UPC-A, UPC-E, EAN-8) becomes a product (brand, name, size, a thumbnail on the Pi), shared by every scanner. Where a scan goes is the caller's choice.",
      "details": [
       "Codes are checked (check digit) and kept as one 13-digit key (8 for EAN-8). Lookup: the catalog in data/products.json, then Open Food Facts, Open Products Facts and UPCitemdb, each with its own rate limit (a source at its limit is skipped; one failing never fails the lookup). A web hit is saved with its thumbnail in data/products/; a miss is remembered in memory for 24 hours. Manual entries from the phone (brand, name, size, an optional photo) always win. At most 5000 products.",
       "Pictures from the web: https only, a host name that resolves only to public addresses (the connection is pinned to it), no redirects, image type and bytes checked, at most 400 KB. Photos from the phone: JPEG, at most 150 KB.",
@@ -4485,13 +4478,16 @@
      "details": [
       "The map lives in studio/architecture/data.json. arch.js and arch.css draw it, and node studio/build-architecture.js copies all three into the Studio file, which is published as one page.",
       "dev/architecture-test.js fails when a link or a file path is wrong, or when a secret, address or email slips into the data.",
-      "The TV widget (app/widgets/architecture.js) draws the same data.json with the remote: build-architecture.js also writes app/widgets/architecture-data.js and a small summary of status counts for the tile."
+      "The TV widget (app/widgets/architecture.js) draws the same data.json with the remote: build-architecture.js also writes app/widgets/architecture-data.js and a small summary of status counts for the tile.",
+      "Every part's detail drawer (Studio and TV) also shows a Code map section: where to start reading, what docs/CODE-MAP.md says about the part's files, what to check when it breaks and the recipe it belongs to. studio/codemap.js reads the map and matches it to each part's files when build-architecture.js runs, so the drawer follows the map; dev/codemap-test.js fails when the pages are behind it."
      ],
      "files": [
       "studio/architecture/data.json",
       "studio/architecture/arch.js",
       "studio/architecture/arch.css",
       "studio/build-architecture.js",
+      "studio/codemap.js",
+      "docs/CODE-MAP.md",
       "dev/architecture-test.js",
       "app/widgets/architecture-data.js"
      ],
@@ -5188,7 +5184,7 @@
   {
    "id": "flow.pi-investments",
    "title": "Investments reach the TV tile",
-   "summary": "The budget app adds the portfolio to the snapshot it already posts; the Pi checks it and the TV draws it, with percentages only in guest mode.",
+   "summary": "The budget app adds the portfolio to the snapshot it already posts; the Pi checks it and the TV draws it, with the dollars blurred in guest mode.",
    "steps": [
     {
      "node": "ext.budget-app.investments",
@@ -5204,7 +5200,7 @@
     },
     {
      "node": "tv.widgets.budget.investments",
-     "say": "The Investments tile draws total, gain, trend, allocation and holdings; in guest mode only percentages"
+     "say": "The Investments tile draws total, gain, trend, allocation and holdings; in guest mode the dollars are blurred"
     }
    ]
   },

@@ -136,7 +136,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.44.1';
+  var BUILD = 'v0.52.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1183,6 +1183,8 @@
       var e = raw[i];
       if (!e || typeof e !== 'object') continue;
       var id = e.widget;
+      // The retired All sounds widget is Now Playing now: a layout saved with it keeps its tile.
+      if (id === 'allsounds') id = 'nowplaying';
       if (typeof id !== 'string' || !TILE_ID_RE.test(id) || seen.hasOwnProperty(id)) continue;
       if (!isWhole(e.x) || !isWhole(e.y) || !isWhole(e.w) || !isWhole(e.h)) continue;
       if (e.x < 0 || e.y < 0 || e.w < 1 || e.h < 1 || e.x + e.w > GRID_COLS || e.y + e.h > GRID_ROWS) continue;
@@ -1287,13 +1289,12 @@
   function onLayoutData(data) {
     try {
       if (!data || typeof data !== 'object') return;
-      // A layout picked in the switcher stays until the Pi's layout changes.
-      var choice = readChoice();
-      if (choice) {
-        if (choice.piSig === layoutSig(data.layout)) return;
-        saveChoice(null);
-      }
       var list = usableLayout(data.layout);   // null, or nothing usable: the built-in layout
+      // The Pi's layout is "Main". Always remember it; show it unless another
+      // layout from the bar is on screen (that one stays until you pick again).
+      saveLive(list);
+      var choice = readChoice();
+      if (choice && !isLiveChoice(choice)) return;
       saveLayout(list);
       pendingLayout = list;
       applyPendingLayout();
@@ -1379,7 +1380,7 @@
     try {
       var raw = window.localStorage && localStorage.getItem(CHOICE_KEY);
       var c = raw ? JSON.parse(raw) : null;
-      return c && typeof c.piSig === 'string' ? c : null;
+      return c && typeof c.id === 'string' ? c : null;
     } catch (e) { return null; }
   }
 
@@ -1391,6 +1392,29 @@
     } catch (e) { /* ignore */ }
   }
 
+  // The Pi's own layout is the bar's "Main" (id 'main'): it always follows the
+  // Pi, never a copy in config.js. The last one the Pi sent is kept here so
+  // it is known at start and when the live line is down.
+  var LIVE_KEY = 'homeHub.layout.live';
+
+  function saveLive(list) {
+    try { if (window.localStorage) localStorage.setItem(LIVE_KEY, JSON.stringify(list || null)); } catch (e) { /* ignore */ }
+  }
+
+  // { list } with the Pi's layout (null = the built-in one), or null when the Pi has not said yet.
+  function liveMain() {
+    var raw = window.HUB_LIVE && typeof window.HUB_LIVE.get === 'function' ? window.HUB_LIVE.get('layout') : null;
+    if (raw && typeof raw === 'object') return { list: usableLayout(raw.layout) };
+    try {
+      var saved = window.localStorage && localStorage.getItem(LIVE_KEY);
+      if (saved) return { list: usableLayout(JSON.parse(saved)) };
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // No pick, or Main picked: the Pi's layout is the one on screen.
+  function isLiveChoice(c) { return !c || c.live === true || c.id === 'main' || c.id === 'Main'; }
+
   // The saved layouts that can be used here: { name, layout (null = built-in) }.
   function switcherPresets() {
     var src = cfg.layouts;
@@ -1401,58 +1425,45 @@
       if (!p || typeof p.name !== 'string' || !p.name) continue;
       var list = p.layout ? usableLayout(p.layout) : null;
       if (p.layout && !list) continue;
-      // Guest mode: the money layouts ("AWWS money", "Budget") leave the bar.
-      if (guestOn() && window.HUB_GUEST.hasMoney(list || cfg.layout)) continue;
-      out.push({ name: p.name, id: typeof p.id === 'string' ? p.id : '', layout: list });
+      var live = p.id === 'main';
+      if (live) {
+        var lm = liveMain();
+        if (lm) list = lm.list;      // the Pi's Main (null = built-in); config.js's copy is only for before it has said
+      }
+      out.push({ name: p.name, id: typeof p.id === 'string' ? p.id : '', layout: list, live: live });
     }
     return out;
   }
 
   function presetSig(p) { return layoutSig(p.layout || cfg.layout); }
 
-  function guestOn() {
-    try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; }
-  }
-
-  // Guest mode turned on while a money layout from the bar is on screen: the
-  // first layout in the bar without money takes its place (applied once the
-  // Clock page closes). Any other layout stays; its money tiles say "Hidden
-  // for guests".
-  function guestLayout(on) {
-    if (!on) return;
-    var src = cfg.layouts;
-    if (!src || Object.prototype.toString.call(src) !== '[object Array]') return;
-    var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
-    var onMoney = false;
-    for (var i = 0; i < src.length; i++) {
-      var list = src[i] && src[i].layout ? usableLayout(src[i].layout) : null;
-      if (list && window.HUB_GUEST.hasMoney(list) && layoutSig(list) === current) { onMoney = true; break; }
+  // Guest mode off, on a TV where an older version swapped a
+  // money layout out for Guest mode: back to the layout it came from. Guest
+  // mode now only blurs the amounts (guest.js) and never changes the layout.
+  function guestRestore(on) {
+    if (on) return;
+    var c = readChoice();
+    if (!c || !c.guest) return;
+    var all = switcherPresets();
+    var from = null;
+    for (var a = 0; a < all.length; a++) {
+      if (c.from && (all[a].id || all[a].name) === c.from) from = all[a];
     }
-    if (!onMoney) return;
-    var safe = switcherPresets();
-    if (!safe.length) return;
-    var live = window.HUB_LIVE && typeof window.HUB_LIVE.get === 'function' ? window.HUB_LIVE.get('layout') : null;
-    saveChoice({ id: safe[0].name, piSig: layoutSig(live && live.layout) });
-    saveLayout(safe[0].layout);
-    pendingLayout = safe[0].layout;
+    var back;
+    if (from && !from.live) {
+      saveChoice({ id: from.id || from.name });
+      back = from.layout;
+    } else {
+      saveChoice(null);
+      var lm = liveMain();
+      back = lm ? lm.list : null;
+    }
+    saveLayout(back);
+    pendingLayout = back;
     layoutChance();
   }
 
-  // Guest mode turned on: a money tile has nothing to see any more, so its
-  // accent edge (motion.js) goes at once. Its header stays as it is.
-  function guestEdges(on) {
-    if (!on) return;
-    for (var i = 0; i < widgets.length; i++) {
-      if (widgets[i].tile && window.HUB_GUEST.MONEY.indexOf(widgets[i].w.id) >= 0) fxCall('accentClear', [widgets[i].tile]);
-    }
-  }
-
-  try {
-    if (window.HUB_GUEST) {
-      window.HUB_GUEST.onChange(guestLayout);
-      window.HUB_GUEST.onChange(guestEdges);
-    }
-  } catch (e) { /* no Guest mode on this page */ }
+  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(guestRestore); } catch (e) { /* no Guest mode on this page */ }
 
   // A preset's name in the hub's language (key 'hub.layout.<id>'); a layout
   // named by the owner, with no Spanish for its id, keeps its own name.
@@ -1468,10 +1479,19 @@
     var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
     sw.nodes = [];
     sw.index = 0;
+    // Two layouts can look the same (Main with no Pi layout is Default): the
+    // one picked gets the star.
+    var chosen = readChoice();
+    var star = -1;
+    for (var m = 0; m < sw.presets.length; m++) {
+      if (presetSig(sw.presets[m]) !== current) continue;
+      if (star < 0) star = m;
+      if (chosen && (sw.presets[m].id || sw.presets[m].name) === chosen.id) { star = m; break; }
+    }
     for (var i = 0; i < sw.presets.length; i++) {
       var node = el('div', 'switcher-item', sw.bar);
       node.setAttribute('role', 'menuitem');
-      if (presetSig(sw.presets[i]) === current) {
+      if (i === star) {
         node.classList.add('is-active');
         node.setAttribute('aria-current', 'true');
         el('span', 'switcher-star', node).innerHTML = STAR_SVG;
@@ -1527,8 +1547,7 @@
     var p = sw.presets[sw.index];
     closeSwitcher();
     if (!p) return;
-    var live = window.HUB_LIVE && typeof window.HUB_LIVE.get === 'function' ? window.HUB_LIVE.get('layout') : null;
-    saveChoice({ id: p.name, piSig: layoutSig(live && live.layout) });
+    saveChoice({ id: p.id || p.name, live: p.live });
     saveLayout(p.layout);
     pendingLayout = p.layout;
     applyPendingLayout();
@@ -2373,6 +2392,8 @@
     // The panel is as tall as its content. The first time a widget opens,
     // its content is built here, before anything moves, and measured; after
     // that the height is known and the build waits for the first frame.
+    // Which widget the panel shows: Guest mode (guest.js) blurs a money one.
+    panelEl.setAttribute('data-panel-widget', rec.w.id);
     panelEl.className = 'panel is-shown' + (direct ? ' is-full is-direct' : wideClass(rec));
     panelEl.style.transition = 'none';
     panelEl.style.opacity = '0';
@@ -2476,6 +2497,7 @@
 
     function done() {
       panelEl.className = 'panel';
+      panelEl.removeAttribute('data-panel-widget');
       panelEl.style.transition = 'none';
       panelEl.style.transform = '';
       panelEl.style.opacity = '0';

@@ -415,10 +415,6 @@
     edgeFocusSync();
   }
 
-  function lapStop() {
-    while (laps.length) lapEnd(laps[0]);
-  }
-
   function lessMotion() {
     try { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return false; }
   }

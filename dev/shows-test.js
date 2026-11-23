@@ -193,7 +193,8 @@ async function main() {
       });
       assert(v.today === 'the-great-british-baking-show,paradise,the-pitt', v.today);
       assert(v.month === 8, 'month days (17, 19, 20, 21, 23, 24, 26, 30): ' + v.month);
-      assert(v.soon.join(' ') === 'the-bear:23 stick:64 severance:-', v.soon.join(' '));
+      // Coming soon: every show with a date ahead (next episode or dated return), soonest first; Severance (no date yet) is not.
+      assert(v.soon.join(' ') === 'paradise:0 the-pitt:0 hells-kitchen:2 shark-tank:3 task:4 slow-horses:6 the-great-british-baking-show:7 the-bear:23 stick:64', v.soon.join(' '));
     });
 
     await check('The panel: tabs, today\'s edge, the "in 35 min" edge, badges and SAMPLE', async () => {
@@ -331,7 +332,8 @@ async function main() {
         } finally { await p.ctx.close(); }
       }
       // 1 column shows only the TV icon; a narrow strip has room for one logo.
-      assert(seen.join(' ') === '1x1:0 2x1:1 2x2:3 3x1:1 3x4:3 12x1:3', seen.join(' '));
+      // (A strip keeps only the TV icon in its head, so a 3x1 strip has room for two.)
+      assert(seen.join(' ') === '1x1:0 2x1:1 2x2:3 3x1:2 3x4:3 12x1:3', seen.join(' '));
     });
 
     await check('via (Prime Video Channels): the badge keeps the service, a "via" hint, and Watch opens the via app', async () => {
@@ -887,7 +889,7 @@ async function main() {
         // The strip lists both when the Schedule is open; the tile says 2.
         await H.sleep(600);
         assert((await finLines(wp)).length === 2, JSON.stringify(await finLines(wp)));
-        assert(await wp.evaluate(() => document.querySelector('.cell[data-widget="entertainment"] .ent-check').textContent) === '2', 'the tile count');
+        assert(await wp.evaluate(() => document.querySelector('.cell[data-widget="entertainment"] .ent-check').textContent) === '2 to check', 'the tile count');
         assert(pageErrors(wp).length === 0, pageErrors(wp).join(' | '));
       } finally { await wp.ctx.close(); }
     });
@@ -916,7 +918,9 @@ async function main() {
               inside: !!q && q.left >= tr.left - 0.5 && q.right <= tr.right + 0.5 && q.top >= tr.top - 0.5 && q.bottom <= tr.bottom + 0.5,
               clipped: b.length ? b[0].scrollWidth > b[0].clientWidth + 1 : null, overlap: overlap, outside: outside, size: tile.className };
           });
-          const wantDot = h === 1 || w < 3;
+          // Words where they fit (a strip: in the head, beside the TV icon), always from six columns
+          // or two rows and three columns; under three columns only a ring.
+          const wantDot = w < 3 ? true : (w >= 6 || h > 1) ? false : v.dot;
           seen.push(w + 'x' + h + ':' + v.text);
           assert(v.n === 1 && v.inside && !v.clipped && v.overlap === 0 && v.outside === 0, w + 'x' + h + ': ' + JSON.stringify(v));
           assert(v.dot === wantDot && v.text === (wantDot ? '3' : '3 to check'), w + 'x' + h + ' says ' + v.text + ' (dot ' + v.dot + ')');
@@ -1726,7 +1730,7 @@ async function main() {
           assert(JSON.stringify(lines) === '["The Pitt"]', JSON.stringify(lines));
           const kept = await q.evaluate(() => JSON.parse(localStorage.getItem('homeHub.watch.v1')));
           assert(kept.length === 1 && kept[0].showId === 'the-pitt', JSON.stringify(kept));
-          assert(await q.evaluate(() => document.querySelectorAll('.cell[data-widget="entertainment"] .ent-check').length === 1 && document.querySelector('.cell[data-widget="entertainment"] .ent-check').textContent === '1'), 'tile count');
+          assert(await q.evaluate(() => document.querySelectorAll('.cell[data-widget="entertainment"] .ent-check').length === 1 && /^1( to check)?$/.test(document.querySelector('.cell[data-widget="entertainment"] .ent-check').textContent)), 'tile count');
         } finally { await q.ctx.close(); }
       });
       await a.ctx.close();
@@ -1925,7 +1929,7 @@ async function main() {
         await H.focusKey(p, 'sh:ready:andor');
         const keys = [];
         for (let i = 0; i < 4; i++) { await H.key(p, 'ArrowDown'); keys.push(await at()); }
-        assert(JSON.stringify(keys) === '["sh:ready:paradise","sh:ready:slow-horses","sh:soon:the-bear","sh:soon:severance"]', JSON.stringify(keys));
+        assert(JSON.stringify(keys) === '["sh:ready:paradise","sh:ready:slow-horses","sh:soon:paradise","sh:soon:hells-kitchen"]', JSON.stringify(keys));
         // OK on a line: its app opens and the next episode is the one started.
         await H.focusKey(p, 'sh:ready:slow-horses');
         const before = own.launches.length;
@@ -1962,6 +1966,68 @@ async function main() {
         assert(!w.over.length, 'clipped: ' + JSON.stringify(w.over));
         assert(errs(e).length === 0, errs(e).join(' | '));
       } finally { await e.ctx.close(); }
+    } finally { await own.stop(); }
+  });
+
+  await check('A Coming soon card opens the show page, not the app; a show with no date yet has no card, its Your shows row says so', async () => {
+    const own = await H.start({});
+    const errs = pageErrors;
+    try {
+      const p = await own.newPage({});
+      try {
+        await H.openSchedule(p, 'soon');
+        const nd = await p.evaluate(() => ({ card: !!document.querySelector('[data-key="sh:soon:severance"]'), line: document.querySelector('[data-key="sh:show:severance"] .sh-meta-text').textContent }));
+        assert(!nd.card && nd.line === 'Season 3 · no date yet', JSON.stringify(nd));
+        for (const id of ['hells-kitchen', 'stick']) {
+          const before = own.launches.length;
+          await H.focusKey(p, 'sh:soon:' + id);
+          await H.key(p, 'Enter');
+          await H.until(() => p.evaluate(() => !!document.querySelector('.sh-pg-title')), 4000, 'the show page did not open for ' + id);
+          assert(own.launches.length === before, 'the app opened for ' + id);
+          await H.key(p, 'Escape');
+          await H.until(() => p.evaluate(() => !document.querySelector('.sh-pg-title')), 4000, 'Back did not close the page');
+          await H.until(() => p.evaluate((k) => { const f = document.querySelector('#panel .is-focused'); return !!f && f.getAttribute('data-key') === k; }, 'sh:soon:' + id), 4000, 'Back did not return to the card ' + id);
+        }
+        // A show with an empty episode list: the page says so and still offers the app.
+        await p.route(/\/shows\/episodes\?id=zz/, (r) => r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, id: 'zz', seasons: [], progress: { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null } }) }));
+        await p.evaluate(() => { const T = window.HUB_SHOWS._test; T.setData({ v: 1, updatedAt: '2026-11-17T12:00:00Z', shows: [{ id: 'zz', name: 'Zed Show', service: 'Netflix', checkedAt: '2026-11-17T12:00:00Z', upcoming: [] }] }); localStorage.setItem('homeHub.showEps.v1.zz', JSON.stringify({ ok: true, id: 'zz', seasons: [], progress: { upTo: null, unwatched: [], aired: 0, seen: 0, caughtUp: false, next: null } })); T.openPage('zz'); });
+        await p.waitForTimeout(300);
+        const s = await p.evaluate(() => ({ head: (document.querySelector('.sh-msg-head') || {}).textContent, btn: !!document.querySelector('[data-key="sh:pg:open"]'), html: ((document.querySelector('#panel .sh')||{}).textContent||'none').slice(0,200), pageState: window.HUB_SHOWS._test.pageState() }));
+        assert(s.head === 'No episodes listed yet' && s.btn, JSON.stringify(s));
+        assert(errs(p).length === 0, errs(p).join(' | '));
+      } finally { await p.ctx.close(); }
+    } finally { await own.stop(); }
+  });
+
+  await check('Left and Right on the tabs switch the tab at once; a row and its show page chip are one box, and the focused chip never covers the pills on its left (EN and ES)', async () => {
+    const own = await H.start({});
+    try {
+      for (const lang of ['en', 'es']) {
+        const p = await own.newPage(lang === 'es' ? { lang: 'es' } : {});
+        try {
+          await H.openSchedule(p, 'today');
+          await H.focusKey(p, 'sh:tab:today');
+          const st = () => p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f.getAttribute('data-key') + '/' + window.HUB_SHOWS._test.tab(); });
+          const seen = [];
+          for (const k of ['ArrowRight', 'ArrowRight', 'ArrowRight', 'ArrowLeft']) { await H.key(p, k); seen.push(await st()); }
+          assert(seen.join(' ') === 'sh:tab:week/week sh:tab:month/month sh:tab:soon/soon sh:tab:month/month', seen.join(' '));
+          await H.focusChip(p, 'hells-kitchen');
+          const v = await p.evaluate(() => {
+            const chip = document.querySelector('#panel .is-focused');
+            const line = chip.parentNode.parentNode;
+            const c = chip.getBoundingClientRect();
+            const l = line.getBoundingClientRect();
+            let over = 0;
+            [].forEach.call(line.querySelectorAll('.sh-badge, .sh-alt'), (n) => { const r = n.getBoundingClientRect(); if (r.width && r.right > c.left + 0.5 && r.left < c.right) over++; });
+            return { lit: /is-lit/.test(line.className), inside: c.left >= l.left && c.right <= l.right + 0.5, over: over, lits: document.querySelectorAll('.sh-line.is-lit').length };
+          });
+          assert(v.lit && v.inside && v.over === 0 && v.lits === 1, lang + ' chip: ' + JSON.stringify(v));
+          for (let i = 0; i < 3 && !(await st()).startsWith('sh:row:'); i++) await H.key(p, 'ArrowLeft');
+          const r = await p.evaluate(() => { const f = document.querySelector('#panel .is-focused'); const line = f.parentNode; return { key: f.getAttribute('data-key'), lit: /is-lit/.test(line.className) && /is-in/.test(line.className) }; });
+          assert(r.key.indexOf('sh:row:hells-kitchen:') === 0 && r.lit, lang + ' row: ' + JSON.stringify(r));
+          assert(pageErrors(p).length === 0, pageErrors(p).join(' | '));
+        } finally { await p.ctx.close(); }
+      }
     } finally { await own.stop(); }
   });
 

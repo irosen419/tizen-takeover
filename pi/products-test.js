@@ -375,6 +375,15 @@ async function main() {
     assert.ok(c2.lines.some((l) => /no brand, no picture/.test(l)));
   });
 
+  await check('a hit with no brand from a store house-brand prefix gets that brand; a source brand still wins', async () => {
+    const bare = { brands: '', image_front_small_url: '', image_small_url: '', image_front_url: '' };
+    const c = catalogWith(fakeWeb({ off: offHit(Object.assign({ product_name: 'No pulp 100% premium orange juice' }, bare)) }));
+    const r = await c.lookup('021130095261');
+    assert.strictEqual(r.product.brand, 'Signature Select');
+    const c2 = catalogWith(fakeWeb({ off: offHit({ product_name: 'Juice', brands: 'Tropicana' }) }));
+    assert.strictEqual((await c2.lookup('021130095261')).product.brand, 'Tropicana');
+  });
+
   await check('one time budget per lookup: a hanging source ends the lookup in time and the rest are skipped; DNS has its own short limit; a picture that fails is followed by the next one', async () => {
     const web = fakeWeb({ off: () => new Promise(() => {}) });
     const c = catalogWith(web, { budgetMs: 400 });
