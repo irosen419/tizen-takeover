@@ -97,8 +97,9 @@ if (makeLayout) {
 const html = fs.readFileSync(path.join(root, 'studio/layout-studio.html'), 'utf8');
 const m = html.match(/<script type="application\/json" id="archData">([\s\S]*?)<\/script>/);
 let same = false;
-try { same = !!m && JSON.stringify(JSON.parse(m[1].replace(/<\\\//g, '</').replace(/<\\!--/g, '<!--'))) === JSON.stringify(D); } catch (e) { /* not equal */ }
-check('studio/layout-studio.html carries the same data (run node studio/build-architecture.js)', same);
+const built = require('../studio/codemap').attach(D, fs.readFileSync(path.join(root, 'docs/CODE-MAP.md'), 'utf8'));
+try { same = !!m && JSON.stringify(JSON.parse(m[1].replace(/<\\\//g, '</').replace(/<\\!--/g, '<!--'))) === JSON.stringify(built); } catch (e) { /* not equal */ }
+check('studio/layout-studio.html carries the same data and code map (run node studio/build-architecture.js)', same);
 check('the Studio page has the Architecture chip and view', /data-view="arch"/.test(html) && /id="archView"/.test(html) && /window\.HHArch/.test(html));
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

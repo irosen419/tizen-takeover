@@ -105,6 +105,12 @@ function longer() {
         const o = v.overview;
         o.boxes.forEach((b) => { b.title = grow(b.title); b.lines = b.lines.map(grow); });
         o.edges.forEach((e) => { if (e.label) e.label = grow(e.label); });
+        const cm = v.codemap;
+        cm.folders.forEach((f) => { f.lang = grow(f.lang); f.where = grow(f.where); });
+        cm.read.forEach((r) => { r.text = grow(r.text); });
+        cm.flows.forEach((f) => { f.title = grow(f.title); f.says.forEach((x) => { x.text = grow(x.text); }); });
+        cm.fixes.forEach((x) => { x.when = grow(x.when); x.look = grow(x.look); });
+        cm.recipes.forEach((r) => { r.title = grow(r.title); r.steps.forEach((x) => { x.text = grow(x.text); }); });
       } catch (e) { /* the checks then see the plain text */ }
     }
   });
@@ -600,6 +606,52 @@ async function checkFlows() {
   await p2.context().close();
 }
 
+// The code map in the drawer: generated from docs/CODE-MAP.md, reached with Down, the right words.
+async function checkCodeMap() {
+  const page = await openHub({ size: [3, 2] });
+  await openWidget(page);
+  const cmKeys = async (id) => {
+    await page.evaluate((x) => window.HUB_ARCHITECTURE.goto(x, true), id);
+    await settle(page);
+    const keys = [];
+    for (let i = 0; i < 40; i++) {
+      const k = (await focusKey(page)) || '';
+      if (k.indexOf('d:cm:') === 0 && keys.indexOf(k) < 0) keys.push(k);
+      await press(page, 'ArrowDown');
+      if (await focusKey(page) === k) break;
+    }
+    return keys;
+  };
+  const text = (sel) => page.evaluate((q) => [].map.call(document.querySelectorAll('#panel ' + q), (e) => e.textContent).join(' | '), sel);
+  // The Live server: step 8 of the reading order, pi/server.js, the pi/ folder line.
+  let keys = await cmKeys('pi.server');
+  assert(keys[0] === 'd:cm:start', 'the Live server drawer has no code map start row: ' + keys.join(','));
+  const start = await text('.ar-cm-start');
+  assert(/step 8 of 10/.test(start) && /pi\/server\.js/.test(start) && /handler\(\)/.test(start) && /Node 22/.test(start), 'start row: ' + start);
+  assert(/docs\/CODE-MAP\.md/.test(await text('.ar-cm-label')), 'no source line');
+  // The code map sits after Files and before Notes or Talks to.
+  const order = await page.evaluate(() => [].map.call(document.querySelectorAll('#panel .ar-dr-scroll .f'), (e) => e.getAttribute('data-key')).join(' '));
+  assert(/d:files d:cm:start/.test(order) && !/d:cm:\S+ .*d:files/.test(order), 'order: ' + order);
+  // The To-do widget: its main file and the Add a widget recipe with one step marked.
+  keys = await cmKeys('tv.widgets.todo');
+  assert(keys.indexOf('d:cm:recipe') >= 0 && keys.indexOf('d:cm:fix0') >= 0, 'to-do keys: ' + keys.join(','));
+  assert(/main file/.test(await text('.ar-cm-start')) && /app\/widgets\/todo\.js/.test(await text('.ar-cm-start')), 'to-do start');
+  assert(await page.evaluate(() => document.querySelectorAll('#panel .ar-cm-li').length) >= 5 && await page.evaluate(() => document.querySelectorAll('#panel .ar-cm-li.is-here').length) === 1, 'recipe steps');
+  // The TV group: folders first, then its steps of the reading order.
+  keys = await cmKeys('tv');
+  assert(keys[0] === 'd:cm:dir0' && keys.some((k) => /^d:cm:read/.test(k)), 'tv keys: ' + keys.join(','));
+  assert(/app\/widgets\//.test(await text('.ar-cm-file')) && /Start at app\/hub\.js/.test(await text('.ar-cm-file')), 'tv folders');
+  // Code shows as code, not backticks.
+  assert(!/`/.test(await text('.ar-dr-scroll')) && await page.evaluate(() => document.querySelectorAll('#panel .ar-cm-code').length) > 3, 'backticks left in the text');
+  // A part the map says nothing about draws no section.
+  const none = await page.evaluate(() => { let id = null; (function w(n) { if (!id && n.id && !window.HUB_ARCH.codemap.parts[n.id]) id = n.id; (n.children || []).forEach(w); })({ children: window.HUB_ARCH.tree }); return id; });
+  await page.evaluate((x) => window.HUB_ARCHITECTURE.goto(x, true), none);
+  await settle(page);
+  assert(await page.evaluate(() => !document.querySelector('#panel .ar-cm-label')), none + ' draws an empty code map');
+  noErrors(page);
+  await page.context().close();
+}
+
 // Every level fits the screen: English, and with every text a quarter longer.
 async function checkFit(grow) {
   const page = await openHub({ size: [3, 2], grow: grow });
@@ -638,6 +690,16 @@ async function checkFit(grow) {
   await look('drawer');
   for (let i = 0; i < 12; i++) await press(page, 'ArrowDown');
   await look('drawer scrolled');
+  // Code map rows (start, files, fixes, recipe; a group's folders and reading order), each looked at with focus on it.
+  for (const id of ['pi.server', 'tv.hub', 'tv.widgets.todo', 'tv']) {
+    await page.evaluate((x) => window.HUB_ARCHITECTURE.goto(x, true), id);
+    for (let i = 0; i < 40; i++) {
+      const k = (await focusKey(page)) || '';
+      if (k.indexOf('d:cm:') === 0) await look('code map ' + id + ' ' + k);
+      await press(page, 'ArrowDown');
+      if (await focusKey(page) === k) break;
+    }
+  }
   await press(page, 'Escape');
   await page.evaluate(() => window.HUB_ARCHITECTURE.flow('flow.pr-to-tv', 3));
   await look('flow');
@@ -692,6 +754,7 @@ async function checkPi() {
     await check('the longest drawer scrolls to its last row and back', checkLongDrawer);
     await check('data flows: chip, list, stepping (clamped), OK shows the part, Back up', checkFlows);
     await check('the biggest group: arrows reach cards, all of it on screen', checkPi);
+    await check('the drawer\'s code map: start row, files, fixes, recipe, a group\'s folders (from docs/CODE-MAP.md)', checkCodeMap);
     await check('every level fits the screen in English', () => checkFit(false));
     await check('every level fits the screen with every text 25% longer (with accents)', () => checkFit(true));
   } catch (e) {

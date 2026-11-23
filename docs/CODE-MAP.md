@@ -2,6 +2,8 @@
 
 One page to find your way around. Features live in `README.md` and `docs/`; this is only where things are. Counts are approximate (main at v0.50).
 
+The Architecture page's drawer shows this map beside each part (`studio/codemap.js` reads sections 2, 3, 4, 6 and 8). After editing it, run `node studio/build-architecture.js`, then `node dev/codemap-test.js`.
+
 ## 1. The picture in two minutes
 
 Four places run code:
