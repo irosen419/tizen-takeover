@@ -395,6 +395,10 @@
           d.notes[ev.note].replace(/\r\n?/g, '\n').replace(/^\s+|\s+$/g, '') : '',
         guestCount: typeof ev.guestCount === 'number' && ev.guestCount >= 1 ? Math.floor(ev.guestCount) : 0,
         guests: [] };
+      // "TODO!:", "TODO:", "TODO~:" are the to-do list's own words: show the title without them,
+      // and remember the level so a row can wear a small box instead.
+      var tm = /^todo([!~]?):\s*(\S.*)$/i.exec(n.title);
+      if (tm) { n.todo = tm[1] === '!' ? 'must' : tm[1] === '~' ? 'passive' : 'optional'; n.title = tm[2]; }
       if (n.guestCount && isArr(ev.guests)) {
         for (var gi = 0; gi < ev.guests.length && gi < 25; gi++) if (typeof ev.guests[gi] === 'string' && ev.guests[gi]) n.guests.push(ev.guests[gi]);
       }
@@ -594,6 +598,16 @@
 
   // Owner-typed text in the hub's language (display only; app/i18n-dyn.js).
   function dyn(s) { return (window.HUB_I18N && window.HUB_I18N.dyn) ? window.HUB_I18N.dyn(s) : s; }
+
+  // The small box in front of a title that came from a TODO: event (colour by level, no words).
+  function todoMark(parent, ev) {
+    if (!ev.todo) return null;
+    var m = document.createElement('span');
+    m.className = 'cal-todo is-' + ev.todo;
+    m.setAttribute('aria-hidden', 'true');
+    parent.insertBefore(m, parent.firstChild);
+    return m;
+  }
 
   function titleOf(ev) { return ev.title ? dyn(ev.title) : STRINGS.noTitle; }
 
@@ -1080,6 +1094,7 @@
     bar(row, ev.cal);
     el('span', 'cal-trow-tag', row, STRINGS.allDay);
     var line = el('span', 'cal-trow-line', row, titleOf(ev));
+    todoMark(line, ev);
     if (notesOf(ev)) notesMark(line);
     guestTag(line, ev);
     return row;
@@ -1098,6 +1113,7 @@
     }
     guestTag(when, u.ev);
     var t = el('div', 'cal-trow-title', text, titleOf(u.ev));
+    todoMark(t, u.ev);
     if (notesOf(u.ev)) notesMark(t);
     return row;
   }
@@ -1357,7 +1373,8 @@
         var chip = el('div', 'cal-chip' + (ev.id === selId ? ' is-sel' : '') + (isPast(ev, t, td) ? ' is-past' : ''), chips);
         chip.style.backgroundColor = color(ev.cal, 0.24);
         chip.style.borderLeftColor = color(ev.cal);
-        el('span', 'cal-chip-text', chip, titleOf(ev));
+        var ct = el('span', 'cal-chip-text', chip, titleOf(ev));
+        todoMark(ct, ev);
         clickPick(chip, ev.id);
       }
       var rest = de.allDay.length - shown.length;
