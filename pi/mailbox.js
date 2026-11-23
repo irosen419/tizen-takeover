@@ -38,6 +38,7 @@ const budget = require('./budget');
 const shows = require('./shows');
 const linktests = require('./linktests');
 const tvremote = require('./tvremote');
+const tvlaunch = require('./tvlaunch');
 const news = require('./news');
 const echo = require('./echo');
 const grocery = require('./grocery');
@@ -837,6 +838,22 @@ const COMMANDS = {
     }
   },
   // The TV's remote from the Pi (tvremote.js). The status leaves out the TV's address.
+  // What Home Assistant knows about the TV (its state and the app names it can open), and the last launch.
+  'tv.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/tv');
+      return { message: lines(tvlaunch.lines(r.tv || {})), data: { tv: r.tv || null } };
+    }
+  },
+  // Opens something on the TV (turns it on first). Sends the TV a command: only with the owner's go-ahead.
+  'tv.launch': {
+    args: { kind: [V.oneOf(tvlaunch.KINDS), true], name: [V.text(40), true], match: [(n, v) => { if (!Array.isArray(v) || v.length > 8 || v.some((x) => typeof x !== 'string' || x.length > 40)) throw argError('"' + n + '" must be up to 8 app names'); return v; }, false], key: [V.text(40), false], url: [V.text(300), false] },
+    run: async (a, ctx) => {
+      await ctx.call('POST', '/api/tv/launch', a);
+      return { message: 'Queued ' + a.kind + ' ' + a.name + ' on the TV. Read the result with tv.status in about a minute.', data: { queued: true } };
+    }
+  },
   'tvremote.status': {
     args: {},
     run: async (a, ctx) => {
