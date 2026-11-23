@@ -139,7 +139,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.57.1';
+  var BUILD = 'v0.59.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -1604,6 +1604,8 @@
   // To show something new, add a row to ABOUT_ROWS (a new group name
   // starts a new group); nothing else needs to change. A row with
   // action() is the strip's one button: OK runs it (the first shown wins).
+  // when() (optional) says whether it can act now; such a row goes first
+  // while it can. tap: a click or tap on the row runs it too.
   var aboutEl = document.getElementById('about');
   var ab = { on: false, box: null, sig: '', rows: [], drawn: [], dropped: {}, timer: null, hideTimer: null };
 
@@ -1630,7 +1632,8 @@
   var ABOUT_ROWS = [
     { group: 'This hub', label: 'Version', value: function () {
       var u = updateStatus();
-      return BUILD + (u && u.newest === true ? ' (newest)' : '');
+      var a = appverStatus();
+      return BUILD + ((u && u.newest === true) || (a && a.state === 'current') ? ' (newest)' : '');
     } },
     { group: 'This hub', label: 'Browser', value: function () { return browserText; } },
     { group: 'This hub', label: 'Motion', value: function () {
@@ -1675,8 +1678,17 @@
       var t = noPrefix(u && typeof u.text === 'string' ? u.text : '', 'Updates: ');
       // Held: why that version didn't start, when update.js kept the reason.
       if (t && u.state === 'held' && typeof u.why === 'string' && u.why) t += ' (' + u.why + ')';
-      return t;
-    }, raw: function () { var u = updateStatus(); return u && typeof u.text === 'string' ? u.text : ''; } },
+      // Served by the Pi (the wall tablet, a phone): app/appver.js says instead.
+      return t || appverLabel();
+    }, raw: function () {
+      var u = updateStatus();
+      var t = u && typeof u.text === 'string' ? u.text : '';
+      var a = appverStatus();
+      return t || (a ? a.text : '');
+    },
+    // OK (or a tap on the row) reloads, only while the Pi has a newer version.
+    when: function () { var a = appverStatus(); return !!a && a.state === 'available'; },
+    tap: true, action: function () { appverReload(); } },
     { group: 'Wanderers', label: 'Now', value: function () { return clayPart('now'); } },
     { group: 'Wanderers', label: 'Visits', value: function () { return clayPart('visits'); } },
     { group: 'Wanderers', label: 'Last visit', value: function () { return clayPart('last'); } },
@@ -1697,6 +1709,20 @@
   // A number keeps its unit on the same line: "1 s ago", never "1" then "s ago".
   function keepUnits(text) {
     return text.replace(/(\d) (ms|s|min|h|of)(?=$|[ ,.)·])/g, '$1\u00a0$2');
+  }
+
+  // A row acts (OK runs it) when it has action(), and when() says yes if it has one.
+  function rowActs(r) {
+    if (typeof r.action !== 'function') return false;
+    if (typeof r.when !== 'function') return true;
+    try { return r.when() === true; } catch (e) { return false; }
+  }
+
+  // A row that starts or stops acting redraws the strip.
+  function rowSig(r) { return r.label + (r.when && rowActs(r) ? '*' : ''); }
+
+  function tapRow(r) {
+    return function () { if (rowActs(r)) { try { r.action(); } catch (e) { /* stays as it is */ } } };
   }
 
   // The rows that have something to say now: [{ row, text }].
@@ -1723,13 +1749,15 @@
         group = r.group;
         el('div', 'about-group', ab.box).textContent = aboutWord(r.groupKey || aboutKey(group), group);
       }
-      var row = el('div', 'about-row' + (r.action ? ' is-action' : ''), ab.box);
+      var act = rowActs(r);
+      var row = el('div', 'about-row' + (act ? ' is-action' : ''), ab.box);
+      if (act && r.tap) row.addEventListener('click', tapRow(r), false);
       el('div', 'about-label', row).textContent = aboutWord(r.labelKey || aboutKey(r.label), r.label);
       var value = el('div', 'about-value', row);
       value.textContent = list[i].text;
       ab.rows.push(value);
       ab.drawn.push(r);
-      sig.push(r.label);
+      sig.push(rowSig(r));
     }
     ab.sig = sig.join('|');
     ab.dropped = {};
@@ -1763,7 +1791,7 @@
     try {
       var list = aboutValues();
       var sig = [];
-      for (var i = 0; i < list.length; i++) sig.push(list[i].row.label);
+      for (var i = 0; i < list.length; i++) sig.push(rowSig(list[i].row));
       if (sig.join('|') !== ab.sig) {
         var top = ab.box ? ab.box.scrollTop : 0;
         drawAbout(list);
@@ -1818,7 +1846,9 @@
   // OK in About always opens it.
   function aboutAction() {
     var pick = null;
-    for (var i = 0; i < ab.drawn.length && !pick; i++) if (typeof ab.drawn[i].action === 'function') pick = ab.drawn[i];
+    // A row that can act only now (an update to load) goes first.
+    for (var w = 0; w < ab.drawn.length && !pick; w++) if (ab.drawn[w].when && rowActs(ab.drawn[w])) pick = ab.drawn[w];
+    for (var i = 0; i < ab.drawn.length && !pick; i++) if (rowActs(ab.drawn[i])) pick = ab.drawn[i];
     for (var j = 0; j < ABOUT_ROWS.length && !pick; j++) if (ABOUT_ROWS[j].spare && ab.dropped[ABOUT_ROWS[j].label] && typeof ABOUT_ROWS[j].action === 'function') pick = ABOUT_ROWS[j];
     if (!pick) return false;
     try { pick.action(); } catch (e) { toast(hubWord('didntWork', 'That didn’t work ({why}).', { why: e && e.message }), 4000); }
@@ -3337,6 +3367,46 @@
     return new Date().getTime() - lastInputAt >= IDLE_MS;
   }
 
+  // app/appver.js (pages the Pi serves): its status, or undefined without it.
+  function appverApi(name) {
+    var A = window.HUB_APPVER;
+    return A && typeof A === 'object' && typeof A[name] === 'function' ? A : null;
+  }
+
+  function appverStatus() {
+    var A = appverApi('status');
+    if (!A) return undefined;
+    try { return A.status(); } catch (e) { return undefined; }
+  }
+
+  function appverLabel() {
+    var A = appverApi('label');
+    if (!A) return '';
+    try { return A.label() || ''; } catch (e) { return ''; }
+  }
+
+  function appverReload() {
+    var A = appverApi('reload');
+    if (A) A.reload();
+  }
+
+  // A quiet dot on the Clock tile while the Pi has a newer version.
+  function updateDot() {
+    var a = appverStatus();
+    var on = !!a && a.state === 'available';
+    for (var i = 0; i < widgets.length; i++) {
+      var rec = widgets[i];
+      if (rec.w.id !== 'today' || !rec.tile) continue;
+      if (!rec.updateDot) {
+        if (!on) continue;
+        rec.updateDot = el('span', 'update-dot', rec.tile);
+        rec.updateDot.setAttribute('aria-hidden', 'true');
+      }
+      if (on) rec.updateDot.classList.add('is-on');
+      else rec.updateDot.classList.remove('is-on');
+    }
+  }
+
   // The status object, or undefined without update.js.
   function updateStatus() {
     var U = updateApi('status');
@@ -3345,12 +3415,23 @@
   }
 
   function startUpdates() {
+    startAppver();
     var U = updateApi('watch');
     if (!U) return;
     try {
       U.watch({ idle: hubIdle, onStatus: function () { announceStatus(); } });
     } catch (e) {
       liveWarn('updates could not start: ' + (e && e.message));
+    }
+  }
+
+  function startAppver() {
+    var A = appverApi('start');
+    if (!A) return;
+    try {
+      A.start({ version: BUILD.replace(/^v/, ''), idle: hubIdle, onStatus: function () { updateDot(); announceStatus(); } });
+    } catch (e) {
+      liveWarn('version check could not start: ' + (e && e.message));
     }
   }
 

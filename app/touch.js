@@ -438,6 +438,8 @@
 
   draw(false);
   poll();
+  // Newer files on the Pi (app/appver.js): reload by itself when nobody is using it.
+  if (window.HUB_APPVER) { try { window.HUB_APPVER.start({}); } catch (e) { /* stays as it is */ } }
 
   // For dev/touch-test.js.
   window.HUB_TOUCH = { device: device, catalog: catalog, store: store, poll: poll };

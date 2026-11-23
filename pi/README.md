@@ -759,6 +759,26 @@ The last command should say `active (running)`.
 
 ## Updating
 
+### By itself: the auto-pull timer (server 0.32.0)
+
+Once installed, the Pi pulls `main` every 5 minutes and you never run `hubup` after a merge. It is a plain shell script (`autopull/autopull.sh`) run by a systemd **user** timer: no Claude, no tokens. Install once:
+
+```
+cd ~/code/tizen-takeover && git pull && pi/autopull/install.sh --run && hubup
+```
+
+(`hubup` this once, so the server is 0.32.0; after that the timer restarts it.) Each run fast-forwards only. A change to `app/`, `docs/`, `dev/` or `studio/` restarts nothing: the hub serves `app/` fresh, and the wall tablet and phone reload by themselves within 5 minutes once nobody has touched them for 2 minutes (`app/appver.js` compares the version in `GET /health`, `app`, with its own; the About panel's Version check row says "Update available" and a tap reloads; a quiet dot shows on the Clock tile). A change to a server file in `pi/` restarts the hub, then the budget user service if there is one (the order `hubup` uses).
+
+It skips, and says so once in the log, when the off switch exists (`hubauto off` / `hubauto on`; the file is `autopull.off` in the state folder, and the old `data/autopull.off` still works), the checkout is not on `main`, files were changed by hand, or the Pi has its own commits (not a fast-forward). A failed fetch or restart waits 10 minutes, then 20, and so on up to 6 hours. Its log, state and lock live in `~/.local/state/tizen-takeover/autopull/` (your home folder, because `pi/data` is owned by root). `hubauto` shows whether it is on, the last status, the last 5 log lines and the last error line (lines starting `ERROR`), for example:
+
+```
+2026-11-23 16:05 pulled 3 commit(s), 5 file(s) (app 4, pi 1), restarted hub+budget
+```
+
+If the state folder cannot be created or written, the script exits 1 and says why on stderr (`journalctl --user -u hub-autopull.service`); `hubauto` shows that when there is no log. An old `pi/data/autopull.off` made with sudo is removed with `sudo rm`. The log holds counts only, never a file name or a commit message. `autopull/install.sh --remove` turns it off. The weekly health report points at this log when the checkout falls behind.
+
+### By hand
+
 1. `cd tizen-takeover && git pull && cd pi`
 2. With Docker: `docker compose restart hub`. With systemd: `sudo systemctl restart home-hub`.
 3. `./hub status` should show the new version.

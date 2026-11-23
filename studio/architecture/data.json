@@ -2573,7 +2573,7 @@
        "title": "Update and restart",
        "kind": "task",
        "status": "live",
-       "summary": "After a merge that touches pi/: git pull on the Pi, then restart the container, then check ./hub status.",
+       "summary": "After a merge that touches pi/, the auto-pull timer pulls and restarts by itself; by hand (first install, or a stuck pull): 'hubup' on the Pi, then ./hub status.",
        "details": [
         "The command from the repo root is 'git pull', then 'docker compose restart hub' in pi/. The mailbox's restart command restarts with code already on the Pi but cannot pull. Ian's rule: build things so he rarely has to do this."
        ],
@@ -2586,6 +2586,42 @@
          "to": "cloud.github",
          "label": "git pull from main",
          "dir": "in"
+        }
+       ]
+      },
+      {
+       "id": "pi.deploy.autopull",
+       "title": "Auto-pull timer",
+       "kind": "script",
+       "status": "unverified",
+       "summary": "A systemd user timer on the Pi (every 5 minutes) fast-forwards the checkout to main, so merges reach the Pi, the wall tablet and the phone without hubup. Plain shell and git, no Claude.",
+       "details": [
+        "Skips (logged once) when off (autopull.off in ~/.local/state/tizen-takeover/autopull/), off main, files changed by hand or not a fast-forward; failures back off from 10 minutes to 6 hours.",
+        "Only a server file in pi/ restarts anything: the hub, then the budget app, the same order as hubup. app/ changes need no restart: the hub serves app/ fresh and app/appver.js reloads the pages it serves when the hub is idle (the About panel's Version check row, a dot on the Clock tile).",
+        "Logs one line per pull to ~/.local/state/tizen-takeover/autopull/autopull.log, counts only (never a file name or commit message); hubauto on the Pi shows it."
+       ],
+       "files": [
+        "pi/autopull/autopull.sh",
+        "pi/autopull/install.sh",
+        "pi/autopull-test.js",
+        "app/appver.js",
+        "dev/appver-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "cloud.github",
+         "label": "git fetch main",
+         "dir": "in"
+        },
+        {
+         "to": "pi.server",
+         "label": "restarts it when a server file changed",
+         "dir": "out"
+        },
+        {
+         "to": "pi.neighbours.budget-app",
+         "label": "restarted after the hub",
+         "dir": "out"
         }
        ]
       }
