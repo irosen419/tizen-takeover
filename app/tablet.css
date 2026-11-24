@@ -106,7 +106,13 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* Each column scrolls by touch on its own, so nothing runs off the bottom. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2.4rem;
 }
+.tsheet-col > * { flex-shrink: 0; }
 .tsheet-left { margin-right: 1.2rem; }
 .tsheet-right { margin-left: 1.2rem; }
 .tsheet-title {
@@ -149,9 +155,8 @@ body.tablet .tsheet .switcher-bar {
 .tsheet .about-box {
   width: 100%;
   max-width: none;
-  max-height: 100%;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  max-height: none;
+  overflow: visible;             /* the column scrolls, not the box */
   border-radius: 1.6rem;
 }
 .tsheet .switcher-bar {
@@ -210,8 +215,9 @@ body.tablet .tsheet .switcher-bar {
 .tsheet-btn { display: inline-flex; align-items: center; align-self: flex-start; padding-left: 1.1rem; }
 .tsheet-btn-icon { display: block; flex: 0 0 auto; width: 1.3rem; height: 1.3rem; margin-right: 0.6rem; }
 .tsheet-btn-icon svg { display: block; width: 100%; height: 100%; }
-.tsheet .tsheet-slot { flex: 0 1 auto; }
-.tsheet-left .tsheet-slot { flex: 1 1 auto; }
+.tsheet .tsheet-slot { flex: 0 0 auto; }
+.tsheet .about,
+.tsheet .switcher { flex: 0 0 auto; }
 
 /* The Slideshow: the whole screen, black, the photos crossfading
    (app/widgets/photos.js); a tap anywhere or Back ends it. */

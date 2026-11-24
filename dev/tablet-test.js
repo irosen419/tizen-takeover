@@ -526,6 +526,36 @@ function sheetUp(page) {
       await p.ctx.close();
     });
 
+    await check('Menu sheet columns scroll by touch, last row reachable, EN and ES', async () => {
+      for (const lang of ['en', 'es']) {
+        const p = await hub(env, { query: 'as=tablet', lang: lang, touch: true });
+        await p.setViewportSize({ width: 1920, height: 800 });
+        await H.sleep(800);
+        await p.click('.tablet-tab');
+        await H.until(() => sheetUp(p), 3000, 'not up');
+        await H.sleep(400);
+        const before = await p.evaluate(() => { const c = document.querySelector('.tsheet-left'); return { sh: c.scrollHeight, ch: c.clientHeight, top: c.scrollTop, oy: getComputedStyle(c).overflowY }; });
+        assert(before.oy === 'auto' && before.sh > before.ch, lang + ' not scrollable ' + JSON.stringify(before));
+        const cdp = await p.ctx.newCDPSession(p);
+        for (let swipe = 0; swipe < 2; swipe++) {      // two swipes up, a finger's worth each
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 400, y: 640 }] });
+          for (let i = 1; i <= 10; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 400, y: 640 - i * 50 }] }); await H.sleep(16); }
+          await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+          await H.sleep(700);
+        }
+        const after = await p.evaluate(() => {
+          const c = document.querySelector('.tsheet-left');
+          const rows = c.querySelectorAll('.about-row');
+          const last = rows[rows.length - 1].getBoundingClientRect();
+          const cr = c.getBoundingClientRect();
+          return { top: c.scrollTop, max: c.scrollHeight - c.clientHeight, lastBottom: Math.round(last.bottom), colBottom: Math.round(cr.bottom), body: document.querySelector('.tsheet').scrollTop };
+        });
+        assert(after.top > 100 && after.top >= after.max - 2, lang + ' did not scroll to the end ' + JSON.stringify(after));
+        assert(after.lastBottom <= after.colBottom, lang + ' last row below the column ' + JSON.stringify(after));
+        await p.ctx.close();
+      }
+    });
+
     await check('Spanish: chip, tab and sheet, accents not clipped', async () => {
       const p = await hub(env, { query: 'as=tablet', lang: 'es' });
       await H.sleep(800);
