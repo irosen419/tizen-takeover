@@ -168,7 +168,7 @@ const guestpin = require('./guestpin');
 const photos = require('./photos');
 const budgetgoal = require('./budgetgoal');
 
-const SERVER_VERSION = '0.35.1';
+const SERVER_VERSION = '0.36.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;

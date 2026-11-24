@@ -47,6 +47,10 @@
 }
 .px-chip.is-on { border-color: transparent; background: var(--text); color: var(--page); font-weight: 600; }
 
+.px-storebar { margin-top: 12px; }
+.px-storebar-label { display: block; color: var(--text-3); font-size: 0.875rem; font-weight: 500; }
+.px-storebar .px-chips { margin-top: 8px; }
+
 .px-add { display: flex; gap: 8px; margin-top: 14px; }
 .px-add .px-input { flex: 1; min-width: 0; }
 .px-scan, .px-add-btn {

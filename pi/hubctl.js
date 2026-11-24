@@ -1524,7 +1524,7 @@ async function groceryExport(callFn) {
 
 /* ---------- pantry (shared with mailbox.js) ---------- */
 
-const PANTRY_PLACES = ['fridge', 'freezer', 'pantry', 'other'];
+const PANTRY_PLACES = ['fridge', 'freezer', 'pantry', 'bathroom', 'other'];
 
 function amount(n) { return String(Math.round(n * 1000) / 1000); }
 

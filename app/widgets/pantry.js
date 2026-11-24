@@ -25,7 +25,7 @@
 (function (root) {
   'use strict';
 
-  var PLACES = ['fridge', 'freezer', 'pantry', 'other'];
+  var PLACES = ['fridge', 'freezer', 'pantry', 'bathroom', 'other'];
   var MODES = ['similar', 'preselected', 'refund', 'contact_me'];
   var UNITS = ['oz', 'fl_oz', 'lb', 'g', 'kg', 'ml', 'l', 'gal', 'count', 'pack'];
   // The categories the Pi starts with get Spanish names; ones made later stay as typed.
@@ -50,9 +50,59 @@
     return fold(p.name).indexOf(k) >= 0 || fold(p.brand).indexOf(k) >= 0 || fold((p.brand || '') + ' ' + p.name).indexOf(k) >= 0;
   }
 
+  // A very basic fuzzy search for the store list: the typed text against
+  // each name, spaces ignored. A hit is a name that contains it, starts with
+  // something one slip away from it (a letter wrong, missing, extra or two
+  // swapped), or is a small edit distance from the whole of it. Best first.
+  function squash(s) { return fold(s).replace(/ /g, ''); }
+  function editDistance(a, b) {
+    var prev = [], cur = [], i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    var prev2 = null;
+    for (i = 1; i <= a.length; i++) {
+      cur = [i];
+      for (j = 1; j <= b.length; j++) {
+        var cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+        var v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+        if (prev2 && i > 1 && j > 1 && a.charAt(i - 1) === b.charAt(j - 2) && a.charAt(i - 2) === b.charAt(j - 1)) v = Math.min(v, prev2[j - 2] + 1);
+        cur[j] = v;
+      }
+      prev2 = prev;
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  // names: a list of strings. Returns the close ones as { name, score }, lowest score first.
+  function fuzzy(q, names, limit) {
+    var k = squash(q);
+    if (!k) return [];
+    var max = k.length <= 2 ? 0 : k.length <= 7 ? 1 : 2;
+    var out = [];
+    names.forEach(function (name, idx) {
+      var n = squash(name), score = -1;
+      if (!n) return;
+      if (n === k) score = 0;
+      else if (n.indexOf(k) === 0) score = 1;
+      else if (n.indexOf(k) > 0) score = 2;
+      else {
+        var d = Math.min(editDistance(k, n), editDistance(k, n.slice(0, k.length)));
+        if (d <= max) score = 2 + d;
+      }
+      if (score >= 0) out.push({ name: name, score: score, idx: idx });
+    });
+    out.sort(function (a, b) { return a.score - b.score || a.idx - b.idx; });
+    return out.slice(0, limit || 6).map(function (x) { return { name: x.name, score: x.score }; });
+  }
+
   function byName(a, b) {
     var x = fold(a.name), y = fold(b.name);
     return x < y ? -1 : x > y ? 1 : a.id - b.id;
+  }
+
+  // Only the products from the chosen stores (names); none chosen shows all.
+  function byStores(list, names) {
+    if (!names || !names.length) return list;
+    return list.filter(function (p) { return !!p.store && names.indexOf(p.store) >= 0; });
   }
 
   // Stock: owned items, low first, then by name. Usual: everything, by name.
@@ -142,7 +192,7 @@
     return String(Math.round(n * 100) / 100);
   }
 
-  var Logic = { PLACES: PLACES, MODES: MODES, UNITS: UNITS, fold: fold, matches: matches, subCandidates: subCandidates, MAX_SUBS: MAX_SUBS, stock: stock, usual: usual, counts: counts, applyLocal: applyLocal, readNumber: readNumber };
+  var Logic = { PLACES: PLACES, MODES: MODES, UNITS: UNITS, fold: fold, matches: matches, byStores: byStores, fuzzy: fuzzy, squash: squash, subCandidates: subCandidates, MAX_SUBS: MAX_SUBS, stock: stock, usual: usual, counts: counts, applyLocal: applyLocal, readNumber: readNumber };
   root.HUB_PANTRY = Logic;
   if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
   if (typeof document === 'undefined') return;
@@ -195,7 +245,7 @@
   function newId(p) { uid += 1; return 'px-' + p + '-' + uid + '-' + Math.floor(Math.random() * 1e5); }
 
   function placeName(T, id) {
-    var en = { fridge: 'Fridge', freezer: 'Freezer', pantry: 'Pantry', other: 'Other' };
+    var en = { fridge: 'Fridge', freezer: 'Freezer', pantry: 'Pantry', bathroom: 'Bathroom', other: 'Other' };
     return T('pantry.place.' + id, en[id] || id);
   }
   function modeName(T, id) {
@@ -271,6 +321,13 @@
     chips.setAttribute('role', 'group');
     chips.setAttribute('aria-label', T('pantry.placeLabel', 'Place'));
     view.appendChild(chips);
+
+    // Store filter: pick one or more stores from the Pi's list; "All stores" clears it.
+    var stores = [];
+    var storeBar = el('div', 'px-storebar');
+    storeBar.setAttribute('role', 'group');
+    storeBar.setAttribute('aria-label', T('pantry.storeFilter', 'Store'));
+    view.appendChild(storeBar);
 
     // Add an item: type a name, or scan.
     var form = el('form', 'px-add');
@@ -378,6 +435,33 @@
       });
     }
 
+    function paintStores() {
+      var all = (data() || {}).stores || [];
+      // A chosen store that was removed from the list drops out of the filter.
+      stores = stores.filter(function (n) { return all.some(function (x) { return x.name === n; }); });
+      storeBar.innerHTML = '';
+      storeBar.style.display = all.length ? '' : 'none';
+      if (!all.length) return;
+      storeBar.appendChild(el('span', 'px-storebar-label', T('pantry.storeFilter', 'Store')));
+      var wrap = el('div', 'px-chips');
+      var none = btn('px-chip' + (stores.length ? '' : ' is-on'), T('pantry.allStores', 'All stores'));
+      none.setAttribute('aria-pressed', stores.length ? 'false' : 'true');
+      none.addEventListener('click', function () { stores = []; render(); });
+      wrap.appendChild(none);
+      all.forEach(function (x) {
+        var on = stores.indexOf(x.name) >= 0;
+        var b = btn('px-chip' + (on ? ' is-on' : ''), x.name);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.addEventListener('click', function () {
+          var i = stores.indexOf(x.name);
+          if (i >= 0) stores.splice(i, 1); else stores.push(x.name);
+          render();
+        });
+        wrap.appendChild(b);
+      });
+      storeBar.appendChild(wrap);
+    }
+
     function thumb(p) {
       var th = el('span', 'px-thumb');
       if (p.photo) {
@@ -460,13 +544,14 @@
       segUsual.className = 'px-seg-btn' + (tab === 'usual' ? ' is-on' : '');
       searchBox.style.display = tab === 'usual' ? '' : 'none';
       paintChips();
+      paintStores();
 
       var msg = failMsg || (st === 'offline' ? T('pantry.offline', 'Can’t reach the hub. Showing the last copy; changes won’t save.') : '');
       banner.textContent = msg;
       banner.className = 'px-banner' + (msg ? ' is-on' : '');
       view.className = 'px' + (st === 'offline' ? ' is-offline' : '');
 
-      var shown = tab === 'usual' ? usual(all, place, query) : stock(all, place);
+      var shown = byStores(tab === 'usual' ? usual(all, place, query) : stock(all, place), stores);
       list.innerHTML = '';
       shown.forEach(function (p) { list.appendChild(row(p)); });
       empty.innerHTML = '';
@@ -474,7 +559,9 @@
         empty.appendChild(el('p', 'px-empty-text', st === 'offline' ? '' : T('pantry.loading', 'Loading the pantry…')));
       } else if (!shown.length) {
         empty.appendChild(icon('shelf', 'px-empty-ic'));
-        if (tab === 'usual' && fold(query)) {
+        if (stores.length) {
+          empty.appendChild(el('p', 'px-empty-title', T('pantry.noneForStores', 'Nothing for these stores')));
+        } else if (tab === 'usual' && fold(query)) {
           empty.appendChild(el('p', 'px-empty-title', T('pantry.noMatch', 'Nothing matches')));
         } else {
           empty.appendChild(el('p', 'px-empty-title', place ? T('pantry.emptyPlace', 'Nothing here yet') : T('pantry.emptyTitle', 'Nothing in the pantry yet')));
@@ -495,7 +582,7 @@
       if (!p0) return;
       var d0 = data() || {};
       var draft = {
-        store: p0.store || '',
+        store: p0.store ? { name: p0.store } : null,
         location: p0.location, restockAt: amount(p0.restockAt), buy: String(p0.buy || 1), autoAdd: p0.autoAdd !== false,
         mode: p0.mode || 'similar', size: p0.size == null ? '' : String(p0.size), unit: p0.unit || '',
         brand: p0.brandId ? { id: p0.brandId, name: p0.brand } : null,
@@ -615,27 +702,6 @@
       var fMode = selectField(T('pantry.modeLabel', 'If it is out'), MODES.map(function (m) { return [m, modeName(T, m)]; }), draft.mode, 'px-mode');
       bodyEl.appendChild(fMode.wrap);
 
-      // Preferred store: where to get it (Tom Thumb, CVS); stores already used are suggested.
-      var storeWrap = el('div', 'px-field px-storefield');
-      var storeId = newId('st');
-      storeWrap.appendChild(fieldHead(T('pantry.storeLabel', 'Preferred store'), storeId));
-      var storeIn = el('input', 'px-input px-store-in');
-      storeIn.id = storeId;
-      storeIn.type = 'text';
-      storeIn.setAttribute('maxlength', '40');
-      storeIn.setAttribute('autocapitalize', 'words');
-      storeIn.placeholder = T('pantry.storePlaceholder', 'e.g. Tom Thumb, CVS');
-      storeIn.value = draft.store;
-      var listId = storeId + '-list';
-      storeIn.setAttribute('list', listId);
-      var dl = el('datalist');
-      dl.id = listId;
-      var seenStore = {};
-      ((d0.products || [])).forEach(function (x) { if (x.store && !seenStore[x.store]) { seenStore[x.store] = 1; var o = el('option'); o.value = x.store; dl.appendChild(o); } });
-      storeWrap.appendChild(storeIn);
-      storeWrap.appendChild(dl);
-      bodyEl.appendChild(storeWrap);
-
       // My picks: up to five other products, in the order to try them.
       var subsWrap = el('div', 'px-field px-subs');
       var subsId = newId('subs');
@@ -702,7 +768,7 @@
         inp.type = 'text';
         inp.setAttribute('autocomplete', 'off');
         inp.setAttribute('maxlength', '40');
-        inp.placeholder = kind === 'brand' ? T('pantry.brandFind', 'Find or add a brand') : T('pantry.categoryFind', 'Find or add a category');
+        inp.placeholder = kind === 'brand' ? T('pantry.brandFind', 'Find or add a brand') : kind === 'store' ? T('pantry.storeFind', 'Find or add a store') : T('pantry.categoryFind', 'Find or add a category');
         w.appendChild(inp);
         var opts = el('div', 'px-options');
         w.appendChild(opts);
@@ -721,7 +787,14 @@
           var k = fold(q);
           if (!k) return;
           var exact = null;
-          var hits = listFn().filter(function (x) {
+          var hits;
+          if (kind === 'store') {
+            // Close spellings count too; the typed name can still be added as its own store.
+            var all = listFn();
+            var close = fuzzy(q, all.map(nameFn), 6);
+            hits = close.map(function (c) { for (var i = 0; i < all.length; i++) if (nameFn(all[i]) === c.name) return all[i]; return null; });
+            close.forEach(function (c, i) { if (c.score === 0) exact = hits[i]; });
+          } else hits = listFn().filter(function (x) {
             var nk = fold(nameFn(x));
             if (fold(x.name) === k || nk === k) exact = x;
             return nk.indexOf(k) >= 0 || fold(x.name).indexOf(k) >= 0;
@@ -742,9 +815,11 @@
         return { wrap: w, state: state };
       }
       var pBrand = picker('brand', T('pantry.brand', 'Brand'), function () { return (data() || {}).brands || []; }, function (b) { return b.name; }, draft.brand);
+      var pStore = picker('store', T('pantry.storeLabel', 'Preferred store'), function () { return (data() || {}).stores || []; }, function (x) { return x.name; }, draft.store);
       var pCat = picker('category', T('pantry.category', 'Category'), function () { return (data() || {}).categories || []; }, function (c) { return categoryName(T, c); }, draft.category);
       bodyEl.appendChild(pBrand.wrap);
       bodyEl.appendChild(pCat.wrap);
+      bodyEl.appendChild(pStore.wrap);
 
       // Size: a number and a unit.
       var sizeRow = el('div', 'px-pair');
@@ -778,7 +853,7 @@
         if (restock !== null && restock !== p.restockAt) op.restockAt = restock;
         if (buy !== null && buy !== p.buy) op.purchaseQuantity = buy;
         if (draft.autoAdd !== p.autoAdd) op.autoAdd = draft.autoAdd;
-        var store = storeIn.value.replace(/\s+/g, ' ').replace(/^ | $/g, '');
+        var store = pStore.state.value ? pStore.state.value.name : '';
         if (store !== (p.store || '')) op.preferredStore = store;
         if (fMode.select.value !== p.mode) op.substitutionMode = fMode.select.value;
         var was = (p.replacements || []).join(',');

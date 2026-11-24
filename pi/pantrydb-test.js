@@ -615,6 +615,74 @@ async function main() {
     await stop(h3);
   });
 
+  await check('bathroom is a place; a pantry made before it is rebuilt with its data, and free-text stores become one merged list', () => {
+    const file = path.join(tmp(), 'pantry.db');
+    const a = pantrydb.createPantry({ file: file });
+    ['Soap', 'Floss', 'Razors', 'Tape', 'Bulbs', 'Salt'].forEach((n) => a.applyOps([{ op: 'add', name: n, qty: 2 }], []));
+    a.close();
+    // Put the file back the way an older Pi had it: no "bathroom" in the CHECK, no stores, free-text stores.
+    const { DatabaseSync } = require('node:sqlite');
+    const raw = new DatabaseSync(file);
+    const sql = raw.prepare("SELECT sql FROM sqlite_master WHERE name = 'products'").get().sql.replace("'bathroom', ", '').replace("'bathroom',", '');
+    assert.ok(sql.indexOf('bathroom') < 0, 'old schema has no bathroom');
+    raw.exec('PRAGMA foreign_keys = OFF');
+    raw.exec('PRAGMA legacy_alter_table = ON');
+    raw.exec('ALTER TABLE products RENAME TO products_keep');
+    raw.exec(sql);
+    raw.exec('INSERT INTO products SELECT * FROM products_keep');
+    raw.exec('DROP TABLE products_keep');
+    raw.exec('DROP TABLE stores');
+    raw.exec("DELETE FROM meta WHERE key = 'storesMigrated'");
+    const setStore = raw.prepare('UPDATE products SET preferred_store = ? WHERE name = ?');
+    [['Trader Joe’s', 'Soap'], ['trader joes', 'Floss'], ['TraderJoes', 'Razors'], ['Café Verde', 'Tape'], ['Whole Foods', 'Bulbs']].forEach((x) => setStore.run(x[0], x[1]));
+    raw.close();
+
+    const p = pantrydb.createPantry({ file: file });
+    const v = p.view([]).data;
+    assert.deepStrictEqual(v.stores.map((x) => x.name).sort(), ['Café Verde', 'Trader Joe’s', 'Whole Foods'].sort(), JSON.stringify(v.stores));
+    const by = (n) => v.products.find((x) => x.name === n);
+    assert.strictEqual(by('Soap').store, 'Trader Joe’s');
+    assert.strictEqual(by('Floss').store, 'Trader Joe’s', 'spelling merged');
+    assert.strictEqual(by('Razors').store, 'Trader Joe’s');
+    assert.strictEqual(by('Salt').store, '');
+    assert.strictEqual(v.products.length, 6, 'no product lost');
+    // bathroom now works, and an unknown place still does not
+    const soap = by('Soap');
+    p.applyOps([{ op: 'edit', id: soap.id, location: 'bathroom' }], []);
+    assert.strictEqual(p.view([]).data.products.find((x) => x.id === soap.id).location, 'bathroom');
+    assert.throws(() => p.applyOps([{ op: 'edit', id: soap.id, location: 'garage' }], []), /location/);
+    assert.ok(pantrydb.LOCATIONS.indexOf('bathroom') >= 0);
+    // links and indexes survived the rebuild
+    assert.strictEqual(p.db.prepare('PRAGMA foreign_key_check').all().length, 0);
+    p.close();
+    const again = pantrydb.createPantry({ file: file });
+    assert.strictEqual(again.view([]).data.stores.length, 3, 'a second start changes nothing');
+    again.close();
+  });
+
+  await check('stores: a typed store is matched to the list ignoring case, accents, punctuation and spaces, else added', () => {
+    const p = mem();
+    p.applyOps([{ op: 'add', name: 'Rice', qty: 1 }, { op: 'add', name: 'Soap', qty: 1 }], []);
+    const [rice, soap] = p.view([]).data.products.sort((x, y) => x.name.localeCompare(y.name));
+    const set = (id, s) => p.applyOps([{ op: 'edit', id: id, preferredStore: s }], []);
+    const store = (id) => p.view([]).data.products.find((x) => x.id === id).store;
+    set(rice.id, 'H-E-B');
+    set(soap.id, 'heb');
+    assert.strictEqual(store(soap.id), 'H-E-B', 'same store, first spelling kept');
+    set(soap.id, ' Sprouts  Farmers Market ');
+    assert.strictEqual(store(soap.id), 'Sprouts Farmers Market');
+    set(rice.id, 'sprouts farmers-market');
+    assert.strictEqual(store(rice.id), 'Sprouts Farmers Market');
+    set(rice.id, 'Sprouts Farmers Market Ltd');
+    assert.strictEqual(p.view([]).data.stores.length, 3, 'a different name is a new store');
+    set(rice.id, '');
+    assert.strictEqual(store(rice.id), '');
+    set(rice.id, null);
+    assert.strictEqual(store(rice.id), '');
+    assert.throws(() => set(rice.id, 'x'.repeat(41)), /preferredStore/);
+    p.close();
+  });
+
   dirs.forEach((d) => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* ignore */ } });
   console.log(passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);

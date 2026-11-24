@@ -39,7 +39,7 @@
 
   var UNITS = ['oz', 'fl_oz', 'lb', 'g', 'kg', 'ml', 'l', 'gal', 'count', 'pack'];
   var MODES = ['similar', 'preselected', 'refund', 'contact_me'];
-  var LOCATIONS = ['fridge', 'freezer', 'pantry', 'other'];
+  var LOCATIONS = ['fridge', 'freezer', 'pantry', 'bathroom', 'other'];
 
   function has(list, v) {
     for (var i = 0; i < list.length; i++) if (list[i] === v) return true;
@@ -360,7 +360,7 @@
   function unitWord(u) { return tr('pantry.unit.' + u, UNIT_EN[u] || u); }
   function sizeText(p) { return p.size ? num(p.size) + ' ' + unitWord(p.unit) : ''; }
 
-  var LOC_EN = { fridge: 'Fridge', freezer: 'Freezer', pantry: 'Pantry', other: 'Other' };
+  var LOC_EN = { fridge: 'Fridge', freezer: 'Freezer', pantry: 'Pantry', bathroom: 'Bathroom', other: 'Other' };
   function locWord(l) { return tr('pantry.place.' + l, LOC_EN[l] || l); }
   var MODE_EN = { similar: 'Something similar', preselected: 'My picks', refund: 'Refund it', contact_me: 'Ask me' };
   function modeWord(m) { return tr('pantry.mode.' + m, MODE_EN[m] || m); }
