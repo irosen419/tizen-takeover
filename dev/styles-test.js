@@ -58,7 +58,7 @@ function look(page) {
   });
 }
 
-var ORDER = 'style.css widgets/today.css widgets/todo.css widgets/weather.css widgets/calendar.css widgets/nowplaying.css widgets/awws.css widgets/wotd.css widgets/budget.css widgets/shows.css widgets/soundctl.css widgets/sunpath.css widgets/budget-lab.css widgets/ambience.css widgets/architecture.css widgets/investments.css widgets/grocery.css widgets/pantry.css widgets/pantry-tv.css widgets/photos.css pin.css agents.css theme.css tablet.css';
+var ORDER = 'style.css widgets/today.css widgets/todo.css widgets/weather.css widgets/calendar.css widgets/nowplaying.css widgets/awws.css widgets/wotd.css widgets/budget.css widgets/shows.css widgets/soundctl.css widgets/sunpath.css widgets/budget-lab.css widgets/ambience.css widgets/architecture.css widgets/investments.css widgets/spending.css widgets/grocery.css widgets/pantry.css widgets/pantry-tv.css widgets/photos.css pin.css agents.css theme.css tablet.css';
 
 var CHECKS = [
   ['Every stylesheet ends with the .css-end rule', async function () {

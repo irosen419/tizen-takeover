@@ -34,7 +34,8 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * lab.room to the cent), pace ('fresh', 'over' or a number: the streak), receipt
  * (cardDay.receipt, the Card day receipt: 'autopay' short on Dec 1 and covered by
  * autopay, 'covered', or 'short' even with autopay, $312 more; every figure made up), outlook (true adds
- * cardDay.outlook, the "Next 3 months" page; 'ahead' starts it ahead of plan; needs receipt) }.
+ * cardDay.outlook, the "Next 3 months" page; 'ahead' starts it ahead of plan; needs receipt), trend (pace.days
+ * becomes the Spending widget's month, spendingDays() below: Oct 16 to Nov 15) }.
  */
 function snapshot(opts) {
   opts = opts || {};
@@ -117,6 +118,7 @@ function snapshot(opts) {
     }
     s.pace.days = days;
   }
+  if (opts.trend) s.pace.days = spendingDays();
   if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
   for (const k of SECTIONS) if (s[k]) s[k].asOf = s.sentAt;
@@ -273,7 +275,97 @@ const SPANISH = {
   broken: '{title}: no se pudo mostrar'
 };
 
-module.exports = { snapshot, SPANISH, FIXTURE };
+/*
+ * The Spending widget's made-up month (app/widgets/spending.js): everyday
+ * spending for the 31 days before Monday Nov 16, Oct 16 to Nov 15, the same
+ * figures as the plan's mock-ups (/mnt/project-files/budget-visuals). With
+ * SPENDING_GOALS ($75 from Oct 16, $60 from Nov 9) it gives a $42 7-day
+ * average against $59 over 30 days, a typical day of $51, under the goal 12 of
+ * 14 days, 5 in a row and $306 kept. Every figure is made up.
+ */
+function spendingDays() {
+  let seed = 11;
+  const r = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const day = (mean) => { const v = r(); if (v < 0.1) return 0; return Math.round(mean * (0.35 + 1.5 * r())); };
+  const oct = [];
+  for (let i = 0; i < 31; i++) oct.push(day(78));
+  const nov = [];
+  for (let i = 0; i < 15; i++) nov.push(day(i < 8 ? 66 : 47));
+  oct[18] = 142; nov[5] = 96; nov[9] = 73; nov[10] = 44; nov[13] = 52; nov[14] = 41; nov[12] = 38; nov[11] = 0;
+  const out = [];
+  for (let d = 16; d <= 31; d++) out.push({ date: '2026-10-' + d, spent: oct[d - 1] });
+  for (let d = 1; d <= 15; d++) out.push({ date: '2026-11-' + (d < 10 ? '0' : '') + d, spent: nov[d - 1] });
+  return out;
+}
+const SPENDING_GOALS = [{ from: '2026-10-16', goal: 75 }, { from: '2026-11-09', goal: 60 }];
+
+/*
+ * Page-side hook for the Spending tests and screenshots (run with
+ * page.addInitScript before the hub's scripts). The hub server drops fields
+ * it does not know, and the goal history is not in the snapshot yet (another
+ * change brings it), so this adds it on the TV side: when budget.js sets
+ * window.HUB_BUDGET, its data() gets pace.goalHistory from localStorage
+ * 'spending-test-goals' (JSON, absent = no goal). With 'spending-test-long'
+ * set, every Spanish 'spending.' string also grows by a quarter with accents;
+ * with 'spending-test-hide' set, widgets.budget.show is false.
+ */
+function spendingHook() {
+  var real;
+  Object.defineProperty(window, 'HUB_BUDGET', {
+    configurable: true,
+    get: function () { return real; },
+    set: function (v) {
+      real = v;
+      var data = v.data;
+      v.data = function () {
+        var s = data.apply(this, arguments);
+        var g = null;
+        try { g = JSON.parse(localStorage.getItem('spending-test-goals') || 'null'); } catch (e) { g = null; }
+        if (s && s.pace) {
+          if (g) s.pace.goalHistory = g;
+          else delete s.pace.goalHistory;
+        }
+        return s;
+      };
+    }
+  });
+  // 'spending-test-hide': widgets.budget.show false, as config.js would say it.
+  var hide = false;
+  try { hide = !!localStorage.getItem('spending-test-hide'); } catch (e) { hide = false; }
+  if (hide) {
+    var cfg;
+    Object.defineProperty(window, 'HUB_CONFIG', {
+      configurable: true,
+      get: function () { return cfg; },
+      set: function (v) { cfg = v; try { v.widgets.budget = { show: false }; } catch (e) { /* as it is */ } }
+    });
+  }
+  var long = false;
+  try { long = !!localStorage.getItem('spending-test-long'); } catch (e) { long = false; }
+  if (!long) return;
+  var i18n;
+  Object.defineProperty(window, 'HUB_I18N', {
+    configurable: true,
+    get: function () { return i18n; },
+    set: function (v) {
+      i18n = v;
+      try {
+        var es = v.strings.es;
+        Object.keys(es).forEach(function (k) {
+          if (!/^spending\./.test(k)) return;
+          var text = es[k];
+          var add = Math.ceil(text.replace(/\{\w+\}/g, '').length * 0.25);
+          var extra = '';
+          for (var j = 0; j < add; j++) extra += 'ÁÉñíóú'.charAt(j % 6);
+          var m = /[A-Za-zÁÉÍÓÚáéíóúñÑ]{3,}/.exec(text);
+          es[k] = m ? text.slice(0, m.index + m[0].length) + extra + text.slice(m.index + m[0].length) : text;
+        });
+      } catch (e) { /* the plain Spanish */ }
+    }
+  });
+}
+
+module.exports = { snapshot, SPANISH, FIXTURE, spendingDays, SPENDING_GOALS, spendingHook };
 
 if (require.main === module) {
   const args = process.argv.slice(2);

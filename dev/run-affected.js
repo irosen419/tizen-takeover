@@ -70,6 +70,8 @@ const RULES = [
   [/^app\/widgets\/(sunpath)\.(js|css)$/, ['dev/sunpath-test.js']],
   [/^app\/widgets\/wotd\.(js|css)$|^app\/wotd-data\.js$/, ['dev/wotd-test.js']],
   [/^app\/widgets\/investments\.(js|css)$/, ['dev/investments-test.js']],
+  [/^app\/spending-math\.js$/, ['dev/spending-math-test.js', 'dev/spending-test.js']],
+  [/^app\/widgets\/spending\.(js|css)$/, ['dev/spending-test.js']],
   [/^studio\//, ['dev/studio-sync-test.js', 'dev/architecture-test.js']],
   [/^(package\.json|package-lock\.json|service\.js)$/, ['dev/version-test.js', 'dev/update-test.js', 'dev/live-test.js']],
   [/^pi\/(server|hubctl|logscrub|mailbox)\.js$/, ['pi/test.js', 'pi/mailbox-test.js']],
