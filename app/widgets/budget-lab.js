@@ -645,7 +645,7 @@
   // 'is-over' or '') }.
   function goalView(r) {
     var t = r && r.trend;
-    if (!t || t.goal === null || !t.goalDays) return null;
+    if (!t || t.goal === null || !t.goalDays || !t.goalDays.of) return null;
     var g = cash(Math.round(t.goal));
     var gd = t.goalDays;
     var map = { goal: g, n: gd.under, of: gd.of };
@@ -1121,7 +1121,7 @@
     g.arrR = el('span', 'bl-arrow is-right', val);
     g.note = el('div', 'bl-gnote', row);
     refs.goal = g;
-    if (has && t.goalDays) {
+    if (has && t.goalDays && t.goalDays.of) {
       var v = goalView(r);
       var sum = el('div', 'bl-gsum', col);
       var line = el('div', 'bl-gsum-line', sum, v.forms[0]);
