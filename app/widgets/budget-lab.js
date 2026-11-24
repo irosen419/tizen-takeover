@@ -54,6 +54,18 @@
  * moves) and the gap label's text, at most every 120 ms during a hold and
  * once more after the last press.
  *
+ * Daily goal (pace.goals, the Pi's dated history; the math module's
+ * goalTrend judges each day against the goal in force that day): with a goal
+ * the tile's box shows "Under your $60 goal: 11 of last 14 days", a dot a
+ * day and the run in a row, in place of the streak against the morning cap,
+ * and the big figure reads "$146 safe today". In the panel, under Back to
+ * calculated: the Daily goal row (Left and Right $1, the cap's hold speed-up;
+ * OK posts POST /budget/goal, which applies from the Pi's today on; a tap on
+ * its arrows on the tablet), the goal line, and the daily spending graph (a
+ * div bar a day for 31 days, green under, coral over, grey before the first
+ * goal, the goal as a dashed line, no dollar axis), with the 7 and 30 day
+ * averages and the trend in words. With a goal it replaces Pace.
+ *
  * Words: EN below; the Spanish is in app/i18n.js under 'budgetLab.<path>'.
  * Amounts keep their US form. Plain ES5 for the TV's browser.
  */
@@ -136,6 +148,7 @@
     keyCut: '\u25C0 \u25B6 cut \u00B7 OK save',
     keyOk: 'OK',
     keyMore: 'Down for merchants',
+    keyGoal: 'Down for your daily goal',
     // The result right under it
     heroSpare: '{d}: covered, {n} spare',
     heroSpareShort: 'Covered, {n} spare',
@@ -150,7 +163,7 @@
     autoHeadNoDate: '{d} is {n} short, so this plan relies on autopay days',
     autoHeadShort: '{d} is short, using autopay days',
     // Reference lines
-    refCalc: 'Calculated {n} a day',
+    refCalc: 'Safe today {n}',
     refSaved: 'Saved {n} a day',
     refNoSaved: 'No saved cap yet',
     usingCalc: 'Using the calculated cap',
@@ -202,7 +215,35 @@
     gapOnTrack: 'On track, $0 spare',
     gapOnTrackShort: 'On track',
     gapShort: 'Short by {n}',
-    gapShortShort: 'Short {n}'
+    gapShortShort: 'Short {n}',
+    // The daily goal: the Pi keeps its history, a change applies from today on
+    safeToday: 'safe today',
+    goalHead: 'Daily goal',
+    goalSetHead: 'Set a daily goal',
+    goalKeys: '\u25C0 \u25B6 change \u00B7 OK save',
+    goalFirst: 'Pick what you want to stay under each day',
+    goalFirstShort: 'What to stay under each day',
+    goalApplies: 'OK saves it from today on; past days keep theirs',
+    goalAppliesShort: 'OK saves it from today on',
+    goalSame: 'A change applies from today on; past days keep theirs',
+    goalSameShort: 'Changes apply from today on',
+    goalSending: 'Saving\u2026',
+    goalFailed: 'Couldn\u2019t save: the Pi didn\u2019t answer',
+    goalSaved: 'Goal saved: {n} a day, from today on',
+    goalUnder: 'Under your {goal} goal: {n} of last {of} days',
+    goalUnderShort: 'Under {goal}: {n} of {of} days',
+    goalUnderTiny: '{n}/{of} under {goal}',
+    goalRun: '{n} days in a row under {goal}',
+    goalRun1: '1 day under {goal}',
+    goalRunShort: '{n} in a row',
+    goalOverY: 'Over {goal} yesterday ({spent})',
+    goalOverYShort: 'Over yesterday',
+    graphHead: 'Daily spending, last 31 days',
+    graphHeadShort: 'Daily spending',
+    graphGoal: '{goal} goal',
+    avgs: '7-day avg {a} vs 30-day avg {b}',
+    avgsShort: '7 days {a} \u00B7 30 days {b}',
+    trend: { falling: 'coming down', rising: 'going up', flat: 'steady' }
   };
 
   // The words in the hub's language; set again when the language changes.
@@ -317,7 +358,10 @@
 
   /* ---------- the state: session, saved cap, hold ---------- */
 
-  var LAB = { ctx: null, session: null, hold: null, refs: null, bound: false, chartTimer: null, chartDirty: false };
+  var LAB = { ctx: null, session: null, hold: null, refs: null, bound: false, chartTimer: null, chartDirty: false,
+    // The goal control: value is the figure on it before OK (null: the
+    // goal in force), state '' | 'sending' | 'failed'. Kept until the panel closes.
+    goal: { value: null, state: '' } };
 
   function newSession() { return MATH() ? MATH().newSession() : { mode: 'cap', cap: null, keep: null, cuts: {} }; }
   LAB.session = newSession();
@@ -517,7 +561,7 @@
       return { num: cash(mv.amount), caps: [fill(STRINGS.tileShortFor, { d: d }), STRINGS.tileShortWord], tone: 'is-neg' };
     }
     if (!r.ok) return null;
-    return { num: down(r.cap), caps: [STRINGS.tileADay], tone: '' };
+    return { num: down(r.cap), caps: [STRINGS.safeToday, STRINGS.tileADay], tone: '' };
   }
 
   // The line under it: the card day outcome, without repeating the cap.
@@ -594,6 +638,58 @@
     if (box.yEl) fitForms(box.yEl, box.yForms);
   }
 
+  /* ---------- the daily goal (the Pi's history, pace.goals) ---------- */
+
+  // The goal row's words, or null with no goal yet: { goal, forms (long
+  // first), tiny, run (forms), tone, pips (the last 14 days: 'is-under',
+  // 'is-over' or '') }.
+  function goalView(r) {
+    var t = r && r.trend;
+    if (!t || t.goal === null || !t.goalDays || !t.goalDays.of) return null;
+    var g = cash(Math.round(t.goal));
+    var gd = t.goalDays;
+    var map = { goal: g, n: gd.under, of: gd.of };
+    var run = [];
+    var tone = '';
+    if (t.streak && t.streak.count) {
+      var rm = { goal: g, n: t.streak.count };
+      run = t.streak.count === 1 ? [fill(STRINGS.goalRun1, rm), fill(STRINGS.goalRunShort, rm)] : [fill(STRINGS.goalRun, rm), fill(STRINGS.goalRunShort, rm)];
+      tone = 'is-ok';
+    } else if (t.yesterday && t.yesterday.over) {
+      run = [fill(STRINGS.goalOverY, { goal: cash(Math.round(t.yesterday.goal)), spent: near(t.yesterday.spent) }), STRINGS.goalOverYShort];
+      tone = 'is-neg';
+    }
+    var pips = [];
+    for (var i = t.series.length - 14; i < t.series.length; i++) {
+      var d = t.series[i];
+      pips.push(d && d.over === true ? 'is-over' : d && d.over === false ? 'is-under' : '');
+    }
+    return { goal: g, forms: [fill(STRINGS.goalUnder, map), fill(STRINGS.goalUnderShort, map), fill(STRINGS.goalUnderTiny, map)],
+      tiny: fill(STRINGS.goalUnderTiny, map), run: run, tone: tone, pips: pips };
+  }
+
+  // The tile's goal box: "Under your $60 goal: 9 of last 14 days", a dot a
+  // day for those 14 (green under, coral over, hollow with no entry or no
+  // goal yet), then the run in a row or "Over $60 yesterday".
+  function goalBox(root, r) {
+    var v = goalView(r);
+    var box = el('div', 'bl-sbox bl-gbox' + (v.tone === 'is-ok' ? ' is-on' : ''), root);
+    box.goal = v;
+    box.lineEl = el('div', 'bl-gline', box);
+    var pips = el('div', 'bl-gpips', box);
+    for (var i = 0; i < v.pips.length; i++) el('span', 'bl-gpip' + (v.pips[i] ? ' ' + v.pips[i] : ''), pips);
+    box.pipsEl = pips;
+    if (v.run.length) box.runEl = el('div', 'bl-grun' + (v.tone ? ' ' + v.tone : ''), box);
+    return box;
+  }
+
+  function fitGoalBox(box) {
+    fitForms(box.lineEl, box.goal.forms);
+    box.lineEl.style.display = '';
+    if (overW(box.pipsEl)) box.removeChild(box.pipsEl);
+    if (box.runEl) fitForms(box.runEl, box.goal.run);
+  }
+
   function drawTile(body, ctx) {
     var size = sizeOf(ctx);
     var root = el('div', 'bu-tile bl-tile', body);
@@ -621,10 +717,16 @@
       root.className += ' bu-strip';
       var line = el('div', 'bu-strip-line', root);
       var head = el('span', 'bl-strip-head' + (v.tone ? ' ' + v.tone : ''), line);
-      var heads = v.caps.length ? [v.num + ' ' + v.caps[v.caps.length - 1], v.num] : [v.num];
+      var heads = [];
+      for (var hi = 0; hi < v.caps.length; hi++) heads.push(v.num + ' ' + v.caps[hi]);
+      heads.push(v.num);
       fitForms(head, heads);
       head.style.display = '';
-      if (size.cols >= 4 && r.streak.count) {
+      var gv = goalView(r);
+      if (size.cols >= 4 && gv) {
+        var grest = el('span', 'bu-strip-rest' + (gv.tone ? ' ' + gv.tone : ''), line);
+        if (!fitForms(grest, [STRINGS.sep + gv.tiny])) line.removeChild(grest);
+      } else if (size.cols >= 4 && r.streak.count) {
         var rest = el('span', 'bu-strip-rest is-ok', line);
         if (!fitForms(rest, [STRINGS.sep + streakCount(r.streak)])) line.removeChild(rest);
       }
@@ -639,7 +741,9 @@
     var ol = out ? el('div', 'bu-line bl-oline ' + out.tone, root) : null;
     var mf = tileMoveForms(r);
     var move = mf.length ? twoLines(root, 'bl-move', mf) : null;
-    var box = streakBox(root, r);
+    // With a daily goal the box shows it (the goal replaces the streak
+    // against each morning's cap); with none yet, the streak box as before.
+    var box = goalView(r) ? goalBox(root, r) : streakBox(root, r);
 
     fitWidth(hero.numEl);
     if (hero.capEl) {
@@ -647,9 +751,10 @@
       if (overW(hero.capEl)) hero.removeChild(hero.capEl);
     }
     if (ol) fitForms(ol, out.forms);
-    fitBox(box);
-    // Too tall: drop yesterday, then the move, then the outcome line.
-    trim(root, [ol, move, box && box.yEl]);
+    if (box && box.goal) fitGoalBox(box); else fitBox(box);
+    // Too tall: drop yesterday (or the goal's run, then its dots), then the
+    // move, then the outcome line.
+    trim(root, [ol, move, box && box.pipsEl, box && (box.yEl || box.runEl)]);
   }
 
   /* ---------- the panel ---------- */
@@ -742,7 +847,7 @@
       if (changed) { refs.reset.classList.add('f'); refs.reset.classList.add('is-on'); }
       else { refs.reset.classList.remove('f'); refs.reset.classList.remove('is-on'); refs.reset.classList.remove('is-focused'); }
       setText(refs.resetText, changed ? STRINGS.reset : STRINGS.usingCalc);
-      setText(refs.resetKey, changed ? STRINGS.keyOk : refs.cuts ? STRINGS.keyMore : '');
+      setText(refs.resetKey, changed ? STRINGS.keyOk : refs.goal ? STRINGS.keyGoal : refs.cuts ? STRINGS.keyMore : '');
     }
     if (refs.move) {
       var mf = moveForms(r);
@@ -985,6 +1090,142 @@
     var s = el('div', 'bu-psec f' + (cls ? ' ' + cls : ''), parent);
     s.setAttribute('data-key', key);
     return s;
+  }
+
+  /* ---------- the daily goal in the panel ---------- */
+
+  // The figure on the goal control: what is being tried, else the goal in
+  // force, else where the math module starts one.
+  function goalValue(r) {
+    if (LAB.goal.value !== null) return LAB.goal.value;
+    var t = r.trend;
+    return t && t.goal !== null ? Math.round(t.goal) : MATH().goalStart(t);
+  }
+
+  // The goal control (a focusable row: Left and Right change it, OK saves it
+  // on the Pi from today on), then the goal row and its run. No goal yet:
+  // "Set a daily goal" and a line that says what it is for.
+  function drawGoal(col, r, refs) {
+    var t = r.trend;
+    var has = !!(t && t.goal !== null);
+    var row = section(col, 'goal', 'bl-goal' + (has ? '' : ' is-new'));
+    var top = el('div', 'bl-herotop', row);
+    el('div', 'bl-label', top, has ? STRINGS.goalHead : STRINGS.goalSetHead);
+    el('div', 'bl-keyhint', top, STRINGS.goalKeys);
+    var val = el('div', 'bl-value bl-gvalue', row);
+    var g = { row: row, has: has };
+    g.arrL = el('span', 'bl-arrow is-left', val);
+    var mid = el('span', 'bl-valmid', val);
+    g.big = el('span', 'bl-gbig', mid);
+    el('span', 'bl-unit', mid, STRINGS.aDay);
+    g.arrR = el('span', 'bl-arrow is-right', val);
+    g.note = el('div', 'bl-gnote', row);
+    refs.goal = g;
+    if (has && t.goalDays && t.goalDays.of) {
+      var v = goalView(r);
+      var sum = el('div', 'bl-gsum', col);
+      var line = el('div', 'bl-gsum-line', sum, v.forms[0]);
+      if (tooTall(line, 2)) line.textContent = v.forms[1];
+      if (v.run.length) {
+        var run = el('div', 'bl-gsum-run ' + v.tone, sum, v.run[0]);
+        if (tooTall(run, 1)) run.textContent = v.run[1];
+      }
+    }
+    paintGoal(refs, r);
+  }
+
+  // The goal control's figure, its arrows and the line under it.
+  function paintGoal(refs, r) {
+    var g = refs && refs.goal;
+    if (!g) return;
+    var v = goalValue(r);
+    setText(g.big, cash(v));
+    setTone(g.arrL, 'bl-arrow is-left', v <= 1 ? 'is-end' : '');
+    setTone(g.arrR, 'bl-arrow is-right', v >= 1000 ? 'is-end' : '');
+    var t = r.trend;
+    var changed = !(t && t.goal !== null && Math.round(t.goal) === v);
+    var note;
+    var tone = '';
+    if (LAB.goal.state === 'sending') note = STRINGS.goalSending;
+    else if (LAB.goal.state === 'failed') { note = STRINGS.goalFailed; tone = 'is-neg'; }
+    else if (!g.has && LAB.goal.value === null) note = g.noteForm ? STRINGS.goalFirstShort : STRINGS.goalFirst;
+    else if (changed) { note = g.noteForm ? STRINGS.goalAppliesShort : STRINGS.goalApplies; tone = 'is-on'; }
+    else note = g.noteForm ? STRINGS.goalSameShort : STRINGS.goalSame;
+    setText(g.note, note);
+    setTone(g.note, 'bl-gnote', tone);
+  }
+
+  // The daily spending graph: a bar a day for the last 31 days (green under
+  // that day's goal, coral over it, grey with no goal yet, nothing on a day
+  // with no entry), the goal as a dashed line (a step where it changed)
+  // labelled "$60 goal", then the 7 and 30 day averages and the trend in
+  // words. Bars are divs, placed once; no dollar axis.
+  function drawGoalGraph(col, r) {
+    var t = r.trend;
+    if (!t || !t.series.length) return;
+    var sec = el('div', 'bl-gg-sec', col);
+    var head = el('div', 'bu-label bl-gg-head', sec);
+    fitForms(head, [STRINGS.graphHead, STRINGS.graphHeadShort]);
+    head.style.display = '';
+    var box = el('div', 'bl-gg', sec);
+    var w = box.clientWidth;
+    var h = box.clientHeight;
+    if (!w || !h) return;
+    var rem = remPx();
+    var n = t.series.length;
+    // The goal's label sits right of the bars, on its line.
+    var gl = t.goal !== null ? el('span', 'bl-gg-glab', box, fill(STRINGS.graphGoal, { goal: cash(Math.round(t.goal)) })) : null;
+    var gutter = gl ? gl.offsetWidth + rem * 0.7 : 0;
+    var topPad = rem * 0.8;
+    var axisH = rem * 2.2;            // the dates under the bars
+    var plotH = h - topPad - axisH;
+    var plotW = w - gutter;
+    var hi = t.hi > 0 ? t.hi : 1;
+    var slot = plotW / n;
+    var gap = Math.max(2, slot * 0.22);
+    function yOf(v) { return topPad + plotH - Math.min(1, v / hi) * plotH; }
+    var base = el('div', 'bl-gg-base', box);
+    base.style.top = px(topPad + plotH) + 'px';
+    base.style.width = px(plotW) + 'px';
+    for (var i = 0; i < n; i++) {
+      var d = t.series[i];
+      if (d.spent === null) continue;
+      var bh = Math.max(rem * 0.15, Math.min(1, d.spent / hi) * plotH);
+      var bar = el('div', 'bl-gg-bar' + (d.over === true ? ' is-over' : d.over === false ? ' is-under' : ''), box);
+      bar.style.left = px(i * slot + gap / 2) + 'px';
+      bar.style.width = px(slot - gap) + 'px';
+      bar.style.top = px(topPad + plotH - bh) + 'px';
+      bar.style.height = px(bh) + 'px';
+    }
+    // The goal line: one dashed run per stretch of days with the same goal.
+    var lastLine = null;
+    for (i = 0; i < n; i++) {
+      var gday = t.series[i].goal;
+      if (gday === null) { lastLine = null; continue; }
+      if (lastLine && lastLine.goal === gday) {
+        lastLine.to = i;
+      } else {
+        lastLine = { goal: gday, from: i, to: i, node: el('div', 'bl-gg-goal', box) };
+        lastLine.node.style.top = px(yOf(gday)) + 'px';
+        lastLine.node.style.left = px(i * slot) + 'px';
+      }
+      lastLine.node.style.width = px((lastLine.to - lastLine.from + 1) * slot) + 'px';
+    }
+    if (gl) gl.style.top = px(yOf(t.goal) - gl.offsetHeight / 2) + 'px';
+    // The first and last dates under the bars.
+    var first = el('span', 'bl-gg-date', box, dateText(t.series[0].date));
+    first.style.top = px(topPad + plotH + rem * 0.35) + 'px';
+    var last = el('span', 'bl-gg-date is-end', box, dateText(t.series[n - 1].date));
+    last.style.top = first.style.top;
+    last.style.right = px(gutter) + 'px';
+    // The averages and the trend in words.
+    if (t.avg7 !== null && t.avg30 !== null) {
+      var am = { a: near(t.avg7), b: near(t.avg30) };
+      var avg = el('div', 'bl-gg-avg', sec);
+      var at = el('span', 'bl-gg-avgt', avg, fill(STRINGS.avgs, am));
+      if (t.trend) el('span', 'bl-gg-trend is-' + t.trend, avg, STRINGS.sep + STRINGS.trend[t.trend]);
+      if (tooTall(avg, 2)) setText(at, fill(STRINGS.avgsShort, am));
+    }
   }
 
   // The streak: a plain block, never focusable (nothing to change here).
@@ -1247,18 +1488,38 @@
     var right = colB || colA;
     // The runway is worked to the 1st, not to the autopay days, so with autopay days there is no chart.
     if (colB && r.ok && !r.autopay) drawChart(colB, r, refs);
+    // The daily goal (its control, its row, the graph) sits where the pace
+    // was; with a goal set it replaces the streak against the morning cap.
+    // Short even at $0 a day the screen must fit with nothing to act on, so
+    // it waits until card day is covered again (the pace shows meanwhile).
+    var hasGoal = !short && !!(r.trend && r.trend.goal !== null);
+    if (!short && snapshot() && snapshot().pace) {
+      drawGoal(left, r, refs);
+      drawGoalGraph(left, r);
+    }
     if (short) {
-      drawPace(left, r, refs, true);
+      if (!hasGoal) drawPace(left, r, refs, true);
       drawMerchants(right, r, refs, true);
     } else {
-      drawPace(left, r, refs, false);
+      if (!hasGoal) drawPace(left, r, refs, false);
       drawMerchants(left, r, refs, false);
       if (r.ok && r.roomCap) el('div', 'bl-note', left, fill(STRINGS.roomNote, { n: down(r.roomCap.cap) }));
       drawDest(right, r, refs);
     }
     paint(refs, r);
     fitPanelForms(refs, r);
-    fitWidth(refs.paceHero.numEl);
+    if (refs.paceHero) fitWidth(refs.paceHero.numEl);
+    if (refs.goal) {
+      // The note takes its short form when any of its long forms would not fit.
+      var gn = refs.goal.note;
+      var longs = [STRINGS.goalFirst, STRINGS.goalApplies, STRINGS.goalSame, STRINGS.goalFailed];
+      for (var li = 0; li < longs.length && !refs.goal.noteForm; li++) {
+        gn.textContent = longs[li];
+        if (overW(gn)) refs.goal.noteForm = 1;
+      }
+      paintGoal(refs, r);
+      fitWidth(refs.goal.big);
+    }
     if (refs.big) fitWidth(refs.big);
     LAB.refs = refs;
     return root;
@@ -1285,6 +1546,43 @@
     chartSoon();
   }
 
+  // The goal control: $1 a press, the same hold speed-up as the cap. Only
+  // the control's figure changes; nothing is sent until OK.
+  function nudgeGoalKey(dir) {
+    var m = MATH();
+    var r = result();
+    if (!m || !r) return;
+    var t = now();
+    var h = LAB.hold;
+    if (!h || h.dir !== dir || h.slider !== 'goal' || t - h.last >= HOLD_GAP || t < h.last) {
+      h = LAB.hold = { dir: dir, mode: 'cap', slider: 'goal', start: t, last: t };
+    }
+    h.last = t;
+    LAB.goal.value = m.nudgeGoal(goalValue(r), dir === 'right' ? 1 : -1, m.holdStep(t - h.start, 'cap'));
+    if (LAB.goal.state === 'failed') LAB.goal.state = '';
+    paintGoal(LAB.refs, r);
+  }
+
+  // OK on the goal control: the Pi stores it from today on (its own date)
+  // and pushes the budget again, which redraws the panel.
+  function saveGoal(ctx) {
+    var r = result();
+    var L = window.HUB_LIVE;
+    if (!r || LAB.goal.state === 'sending') return;
+    var v = goalValue(r);
+    if (!L || typeof L.post !== 'function') { LAB.goal.state = 'failed'; paintGoal(LAB.refs, r); return; }
+    LAB.goal.state = 'sending';
+    paintGoal(LAB.refs, r);
+    L.post('/budget/goal', { goal: v }, function (err) {
+      LAB.goal.state = err ? 'failed' : '';
+      if (!err) {
+        LAB.goal.value = null;
+        try { ctx.toast(fill(STRINGS.goalSaved, { n: cash(v) }), 3500); } catch (e) { /* no toast */ }
+      }
+      try { if (LAB.refs) paintGoal(LAB.refs, result()); } catch (e) { /* closed meanwhile */ }
+    });
+  }
+
   // Tablet mode (ctx.tablet; no remote): a tap on the cap's arrows moves it
   // as Left and Right do, instead of the click that the hub treats as OK (save).
   function tapArrows(body) {
@@ -1298,6 +1596,12 @@
           e.stopPropagation();
           LAB.hold = null;
           nudge(n === refs.arrL ? 'left' : 'right', 'cap');
+          return;
+        }
+        if (refs.goal && (n === refs.goal.arrL || n === refs.goal.arrR)) {
+          e.stopPropagation();
+          LAB.hold = null;
+          nudgeGoalKey(n === refs.goal.arrL ? 'left' : 'right');
           return;
         }
       }
@@ -1316,6 +1620,7 @@
     var out = [];
     if (refs.slider) out.push(refs.slider);
     if (refs.reset && refs.changed) out.push(refs.reset);
+    if (refs.goal) out.push(refs.goal.row);
     for (var i = 0; refs.cuts && i < refs.cuts.length; i++) out.push(refs.cuts[i].node);
     return out;
   }
@@ -1344,6 +1649,10 @@
     if (!refs) return undefined;
     if (dir === 'up' || dir === 'down') return rowMove(dir, from, refs);
     if (dir !== 'left' && dir !== 'right') return undefined;
+    if (refs.goal && from === refs.goal.row) {
+      try { nudgeGoalKey(dir); } catch (e) { warn('goal: ' + (e && e.message)); }
+      return true;
+    }
     var i = cutOf(refs, from);
     var slider = from === refs.slider && refs.slider ? 'cap' : i >= 0 ? refs.cuts[i].label : null;
     // Back to calculated has nothing to change sideways, and Left and Right
@@ -1356,6 +1665,7 @@
   function onSelect(target, ctx) {
     var key = target && target.getAttribute('data-key');
     var m = MATH();
+    if (key === 'goal') { LAB.hold = null; saveGoal(ctx); return; }
     var r = result();
     if (!m || !r || !r.ok) return;
     LAB.hold = null;
@@ -1451,7 +1761,7 @@
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
     // The tile's suggested move follows the session cap: drawn again once
     // the panel closes, not on every key press.
-    onClose: function (ctx) { chartStop(); LAB.refs = null; LAB.hold = null; ctx.redrawTile(); }
+    onClose: function (ctx) { chartStop(); LAB.refs = null; LAB.hold = null; LAB.goal = { value: null, state: '' }; ctx.redrawTile(); }
   };
   Object.defineProperty(widget, 'title', { get: function () { return STRINGS.titles.lab; }, enumerable: true, configurable: true });
   Object.defineProperty(widget, 'shortTitle', { get: function () { return STRINGS.titlesShort.lab; }, enumerable: true, configurable: true });

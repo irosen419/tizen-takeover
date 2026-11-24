@@ -33,6 +33,7 @@
  *   ./hub budget show                the budget snapshot: when sent, size, sections (no amounts)
  *   ./hub budget set <file.json|->   store one (the snapshot, or { snapshot: {...} })
  *   ./hub budget clear               remove it; the TV tiles say "Waiting for the budget app"
+ *   ./hub budget goal [60]           the daily spending goal: show when it was set, or set it from today on
  *   ./hub shows list                 the TV show list: running or ended, what airs next
  *   ./hub shows add "Stick" --service "Apple TV" [--id 12345] [--watch Hulu] [--also "Hulu,Peacock"] [--via "Prime Video"] [--link 80123456]
  *   ./hub shows remove "Stick"       take a show off the list
@@ -84,6 +85,7 @@ const path = require('path');
 const crypto = require('crypto');
 const awws = require('./awws');
 const budget = require('./budget');
+const budgetgoal = require('./budgetgoal');
 const shows = require('./shows');
 const linktests = require('./linktests');
 const tvremote = require('./tvremote');
@@ -820,7 +822,18 @@ async function budgetCommand(args) {
     say(budget.clearText(r));
     return;
   }
-  stop('Use one of: budget show, budget set <file.json|->, budget clear. Run ./hub help for examples.');
+  if (sub === 'goal') {
+    if (args[1] === undefined) {
+      const g = await call('GET', '/api/budget/goal');
+      say(budgetgoal.showText(g.goals));
+      return;
+    }
+    const n = Number(args[1]);
+    if (!Number.isInteger(n)) stop('Give the goal in whole dollars a day, 1 to 1,000. For example: ./hub budget goal 60');
+    say(budgetgoal.setText(await call('POST', '/api/budget/goal', { goal: n })));
+    return;
+  }
+  stop('Use one of: budget show, budget set <file.json|->, budget clear, budget goal [dollars]. Run ./hub help for examples.');
 }
 
 /* ---------- Spotify ---------- */
@@ -1393,6 +1406,7 @@ const HELP = [
   '  ./hub budget show           the budget snapshot: when sent, size, sections (no amounts)',
   '  ./hub budget set file.json  store a budget snapshot (- reads it from input; see docs/budget-snapshot.md)',
   '  ./hub budget clear          remove it; the TV tiles say "Waiting for the budget app"',
+  '  ./hub budget goal 60        the daily spending goal from today on (no number: when it was set)',
   '  ./hub shows list            the TV show list: still running or ended, what airs next',
   '  ./hub shows add "Stick" --service "Apple TV"   add a show (--id 12345 sets its TVmaze number,',
   '                              --watch Hulu opens another app than the badge says,',

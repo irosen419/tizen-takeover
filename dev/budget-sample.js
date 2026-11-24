@@ -31,7 +31,8 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * payment plan, the room says basis "autopay", the lab sends autopayRoom and
  * autopayDate), payday (a 14 day window to card day on Nov 30 with a
  * payday on Nov 20 inside it, for the runway chart: its runway ends at
- * lab.room to the cent), pace ('fresh', 'over' or a number: the streak), receipt
+ * lab.room to the cent), pace ('fresh', 'over', a number: the streak, or 'month':
+ * 31 days of spending with GOALS as the Pi's goal history), receipt
  * (cardDay.receipt, the Card day receipt: 'autopay' short on Dec 1 and covered by
  * autopay, 'covered', or 'short' even with autopay, $312 more; every figure made up), outlook (true adds
  * cardDay.outlook, the "Next 3 months" page; 'ahead' starts it ahead of plan; needs receipt) }.
@@ -108,20 +109,36 @@ function snapshot(opts) {
     // 'over' (yesterday went over), or a number of days under in a row
     // ending yesterday (Nov 15), with a day over just before them.
     const days = [];
+    if (opts.pace === 'month') {
+      // A realistic 31 days, Oct 16 to Nov 15, coming down lately; the
+      // morning cap logged only on the last four (the log began Nov 12).
+      MONTH.forEach((spent, i) => {
+        const d = new Date(Date.UTC(2026, 9, 16 + i)).toISOString().slice(0, 10);
+        days.push(i >= MONTH.length - 4 ? { date: d, spent: spent, cap: 64.5 } : { date: d, spent: spent });
+      });
+      s.pace.days = days;
+    }
     const n = typeof opts.pace === 'number' ? opts.pace : 0;
-    for (let i = 13; i >= 0; i--) {
+    for (let i = 13; i >= 0 && opts.pace !== 'month'; i--) {
       const d = new Date(Date.UTC(2026, 10, 15 - i)).toISOString().slice(0, 10);
       if (opts.pace === 'fresh') { days.push({ date: d, spent: 52.4 }); continue; }
       const under = opts.pace === 'over' ? i > 0 && i % 3 !== 0 : i < n;
       days.push({ date: d, spent: under ? 48.5 : 81.2, cap: 64.5 });
     }
-    s.pace.days = days;
+    if (opts.pace !== 'month') s.pace.days = days;
   }
   if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
   for (const k of SECTIONS) if (s[k]) s[k].asOf = s.sentAt;
   return s;
 }
+
+// pace 'month': spent per day, Oct 16 to Nov 15 (made up).
+const MONTH = [72.4, 48.1, 95.6, 61.2, 38.9, 84.3, 57.5, 66.8, 121.4, 45.2, 52.7, 78.3, 63.9, 41.6, 88.2,
+  59.4, 70.1, 49.8, 55.3, 102.7, 47.6, 58.2, 62.4, 39.1, 53.8, 71.5, 44.2, 57.9, 50.6, 36.4, 52.3];
+// The daily goal's history on the Pi (data/budget-goal.json, not the snapshot):
+// $60 from Oct 26, for the harness's budgetGoals option.
+const GOALS = [{ from: '2026-10-26', goal: 60 }];
 
 /*
  * The Card day receipt (prototype), the budget app's own lines in its order:
@@ -273,7 +290,7 @@ const SPANISH = {
   broken: '{title}: no se pudo mostrar'
 };
 
-module.exports = { snapshot, SPANISH, FIXTURE };
+module.exports = { snapshot, SPANISH, FIXTURE, GOALS };
 
 if (require.main === module) {
   const args = process.argv.slice(2);
