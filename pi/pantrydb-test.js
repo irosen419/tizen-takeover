@@ -142,6 +142,7 @@ async function main() {
     const dairyId = cats.find((c) => c.key === 'dairy').id;
     p.applyOps([{ op: 'add', name: 'Greek yogurt', qty: 1, categoryIds: [dairyId] }], []);
     p.db.prepare("UPDATE categories SET name = 'Milk', key = 'milk' WHERE id = ?").run(dairyId);
+    p.db.prepare("DELETE FROM meta WHERE key = 'dairyMigrated'").run();
     p.close();
     p = pantrydb.createPantry({ dataDir: dir });
     const after = p.view([]).data;
@@ -149,6 +150,14 @@ async function main() {
     assert(!after.categories.some((c) => c.key === 'milk'), 'Milk is gone');
     const y = after.products.find((x) => x.name === 'Greek yogurt');
     assert.deepStrictEqual(y.categoryIds, [dairyId], 'the yogurt kept its category');
+    p.close();
+    // A Milk category made after the rename is left alone on the next start.
+    p = pantrydb.createPantry({ dataDir: dir });
+    p.applyOps([{ op: 'category', name: 'Milk' }], []);
+    p.close();
+    p = pantrydb.createPantry({ dataDir: dir });
+    assert(p.view([]).data.categories.some((c) => c.key === 'milk'), 'own Milk kept');
+    p.db.prepare("DELETE FROM categories WHERE key = 'milk'").run();
     p.close();
     // A second start changes nothing.
     p = pantrydb.createPantry({ dataDir: dir });

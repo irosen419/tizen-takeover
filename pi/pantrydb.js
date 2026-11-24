@@ -82,7 +82,7 @@ const KIND_WORDS = {
   meat: ['chicken', 'beef', 'pork', 'turkey', 'bacon', 'sausage', 'ham', 'steak', 'salmon', 'fish', 'shrimp', 'pollo', 'carne'],
   frozen: ['frozen', 'ice cream', 'pizza'],
   canned: ['canned', 'can', 'beans', 'soup', 'tuna'],
-  'dry goods': ['peanut butter', 'rice', 'pasta', 'flour', 'sugar', 'cereal', 'oats', 'oatmeal', 'arroz', 'noodles'],
+  'dry goods': ['peanut butter', 'almond butter', 'cashew butter', 'apple butter', 'nut butter', 'mantequilla de mani', 'rice', 'pasta', 'flour', 'sugar', 'cereal', 'oats', 'oatmeal', 'arroz', 'noodles'],
   snacks: ['chips', 'crackers', 'cookies', 'snack', 'snacks', 'popcorn', 'nuts', 'pretzels'],
   drinks: ['water', 'juice', 'soda', 'coffee', 'tea', 'beer', 'wine', 'sparkling', 'cola'],
   'paper goods': ['paper towels', 'paper towel', 'toilet paper', 'napkins', 'tissues', 'paper'],
@@ -361,8 +361,10 @@ function createPantry(options) {
 
   // Older databases started with a "Milk" category (yogurt, creamer and
   // cheese all went there). It becomes "Dairy", keeping every product link.
-  // Safe to run on every start: it does nothing once there is no "milk" row.
+  // Runs once (a meta flag), so a "Milk" category made later is left alone.
   tx(() => {
+    if (metaGet('dairyMigrated') !== null) return;
+    metaSet('dairyMigrated', 1);
     const old = one("SELECT id FROM categories WHERE key = 'milk'");
     if (!old) return;
     const dairy = one("SELECT id FROM categories WHERE key = 'dairy'");
