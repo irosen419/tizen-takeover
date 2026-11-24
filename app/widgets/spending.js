@@ -40,6 +40,14 @@
  * Room is left in the page head for the later pages (Where it goes, Month
  * vs month); none is drawn yet.
  *
+ * Old data (the budget app or the Pi was off): every window ends yesterday
+ * (app/spending-math.js), so a day with no figure is never under or over and
+ * the streak is not carried over. Where the streak shows (the Under goal
+ * number's line) and in place of the verdict on a standard tile and a strip,
+ * the tile and page say "No data since Nov 12" (amber); the chart runs to
+ * yesterday with the missing days empty. With no day of data in the last 7
+ * the tile and (with none in the chart either) the page say only that.
+ *
  * Motion, once per open (about 1.5 s): the bars grow from the baseline one
  * after another (scaleY, with an explicit px transform-origin on each day's
  * SVG group, since Chrome 52 has no transform-box), the goal and 7-day lines
@@ -96,6 +104,10 @@
     streakN: '{n} days in a row',
     streak1: '1 day in a row',
     streak0: 'Not in a row yet',
+    // In place of the streak when the data stops before yesterday.
+    noDataSince: 'No data since {d}',
+    noDataShort: 'Last data {d}',
+    gapLine: 'Nothing newer from the budget app yet.',
     lastDays: 'last {m} days',
     avg30Line: '30-day average {n}',
     section: 'Everyday spending, last {m} days',
@@ -265,6 +277,7 @@
       var s = STRINGS.building;
       return { head: s.head, line: fill(s.line, { n: r ? r.days : 0 }), short: s.short };
     }
+    if (key === 'gap') return { head: gapText(r), line: STRINGS.gapLine, short: STRINGS.gapLine };
     var b = B();
     try { return b ? b.stateText(key) : { head: '', line: '', short: '' }; } catch (e) { return { head: '', line: '', short: '' }; }
   }
@@ -288,7 +301,11 @@
 
   function ofDays(m) { return m === 1 ? STRINGS.ofDay1 : fill(STRINGS.ofDays, { m: m }); }
 
+  function gapText(r) { return r.gap ? fill(STRINGS.noDataSince, { d: dateText(r.gap.since) }) : ''; }
+  function gapForms(r) { return r.gap ? [gapText(r), fill(STRINGS.noDataShort, { d: dateText(r.gap.since) })] : []; }
+
   function streakText(r) {
+    if (r.gap) return gapText(r);
     if (r.streak === 1) return STRINGS.streak1;
     if (r.streak > 1) return fill(STRINGS.streakN, { n: r.streak });
     return STRINGS.streak0;
@@ -603,11 +620,24 @@
     var line = el('div', 'sp-strip-line', root);
     el('span', 'sp-strip-num', line, cash(r.avg7));
     var cap = el('span', 'sp-strip-cap', line, ' ' + STRINGS.aDayShort);
-    var v = el('span', 'sp-strip-dir ' + dirTone(r), line);
-    var forms = dirForms(r);
+    var v = el('span', 'sp-strip-dir ' + (r.gap ? 'is-gap' : dirTone(r)), line);
+    var forms = r.gap ? gapForms(r) : dirForms(r);
     for (var i = 0; i < forms.length && size.cols >= 3; i++) {
       v.textContent = STRINGS.sep + forms[i];
       if (!overW(line)) return;
+    }
+    // Old data matters more than "a day": it gives up its room first.
+    if (r.gap && size.cols >= 3) {
+      drop(cap);
+      if (!overW(line)) return;
+      // Still no room: the words alone, since the figure is from old days.
+      var num = line.firstChild;
+      line.removeChild(num);
+      for (i = 0; i < forms.length; i++) {
+        v.textContent = forms[i];
+        if (!overW(line)) return;
+      }
+      line.insertBefore(num, v);
     }
     v.textContent = '';
     if (overW(line)) drop(cap);
@@ -630,7 +660,7 @@
     var df = dirForms(r);
     out.push({ key: 'avg7', label: STRINGS.kpi.avg7, value: r.avg7, money: true, sub: df[0] || '', subShort: df[1] || '', tone: dirTone(r) });
     if (judged(r)) {
-      out.push({ key: 'under', label: STRINGS.kpi.under, value: r.under.under, small: ofDays(r.under.judged), sub: streakText(r), tone: r.streak > 0 ? 'is-ok' : '' });
+      out.push({ key: 'under', label: STRINGS.kpi.under, value: r.under.under, small: ofDays(r.under.judged), sub: streakText(r), tone: r.gap ? 'is-gap' : r.streak > 0 ? 'is-ok' : '' });
       out.push({ key: 'kept', label: STRINGS.kpi.kept, value: r.kept, money: true, sub: fill(STRINGS.lastDays, { m: 14 }), numTone: Math.round(r.kept) < 0 ? 'is-neg' : '' });
       if (four) out.push({ key: 'typical', label: STRINGS.kpi.typical, value: r.typical, money: true, sub: r.avg30 === null ? '' : fill(STRINGS.avg30Line, { n: cash(r.avg30) }) });
     } else {
@@ -682,8 +712,9 @@
   function stdTile(root, r, size) {
     var h = hero(root, r, STRINGS.aDay);
     fitHero(h);
-    var verdict = el('div', 'sp-verdict ' + dirTone(r), root);
-    if (!fitForms(verdict, dirForms(r))) drop(verdict);
+    // Old data: say so where the verdict goes, not a direction that looks current.
+    var verdict = el('div', 'sp-verdict ' + (r.gap ? 'is-gap' : dirTone(r)), root);
+    if (!fitForms(verdict, r.gap ? gapForms(r) : dirForms(r))) drop(verdict);
     var box = el('div', 'sp-chart is-small', root);
     var foot = footer(root, r);
     // Room goes first to the figures, then the footer, then the chart.
@@ -703,6 +734,8 @@
     var r = result();
     if (!r) return tileMessage(root, size, emptyKey());
     if (!r.ok) return tileMessage(root, size, 'building', r);
+    // No day of data in the last week: "No data since Nov 12", no stale figure.
+    if (r.gap && r.avg7 === null) return tileMessage(root, size, 'gap', r);
     if (stale()) root.className += ' is-stale';
     if (size.cols === 1) return soloTile(root, r);
     if (size.tier === 'strip') return stripTile(root, r, size);
@@ -713,6 +746,11 @@
   /* ---------- the Trend page ---------- */
 
   var S = { ctx: null, bound: false, refs: null, focusDate: null, animated: false, raf: 0, animTimer: null };
+
+  function hasData(rows) {
+    for (var i = 0; i < rows.length; i++) if (rows[i].spent !== null) return true;
+    return false;
+  }
 
   function panelMessage(root, key, r) {
     var msg = stateText(key, r);
@@ -867,6 +905,7 @@
     var r = result();
     if (!r) return panelMessage(root, emptyKey());
     if (!r.ok) return panelMessage(root, 'building', r);
+    if (r.gap && !hasData(r.chart)) return panelMessage(root, 'gap', r);
     var anim = !S.animated && canMove();
     S.animated = true;
     var page = el('div', 'sp-page' + (full ? ' is-full' : '') + (stale() ? ' is-stale' : '') + (anim ? ' sp-anim' : ''), root);

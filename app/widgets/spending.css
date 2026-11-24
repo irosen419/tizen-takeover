@@ -38,6 +38,8 @@
 .sp-tile .is-ok, .sp-panel .is-ok { color: var(--sp-ok); }
 .sp-tile .is-neg, .sp-panel .is-neg { color: var(--sp-over); }
 .sp-tile .is-quiet { color: var(--sp-ink3); }
+/* "No data since Nov 12": amber, in place of the streak or the verdict. */
+.sp-tile .is-gap, .sp-panel .is-gap { color: var(--ok-optional); }
 
 /* ---------- tile ---------- */
 
@@ -168,6 +170,7 @@
 .sp-kpi-sub { margin-top: 0.1rem; font-size: 0.95rem; line-height: 1.35; color: var(--sp-ink2); }
 .sp-kpi-sub.is-ok { color: var(--sp-ok); }
 .sp-kpi-sub.is-neg { color: var(--sp-over); }
+.sp-kpi-sub.is-gap { color: var(--ok-optional); }
 
 /* states */
 .sp-msg { position: relative; z-index: 1; padding-top: 0.2rem; }

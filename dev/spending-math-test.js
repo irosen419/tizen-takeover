@@ -8,7 +8,9 @@
  * under, the 7-day and 30-day averages (a missing date is no data, not $0),
  * the median (odd and even), the under count, kept (negative too), the
  * streak, today left out, the direction, the chart rows, and empty, one day,
- * partial and broken data. The figures are made up (this repository is
+ * partial and broken data; stale data (the windows end yesterday when today
+ * is given: a gap of one day, several, none, no data, a goal change in the
+ * gap). The figures are made up (this repository is
  * public). Only what ships with Node is used. Prints one line per check, then
  * "N passed, M failed".
  */
@@ -199,7 +201,7 @@ check('empty, one day and two days: no figures to judge, "building" until 3 days
   const none = M.compute({ pace: { days: [] }, history: HISTORY, today: TODAY });
   same([none.ok, none.building, none.days, none.avg7, none.end, none.chart.length], [false, false, 0, null, null, 0]);
   same(none.history.length, 2);
-  const one = M.compute({ pace: days([12.34]), history: [], today: TODAY });
+  const one = M.compute({ pace: days([12.34]), history: [], today: date(1) });
   same([one.ok, one.building, one.days, one.avg7, one.typical, one.kept, one.hasGoal], [false, true, 1, 12.34, 12.34, null, false]);
   const two = M.compute({ pace: days([1, 2]), history: [] });
   assert.strictEqual(two.building, true);
@@ -251,6 +253,67 @@ check('partial data: unsorted rows are put in order; a gap leaves its chart day 
 
 check('cents: 1.005 rounds to 101 cents; readDays(p) with no today drops no valid day', () => {
   assert.strictEqual(M.readDays({ days: [{ date: '', spent: 1 }, { date: '2026-02-30', spent: 1 }, { date: date(0), spent: 1.005 }] })[0].c, 101);
+});
+
+/* ---------- stale data: windows end yesterday when today is given ---------- */
+
+// The sample month with its last n days taken away (the Pi was off), read on Nov 16.
+function cut(n) { return { days: SAMPLE.slice(0, SAMPLE.length - n) }; }
+
+check('no gap: data through yesterday, gap null, the same figures as before', () => {
+  const r = M.compute({ pace: { days: SAMPLE }, history: HISTORY, today: TODAY });
+  same([r.gap, r.end, r.streak], [null, '2026-11-15', 5]);
+});
+
+check('a gap of 1 day: the streak is 0 (never carried over), yesterday is an empty chart day, the averages use the days present', () => {
+  const r = M.compute({ pace: cut(1), history: HISTORY, today: TODAY });
+  same(r.gap, { since: '2026-11-14', days: 1 });
+  assert.strictEqual(r.end, '2026-11-15');
+  assert.strictEqual(r.streak, 0, 'a stale streak');
+  // Without today the old rule still runs from the last day of data.
+  assert.strictEqual(M.compute({ pace: cut(1), history: HISTORY }).streak, 4);
+  assert.strictEqual(r.chart.length, 31);
+  same(r.chart[30], { date: '2026-11-15', spent: null, goal: 60, over: null, avg7: r.chart[30].avg7 });
+  // The 7-day window Nov 9 to 15 holds 6 days: their mean.
+  const six = SAMPLE.slice(-7, -1).reduce((t, d) => t + d.spent * 100, 0);
+  assert.strictEqual(r.avg7, Math.round(six / 6) / 100);
+  // The missing day is unjudged: 13 judged, not 14, and never counted over or under.
+  same(r.under, { under: 11, judged: 13 });
+});
+
+check('a gap of several days: the 14-day count and kept shrink, nothing stale is judged', () => {
+  const r = M.compute({ pace: cut(5), history: HISTORY, today: TODAY });
+  same(r.gap, { since: '2026-11-10', days: 5 });
+  assert.strictEqual(r.streak, 0);
+  assert.strictEqual(r.under.judged, 9);
+  assert.strictEqual(r.chart.slice(-5).filter((d) => d.spent !== null).length, 0);
+  assert.strictEqual(r.chart[25].date, '2026-11-10');
+  assert.strictEqual(r.chart[25].spent, 73);
+  // A gap longer than the 7-day window: no 7-day average at all, the 30-day one still.
+  const long = M.compute({ pace: cut(9), history: HISTORY, today: TODAY });
+  same([long.gap.days, long.avg7, long.avg30 > 0, long.dir], [9, null, true, null]);
+  // Past the whole chart: every chart day empty, averages and typical null.
+  const old = M.compute({ pace: { days: SAMPLE.slice(0, 5) }, history: HISTORY, today: '2026-12-31' });
+  same([old.ok, old.gap.since, old.avg7, old.avg30, old.typical, old.streak, old.kept], [true, '2026-10-20', null, null, null, 0, null]);
+  assert.ok(old.chart.length === 31 && old.chart.every((d) => d.spent === null));
+  same(old.under, { under: 0, judged: 0 });
+});
+
+check('no data at all: no gap to report', () => {
+  const r = M.compute({ pace: { days: [] }, history: HISTORY, today: TODAY });
+  same([r.gap, r.end, r.streak, r.ok], [null, null, 0, false]);
+});
+
+check('a goal change during the gap: drawn on its day, no missing day judged against either goal', () => {
+  const h = HISTORY.concat([{ from: '2026-11-14', goal: 50 }]);
+  const r = M.compute({ pace: cut(3), history: h, today: TODAY });
+  same(r.gap, { since: '2026-11-12', days: 3 });
+  assert.strictEqual(r.goal, 50, 'the goal in force yesterday');
+  assert.strictEqual(r.chart[r.change].date, '2026-11-14');
+  same(r.chart.slice(-3).map((d) => [d.goal, d.over]), [[60, null], [50, null], [50, null]]);
+  const before = M.compute({ pace: cut(3), history: HISTORY, today: TODAY });
+  same(r.under, before.under);
+  assert.strictEqual(r.kept, before.kept);
 });
 
 check('no long dashes in the file or this test (house style)', () => {

@@ -23,7 +23,16 @@
  *     skipped. A date sent twice keeps its first row.
  *   - Today is partial (the day is not over), so a row dated today or later
  *     is left out of everything: averages, judging, the streak and the chart.
- *     The last day used ("end") is the latest complete day in the data.
+ *   - The last day used ("end") is YESTERDAY (today minus 1) whenever today
+ *     is given, even when the data stops earlier (the Pi or the budget app
+ *     was off), so nothing old looks current. Days from the last day with
+ *     data up to yesterday are missing: unjudged (never under, never over),
+ *     left out of every mean, and drawn as empty chart days. The streak only
+ *     counts back from yesterday, so with no figure for yesterday it is 0,
+ *     never carried over from older days. compute() says so in gap:
+ *     { since: the last day with data, days: how many days are missing up
+ *     to yesterday }. Without today (the pure helpers, old callers) end is
+ *     the latest day in the data and there is never a gap.
  *   - Windows are calendar days ending at end: the 7-day average is the mean
  *     of the days present among the last 7 dates. A missing date is no data,
  *     not $0: it is left out of the mean (the Pi was off, not a day of no
@@ -40,7 +49,8 @@
  *   - Streak: judged days at or under, back from end without a break; a day
  *     over, a missing date or a day with no goal ends it.
  *   - Typical day: the median of the days present in the last 30 (even
- *     count: the mean of the middle two, rounded to the cent).
+ *     count: the mean of the middle two, rounded to the cent). Averages and
+ *     the typical day are null when their window holds no day at all.
  *   - Direction: the 7-day against the 30-day average in whole dollars,
  *     'down', 'up' or 'level'; null until the 30-day window holds 14 days.
  */
@@ -304,7 +314,10 @@
    *             building are worth reading)
    *   days      complete days used (count)
    *   building  true while ok is false and there is at least one day
-   *   end       the last complete day, 'YYYY-MM-DD' or null
+   *   end       the last complete day: yesterday when today is given, else
+   *             the latest day in the data; 'YYYY-MM-DD' or null
+   *   gap       { since: 'YYYY-MM-DD' (the last day with data), days: n
+   *             (days with no data from then to yesterday) } or null
    *   avg7, avg30, typical    dollars or null
    *   avg30Days the days present in the 30-day window
    *   dir       'down' | 'up' | 'level' | null
@@ -316,7 +329,8 @@
    *   chart     [{ date, spent (dollars or null: no data), goal (or null),
    *               over (dollars above the goal, 0 when under, null unjudged),
    *               avg7 (or null) }] for the last 31 calendar days to end
-   *               (fewer when the data starts later)
+   *               (fewer when the data starts later; the days of a gap are
+   *               rows with spent null)
    *   max       the chart's top in dollars (spend, goal and line, plus 8%)
    *   change    index in chart of the last day the goal changed (> 0), or -1
    */
@@ -324,13 +338,17 @@
     input = input || {};
     var d = readDays(input.pace, input.today);
     var h = readHistory(input.history);
-    var out = { ok: false, days: d.length, building: d.length > 0 && d.length < MIN_DAYS, end: null,
+    var out = { ok: false, days: d.length, building: d.length > 0 && d.length < MIN_DAYS, end: null, gap: null,
       avg7: null, avg30: null, typical: null, avg30Days: 0, dir: null, hasGoal: false, goal: null,
       under: { under: 0, judged: 0 }, kept: null, streak: 0, history: [], chart: [], max: 0, change: -1 };
     var i;
     for (i = h.length - 1; i >= 0; i--) out.history.push({ from: h[i].from, goal: dollars(h[i].c) });
     if (!d.length) return out;
-    var e = endOf(d);
+    var last = endOf(d);
+    var todayN = dayNum(input.today);
+    // With today, the windows end yesterday whatever the data says.
+    var e = isNaN(todayN) ? last : todayN - 1;
+    if (e > last) out.gap = { since: dateOf(last), days: e - last };
     out.end = dateOf(e);
     out.avg7 = avg7(d, e);
     out.avg30 = avg30(d, e);

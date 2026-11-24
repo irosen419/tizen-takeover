@@ -19,6 +19,9 @@
  *     30-day average instead; empty and partial data ("Trend starts
  *     building"); no pace section ("Waiting for the budget app"); old data
  *     dims; widgets.budget.show false hides it;
+ *   - stale data (pace stops before yesterday): "No data since Nov 12" in
+ *     place of the streak and the verdict, the chart runs to yesterday with
+ *     empty days, over a week stale a message instead of the figures;
  *   - Guest mode: no dollar readable on the tile or the page, every blur is
  *     one amount, "12 of 14 days" and the legend stay readable;
  *   - Spanish, and Spanish 25% longer with accents: tile sizes and the page,
@@ -468,6 +471,52 @@ async function main() {
         } finally { await page.ctx.close(); }
       }
       await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true }));
+    });
+
+    await check('stale data: the windows end yesterday; "No data since Nov 12" where the streak and verdict go, empty days to yesterday (English and Spanish)', async () => {
+      const snap = H.budgetSample.snapshot({ sentAt: FRESH, trend: true });
+      snap.pace.days = snap.pace.days.slice(0, -3);
+      await env.setBudget(snap);
+      try {
+        for (const lang of ['en', 'es']) {
+          const gapWords = lang === 'en' ? 'No data since Nov 12' : 'Sin datos desde el 12 nov';
+          for (const sz of [[3, 1], [4, 3], [8, 3]]) {
+            const page = await open(env, { w: sz[0], h: sz[1], lang: lang });
+            try {
+              const t = await text(page, SEL);
+              const short = lang === 'en' ? 'Last data Nov 12' : 'Último dato 12 nov';
+              assert(t.indexOf(gapWords) >= 0 || (sz[1] === 1 && t.indexOf(short) >= 0), lang + ' ' + sz.join('x') + ': ' + t);
+              assert(!/in a row|seguid/.test(t), lang + ' ' + sz.join('x') + ' stale streak: ' + t);
+              const p = await page.evaluate(inspect, [SEL, 0.85]);
+              assert(!p.length, lang + ' ' + sz.join('x') + ': ' + p.join('; '));
+              noErrors(page);
+            } finally { await page.ctx.close(); }
+          }
+          const page = await open(env, { w: 8, h: 3, lang: lang });
+          try {
+            await openPage(page);
+            const sub = await text(page, '#panel .sp-kpi-sub.is-gap');
+            assert(sub === gapWords, lang + ' page: ' + sub);
+            const c = await page.evaluate(() => ({ days: document.querySelectorAll('#panel .sp-day').length, f: window.HUB_SPENDING_TEST.focus() }));
+            // 31 chart days to Nov 15; the last 3 are empty, so 28 drawn; focus on the last day with data.
+            assert(c.days === 28 && c.f.n === 31 && c.f.date === '2026-11-12', JSON.stringify(c));
+            const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+            assert(!p.length, p.join('; '));
+            noErrors(page);
+          } finally { await page.ctx.close(); }
+        }
+        // Over a week stale: a message, never a number from old days.
+        snap.pace.days = snap.pace.days.slice(0, -6);
+        await env.setBudget(snap);
+        const page = await open(env, { w: 4, h: 3 });
+        try {
+          const t = await text(page, SEL);
+          assert(/No data since Nov 6/.test(t) && !/\$/.test(t), t);
+          await openPage(page);
+          assert(/No data since Nov 6/.test(await text(page, '#panel .panel-body')), 'page');
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      } finally { await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true })); }
     });
 
     await check('widgets.budget.show false: "Budget is hidden"', async () => {
