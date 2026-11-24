@@ -35,6 +35,7 @@ const crypto = require('crypto');
 const hubctl = require('./hubctl');
 const awws = require('./awws');
 const budget = require('./budget');
+const budgetgoal = require('./budgetgoal');
 const shows = require('./shows');
 const linktests = require('./linktests');
 const tvremote = require('./tvremote');
@@ -755,6 +756,18 @@ const COMMANDS = {
     run: async (a, ctx) => {
       const r = await ctx.call('POST', '/api/budget', { snapshot: null });
       return { message: budget.clearText(r), data: { changed: r.changed, cleared: r.cleared } };
+    }
+  },
+  'budget.goal': {
+    // The daily spending goal from today on (the Pi's date). Never the amount in the reply.
+    args: { goal: [V.int(budgetgoal.MIN_GOAL, budgetgoal.MAX_GOAL), false] },
+    run: async (a, ctx) => {
+      if (a.goal === undefined) {
+        const g = await ctx.call('GET', '/api/budget/goal');
+        return { message: budgetgoal.showText(g.goals), data: { changes: g.goals.length, since: g.goals.length ? g.goals[g.goals.length - 1].from : null } };
+      }
+      const r = await ctx.call('POST', '/api/budget/goal', { goal: a.goal });
+      return { message: budgetgoal.setText(r), data: { changed: r.changed, from: r.from } };
     }
   },
   'shows.list': {

@@ -18,6 +18,13 @@
  *   HUB_BUDGET_LAB_MATH.makePref / readPref  the saved cap, as a keep amount
  *   HUB_BUDGET_LAB_MATH.holdStep(ms, mode)   the step for a held key
  *   HUB_BUDGET_LAB_MATH.runwayLine(runway)   the headroom step line
+ *   HUB_BUDGET_LAB_MATH.goalTrend(pace, today)
+ *                                            spending against the daily
+ *                                            goal (pace.goals, by date), the
+ *                                            averages and the 31 day series;
+ *                                            compute's result.trend
+ *   HUB_BUDGET_LAB_MATH.nudgeGoal(v, dir, size) / goalStart(trend)
+ *                                            the goal control's step and start
  *   HUB_BUDGET_LAB_MATH.runwayChart(runway, result)
  *                                            that line by day from this
  *                                            morning to card day, with the
@@ -284,6 +291,141 @@
     };
   }
 
+  /* ---------- the fixed goal and the spending trend ---------- */
+
+  var GOAL_WINDOW = 14;        // "9 of the last 14 days"
+  var AVG_SHORT = 7;           // the 7 day average
+  var AVG_LONG = 30;           // against up to 30 days
+  var FLAT = 0.03;             // within 3% of the 30 day average: steady
+
+  // The goal history as the Pi sends it (pace.goals: [{ from, goal }],
+  // oldest first), cleaned: bad entries dropped, sorted, a date once.
+  function readGoals(pace) {
+    var list = pace && pace.goals;
+    var byDate = {};
+    var dates = [];
+    if (!list || !list.length) return [];
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      if (!e || isNaN(parseDate(e.from)) || !isNum(e.goal) || !(e.goal > 0)) continue;
+      if (!Object.prototype.hasOwnProperty.call(byDate, e.from)) dates.push(e.from);
+      byDate[e.from] = e.goal;
+    }
+    dates.sort();
+    return dates.map(function (d) { return { from: d, goal: toCents(byDate[d]) }; });
+  }
+
+  // The goal in force on a date: the last entry from that date or before;
+  // null before the first entry (no goal yet).
+  function goalFor(goals, date) {
+    var g = null;
+    for (var i = 0; i < goals.length; i++) if (goals[i].from <= date) g = goals[i].goal;
+    return g;
+  }
+
+  function mean(list) {
+    if (!list.length) return null;
+    var sum = 0;
+    for (var i = 0; i < list.length; i++) sum += list[i];
+    return toCents(sum / list.length);
+  }
+
+  function overBy(spent, goal) { return Math.round(spent * 100) > Math.round(goal * 100); }
+
+  // Spending per day against the daily goal, from pace.days' spent figures
+  // and the Pi's goal history (pace.goals); the morning caps play no part.
+  // Each day is judged against the goal in force that day, so a change never
+  // rewrites a past day. Every window ends yesterday and counts back in
+  // calendar days; a day with no entry, or before the first goal, is skipped
+  // (neither under nor over).
+  //   goal       the goal in force today, or null (none set yet)
+  //   goals      the cleaned history
+  //   goalDays   { under, of } over the last 14 days, or null with no goal
+  //   streak     { count, open } days under in a row ending yesterday, or
+  //              null; open: nothing over back to the first judged day
+  //   avg7, avg30  mean spent per logged day over the last 7 / 30 days, or null
+  //   n7, n30    how many logged days each average has
+  //   trend      'falling' | 'rising' | 'flat' (within 3% of avg30), or null
+  //              without a longer history than the 7 days
+  //   series     the last 31 days, oldest first: { date, spent (null when
+  //              missing), goal (that day's, or null), over (null when not judged) }
+  //   hi         the graph's top: the biggest day or goal, whichever is more
+  //   yesterday  { spent, goal, over } or null
+  function goalTrend(pace, today) {
+    var days = readPace(pace, today);
+    var goals = readGoals(pace);
+    var end = today && !isNaN(parseDate(today)) ? addDays(today, -1) : (days.length ? days[days.length - 1].date : null);
+    var g = today && !isNaN(parseDate(today)) ? goalFor(goals, today) : (goals.length ? goals[goals.length - 1].goal : null);
+    var out = { goal: g, goals: goals, goalDays: null, streak: null, avg7: null, avg30: null, n7: 0, n30: 0,
+      trend: null, series: [], hi: g || 0, yesterday: null };
+    if (!end) return out;
+    var byDate = {};
+    for (var i = 0; i < days.length; i++) byDate[days[i].date] = days[i].spent;
+    var tEnd = parseDate(end);
+    var a7 = [];
+    var a30 = [];
+    var under = 0;
+    var of = 0;
+    for (i = 0; i < PACE_MAX; i++) {
+      var date = addDays(end, -(PACE_MAX - 1 - i));
+      var has = Object.prototype.hasOwnProperty.call(byDate, date);
+      var spent = has ? toCents(byDate[date]) : null;
+      var dg = goalFor(goals, date);
+      var back = PACE_MAX - 1 - i;
+      out.series.push({ date: date, spent: spent, goal: dg, over: has && dg !== null ? overBy(spent, dg) : null });
+      if (dg !== null && dg > out.hi) out.hi = dg;
+      if (!has) continue;
+      if (spent > out.hi) out.hi = spent;
+      if (back < AVG_SHORT) a7.push(spent);
+      if (back < AVG_LONG) a30.push(spent);
+      if (back < GOAL_WINDOW && dg !== null) { of++; if (!overBy(spent, dg)) under++; }
+    }
+    out.avg7 = mean(a7);
+    out.avg30 = mean(a30);
+    out.n7 = a7.length;
+    out.n30 = a30.length;
+    if (out.avg7 !== null && out.n30 > out.n7) {
+      var diff = out.avg7 - out.avg30;
+      var tol = Math.max(out.avg30 * FLAT, 0.005);
+      out.trend = Math.abs(diff) <= tol ? 'flat' : diff < 0 ? 'falling' : 'rising';
+    }
+    var last = days.length ? days[days.length - 1] : null;
+    if (last && last.date === end) {
+      var yg = goalFor(goals, end);
+      out.yesterday = { spent: toCents(last.spent), goal: yg, over: yg === null ? null : overBy(last.spent, yg) };
+    }
+    if (g !== null || goals.length) {
+      out.goalDays = { under: under, of: of };
+      var count = 0;
+      var broken = false;
+      for (i = days.length - 1; i >= 0; i--) {
+        if (parseDate(days[i].date) > tEnd) continue;
+        var gg = goalFor(goals, days[i].date);
+        if (gg === null) continue;
+        if (overBy(days[i].spent, gg)) { broken = true; break; }
+        count++;
+      }
+      out.streak = { count: count, open: !broken };
+    }
+    return out;
+  }
+
+  // One step of the goal control: whole dollars, GOAL_MIN to GOAL_MAX (the
+  // Pi's own limits, pi/budgetgoal.js), the same held-key sizes as the cap.
+  var GOAL_MIN = 1;
+  var GOAL_MAX = 1000;
+  function nudgeGoal(value, dir, size) {
+    var v = isNum(value) ? Math.round(value) : GOAL_MIN;
+    return step(clamp(v, GOAL_MIN, GOAL_MAX), dir, size || CAP_TICK, GOAL_MIN, GOAL_MAX);
+  }
+
+  // Where the goal control starts with no goal yet: the 30 day average
+  // rounded down to $5, else $50.
+  function goalStart(trend) {
+    var a = trend && isNum(trend.avg30) ? Math.floor(trend.avg30 / 5) * 5 : 0;
+    return a >= 5 ? clamp(a, GOAL_MIN, GOAL_MAX) : 50;
+  }
+
   /* ---------- the main sum ---------- */
 
   function compute(input) {
@@ -296,6 +438,7 @@
       reason: null,
       streak: streakOf(input.pace, input.today),
       yesterday: yesterdayOf(input.pace, input.today),
+      trend: goalTrend(input.pace, input.today),
       merchants: [],
       move: null
     };
@@ -655,6 +798,10 @@
     step: step,
     streak: streakOf,
     yesterday: yesterdayOf,
+    goalTrend: goalTrend,
+    goalFor: goalFor,
+    nudgeGoal: nudgeGoal,
+    goalStart: goalStart,
     runwayLine: runwayLine,
     runwayChart: runwayChart,
     toCents: toCents,

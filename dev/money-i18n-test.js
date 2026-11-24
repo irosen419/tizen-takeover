@@ -276,7 +276,7 @@ async function main() {
         const titles = await text(page, IDS.map(titleOf).join(', '));
         assert(titles === 'Ganado y gastado | Margen diario | Pago de tarjeta | Metas | Laboratorio', 'titles: ' + titles);
         const l = await text(page, tileOf('budget-lab'));
-        assert(/\$62al día/.test(l) && /Cubre el pago del 19 nov/.test(l) && /1 día bajo el tope/.test(l) && /Quédate bajo \$62 hoy/.test(l) && !/sobran \$0/.test(l), 'lab: ' + l);
+        assert(/\$62libre hoy/.test(l) && /Cubre el pago del 19 nov/.test(l) && /1 día bajo el tope/.test(l) && /Quédate bajo \$62 hoy/.test(l) && !/sobran \$0/.test(l), 'lab: ' + l);
         const m = await text(page, tileOf('awws-money'));
         assert(/neto/.test(m) && /−\$575/.test(m) && /\$1,265/.test(m) && /ganado/.test(m) && /gastado/.test(m), 'money: ' + m);
         assert(/Próxima transferencia: 1 dic/.test(m), 'no Spanish date for the next transfer: ' + m);
@@ -369,7 +369,8 @@ async function main() {
         });
         try {
           await H.openPanel(page, 'budget-lab');
-          await H.key(page, 'ArrowDown');
+          // Down past the daily goal to the first merchant.
+          await H.key(page, 'ArrowDown', 2);
           assert(await page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f && f.getAttribute('data-key'); }) === 'cut-0', 'not on the first merchant');
           await H.key(page, 'ArrowRight', 2);
           for (const mode of ['full']) {
@@ -448,7 +449,7 @@ async function main() {
         try {
           await H.openPanel(page, 'budget-lab');
           let p = await text(page, '#panel .panel-body');
-          assert(/Mantén/.test(p) && /◀ ▶/.test(p) && /cambiar/.test(p) && /Calculado\S* \$62/.test(p) && /bien con \$62/i.test(p.replace(/[^\x20-\x7e]/g, '')), 'covered: ' + p.slice(0, 300));
+          assert(/Mantén/.test(p) && /◀ ▶/.test(p) && /cambiar/.test(p) && /Libre\S* hoy\S* \$62/.test(p) && /bien con \$62/i.test(p.replace(/[^\x20-\x7e]/g, '')), 'covered: ' + p.slice(0, 300));
           const o = await page.evaluate(() => {
             const out = [];
             const body = document.querySelector('#panel .panel-body').getBoundingClientRect();

@@ -2335,6 +2335,21 @@
        ]
       },
       {
+       "id": "pi.budget.goal",
+       "title": "Daily goal history",
+       "kind": "data",
+       "status": "unverified",
+       "summary": "The hub server's own dated daily spending goal ([{from, goal}], whole dollars), merged into the budget's pace section as pace.goals; the budget app never sends it.",
+       "details": [
+        "Set from Budget lab's full screen (POST /budget/goal), ./hub budget goal or the mailbox's budget.goal. A change applies from the Pi's local date on and never rewrites a past day; the TV judges each day against the goal in force that day. Kept in data/budget-goal.json; logs carry dates only, never the amount."
+       ],
+       "files": [
+        "pi/budgetgoal.js",
+        "pi/budgetgoal-test.js",
+        "docs/budget-snapshot.md"
+       ]
+      },
+      {
        "id": "pi.budget.investments",
        "title": "Investments section",
        "kind": "data",

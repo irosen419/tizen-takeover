@@ -587,6 +587,98 @@ check('autopay: ignored when the room is not below zero, or no autopayRoom is se
   same(d.autopay, { firstShort: 20, date: null });
 });
 
+/* ---------- the daily goal and the trend ---------- */
+
+// 31 days ending Nov 16 (yesterday for TODAY): spent from the function.
+function spendDays(fn, end) {
+  const out = [];
+  for (let i = 30; i >= 0; i--) out.push({ date: L.addDays(end || '2026-11-16', -i), spent: fn(i) });
+  return out;
+}
+
+check('goal: each day against the goal in force that day; days before the first goal skipped; 14 day window', () => {
+  // Under (50) on even days back from Nov 16, over (75) on odd ones; goal 60 from Nov 5, 80 from Nov 12.
+  const p = pace(spendDays((i) => (i % 2 ? 75 : 50)));
+  p.goals = [{ from: '2026-11-12', goal: 80 }, { from: '2026-11-05', goal: 60 }];
+  const t = L.goalTrend(p, TODAY);
+  assert.strictEqual(t.goal, 80);
+  same(t.goals.map((g) => g.from), ['2026-11-05', '2026-11-12'], 'sorted oldest first');
+  // Nov 3..16 is the window; Nov 3, 4 have no goal. Nov 5..11 against 60: 3 under; Nov 12..16 against 80: all 5.
+  const judged = t.series.filter((d) => d.date >= '2026-11-03' && d.over !== null);
+  assert.strictEqual(t.goalDays.of, 12);
+  assert.strictEqual(t.goalDays.under, judged.filter((d) => !d.over).length);
+  assert.strictEqual(t.goalDays.under, 8);
+  assert.strictEqual(t.streak.count, 5, 'Nov 12-16 under 80, Nov 11 (75) over 60');
+  assert.strictEqual(t.streak.open, false);
+  same(t.series[0], { date: '2026-10-17', spent: 50, goal: null, over: null });
+  same(t.series[30], { date: '2026-11-16', spent: 50, goal: 80, over: false });
+  same(t.yesterday, { spent: 50, goal: 80, over: false });
+});
+
+check('goal: none set gives no goal row; a goal at the cent is under; missing days neither count nor break', () => {
+  const none = L.goalTrend(pace(spendDays(() => 40)), TODAY);
+  assert.strictEqual(none.goal, null);
+  assert.strictEqual(none.goalDays, null);
+  assert.strictEqual(none.streak, null);
+  assert.strictEqual(none.avg7, 40, 'averages still come back');
+  assert.strictEqual(none.series.length, 31);
+  const list = spendDays(() => 60).filter((d) => d.date !== '2026-11-14');
+  const p = pace(list);
+  p.goals = [{ from: '2026-10-01', goal: 60 }];
+  const t = L.goalTrend(p, TODAY);
+  same(t.goalDays, { under: 13, of: 13 });
+  same(t.streak, { count: 30, open: true });
+  assert.strictEqual(t.series[28].spent, null);
+  assert.strictEqual(t.series[28].over, null);
+  // Today's entry is never judged (the day is not over).
+  const withToday = pace(list.concat([{ date: TODAY, spent: 500 }]));
+  withToday.goals = p.goals;
+  assert.strictEqual(L.goalTrend(withToday, TODAY).streak.count, 30);
+  assert.strictEqual(L.goalTrend(withToday, TODAY).hi, 60);
+  // A bad goal entry is ignored.
+  const bad = pace(list);
+  bad.goals = [null, { from: 'soon', goal: 5 }, { from: '2026-11-01', goal: 0 }];
+  assert.strictEqual(L.goalTrend(bad, TODAY).goal, null);
+});
+
+check('trend: 7 day vs 30 day average, steady within 3%, null without a longer history', () => {
+  // Last 7 days 40, the 23 before them 70: avg30 = (7*40 + 23*70) / 30 = 63.
+  const t = L.goalTrend(pace(spendDays((i) => (i < 7 ? 40 : 70))), TODAY);
+  assert.strictEqual(t.avg7, 40);
+  assert.strictEqual(t.avg30, 63);
+  assert.strictEqual(t.n7, 7);
+  assert.strictEqual(t.n30, 30, 'the 31st day back is in the graph, not the average');
+  assert.strictEqual(t.trend, 'falling');
+  assert.strictEqual(L.goalTrend(pace(spendDays((i) => (i < 7 ? 90 : 70))), TODAY).trend, 'rising');
+  // 64 against 63 is within 3%.
+  const flat = L.goalTrend(pace(spendDays((i) => (i < 7 ? 64.5 : 62.5))), TODAY);
+  assert.strictEqual(flat.trend, 'flat');
+  // Only a week logged: nothing to compare.
+  assert.strictEqual(L.goalTrend(pace(underDays(7)), TODAY).trend, null);
+  assert.strictEqual(L.goalTrend(pace([]), TODAY).avg7, null);
+  assert.strictEqual(L.goalTrend(null, TODAY).series.length, 31);
+});
+
+check('compute carries the trend, with or without a lab section', () => {
+  const p = pace(spendDays(() => 50));
+  p.goals = [{ from: '2026-11-01', goal: 60 }];
+  assert.strictEqual(run({ pace: p }).trend.goalDays.under, 14);
+  assert.strictEqual(L.compute({ pace: p, today: TODAY }).trend.goal, 60);
+  assert.strictEqual(L.goalFor(p.goals, '2026-10-31'), null);
+});
+
+check('goal control: whole dollar steps from $1 to $1,000; starts at the 30 day average rounded down to $5', () => {
+  assert.strictEqual(L.nudgeGoal(60, 1), 61);
+  assert.strictEqual(L.nudgeGoal(60, -1, 5), 55);
+  assert.strictEqual(L.nudgeGoal(62, 1, 5), 65);
+  assert.strictEqual(L.nudgeGoal(1, -1), 1);
+  assert.strictEqual(L.nudgeGoal(999, 1, 25), 1000);
+  assert.strictEqual(L.nudgeGoal(null, 1), 2);
+  assert.strictEqual(L.goalStart({ avg30: 61.83 }), 60);
+  assert.strictEqual(L.goalStart({ avg30: 3 }), 50);
+  assert.strictEqual(L.goalStart(null), 50);
+});
+
 check('broken data never throws', () => {
   const junk = [undefined, null, 'x', 3, {}, { room: 'a' }, { room: 5, daysLeft: -1 }];
   junk.forEach((j) => {
