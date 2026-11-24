@@ -5,7 +5,7 @@
  *   node pi/budget-test.js
  *
  * It checks the made-up sample in pi/fixtures, every section's rules (the
- * Budget lab sections lab, merchants, pace and runway too), list sections
+ * Budget lab sections lab, merchants, pace and runway too, and trends), list sections
  * sent as a plain list, merging, the size cap, a damaged state file, a
  * snapshot with only the first four sections, and the texts ./hub prints
  * (never a label or an amount). The HTTP side is
@@ -602,6 +602,82 @@ async function main() {
     assert.deepStrictEqual(budget.summaryData(data).sections.investments, { asOf: SENT, accounts: 2, holdings: 2, days: 2, from: '2026-11-17', to: '2026-11-18' });
     const none = budget.normalizeSnapshot(snap({ investments: { total: 5, accounts: [{ label: 'IRA', value: 5 }] } }), NOW);
     assert.ok(/1 account, 0 holdings, no history yet, as of/.test(budget.summaryLines(budget.merge(null, none, NOW).data)[1]));
+  });
+
+  const TRENDS = {
+    month: '2026-11',
+    categories: [{ label: 'Food', mtd: 412.004, usual: 520 }, { label: 'Getting around', mtd: 96, usual: null }, { label: 'Everything else', mtd: 251 }],
+    merchants: [{ label: 'Hilltop Grocer', mtd: 184, usual: 205 }],
+    weekdays: [38, 35, null, 41, 71, 96.555, 83]
+  };
+
+  await check('trends: month required, every list optional, usual optional or null, cents, unknown fields dropped', () => {
+    const c = one('trends', Object.assign({ days: [{ date: '2026-11-15', spent: 3 }], combined: 9 }, TRENDS)).clean;
+    assert.deepStrictEqual(c, { asOf: SENT, month: '2026-11',
+      categories: [{ label: 'Food', mtd: 412, usual: 520 }, { label: 'Getting around', mtd: 96 }, { label: 'Everything else', mtd: 251 }],
+      merchants: [{ label: 'Hilltop Grocer', mtd: 184, usual: 205 }], weekdays: [38, 35, null, 41, 71, 96.56, 83] });
+    assert.deepStrictEqual(one('trends', { month: '2026-11' }).clean, { asOf: SENT, month: '2026-11' });
+    assert.deepStrictEqual(one('trends', { month: '2026-11', categories: [] }).clean.categories, []);
+    assert.ok(/"month" is missing/.test(one('trends', { categories: [] }).error));
+    assert.ok(/"month" must be a month like 2026-11/.test(one('trends', withField(TRENDS, 'month', 'Nov')).error));
+    const extra = one('trends', withField(TRENDS, 'categories', [{ label: 'Food', mtd: 1, usual: 2, transactions: [1], note: 'x' }])).clean.categories[0];
+    assert.deepStrictEqual(extra, { label: 'Food', mtd: 1, usual: 2 });
+  });
+
+  await check('trends: at most 8 rows a list, label text 30, no links or emails, amounts 0 to 1,000,000', () => {
+    const nine = []; for (let i = 0; i < 9; i++) nine.push({ label: 'Row ' + i, mtd: i });
+    assert.ok(/"categories" has 9 entries; at most 8/.test(one('trends', withField(TRENDS, 'categories', nine)).error));
+    assert.ok(/"merchants" has 9 entries; at most 8/.test(one('trends', withField(TRENDS, 'merchants', nine)).error));
+    assert.strictEqual(one('trends', withField(TRENDS, 'merchants', nine.slice(1))).clean.merchants.length, 8);
+    assert.ok(/"label" is missing \(category 1\)/.test(one('trends', withField(TRENDS, 'categories', [{ mtd: 1 }])).error));
+    assert.ok(/"mtd" is missing \(merchant 1\)/.test(one('trends', withField(TRENDS, 'merchants', [{ label: 'A' }])).error));
+    assert.ok(/"mtd" must be a number from 0 to 1,000,000 \(category 1\)/.test(one('trends', withField(TRENDS, 'categories', [{ label: 'A', mtd: -1 }])).error));
+    assert.ok(/"usual" must be a number from 0 to 1,000,000 \(merchant 1\)/.test(one('trends', withField(TRENDS, 'merchants', [{ label: 'A', mtd: 1, usual: 'lots' }])).error));
+    assert.ok(/holds a link/.test(one('trends', withField(TRENDS, 'merchants', [{ label: 'See www.example.com', mtd: 1 }])).error));
+    assert.ok(/holds an email address|email/.test(one('trends', withField(TRENDS, 'categories', [{ label: 'me@example.com', mtd: 1 }])).error));
+    const long = one('trends', withField(TRENDS, 'categories', [{ label: 'A very long category name that runs on and on', mtd: 1 }])).clean.categories[0].label;
+    assert.ok(long.length <= 30 && /…$/.test(long), long);
+    assert.ok(/each category must be an object/.test(one('trends', withField(TRENDS, 'categories', ['Food'])).error));
+  });
+
+  await check('trends: weekdays exactly 7, Monday to Sunday, each dollars or null', () => {
+    assert.ok(/exactly 7 entries, Monday to Sunday/.test(one('trends', withField(TRENDS, 'weekdays', [1, 2, 3])).error));
+    assert.ok(/"weekdays" has 8 entries; at most 7/.test(one('trends', withField(TRENDS, 'weekdays', [1, 2, 3, 4, 5, 6, 7, 8])).error));
+    assert.ok(/"weekdays" must be a list/.test(one('trends', withField(TRENDS, 'weekdays', { mon: 1 })).error));
+    assert.ok(/"weekdays" must be a number from 0 to 1,000,000 \(weekday 3\)/.test(one('trends', withField(TRENDS, 'weekdays', [1, 2, -3, 4, 5, 6, 7])).error));
+    assert.ok(/\(weekday 7\)/.test(one('trends', withField(TRENDS, 'weekdays', [1, 2, 3, 4, 5, 6, '7'])).error));
+    assert.deepStrictEqual(one('trends', withField(TRENDS, 'weekdays', [null, null, null, null, null, null, null])).clean.weekdays, [null, null, null, null, null, null, null]);
+  });
+
+  await check('trends: stored next to the others, null clears it, a bad one keeps the last good copy, 48 KB still holds', () => {
+    const m = budget.merge(null, budget.normalizeSnapshot(snap({ room: ROOM, trends: TRENDS }), NOW), NOW);
+    assert.deepStrictEqual(m.accepted, ['room', 'trends']);
+    const m2 = budget.merge(m.data, budget.normalizeSnapshot(snap({ room: ROOM, trends: withField(TRENDS, 'weekdays', [1]) }), NOW), NOW);
+    assert.deepStrictEqual(m2.rejected.map((r) => r.section), ['trends']);
+    assert.deepStrictEqual(m2.data.trends, m.data.trends);
+    const m3 = budget.merge(m.data, budget.normalizeSnapshot(snap({ trends: null }), NOW), NOW);
+    assert.deepStrictEqual(m3.cleared, ['trends']);
+    assert.ok(!('trends' in m3.data) && m3.data.room);
+    // Full lists stay far under the cap: 8 + 8 rows of 30-character labels and 7 weekdays.
+    const row = (i) => ({ label: 'x'.repeat(29) + i, mtd: 999999.99, usual: 999999.99 });
+    const full = { month: '2026-11', categories: [0, 1, 2, 3, 4, 5, 6, 7].map(row), merchants: [0, 1, 2, 3, 4, 5, 6, 7].map(row), weekdays: [1, 2, 3, 4, 5, 6, 7] };
+    const big = budget.merge(null, budget.normalizeSnapshot(snap({ trends: full }), NOW), NOW);
+    assert.ok(big.bytes < 2500, big.bytes + ' bytes');
+    // A stored trends section that no longer passes is dropped on load.
+    const broken = JSON.parse(JSON.stringify(m.data)); broken.trends.weekdays = [1, 2];
+    assert.ok(!('trends' in budget.cleanResource({ rev: 1, data: broken }).data));
+    assert.ok(budget.cleanResource({ rev: 1, data: m.data }).data.trends);
+  });
+
+  await check('./hub budget show for trends: counts only, never a label or an amount', () => {
+    const data = budget.merge(null, budget.normalizeSnapshot(snap({ trends: TRENDS }), NOW), NOW).data;
+    const lines = budget.summaryLines(data);
+    assert.strictEqual(lines[1], '  trends  3 categories, 1 merchant, 6 of 7 weekdays in 2026-11, as of 2026-11-16 15:10 UTC');
+    assert.deepStrictEqual(budget.summaryData(data).sections.trends, { asOf: SENT, month: '2026-11', categories: 3, merchants: 1, weekdays: 6 });
+    const all = JSON.stringify(lines) + JSON.stringify(budget.summaryData(data));
+    ['Food', 'Hilltop', 'Getting', 'Everything', '412', '520', '184', '205', '96.56', '71'].forEach((w) => assert.ok(all.indexOf(w) < 0, 'shows ' + w));
+    const bare = budget.summaryLines(budget.merge(null, budget.normalizeSnapshot(snap({ trends: { month: '2026-11', categories: [{ label: 'A', mtd: 1 }] } }), NOW), NOW).data);
+    assert.ok(/  trends  1 category, 0 merchants, no weekdays in 2026-11, as of/.test(bare[1]), bare[1]);
   });
 
   await check('set and clear texts', () => {

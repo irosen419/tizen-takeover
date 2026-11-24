@@ -37,8 +37,23 @@
  * under it, the 7-day average in sky blue), then the dated goals ("Your goal
  * $60 from Nov 9 · $75 from Oct 16"). Left and Right move the focus a day
  * (the marker glides, transform only); a tap or click on a bar focuses it.
- * Room is left in the page head for the later pages (Where it goes, Month
- * vs month); none is drawn yet.
+ *
+ * Pages: two pills at the top of the full screen, Trend and Where it goes
+ * (a Month vs month page can join later). On the TV Down on Trend opens Where
+ * it goes; there Up scrolls when the page is taller than the screen and, at
+ * its top, goes back, as does Left. On the tablet the pills are tapped (they
+ * are focusables, so the hub's tap reaches onSelect) and the page scrolls with
+ * the panel body. Back closes from either page; the next open starts on Trend.
+ *
+ * Where it goes (the snapshot's trends section, docs/budget-snapshot.md;
+ * figures from HUB_SPENDING_MATH.where): "By category" and "Top merchants",
+ * each row "Food  $412  $108 less" over a sky bar with a tick at your usual
+ * (no tick, "No usual yet" without one), and "By weekday, the average day":
+ * 7 bars Monday first, grey to the goal and coral above it, the average over
+ * each day that runs over, "Fri, Sat and Sun run over your goal". Motion once
+ * per open: bars grow from the left (scaleX, 70 ms apart), ticks fade in, the
+ * weekday bars grow up; none under reduced motion. No trends section yet:
+ * "Where it goes is on its way" in a dashed pane.
  *
  * Old data (the budget app or the Pi was off): every window ends yesterday
  * (app/spending-math.js), so a day with no figure is never under or over and
@@ -126,7 +141,32 @@
     noGoal: 'No goal set yet: the goal line and the days under it show once there is one.',
     hint: 'Left and right move day by day',
     hintTouch: 'Tap a day to read it',
-    building: { head: 'Trend starts building', line: 'The trend needs 3 days of spending; it has {n} so far.', short: 'It needs 3 days.' }
+    building: { head: 'Trend starts building', line: 'The trend needs 3 days of spending; it has {n} so far.', short: 'It needs 3 days.' },
+    // The page switch at the top of the full screen (Trend, Where it goes).
+    tabs: { trend: 'Trend', where: 'Where it goes', toWhere: 'Down for Where it goes', toTrend: 'Up for Trend' },
+    where: {
+      section: 'Everyday spending this month',
+      categories: 'By category',
+      merchants: 'Top merchants',
+      weekdays: 'By weekday, the average day',
+      legendBar: 'This month so far',
+      legendTick: 'Your usual by this day (3-month average)',
+      less: '{n} less',
+      more: '{n} more',
+      same: 'Same as usual',
+      noUsual: 'No usual yet',
+      noCategories: 'No categories sent yet.',
+      noMerchants: 'No merchants sent yet.',
+      noWeekdays: 'No weekday averages sent yet.',
+      overOne: '{days} runs over your goal',
+      overMany: '{days} run over your goal',
+      overNone: 'No weekday runs over your goal',
+      noGoal: 'Set a goal to see which days run over',
+      and: ' and ',
+      merchantNote: 'One order can count for two merchants (a delivery app and the restaurant), so these do not add up to the total.',
+      wait: { head: 'Where it goes is on its way', line: 'The budget app has not sent spending by category, merchant and weekday yet. This page fills in as soon as it does.' },
+      empty: { head: 'Nothing to show for this month yet', line: 'The budget app sent no categories, merchants or weekday averages.' }
+    }
   };
 
   var STRINGS = EN;
@@ -745,7 +785,9 @@
 
   /* ---------- the Trend page ---------- */
 
-  var S = { ctx: null, bound: false, refs: null, focusDate: null, animated: false, raf: 0, animTimer: null };
+  // page: 'trend' or 'where' (the full screen's two pages; back to Trend on close).
+  var S = { ctx: null, bound: false, refs: null, focusDate: null, animated: false, raf: 0, animTimer: null,
+    page: 'trend', body: null, wAnimated: false, wTimer: null, tabs: false };
 
   function hasData(rows) {
     for (var i = 0; i < rows.length; i++) if (rows[i].spent !== null) return true;
@@ -894,6 +936,8 @@
     S.raf = 0;
     if (S.animTimer) clearTimeout(S.animTimer);
     S.animTimer = null;
+    if (S.wTimer) clearTimeout(S.wTimer);
+    S.wTimer = null;
   }
 
   function drawPanel(body, ctx) {
@@ -902,13 +946,18 @@
     ctx.setSub(asOf());
     var root = el('div', 'sp-panel' + (full ? ' is-full' : ''), body);
     S.refs = null;
+    S.body = body;
+    S.tabs = false;
     var r = result();
     if (!r) return panelMessage(root, emptyKey());
     if (!r.ok) return panelMessage(root, 'building', r);
     if (r.gap && !hasData(r.chart)) return panelMessage(root, 'gap', r);
+    S.tabs = true;
+    if (S.page === 'where') return drawWhere(root, ctx, r, full);
     var anim = !S.animated && canMove();
     S.animated = true;
     var page = el('div', 'sp-page' + (full ? ' is-full' : '') + (stale() ? ' is-stale' : '') + (anim ? ' sp-anim' : ''), root);
+    pageTabs(page, ctx);
     var kp = kpiRow(page, r, true, 'is-page');
     var sec = el('div', 'sp-sec', page);
     var secL = el('div', 'sp-sec-left', sec);
@@ -944,6 +993,294 @@
     }
   }
 
+  /* ---------- the page switch and the Where it goes page ---------- */
+
+  /*
+   * The pages' switch: two pills, the one shown lit. Both are focusables so
+   * a tap on the tablet (or a click) reaches onSelect through the hub; on
+   * the TV focus never lands on them (onMove takes every arrow), Down on the
+   * Trend page and Up (at the top) on Where it goes switch instead, as the
+   * hint says. The data-key names the page it was drawn on, so a switch
+   * lands focus on the new page's own autofocus (the chart, or the pill).
+   */
+  function pageTabs(parent, ctx) {
+    var bar = el('div', 'sp-tabs', parent);
+    var names = ['trend', 'where'];
+    for (var i = 0; i < names.length; i++) {
+      var t = el('span', 'sp-tab f' + (S.page === names[i] ? ' is-on' : ''), bar, STRINGS.tabs[names[i]]);
+      t.setAttribute('data-page', names[i]);
+      t.setAttribute('data-key', 'tab-' + names[i] + '-' + S.page);
+      if (S.page === 'where' && names[i] === 'where') t.setAttribute('data-autofocus', '');
+    }
+    if (!ctx.tablet) el('span', 'sp-tabhint', bar, S.page === 'trend' ? STRINGS.tabs.toWhere : STRINGS.tabs.toTrend);
+    return bar;
+  }
+
+  function showPage(name) {
+    if (S.page === name || !S.ctx) return;
+    S.page = name;
+    S.ctx.redrawPanel();
+  }
+
+  function trendsOf() {
+    var d = snapshot();
+    return d && d.trends && typeof d.trends === 'object' ? d.trends : null;
+  }
+
+  function diffOf(row) {
+    var W = STRINGS.where;
+    if (row.vs === null) return { text: W.noUsual, tone: 'is-quiet' };
+    if (row.vs === 'same') return { text: W.same, tone: '' };
+    var n = cash(Math.abs(row.diff));
+    return row.vs === 'less' ? { text: fill(W.less, { n: n }), tone: 'is-ok' } : { text: fill(W.more, { n: n }), tone: 'is-neg' };
+  }
+
+  // One list of bars (categories or merchants): name, this month and the
+  // difference from the usual, then a bar with a tick at the usual.
+  function barList(parent, list, none, anim) {
+    var box = el('div', 'sp-wlist', parent);
+    if (!list.rows.length) {
+      el('div', 'sp-wnone', box, none);
+      return box;
+    }
+    var tracks = [];
+    for (var i = 0; i < list.rows.length; i++) {
+      var row = list.rows[i];
+      var item = el('div', 'sp-wrow', box);
+      var line = el('div', 'sp-wline', item);
+      var right = el('span', 'sp-wright', line);
+      el('span', 'sp-wamt', right, cash(row.mtd));
+      var d = diffOf(row);
+      el('span', 'sp-wdiff' + (d.tone ? ' ' + d.tone : ''), right, d.text);
+      el('div', 'sp-wlabel', line, row.label);
+      tracks.push(el('div', 'sp-wtrack', item));
+    }
+    // Drawn once every row is in place, so each track has its width.
+    var rem = remPx();
+    for (i = 0; i < tracks.length; i++) {
+      var tr = tracks[i];
+      var r = list.rows[i];
+      var w = tr.clientWidth;
+      var h = tr.clientHeight;
+      if (!w || !h) continue;
+      var th = Math.max(4, Math.round(rem * 0.55));
+      var ty = (h - th) / 2;
+      var svg = svgEl('svg', 'sp-wsvg', tr);
+      svg.setAttribute('width', String(w));
+      svg.setAttribute('height', String(h));
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      svg.setAttribute('aria-hidden', 'true');
+      var bg = svgEl('rect', 'sp-wbg', svg);
+      bg.setAttribute('x', '0');
+      bg.setAttribute('y', px(ty));
+      bg.setAttribute('width', px(w));
+      bg.setAttribute('height', px(th));
+      bg.setAttribute('rx', px(th / 2));
+      if (r.bar > 0) {
+        var bar = svgEl('rect', 'sp-wbar', svg);
+        bar.setAttribute('x', '0');
+        bar.setAttribute('y', px(ty));
+        bar.setAttribute('width', px(Math.max(th, r.bar * w)));
+        bar.setAttribute('height', px(th));
+        bar.setAttribute('rx', px(th / 2));
+        bar.style.webkitTransformOrigin = '0px 0px';
+        bar.style.transformOrigin = '0px 0px';
+        if (anim) bar.style.animationDelay = bar.style.webkitAnimationDelay = Math.round(100 + i * 70) + 'ms';
+      }
+      if (r.tick !== null) {
+        var tw = Math.max(2, rem * 0.16);
+        var x = Math.max(0, Math.min(w - tw, r.tick * w - tw / 2));
+        var tick = svgEl('rect', 'sp-wtick', svg);
+        tick.setAttribute('x', px(x));
+        tick.setAttribute('y', '0');
+        tick.setAttribute('width', px(tw));
+        tick.setAttribute('height', px(h));
+        tick.setAttribute('rx', px(tw / 2));
+        if (anim) tick.style.animationDelay = tick.style.webkitAnimationDelay = Math.round(650 + i * 70) + 'ms';
+      }
+    }
+    return box;
+  }
+
+  function dayName(i) { return STRINGS.daysShort[(i + 1) % 7]; }
+
+  function joinDays(list) {
+    if (list.length < 2) return list.join('');
+    return list.slice(0, -1).join(', ') + STRINGS.where.and + list[list.length - 1];
+  }
+
+  // The 7 weekday bars (Monday first), grey up to the goal and coral above
+  // it as on the Trend page, the goal as a line labelled at its right end,
+  // and the average over each day that runs over it. A day with no data has
+  // no bar; its name stays, dimmed.
+  function drawWeek(box, wk, anim) {
+    var w = box.clientWidth;
+    var h = box.clientHeight;
+    var rem = remPx();
+    if (!w || !h) return null;
+    var labs = el('div', 'sp-labs', box);
+    var gl = null;
+    var gutter = 0;
+    if (wk.goal !== null) {
+      gl = el('span', 'sp-lab is-goal', labs, fill(STRINGS.goalLabel, { n: cash(wk.goal) }));
+      gutter = gl.offsetWidth + rem * 0.7;
+      if (gutter > w * 0.34) { drop(gl); gl = null; gutter = 0; }
+    }
+    var probe = el('span', 'sp-tick', labs, '0');
+    var lineH = probe.offsetHeight;
+    drop(probe);
+    var X1 = w - gutter;
+    var T = lineH + rem * 0.2;
+    var base = h - lineH - rem * 0.35;
+    var plotH = base - T;
+    if (plotH < rem * 2 || X1 < rem * 7) { drop(labs); return null; }
+    var slot = X1 / 7;
+    var bw = Math.min(slot * 0.62, rem * 3.2);
+    function y(f) { return base - f * plotH; }
+    var svg = svgEl('svg', 'sp-svg', null);
+    svg.setAttribute('width', String(w));
+    svg.setAttribute('height', String(h));
+    svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+    svg.setAttribute('aria-hidden', 'true');
+    box.insertBefore(svg, labs);
+    var bl = svgEl('line', 'sp-base', svg);
+    bl.setAttribute('x1', '0');
+    bl.setAttribute('x2', px(X1));
+    bl.setAttribute('y1', px(base));
+    bl.setAttribute('y2', px(base));
+    var rr = Math.min(bw / 2, rem * 0.18);
+    for (var i = 0; i < 7; i++) {
+      var d = wk.days[i];
+      var cx = slot * i + slot / 2;
+      var name = el('span', 'sp-tick' + (d.bar === null ? ' is-none' : '') + (d.over ? ' is-over' : ''), labs, dayName(i));
+      name.style.left = px(Math.max(0, Math.min(w - name.offsetWidth, cx - name.offsetWidth / 2))) + 'px';
+      name.style.top = px(base + rem * 0.3) + 'px';
+      if (d.bar === null) continue;
+      var g = svgEl('g', 'sp-day', svg);
+      g.style.webkitTransformOrigin = '0px ' + px(base) + 'px';
+      g.style.transformOrigin = '0px ' + px(base) + 'px';
+      if (anim) g.style.animationDelay = Math.round(500 + i * 60) + 'ms';
+      if (d.bar <= 0) {
+        var dot = svgEl('circle', 'sp-zero', g);
+        dot.setAttribute('cx', px(cx));
+        dot.setAttribute('cy', px(base - rem * 0.25));
+        dot.setAttribute('r', px(Math.max(1.5, rem * 0.16)));
+        continue;
+      }
+      var grey = svgEl('rect', 'sp-bar', g);
+      grey.setAttribute('x', px(cx - bw / 2));
+      grey.setAttribute('width', px(bw));
+      grey.setAttribute('y', px(y(d.under)));
+      grey.setAttribute('height', px(Math.max(1, base - y(d.under))));
+      grey.setAttribute('rx', px(d.over ? 0 : rr));
+      if (d.over) {
+        var gap = base - y(d.under) > 4 ? 1.5 : 0;
+        var red = svgEl('rect', 'sp-over', g);
+        red.setAttribute('x', px(cx - bw / 2));
+        red.setAttribute('width', px(bw));
+        red.setAttribute('y', px(y(d.bar)));
+        red.setAttribute('height', px(Math.max(1, y(d.under) - y(d.bar) - gap)));
+        red.setAttribute('rx', px(rr));
+        // The average on each day over the goal, just above its bar.
+        var v = el('span', 'sp-lab is-val', labs, cash(d.avg));
+        v.style.left = px(Math.max(0, Math.min(w - v.offsetWidth, cx - v.offsetWidth / 2))) + 'px';
+        v.style.top = px(Math.max(0, y(d.bar) - v.offsetHeight - rem * 0.1)) + 'px';
+      }
+    }
+    if (wk.goalAt !== null) {
+      var gp = svgEl('path', 'sp-goal', svg);
+      gp.setAttribute('d', 'M0,' + px(y(wk.goalAt)) + 'L' + px(X1) + ',' + px(y(wk.goalAt)));
+      gp.style.webkitTransformOrigin = '0px 0px';
+      gp.style.transformOrigin = '0px 0px';
+      if (gl) {
+        gl.style.left = px(X1 + rem * 0.5) + 'px';
+        gl.style.top = px(Math.max(0, Math.min(base - gl.offsetHeight, y(wk.goalAt) - gl.offsetHeight / 2))) + 'px';
+      }
+    }
+    return svg;
+  }
+
+  function weekLine(wk) {
+    var W = STRINGS.where;
+    if (wk.goal === null) return { text: W.noGoal, tone: '' };
+    var over = [];
+    for (var i = 0; i < 7; i++) if (wk.days[i].over) over.push(dayName(i));
+    if (!over.length) return { text: W.overNone, tone: 'is-ok' };
+    var t = fill(over.length === 1 ? W.overOne : W.overMany, { days: joinDays(over) });
+    // A sentence starts with a capital, whatever the day names look like ("vie, sáb y dom").
+    return { text: t.charAt(0).toUpperCase() + t.slice(1), tone: 'is-neg' };
+  }
+
+  function whereLegend(parent) {
+    var W = STRINGS.where;
+    var box = el('div', 'sp-legend is-where', parent);
+    var it = el('span', 'sp-leg is-bar', box);
+    el('span', 'sp-leg-dash', it);
+    el('span', 'sp-leg-text', it, W.legendBar);
+    it = el('span', 'sp-leg is-tick', box);
+    el('span', 'sp-leg-dash', it);
+    el('span', 'sp-leg-text', it, W.legendTick);
+    return box;
+  }
+
+  function drawWhere(root, ctx, r, full) {
+    var W = STRINGS.where;
+    var m = MATH();
+    var wh = m.where(trendsOf(), r.goal);
+    var anim = !wh.empty && !S.wAnimated && canMove();
+    if (!wh.empty) S.wAnimated = true;
+    var page = el('div', 'sp-page sp-wpage' + (full ? ' is-full' : '') + (stale() ? ' is-stale' : '') + (anim ? ' sp-anim' : ''), root);
+    pageTabs(page, ctx);
+    if (wh.empty) {
+      // No section yet (the budget app sends it from its own release on), or
+      // one with nothing in it: a quiet dashed pane, like a "Soon" tile.
+      var msg = wh.has ? W.empty : W.wait;
+      var pane = el('div', 'sp-wwait', page);
+      el('div', 'sp-pmsg-head', pane, msg.head);
+      el('div', 'sp-pmsg-line', pane, msg.line);
+      mark(pane, 'is-wait');
+      return;
+    }
+    var sec = el('div', 'sp-sec sp-wsec', page);
+    var secL = el('div', 'sp-sec-left', sec);
+    el('span', 'sp-sec-head', secL, W.section);
+    el('span', 'sp-sec-note', secL, STRINGS.sectionNote);
+    whereLegend(sec);
+    var cols = el('div', 'sp-wcols', page);
+    var left = el('div', 'sp-wcol', cols);
+    var right = el('div', 'sp-wcol is-right', cols);
+    el('div', 'sp-whead', left, W.categories);
+    barList(left, wh.categories, W.noCategories, anim);
+    el('div', 'sp-whead is-week', left, W.weekdays);
+    if (wh.weekdays.count) {
+      var wl = weekLine(wh.weekdays);
+      el('div', 'sp-wweekline' + (wl.tone ? ' ' + wl.tone : ''), left, wl.text);
+      var week = el('div', 'sp-wweek', left);
+      if (!drawWeek(week, wh.weekdays, anim)) drop(week);
+    } else {
+      el('div', 'sp-wnone', left, W.noWeekdays);
+    }
+    el('div', 'sp-whead', right, W.merchants);
+    barList(right, wh.merchants, W.noMerchants, anim);
+    if (wh.merchants.rows.length > 1) el('div', 'sp-wnote', right, W.merchantNote);
+    if (anim) {
+      S.wTimer = setTimeout(function () {
+        S.wTimer = null;
+        page.className = page.className.replace(/ sp-anim\b/g, '');
+      }, 1700);
+    }
+  }
+
+  // Where it goes, Up and Down: the page scrolls by keys when it is taller
+  // than the screen; Up at the top goes back to Trend.
+  function scrollWhere(dir) {
+    var b = S.body;
+    if (dir === 'up' && (!b || b.scrollTop <= 0)) { showPage('trend'); return; }
+    if (!b) return;
+    var step = Math.round(b.clientHeight * 0.5);
+    b.scrollTop = Math.max(0, b.scrollTop + (dir === 'up' ? -step : step));
+  }
+
   // A tap or click on the chart focuses the day under it.
   function tapDays(box) {
     box.addEventListener('click', function (e) {
@@ -961,11 +1298,24 @@
   }
 
   function onMove(dir, from) {
+    if (S.tabs && S.page === 'where') {
+      if (dir === 'up' || dir === 'down') scrollWhere(dir);
+      else if (dir === 'left') showPage('trend');
+      return true;
+    }
+    if (S.tabs && dir === 'down') { showPage('where'); return true; }
+    if (S.tabs && dir === 'up') return true;
     var refs = S.refs;
-    if (!refs || !refs.chart || from !== refs.box) return undefined;
+    if (!refs || !refs.chart || from !== refs.box) return S.tabs ? true : undefined;
     if (dir !== 'left' && dir !== 'right') return undefined;
     setFocus(stepDay(refs.at, dir === 'left' ? -1 : 1), true);
     return true;
+  }
+
+  // OK (or a tap) on a page pill shows that page.
+  function onSelect(target) {
+    var page = target && target.getAttribute && target.getAttribute('data-page');
+    if (page === 'trend' || page === 'where') showPage(page);
   }
 
   /* ---------- wiring ---------- */
@@ -1032,8 +1382,13 @@
       }
     },
     onMove: function (dir, from) { try { return onMove(dir, from); } catch (e) { warn('move: ' + (e && e.message)); return undefined; } },
+    onSelect: function (target) { try { onSelect(target); } catch (e) { warn('select: ' + (e && e.message)); } },
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
-    onClose: function () { stopMotion(); S.refs = null; S.animated = false; S.focusDate = null; }
+    onClose: function () {
+      stopMotion();
+      S.refs = null; S.animated = false; S.focusDate = null;
+      S.page = 'trend'; S.wAnimated = false; S.body = null; S.tabs = false;
+    }
   };
   Object.defineProperty(widget, 'title', { get: function () { return STRINGS.title; }, enumerable: true, configurable: true });
   Object.defineProperty(widget, 'shortTitle', { get: function () { return STRINGS.titleShort; }, enumerable: true, configurable: true });
@@ -1044,7 +1399,8 @@
     strings: function () { return STRINGS; },
     result: result,
     goalHistory: goalHistory,
-    focus: function () { return S.refs && S.refs.chart ? { at: S.refs.at, date: S.focusDate, n: S.refs.chart.n } : null; }
+    focus: function () { return S.refs && S.refs.chart ? { at: S.refs.at, date: S.focusDate, n: S.refs.chart.n } : null; },
+    page: function () { return S.page; }
   };
 
   (window.HUB_WIDGETS = window.HUB_WIDGETS || []).push(widget);

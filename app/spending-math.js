@@ -2,7 +2,8 @@
  * The Spending widget's arithmetic (app/widgets/spending.js): every figure
  * the Spending tile and its Trend page show, worked out from the budget
  * snapshot's pace section (one spending total per day, docs/budget-snapshot.md)
- * and a dated goal history. No DOM, no clock, no storage and no words: the
+ * and a dated goal history, and the Where it goes page's bars from its trends
+ * section. No DOM, no clock, no storage and no words: the
  * widget brings today's date and says it all in the hub's language. Plain ES5
  * for the TV's browser; node loads the same file for dev/spending-math-test.js.
  *
@@ -14,6 +15,7 @@
  *   HUB_SPENDING_MATH.avgOver(days, end, n), avg7, avg30, avg7Series
  *   HUB_SPENDING_MATH.median(cents list), typical(days, end)
  *   HUB_SPENDING_MATH.underCount, streak, kept, direction
+ *   HUB_SPENDING_MATH.where(trends, goal)      the Where it goes page (below)
  *
  * The rules, decided once here:
  *   - Money is worked in whole cents (integers), so sums never drift; figures
@@ -385,6 +387,105 @@
     return out;
   }
 
+  /* ---------- the Where it goes page ---------- */
+
+  /*
+   * The snapshot's trends section (docs/budget-snapshot.md), everyday
+   * spending only:
+   *   categories, merchants  [{ label, mtd, usual }] at most 8 each: this
+   *            month so far and "your usual", the 3-month average up to the
+   *            same day of the month (usual null or left out: no tick);
+   *   weekdays [7 dollar averages, Monday first, null for no data].
+   * Rules:
+   *   - A row is used when label is text and mtd a number 0 or more; usual
+   *     is used when it is a number 0 or more. The first 8 usable rows are
+   *     kept, biggest mtd first (a tie keeps the order sent).
+   *   - vs: this month against the usual in whole dollars: 'more', 'less'
+   *     or 'same'; null with no usual. diff is mtd - usual in dollars.
+   *   - Each list has its own scale: its biggest mtd or usual plus 8%, so a
+   *     bar or tick never touches the end. bar and tick are 0..1 of it.
+   *   - Weekdays: exactly 7 slots, Monday to Sunday; a missing, null or bad
+   *     value is a day with no data (no bar, never over). With a goal (more
+   *     than $0) a day is over when its average is above it (a tie is under).
+   *     The scale holds the goal too, so its line always shows.
+   */
+  var WHERE_ROWS = 8;
+
+  // A share of a scale, 0..1, to 4 places (plenty for a bar a screen wide).
+  function frac(c, scale) { return Math.round(c / scale * 10000) / 10000; }
+
+  function barRows(list) {
+    var src = isArr(list) ? list : [];
+    var rows = [];
+    var i;
+    for (i = 0; i < src.length && rows.length < WHERE_ROWS; i++) {
+      var e = src[i];
+      if (!e || typeof e !== 'object' || typeof e.label !== 'string' || !e.label || !isNum(e.mtd) || e.mtd < 0) continue;
+      rows.push({ label: e.label, c: toCents(e.mtd), u: isNum(e.usual) && e.usual >= 0 ? toCents(e.usual) : null, k: i });
+    }
+    rows.sort(function (a, b) { return b.c - a.c || a.k - b.k; });
+    var top = 0;
+    for (i = 0; i < rows.length; i++) top = Math.max(top, rows[i].c, rows[i].u === null ? 0 : rows[i].u);
+    var scale = top > 0 ? top * 1.08 : 1;
+    var out = [];
+    for (i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var d = r.u === null ? null : r.c - r.u;
+      var w = d === null ? 0 : Math.round(r.c / 100) - Math.round(r.u / 100);
+      out.push({ label: r.label, mtd: dollars(r.c), usual: r.u === null ? null : dollars(r.u), diff: d === null ? null : dollars(d),
+        vs: d === null ? null : w > 0 ? 'more' : w < 0 ? 'less' : 'same', bar: frac(r.c, scale), tick: r.u === null ? null : frac(r.u, scale) });
+    }
+    return { rows: out, zero: rows.length > 0 && top === 0, ticks: out.filter(function (x) { return x.tick !== null; }).length };
+  }
+
+  function weekdayRows(list, goal) {
+    var src = isArr(list) ? list : [];
+    var g = isNum(goal) && goal > 0 ? toCents(goal) : null;
+    var top = g || 0;
+    var cs = [];
+    var n = 0;
+    var i;
+    for (i = 0; i < 7; i++) {
+      var v = src[i];
+      var c = isNum(v) && v >= 0 ? toCents(v) : null;
+      if (c !== null) { n++; if (c > top) top = c; }
+      cs.push(c);
+    }
+    var scale = top > 0 ? top * 1.08 : 1;
+    var days = [];
+    var over = 0;
+    for (i = 0; i < 7; i++) {
+      var x = cs[i];
+      var isOver = x === null || g === null ? null : x > g;
+      if (isOver) over++;
+      days.push({ day: i, avg: x === null ? null : dollars(x), over: isOver, by: isOver ? dollars(x - g) : null,
+        bar: x === null ? null : frac(x, scale), under: x === null ? null : frac(g === null ? x : Math.min(x, g), scale) });
+    }
+    var anyAbove0 = false;
+    for (i = 0; i < 7; i++) if (cs[i] !== null && cs[i] > 0) anyAbove0 = true;
+    return { days: days, count: n, over: over, goal: g === null ? null : dollars(g), goalAt: g === null ? null : frac(g, scale),
+      zero: n > 0 && !anyAbove0 };
+  }
+
+  /*
+   * where(trends, goal): everything the Where it goes page draws.
+   *   has          the section is there (an object)
+   *   month, asOf  as sent (strings) or ''
+   *   categories, merchants   { rows: [{ label, mtd, usual, diff, vs, bar,
+   *                tick }], zero (every figure $0), ticks (rows with a tick) }
+   *   weekdays     { days: [{ day (0 Monday .. 6 Sunday), avg, over, by,
+   *                bar, under (the part up to the goal) }], count (days
+   *                with data), over (days over), goal, goalAt, zero }
+   *   empty        nothing at all to draw
+   */
+  function where(trends, goal) {
+    var t = trends && typeof trends === 'object' && !isArr(trends) ? trends : null;
+    var out = { has: !!t, month: t && typeof t.month === 'string' ? t.month : '', asOf: t && typeof t.asOf === 'string' ? t.asOf : '',
+      categories: barRows(t && t.categories), merchants: barRows(t && t.merchants), weekdays: weekdayRows(t && t.weekdays, goal) };
+    out.empty = !out.categories.rows.length && !out.merchants.rows.length && !out.weekdays.count;
+    return out;
+  }
+
   var api = {
     CHART_DAYS: CHART_DAYS,
     MIN_DAYS: MIN_DAYS,
@@ -405,6 +506,8 @@
     kept: kept,
     streak: streak,
     direction: direction,
+    where: where,
+    WHERE_ROWS: WHERE_ROWS,
     dayNum: dayNum,
     dateOf: dateOf
   };

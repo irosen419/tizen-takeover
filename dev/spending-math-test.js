@@ -10,7 +10,8 @@
  * streak, today left out, the direction, the chart rows, and empty, one day,
  * partial and broken data; stale data (the windows end yesterday when today
  * is given: a gap of one day, several, none, no data, a goal change in the
- * gap). The figures are made up (this repository is
+ * gap); and the Where it goes page (sorting, the usual, weekdays over the
+ * goal, empty and partial sections). The figures are made up (this repository is
  * public). Only what ships with Node is used. Prints one line per check, then
  * "N passed, M failed".
  */
@@ -314,6 +315,67 @@ check('a goal change during the gap: drawn on its day, no missing day judged aga
   const before = M.compute({ pace: cut(3), history: HISTORY, today: TODAY });
   same(r.under, before.under);
   assert.strictEqual(r.kept, before.kept);
+});
+
+/* ---------- the Where it goes page ---------- */
+
+// Shares come back to 4 places.
+const F = (x) => Math.round(x * 10000) / 10000;
+
+const TRENDS = {
+  month: '2026-11',
+  categories: [{ label: 'Getting around', mtd: 96, usual: 84 }, { label: 'Food', mtd: 412, usual: 520 }, { label: 'Everything else', mtd: 251, usual: 330 }],
+  merchants: [{ label: 'Hilltop Grocer', mtd: 184, usual: 205 }, { label: 'Corner Bakery Stand', mtd: 88, usual: 61 }, { label: 'Riverside Fuel', mtd: 55 }],
+  weekdays: [38, 35, 44, 41, 71, 96, 83]
+};
+
+check('where: categories and merchants sorted biggest first, the usual compared in whole dollars', () => {
+  const w = M.where(TRENDS, 60);
+  same([w.has, w.empty, w.month], [true, false, '2026-11']);
+  same(w.categories.rows.map((r) => [r.label, r.mtd, r.usual, r.diff, r.vs]),
+    [['Food', 412, 520, -108, 'less'], ['Everything else', 251, 330, -79, 'less'], ['Getting around', 96, 84, 12, 'more']]);
+  // The scale is the biggest figure (Food's usual, $520) plus 8%.
+  assert.strictEqual(w.categories.rows[0].tick, F(520 / (520 * 1.08)));
+  assert.strictEqual(w.categories.rows[0].bar, F(412 / (520 * 1.08)));
+  same(w.merchants.rows.map((r) => [r.label, r.vs, r.tick === null]), [['Hilltop Grocer', 'less', false], ['Corner Bakery Stand', 'more', false], ['Riverside Fuel', null, true]]);
+  assert.strictEqual(w.merchants.ticks, 2);
+  assert.strictEqual(M.where({ categories: [{ label: 'A', mtd: 10.4, usual: 9.6 }] }).categories.rows[0].vs, 'same');
+  // A tie in mtd keeps the order sent.
+  same(M.where({ categories: [{ label: 'B', mtd: 5 }, { label: 'A', mtd: 5 }] }).categories.rows.map((r) => r.label), ['B', 'A']);
+});
+
+check('where: weekdays Monday first, over the goal flagged (a tie is under), the goal inside the scale', () => {
+  const w = M.where(TRENDS, 60).weekdays;
+  same(w.days.map((d) => d.over), [false, false, false, false, true, true, true]);
+  same([w.count, w.over, w.goal, w.zero], [7, 3, 60, false]);
+  same(w.days[5].by, 36);
+  assert.strictEqual(w.days[5].bar, F(1 / 1.08));
+  assert.strictEqual(w.days[5].under, F(60 / (96 * 1.08)));
+  assert.strictEqual(M.where({ weekdays: [60, 0, 0, 0, 0, 0, 0] }, 60).weekdays.days[0].over, false);
+  // A goal above every day still fits.
+  assert.strictEqual(M.where({ weekdays: [10, 10, 10, 10, 10, 10, 10] }, 100).weekdays.goalAt, F(1 / 1.08));
+  // No goal: no over flags, no goal line.
+  const ng = M.where(TRENDS, null).weekdays;
+  same([ng.goal, ng.goalAt, ng.over, ng.days.every((d) => d.over === null)], [null, null, 0, true]);
+});
+
+check('where: empty and partial: no section, fewer than 7 weekdays, nulls, no usual, all zero, junk', () => {
+  const none = M.where(undefined, 60);
+  same([none.has, none.empty, none.categories.rows.length, none.weekdays.count], [false, true, 0, 0]);
+  const emptyObj = M.where({}, 60);
+  same([emptyObj.has, emptyObj.empty], [true, true]);
+  const few = M.where({ weekdays: [40, null, 70] }, 60).weekdays;
+  same([few.count, few.days.length, few.days[1].avg, few.days[1].over, few.days[6].bar], [2, 7, null, null, null]);
+  const noUsual = M.where({ categories: [{ label: 'Food', mtd: 50 }] });
+  same([noUsual.categories.ticks, noUsual.categories.rows[0].vs, noUsual.categories.rows[0].bar], [0, null, F(1 / 1.08)]);
+  const zero = M.where({ categories: [{ label: 'Food', mtd: 0, usual: 0 }], weekdays: [0, 0, 0, 0, 0, 0, 0] }, null);
+  same([zero.categories.zero, zero.categories.rows[0].bar, zero.categories.rows[0].vs, zero.weekdays.zero, zero.weekdays.days[0].bar], [true, 0, 'same', true, 0]);
+  const junk = M.where({ categories: [null, 'x', { label: '', mtd: 1 }, { label: 'A', mtd: -1 }, { label: 'B', mtd: NaN }, { label: 'C', mtd: 3, usual: -2 }],
+    merchants: 'no', weekdays: ['x', -1, Infinity] }, 'sixty');
+  same([junk.categories.rows.length, junk.categories.rows[0].usual, junk.merchants.rows.length, junk.weekdays.count], [1, null, 0, 0]);
+  const many = []; for (let i = 0; i < 12; i++) many.push({ label: 'M' + i, mtd: i });
+  assert.strictEqual(M.where({ merchants: many }).merchants.rows.length, 8);
+  [null, 5, 'x', []].forEach((j) => assert.strictEqual(M.where(j).has, false));
 });
 
 check('no long dashes in the file or this test (house style)', () => {

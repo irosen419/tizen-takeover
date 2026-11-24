@@ -12,7 +12,10 @@
  * 2026-11-19: cardDay.receipt, the Card day sum with the checking balance, what
  * each card owes and bill names (the TV hides it in guest mode), and a second
  * one approved the same day: the investments section, with the portfolio
- * total, its accounts and top holdings in dollars (also hidden in guest mode).
+ * total, its accounts and top holdings in dollars (also hidden in guest mode),
+ * and a third on 2026-11-24: the trends section, everyday spending this month
+ * by category and by merchant against the usual, and an average per weekday
+ * (blurred in guest mode too).
  * The budget app talks to the server on the Pi itself, so none of it goes
  * through the cloud.
  *
@@ -36,7 +39,7 @@ const MAX_BYTES = 48 * 1024; // 49,152 bytes of JSON
 const MAX_FUTURE_MS = 10 * 60 * 1000;
 const MAX_AMOUNT = 1000000;
 const MAX_DAYS = 366;
-const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway', 'investments'];
+const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway', 'investments', 'trends'];
 const GOAL_STATES = ['clean', 'on-pace', 'over', 'under'];
 // Budget lab: where spare money on card day goes, and the runway's steps.
 const SPLIT_KEYS = ['savings', 'awws', 'buffer', 'extra'];
@@ -60,6 +63,9 @@ const MAX_INVEST = 10000000;
 const MAX_INVEST_ACCOUNTS = 6;
 const MAX_INVEST_TOP = 8;
 const MAX_INVEST_HISTORY = 92;
+// trends (the Spending widget's Where it goes page): rows per list, weekdays.
+const MAX_TREND_ROWS = 8;
+const WEEKDAYS = 7;
 // Sections that are lists; sent as a plain list or as { asOf, items }.
 const LISTS = { goals: 8, alerts: 5 };
 
@@ -392,6 +398,32 @@ const CHECK = {
     return out;
   },
 
+  // Everyday spending for the Spending widget's Where it goes page: this
+  // month so far and "your usual" (the 3-month average up to the same day of
+  // the month) by category and by merchant, and the average day per weekday,
+  // Monday to Sunday. The owner approved category totals on the TV on
+  // 2026-11-24. Every list is optional, so later additions (one total per
+  // day) can join it. "usual" null or left out: no usual for that row.
+  trends: (s) => {
+    const out = {};
+    out.month = F.monthOf(s, 'month', '', true);
+    [['categories', 'category'], ['merchants', 'merchant']].forEach((p) => {
+      const list = F.listOf(s, p[0], MAX_TREND_ROWS, '');
+      if (list === undefined) return;
+      out[p[0]] = F.eachEntry(list, p[1], (e, where) => {
+        const r = { label: F.textOf(e, 'label', 30, where, true), mtd: amountOf(e, 'mtd', where, true) };
+        F.put(r, 'usual', amountOf(e, 'usual', where, false));
+        return r;
+      });
+    });
+    const wd = F.listOf(s, 'weekdays', WEEKDAYS, '');
+    if (wd !== undefined) {
+      if (wd.length !== WEEKDAYS) throw wrong('"weekdays" must have exactly 7 entries, Monday to Sunday (null for a day with no data)');
+      out.weekdays = wd.map((v, n) => (v === null ? null : amountOf({ v: v }, 'v', 'weekday ' + (n + 1), true, { label: 'weekdays' })));
+    }
+    return out;
+  },
+
   // Headroom from this morning to card day: never checking or a card
   // balance by itself. Steps carry no names; a "label" sent is dropped.
   runway: (s) => {
@@ -544,6 +576,10 @@ function sectionCounts(name, s) {
     const n = s.days.length;
     return { days: n, capped: s.days.filter((d) => d.cap !== undefined).length, from: n ? s.days[0].date : null, to: n ? s.days[n - 1].date : null };
   }
+  if (name === 'trends') {
+    return { month: s.month, categories: (s.categories || []).length, merchants: (s.merchants || []).length,
+      weekdays: (s.weekdays || []).filter((v) => v !== null).length };
+  }
   if (name === 'investments') {
     const n = s.history ? s.history.length : 0;
     return { accounts: s.accounts.length, holdings: (s.top || []).length, days: n, from: n ? s.history[0].date : null, to: n ? s.history[n - 1].date : null };
@@ -586,6 +622,10 @@ function sectionLine(name, s) {
   if (name === 'merchants') return plural(c.merchants, 'merchant') + ' in ' + c.month;
   if (name === 'pace') {
     return c.days ? plural(c.days, 'day') + ' (' + c.capped + ' with a cap), ' + c.from + ' to ' + c.to : 'no days yet';
+  }
+  if (name === 'trends') {
+    return plural(c.categories, 'category', 'categories') + ', ' + plural(c.merchants, 'merchant') + ', ' +
+      (c.weekdays ? c.weekdays + ' of 7 weekdays' : 'no weekdays') + ' in ' + c.month;
   }
   if (name === 'investments') {
     return plural(c.accounts, 'account') + ', ' + plural(c.holdings, 'holding') + ', ' +
