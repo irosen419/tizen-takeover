@@ -115,7 +115,7 @@ async function keys(page, list) {
       // Down stays in the column: About's button row, then the column scrolls.
       await keys(page, ['ArrowDown']);
       s = await st(page);
-      assert(s.focus === 'about:0', 'Down from Guest mode: ' + JSON.stringify(s));
+      assert(/^about:/.test(s.focus), 'Down from Guest mode: ' + JSON.stringify(s));
       await shot(page, 'after-sheet-about-focus.png');
       const top0 = await page.evaluate(() => document.querySelector('.tsheet-left').scrollTop);
       await keys(page, ['ArrowDown', 'ArrowDown']);

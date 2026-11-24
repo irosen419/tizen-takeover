@@ -2078,6 +2078,7 @@
   /* ---------- home focus ---------- */
 
   function focusHome(i) {
+    if (tablet.peek) { tablet.peek = false; if (tablet.tab) tablet.tab.classList.remove('is-peek'); }
     if (homeIndex >= 0 && widgets[homeIndex]) widgets[homeIndex].tile.classList.remove('is-focused');
     homeIndex = i;
     if (i >= 0 && widgets[i]) widgets[i].tile.classList.add('is-focused');
@@ -2771,7 +2772,8 @@
     }
 
     if (tablet.sheetOn) { sheetKey(code, dir); return; }
-    if (tablet.peek) { peekKey(code, dir); return; }
+    if (tablet.peek && !open) { peekKey(code, dir); return; }
+    if (tablet.peek) hidePeek(false);       // a panel opened meanwhile: it has the keys
 
     if (ab.on) {
       if (dir === 'right' || isBack(code)) closeAbout();
@@ -3010,6 +3012,8 @@
 
   // Leaves the dashboard frame and any typing, the parts that are instant.
   function clearForCommand() {
+    if (tablet.sheetOn && !tablet.on) closeSheet();   // the TV's Menu: the Pi's command comes first
+    hidePeek(false);
     if (frameOpen) closeFrame();
     if (typingBox()) stopTyping();
   }
@@ -3719,7 +3723,7 @@
       document.documentElement.classList.add('tablet');
       document.body.classList.add('tablet');
       buildSheet();
-      hidePeek(false);
+      hidePeek(true);
       tapFrameHint();
     }
     for (i = 0; i < widgets.length; i++) { widgets[i].ctx.tablet = true; widgets[i].ctx.noHelper = tablet.noHelper; }
@@ -3991,9 +3995,21 @@
   function onSheetClick(e) {
     if (!tablet.sheetOn) return;
     for (var node = e.target; node && node !== tablet.sheet; node = node.parentNode) {
-      if (hasClass(node, 'about-row') && hasClass(node, 'is-action')) { closeSheet(); aboutAction(); return; }
+      if (hasClass(node, 'about-row') && hasClass(node, 'is-action')) {
+        // That row's own action (a tap row already ran it), not the first one that can act.
+        var r = aboutRowOf(node);
+        closeSheet();
+        if (!r) aboutAction();
+        else if (!r.tap && rowActs(r)) { try { r.action(); } catch (er) { /* stays as it is */ } }
+        return;
+      }
     }
     if (!sw.on && tablet.empty.style.display === 'none') closeSheet();
+  }
+
+  function aboutRowOf(node) {
+    for (var j = 0; j < ab.rows.length; j++) if (ab.rows[j].parentNode === node) return ab.drawn[j];
+    return null;
   }
 
   // A keyboard on the tablet: Back closes, the arrows and OK work the layouts.
@@ -4080,8 +4096,10 @@
     add('close', t.close);
     var opts = t.settings ? t.settings.querySelectorAll('.tsheet-opt') : [];
     for (var i = 0; i < opts.length; i++) add('set:' + opts[i].getAttribute('data-set'), opts[i]);
-    var acts = aboutEl.querySelectorAll('.about-row.is-action');
-    for (var a = 0; a < acts.length; a++) add('about:' + a, acts[a]);
+    for (var a = 0; a < ab.rows.length; a++) {
+      var arow = ab.rows[a].parentNode;
+      if (arow && hasClass(arow, 'is-action') && ab.drawn[a]) add('about:' + ab.drawn[a].label, arow);
+    }
     if (sw.on) for (var n = 0; n < sw.nodes.length; n++) add('lay:' + n, sw.nodes[n]);
     add('show', t.showBtn);
     return list;
@@ -4100,11 +4118,19 @@
     if (tablet.on || !tablet.sheetOn || !tablet.fkey) return;
     var list = sheetItems();
     var node = sheetNodeOf(tablet.fkey, list);
+    var moved = false;
     if (!node && list.length) {              // its row went (About redrew): the nearest thing left
-      tablet.fkey = list[0].key;
-      node = list[0].node;
+      var pick = list[0];
+      for (var k = 0; k < list.length; k++) {
+        if (tablet.fkey.indexOf('about:') === 0 && list[k].key.indexOf('about:') === 0) { pick = list[k]; break; }
+        if (list[k].key.indexOf('set:') === 0) pick = list[k];   // else the last setting, in the same column
+      }
+      tablet.fkey = pick.key;
+      node = pick.node;
+      moved = true;
     }
     if (!node) return;
+    if (moved) sheetInView(node);
     node.classList.add('is-tvfocus');
     // The layouts keep their own index (OK on one uses it).
     if (tablet.fkey.indexOf('lay:') === 0) focusSwitcher(+tablet.fkey.slice(4));
@@ -4161,7 +4187,10 @@
     if (dir === 'up' || dir === 'down') {
       var col = sheetCol(cur);
       if (!col) return;
-      var step = Math.round(col.clientHeight * 0.5);
+      // Half a screen, but never past the focused item (the column clips).
+      var c = col.getBoundingClientRect();
+      var room = dir === 'down' ? from.top - c.top - 8 : c.bottom - from.bottom - 8;
+      var step = Math.max(0, Math.min(Math.round(col.clientHeight * 0.5), Math.round(room)));
       col.scrollTop = Math.max(0, col.scrollTop + (dir === 'down' ? step : -step));
     }
   }
