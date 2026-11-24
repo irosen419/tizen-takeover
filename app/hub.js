@@ -179,7 +179,7 @@
 
   // Tablet mode (a wall tablet with no remote and no service.js): see
   // "tablet mode" near the end. Off on a TV, and nothing below changes then.
-  var tablet = { on: false, noHelper: false, sheetOn: false, sheet: null, hideTimer: null, show: null };
+  var tablet = { on: false, noHelper: false, sheetOn: false, sheet: null, hideTimer: null, show: null, peek: false, fkey: '' };
 
   /* ---------- helpers ---------- */
 
@@ -1797,6 +1797,7 @@
         drawAbout(list);
         trimAbout();
         ab.box.scrollTop = top;
+        if (tablet.sheetOn) markSheetFocus();
         placeAboutGlass();
       } else {
         var shown = [];
@@ -2095,6 +2096,7 @@
     if (next >= 0) focusHome(next);
     else if (dir === 'up') openSwitcher();       // off the top edge: the layout bar
     else if (dir === 'left') openAbout();        // off the left edge: the About panel
+    else if (dir === 'down') showPeek();         // off the bottom edge: the Menu tab (TV)
   }
 
   /* ---------- the panel ---------- */
@@ -2769,6 +2771,7 @@
     }
 
     if (tablet.sheetOn) { sheetKey(code, dir); return; }
+    if (tablet.peek) { peekKey(code, dir); return; }
 
     if (ab.on) {
       if (dir === 'right' || isBack(code)) closeAbout();
@@ -3716,6 +3719,8 @@
       document.documentElement.classList.add('tablet');
       document.body.classList.add('tablet');
       buildSheet();
+      hidePeek(false);
+      tapFrameHint();
     }
     for (i = 0; i < widgets.length; i++) { widgets[i].ctx.tablet = true; widgets[i].ctx.noHelper = tablet.noHelper; }
     // Tiles drawn before it turned on (the to-do tile measures differently).
@@ -3760,6 +3765,7 @@
 
   function buildSheet() {
     var t = tablet;
+    if (t.sheet) return;                    // built once: on a TV at start, on a tablet when it turns on
     t.tab = el('div', 'tablet-tab', document.body);
     t.tab.setAttribute('role', 'button');
     var pill = el('span', 'tablet-tab-pill', t.tab);
@@ -3802,7 +3808,12 @@
     t.sheet.addEventListener('click', onSheetClick);
     sheetDrag(t.tab, true);
     sheetDrag(t.head, false);
-    // A web page full screen (ctx.openFrame): its "Back to return" chip is a button here.
+  }
+
+  // A web page full screen (ctx.openFrame): on a tablet its "Back to return" chip is a button.
+  function tapFrameHint() {
+    var t = tablet;
+    if (t.frameHint) return;
     t.frameHint = frameWrap.querySelector('.frame-hint');
     if (t.frameHint) {
       t.frameHint.setAttribute('role', 'button');
@@ -3857,6 +3868,7 @@
       var g = window.HUB_GUEST.on();
       row(aboutWord('guest.label', 'Guest mode'), [['guest-off', aboutWord('guest.off', 'Off'), !g], ['guest-on', aboutWord('guest.on', 'On'), g]]);
     }
+    markSheetFocus();                       // drawn again: the remote's focus stays on its pill
   }
 
   function chooseSetting(key) {
@@ -3883,7 +3895,7 @@
     closeSheet();
     var o = el('div', 'tshow', document.body);
     var hint = el('div', 'tshow-hint', o);
-    hint.textContent = hubWord('tapClose', 'Tap to close');
+    hint.textContent = tablet.on ? hubWord('tapClose', 'Tap to close') : hubWord('backClose', 'Back to close');
     var show = { el: o, ss: null, timer: null };
     tablet.show = show;
     o.addEventListener('click', closeShow);
@@ -3926,6 +3938,7 @@
     tablet.empty.style.display = sw.on ? 'none' : '';
     tablet.sheet.classList.add('is-on');
     document.body.classList.add('tsheet-up');
+    hidePeek(false);
     return true;
   }
 
@@ -3935,6 +3948,13 @@
     tablet.sheet.classList.remove('is-dragging');
     tablet.sheet.style.transform = '';
     tablet.sheet.classList.add('is-shown');
+    // The remote: focus starts on the first setting's choice (Look).
+    if (!tablet.on) {
+      var cols = tablet.sheet.querySelectorAll('.tsheet-col');
+      for (var c = 0; c < cols.length; c++) cols[c].scrollTop = 0;
+      var first = tablet.settings.querySelector('.tsheet-opt.is-on') || tablet.settings.querySelector('.tsheet-opt');
+      sheetFocus(first ? 'set:' + first.getAttribute('data-set') : 'close');
+    }
   }
 
   function closeSheet() {
@@ -3950,6 +3970,10 @@
     tablet.sheet.style.transform = '';
     tablet.sheet.classList.remove('is-shown');
     document.body.classList.remove('tsheet-up');
+    if (!tablet.on) {
+      sheetFocus('');
+      if (homeIndex >= 0 && widgets[homeIndex]) focusHome(homeIndex);   // back on the tile it came from
+    }
     clearTimeout(tablet.hideTimer);
     tablet.hideTimer = setTimeout(function () {
       if (tablet.sheetOn) return;
@@ -3973,7 +3997,9 @@
   }
 
   // A keyboard on the tablet: Back closes, the arrows and OK work the layouts.
+  // A TV's remote: tvSheetKey (below).
   function sheetKey(code, dir) {
+    if (!tablet.on) { tvSheetKey(code, dir); return; }
     if (isBack(code)) closeSheet();
     else if ((dir === 'left' || dir === 'right') && sw.on) moveSwitcher(dir);
     else if (dir === 'up' || dir === 'down') scrollAbout(dir);
@@ -4016,7 +4042,194 @@
     });
   }
 
-  window.HUB_TEST.tablet = function () { return { on: tablet.on, noHelper: tablet.noHelper, sheet: tablet.sheetOn, show: !!tablet.show }; };
+  /* ---------- the Menu on a TV ---------- */
+
+  // The same sheet on a TV, worked by the remote (docs/tv-menu.md). Down off
+  // a bottom tile raises the tab (its peek, focused); OK opens the sheet, Up
+  // or Back puts the tab away. In the sheet the arrows move a focus between
+  // everything that can be chosen (Close, each setting's choices, About's
+  // button row, the layouts, Start slideshow), by where things are on screen;
+  // OK chooses it (as a tap would), Back closes. A column with more below
+  // than shows scrolls a step when Down finds nothing further.
+  function showPeek() {
+    if (tablet.on || !tablet.tab || tablet.peek || busy || open || frameOpen || typingBox()) return;
+    tablet.peek = true;
+    if (homeIndex >= 0 && widgets[homeIndex]) widgets[homeIndex].tile.classList.remove('is-focused');
+    fxCall('ringHide', []);
+    tablet.tab.classList.add('is-peek');
+  }
+
+  function hidePeek(refocus) {
+    if (!tablet.peek) return;
+    tablet.peek = false;
+    if (tablet.tab) tablet.tab.classList.remove('is-peek');
+    if (refocus && homeIndex >= 0 && widgets[homeIndex]) focusHome(homeIndex);
+  }
+
+  function peekKey(code, dir) {
+    if (code === KEY.ENTER) openSheet();
+    else if (dir === 'up' || isBack(code)) hidePeek(true);
+  }
+
+  // Everything the remote can land on, by key: close, set:<data-set>,
+  // lay:<n>, about:<n>, show. Only what is drawn.
+  function sheetItems() {
+    var t = tablet;
+    var list = [];
+    function add(key, node) { if (node && node.offsetWidth > 0) list.push({ key: key, node: node }); }
+    add('close', t.close);
+    var opts = t.settings ? t.settings.querySelectorAll('.tsheet-opt') : [];
+    for (var i = 0; i < opts.length; i++) add('set:' + opts[i].getAttribute('data-set'), opts[i]);
+    var acts = aboutEl.querySelectorAll('.about-row.is-action');
+    for (var a = 0; a < acts.length; a++) add('about:' + a, acts[a]);
+    if (sw.on) for (var n = 0; n < sw.nodes.length; n++) add('lay:' + n, sw.nodes[n]);
+    add('show', t.showBtn);
+    return list;
+  }
+
+  function sheetNodeOf(key, list) {
+    for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i].node;
+    return null;
+  }
+
+  // Draws the focus where tablet.fkey says (again after a redraw).
+  function markSheetFocus() {
+    if (!tablet.sheet) return;
+    var old = tablet.sheet.querySelectorAll('.is-tvfocus');
+    for (var i = 0; i < old.length; i++) old[i].classList.remove('is-tvfocus');
+    if (tablet.on || !tablet.sheetOn || !tablet.fkey) return;
+    var list = sheetItems();
+    var node = sheetNodeOf(tablet.fkey, list);
+    if (!node && list.length) {              // its row went (About redrew): the nearest thing left
+      tablet.fkey = list[0].key;
+      node = list[0].node;
+    }
+    if (!node) return;
+    node.classList.add('is-tvfocus');
+    // The layouts keep their own index (OK on one uses it).
+    if (tablet.fkey.indexOf('lay:') === 0) focusSwitcher(+tablet.fkey.slice(4));
+    else if (sw.nodes[sw.index]) sw.nodes[sw.index].classList.remove('is-focused');
+  }
+
+  function sheetFocus(key) {
+    tablet.fkey = key;
+    markSheetFocus();
+    var list = sheetItems();
+    var node = key ? sheetNodeOf(key, list) : null;
+    if (node) sheetInView(node);
+  }
+
+  // Scrolls the node's column so the node shows, with a little room.
+  function sheetInView(node) {
+    var col = sheetCol(node);
+    if (!col) return;
+    var c = col.getBoundingClientRect();
+    var r = node.getBoundingClientRect();
+    var room = Math.round(c.height * 0.12);
+    if (r.bottom > c.bottom - room) col.scrollTop += Math.round(r.bottom - c.bottom + room);
+    else if (r.top < c.top + room) col.scrollTop = Math.max(0, col.scrollTop - Math.round(c.top + room - r.top));
+  }
+
+  function tvSheetKey(code, dir) {
+    if (isBack(code)) { closeSheet(); return; }
+    var list = sheetItems();
+    var cur = sheetNodeOf(tablet.fkey, list);
+    if (code === KEY.ENTER) {
+      if (cur) cur.click();                 // what a tap does: the sheet's own handlers
+      return;
+    }
+    if (!dir) return;
+    if (!cur) { if (list.length) sheetFocus(list[0].key); return; }
+    // Down from Close: the first setting's choice (not the layouts, though they sit as near).
+    if (tablet.fkey === 'close' && dir === 'down') {
+      var first = tablet.settings.querySelector('.tsheet-opt.is-on') || tablet.settings.querySelector('.tsheet-opt');
+      if (first) { sheetFocus('set:' + first.getAttribute('data-set')); return; }
+    }
+    var from = cur.getBoundingClientRect();
+    var rects = [];
+    // Up and Down stay in the column (or go to Close above them).
+    var mine = sheetCol(cur);
+    for (var i = 0; i < list.length; i++) {
+      var other = sheetCol(list[i].node);
+      var keep = list[i].node !== cur && (dir === 'left' || dir === 'right' || other === mine || (dir === 'up' && !other));
+      rects.push(keep ? list[i].node.getBoundingClientRect() : null);
+    }
+    var next = sheetPick(from, rects, dir);
+    if (next < 0 && (dir === 'left' || dir === 'right')) next = sideNearest(from, rects, dir);
+    if (next >= 0) { sheetFocus(list[next].key); return; }
+    // Nothing further that way: Up and Down scroll the column (About's text).
+    if (dir === 'up' || dir === 'down') {
+      var col = sheetCol(cur);
+      if (!col) return;
+      var step = Math.round(col.clientHeight * 0.5);
+      col.scrollTop = Math.max(0, col.scrollTop + (dir === 'down' ? step : -step));
+    }
+  }
+
+  // The column a node is in (null: Close, above both).
+  function sheetCol(node) {
+    while (node && node.nodeType === 1 && !hasClass(node, 'tsheet-col')) node = node.parentNode;
+    return node && node.nodeType === 1 ? node : null;
+  }
+
+  // The next item that way. Up and Down: the nearest row first, then the item
+  // in it nearest across. Left and Right: the nearest in the same row.
+  function sheetPick(from, rects, dir) {
+    var fcx = from.left + from.width / 2;
+    var i, r, gap;
+    var gaps = [];
+    var minGap = Infinity;
+    for (i = 0; i < rects.length; i++) {
+      r = rects[i];
+      gaps.push(null);
+      if (!r) continue;
+      if (dir === 'up') gap = r.bottom <= from.top + 2 ? from.top - r.bottom : null;
+      else if (dir === 'down') gap = r.top >= from.bottom - 2 ? r.top - from.bottom : null;
+      else {
+        var sameRow = r.top < from.bottom - 1 && r.bottom > from.top + 1;
+        gap = !sameRow ? null : dir === 'right' ? (r.left >= from.right - 2 ? r.left - from.right : null) :
+          (r.right <= from.left + 2 ? from.left - r.right : null);
+      }
+      if (gap === null) continue;
+      gaps[i] = Math.max(0, gap);
+      if (gaps[i] < minGap) minGap = gaps[i];
+    }
+    if (minGap === Infinity) return -1;
+    var best = -1;
+    var bestOff = Infinity;
+    for (i = 0; i < rects.length; i++) {
+      if (gaps[i] === null) continue;
+      if (dir === 'left' || dir === 'right') {
+        if (gaps[i] === minGap) return i;
+        continue;
+      }
+      if (gaps[i] > minGap + 12) continue;     // a row further on
+      r = rects[i];
+      var off = Math.abs(r.left + r.width / 2 - fcx);
+      if (off < bestOff) { bestOff = off; best = i; }
+    }
+    return best;
+  }
+
+  // Left or Right with nothing in the same row: the nearest item on that side
+  // (from the settings over to the layouts, and back).
+  function sideNearest(from, rects, dir) {
+    var fcx = from.left + from.width / 2;
+    var fcy = from.top + from.height / 2;
+    var best = -1;
+    var bestD = Infinity;
+    for (var i = 0; i < rects.length; i++) {
+      var r = rects[i];
+      if (!r) continue;
+      var cx = r.left + r.width / 2;
+      if (dir === 'right' ? cx <= from.right : cx >= from.left) continue;
+      var d = Math.abs(cx - fcx) + 3 * Math.abs(r.top + r.height / 2 - fcy);
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    return best;
+  }
+
+  window.HUB_TEST.tablet = function () { return { on: tablet.on, noHelper: tablet.noHelper, sheet: tablet.sheetOn, show: !!tablet.show, peek: tablet.peek, focus: tablet.fkey }; };
 
   /* ---------- start ---------- */
 
@@ -4034,6 +4247,7 @@
   startClay();
   startAgents();
   startTablet();
+  buildSheet();                             // the Menu: a TV raises its tab with Down off a bottom tile
 
   var resizeTimer = null;
   window.addEventListener('resize', function () {

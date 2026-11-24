@@ -22,6 +22,8 @@ The hub (`app/hub.html`, served by the Pi at `:8097/app/hub.html`) on a wall tab
 - **Touch scrolling.** On a TV a panel body (and a few inner lists) clip and the remote's focus scrolls them; a finger has no focus to move. One block at the top of `app/tablet.css` makes every panel and full-screen page (`.panel-body`), the Menu sheet's columns, and the inner boxes a widget scrolls by keys itself (the calendar's hours and week columns, the weather view, the A World Worth Saving dashboard quarters, the Sun path columns) scroll natively by touch (`overflow-y: auto`, `-webkit-overflow-scrolling: touch`, no scroll bar, `overflow-x` still hidden). A new inner scroller joins that list or takes the class `tscroll`. The key scrolling is unchanged (it sets the same `scrollTop`); the calendar sets `scrollTop` instead of its transform on a tablet. A finger that starts on an Ambience bar and goes mostly up or down scrolls; sideways scrubs. Test: `node dev/scroll-test.js` (every widget's panel and full screen, 1920x800 and 1280x600, English and Spanish).
 - **Sliders.** Ambience: a tap on a light's bar sets that level, a sideways drag scrubs it; neither turns the light off (a tap on the name still does, as OK). Budget lab: a tap on the cap's arrows moves it, as Left and Right do.
 
+The TV has the same Menu, worked by the remote: `docs/tv-menu.md`.
+
 Styles: `app/tablet.css` (every rule needs `.tablet` or an element only tablet mode makes). Code: "tablet mode" near the end of `app/hub.js`. Test: `node dev/tablet-test.js`.
 
 ## Not covered

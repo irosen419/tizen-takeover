@@ -1,8 +1,9 @@
 /* Tablet mode (hub.js "tablet mode"; docs/tablet-mode.md): the hub on a wall
    tablet with no remote. Every rule here needs .tablet (html and body carry
-   it only in tablet mode) or an element that only tablet mode makes, so a TV
-   draws nothing from this file. Chrome 52: no grid, no flex gap; only
-   transform and opacity animate. */
+   it only in tablet mode) or an element of the Menu (its tab, sheet and
+   slideshow). A TV has the Menu too, worked by the remote: its own rules are
+   at the end, under html:not(.tablet) (docs/tv-menu.md). Chrome 52: no grid,
+   no flex gap; only transform and opacity animate. */
 
 /* Touch scrolling (docs/tablet-mode.md). On a TV these boxes clip and the
    remote's focus scrolls them (hub.js keepInView, a widget's own Up/Down);
@@ -300,6 +301,66 @@ body.tablet .tsheet .switcher-bar {
   line-height: 1.35;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* The Menu on a TV (hub.js "the Menu on a TV"; docs/tv-menu.md). The tab
+   stays below the screen until Down off a bottom tile raises it, focused;
+   OK opens the sheet. In the sheet the remote's focus is a white ring. The
+   columns clip and the focus scrolls them (no touch here). */
+html:not(.tablet) .tablet-tab {
+  width: 16rem;
+  height: auto;
+  margin-left: -8rem;
+  opacity: 0;
+  transform: translate(0, 100%);
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1), opacity 160ms linear;
+  pointer-events: none;
+}
+html:not(.tablet) .tablet-tab.is-peek {
+  opacity: 1;
+  transform: translate(0, 0);
+  pointer-events: auto;
+}
+html:not(.tablet) .tablet-tab-pill {
+  padding: 0.5rem 1.6rem 0.55rem 1.3rem;
+  border-color: var(--focus);
+  border-width: var(--edge);
+  border-bottom-width: 0;
+  border-radius: 1.2rem 1.2rem 0 0;
+  background: var(--card-2);
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+html:not(.tablet) .tablet-chev { width: 1.1rem; height: 1.1rem; margin-right: 0.5rem; }
+html:not(.tablet) .tsheet { background: rgb(8, 10, 14); }   /* a bright day picture must not show through */
+html:not(.tablet) .tsheet-col { overflow: hidden; }
+html:not(.tablet) .tsheet .about-box,
+html:not(.tablet) .tsheet .switcher-bar {
+  background: rgba(255, 255, 255, 0.04);
+  background-image: none;
+  box-shadow: none;
+  border-color: var(--line);
+}
+html:not(.tablet) .tsheet .switcher-item.is-focused { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.14); }
+html:not(.tablet) .tsheet .switcher-item.is-active { background: rgba(255, 255, 255, 0.14); }
+html:not(.tablet) .tsheet .is-tvfocus,
+html:not(.tablet) .tsheet .switcher-item.is-tvfocus {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 0.12rem var(--focus);
+}
+/* A chosen (white) pill shows its focus as a ring set off by a dark gap. */
+html:not(.tablet) .tsheet .tsheet-opt.is-on.is-tvfocus { box-shadow: 0 0 0 0.14rem rgb(8, 10, 14), 0 0 0 0.3rem var(--focus); }
+html:not(.tablet) .tsheet .tsheet-opt.is-tvfocus:not(.is-on),
+html:not(.tablet) .tsheet .tsheet-btn.is-tvfocus,
+html:not(.tablet) .tsheet .tsheet-close.is-tvfocus,
+html:not(.tablet) .tsheet .switcher-item.is-tvfocus { background: rgba(255, 255, 255, 0.2); }
+/* About's button row: the ring stands off the text; the padding is paid back
+   by the margins, so nothing below moves. */
+html:not(.tablet) .tsheet .about-row.is-tvfocus {
+  margin: 0.2rem -0.7rem -0.35rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .css-end { top: 0; }
