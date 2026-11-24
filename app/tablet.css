@@ -4,6 +4,40 @@
    draws nothing from this file. Chrome 52: no grid, no flex gap; only
    transform and opacity animate. */
 
+/* Touch scrolling (docs/tablet-mode.md). On a TV these boxes clip and the
+   remote's focus scrolls them (hub.js keepInView, a widget's own Up/Down);
+   a finger has no focus to move, so here each one scrolls natively when its
+   content is taller than its room. scrollTop is the same either way, so the
+   key scrolling still works. The one list of every touch scroller:
+     - .panel-body: every panel and full-screen page;
+     - .tsheet-col: the Menu sheet's two columns;
+     - inner boxes a widget clips and scrolls by keys itself (found by
+       node dev/scroll-test.js); a new one goes here, or gets .tscroll.
+   overflow-x stays hidden (the panel body's padding keeps the focus ring
+   room); no scroll bar is drawn (Android draws none either). */
+.tablet .panel-body,
+.tablet .tsheet-col,
+.tablet .tscroll,
+.tablet .cal-tl-view,
+.tablet .cal-wlist-view,
+.tablet .wx-main,
+.tablet .aw-q,
+.tablet .sp-col-mid,
+.tablet .sp-col-right {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.tablet .panel-body::-webkit-scrollbar,
+.tablet .tsheet-col::-webkit-scrollbar,
+.tablet .tscroll::-webkit-scrollbar,
+.tablet .cal-tl-view::-webkit-scrollbar,
+.tablet .cal-wlist-view::-webkit-scrollbar,
+.tablet .wx-main::-webkit-scrollbar,
+.tablet .aw-q::-webkit-scrollbar,
+.tablet .sp-col-mid::-webkit-scrollbar,
+.tablet .sp-col-right::-webkit-scrollbar { width: 0; height: 0; }
+
 /* The Back chip is a button here: a bigger target. */
 .tablet .panel-hint {
   padding: 0.5rem 1.05rem;
@@ -106,10 +140,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  /* Each column scrolls by touch on its own, so nothing runs off the bottom. */
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  /* Each column scrolls by touch on its own (Touch scrolling, below). */
   padding-bottom: 2.4rem;
 }
 .tsheet-col > * { flex-shrink: 0; }

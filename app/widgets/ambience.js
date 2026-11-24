@@ -809,18 +809,44 @@
     body.__amTouch = true;
     var mouse = null;
     // The bar is drawn again on every move, so the finger's own target
-    // (which keeps getting its touch events) carries the drag.
+    // (which keeps getting its touch events) carries the drag. Nothing is
+    // stopped at the press: a finger that goes mostly up or down is a swipe
+    // and scrolls the panel (app/tablet.css, Touch scrolling); one that goes
+    // sideways scrubs the level, and a tap sets it where it lifts.
     body.addEventListener('touchstart', function (e) {
       var b = page && C && C.tablet ? barOf(e.target) : null;
       if (!b || !e.touches || e.touches.length !== 1) return;
-      e.preventDefault();
       var rect = b.bar.getBoundingClientRect();
       var node = e.target;
-      if (C.focus) C.focus(b.row);
-      setLightAt(b.id, rect, e.touches[0].clientX);
-      function move(ev) { if (ev.touches && ev.touches.length) { ev.preventDefault(); setLightAt(b.id, rect, ev.touches[0].clientX); } }
+      var x0 = e.touches[0].clientX;
+      var y0 = e.touches[0].clientY;
+      var how = '';                      // '', 'scrub' or 'swipe'
+      var lastX = x0;
+      function move(ev) {
+        if (!ev.touches || !ev.touches.length) return;
+        var t = ev.touches[0];
+        lastX = t.clientX;
+        if (!how) {
+          var dx = Math.abs(t.clientX - x0);
+          var dy = Math.abs(t.clientY - y0);
+          if (dx < 8 && dy < 8) return;
+          how = dy > dx ? 'swipe' : 'scrub';
+          if (how === 'swipe') { stop(); return; }
+          if (C.focus) C.focus(b.row);
+        }
+        ev.preventDefault();
+        setLightAt(b.id, rect, t.clientX);
+      }
       function end(ev) {
-        if (ev.cancelable) ev.preventDefault();
+        stop();
+        if (ev.type === 'touchcancel') return;
+        if (ev.cancelable) ev.preventDefault();      // no click after it
+        if (!how) {
+          if (C.focus) C.focus(b.row);
+          setLightAt(b.id, rect, ev.changedTouches && ev.changedTouches.length ? ev.changedTouches[0].clientX : lastX);
+        }
+      }
+      function stop() {
         node.removeEventListener('touchmove', move);
         node.removeEventListener('touchend', end);
         node.removeEventListener('touchcancel', end);
