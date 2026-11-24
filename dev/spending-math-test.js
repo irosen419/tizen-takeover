@@ -274,7 +274,7 @@ check('a gap of 1 day: the streak is 0 (never carried over), yesterday is an emp
   // Without today the old rule still runs from the last day of data.
   assert.strictEqual(M.compute({ pace: cut(1), history: HISTORY }).streak, 4);
   assert.strictEqual(r.chart.length, 31);
-  same(r.chart[30], { date: '2026-11-15', spent: null, goal: 60, over: null, avg7: r.chart[30].avg7 });
+  same(r.chart[30], { date: '2026-11-15', spent: null, goal: 60, ref: null, cap: null, over: null, avg7: r.chart[30].avg7 });
   // The 7-day window Nov 9 to 15 holds 6 days: their mean.
   const six = SAMPLE.slice(-7, -1).reduce((t, d) => t + d.spent * 100, 0);
   assert.strictEqual(r.avg7, Math.round(six / 6) / 100);
@@ -376,6 +376,28 @@ check('where: empty and partial: no section, fewer than 7 weekdays, nulls, no us
   const many = []; for (let i = 0; i < 12; i++) many.push({ label: 'M' + i, mtd: i });
   assert.strictEqual(M.where({ merchants: many }).merchants.rows.length, 8);
   [null, 5, 'x', []].forEach((j) => assert.strictEqual(M.where(j).has, false));
+});
+
+check('a goal set today: no chart day judged, goalNow has it, every chart day carries it as ref (never judged)', () => {
+  const r = M.compute({ pace: SAMPLE, history: [{ from: '2026-11-16', goal: 60 }], today: '2026-11-16' });
+  same([r.hasGoal, r.goal, r.goalNow, r.under.judged, r.history.length], [false, null, 60, 0, 1]);
+  assert.ok(r.chart.every((c) => c.goal === null && c.ref === 60 && c.over === null));
+  assert.ok(r.max >= 60);
+  // Once a day is judged the ref stops on the first goal's day.
+  const later = M.compute({ pace: SAMPLE, history: [{ from: '2026-11-14', goal: 60 }], today: '2026-11-16' });
+  same([later.chart[28].ref, later.chart[28].goal, later.chart[29].ref, later.chart[29].goal, later.goalNow], [60, null, null, 60, 60]);
+  // No days at all: goalNow still says it.
+  assert.strictEqual(M.compute({ pace: { days: [] }, history: [{ from: '2026-11-16', goal: 60 }], today: '2026-11-17' }).goalNow, 60);
+});
+
+check('the Safe-today cap logged each morning: per chart day, capLast the newest, junk skipped, in the scale', () => {
+  const days = SAMPLE.map((d, i) => i >= SAMPLE.length - 3 ? Object.assign({ cap: i === SAMPLE.length - 1 ? 180.5 : 74.25 }, d) : d);
+  days[days.length - 4] = Object.assign({ cap: -3 }, days[days.length - 4]);
+  const r = M.compute({ pace: { days: days }, history: HISTORY, today: '2026-11-16' });
+  same([r.hasCap, r.capLast, r.chart[27].cap, r.chart[28].cap, r.chart[30].cap], [true, 180.5, null, 74.25, 180.5]);
+  assert.ok(r.max >= 180.5);
+  const none = M.compute({ pace: { days: SAMPLE }, history: HISTORY, today: '2026-11-16' });
+  same([none.hasCap, none.capLast], [false, null]);
 });
 
 check('no long dashes in the file or this test (house style)', () => {

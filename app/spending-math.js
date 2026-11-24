@@ -106,7 +106,8 @@
       if (!isNaN(cut) && n >= cut) continue;
       if (seen[n]) continue;
       seen[n] = true;
-      out.push({ date: r.date, n: n, c: toCents(r.spent) });
+      // k: the Safe-today cap the budget app logged that morning, cents or null.
+      out.push({ date: r.date, n: n, c: toCents(r.spent), k: isNum(r.cap) && r.cap > 0 ? toCents(r.cap) : null });
     }
     out.sort(function (a, b) { return a.n - b.n; });
     return out;
@@ -325,15 +326,22 @@
    *   dir       'down' | 'up' | 'level' | null
    *   hasGoal   a goal is in force on end (or any chart day)
    *   goal      the goal in force on end, dollars or null
+   *   goalNow   the goal in force today (a goal set today is not on any
+   *             chart day yet), else on end; dollars or null
+   *   hasCap    some chart day has the Safe-today cap logged that morning
+   *   capLast   the newest chart day's logged cap, dollars or null
    *   under     { under, judged } over 14 days; kept dollars or null
    *   streak    whole days
    *   history   [{ from, goal }] newest first (dollars)
    *   chart     [{ date, spent (dollars or null: no data), goal (or null),
+   *               ref (the first goal, on a day before it was set, so
+   *               the line shows across the chart; never judged; or null),
+   *               cap (the Safe-today cap logged that morning, or null),
    *               over (dollars above the goal, 0 when under, null unjudged),
    *               avg7 (or null) }] for the last 31 calendar days to end
    *               (fewer when the data starts later; the days of a gap are
    *               rows with spent null)
-   *   max       the chart's top in dollars (spend, goal and line, plus 8%)
+   *   max       the chart's top in dollars (spend, goal, cap and line, plus 8%)
    *   change    index in chart of the last day the goal changed (> 0), or -1
    */
   function compute(input) {
@@ -342,10 +350,16 @@
     var h = readHistory(input.history);
     var out = { ok: false, days: d.length, building: d.length > 0 && d.length < MIN_DAYS, end: null, gap: null,
       avg7: null, avg30: null, typical: null, avg30Days: 0, dir: null, hasGoal: false, goal: null,
+      goalNow: null, hasCap: false, capLast: null,
       under: { under: 0, judged: 0 }, kept: null, streak: 0, history: [], chart: [], max: 0, change: -1 };
     var i;
     for (i = h.length - 1; i >= 0; i--) out.history.push({ from: h[i].from, goal: dollars(h[i].c) });
-    if (!d.length) return out;
+    var nowN = dayNum(input.today);
+    if (!d.length) {
+      var g0 = isNaN(nowN) ? null : goalCents(h, nowN);
+      out.goalNow = g0 === null ? null : dollars(g0);
+      return out;
+    }
     var last = endOf(d);
     var todayN = dayNum(input.today);
     // With today, the windows end yesterday whatever the data says.
@@ -359,6 +373,9 @@
     out.dir = out.avg30Days >= DIRECTION_MIN ? direction(out.avg7, out.avg30) : null;
     var gEnd = goalCents(h, e);
     out.goal = gEnd === null ? null : dollars(gEnd);
+    var gNow = goalCents(h, isNaN(todayN) ? e : todayN);
+    out.goalNow = gNow === null ? null : dollars(gNow);
+    var firstGoal = h.length ? h[0].c : null;
     out.under = underCount(d, h, e, JUDGE_WINDOW);
     out.kept = kept(d, h, e, JUDGE_WINDOW);
     out.streak = streak(d, h, e);
@@ -373,9 +390,15 @@
       var row = byN[n];
       var g = goalCents(h, n);
       var c = row ? row.c : null;
+      var kc = row ? row.k : null;
+      var ref = g === null ? firstGoal : null;
       out.chart.push({ date: dateOf(n), spent: c === null ? null : dollars(c), goal: g === null ? null : dollars(g),
+        ref: ref === null ? null : dollars(ref), cap: kc === null ? null : dollars(kc),
         over: c === null || g === null ? null : dollars(Math.max(0, c - g)), avg7: series[k] });
       if (g !== null) out.hasGoal = true;
+      if (kc !== null) { out.hasCap = true; out.capLast = dollars(kc); }
+      if (kc !== null && kc > top) top = kc;
+      if (ref !== null && ref > top) top = ref;
       if (k > 0 && g !== prev && g !== null) out.change = k;
       prev = g;
       if (c !== null && c > top) top = c;
