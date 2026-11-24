@@ -292,7 +292,6 @@ const SPANISH = {
   broken: '{title}: no se pudo mostrar'
 };
 
-<<<<<<< HEAD
 /*
  * The Spending widget's made-up month (app/widgets/spending.js): everyday
  * spending for the 31 days before Monday Nov 16, Oct 16 to Nov 15, the same
@@ -383,10 +382,7 @@ function spendingHook() {
   });
 }
 
-module.exports = { snapshot, SPANISH, FIXTURE, spendingDays, SPENDING_GOALS, spendingHook };
-=======
-module.exports = { snapshot, SPANISH, FIXTURE, GOALS };
->>>>>>> origin/main
+module.exports = { snapshot, SPANISH, FIXTURE, GOALS, spendingDays, SPENDING_GOALS, spendingHook };
 
 if (require.main === module) {
   const args = process.argv.slice(2);
