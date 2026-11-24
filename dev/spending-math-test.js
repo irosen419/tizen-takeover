@@ -249,6 +249,10 @@ check('partial data: unsorted rows are put in order; a gap leaves its chart day 
   assert.strictEqual(r.end, date(4));
 });
 
+check('cents: 1.005 rounds to 101 cents; readDays(p) with no today drops no valid day', () => {
+  assert.strictEqual(M.readDays({ days: [{ date: '', spent: 1 }, { date: '2026-02-30', spent: 1 }, { date: date(0), spent: 1.005 }] })[0].c, 101);
+});
+
 check('no long dashes in the file or this test (house style)', () => {
   const dashes = new RegExp(String.fromCharCode(0x2014));
   assert.ok(!dashes.test(SOURCE), 'app/spending-math.js');

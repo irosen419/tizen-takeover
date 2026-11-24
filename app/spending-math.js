@@ -75,7 +75,7 @@
     return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
   }
 
-  function toCents(x) { return Math.round(x * 100); }
+  function toCents(x) { return Math.round(Number((x * 100).toFixed(4))); }
   function dollars(c) { return c / 100; }
 
   /* ---------- reading ---------- */

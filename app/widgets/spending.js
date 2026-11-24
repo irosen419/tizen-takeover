@@ -237,12 +237,8 @@
     var p = d && d.pace;
     if (p && isArr(p.goals)) return p.goals;
     if (p && isNum(p.goal) && p.goal > 0 && isArr(p.days)) {
-      var first = null;
-      for (var i = 0; i < p.days.length; i++) {
-        var day = p.days[i];
-        if (day && typeof day.date === 'string' && (first === null || day.date < first)) first = day.date;
-      }
-      if (first) return [{ from: first, goal: p.goal }];
+      var rows = window.HUB_SPENDING_MATH && window.HUB_SPENDING_MATH.readDays ? window.HUB_SPENDING_MATH.readDays(p) : [];
+      if (rows.length) return [{ from: rows[0].date, goal: p.goal }];
     }
     return [];
   }
@@ -300,7 +296,7 @@
 
   function keptForms(r) {
     if (r.kept === null) return null;
-    if (r.kept < 0) return { text: fill(STRINGS.footOver, { n: cash(-r.kept) }), tone: 'is-neg' };
+    if (Math.round(r.kept) < 0) return { text: fill(STRINGS.footOver, { n: cash(-r.kept) }), tone: 'is-neg' };
     return { text: fill(STRINGS.footKept, { n: cash(r.kept) }), tone: 'is-ok' };
   }
 
@@ -635,7 +631,7 @@
     out.push({ key: 'avg7', label: STRINGS.kpi.avg7, value: r.avg7, money: true, sub: df[0] || '', subShort: df[1] || '', tone: dirTone(r) });
     if (judged(r)) {
       out.push({ key: 'under', label: STRINGS.kpi.under, value: r.under.under, small: ofDays(r.under.judged), sub: streakText(r), tone: r.streak > 0 ? 'is-ok' : '' });
-      out.push({ key: 'kept', label: STRINGS.kpi.kept, value: r.kept, money: true, sub: fill(STRINGS.lastDays, { m: 14 }), numTone: r.kept < 0 ? 'is-neg' : '' });
+      out.push({ key: 'kept', label: STRINGS.kpi.kept, value: r.kept, money: true, sub: fill(STRINGS.lastDays, { m: 14 }), numTone: Math.round(r.kept) < 0 ? 'is-neg' : '' });
       if (four) out.push({ key: 'typical', label: STRINGS.kpi.typical, value: r.typical, money: true, sub: r.avg30 === null ? '' : fill(STRINGS.avg30Line, { n: cash(r.avg30) }) });
     } else {
       out.push({ key: 'typical', label: STRINGS.kpi.typical, value: r.typical, money: true, sub: '' });
@@ -750,8 +746,8 @@
     var text = '';
     var tone = '';
     if (row.goal === null) text = STRINGS.readNoGoal;
-    else if (row.over > 0) { text = fill(STRINGS.readOver, { n: cash(row.over), g: cash(row.goal) }); tone = ' is-neg'; }
-    else if (Math.round(row.goal) === Math.round(row.spent)) { text = fill(STRINGS.readEven, { g: cash(row.goal) }); tone = ' is-ok'; }
+    else if (row.over !== null && Math.round(row.over) > 0) { text = fill(STRINGS.readOver, { n: cash(row.over), g: cash(row.goal) }); tone = ' is-neg'; }
+    else if (Math.round(row.goal - row.spent) === 0) { text = fill(STRINGS.readEven, { g: cash(row.goal) }); tone = ' is-ok'; }
     else { text = fill(STRINGS.readUnder, { n: cash(row.goal - row.spent), g: cash(row.goal) }); tone = ' is-ok'; }
     el('span', 'sp-read-note' + tone, node, text);
   }
@@ -810,9 +806,10 @@
       var to = k.item.money ? Math.round(k.item.value) : k.item.value;
       var finalText = k.numEl.textContent;
       k.numEl.setAttribute('aria-label', finalText);
-      items.push({ node: k.numEl.firstChild, to: to, money: k.item.money, text: finalText });
+      items.push({ node: k.numEl.firstChild, to: to, money: k.item.money, text: finalText, numEl: k.numEl });
     }
     if (!items.length) return;
+    S.motionItems = items;
     var t0 = 0;
     var lastTs = 0;
     var DUR = 1100;
@@ -840,6 +837,19 @@
     for (var j = 0; j < items.length; j++) items[j].node.nodeValue = items[j].money ? cash(0) : '0';
     S.raf = window.requestAnimationFrame(frame);
   }
+
+  // Guest mode flipping mid count-up swaps the number's text node: stop and
+  // write the final text into the element, masked again when Guest is on.
+  function settleMotion() {
+    var items = S.motionItems;
+    if (!S.raf || !items) return;
+    stopMotion();
+    for (var i = 0; i < items.length; i++) {
+      items[i].numEl.textContent = items[i].text;
+      try { if (window.HUB_GUEST && window.HUB_GUEST.on()) window.HUB_GUEST.mask(items[i].numEl); } catch (e) { /* no Guest mode */ }
+    }
+  }
+  try { if (window.HUB_GUEST) window.HUB_GUEST.onChange(settleMotion); } catch (e) { /* no Guest mode on this page */ }
 
   function stopMotion() {
     if (S.raf && window.cancelAnimationFrame) { try { window.cancelAnimationFrame(S.raf); } catch (e) { /* gone */ } }
