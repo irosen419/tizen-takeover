@@ -235,6 +235,9 @@ h1, h2, p { margin: 0; }
   transition: transform 120ms var(--ease);
 }
 .gx-chip .gx-ic { font-size: 16px; color: var(--text-3); }
+.gx-chip.is-on { border-color: transparent; background: var(--text); color: var(--page); font-weight: 600; }
+.gx-stores { margin-top: 14px; }
+.gx-stores .gx-label { margin-bottom: 8px; }
 
 .gx-list { list-style: none; margin: 14px 0 0; padding: 0; }
 .gx-row {

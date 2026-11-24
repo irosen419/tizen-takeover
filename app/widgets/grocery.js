@@ -263,6 +263,13 @@
     banner.setAttribute('role', 'status');
     view.appendChild(banner);
 
+    // Store filter: chips from the pantry's store list, pick one or more.
+    var storeBar = el('div', 'gx-stores');
+    storeBar.setAttribute('role', 'group');
+    storeBar.setAttribute('aria-label', T('grocery.storeFilter', 'Store'));
+    view.appendChild(storeBar);
+    var picked = [];
+
     var again = el('div', 'gx-again');
     view.appendChild(again);
 
@@ -292,6 +299,48 @@
 
     var noteTimer = null, toastTimer = null, lastRemoved = null, failMsg = '';
     var rows = {};
+
+    // Where to get an item: the preferred store of its pantry product, found
+    // through the pantry's list link, else through its barcode.
+    function storeOf(item) {
+      var pd = ctx.peek ? ctx.peek('pantry') : null;
+      if (!pd || !pd.products) return '';
+      var pid = null, i;
+      (pd.list || []).forEach(function (l) { if (l.groceryId === item.id) pid = l.productId; });
+      for (i = 0; i < pd.products.length; i++) {
+        var x = pd.products[i];
+        if (x.store && (x.id === pid || (item.upc && x.upc === item.upc))) return x.store;
+      }
+      return '';
+    }
+
+    function paintStores() {
+      var pd = ctx.peek ? ctx.peek('pantry') : null;
+      var all = pd && pd.stores ? pd.stores : [];
+      picked = picked.filter(function (n) { return all.some(function (x) { return x.name === n; }); });
+      storeBar.innerHTML = '';
+      storeBar.style.display = all.length ? '' : 'none';
+      if (!all.length) return;
+      storeBar.appendChild(el('span', 'gx-label', T('grocery.storeFilter', 'Store')));
+      var wrap = el('div', 'gx-chips');
+      function chip(text, on, fn) {
+        var b = el('button', 'gx-chip' + (on ? ' is-on' : ''));
+        b.type = 'button';
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.appendChild(el('span', '', text));
+        b.addEventListener('click', fn);
+        wrap.appendChild(b);
+      }
+      chip(T('grocery.allStores', 'All stores'), !picked.length, function () { picked = []; render(); });
+      all.forEach(function (x) {
+        chip(x.name, picked.indexOf(x.name) >= 0, function () {
+          var i = picked.indexOf(x.name);
+          if (i >= 0) picked.splice(i, 1); else picked.push(x.name);
+          render();
+        });
+      });
+      storeBar.appendChild(wrap);
+    }
 
     function items() { var d = ctx.data(); return d && d.items ? d.items : []; }
 
@@ -379,8 +428,7 @@
       if (sub && p.brand) text.appendChild(el('span', 'gx-sub', sub));
       else if (item.upc) text.appendChild(el('span', 'gx-sub is-missing', sub ? sub + ' · ' + T('grocery.noBrand', 'no brand yet') : T('grocery.noBrand', 'no brand yet')));
       // Where to get it, from the pantry's preferred store for this code.
-      var pd = ctx.peek ? ctx.peek('pantry') : null, store = '';
-      if (item.upc && pd && pd.products) pd.products.forEach(function (x) { if (x.upc === item.upc && x.store) store = x.store; });
+      var store = storeOf(item);
       if (store) text.appendChild(el('span', 'gx-sub gx-store', store));
       tick.appendChild(text);
       var del = el('button', 'gx-del');
@@ -449,8 +497,10 @@
       view.className = 'gx' + (st === 'offline' ? ' is-offline' : '');
 
       var keep = {};
-      var left = all.filter(function (i) { return !i.done; });
-      var done = all.filter(function (i) { return i.done; });
+      paintStores();
+      var shownAll = picked.length ? all.filter(function (i) { return picked.indexOf(storeOf(i)) >= 0; }) : all;
+      var left = shownAll.filter(function (i) { return !i.done; });
+      var done = shownAll.filter(function (i) { return i.done; });
       list.innerHTML = '';
       left.forEach(function (i) { keep[i.id] = 1; list.appendChild(row(i)); });
       doneList.innerHTML = '';
@@ -462,8 +512,8 @@
         empty.appendChild(el('p', 'gx-empty-text', st === 'offline' ? '' : T('grocery.loading', 'Loading the list…')));
       } else if (!left.length) {
         empty.appendChild(icon('basket', 'gx-empty-ic'));
-        empty.appendChild(el('p', 'gx-empty-title', done.length ? T('grocery.allDone', 'All in the cart') : T('grocery.emptyTitle', 'Nothing to get')));
-        if (!done.length) empty.appendChild(el('p', 'gx-empty-text', T('grocery.emptyText', 'Add what you need above, or ask Claude to add it.')));
+        empty.appendChild(el('p', 'gx-empty-title', picked.length && !shownAll.length ? T('grocery.noneForStores', 'Nothing for these stores') : done.length ? T('grocery.allDone', 'All in the cart') : T('grocery.emptyTitle', 'Nothing to get')));
+        if (!done.length && !picked.length) empty.appendChild(el('p', 'gx-empty-text', T('grocery.emptyText', 'Add what you need above, or ask Claude to add it.')));
       }
       empty.style.display = empty.childNodes.length ? '' : 'none';
 

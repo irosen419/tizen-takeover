@@ -244,6 +244,110 @@ async function main() {
       await page.ctx.close();
     });
 
+    await check('stores: fuzzy search finds a slightly wrong name, the typed name can still be added, and the new store joins the list', async () => {
+      const L = require('../app/widgets/pantry.js');
+      const names = ['Walgreens', 'H-E-B', 'Trader Joe’s', 'Whole Foods', 'Café Verde', 'Costco'];
+      const top = (q) => L.fuzzy(q, names).map((x) => x.name);
+      assert(top('Wlagreens')[0] === 'Walgreens', 'swapped letters: ' + top('Wlagreens'));
+      assert(top('Walgrens')[0] === 'Walgreens', 'missing letter: ' + top('Walgrens'));
+      assert(top('Walgreeens')[0] === 'Walgreens', 'extra letter: ' + top('Walgreeens'));
+      assert(top('heb')[0] === 'H-E-B' && top('H E B')[0] === 'H-E-B', 'punctuation and spaces: ' + top('heb'));
+      assert(top('trader joes')[0] === 'Trader Joe’s', 'apostrophe: ' + top('trader joes'));
+      assert(top('wholefods')[0] === 'Whole Foods', 'spaces and a slip: ' + top('wholefods'));
+      assert(top('cafe')[0] === 'Café Verde', 'accents: ' + top('cafe'));
+      assert(top('Cosco')[0] === 'Costco', 'missing letter again: ' + top('Cosco'));
+      assert(!top('Target').length && !top('zz').length && !top('').length, 'far names find nothing: ' + top('Target'));
+      assert(L.fuzzy('costco', names)[0].score === 0, 'exact is score 0');
+
+      await post([
+        { op: 'edit', id: byName('Eggs').id, preferredStore: 'Walgreens' },
+        { op: 'edit', id: byName('Paper towels').id, preferredStore: 'H-E-B' },
+        { op: 'edit', id: byName('Frozen peas').id, preferredStore: 'Trader Joe’s' }
+      ]);
+      const page = await open();
+      const leche = byName('Leche entera');
+      const pick = async (typed) => {
+        await page.click('.px-row[data-id="' + leche.id + '"] .px-open');
+        await page.waitForSelector('.px-sheet.is-on');
+        await page.fill('.px-picker-store input', typed);
+        return texts(page, '.px-picker-store .px-option');
+      };
+      let o = await pick('Wlagreens');
+      assert(o.join('|') === 'Walgreens|Add “Wlagreens”', 'a typo offers the real store and the typed one: ' + o.join('|'));
+      await page.$eval('.px-picker-store input', (n) => n.scrollIntoView({ block: 'center' }));
+      await page.waitForTimeout(300);
+      await shot(page, 'pantry-store-fuzzy-en.png');
+      await page.click('.px-picker-store .px-option:has-text("Walgreens")');
+      assert((await texts(page, '.px-picker-store .px-picked-name'))[0] === 'Walgreens', 'picked');
+      await page.fill('.px-picker-store input', 'heb');
+      o = await texts(page, '.px-picker-store .px-option');
+      assert(o.join('|') === 'H-E-B', 'an exact match offers no second spelling: ' + o.join('|'));
+      await page.fill('.px-picker-store input', 'Whole Foods');
+      o = await texts(page, '.px-picker-store .px-option');
+      assert(o.join('|') === 'Add “Whole Foods”', 'nothing close: only add: ' + o.join('|'));
+      await page.click('.px-picker-store .px-option');
+      await page.click('.px-sheet .px-primary');
+      await page.waitForSelector('.px-sheet', { state: 'detached' });
+      await page.waitForTimeout(400);
+      assert(byName('Leche entera').store === 'Whole Foods', 'saved: ' + byName('Leche entera').store);
+      assert(hub.pantry.view([]).data.stores.map((x) => x.name).indexOf('Whole Foods') >= 0, 'in the list');
+      // Typing the old spelling later picks the existing store, no duplicate.
+      o = await pick('whole foods');
+      assert(o.join('|') === 'Whole Foods', 'existing store, no add option: ' + o.join('|'));
+      await page.click('.px-picker-store .px-option');
+      await page.click('.px-sheet .px-primary');
+      await page.waitForTimeout(400);
+      assert(hub.pantry.view([]).data.stores.filter((x) => /whole/i.test(x.name)).length === 1, 'one Whole Foods');
+      // Bathroom is a place chip.
+      await page.click('.px-row[data-id="' + leche.id + '"] .px-open');
+      await page.waitForSelector('.px-sheet.is-on');
+      await page.click('.px-sheet .px-chip:has-text("Bathroom")');
+      await page.click('.px-sheet .px-primary');
+      await page.waitForTimeout(400);
+      assert(byName('Leche entera').location === 'bathroom', 'bathroom saved');
+      assert(await page.isVisible('.px-chips .px-chip:has-text("Bathroom")'), 'a Bathroom filter chip');
+      await shot(page, 'pantry-bathroom-chip-en.png');
+      await post([{ op: 'edit', id: leche.id, location: 'fridge' }]);
+      assert(!page.errors.length, page.errors.join('; '));
+      await page.ctx.close();
+    });
+
+    await check('store filter: pick one or more stores on the Pantry and on the List; All stores clears it', async () => {
+      const eggs = byName('Eggs'), towels = byName('Paper towels'), peas = byName('Frozen peas');
+      await post([{ op: 'want', id: eggs.id, on: true }, { op: 'want', id: towels.id, on: true }, { op: 'want', id: peas.id, on: true }]);
+      const page = await open();
+      const rows = () => page.$$eval('.px-row .px-name', (n) => n.map((x) => x.textContent).sort());
+      const all = (await rows()).length;
+      assert(all >= 5, 'start with everything: ' + all);
+      await page.click('.px-storebar .px-chip:has-text("Walgreens")');
+      assert((await rows()).join('|') === 'Eggs', 'one store: ' + (await rows()).join('|'));
+      await page.click('.px-storebar .px-chip:has-text("H-E-B")');
+      assert((await rows()).join('|') === 'Eggs|Paper towels', 'two stores: ' + (await rows()).join('|'));
+      await shot(page, 'pantry-store-filter-en.png');
+      await page.click('.px-storebar .px-chip:has-text("H-E-B")');
+      assert((await rows()).join('|') === 'Eggs', 'a second tap drops a store');
+      await page.click('.px-storebar .px-chip:has-text("Walgreens")');
+      assert((await rows()).length === all, 'no store chosen shows all');
+      await page.click('.px-storebar .px-chip:has-text("Trader")');
+      await page.click('.px-storebar .px-chip:has-text("All stores")');
+      assert((await rows()).length === all, 'All stores clears');
+      // The List: the same chips, an item's store from its pantry product.
+      await page.goto(base + '/app/touch.html#/grocery');
+      await page.waitForSelector('.gx-row');
+      const gnames = () => page.$$eval('.gx-list:not(.gx-list-done) .gx-name', (n) => n.map((x) => x.textContent).sort());
+      const gall = (await gnames()).length;
+      assert(gall >= 3, 'list has the three: ' + gall);
+      await page.click('.gx-stores .gx-chip:has-text("Trader")');
+      assert((await gnames()).join('|') === 'Frozen peas', 'list filtered: ' + (await gnames()).join('|'));
+      await page.click('.gx-stores .gx-chip:has-text("Walgreens")');
+      assert((await gnames()).join('|') === 'Eggs|Frozen peas', 'two stores on the list');
+      await shot(page, 'grocery-store-filter-en.png');
+      await page.click('.gx-stores .gx-chip:has-text("All stores")');
+      assert((await gnames()).length === gall, 'cleared');
+      assert(!page.errors.length, page.errors.join('; '));
+      await page.ctx.close();
+    });
+
     await check('My picks: the list shows only on that mode; same-category first; add, reorder, remove; saves ranked ids', async () => {
       const page = await open();
       const eggs = byName('Eggs'), peas = byName('Frozen peas'), towels = byName('Paper towels');

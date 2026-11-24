@@ -459,7 +459,7 @@ function pantryRun(fn) {
   };
 }
 
-const PANTRY_PLACES = ['fridge', 'freezer', 'pantry', 'other'];
+const PANTRY_PLACES = ['fridge', 'freezer', 'pantry', 'bathroom', 'other'];
 const PANTRY_ARGS = {
   qty: [V.int(0, 9999), false],
   restockAt: [V.int(0, 999), false],

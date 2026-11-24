@@ -49,7 +49,7 @@ function loadSqlite() {
 
 const UNITS = ['oz', 'fl_oz', 'lb', 'g', 'kg', 'ml', 'l', 'gal', 'count', 'pack'];
 const MODES = ['similar', 'preselected', 'refund', 'contact_me'];
-const LOCATIONS = ['fridge', 'freezer', 'pantry', 'other'];
+const LOCATIONS = ['fridge', 'freezer', 'pantry', 'bathroom', 'other'];
 const SOURCES = ['manual', 'auto'];
 const MAX_PRODUCTS = 5000;
 const MAX_OPS = 50;
@@ -107,6 +107,10 @@ function keyOf(s) {
     .toLowerCase().replace(/&/g, ' and ').replace(/['\u2018\u2019`]/g, '')
     .replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
+
+// The key a store is matched by: keyOf without spaces, so "TomThumb" and
+// "Tom Thumb" are one store. Empty for text with no letter or digit.
+function storeKey(s) { return keyOf(s).replace(/ /g, ''); }
 
 // keyOf, or a stable key from the text itself when it has no letter or
 // digit (an emoji-only name): never empty for non-empty text.
@@ -224,6 +228,11 @@ const SCHEMA = [
     key TEXT NOT NULL UNIQUE CHECK (length(key) >= 1),
     sort INTEGER NOT NULL DEFAULT 0
   ) STRICT`,
+  `CREATE TABLE IF NOT EXISTS stores (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND ${MAX_STORE}),
+    key TEXT NOT NULL UNIQUE CHECK (length(key) >= 1)
+  ) STRICT`,
   `CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY,
     brand_id INTEGER REFERENCES brands(id) ON DELETE SET NULL,
@@ -300,6 +309,31 @@ function createPantry(options) {
   db.exec('PRAGMA foreign_keys = ON');
   db.exec('PRAGMA busy_timeout = 2000');
   SCHEMA.forEach((s) => db.exec(s));
+  // A database made before "bathroom" was a place has the old list in its
+  // CHECK: SQLite cannot change one, so the table is rebuilt (the steps
+  // from the SQLite docs: no foreign keys, copy, drop, rename).
+  const prodSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'products'").get();
+  if (prodSql && prodSql.sql.indexOf("'bathroom'") < 0) {
+    const cols = db.prepare('PRAGMA table_info(products)').all().map((c) => c.name).join(', ');
+    const fresh = SCHEMA.filter((x) => x.indexOf('IF NOT EXISTS products (') > 0)[0]
+      .replace('CREATE TABLE IF NOT EXISTS products (', 'CREATE TABLE products_new (');
+    db.exec('PRAGMA foreign_keys = OFF');
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(fresh);
+      db.exec('INSERT INTO products_new (' + cols + ') SELECT ' + cols + ' FROM products');
+      db.exec('DROP TABLE products');
+      db.exec('ALTER TABLE products_new RENAME TO products');
+      db.exec('CREATE INDEX IF NOT EXISTS products_name_key ON products(name_key)');
+      if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('foreign key check failed');
+      db.exec('COMMIT');
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch (e2) { /* already gone */ }
+      throw e;
+    } finally {
+      db.exec('PRAGMA foreign_keys = ON');
+    }
+  }
   // A database made before list_items.checked gets the column.
   if (!db.prepare('PRAGMA table_info(list_items)').all().some((c) => c.name === 'checked')) {
     db.exec('ALTER TABLE list_items ADD COLUMN checked INTEGER NOT NULL DEFAULT 0 CHECK (checked IN (0, 1))');
@@ -377,7 +411,41 @@ function createPantry(options) {
     bump();
   });
 
+  // Stores were free text. The distinct spellings become the store list;
+  // ones that differ only in case, accents, punctuation or spaces ("Tom
+  // Thumb", "tom thumb", "TomThumb") merge into the most used spelling, and
+  // every product is rewritten to it. Runs once.
+  tx(() => {
+    if (metaGet('storesMigrated') !== null) return;
+    metaSet('storesMigrated', 1);
+    const groups = {};
+    all("SELECT preferred_store AS s, COUNT(*) AS n FROM products WHERE preferred_store <> '' GROUP BY preferred_store ORDER BY n DESC, preferred_store").forEach((r) => {
+      const k = storeKey(r.s);
+      if (!k) return;
+      if (!groups[k]) groups[k] = { name: r.s, spellings: [] };
+      groups[k].spellings.push(r.s);
+    });
+    Object.keys(groups).forEach((k) => {
+      const g = groups[k];
+      run('INSERT OR IGNORE INTO stores (name, key) VALUES (?, ?)', g.name, k);
+      g.spellings.forEach((sp) => { if (sp !== g.name) run('UPDATE products SET preferred_store = ? WHERE preferred_store = ?', g.name, sp); });
+    });
+    bump();
+  });
+
   /* --- brands and categories: create or pick, never a second spelling --- */
+
+  // The store named, from the list (matched ignoring case, accents,
+  // punctuation and spaces), or added to it. '' means no store.
+  function storeName(raw) {
+    const name = cleanText(raw, MAX_STORE, 'preferredStore');
+    const k = storeKey(name);
+    if (!k) return '';
+    const hit = one('SELECT name FROM stores WHERE key = ?', k);
+    if (hit) return hit.name;
+    run('INSERT INTO stores (name, key) VALUES (?, ?)', name, k);
+    return name;
+  }
 
   function brandId(raw) {
     if (raw === null || raw === '') return null;
@@ -637,7 +705,7 @@ function createPantry(options) {
     if (o.autoAdd !== undefined) set.auto_add = bool(o.autoAdd, 'autoAdd');
     if (o.substitutionMode !== undefined) set.substitution_mode = oneOf(o.substitutionMode, MODES, 'substitutionMode');
     if (o.lastPrice !== undefined) set.last_price = o.lastPrice === null ? null : num(o.lastPrice, 'lastPrice', 0, 100000);
-    if (o.preferredStore !== undefined) set.preferred_store = o.preferredStore === null ? '' : cleanText(o.preferredStore, MAX_STORE, 'preferredStore');
+    if (o.preferredStore !== undefined) set.preferred_store = o.preferredStore === null ? '' : storeName(o.preferredStore);
     if (o.archived !== undefined) set.archived = bool(o.archived, 'archived');
     if (set.name !== undefined || set.brand_id !== undefined) {
       const nk = set.name_key !== undefined ? set.name_key : p.name_key;
@@ -830,6 +898,7 @@ function createPantry(options) {
         products: products,
         brands: all('SELECT id, name, key FROM brands ORDER BY name COLLATE NOCASE'),
         categories: all('SELECT id, name, key, sort FROM categories ORDER BY sort, id'),
+        stores: all('SELECT id, name FROM stores ORDER BY name COLLATE NOCASE'),
         kinds: KINDS,
         list: all('SELECT id, product_id AS productId, quantity, mode_override AS modeOverride, source, added_at AS addedAt, grocery_id AS groceryId, checked FROM list_items WHERE list_id = ? ORDER BY id', openListId())
           .map((r) => Object.assign(r, { checked: !!r.checked })),
@@ -976,6 +1045,7 @@ module.exports = {
   MAX_OPS: MAX_OPS,
   available: available,
   keyOf: keyOf,
+  storeKey: storeKey,
   parseSize: parseSize,
   guessKind: guessKind,
   lineName: lineName,
