@@ -658,7 +658,7 @@ async function main() {
 
     /* ---------- Budget lab ---------- */
     const LAB_TILE = tileOf('budget-lab');
-    const PREF = 'homeHub.budget.capPref.v1';
+    const PREF = 'homeHub.budget.capPref.v1';   // the old per-screen key: app/prefs.js moves it to the shared 'budget.capPref'
     const labPanel = (page) => text(page, '#panel .panel-body');
     const focusedKey = (page) => page.evaluate(() => { const f = document.querySelector('#panel .is-focused'); return f ? f.getAttribute('data-key') : null; });
     const session = (page) => page.evaluate(() => window.HUB_BUDGET_LAB_TEST.session());
@@ -755,7 +755,7 @@ async function main() {
         await H.sleep(150);
         const toast = await text(page, '#toast');
         assert(/Cap saved: \$61 a day \(re-averaged each morning\)/.test(toast), 'toast: ' + toast);
-        const pref = JSON.parse(await page.evaluate((k) => localStorage.getItem(k), PREF));
+        const pref = await page.evaluate(() => window.HUB_PREFS.get('budget.capPref'));
         assert(pref.v === 1 && pref.cardDate === '2026-11-19' && Math.abs(pref.keep - 3.4) < 0.001 && typeof pref.at === 'string', 'stored: ' + JSON.stringify(pref));
         p = await labPanel(page);
         assert(/Saved \$61 a day/.test(p) && /Nov 19: covered, \$3 spare/.test(p) && await has(page, '#panel .bl-result.is-ok'), 'after Save: ' + p);
@@ -772,7 +772,7 @@ async function main() {
         assert(!(await has(page, '#panel .bl-reset.f')), 'Back to calculated still takes focus with nothing to reset');
         p = await labPanel(page);
         assert(/\$62\s*a day/.test(p) && /Saved \$61 a day/.test(p) && /Using the calculated cap/.test(p), 'after reset: ' + p);
-        assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'reset dropped the saved cap');
+        assert(await page.evaluate(() => !!window.HUB_PREFS.get('budget.capPref')), 'reset dropped the saved cap');
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -823,7 +823,7 @@ async function main() {
         next.lab.daysLeft = 4;
         await env.setBudget(next);
         await H.until(async () => /No saved cap yet/.test(await labPanel(page)), 5000, 'the old cycle\'s cap stayed: ' + await labPanel(page));
-        assert(await page.evaluate((k) => localStorage.getItem(k) === null, PREF), 'the old cycle\'s cap is still stored');
+        assert(await page.evaluate(() => window.HUB_PREFS.get('budget.capPref') === null), 'the old cycle\'s cap is still stored');
         noErrors(page);
       } finally {
         await page.ctx.close();
@@ -877,7 +877,7 @@ async function main() {
         await allBlurred(page, LAB_TILE, 'tile');
         assert(await text(page, LAB_TILE) === sharp, 'the tile changed: ' + await text(page, LAB_TILE));
         assert((await session(page)).cap === 66, 'session dropped: ' + JSON.stringify(await session(page)));
-        assert(await page.evaluate((k) => !!localStorage.getItem(k), PREF), 'Guest mode deleted the saved cap');
+        assert(await page.evaluate(() => !!window.HUB_PREFS.get('budget.capPref')), 'Guest mode deleted the saved cap');
         await H.openPanel(page, 'budget-lab');
         await allBlurred(page, '#panel', 'panel');
         // A press still works and its new amount is blurred too.
