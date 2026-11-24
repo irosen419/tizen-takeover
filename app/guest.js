@@ -26,6 +26,12 @@
  *
  * Wider rule later: add a pattern to MATCHERS (PERCENT is ready for it).
  *
+ * All screens: the PIN pop-up's "All screens" (app/pin.js) has the Pi send
+ * the choice to every screen as the guestall live resource { on, at }. Each
+ * screen applies a choice it has not applied before (its at, kept in
+ * homeHub.guest.allAt) once, so a screen that was off catches up when it
+ * connects, and a later choice made on one screen alone still stands.
+ *
  * Off unless turned on. Calendars hide their notes and guest names
  * themselves (calendar.js). Loads before the widgets. Plain ES5.
  */
@@ -262,9 +268,34 @@
     }
   }
 
+  /* ---------- the "All screens" choice from the Pi ---------- */
+
+  var ALL_KEY = 'homeHub.guest.allAt';
+  var allHooked = false;
+
+  function allSeen() { try { return window.localStorage ? window.localStorage.getItem(ALL_KEY) : null; } catch (e) { return null; } }
+
+  function fromAll(data) {
+    if (!data || typeof data.on !== 'boolean' || typeof data.at !== 'string' || !data.at) return;
+    if (allSeen() === data.at) return;
+    try { if (window.localStorage) window.localStorage.setItem(ALL_KEY, data.at); } catch (e) { /* applied once more next visit; harmless */ }
+    set(data.on);
+  }
+
+  // live.js loads after this file: hooked once the page is in.
+  function hookAll() {
+    var L = window.HUB_LIVE;
+    if (allHooked || !L || typeof L.on !== 'function') return;
+    allHooked = true;
+    try { L.on('guestall', fromAll); } catch (e) { warn(e && e.message); }
+    try { if (typeof L.get === 'function') fromAll(L.get('guestall')); } catch (e) { /* the next update has it */ }
+  }
+
   // This file loads in <head>: start watching once the page has a body.
   if (document.body) apply();
   else document.addEventListener('DOMContentLoaded', function () { try { apply(); } catch (e) { warn(e && e.message); } });
+  if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(hookAll, 0);
+  else document.addEventListener('DOMContentLoaded', function () { setTimeout(hookAll, 0); });
 
   window.HUB_GUEST = {
     MONEY: MONEY.slice(),
@@ -272,6 +303,7 @@
     on: function () { return state; },
     set: set,
     onChange: function (fn) { if (typeof fn === 'function') listeners.push(fn); },
+    fromAll: fromAll,
     mask: function (root) { try { mask(root || document.body); } catch (e) { warn(e && e.message); } },
     unmask: function (root) { try { unmask(root || document.body); } catch (e) { warn(e && e.message); } },
     match: match

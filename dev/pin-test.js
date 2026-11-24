@@ -434,8 +434,13 @@ async function main() {
       assert(await guestOn(p), 'the keypad PIN did not work');
       // Cancel on the pad.
       await choose(p, 'off', 'enter');
-      await key(p, 'ArrowDown', 3); await key(p, 'ArrowLeft', 2);
+      await key(p, 'ArrowDown', 3);
       assert((await pin(p)).focus === 'c', 'not on Cancel');
+      // Left of the first column is the "Apply to" switch; Right comes back.
+      await key(p, 'ArrowLeft');
+      assert((await pin(p)).focus === 'scope', 'Left did not reach Apply to: ' + (await pin(p)).focus);
+      await key(p, 'ArrowRight');
+      assert((await pin(p)).focus === 'c', 'Right did not come back to Cancel');
       await key(p, 'Enter');
       await closed(p);
       assert(await guestOn(p), 'Cancel changed Guest mode');
@@ -445,6 +450,56 @@ async function main() {
       await closed(p);
       assert(!(await guestOn(p)), 'clicks did not work');
       assert(!p.ctx.errors.length, 'console: ' + p.ctx.errors.join(' | '));
+      await p.ctx.close();
+    });
+
+    await check('Apply to: This screen at first (nothing extra sent); All screens (OK or a tap) sends { all, on } with the PIN; a wrong PIN changes nothing', async () => {
+      const p = await open({ pin: '5208' });
+      await openClock(p);
+      await choose(p, 'on', 'enter');
+      assert((await pin(p)).all === false, 'not This screen at first');
+      assert(await p.evaluate(() => document.querySelector('.pin-seg-opt.is-on').textContent) === 'This screen', 'This screen not lit');
+      await type(p, '5208');
+      await closed(p);
+      let last = await p.evaluate(() => window.PIN_STUB.posts.filter((x) => x.body.action === 'check').pop().body);
+      assert(last.all === undefined && last.on === undefined, 'This screen sent all: ' + JSON.stringify(last));
+      // Off, All screens by the arrows and OK; one wrong PIN first.
+      await choose(p, 'off', 'enter');
+      await key(p, 'ArrowLeft'); await key(p, 'Enter');
+      assert((await pin(p)).all === true, 'OK did not pick All screens');
+      await type(p, '1111');
+      await until(() => pin(p).then((s) => s && s.message === 'Wrong PIN'), 3000, 'no Wrong PIN');
+      assert(await guestOn(p), 'a wrong PIN changed Guest mode');
+      await type(p, '5208');
+      await closed(p);
+      last = await p.evaluate(() => window.PIN_STUB.posts.filter((x) => x.body.action === 'check').pop().body);
+      assert(last.all === true && last.on === false, 'All screens not sent: ' + JSON.stringify(last));
+      assert(!(await guestOn(p)), 'not off here');
+      await until(() => p.evaluate(() => /all screens/.test(document.getElementById('toast').textContent)), 3000, 'no "all screens" toast');
+      // A tap on All screens, then This screen again: the last tap counts.
+      await choose(p, 'on', 'enter');
+      await p.click('.pin-seg-opt:nth-child(2)');
+      assert((await pin(p)).all === true, 'tap on All screens');
+      await p.click('.pin-seg-opt:nth-child(1)');
+      assert((await pin(p)).all === false, 'tap on This screen');
+      await key(p, 'Escape');
+      await closed(p);
+      assert(!p.ctx.errors.length, 'console: ' + p.ctx.errors.join(' | '));
+      await p.ctx.close();
+    });
+
+    await check('All screens from another screen: the guestall push turns Guest mode on here once; the same push again changes nothing', async () => {
+      const p = await open({ pin: '5208' });
+      assert(!(await guestOn(p)), 'on at the start');
+      await p.evaluate(() => window.PIN_STUB.push('guestall', { on: true, at: '2026-11-24T20:00:00.000Z' }));
+      await until(() => guestOn(p), 2000, 'the push did not turn it on');
+      // Turned off here alone: the same push again leaves it off.
+      await p.evaluate(() => window.HUB_GUEST.set(false));
+      await p.evaluate(() => window.PIN_STUB.push('guestall', { on: true, at: '2026-11-24T20:00:00.000Z' }));
+      await sleep(200);
+      assert(!(await guestOn(p)), 'an old push applied twice');
+      await p.evaluate(() => window.PIN_STUB.push('guestall', { on: true, at: '2026-11-24T21:00:00.000Z' }));
+      await until(() => guestOn(p), 2000, 'a new push did not apply');
       await p.ctx.close();
     });
 

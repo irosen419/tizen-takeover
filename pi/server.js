@@ -31,7 +31,11 @@
  *   POST /guest/pin      the Guest mode PIN from the TV's Clock page (guestpin.js; a screen route:
  *                        home addresses, or only HUB_TV_IPS when set, a listed Origin, OPTIONS answered):
  *                        { action: 'status' | 'check' | 'set', pin }.
- *                        Only a salted scrypt hash is kept (data/guest-pin.json); 3 wrong in a row lock it
+ *                        Only a salted scrypt hash is kept (data/guest-pin.json); 3 wrong in a row lock it.
+ *                        { all: true, on } with a right PIN turns Guest mode on or off on every screen
+ *                        (the "guestall" live resource, prefs.js; server 0.37.0)
+ *   POST /prefs          a widget preference shared by every screen: { key, value } (prefs.js KEYS;
+ *                        null removes it). The "prefs" live resource carries them all
  *   GET  /photos/list    the photo album (photos.js): { ok, rev, count, items: [{ id, w, h, month }] },
  *                        newest first, at most 500; rev changes only when the album does
  *   GET  /photos/img/<id>?size=full|thumb   one photo (image/webp, image/jpeg or image/png),
@@ -75,6 +79,7 @@
  *   GET  /api/budget     the personal budget snapshot (budget.js)
  *   POST /api/budget     store one (sent by the budget app on the Pi), or null to clear
  *   GET  /api/budget/goal    the daily spending goal's history (budgetgoal.js)
+ *   GET  /api/prefs      the shared widget preferences: keys and when each was set (never values)
  *   POST /api/budget/goal    { goal }: a whole-dollar daily goal from today (the Pi's date) on
  *   GET  /api/shows      the show list and the schedule from TVmaze (shows.js)
  *   POST /api/shows      { add: {name, service, ...} }, { remove: "name" } or { set: [...] }
@@ -167,8 +172,9 @@ const pantrydb = require('./pantrydb');
 const guestpin = require('./guestpin');
 const photos = require('./photos');
 const budgetgoal = require('./budgetgoal');
+const prefs = require('./prefs');
 
-const SERVER_VERSION = '0.36.0';
+const SERVER_VERSION = '0.37.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -598,7 +604,9 @@ function freshState() {
       shows: { rev: 0, data: shows.emptyData() },
       linktests: { rev: 0, data: linktests.emptyData() },
       allsounds: { rev: 0, data: allsounds.notsetData() },
-      ambience: { rev: 0, data: ambience.notsetData('noha') }
+      ambience: { rev: 0, data: ambience.notsetData('noha') },
+      prefs: { rev: 0, data: prefs.emptyData() },
+      guestall: { rev: 0, data: prefs.guestEmpty() }
     }
   };
 }
@@ -656,6 +664,10 @@ function loadState(dir, log) {
     st.resources.allsounds = allsounds.cleanResource(st.resources.allsounds, true);
     // Nor the room's lights (ambience.js), rebuilt from known fields.
     st.resources.ambience = ambience.cleanResource(st.resources.ambience);
+    // Widget preferences shared by every screen, and the last Guest mode
+    // "All screens" choice (prefs.js): empty in older files.
+    st.resources.prefs = prefs.cleanResource(st.resources.prefs);
+    st.resources.guestall = prefs.guestClean(st.resources.guestall);
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -1290,6 +1302,19 @@ function start(options) {
     return { ok: true, from: from, changed: r.changed, goals: goalHistory, rev: state.rev };
   }
 
+  // POST /prefs (a screen): one shared widget preference (prefs.js).
+  function setPref(body) {
+    const r = prefs.apply(state.resources.prefs.data, body, new Date().toISOString());
+    if (r.changed) changeResource('prefs', r.data);
+    return { ok: true, key: r.key, changed: r.changed, rev: state.rev };
+  }
+
+  // Guest mode on every screen: after a right PIN with { all: true, on },
+  // the choice goes out as the guestall resource; each screen applies a new one once.
+  function setGuestAll(on) {
+    changeResource('guestall', { on: !!on, at: new Date().toISOString() });
+  }
+
   // POST /api/awws/resync and the TV's POST /awws/resync: "sync now". Only
   // stores the time it was asked (awws.js requestResync); the routine that
   // reads the board checks for it. Nothing about it reaches the log but a word.
@@ -1684,6 +1709,7 @@ function start(options) {
     '/api/awws/resync': ['POST'],
     '/api/budget': ['GET', 'POST'],
     '/api/budget/goal': ['GET', 'POST'],
+    '/api/prefs': ['GET'],
     '/api/status': ['GET'],
     '/api/log': ['GET'],
     '/api/calendar': ['GET'],
@@ -1878,6 +1904,10 @@ function start(options) {
         if (route === '/api/budget' && method === 'GET') {
           const b = state.resources.budget;
           return reply(200, { ok: true, rev: b.rev, data: b.data, tz: calTz });
+        }
+        if (route === '/api/prefs') {
+          const d = state.resources.prefs.data;
+          return reply(200, { ok: true, keys: Object.keys(d.values), at: d.at, guestAll: state.resources.guestall.data, message: prefs.showText(d) });
         }
         if (route === '/api/budget/goal' && method === 'GET') {
           return reply(200, { ok: true, goals: goalHistory, today: localToday() });
@@ -2284,7 +2314,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2318,7 +2348,20 @@ function start(options) {
       // (and this Pi) can try PINs; never a phone on the touch door. Never log
       // the PIN; guestpin.js logs wrong tries and locks by count only.
       return readBody(req, res, (body) => {
-        guestPin.handle(body).then((r) => sendJson(res, 200, r, cors), (e) => fail(res, e, cors));
+        guestPin.handle(body).then((r) => {
+          // "All screens" in the PIN pop-up: { all: true, on } with a right PIN
+          // (check), or with a new one (set), turns Guest mode on or off everywhere.
+          const all = isObj(body) && body.all === true && typeof body.on === 'boolean';
+          const okPin = isObj(r) && ((body.action === 'check' && r.match === true) || (body.action === 'set' && r.ok === true));
+          if (all && okPin) {
+            try {
+              setGuestAll(body.on);
+              r = Object.assign({}, r, { all: true });
+              log('screen turned Guest mode ' + (body.on ? 'on' : 'off') + ' on every screen');
+            } catch (e) { return fail(res, e, cors); }
+          }
+          sendJson(res, 200, r, cors);
+        }, (e) => fail(res, e, cors));
       });
     }
     if (route === '/translate') {
@@ -2374,6 +2417,19 @@ function start(options) {
           const g = setBudgetGoal(body);
           sendJson(res, 200, g, cors);
           log(g.changed ? 'screen set the daily budget goal (from ' + g.from + ')' : 'screen set the daily budget goal (unchanged)');
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
+    }
+    if (route === '/prefs') {
+      // A widget preference from a screen (prefs.js): { key, value }. Pushed to
+      // every screen. The value is never logged (the saved cap is an amount).
+      return readBody(req, res, (body) => {
+        try {
+          const r = setPref(body);
+          sendJson(res, 200, r, cors);
+          if (r.changed) log('screen set the shared preference ' + r.key);
         } catch (e) {
           fail(res, e, cors);
         }
@@ -2484,7 +2540,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/budget/goal': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/budget/goal': 1, '/prefs': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
     '/echo/run': 1, '/guest/pin': 1
   };

@@ -379,6 +379,8 @@
     'guest.label': 'Modo invitados',
     'guest.off': 'No',
     'guest.on': 'Sí',
+    'guest.allOn': 'Modo invitados activado en todas las pantallas',
+    'guest.allOff': 'Modo invitados desactivado en todas las pantallas',
     /* The PIN pop-up before Guest mode turns on or off (app/pin.js). "PIN" stays as is. */
     'pin.titleOn': 'Activar el modo invitados',
     'pin.titleOff': 'Desactivar el modo invitados',
@@ -390,6 +392,9 @@
     'pin.locked': 'Demasiados intentos. Inténtalo de nuevo en {n} s',
     'pin.unreachable': 'No se puede conectar con el hub. Inténtalo de nuevo.',
     'pin.hint': 'También puedes usar los números del control remoto.',
+    'pin.scopeLabel': 'Aplicar en',
+    'pin.scopeHere': 'Esta pantalla',
+    'pin.scopeAll': 'Todas las pantallas',
     'pin.cancel': 'Cancelar',
     'pin.delete': 'Borrar',
 
@@ -794,6 +799,7 @@
     'budgetLab.refCalc': 'Libre hoy {n}',
     'budgetLab.refSaved': 'Guardado {n} al día',
     'budgetLab.refNoSaved': 'Aún sin tope guardado',
+    'budgetLab.refGoal': 'Tu meta: {n} al día',
     'budgetLab.usingCalc': 'Usando el tope calculado',
     'budgetLab.reset': 'Volver al tope calculado',
     'budgetLab.toastSaved': 'Tope guardado: {n} al día (se recalcula cada mañana)',

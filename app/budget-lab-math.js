@@ -44,7 +44,9 @@
  *   lab, merchants, pace, room, cardDay  the snapshot's sections (any absent)
  *   session   { mode: 'cap' | 'keep', cap: null (calculated) | dollars,
  *               keep: dollars | null, cuts: { label: dollars } }
- *   pref      the saved cap as stored, { v: 1, cardDate, keep, at }, or null
+ *   pref      the saved cap as stored, { v: 1, cardDate, keep, at }, or null;
+ *             with none, the daily goal in force (pace.goals) stands in as
+ *             the saved cap: result.saved.fromGoal is true then
  *   today     'YYYY-MM-DD' on the TV; the streak ends the day before it
  * It never throws on broken data; result.ok is false with result.reason
  * 'noLab' (no lab section: no payday or no checking) or 'cardDayToday'
@@ -516,6 +518,11 @@
     var K = R - P;
 
     var saved = readPref(input.pref, L);
+    // No cap saved for this cycle: the daily goal in force is the saved cap
+    // (it follows the goal, on every screen, and never lapses on card day).
+    if (!saved && res.trend && res.trend.goal !== null && isNum(res.trend.goal)) {
+      saved = { keep: R - res.trend.goal * D, cap: res.trend.goal, cardDate: L.cardDate, at: null, fromGoal: true };
+    }
     var Mc0 = c0 * D;
     var Mc = c * D;
     var Ms = saved ? saved.cap * D : null;
@@ -545,7 +552,7 @@
     res.keep = toCents(K);
     res.covered = res.keep >= 0;
     res.short = res.covered ? 0 : wholeUp(-K);
-    res.saved = saved ? { keep: toCents(saved.keep), cap: toCents(saved.cap), cardDate: saved.cardDate, at: saved.at } : null;
+    res.saved = saved ? { keep: toCents(saved.keep), cap: toCents(saved.cap), cardDate: saved.cardDate, at: saved.at, fromGoal: !!saved.fromGoal } : null;
     res.monthly = { calculated: toCents(Mc0), saved: Ms === null ? null : toCents(Ms), session: toCents(Mc) };
     res.gapBase = saved ? 'saved' : 'calculated';
     res.gap = toCents((saved ? Ms : Mc) - Mc0);

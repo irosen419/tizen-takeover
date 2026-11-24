@@ -29,9 +29,10 @@
  * the math module's order: a freed dollar covers card day first.
  *
  * Session: the cap, the mode, the keep goal and the cuts, in this file's memory only,
- * until the hub reloads. Saved: one localStorage key, homeHub.budget.capPref.v1
- * = { v: 1, cardDate, keep, at }, a keep amount re-averaged each morning and
- * dropped when card day moves on.
+ * until the hub reloads. Saved: 'budget.capPref' in app/prefs.js, shared by
+ * every screen through the Pi = { v: 1, cardDate, keep, at }, a keep amount
+ * re-averaged each morning and dropped when card day moves on. With none
+ * saved, the daily goal stands in as the saved cap ("Your goal $60 a day").
  *
  * Keys: Left and Right on the cap slider change it ($1 a press; a held key
  * speeds up to $5 after 0.8 s and $25 after 2 s, keep goal $5, $25, $100,
@@ -166,6 +167,7 @@
     refCalc: 'Safe today {n}',
     refSaved: 'Saved {n} a day',
     refNoSaved: 'No saved cap yet',
+    refGoal: 'Your goal {n} a day',
     usingCalc: 'Using the calculated cap',
     reset: 'Back to calculated cap',
     toastSaved: 'Cap saved: {n} a day (re-averaged each morning)',
@@ -368,21 +370,33 @@
 
   // The saved cap as stored, or null. One from an earlier cycle (card day
   // moved on) is dropped here: never carried over.
+  // Shared by every screen (app/prefs.js, 'budget.capPref' on the Pi); without
+  // prefs.js, this screen's own storage as before.
+  function PREFS() { var p = window.HUB_PREFS; return p && typeof p.get === 'function' && typeof p.set === 'function' ? p : null; }
+
   function readPref(lab) {
-    var raw = null;
-    try { raw = window.localStorage ? window.localStorage.getItem(PREF_KEY) : null; } catch (e) { raw = null; }
-    if (!raw) return null;
     var p = null;
-    try { p = JSON.parse(raw); } catch (e) { p = null; }
+    if (PREFS()) {
+      p = PREFS().get('budget.capPref');
+    } else {
+      var raw = null;
+      try { raw = window.localStorage ? window.localStorage.getItem(PREF_KEY) : null; } catch (e) { raw = null; }
+      if (!raw) return null;
+      try { p = JSON.parse(raw); } catch (e) { p = null; }
+    }
+    if (!p) return null;
     var cardDate = lab && typeof lab.cardDate === 'string' ? lab.cardDate : null;
-    if (!p || typeof p !== 'object' || (cardDate && p.cardDate !== cardDate)) {
-      try { window.localStorage.removeItem(PREF_KEY); } catch (e) { /* read as none anyway */ }
+    if (typeof p !== 'object' || (cardDate && p.cardDate !== cardDate)) {
+      // From an earlier cycle: dropped everywhere; the goal stands in (the math module).
+      if (PREFS()) PREFS().set('budget.capPref', null);
+      else { try { window.localStorage.removeItem(PREF_KEY); } catch (e) { /* read as none anyway */ } }
       return null;
     }
     return p;
   }
 
   function writePref(p) {
+    if (PREFS()) return PREFS().set('budget.capPref', p);
     try {
       if (window.localStorage) window.localStorage.setItem(PREF_KEY, JSON.stringify(p));
       return true;
@@ -838,7 +852,7 @@
     setText(refs.result, heroForms(r)[refs.heroForm || 0]);
     setTone(refs.result, 'bl-result', !r.covered ? 'is-neg' : (onTrack(r) ? 'is-even' : 'is-ok'));
     setText(refs.refCalc, fill(STRINGS.refCalc, { n: down(r.c0) }));
-    setText(refs.refSaved, r.saved ? fill(STRINGS.refSaved, { n: down(r.saved.cap) }) : STRINGS.refNoSaved);
+    setText(refs.refSaved, r.saved ? fill(r.saved.fromGoal ? STRINGS.refGoal : STRINGS.refSaved, { n: down(r.saved.cap) }) : STRINGS.refNoSaved);
     // The row under the reference lines: a reset when something moved,
     // otherwise a quiet word. Same height either way, so nothing shifts.
     var changed = !r.capIsCalculated || r.cutsAsked > 0;
@@ -1720,6 +1734,17 @@
     if (LAB.bound) return;
     LAB.bound = true;
     try { if (B()) B().onChange(redraw); } catch (e) { warn('budget: ' + (e && e.message)); }
+    // A cap saved on another screen: the reference line and tick follow here
+    // (paint only, so a slider being moved here keeps its place).
+    try {
+      if (PREFS() && typeof PREFS().onChange === 'function') {
+        PREFS().onChange(function (key) {
+          if (key !== 'budget.capPref' || !LAB.ctx || !LAB.ctx.isOpen() || !LAB.refs) return;
+          var r = result();
+          if (r && r.ok) paint(LAB.refs, r);
+        });
+      }
+    } catch (e) { warn('prefs: ' + (e && e.message)); }
   }
 
   try {
