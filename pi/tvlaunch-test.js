@@ -147,6 +147,15 @@ function make(ha, extra) {
     await ha.close();
   });
 
+  await check('TizenBrew opens the TV\'s "TizenBrewNextGeneration" source', async () => {
+    const ha = await fakeHa({ state: 'on', attrs: { source_list: ['Netflix', 'TizenBrewNextGeneration'] } });
+    const t = make(ha);
+    await t.l.launch({ kind: 'app', name: 'TizenBrew' }).done;
+    assert.strictEqual(ha.calls[0].body.source, 'TizenBrewNextGeneration');
+    assert.strictEqual(tvlaunch.pickSource(['Tizen Brew'], ['TizenBrew']), 'Tizen Brew');
+    await ha.close();
+  });
+
   await check('tizentube picks TizenTube over YouTube when both are listed', async () => {
     const ha = await fakeHa({ state: 'on', attrs: { source_list: ['YouTube', 'TizenTube'] } });
     const t = make(ha);

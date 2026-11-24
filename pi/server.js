@@ -162,7 +162,7 @@ const pantrydb = require('./pantrydb');
 const guestpin = require('./guestpin');
 const photos = require('./photos');
 
-const SERVER_VERSION = '0.33.0';
+const SERVER_VERSION = '0.33.1';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
