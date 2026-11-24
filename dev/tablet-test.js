@@ -140,6 +140,7 @@ function fakeLive(posts, tv) {
 }
 
 // One finger on selector at fractions fx of its width (first is the press, last the lift).
+// Returns whether the lift was left alone (false: no click follows).
 function touchBar(page, selector, fx) {
   return page.evaluate(([sel, xs]) => {
     let node = document.querySelector(sel);
@@ -150,10 +151,9 @@ function touchBar(page, selector, fx) {
       const t = new Touch({ identifier: 2, target: target, clientX: r.left + r.width * f, clientY: y });
       return target.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true }));
     }
-    const notCancelled = fire('touchstart', xs[0]);
+    fire('touchstart', xs[0]);
     for (let i = 1; i < xs.length; i++) fire('touchmove', xs[i]);
-    fire('touchend', xs[xs.length - 1]);
-    return notCancelled;
+    return fire('touchend', xs[xs.length - 1]);      // false: kept from becoming a click
   }, [selector, fx]);
 }
 
@@ -402,6 +402,21 @@ function sheetUp(page) {
       assert(await lampText(p) === '70%', 'shows ' + await lampText(p));
       await H.until(() => posts.length > 0, 3000, 'nothing sent');
       assert(posts.every((b) => b.on !== false) && posts[posts.length - 1].pct === 70 && posts.length <= 2, JSON.stringify(posts));
+      // A swipe up or down that starts on a bar is left to scroll the panel: no level, not cancelled.
+      posts.length = 0;
+      const kept = await p.evaluate((sel) => {
+        const node = document.querySelector(sel);
+        const r = node.getBoundingClientRect();
+        let ok = true;
+        [0, 6, 14, 30, 60].forEach((dy, i, a) => {
+          const type = i === 0 ? 'touchstart' : i === a.length - 1 ? 'touchend' : 'touchmove';
+          const t = new Touch({ identifier: 3, target: node, clientX: r.left + r.width * 0.3, clientY: r.top + r.height / 2 - dy });
+          if (!node.dispatchEvent(new TouchEvent(type, { touches: type === 'touchend' ? [] : [t], changedTouches: [t], bubbles: true, cancelable: true }))) ok = false;
+        });
+        return ok;
+      }, BAR);
+      await H.sleep(600);
+      assert(kept && await lampText(p) === '70%' && posts.length === 0, 'a swipe set the level: ' + JSON.stringify({ kept, posts }) + ' ' + await lampText(p));
       await p.ctx.close();
     });
 
