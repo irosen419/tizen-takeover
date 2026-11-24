@@ -562,6 +562,19 @@ async function main() {
             noErrors(page);
           } finally { await page.ctx.close(); }
         }
+        // Last month's figures are never shown as this month's.
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true, where: Object.assign(H.budgetSample.whereSample(), { month: '2026-10' }) }));
+        for (const lang of ['en', 'es']) {
+          const page = await open(env, { w: 8, h: 3, lang: lang });
+          try {
+            await openWhere(page);
+            const t = await text(page, '#panel .sp-wwait');
+            assert(lang === 'en' ? /Waiting for this month.s figures/.test(t) && /for Oct 2026\./.test(t) : /Esperando las cifras de este mes/.test(t) && /oct 2026/i.test(t), lang + ' old month: ' + t);
+            assert(await page.evaluate(() => !document.querySelector('#panel .sp-wbar')), lang + ': drew last month');
+            const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+            assert(!p.length, lang + ': ' + p.join('; '));
+          } finally { await page.ctx.close(); }
+        }
         await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true, where: { month: '2026-11' } }));
         let page = await open(env, { w: 8, h: 3 });
         try {
@@ -715,10 +728,19 @@ async function main() {
       try {
         for (const lang of ['en', 'es']) {
           const gapWords = lang === 'en' ? 'No data since Nov 12' : 'Sin datos desde el 12 nov';
+          // 1 column: the figure, then the last day with data under it.
+          const solo = await open(env, { w: 1, h: 1, lang: lang });
+          try {
+            const t = await text(solo, SEL + ' .sp-solo-gap');
+            assert(/12/.test(t), lang + ' 1x1: ' + await text(solo, SEL));
+            const p = await solo.evaluate(inspect, [SEL, 0.85]);
+            assert(!p.length, lang + ' 1x1: ' + p.join('; '));
+          } finally { await solo.ctx.close(); }
           for (const sz of [[3, 1], [4, 3], [8, 3]]) {
             const page = await open(env, { w: sz[0], h: sz[1], lang: lang });
             try {
               const t = await text(page, SEL);
+              assert(!/Down from|Baja desde/.test(t), lang + ' ' + sz.join('x') + ' direction said as current: ' + t);
               const short = lang === 'en' ? 'Last data Nov 12' : 'Último dato 12 nov';
               assert(t.indexOf(gapWords) >= 0 || (sz[1] === 1 && t.indexOf(short) >= 0), lang + ' ' + sz.join('x') + ': ' + t);
               assert(!/in a row|seguid/.test(t), lang + ' ' + sz.join('x') + ' stale streak: ' + t);
@@ -731,7 +753,9 @@ async function main() {
           try {
             await openPage(page);
             const sub = await text(page, '#panel .sp-kpi-sub.is-gap');
-            assert(sub === gapWords, lang + ' page: ' + sub);
+            const lastWords = lang === 'en' ? 'Last data Nov 12' : 'Último dato 12 nov';
+            assert(sub === lastWords + ' | ' + gapWords, lang + ' page: ' + sub);
+            assert(!/Down from|Baja desde/.test(await text(page, '#panel .sp-kpis')), lang + ': direction on the page');
             const c = await page.evaluate(() => ({ days: document.querySelectorAll('#panel .sp-day').length, f: window.HUB_SPENDING_TEST.focus() }));
             // 31 chart days to Nov 15; the last 3 are empty, so 28 drawn; focus on the last day with data.
             assert(c.days === 28 && c.f.n === 31 && c.f.date === '2026-11-12', JSON.stringify(c));

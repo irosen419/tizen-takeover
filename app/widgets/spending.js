@@ -53,12 +53,15 @@
  * each day that runs over, "Fri, Sat and Sun run over your goal". Motion once
  * per open: bars grow from the left (scaleX, 70 ms apart), ticks fade in, the
  * weekday bars grow up; none under reduced motion. No trends section yet:
- * "Where it goes is on its way" in a dashed pane.
+ * "Where it goes is on its way" in a dashed pane; figures for another month
+ * than today's (in the Pi's time zone): "Waiting for this month's figures".
  *
  * Old data (the budget app or the Pi was off): every window ends yesterday
  * (app/spending-math.js), so a day with no figure is never under or over and
  * the streak is not carried over. Where the streak shows (the Under goal
- * number's line) and in place of the verdict on a standard tile and a strip,
+ * number's line; the 7-day average's line says "Last data Nov 12" instead of
+ * a direction; a 1-column tile adds it under the figure) and in place of the
+ * verdict on a standard tile and a strip,
  * the tile and page say "No data since Nov 12" (amber); the chart runs to
  * yesterday with the missing days empty. With no day of data in the last 7
  * the tile and (with none in the chart either) the page say only that.
@@ -165,7 +168,8 @@
       and: ' and ',
       merchantNote: 'One order can count for two merchants (a delivery app and the restaurant), so these do not add up to the total.',
       wait: { head: 'Where it goes is on its way', line: 'The budget app has not sent spending by category, merchant and weekday yet. This page fills in as soon as it does.' },
-      empty: { head: 'Nothing to show for this month yet', line: 'The budget app sent no categories, merchants or weekday averages.' }
+      empty: { head: 'Nothing to show for this month yet', line: 'The budget app sent no categories, merchants or weekday averages.' },
+      old: { head: 'Waiting for this month\u2019s figures', line: 'The newest figures from the budget app are for {month}. This page fills in once this month\u2019s arrive.' }
     }
   };
 
@@ -445,7 +449,7 @@
       var g = svgEl('g', 'sp-day', svg);
       g.style.webkitTransformOrigin = '0px ' + px(base) + 'px';
       g.style.transformOrigin = '0px ' + px(base) + 'px';
-      if (o.anim) g.style.animationDelay = Math.round(80 + i * step) + 'ms';
+      if (o.anim) g.style.animationDelay = g.style.webkitAnimationDelay = Math.round(80 + i * step) + 'ms';
       var x = cx(i) - bw / 2;
       if (r.spent <= 0) {
         var dot = svgEl('circle', 'sp-zero', g);
@@ -653,6 +657,12 @@
     root.className += ' sp-solo';
     var n = el('div', 'sp-solo-num', root, cash(r.avg7));
     fitWidth(n);
+    // Old data: the last day with data under the figure ("Last data Nov 12", else "Nov 12").
+    if (r.gap) {
+      var g = el('div', 'sp-solo-gap is-gap', root);
+      if (!fitForms(g, [fill(STRINGS.noDataShort, { d: dateText(r.gap.since) }), dateText(r.gap.since)])) drop(g);
+      else if (overH(root)) drop(g);
+    }
   }
 
   function stripTile(root, r, size) {
@@ -698,7 +708,9 @@
   function kpiList(r, four) {
     var out = [];
     var df = dirForms(r);
-    out.push({ key: 'avg7', label: STRINGS.kpi.avg7, value: r.avg7, money: true, sub: df[0] || '', subShort: df[1] || '', tone: dirTone(r) });
+    // Old data: no direction said as if current, the last day with data instead.
+    if (r.gap) out.push({ key: 'avg7', label: STRINGS.kpi.avg7, value: r.avg7, money: true, sub: fill(STRINGS.noDataShort, { d: dateText(r.gap.since) }), tone: 'is-gap' });
+    else out.push({ key: 'avg7', label: STRINGS.kpi.avg7, value: r.avg7, money: true, sub: df[0] || '', subShort: df[1] || '', tone: dirTone(r) });
     if (judged(r)) {
       out.push({ key: 'under', label: STRINGS.kpi.under, value: r.under.under, small: ofDays(r.under.judged), sub: streakText(r), tone: r.gap ? 'is-gap' : r.streak > 0 ? 'is-ok' : '' });
       out.push({ key: 'kept', label: STRINGS.kpi.kept, value: r.kept, money: true, sub: fill(STRINGS.lastDays, { m: 14 }), numTone: Math.round(r.kept) < 0 ? 'is-neg' : '' });
@@ -1022,6 +1034,18 @@
     S.ctx.redrawPanel();
   }
 
+  // 'YYYY-MM' of today in the Pi's time zone, or '' when it is not known.
+  function thisMonth() {
+    var t = '';
+    try { t = B() ? B().today() : ''; } catch (e) { t = ''; }
+    return /^\d{4}-\d{2}-\d{2}$/.test(t || '') ? t.slice(0, 7) : '';
+  }
+
+  function monthText(ym) {
+    var m = /^(\d{4})-(\d{2})$/.exec(ym || '');
+    return m ? STRINGS.monthsShort[+m[2] - 1] + ' ' + m[1] : ym;
+  }
+
   function trendsOf() {
     var d = snapshot();
     return d && d.trends && typeof d.trends === 'object' ? d.trends : null;
@@ -1159,7 +1183,7 @@
       var g = svgEl('g', 'sp-day', svg);
       g.style.webkitTransformOrigin = '0px ' + px(base) + 'px';
       g.style.transformOrigin = '0px ' + px(base) + 'px';
-      if (anim) g.style.animationDelay = Math.round(500 + i * 60) + 'ms';
+      if (anim) g.style.animationDelay = g.style.webkitAnimationDelay = Math.round(500 + i * 60) + 'ms';
       if (d.bar <= 0) {
         var dot = svgEl('circle', 'sp-zero', g);
         dot.setAttribute('cx', px(cx));
@@ -1227,6 +1251,11 @@
     var W = STRINGS.where;
     var m = MATH();
     var wh = m.where(trendsOf(), r.goal);
+    // Figures for another month (the budget app has not sent this one yet) are
+    // never shown as this month's.
+    var month = thisMonth();
+    var old = !wh.empty && !!month && wh.month !== month;
+    if (old) wh.empty = true;
     var anim = !wh.empty && !S.wAnimated && canMove();
     if (!wh.empty) S.wAnimated = true;
     var page = el('div', 'sp-page sp-wpage' + (full ? ' is-full' : '') + (stale() ? ' is-stale' : '') + (anim ? ' sp-anim' : ''), root);
@@ -1234,10 +1263,10 @@
     if (wh.empty) {
       // No section yet (the budget app sends it from its own release on), or
       // one with nothing in it: a quiet dashed pane, like a "Soon" tile.
-      var msg = wh.has ? W.empty : W.wait;
-      var pane = el('div', 'sp-wwait', page);
+      var msg = old ? W.old : wh.has ? W.empty : W.wait;
+      var pane = el('div', 'sp-wwait' + (old ? ' is-old' : ''), page);
       el('div', 'sp-pmsg-head', pane, msg.head);
-      el('div', 'sp-pmsg-line', pane, msg.line);
+      el('div', 'sp-pmsg-line', pane, fill(msg.line, { month: monthText(wh.month) }));
       mark(pane, 'is-wait');
       return;
     }

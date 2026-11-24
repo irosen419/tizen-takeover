@@ -700,6 +700,8 @@
     'spending.where.wait.head': 'En qué se va está en camino',
     'spending.where.wait.line': 'La app de presupuesto todavía no envía el gasto por categoría, comercio y día de la semana. Esta página se llena en cuanto lo haga.',
     'spending.where.empty.head': 'Nada que mostrar este mes todavía',
+    'spending.where.old.head': 'Esperando las cifras de este mes',
+    'spending.where.old.line': 'Las cifras más recientes de la app de presupuesto son de {month}. Esta página se llena cuando lleguen las de este mes.',
     'spending.where.empty.line': 'La app de presupuesto no envió categorías, comercios ni promedios por día.',
     // The activity chip when new figures arrive (one line at 22 px in a 3-column tile;
     // its English is in app/motion.js's kinds table).

@@ -127,6 +127,7 @@
 /* 1 column: the one figure */
 .sp-tile.sp-solo { justify-content: center; align-items: center; }
 .sp-solo-num { max-width: 100%; font-size: 2.4rem; font-weight: 300; line-height: 1.3; white-space: nowrap; overflow: hidden; }
+.sp-solo-gap { max-width: 100%; font-size: 0.85rem; line-height: 1.3; white-space: nowrap; color: var(--ok-optional); }
 
 /* strip: one line */
 .sp-tile.sp-strip { justify-content: center; padding-top: 0; }
