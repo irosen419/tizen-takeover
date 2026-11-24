@@ -230,6 +230,35 @@ function make(ha, extra) {
     await ha.close();
   });
 
+  await check('title and link: checked, open the app only, never logged or kept', async () => {
+    const r = tvlaunch.normalize({ kind: 'app', name: 'Netflix', title: 'Stranger Things', link: '80057281' });
+    assert.strictEqual(r.title, 'Stranger Things');
+    assert.strictEqual(r.link, '80057281');
+    [{ kind: 'app', name: 'a', title: '' }, { kind: 'app', name: 'a', title: 'x'.repeat(81) }, { kind: 'app', name: 'a', title: 'a\nb' },
+      { kind: 'app', name: 'a', link: 'https://x/y' }, { kind: 'app', name: 'a', link: 'a b' }, { kind: 'app', name: 'a', link: 5 },
+      { kind: 'key', name: 'a', key: 'KEY_A', title: 'Show' }].forEach((b) => {
+      assert.throws(() => tvlaunch.normalize(b), (e) => e.status === 400, JSON.stringify(b));
+    });
+    // Netflix with a link, and the app not seen open: the remote link opens the app by name, never a deep link.
+    const ha = await fakeHa({ state: 'on', attrs: { source_list: ['Netflix'], app_name: 'TizenBrew' } });
+    const t = make(ha);
+    const rec = await t.l.launch({ kind: 'app', name: 'Netflix', title: 'Stranger Things', link: '80057281' }).done;
+    assert.strictEqual(rec.ok, true);
+    assert.strictEqual(ha.calls[0].body.source, 'Netflix');
+    assert.strictEqual(t.remote.runs.length, 1);
+    assert.strictEqual(t.remote.runs[0].link, 'none');
+    assert.ok(JSON.stringify(t.remote.runs[0]).indexOf('80057281') < 0);
+    // YouTube with a video id: TizenTube (or YouTube) opens, nothing more.
+    ha.attrs.source_list = ['YouTube', 'TizenTube'];
+    ha.attrs.app_name = 'TizenTube';
+    const yt = await t.l.launch({ kind: 'tizentube', name: 'YouTube', title: 'Hot Ones', link: 'dQw4w9WgXcQ' }).done;
+    assert.strictEqual(yt.ok, true);
+    const all = t.logs.join('\n') + JSON.stringify(await t.l.status());
+    ['Stranger', '80057281', 'Hot Ones', 'dQw4w9WgXcQ'].forEach((x) => assert.ok(all.indexOf(x) < 0, x + ' leaked: ' + all));
+    assert.ok(/video id not used/.test(all) && /show link not used/.test(all), all);
+    await ha.close();
+  });
+
   await check('status lists the TV state and its sources, never the token', async () => {
     const ha = await fakeHa({ state: 'on' });
     const t = make(ha);

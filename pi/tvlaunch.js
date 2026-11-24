@@ -14,6 +14,14 @@
  * One launch at a time. The log holds the kind and what happened,
  * never an app's name, the token, an address, an entity id or a webhook id.
  *
+ * A show's Watch from the tablet may add title (the show's name) and link (its
+ * id in its app, pi/shows.js). Both are checked and never logged or kept in
+ * the status. Neither changes what opens: the app only. No title link works on
+ * this TV (the remote link's DEEP_LINK crashes Netflix: "this app doesn't
+ * support your TV"), and a YouTube video id has no way in either: TizenTube is
+ * a TizenBrew module the hub page itself opens, and the hub's commands (show,
+ * home, reload) cannot reach it. The tablet shows "Go to: <title>" instead.
+ *
  * Node 14 or newer, no npm packages. Tests: node pi/tvlaunch-test.js
  */
 'use strict';
@@ -24,9 +32,10 @@ const https = require('https');
 const DEFAULT_URL = 'http://127.0.0.1:8123';
 const DEFAULT_ENTITY = 'media_player.living_room_tv';
 const KINDS = ['app', 'tizentube', 'key', 'webhook'];
-const FIELDS = ['kind', 'name', 'match', 'key', 'url'];
+const FIELDS = ['kind', 'name', 'match', 'key', 'url', 'title', 'link'];
 const NAME_RE = /^[\p{L}\p{N} .+&'_-]{1,40}$/u;
 const KEY_RE = /^KEY_[A-Z0-9_]{1,30}$/;
+const LINK_RE = /^[A-Za-z0-9._:-]{1,80}$/; // as pi/shows.js
 const HOOK_RE = /^\/api\/webhook\/[A-Za-z0-9_-]{1,100}$/;
 const OFF_STATES = ['off', 'unavailable', 'unknown', ''];
 const MAX_REPLY = 512 * 1024;
@@ -61,7 +70,16 @@ function normalize(raw) {
   Object.keys(raw).forEach((k) => { if (FIELDS.indexOf(k) < 0) throw bad('"' + k + '" is not something a launch takes (use ' + FIELDS.join(', ') + ')'); });
   if (KINDS.indexOf(raw.kind) < 0) throw bad('"kind" must be one of: ' + KINDS.join(', '));
   if (typeof raw.name !== 'string' || !NAME_RE.test(raw.name)) throw bad('"name" must be 1 to 40 letters, digits, spaces or . + & \' _ -');
-  const req = { kind: raw.kind, name: raw.name, match: [], key: '', hook: '' };
+  const req = { kind: raw.kind, name: raw.name, match: [], key: '', hook: '', title: '', link: '' };
+  if (raw.title !== undefined && raw.title !== null) {
+    if (typeof raw.title !== 'string' || !raw.title.trim() || Array.from(raw.title).length > 80 || /[\u0000-\u001f\u007f]/.test(raw.title)) throw bad('"title" must be a show\'s name, up to 80 characters');
+    req.title = raw.title.trim();
+  }
+  if (raw.link !== undefined && raw.link !== null && raw.link !== '') {
+    if (typeof raw.link !== 'string' || !LINK_RE.test(raw.link)) throw bad('"link" must be a show\'s id in its app: 1 to 80 letters, digits or . _ : -');
+    req.link = raw.link;
+  }
+  if ((req.title || req.link) && raw.kind !== 'app' && raw.kind !== 'tizentube') throw bad('"title" and "link" go with kind "app" or "tizentube"');
   if (raw.match !== undefined && raw.match !== null) {
     if (!Array.isArray(raw.match) || raw.match.length > 8 || raw.match.some((m) => typeof m !== 'string' || !NAME_RE.test(m))) throw bad('"match" must be up to 8 app names');
     req.match = raw.match.slice();
@@ -264,6 +282,8 @@ function create(o) {
       rec.steps.push(sent ? 'key sent' : 'key refused');
       return sent;
     }
+    // A show's link opens nothing more (see the top): the app alone. Never logged.
+    if (req.link) rec.steps.push(req.kind === 'tizentube' ? 'video id not used (no way into TizenTube)' : 'show link not used (app only)');
     // TizenTube is its own app only when sideloaded; else the plain YouTube app opens.
     const names = req.kind === 'tizentube' ? ['TizenTube', 'YouTube'] : req.match;
     return openApp(req, names, rec);

@@ -34,7 +34,7 @@
  *   ./hub budget set <file.json|->   store one (the snapshot, or { snapshot: {...} })
  *   ./hub budget clear               remove it; the TV tiles say "Waiting for the budget app"
  *   ./hub shows list                 the TV show list: running or ended, what airs next
- *   ./hub shows add "Stick" --service "Apple TV" [--id 12345] [--watch Hulu] [--also "Hulu,Peacock"] [--via "Prime Video"]
+ *   ./hub shows add "Stick" --service "Apple TV" [--id 12345] [--watch Hulu] [--also "Hulu,Peacock"] [--via "Prime Video"] [--link 80123456]
  *   ./hub shows remove "Stick"       take a show off the list
  *   ./hub shows refresh              ask TVmaze about every show now
  *   ./hub shows watched "Stick" [S3E4]   mark an episode watched (none named: the earliest out and unmarked)
@@ -707,13 +707,14 @@ async function showsCommand(args) {
     return;
   }
   if (sub === 'add') {
-    const a = parseArgs(args.slice(1), ['service', 'id', 'watch', 'also', 'via']);
+    const a = parseArgs(args.slice(1), ['service', 'id', 'watch', 'also', 'via', 'link']);
     const name = a.words.join(' ').trim();
     if (!name) stop('Say which show, for example: ./hub shows add "Stick" --service "Apple TV"');
     const entry = { name: name };
     if (a.opts.service !== undefined) entry.service = a.opts.service;
     if (a.opts.watch !== undefined) entry.serviceOverride = a.opts.watch;
     if (a.opts.via !== undefined) entry.via = a.opts.via;
+    if (a.opts.link !== undefined) entry.link = String(a.opts.link);
     if (a.opts.also !== undefined) entry.alsoOn = String(a.opts.also).split(',').map((x) => x.trim()).filter(Boolean);
     if (a.opts.id !== undefined) {
       if (!/^\d{1,9}$/.test(String(a.opts.id))) stop('--id must be the TVmaze show number, like 12345.');
@@ -1396,7 +1397,8 @@ const HELP = [
   '  ./hub shows add "Stick" --service "Apple TV"   add a show (--id 12345 sets its TVmaze number,',
   '                              --watch Hulu opens another app than the badge says,',
   '                              --also "Hulu,Peacock" lists other apps that carry it,',
-  '                              --via "Prime Video" opens it in the app it is billed through)',
+  '                              --via "Prime Video" opens it in the app it is billed through,',
+  '                              --link 80123456 its id in its app, kept for later; the app opens)',
   '  ./hub shows remove "Stick"  take a show off the list',
   '  ./hub shows refresh         ask TVmaze about every show now (it also does so every 6 hours)',
   '  ./hub shows watched "Stick" S3E4   mark an episode watched by hand (S3E4 left out: the earliest out and unmarked);',

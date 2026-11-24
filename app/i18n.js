@@ -1366,6 +1366,8 @@
     'shows.states.pageOld.line': 'El servidor del hub en la Pi todavía no envía listas de episodios. Actualízalo (pi/README.md) y reinícialo.',
     'shows.opensHome': '{service} se abre en su pantalla de inicio',
     'shows.searchFor': 'Busca: {name}',
+    'shows.goTo': 'Ir a: {name}',
+    'shows.goToLine': 'Búscalo en {service} en la TV. Toca para cerrar.',
     'shows.notInstalled': '{service} no está en esta TV.',
     'shows.noApp': '{name} no tiene app. Dale una en la Pi: ./hub shows add "{name}" --service Netflix',
     'shows.stillLooking': 'Todavía busco tus apps. Inténtalo en un segundo.',

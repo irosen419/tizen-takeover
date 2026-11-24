@@ -14,7 +14,9 @@
  * opens its app ("Watch on Hulu"), through a ladder per service: a deep link
  * when one is known (none yet; the watch link test in the About panel is
  * finding out which work), otherwise the app itself and a toast saying what
- * to search for.
+ * to search for. On the tablet (no service.js) the Pi opens the app on the
+ * TV (host.launch with the show's title and link); once it has the request, a
+ * "Go to: <title>" card says what to look for there, until a tap (30 s).
  *
  * Each show has a watch app (the Pi list's service). watchAliases in
  * HUB_CONFIG.widgets.entertainment sends a whole service elsewhere (by
@@ -130,6 +132,8 @@
     todayLine: 'Today: {name} {time}',
     opensHome: '{service} opens on its home screen',
     searchFor: 'Search for: {name}',
+    goTo: 'Go to: {name}',
+    goToLine: 'Find it in {service} on the TV. Tap to close.',
     finishTitle: 'Did you finish?',
     finishWatched: 'Watched',
     finishNotYet: 'Not yet',
@@ -821,7 +825,7 @@
   }
 
   // OK on an episode or a show: its app, by the ladder. Returns what it did,
-  // for the tests: 'deeplink', 'app', 'missing', 'noservice' or 'waiting'.
+  // for the tests: 'deeplink', 'app', 'tv' (tablet: the Pi opens it), 'missing', 'noservice' or 'waiting'.
   function watch(show, eps, other) {
     var C = S.C;
     var host = S.host;
@@ -845,6 +849,14 @@
       if (!host || !host.appsReady()) { toast(word('stillLooking'), 3500); return 'waiting'; }
       var app = host.findApp(lad.fallbackOpenApp.match);
       if (!app) { toast(word('notInstalled', { service: service }), 4500); return 'missing'; }
+      // Tablet: the Pi opens it on the TV; then the show's title to look for.
+      if (typeof host.onTv === 'function' && host.onTv()) {
+        host.launch(app.id, service, { title: show.name, link: typeof show.link === 'string' ? show.link : '' }, function (err) {
+          if (!err) goToCard(show.name, service);
+        });
+        noteStarted(show, eps);
+        return 'tv';
+      }
       // No deep link: say first what will happen, then open the app.
       showCard(word('opensHome', { service: service }), word('searchFor', { name: show.name }), function () {
         host.launch(app.id, service);
@@ -1240,6 +1252,40 @@
     timer = setTimeout(done, CARD_MS);
     // One frame later, so the fade in has something to start from.
     setTimeout(function () { if (!finished) node.className = 'sh-go-card is-shown'; }, 20);
+  }
+
+  // Tablet: after the Pi took a Watch, "Go to: <title>" until a tap, a key or GO_MS.
+  var GO_MS = 30000;
+  var goCard = null;
+
+  function goToCard(name, service) {
+    if (goCard) goCard.close();
+    var node = document.createElement('div');
+    node.className = 'sh-go-card';
+    node.setAttribute('role', 'button');
+    var t = document.createElement('div');
+    t.className = 'sh-go-card-title';
+    t.textContent = word('goTo', { name: name });
+    var l = document.createElement('div');
+    l.className = 'sh-go-card-line';
+    l.textContent = word('goToLine', { service: service });
+    node.appendChild(t);
+    node.appendChild(l);
+    document.body.appendChild(node);
+    var me = { node: node, close: close };
+    var timer = setTimeout(close, GO_MS);
+    function close() {
+      clearTimeout(timer);
+      node.removeEventListener('click', close);
+      document.removeEventListener('keydown', close, true);
+      if (node.parentNode) node.parentNode.removeChild(node);
+      if (goCard === me) goCard = null;
+    }
+    node.addEventListener('click', close);
+    document.addEventListener('keydown', close, true);
+    goCard = me;
+    setTimeout(function () { if (goCard === me) node.className = 'sh-go-card is-shown'; }, 20);
+    return me;
   }
 
   /* ---------- live data ---------- */
@@ -2366,7 +2412,8 @@
       weekStart: weekStart, monthEnd: monthEnd, setData: function (d) { S.raw = d; S.data = streamView(d); S.fromCache = false; changed(); }, streamView: streamView, channelStreams: channelStreams,
       openPage: function (id) { openPage(id, null); },
       pageState: function () { return P.state; }, epsCached: function (id) { return epsGet(id); }, pendingMark: pendingMark, isWatchedEp: isWatchedEp,
-      tab: function (t) { if (t) S.tab = t; return S.tab; }
+      tab: function (t) { if (t) S.tab = t; return S.tab; },
+      ctx: function () { return S.C; }
     }
   };
 })();

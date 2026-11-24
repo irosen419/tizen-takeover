@@ -6,7 +6,7 @@
  * hands the result to server.js, which keeps it as the resource "shows" and
  * pushes it to the TV. The contract is docs/shows-snapshot.md.
  *
- *   list entry   { name, service?, tvmazeId?, serviceOverride?, alsoOn?, via? }
+ *   list entry   { name, service?, tvmazeId?, serviceOverride?, alsoOn?, via?, link? }
  *                name: as the owner says it; service: the show's watch app,
  *                its badge on the TV (wins over what TVmaze says);
  *                serviceOverride: the app "Watch on" opens when it differs
@@ -15,7 +15,11 @@
  *                billed through and opened in ("Prime Video" for HBO Max
  *                through Prime Video Channels; the badge still says
  *                HBO Max); tvmazeId: filled in by the
- *                first lookup and kept. The TV may also send a whole
+ *                first lookup and kept; link: the show's own id in its
+ *                app (a Netflix/Prime number, a YouTube video id), letters,
+ *                digits and . _ : - only, at most 80; carried to the TV and
+ *                to POST /tv/launch, which today only opens the app (no
+ *                title link works on this TV yet). The TV may also send a whole
  *                service elsewhere (widgets.entertainment.watchAliases in
  *                app/config.js, Hulu -> Disney+ by default).
  *
@@ -89,6 +93,8 @@ const MAX_NAME = 80;
 const MAX_SERVICE = 24;
 const MAX_EP_NAME = 80;
 const MAX_ALSO = 4;
+const MAX_LINK = 80;
+const LINK_RE = /^[A-Za-z0-9._:-]{1,80}$/; // a show's id in its app, never a whole address
 const MAX_LEFT = 6;             // seasons in progress.left
 const MAX_UNWATCHED = 200;      // exceptions inside the up-to point kept per show
 const MAX_EPISODES = 800;        // episodes kept in a show's full list
@@ -185,8 +191,8 @@ function normalizeEntry(raw, where) {
   if (typeof raw === 'string') raw = { name: raw };
   if (!isObj(raw)) throw bad('each show must be an object like {"name": "Stick", "service": "Apple TV"}' + at);
   Object.keys(raw).forEach((k) => {
-    if (['name', 'service', 'tvmazeId', 'serviceOverride', 'alsoOn', 'via', 'watched', 'upTo', 'unwatched'].indexOf(k) < 0) {
-      throw bad('unknown field "' + cleanText(k, 30) + '" (use name, service, tvmazeId, serviceOverride, alsoOn, via, watched, upTo, unwatched)' + at);
+    if (['name', 'service', 'tvmazeId', 'serviceOverride', 'alsoOn', 'via', 'link', 'watched', 'upTo', 'unwatched'].indexOf(k) < 0) {
+      throw bad('unknown field "' + cleanText(k, 30) + '" (use name, service, tvmazeId, serviceOverride, alsoOn, via, link, watched, upTo, unwatched)' + at);
     }
   });
   const name = cleanText(raw.name, MAX_NAME + 1);
@@ -204,6 +210,10 @@ function normalizeEntry(raw, where) {
     const n = typeof raw.tvmazeId === 'string' && /^\d{1,9}$/.test(raw.tvmazeId) ? Number(raw.tvmazeId) : raw.tvmazeId;
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > 999999999) throw bad('"tvmazeId" must be a whole number' + at);
     out.tvmazeId = n;
+  }
+  if (raw.link !== undefined && raw.link !== null && raw.link !== '') {
+    if (typeof raw.link !== 'string' || !LINK_RE.test(raw.link.trim())) throw bad('"link" must be the show\'s id in its app: 1 to ' + MAX_LINK + ' letters, digits or . _ : -' + at);
+    out.link = raw.link.trim();
   }
   if (raw.alsoOn !== undefined && raw.alsoOn !== null) {
     const list = typeof raw.alsoOn === 'string' ? raw.alsoOn.split(',') : raw.alsoOn;
@@ -496,6 +506,7 @@ function buildShow(entry, show, episodes, nowMs) {
     channel: channel,
     alsoOn: (entry.alsoOn || []).slice(),
     via: entry.via || null,
+    link: entry.link || null,
     status: status,
     running: status !== 'Ended',
     tvmazeId: Number.isInteger(s.id) ? s.id : entry.tvmazeId || null,
@@ -511,7 +522,7 @@ function buildShow(entry, show, episodes, nowMs) {
 function placeholder(entry, error, nowMs) {
   return applyWatched({
     id: slug(entry.name), name: entry.name, service: entry.service || '', watch: entry.serviceOverride || entry.service || '',
-    channel: '', alsoOn: (entry.alsoOn || []).slice(), via: entry.via || null, status: '', running: null, tvmazeId: entry.tvmazeId || null, checkedAt: null,
+    channel: '', alsoOn: (entry.alsoOn || []).slice(), via: entry.via || null, link: entry.link || null, status: '', running: null, tvmazeId: entry.tvmazeId || null, checkedAt: null,
     nextEpisode: null, upcoming: [], returning: null, error: error || 'not looked up yet'
   }, entry, [], nowMs);
 }
@@ -571,6 +582,7 @@ function cleanShow(s) {
     channel: cleanText(s.channel, MAX_SERVICE),
     alsoOn: (Array.isArray(s.alsoOn) ? s.alsoOn : []).map((x) => cleanText(x, MAX_SERVICE)).filter(Boolean).slice(0, MAX_ALSO),
     via: cleanText(s.via, MAX_SERVICE) || null,
+    link: typeof s.link === 'string' && LINK_RE.test(s.link) ? s.link : null,
     status: cleanText(s.status, 24),
     running: typeof s.running === 'boolean' ? s.running : null,
     tvmazeId: Number.isInteger(s.tvmazeId) ? s.tvmazeId : null,
@@ -865,6 +877,7 @@ function createTracker(o) {
       copy.watch = e.serviceOverride || e.service || copy.channel;
       copy.alsoOn = (e.alsoOn || []).slice();
       copy.via = e.via || null;
+      copy.link = e.link || null;
       copy.upcoming = copy.upcoming.filter((x) => Date.parse(x.airstamp) >= t - BACK_MS);
       if (why) { copy.stale = true; copy.error = why; }
       return applyWatched(copy, e, episodeLists[id], t);
@@ -1265,7 +1278,7 @@ function listLines(r) {
     const s = byId[slug(e.name)];
     const badge = e.service || (s && s.channel) || 'no service';
     let line = '  ' + e.name + ' (' + badge + (e.serviceOverride ? ', watch on ' + e.serviceOverride : '') +
-      (e.alsoOn && e.alsoOn.length ? ', also on ' + e.alsoOn.join(', ') : '') + (e.via ? ', via ' + e.via : '') + ')';
+      (e.alsoOn && e.alsoOn.length ? ', also on ' + e.alsoOn.join(', ') : '') + (e.via ? ', via ' + e.via : '') + (e.link ? ', link set' : '') + ')';
     if (!s || s.checkedAt === null) line += ': ' + ((s && s.error) || 'not looked up yet');
     else {
       line += ': ' + (s.running === false ? 'ended' : 'still running' + (s.status && s.status !== 'Running' ? ' (' + s.status.toLowerCase() + ')' : ''));
@@ -1300,6 +1313,7 @@ function summaryData(r) {
       if (e.serviceOverride) o.serviceOverride = e.serviceOverride;
       if (e.alsoOn) o.alsoOn = e.alsoOn.slice();
       if (e.via) o.via = e.via;
+      if (e.link) o.link = e.link;
       if (e.tvmazeId) o.tvmazeId = e.tvmazeId;
       if (e.watched && e.watched.length) o.watched = e.watched.map((x) => ({ season: x.s, number: x.e, at: x.at }));
       if (e.upTo) o.upTo = { season: e.upTo.s, number: e.upTo.e, at: e.upTo.at };

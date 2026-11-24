@@ -3726,7 +3726,8 @@
   // The one way a tablet with no service.js opens something on the TV: the
   // Pi turns the TV on if it is off, waits for it, then opens it through
   // Home Assistant (POST /tv/launch). req: { kind: 'app' | 'tizentube' |
-  // 'key' | 'webhook', name, match?, key?, url? }. cb(err) when it answered.
+  // 'key' | 'webhook', name, match?, key?, url?, title?, link? } (title and link:
+  // a show's Watch, docs/tablet-mode.md). cb(err) when it answered.
   function launchOnTv(req, cb) {
     req = req || {};
     var name = String(req.name || '');

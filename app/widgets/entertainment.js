@@ -349,6 +349,14 @@
     viaService();
   }
 
+  // The Entertainment item that opens TizenTube under this label (YouTube), or null.
+  function tubeFor(label) {
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].cfg.kind === 'tizentube' && items[i].cfg.label === label) return items[i].cfg;
+    }
+    return null;
+  }
+
   // The names to find an app by, from the Entertainment item with this label.
   function matchFor(label) {
     for (var i = 0; i < items.length; i++) {
@@ -367,10 +375,20 @@
     findApp: function (match) { return noTv() ? (match && match.length ? { id: '', name: match[0] } : null) : findApp(match); },
     appsReady: function () { return !!apps || noTv(); },
     apps: function () { return apps ? apps.slice() : null; },
-    launch: function (id, label) {
-      if (noTv()) { C.launchOnTv({ kind: 'app', name: label, match: matchFor(label) || [label] }); return; }
+    // show (optional): { title, link } of a show's Watch; with no service.js the
+    // Pi gets them (it opens the app only) and cb(err) says when it answered.
+    launch: function (id, label, show, cb) {
+      if (noTv()) {
+        // YouTube is TizenTube here (through TizenBrew), as on the Entertainment tile.
+        var req = tubeFor(label) ? { kind: 'tizentube', name: label } : { kind: 'app', name: label, match: matchFor(label) || [label] };
+        if (show && show.title) req.title = String(show.title).slice(0, 80);
+        if (show && show.link) req.link = show.link;
+        C.launchOnTv(req, cb);
+        return;
+      }
       launchById(id, label);
     },
+    onTv: noTv,
     launchControl: function (c, cb) { if (noTv()) { cb('no TV helper'); return; } launchControl(c, cb); },
     matchFor: matchFor
   };
