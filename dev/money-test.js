@@ -667,7 +667,7 @@ async function main() {
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const t = await text(page, LAB_TILE);
-        assert(/^\$62\s*a day/.test(t.trim()) && /Keeps Nov 19 covered/.test(t) && !/New streak|nothing to spare/.test(t), 'tile: ' + t);
+        assert(/^\$62\s*safe today/.test(t.trim()) && /Keeps Nov 19 covered/.test(t) && !/New streak|nothing to spare/.test(t), 'tile: ' + t);
         assert(/1 day under/.test(t) && /Stay under \$62 today/.test(t), 'tile: ' + t);
         assert(await has(page, LAB_TILE + ' .bl-oline.is-even'), 'the on track line is not amber');
         assert(await has(page, LAB_TILE + ' .bl-sbox.is-on .bl-scount') && await has(page, LAB_TILE + ' .bl-pip.is-lit'), 'no streak box with its count');
@@ -677,7 +677,7 @@ async function main() {
         storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const t = await text(strip, LAB_TILE);
-        assert(/\$62 a day · 1 day under/.test(t), 'strip: ' + t);
+        assert(/\$62 safe today · 1 day under/.test(t), 'strip: ' + t);
         noErrors(strip);
       } finally { await strip.ctx.close(); }
     });
@@ -709,7 +709,7 @@ async function main() {
         let p = await labPanel(page);
         assert(/\$62\s*a day/.test(p) && /Hold ◀ ▶ to change your daily cap/.test(p) && /Nov 19: on track at \$62 a day/.test(p) && !/covered, \$0 spare/i.test(p), 'panel: ' + p);
         assert(await has(page, '#panel .bl-result.is-even') && !(await has(page, '#panel .bl-result.is-ok')), 'the on track result is not amber');
-        assert(/Calculated \$62 a day/.test(p) && /No saved cap yet/.test(p) && /Down for merchants/.test(p), 'panel: ' + p);
+        assert(/Safe today \$62/.test(p) && /No saved cap yet/.test(p) && /Down for your daily goal/.test(p), 'panel: ' + p);
         assert(/The Daily room tile uses \$60 a day/.test(p), 'panel: ' + p);
         assert(/Stay under \$62 today for 2 days in a row/.test(p), 'pace: ' + p);
         const look = await page.evaluate(() => {
@@ -719,7 +719,7 @@ async function main() {
           const fs = getComputedStyle(f);
           const res = document.querySelector('#panel .bl-result');
           const rs = res.getBoundingClientRect();
-          const arrows = document.querySelectorAll('#panel .bl-arrow').length;
+          const arrows = document.querySelectorAll('#panel .bl-hero .bl-arrow').length;
           return { big: parseFloat(big.fontSize) / rem, edge: parseFloat(fs.borderTopWidth) / rem, color: fs.borderTopColor, bg: fs.backgroundColor,
             res: parseFloat(getComputedStyle(res).fontSize) / rem, resColor: getComputedStyle(res).color, underBig: rs.top >= document.querySelector('#panel .bl-big').getBoundingClientRect().bottom - 2,
             keys: document.querySelectorAll('#panel .bl-hero .bl-keyhint').length, arrows: arrows };
@@ -964,11 +964,13 @@ async function main() {
         assert((await session(page)).cuts['Hilltop Grocer'] === P_I[0], 'at the top: ' + JSON.stringify(await session(page)));
         assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'row: ' + (await cutLabels(page))[0]);
         assert((await fills(page))[1] === 'scaleX(1)', 'full fill: ' + (await fills(page))[1]);
-        // Up and Down go through the rows in order; Back to calculated sits between the cap and the first row.
+        // Up and Down go through the rows in order; Back to calculated and the daily goal sit between the cap and the first row.
         await press(page, 'ArrowDown');
         assert((await focusedKey(page)) === 'cut-1', 'Down: ' + await focusedKey(page));
         await press(page, 'ArrowUp', 2);
-        assert((await focusedKey(page)) === 'reset', 'Up from the first row: ' + await focusedKey(page));
+        assert((await focusedKey(page)) === 'goal', 'Up from the first row: ' + await focusedKey(page));
+        await press(page, 'ArrowUp');
+        assert((await focusedKey(page)) === 'reset', 'Up from the goal: ' + await focusedKey(page));
         await press(page, 'ArrowUp');
         assert((await focusedKey(page)) === 'cap', 'Up from Back to calculated: ' + await focusedKey(page));
         // Full screen all along: the cap and the rows on the left, the runway and Put it somewhere on the right; the cut is still there.
