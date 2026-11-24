@@ -10,8 +10,8 @@
  * is meant to be everyday spending only, rent and bills left out by the
  * budget app). The goal per day comes from a dated goal history
  * [{ from: 'YYYY-MM-DD', goal: dollars }], read in ONE place, goalHistory()
- * below. Until the goal history lands in the snapshot, that adapter takes
- * pace.goalHistory (or a top-level goalHistory) when present, else a single
+ * below. It reads pace.goals (the Pi hub server's list, oldest first, whole
+ * dollars; the goal on a day is the last entry on or before it), else a single
  * pace.goal number as one entry from the first day, else nothing. With no
  * goal the tile and page still show the bars, the 7-day against the 30-day
  * average and the typical day, and leave out the goal line, "under goal"
@@ -235,8 +235,7 @@
    */
   function goalHistory(d) {
     var p = d && d.pace;
-    if (p && isArr(p.goalHistory)) return p.goalHistory;
-    if (d && isArr(d.goalHistory)) return d.goalHistory;
+    if (p && isArr(p.goals)) return p.goals;
     if (p && isNum(p.goal) && p.goal > 0 && isArr(p.days)) {
       var first = null;
       for (var i = 0; i < p.days.length; i++) {

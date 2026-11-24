@@ -304,7 +304,7 @@ const SPENDING_GOALS = [{ from: '2026-10-16', goal: 75 }, { from: '2026-11-09', 
  * page.addInitScript before the hub's scripts). The hub server drops fields
  * it does not know, and the goal history is not in the snapshot yet (another
  * change brings it), so this adds it on the TV side: when budget.js sets
- * window.HUB_BUDGET, its data() gets pace.goalHistory from localStorage
+ * window.HUB_BUDGET, its data() gets pace.goals from localStorage
  * 'spending-test-goals' (JSON, absent = no goal). With 'spending-test-long'
  * set, every Spanish 'spending.' string also grows by a quarter with accents;
  * with 'spending-test-hide' set, widgets.budget.show is false.
@@ -322,8 +322,8 @@ function spendingHook() {
         var g = null;
         try { g = JSON.parse(localStorage.getItem('spending-test-goals') || 'null'); } catch (e) { g = null; }
         if (s && s.pace) {
-          if (g) s.pace.goalHistory = g;
-          else delete s.pace.goalHistory;
+          if (g) s.pace.goals = g;
+          else delete s.pace.goals;
         }
         return s;
       };
