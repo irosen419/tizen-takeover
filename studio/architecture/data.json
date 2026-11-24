@@ -2371,6 +2371,24 @@
          "dir": "in"
         }
        ]
+      },
+      {
+       "id": "pi.budget.trends",
+       "title": "Where it goes section",
+       "kind": "data",
+       "status": "unverified",
+       "summary": "The optional trends section (server 0.35.0): everyday spending this month by category and by top merchant against the usual (3-month average to the same day), and the average day per weekday.",
+       "details": [
+        "At most 8 categories and 8 merchants ({label, mtd, usual}), weekdays exactly 7 (Monday first, null for no data); every list optional so a later per-day list can join. The owner approved category totals on the TV on 2026-11-24; guest mode blurs them. ./hub budget show prints counts only.",
+        "The TV draws it on the Spending widget's second full-screen page, Where it goes; until the budget app sends it the page says it is on its way."
+       ],
+       "files": [
+        "pi/budget.js",
+        "pi/budget-test.js",
+        "docs/budget-snapshot.md",
+        "app/spending-math.js",
+        "app/widgets/spending.js"
+       ]
       }
      ]
     },

@@ -40,7 +40,8 @@
   // goes with it (− is U+2212, the minus the money widgets draw).
   var SIGN = '[+\\-\\u2212]?';
   var NUM = '\\d[\\d,]*(?:\\.\\d+)?';
-  var CASH = SIGN + '[$\\u20ac\\u00a3]\\s?' + NUM + '(?:\\s?[kKmM]\\b)?';                  // $42, −$12, +$8,111, $1.2k, €9
+  // The k/m suffix must end the word, accents counted as letters: "$12 más" is $12.
+  var CASH = SIGN + '[$\\u20ac\\u00a3]\\s?' + NUM + '(?:\\s?[kKmM](?![\\w\\u00c0-\\u024f]))?';  // $42, −$12, +$8,111, $1.2k, €9
   var CODE = SIGN + '\\b[A-Z]{3}\\s' + NUM;                             // EUR 1,200 (awws.js money())
   var PERCENT = SIGN + NUM + '\\s?%';                                                      // not used yet
   var MATCHERS = [CASH, CODE];

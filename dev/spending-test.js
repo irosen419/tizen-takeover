@@ -19,6 +19,9 @@
  *     30-day average instead; empty and partial data ("Trend starts
  *     building"); no pace section ("Waiting for the budget app"); old data
  *     dims; widgets.budget.show false hides it;
+ *   - stale data (pace stops before yesterday): "No data since Nov 12" in
+ *     place of the streak and the verdict, the chart runs to yesterday with
+ *     empty days, over a week stale a message instead of the figures;
  *   - Guest mode: no dollar readable on the tile or the page, every blur is
  *     one amount, "12 of 14 days" and the legend stay readable;
  *   - Spanish, and Spanish 25% longer with accents: tile sizes and the page,
@@ -26,6 +29,11 @@
  *   - motion: only transform and opacity animate, at most 40 elements, the
  *     numbers end exact; reduced motion draws the final state at once;
  *   - tablet (1280x800 and 600 wide): the page scrolls by touch to its end;
+ *   - Where it goes (the second page, dev/budget-sample.js whereSample()):
+ *     Down from Trend, Up and Left back; the rows in order with the usual's
+ *     tick and "less/more"; weekdays over the goal; Guest mode; no section
+ *     ("on its way"), an empty one, partial and all-$0 data, no goal;
+ *     Spanish and +25%; motion and reduced motion; tablet taps and scroll;
  *   - app/widgets/spending.js is plain ES5 and every English string has a
  *     Spanish one.
  * Needs Playwright and port 8095 free. Prints one line per check and
@@ -160,6 +168,25 @@ async function openPage(page) {
 }
 
 const readout = (page) => text(page, '#panel .sp-read');
+const pageName = (page) => page.evaluate(() => window.HUB_SPENDING_TEST.page());
+
+// The Trend page, then Down to Where it goes.
+async function openWhere(page) {
+  await openPage(page);
+  await H.key(page, 'ArrowDown');
+  await H.until(() => page.evaluate(() => !!document.querySelector('#panel .sp-wpage')), 3000, 'no Where it goes page');
+  await H.sleep(200);
+}
+
+// Where it goes as drawn: what the checks below look at.
+function whereState() {
+  const q = (s) => document.querySelectorAll('#panel ' + s);
+  const texts = (s) => Array.prototype.map.call(q(s), (n) => n.textContent);
+  return { bars: q('.sp-wbar').length, ticks: q('.sp-wtick').length, rows: q('.sp-wrow').length, days: q('.sp-wweek .sp-day').length,
+    over: q('.sp-wweek .sp-over').length, vals: texts('.sp-lab.is-val'), names: texts('.sp-wweek .sp-tick'), none: q('.sp-wweek .sp-tick.is-none').length,
+    labels: texts('.sp-wlabel'), diffs: texts('.sp-wdiff'), svgText: q('.sp-wpage svg text').length, tabs: texts('.sp-tab'),
+    on: texts('.sp-tab.is-on'), focus: (document.querySelector('#panel .is-focused') || {}).className || '' };
+}
 
 async function main() {
   const env = await H.start({});
@@ -445,6 +472,230 @@ async function main() {
       }
     });
 
+    await check('Where it goes: Down from the Trend page; categories and merchants with the usual, weekdays over the goal; Up and Left go back', async () => {
+      await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true, where: true }));
+      const page = await open(env, { w: 8, h: 3 });
+      try {
+        await openPage(page);
+        assert((await text(page, '#panel .sp-tab')) === 'Trend | Where it goes', await text(page, '#panel .sp-tab'));
+        assert((await text(page, '#panel .sp-tabhint')) === 'Down for Where it goes', await text(page, '#panel .sp-tabhint'));
+        assert((await pageName(page)) === 'trend', 'starts on Trend');
+        await openWhere(page);
+        const w = await page.evaluate(whereState);
+        assert(w.on.join() === 'Where it goes' && /sp-tab/.test(w.focus), JSON.stringify(w));
+        assert(w.rows === 8 && w.bars === 8 && w.ticks === 7 && w.days === 7 && w.over === 3 && w.svgText === 0, JSON.stringify(w));
+        assert(w.vals.join('|') === '$71|$96|$83', 'labels: ' + w.vals);
+        assert(w.names.join('|') === 'Mon|Tue|Wed|Thu|Fri|Sat|Sun', 'names: ' + w.names);
+        assert(w.labels.join('|') === 'Food|Everything else|Getting around|Hilltop Grocer|Quick Bites Delivery|Corner Bakery Stand|Maple Street Books|Riverside Fuel', 'order: ' + w.labels);
+        assert(w.diffs.join('|') === '$108 less|$79 less|$12 more|$21 less|$85 less|$27 more|$21 more|No usual yet', 'diffs: ' + w.diffs);
+        const t = (await text(page, '#panel .panel-body')).replace(/\s+/g, ' ');
+        for (const word of ['Everyday spending this month', 'Rent and bills are left out', 'By category', 'Top merchants', 'By weekday, the average day',
+          'Fri, Sat and Sun run over your goal', '$60 goal', 'This month so far', 'Your usual by this day (3-month average)', 'One order can count for two merchants', 'Up for Trend']) {
+          assert(t.indexOf(word) >= 0, 'missing "' + word + '" in: ' + t);
+        }
+        // Green for less, coral for more.
+        assert(await page.evaluate(() => document.querySelectorAll('#panel .sp-wdiff.is-ok').length === 4 && document.querySelectorAll('#panel .sp-wdiff.is-neg').length === 3), 'tones');
+        // The tick sits at the usual: Food $520 of a $561.60 scale.
+        const tick = await page.evaluate(() => {
+          const svg = document.querySelector('#panel .sp-wsvg');
+          const t = svg.querySelector('.sp-wtick');
+          return (parseFloat(t.getAttribute('x')) + parseFloat(t.getAttribute('width')) / 2) / parseFloat(svg.getAttribute('width'));
+        });
+        assert(Math.abs(tick - 520 / 561.6) < 0.01, 'tick at ' + tick);
+        const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+        assert(!p.length, p.join('; '));
+        const fits = await page.evaluate(() => { const b = document.querySelector('#panel .panel-body'); return b.scrollHeight <= b.clientHeight + 1; });
+        assert(fits, 'Where it goes does not fit the TV screen');
+        // Up goes back to Trend with the chart focused, and Left and Right move days again.
+        await H.key(page, 'ArrowUp');
+        await H.until(() => page.evaluate(() => !!document.querySelector('#panel .sp-chart.is-page.is-focused')), 3000, 'Up did not return to the chart');
+        assert((await pageName(page)) === 'trend', 'Up');
+        const before = await readout(page);
+        await H.key(page, 'ArrowLeft');
+        assert((await readout(page)) !== before, 'Left on the chart after coming back');
+        // Left on Where it goes goes back too.
+        await openWhere(page);
+        await H.key(page, 'ArrowLeft');
+        await H.until(async () => (await pageName(page)) === 'trend', 3000, 'Left did not return');
+        // A click on a pill switches as well; Back closes from either page and the next open starts on Trend.
+        await page.click('#panel .sp-tab[data-page="where"]');
+        await H.until(async () => (await pageName(page)) === 'where', 3000, 'click');
+        await H.key(page, 'Escape');
+        await H.sleep(500);
+        await openPage(page);
+        assert((await pageName(page)) === 'trend', 'reopened on ' + await pageName(page));
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Where it goes in Guest mode (English and Spanish): no dollar readable, every blur one amount, the bars, ticks and words stay', async () => {
+      for (const lang of ['en', 'es']) {
+        const page = await open(env, { w: 8, h: 3, guest: true, lang: lang });
+        try {
+          await openWhere(page);
+          const t = await seen(page, '#panel');
+          assert(!/\$/.test(t), lang + ' readable: ' + t);
+          // "$12 más" blurs the amount only, never the "m" of más.
+          const words = lang === 'en' ? [/run over your goal/, /Hilltop Grocer/, /less/, /more/] : [/pasan de tu meta/, / menos/, / más/];
+          words.forEach((re) => assert(re.test(t), lang + ' lost its words (' + re + '): ' + t));
+          await blursOk(page, '#panel', 'where ' + lang);
+          const w = await page.evaluate(whereState);
+          assert(w.bars === 8 && w.ticks === 7 && w.days === 7, JSON.stringify(w));
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      }
+    });
+
+    await check('Where it goes, empty and partial: no section ("on its way", English and Spanish), an empty one, no usual, missing weekdays, no merchants, all $0, no goal', async () => {
+      try {
+        // Left out, a section is kept on the Pi: null clears it.
+        await env.setBudget(Object.assign(H.budgetSample.snapshot({ sentAt: FRESH, trend: true }), { trends: null }));
+        for (const lang of ['en', 'es']) {
+          const page = await open(env, { w: 8, h: 3, lang: lang });
+          try {
+            await openWhere(page);
+            const t = await text(page, '#panel .sp-wwait');
+            assert(lang === 'en' ? /Where it goes is on its way/.test(t) && /fills in as soon as it does/.test(t) : /En qué se va está en camino/.test(t), lang + ': ' + t);
+            assert(await page.evaluate(() => !document.querySelector('#panel .sp-wbar, #panel .sp-wweek')), lang + ': drew bars');
+            const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+            assert(!p.length, lang + ': ' + p.join('; '));
+            noErrors(page);
+          } finally { await page.ctx.close(); }
+        }
+        // Last month's figures are never shown as this month's.
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true, where: Object.assign(H.budgetSample.whereSample(), { month: '2026-10' }) }));
+        for (const lang of ['en', 'es']) {
+          const page = await open(env, { w: 8, h: 3, lang: lang });
+          try {
+            await openWhere(page);
+            const t = await text(page, '#panel .sp-wwait');
+            assert(lang === 'en' ? /Waiting for this month.s figures/.test(t) && /for Oct 2026\./.test(t) : /Esperando las cifras de este mes/.test(t) && /oct 2026/i.test(t), lang + ' old month: ' + t);
+            assert(await page.evaluate(() => !document.querySelector('#panel .sp-wbar')), lang + ': drew last month');
+            const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+            assert(!p.length, lang + ': ' + p.join('; '));
+          } finally { await page.ctx.close(); }
+        }
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true, where: { month: '2026-11' } }));
+        let page = await open(env, { w: 8, h: 3 });
+        try {
+          await openWhere(page);
+          assert(/Nothing to show for this month yet/.test(await text(page, '#panel .sp-wwait')), await text(page, '#panel .panel-body'));
+        } finally { await page.ctx.close(); }
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true, where: { month: '2026-11',
+          categories: [{ label: 'Food', mtd: 120 }, { label: 'Getting around', mtd: 0, usual: 0 }], weekdays: [40, null, 75, null, null, null, null] } }));
+        page = await open(env, { w: 8, h: 3 });
+        try {
+          await openWhere(page);
+          const w = await page.evaluate(whereState);
+          assert(w.rows === 2 && w.bars === 1 && w.ticks === 1 && w.days === 2 && w.over === 1 && w.none === 5, JSON.stringify(w));
+          assert(w.diffs.join('|') === 'No usual yet|Same as usual', 'diffs: ' + w.diffs);
+          const t = await text(page, '#panel .panel-body');
+          assert(/No merchants sent yet/.test(t) && /Wed runs over your goal/.test(t) && /\$0/.test(t), t);
+          const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+          assert(!p.length, p.join('; '));
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+        // All $0, and no goal: dots, no over, "Set a goal".
+        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true, where: { month: '2026-11',
+          categories: [{ label: 'Food', mtd: 0, usual: 0 }], merchants: [{ label: 'Hilltop Grocer', mtd: 0 }], weekdays: [0, 0, 0, 0, 0, 0, 0] } }));
+        page = await open(env, { w: 8, h: 3, goals: false });
+        try {
+          await openWhere(page);
+          const w = await page.evaluate(() => ({ zero: document.querySelectorAll('#panel .sp-wweek .sp-zero').length, over: document.querySelectorAll('#panel .sp-over').length,
+            goal: !!document.querySelector('#panel .sp-wweek .sp-goal'), bars: document.querySelectorAll('#panel .sp-wbar').length }));
+          assert(w.zero === 7 && !w.over && !w.goal && w.bars === 0, JSON.stringify(w));
+          assert(/Set a goal to see which days run over/.test(await text(page, '#panel .panel-body')), 'no goal words');
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      } finally { await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true, where: true })); }
+    });
+
+    await check('Where it goes in Spanish and Spanish 25% longer (Á é ñ): localized, nothing clipped, fits the TV', async () => {
+      for (const long of [false, true]) {
+        const page = await open(env, { w: 8, h: 3, lang: 'es', long: long });
+        try {
+          await openWhere(page);
+          const t = (await text(page, '#panel .panel-body')).replace(/\s+/g, ' ');
+          if (!long) {
+            for (const word of ['Tendencia', 'En qué se va', 'Arriba: Tendencia', 'Por categoría', 'Comercios principales', '$108 menos', '$27 más', 'Sin promedio aún',
+              'Vie, sáb y dom pasan de tu meta', 'meta de $60', 'Este mes hasta hoy']) {
+              assert(t.indexOf(word) >= 0, 'missing "' + word + '": ' + t);
+            }
+            assert((await page.evaluate(whereState)).names.join('|') === 'lun|mar|mié|jue|vie|sáb|dom', 'day names');
+          }
+          const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+          assert(!p.length, (long ? 'longer: ' : '') + p.slice(0, 4).join('; '));
+          const fits = await page.evaluate(() => { const b = document.querySelector('#panel .panel-body'); return b.scrollHeight <= b.clientHeight + 1; });
+          assert(fits, (long ? 'longer: ' : '') + 'does not fit');
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      }
+    });
+
+    await check('Where it goes motion: bars grow (scaleX) and ticks fade, transform and opacity only, at most 40; none with reduced motion', async () => {
+      let page = await open(env, { w: 8, h: 3, motion: 'push' });
+      try {
+        await openPage(page);
+        await H.sleep(1900);
+        await H.key(page, 'ArrowDown');
+        await H.sleep(150);
+        const a = await page.evaluate(() => {
+          const list = document.getAnimations().filter((x) => x.effect && x.effect.target && document.getElementById('panel').contains(x.effect.target) && /^sp-/.test(x.animationName || ''));
+          const props = {};
+          list.forEach((x) => x.effect.getKeyframes().forEach((k) => Object.keys(k).forEach((p) => { props[p] = 1; })));
+          return { n: list.length, names: list.map((x) => x.animationName).filter((v, i, l) => l.indexOf(v) === i), props: Object.keys(props) };
+        });
+        assert(a.n > 0 && a.n <= 40, JSON.stringify(a));
+        assert(a.names.indexOf('sp-sweep') >= 0 && a.names.indexOf('sp-fade') >= 0, 'animations: ' + a.names);
+        const bad = a.props.filter((p) => ['offset', 'easing', 'composite', 'computedOffset', 'transform', 'opacity', 'webkitTransform'].indexOf(p) < 0);
+        assert(!bad.length, 'animates ' + bad.join(', '));
+        await H.sleep(2000);
+        assert(!(await page.evaluate(() => !!document.querySelector('#panel .sp-anim'))), 'motion class left on');
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+      page = await open(env, { w: 8, h: 3, motion: 'push' });
+      try {
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        await openWhere(page);
+        const n = await page.evaluate(() => ({ anim: !!document.querySelector('#panel .sp-anim'), running: document.getAnimations().filter((x) => /^sp-/.test(x.animationName || '')).length }));
+        assert(!n.anim && !n.running, JSON.stringify(n));
+        noErrors(page);
+      } finally { await page.ctx.close(); }
+    });
+
+    await check('Where it goes on the tablet (1280x800 and 600 wide): a tap on the pill switches, no key hint, the page scrolls by touch to its end', async () => {
+      for (const view of [{ width: 1280, height: 800 }, { width: 600, height: 960 }]) {
+        const page = await open(env, { w: 8, h: 3, query: 'as=tablet', touch: true });
+        try {
+          await page.setViewportSize(view);
+          await H.sleep(500);
+          await openPage(page);
+          assert(!(await page.evaluate(() => !!document.querySelector('#panel .sp-tabhint'))), view.width + ': key hint on a tablet');
+          const pt = await page.evaluate(() => { const r = document.querySelector('#panel .sp-tab[data-page="where"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+          await page.touchscreen.tap(pt.x, pt.y);
+          await H.until(async () => (await pageName(page)) === 'where', 3000, view.width + ': tap did not switch');
+          await H.sleep(300);
+          const s = await page.evaluate(() => {
+            const b = document.querySelector('#panel .panel-body');
+            const oy = getComputedStyle(b).overflowY;
+            b.scrollTop = b.scrollHeight;
+            const br = b.getBoundingClientRect();
+            const last = document.querySelector('#panel .sp-wnote').getBoundingClientRect();
+            return { oy: oy, inside: last.bottom <= br.bottom + 1 && last.top >= br.top - 1 };
+          });
+          assert(s.oy === 'auto' && s.inside, view.width + ': ' + JSON.stringify(s));
+          const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+          assert(!p.length, view.width + ': ' + p.join('; '));
+          // Back to Trend by tapping its pill.
+          await page.evaluate(() => { document.querySelector('#panel .panel-body').scrollTop = 0; });
+          const pt2 = await page.evaluate(() => { const r = document.querySelector('#panel .sp-tab[data-page="trend"]').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+          await page.touchscreen.tap(pt2.x, pt2.y);
+          await H.until(async () => (await pageName(page)) === 'trend', 3000, view.width + ': tap back');
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      }
+    });
+
     await check('old data (3 hours) dims and says "as of"', async () => {
       await env.setBudget(H.budgetSample.snapshot({ sentAt: OLD, trend: true }));
       const page = await open(env, { w: 4, h: 3 });
@@ -468,6 +719,63 @@ async function main() {
         } finally { await page.ctx.close(); }
       }
       await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true }));
+    });
+
+    await check('stale data: the windows end yesterday; "No data since Nov 12" where the streak and verdict go, empty days to yesterday (English and Spanish)', async () => {
+      const snap = H.budgetSample.snapshot({ sentAt: FRESH, trend: true });
+      snap.pace.days = snap.pace.days.slice(0, -3);
+      await env.setBudget(snap);
+      try {
+        for (const lang of ['en', 'es']) {
+          const gapWords = lang === 'en' ? 'No data since Nov 12' : 'Sin datos desde el 12 nov';
+          // 1 column: the figure, then the last day with data under it.
+          const solo = await open(env, { w: 1, h: 1, lang: lang });
+          try {
+            const t = await text(solo, SEL + ' .sp-solo-gap');
+            assert(/12/.test(t), lang + ' 1x1: ' + await text(solo, SEL));
+            const p = await solo.evaluate(inspect, [SEL, 0.85]);
+            assert(!p.length, lang + ' 1x1: ' + p.join('; '));
+          } finally { await solo.ctx.close(); }
+          for (const sz of [[3, 1], [4, 3], [8, 3]]) {
+            const page = await open(env, { w: sz[0], h: sz[1], lang: lang });
+            try {
+              const t = await text(page, SEL);
+              assert(!/Down from|Baja desde/.test(t), lang + ' ' + sz.join('x') + ' direction said as current: ' + t);
+              const short = lang === 'en' ? 'Last data Nov 12' : 'Último dato 12 nov';
+              assert(t.indexOf(gapWords) >= 0 || (sz[1] === 1 && t.indexOf(short) >= 0), lang + ' ' + sz.join('x') + ': ' + t);
+              assert(!/in a row|seguid/.test(t), lang + ' ' + sz.join('x') + ' stale streak: ' + t);
+              const p = await page.evaluate(inspect, [SEL, 0.85]);
+              assert(!p.length, lang + ' ' + sz.join('x') + ': ' + p.join('; '));
+              noErrors(page);
+            } finally { await page.ctx.close(); }
+          }
+          const page = await open(env, { w: 8, h: 3, lang: lang });
+          try {
+            await openPage(page);
+            const sub = await text(page, '#panel .sp-kpi-sub.is-gap');
+            const lastWords = lang === 'en' ? 'Last data Nov 12' : 'Último dato 12 nov';
+            assert(sub === lastWords + ' | ' + gapWords, lang + ' page: ' + sub);
+            assert(!/Down from|Baja desde/.test(await text(page, '#panel .sp-kpis')), lang + ': direction on the page');
+            const c = await page.evaluate(() => ({ days: document.querySelectorAll('#panel .sp-day').length, f: window.HUB_SPENDING_TEST.focus() }));
+            // 31 chart days to Nov 15; the last 3 are empty, so 28 drawn; focus on the last day with data.
+            assert(c.days === 28 && c.f.n === 31 && c.f.date === '2026-11-12', JSON.stringify(c));
+            const p = await page.evaluate(inspect, ['#panel .panel-body', 0.95]);
+            assert(!p.length, p.join('; '));
+            noErrors(page);
+          } finally { await page.ctx.close(); }
+        }
+        // Over a week stale: a message, never a number from old days.
+        snap.pace.days = snap.pace.days.slice(0, -6);
+        await env.setBudget(snap);
+        const page = await open(env, { w: 4, h: 3 });
+        try {
+          const t = await text(page, SEL);
+          assert(/No data since Nov 6/.test(t) && !/\$/.test(t), t);
+          await openPage(page);
+          assert(/No data since Nov 6/.test(await text(page, '#panel .panel-body')), 'page');
+          noErrors(page);
+        } finally { await page.ctx.close(); }
+      } finally { await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, trend: true })); }
     });
 
     await check('widgets.budget.show false: "Budget is hidden"', async () => {

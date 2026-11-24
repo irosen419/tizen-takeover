@@ -57,7 +57,11 @@ One JSON object. `v` and `sentAt` are required. Every section is optional.
   "investments": { "asOf": "...", "total": 48210.55, "cost": 40100, "gain": 8110.55,
                    "accounts": [ { "label": "Roth Contributory IRA", "value": 30110.2, "gain": 5200.1 } ],
                    "top": [ { "ticker": "VTI", "name": "Vanguard Total Stock Market ETF", "value": 21000, "gain": 3100 } ],
-                   "history": [ { "date": "2026-11-18", "total": 48100 } ] }
+                   "history": [ { "date": "2026-11-18", "total": 48100 } ] },
+  "trends":    { "asOf": "...", "month": "2026-11",
+                 "categories": [ { "label": "Food", "mtd": 412, "usual": 520 } ],
+                 "merchants":  [ { "label": "Hilltop Grocer", "mtd": 184, "usual": 205 } ],
+                 "weekdays":   [ 38, 35, 44, 41, 71, 96, null ] }
 }
 ```
 
@@ -243,6 +247,26 @@ On the TV: the Investments tile (`investments`, standalone, in no layout; add it
 - `./hub budget show` and the mailbox's `budget.show` print counts and dates only: `investments  6 accounts, 8 holdings, 31 days of history, 2026-10-19 to 2026-11-18`.
 - The snapshot only travels on the Pi itself (127.0.0.1), never through the mailbox or the cloud.
 
+### `trends`: where everyday spending goes
+
+Added with server 0.35.0, for the Spending widget's **Where it goes** page. **Everyday spending only**: the same rule as `pace.spent` (rent, utilities and other recurring bills left out). Built by the budget app (its own repository; this is the contract for it). Every list is optional, so a later addition (one total per day for a Month vs month page) can join the section without breaking anything; until the budget app sends it, the page says "Where it goes is on its way".
+
+| Field | Type | Notes |
+|---|---|---|
+| `month` | month, `2026-11` | required: the month the figures are for |
+| `categories` | list, at most 8 | optional, any order (the TV sorts biggest first): `{ "label": "Food", "mtd": 412, "usual": 520 }`; `label` is text, 30, the spending bucket as the owner knows it; `mtd` is dollars, this month so far (through yesterday); `usual` is dollars or `null`/left out, the 3-month average **up to the same day of the month** (the average of the last 3 months' totals from the 1st to that day). With no `usual` the TV draws no tick for that row and says "No usual yet" |
+| `merchants` | list, at most 8 | optional, the same shape as `categories`: the top merchants by `mtd` this month. As with `merchants` above, one order can count for two merchants, so the TV never adds them up |
+| `weekdays` | list of exactly 7 | optional: the average everyday spend per weekday, **Monday first** (Monday, Tuesday, ... Sunday), dollars or `null` for a weekday with no data. The budget app chooses the window (8 weeks is a good default); a list that is not 7 long refuses the section |
+
+Unknown fields are dropped, as everywhere. The TV compares this month with the usual in whole dollars ("$108 less" in green, "$12 more" in coral), draws each list on its own scale with a tick at the usual, and marks the weekdays whose average is above the daily goal in force yesterday (`pace.goals`; with no goal it only draws the bars). About 1 to 2 KB with every list full.
+
+### Privacy for trends
+
+- **Category totals, merchant totals and their "usual" figures are allowed on the TV: the owner approved them on 2026-11-24** (the third exception, after the Card day receipt and investments). Guest mode (Clock page) blurs every dollar figure on the page; the bars, ticks, names and "less/more" stay.
+- Totals only: never a transaction, a date of a charge or an account. A field not named above is dropped.
+- `./hub budget show` and the mailbox's `budget.show` print counts only: `trends  3 categories, 5 merchants, 7 of 7 weekdays in 2026-11`.
+- The snapshot only travels on the Pi itself (127.0.0.1), never through the mailbox or the cloud.
+
 ## What the Pi keeps
 
 The resource `budget` in `data/state.json`, sent to the TV with everything else:
@@ -272,7 +296,8 @@ Control API (token needed, see `docs/live-updates.md`):
 
 ## On the TV
 
-- `budget-room` (Daily room), `budget-card` (Card day) and `budget-goals` (Goals), with a wallet icon. `budget-lab` (Budget lab) reads `lab`, `merchants`, `pace` and `runway` (the runway as a chart at full screen from hub v0.29.5, with no dollar axis; its one figure is the gap on card day). Every size works; [tile-sizes.md](tile-sizes.md) says what each shows. `spending` (Spending, `app/widgets/spending.js` with `app/spending-math.js`) reads `pace.days` as everyday spending and a dated goal history (`pace.goals`, `[{ from, goal }]`, when the snapshot carries it; until then a single `pace.goal`, else no goal): the 7-day and 30-day averages, days under the goal, what was kept and the Trend page at full screen. The **Budget** layout in the switcher places Daily room and Spending on top, Budget lab, Card day and Goals below.
+- `budget-room` (Daily room), `budget-card` (Card day) and `budget-goals` (Goals), with a wallet icon. `budget-lab` (Budget lab) reads `lab`, `merchants`, `pace` and `runway` (the runway as a chart at full screen from hub v0.29.5, with no dollar axis; its one figure is the gap on card day). Every size works; [tile-sizes.md](tile-sizes.md) says what each shows. `spending` (Spending, `app/widgets/spending.js` with `app/spending-math.js`) reads `pace.days` as everyday spending and a dated goal history (`pace.goals`, `[{ from, goal }]`, when the snapshot carries it; until then a single `pace.goal`, else no goal): the 7-day and 30-day averages, days under the goal, what was kept and the Trend page at full screen. Its windows always end yesterday (the TV's date, in the Pi's time zone): when `pace.days` stops earlier (the budget app or the Pi was off), the missing days are neither under nor over, the streak is not carried over and the tile says “No data since Nov 12” instead. The **Budget** layout in the switcher places Daily room and Spending on top, Budget lab, Card day and Goals below.
+- The Spending full screen has two pages, **Trend** and **Where it goes** (`trends`): on the TV Down switches to Where it goes and Up (at its top) or Left goes back; on the tablet the two pills at the top switch. Where it goes shows the categories and the top merchants as bars with a tick at the usual, and the 7 weekdays against the goal; with no `trends` section it says "Where it goes is on its way", and when `month` is not the current month (the TV's date in the Pi's time zone) it says "Waiting for this month's figures" rather than show an older month as this one.
 - A section that is missing makes its tile say "Waiting for the budget app"; with no line to the Pi they say "Needs the Pi" or "Can’t reach the Pi".
 - The TV keeps its last copy (`homeHub.budget.v1`), so the tiles have something to show straight after the TV turns on.
 - `widgets.budget.show: false` in `app/config.js` hides it all on that TV: the tiles say "Budget is hidden" and the banner never shows.

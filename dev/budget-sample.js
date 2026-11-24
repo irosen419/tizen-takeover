@@ -36,7 +36,8 @@ const SECTIONS = require('../pi/budget').SECTIONS;
  * (cardDay.receipt, the Card day receipt: 'autopay' short on Dec 1 and covered by
  * autopay, 'covered', or 'short' even with autopay, $312 more; every figure made up), outlook (true adds
  * cardDay.outlook, the "Next 3 months" page; 'ahead' starts it ahead of plan; needs receipt), trend (pace.days
- * becomes the Spending widget's month, spendingDays() below: Oct 16 to Nov 15) }.
+ * becomes the Spending widget's month, spendingDays() below: Oct 16 to Nov 15), where (true adds the
+ * trends section of whereSample() below, the Where it goes page; an object is used as the section) }.
  */
 function snapshot(opts) {
   opts = opts || {};
@@ -129,6 +130,7 @@ function snapshot(opts) {
     if (opts.pace !== 'month') s.pace.days = days;
   }
   if (opts.trend) s.pace.days = spendingDays();
+  if (opts.where) s.trends = opts.where === true ? whereSample() : opts.where;
   if (opts.only) for (const k of SECTIONS) if (opts.only.indexOf(k) < 0) delete s[k];
   // Section times follow sentAt, so an old snapshot is old all through.
   for (const k of SECTIONS) if (s[k]) s[k].asOf = s.sentAt;
@@ -317,6 +319,23 @@ function spendingDays() {
 const SPENDING_GOALS = [{ from: '2026-10-16', goal: 75 }, { from: '2026-11-09', goal: 60 }];
 
 /*
+ * The trends section for the Spending widget's Where it goes page, the
+ * figures of the plan's picture 3: everyday spending Nov 1 to 15 by category
+ * and by merchant against the usual (the 3-month average to the 15th), one
+ * merchant with no usual yet, and the average day per weekday, Monday first
+ * (Friday to Sunday over the $60 goal). Every figure is made up.
+ */
+function whereSample() {
+  return {
+    month: '2026-11',
+    categories: [{ label: 'Food', mtd: 412, usual: 520 }, { label: 'Everything else', mtd: 251, usual: 330 }, { label: 'Getting around', mtd: 96, usual: 84 }],
+    merchants: [{ label: 'Hilltop Grocer', mtd: 184, usual: 205 }, { label: 'Quick Bites Delivery', mtd: 127, usual: 212 },
+      { label: 'Corner Bakery Stand', mtd: 88, usual: 61 }, { label: 'Maple Street Books', mtd: 61, usual: 40 }, { label: 'Riverside Fuel', mtd: 55 }],
+    weekdays: [38, 35, 44, 41, 71, 96, 83]
+  };
+}
+
+/*
  * Page-side hook for the Spending tests and screenshots (run with
  * page.addInitScript before the hub's scripts). The hub server drops fields
  * it does not know, and the goal history is not in the snapshot yet (another
@@ -382,7 +401,7 @@ function spendingHook() {
   });
 }
 
-module.exports = { snapshot, SPANISH, FIXTURE, GOALS, spendingDays, SPENDING_GOALS, spendingHook };
+module.exports = { snapshot, SPANISH, FIXTURE, GOALS, spendingDays, SPENDING_GOALS, whereSample, spendingHook };
 
 if (require.main === module) {
   const args = process.argv.slice(2);

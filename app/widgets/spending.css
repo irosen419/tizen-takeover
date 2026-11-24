@@ -38,6 +38,8 @@
 .sp-tile .is-ok, .sp-panel .is-ok { color: var(--sp-ok); }
 .sp-tile .is-neg, .sp-panel .is-neg { color: var(--sp-over); }
 .sp-tile .is-quiet { color: var(--sp-ink3); }
+/* "No data since Nov 12": amber, in place of the streak or the verdict. */
+.sp-tile .is-gap, .sp-panel .is-gap { color: var(--ok-optional); }
 
 /* ---------- tile ---------- */
 
@@ -125,6 +127,7 @@
 /* 1 column: the one figure */
 .sp-tile.sp-solo { justify-content: center; align-items: center; }
 .sp-solo-num { max-width: 100%; font-size: 2.4rem; font-weight: 300; line-height: 1.3; white-space: nowrap; overflow: hidden; }
+.sp-solo-gap { max-width: 100%; font-size: 0.85rem; line-height: 1.3; white-space: nowrap; color: var(--ok-optional); }
 
 /* strip: one line */
 .sp-tile.sp-strip { justify-content: center; padding-top: 0; }
@@ -168,6 +171,7 @@
 .sp-kpi-sub { margin-top: 0.1rem; font-size: 0.95rem; line-height: 1.35; color: var(--sp-ink2); }
 .sp-kpi-sub.is-ok { color: var(--sp-ok); }
 .sp-kpi-sub.is-neg { color: var(--sp-over); }
+.sp-kpi-sub.is-gap { color: var(--ok-optional); }
 
 /* states */
 .sp-msg { position: relative; z-index: 1; padding-top: 0.2rem; }
@@ -252,6 +256,68 @@
 .sp-hist-item.is-old { opacity: 0.6; }
 .sp-hist-goal { margin-right: 0.35rem; font-size: 1.3rem; font-weight: 600; color: var(--sp-ink); }
 
+/* ---------- the page switch (both pages) ---------- */
+
+.sp-tabs { flex: 0 0 auto; display: flex; align-items: center; margin: 0 0 1rem; white-space: nowrap; overflow: hidden; }
+.sp-tab {
+  flex: 0 0 auto;
+  margin-right: 0.6rem;
+  padding: 0.1rem 1.1rem;
+  border: 0.08rem solid transparent;
+  border-radius: 1.4rem;
+  font-size: 1.1rem;
+  line-height: 1.55;
+  color: var(--sp-ink3);
+  cursor: pointer;
+}
+.sp-tab.is-on { color: var(--sp-ink); background: var(--card-2); border-color: var(--sp-hair); }
+.sp-tab.is-focused { border-color: var(--focus); }
+.sp-tabhint { flex: 0 1 auto; min-width: 0; margin-left: 0.6rem; font-size: 1rem; line-height: 1.55; color: var(--sp-ink3); overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- the Where it goes page ---------- */
+
+.sp-wsec { margin-bottom: 0.9rem; }
+.sp-legend.is-where { flex: 0 1 auto; max-width: 55%; margin-left: 1.6rem; font-size: 1rem; text-align: right; }
+.sp-leg.is-bar .sp-leg-dash { height: 0.55rem; border-radius: 0.3rem; }
+.sp-leg.is-tick .sp-leg-dash { width: 0.16rem; height: 1.1rem; background: var(--sp-ink); border-radius: 0.08rem; }
+.sp-wcols { flex: 0 0 auto; font-size: 0; white-space: nowrap; }
+.sp-wcol { display: inline-block; vertical-align: top; width: 47%; font-size: 1rem; white-space: normal; }
+.sp-wcol.is-right { margin-left: 6%; }
+.sp-whead { margin: 0 0 0.5rem; font-size: 1.05rem; line-height: 1.35; font-weight: 500; color: var(--sp-ink3); }
+.sp-whead.is-week { margin-top: 1.4rem; }
+.sp-wrow { margin-bottom: 0.85rem; }
+.sp-wline { overflow: hidden; line-height: 1.35; }
+.sp-wright { float: right; margin-left: 0.8rem; white-space: nowrap; }
+.sp-wamt { font-size: 1.35rem; font-weight: 300; color: var(--sp-ink); }
+.sp-wdiff { display: inline-block; margin-left: 0.6rem; font-size: 1.05rem; color: var(--sp-ink2); }
+.sp-wdiff.is-quiet { color: var(--sp-ink3); }
+.sp-wlabel { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 1.3rem; line-height: 1.35; color: var(--sp-ink); }
+.sp-wtrack { position: relative; height: 1.15rem; margin-top: 0.2rem; }
+.sp-wsvg { position: absolute; left: 0; top: 0; overflow: visible; }
+.sp-wbg { fill: var(--sp-hair); }
+.sp-wbar { fill: var(--sp-sky); }
+.sp-wtick { fill: var(--sp-ink); }
+.sp-wnone { margin-bottom: 0.8rem; font-size: 1rem; line-height: 1.4; color: var(--sp-ink3); }
+.sp-wnote { margin-top: 0.3rem; font-size: 1rem; line-height: 1.4; color: var(--sp-ink3); }
+.sp-wweekline { margin-bottom: 0.2rem; font-size: 1.05rem; line-height: 1.35; color: var(--sp-ink2); }
+.sp-wweek { position: relative; height: 11rem; }
+.sp-wweek .sp-tick { font-size: 1rem; }
+.sp-wweek .sp-tick.is-none { opacity: 0.5; }
+.sp-wweek .sp-tick.is-over { color: var(--sp-ink); }
+.sp-wweek .sp-lab { font-size: 1rem; }
+.sp-lab.is-val { color: var(--sp-ink); }
+.sp-wwait {
+  position: relative;
+  min-height: 16rem;
+  padding: 1.4rem 1.6rem;
+  border: 0.12rem dashed var(--sp-hair);
+  border-radius: 1.4rem;
+  overflow: hidden;
+}
+.sp-wwait .sp-pmsg-head,
+.sp-wwait .sp-pmsg-line { position: relative; z-index: 1; max-width: 44rem; }
+.sp-mark.is-wait { width: 8rem; height: 8rem; right: 1rem; bottom: 1rem; }
+
 /* ---------- motion: once per open, transform and opacity only ---------- */
 
 .sp-anim .sp-day {
@@ -278,6 +344,16 @@
 .sp-anim .sp-kpi + .sp-kpi { -webkit-animation-delay: 0.08s; animation-delay: 0.08s; }
 .sp-anim .sp-kpi + .sp-kpi + .sp-kpi { -webkit-animation-delay: 0.16s; animation-delay: 0.16s; }
 .sp-anim .sp-kpi + .sp-kpi + .sp-kpi + .sp-kpi { -webkit-animation-delay: 0.24s; animation-delay: 0.24s; }
+/* Where it goes: each bar grows from its left end (scaleX, staggered in
+   spending.js), the usual's tick fades in after it. */
+.sp-anim .sp-wbar {
+  -webkit-animation: sp-sweep 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: sp-sweep 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.sp-anim .sp-wtick {
+  -webkit-animation: sp-fade 0.35s ease-out both;
+  animation: sp-fade 0.35s ease-out both;
+}
 
 @-webkit-keyframes sp-grow { from { -webkit-transform: scaleY(0); transform: scaleY(0); } to { -webkit-transform: scaleY(1); transform: scaleY(1); } }
 @keyframes sp-grow { from { -webkit-transform: scaleY(0); transform: scaleY(0); } to { -webkit-transform: scaleY(1); transform: scaleY(1); } }
@@ -296,7 +372,9 @@
   .sp-anim .sp-avg,
   .sp-anim .sp-labs,
   .sp-anim .sp-avg-end,
-  .sp-anim .sp-kpi { -webkit-animation: none; animation: none; }
+  .sp-anim .sp-kpi,
+  .sp-anim .sp-wbar,
+  .sp-anim .sp-wtick { -webkit-animation: none; animation: none; }
   .sp-cross.is-glide { -webkit-transition: none; transition: none; }
 }
 
