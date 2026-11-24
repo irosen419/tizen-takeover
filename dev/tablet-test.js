@@ -6,7 +6,7 @@
  * docs/tablet-mode.md). Runs the real hub in headless Chromium at 1920x1080
  * against the preview and checks:
  *   - a TV (no ?as=, no touch screen) gets none of it, even with service.js
- *     down: no class, no tab, no sheet, "Back to close"
+ *     down: no class, the Menu's tab out of sight, "Back to close"
  *   - ?as=tv keeps it off on a touch screen with service.js down
  *   - ?as=tablet: the class on html and body, the tab; the apps tile stays
  *     while service.js answers
@@ -173,8 +173,11 @@ function sheetUp(page) {
       const page = await hub(env, { route: noHelper });
       await H.sleep(3500);
       const s = await state(page);
-      assert(!s.html && !s.body && !s.tab && !s.sheet && !s.t.on && !s.t.noHelper && !s.t.show, JSON.stringify(s));
-      assert(!(await page.evaluate(() => document.querySelector('.tsheet-settings, .tshow, .tsheet-show'))), 'tablet parts on a TV');
+      // The Menu is built on a TV too (dev/tvmenu-test.js), but its tab stays out of sight.
+      assert(!s.html && !s.body && s.tab && s.sheet && !s.t.on && !s.t.noHelper && !s.t.show && !s.t.sheet, JSON.stringify(s));
+      assert(!(await page.evaluate(() => document.querySelector('.tshow'))), 'a slideshow on a TV');
+      const tab = await page.evaluate(() => { const r = document.querySelector('.tablet-tab').getBoundingClientRect(); return { top: r.top, op: getComputedStyle(document.querySelector('.tablet-tab')).opacity }; });
+      assert(tab.top >= 1079 && tab.op === '0', 'the tab shows on a TV: ' + JSON.stringify(tab));
       assert(s.apps, 'the apps tile went');
       await openTile(page, 'todo');
       assert(await hint(page) === 'Back to close', await hint(page));
@@ -188,7 +191,7 @@ function sheetUp(page) {
       const page = await hub(env, { route: noHelper, touch: true, query: 'as=tv' });
       await H.sleep(3500);
       const s = await state(page);
-      assert(!s.body && !s.tab && !s.t.on && s.apps, JSON.stringify(s));
+      assert(!s.body && !s.t.on && !s.t.peek && s.apps, JSON.stringify(s));
       await page.ctx.close();
     });
 
