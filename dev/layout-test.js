@@ -6,7 +6,7 @@
  * the TV-side layout check, the saved layout at start, a new layout that
  * moves tiles in place, waiting while a panel is open, a new set of widgets
  * that reloads once, the reset, the guard against a reload loop, and
- * config.js's Budget layout with Budget lab, and focus starting on the top-left tile.
+ * config.js's Budget layout with Budget lab and Spending, and focus starting on the top-left tile.
  * Needs Playwright (require('playwright')).
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
@@ -483,7 +483,9 @@ async function checkBudgetLayout() {
   assert(lab && lab.x === 0 && lab.y === 3 && lab.w === 4 && lab.h === 3, 'budget-lab: ' + JSON.stringify(lab));
   const goals = budget.filter((t) => t.widget === 'budget-goals')[0];
   assert(goals && goals.w === 4 && goals.h === 3, 'budget-goals: ' + JSON.stringify(goals));
-  assert(budget.some((t) => t.widget === 'calendar'), 'no Calendar on the Budget layout');
+  // Spending on top beside Daily room; Card day and Goals moved down beside the lab.
+  const sp = budget.filter((t) => t.widget === 'spending')[0];
+  assert(sp && sp.x === 4 && sp.y === 0 && sp.w === 8 && sp.h === 3, 'spending: ' + JSON.stringify(sp));
   const context = await newContext();
   const page = await openHub(context, liveQuery());
   await until(async () => (await look.live(page)) === 'live', 8000, 'the hub did not go live');
@@ -590,7 +592,7 @@ async function main() {
   await check('4. A layout waits while a panel is open, then applies', checkWaitsForPanel);
   await check('5. A new set of widgets reloads once; the reset reloads once more', checkReload);
   await check('6. A layout that cannot be saved does not reload in a loop', checkNoLoop);
-  await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, Goals 4 x 3, Calendar, no gaps, OK opens it full screen', checkBudgetLayout);
+  await check('7. config.js\'s Budget layout: Budget lab at 4 x 3 under Daily room, Goals 4 x 3, Spending 8 x 3 on top, no gaps, OK opens it full screen', checkBudgetLayout);
   await check('8b. The bar\'s Main follows the Pi; another layout stays put; Guest mode on/off never changes either', checkMainFollowsPi);
   await check('8. Focus starts on the top-left tile; a layout arriving refocuses it unless the remote was just used', checkTopLeftFocus);
 }

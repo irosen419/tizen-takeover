@@ -1019,6 +1019,8 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     'budget-lab':   { title: 'Budget lab',           sub: 'The pace streak, yesterday against its cap, one move for today, and a daily cap to try out' },
     // app/widgets/investments.js (v0.36.0): the portfolio from the budget app's investments section; standalone, in no layout. Dollar figures hide in guest mode (percentages only).
     investments:   { title: 'Investments',           sub: 'The portfolio total and its gain against cost, a trend line, an allocation bar by account and the top holdings' },
+    // app/widgets/spending.js: everyday spending day by day against the goal in force that day; the Trend page at full screen. On the Budget layout.
+    spending:      { title: 'Spending',              sub: 'The 7-day average against 30 days, days under your goal, what you kept, and 31 days of bars with the goal and 7-day lines' },
     wotd:          { title: 'Word of the day',       sub: 'One Spanish word a day with its English, from A1 in January to B1 in December' },
 
     // app/widgets/soundctl.js (v0.39.0): Now Playing's sounds plus Echo buttons; a test widget, no built-in layout.
@@ -1074,8 +1076,8 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       { id: 'awws-todo', x: 0, y: 3, w: 6, h: 3 }, { id: 'entertainment', x: 6, y: 3, w: 3, h: 3 }
     ] },
     { id: 'budget', name: 'Budget', layout: [
-      { id: 'budget-room', x: 0, y: 0, w: 4, h: 3 }, { id: 'budget-card', x: 4, y: 0, w: 4, h: 3 }, { id: 'budget-goals', x: 8, y: 0, w: 4, h: 3 },
-      { id: 'budget-lab', x: 0, y: 3, w: 4, h: 3 }, { id: 'calendar', x: 4, y: 3, w: 4, h: 3 }, { id: 'today', x: 8, y: 3, w: 4, h: 1 }, { id: 'entertainment', x: 8, y: 4, w: 4, h: 2 }
+      { id: 'budget-room', x: 0, y: 0, w: 4, h: 3 }, { id: 'spending', x: 4, y: 0, w: 8, h: 3 },
+      { id: 'budget-lab', x: 0, y: 3, w: 4, h: 3 }, { id: 'budget-card', x: 4, y: 3, w: 4, h: 3 }, { id: 'budget-goals', x: 8, y: 3, w: 4, h: 3 }
     ] },
     { id: 'plant-wall', name: 'Plants', layout: [
       { id: 'sunpath', x: 0, y: 0, w: 12, h: 6 }
@@ -1602,6 +1604,27 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
                es: 'Se abre en su lugar. Un cuadro para agregar (OK para escribir; con comas agregas varios; «Ya está en la lista» y «Máximo 60 caracteres» como avisos), las filas Por comprar (OK marca al momento; Derecha va a Quitar de esa fila, OK dos veces quita) y En el carrito con Quitar marcados. Cada cambio se ve al momento y se deshace con un aviso si la Pi dice que no.' },
       full: { en: 'The same list, bigger.', es: 'La misma lista, más grande.' }
     },
+    // app/widgets/spending.js. On the Budget layout (8 x 3). Figures are made up. In guest mode every dollar blurs; shapes and day counts stay.
+    spending: {
+      title: { en: 'Spending', es: 'Gastos' },
+      sample: {
+        en: { n: '$42', cap: 'a day this week', dir: 'Down from $59 over 30 days', foot: 'Under your goal 12 of 14 days', kept: '$306 kept', strip: '$42 a day · Down from $59',
+              k: [['7-day average', '$42', 'Down from $59 over 30 days'], ['Under goal', '12', '5 days in a row'], ['Kept against your goal', '$306', 'last 14 days'], ['Typical day', '$51', '30-day average $59']],
+              sec: 'Everyday spending, last 31 days', read: 'Tue, Nov 10 · $73  $13 over the $60 goal', hist: 'Your goal $60 from Nov 9 · $75 from Oct 16', legend: ['7-day average', 'Goal'] },
+        es: { n: '$42', cap: 'al día esta semana', dir: 'Baja desde $59 en 30 días', foot: 'Bajo tu meta 12 de 14 días', kept: '$306 guardados', strip: '$42 al día · Baja desde $59',
+              k: [['Promedio de 7 días', '$42', 'Baja desde $59 en 30 días'], ['Bajo la meta', '12', '5 días seguidos'], ['Guardado frente a tu meta', '$306', 'últimos 14 días'], ['Día típico', '$51', 'Promedio de 30 días: $59']],
+              sec: 'Gasto diario, últimos 31 días', read: 'mar 10 nov · $73  $13 sobre la meta de $60', hist: 'Tu meta $60 desde el 9 nov · $75 desde el 16 oct', legend: ['Promedio de 7 días', 'Meta'] }
+      },
+      strip: { en: '“$42 a day · Down from $59” as far as it fits whole (green when down, coral when up). 1 column: the 7-day average alone.',
+               es: '«$42 al día · Baja desde $59» hasta donde quepa entero (verde si baja, coral si sube). 1 columna: solo el promedio de 7 días.' },
+      standard: { en: '“$42 a day this week”, the verdict, 14 days of bars (grey, red only above the goal, a dot for a $0 day) with the stepped goal line and its “$60 goal” key, then “Under your goal 12 of 14 days · $306 kept”. Pieces leave from the bottom up: the chart, then the footer. From 6 columns: three numbers across (7-day average, Under goal, Kept against your goal) and 31 days with the 7-day line, direct labels and a legend.',
+                  es: '«$42 al día esta semana», el veredicto, 14 días de barras (grises, rojas solo sobre la meta, un punto para un día de $0) con la línea escalonada de la meta y su clave «meta de $60», y «Bajo tu meta 12 de 14 días · $306 guardados». Las piezas se van de abajo hacia arriba: el gráfico y luego el pie. Desde 6 columnas: tres cifras en fila y 31 días con la línea de 7 días, etiquetas directas y una leyenda.' },
+      tall: { en: 'Standard with a taller chart; at 6+ columns the dates under the bars, with the day the goal changed in bold (“Nov 9 · $60 goal”).',
+              es: 'Estándar con un gráfico más alto; desde 6 columnas, las fechas bajo las barras, con el día en que cambió la meta en negrita («9 nov · meta de $60»).' },
+      panel: { en: 'No small panel: OK opens the Trend page at full screen (Back closes it).', es: 'Sin panel pequeño: OK abre la página Tendencia a pantalla completa (Atrás la cierra).' },
+      full: { en: 'The Trend page: four numbers (7-day average, Under goal with the streak, Kept against your goal, Typical day), the last 31 days with the goal stepping on the day it changed and the 7-day line, a legend, a readout of the focused day (Left and Right, or a tap), and the dated goals. Animates in once (transform and opacity only; none with reduced motion).',
+              es: 'La página Tendencia: cuatro cifras (promedio de 7 días, bajo la meta con la racha, guardado frente a tu meta, día típico), los últimos 31 días con la meta que cambia el día en que cambió y la línea de 7 días, una leyenda, la lectura del día enfocado (Izquierda y Derecha, o un toque) y las metas con fecha. Entra animada una vez (solo transform y opacidad; nada con movimiento reducido).' }
+    },
     // app/widgets/investments.js (v0.36.0). Standalone: in no layout. Figures are made up. In guest mode every dollar is replaced by percentages.
     investments: {
       title: { en: 'Investments', es: 'Inversiones' },
@@ -1700,7 +1723,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
   })();
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'sunpath', 'ambience', 'ambiance', 'mirror', 'soundctl', 'architecture', 'grocery', 'pantry', 'list', 'photos'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'spending', 'sunpath', 'ambience', 'ambiance', 'mirror', 'soundctl', 'architecture', 'grocery', 'pantry', 'list', 'photos'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -2236,7 +2259,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
     'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
-    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', 'budget-lab': 'wallet', soundctl: 'music', sunpath: 'plantsun', architecture: 'sitemap', grocery: 'basket', pantry: 'jar', list: 'basket', photos: 'photo' };
+    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', spending: 'wallet', 'budget-lab': 'wallet', soundctl: 'music', sunpath: 'plantsun', architecture: 'sitemap', grocery: 'basket', pantry: 'jar', list: 'basket', photos: 'photo' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';
@@ -2452,6 +2475,21 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       if (tier === 'tall') h += '<div class="aw-foot l1 push bu-ok">' + esc(S.out) + '</div>';
       return '<div class="' + cls + '">' + h + '</div>';
     },
+    spending: function (S, T, tier, cls, id) {
+      var hs = [44, 38, 30, 44, 70, 40, 39, 40, 64, 40, 2, 38, 45, 37], bars = '';
+      hs.forEach(function (v, i) {
+        var x = i * 7 + 1.5, g = i < 8 ? 60 : 52;
+        if (v < 5) { bars += '<circle cx="' + (x + 2) + '" cy="38" r="1" fill="currentColor" opacity=".35"/>'; return; }
+        bars += '<rect x="' + x + '" width="4" y="' + (40 - Math.min(v, g) * 0.5) + '" height="' + Math.min(v, g) * 0.5 + '" fill="currentColor" opacity=".3"/>';
+        if (v > g) bars += '<rect x="' + x + '" width="4" y="' + (40 - v * 0.5) + '" height="' + (v - g) * 0.5 + '" fill="#fb817a"/>';
+      });
+      var chart = '<svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block">' + bars + '<path d="M0,10 H56 V14 H100" fill="none" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>';
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b>' + esc(S.n) + '</b><span class="bu-ok"> ' + esc(S.strip.replace(S.n, '')) + '</span></div></div>';
+      var h = head(id, T) + '<div class="td-hero"><span class="big td-num">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.cap) + '</span></div>' +
+        '<div class="bu-pline bu-ok l1">' + esc(S.dir) + '</div><div style="height:' + (tier === 'tall' ? '4.2em' : '2.4em') + ';margin:.5em 0">' + chart + '</div>';
+      h += '<div class="bu-trow"><span class="l1">' + esc(S.foot) + '</span><b class="bu-ok">' + esc(S.kept) + '</b></div>';
+      return '<div class="' + cls + '">' + h + '</div>';
+    },
     investments: function (S, T, tier, cls, id) {
       var spark = '<svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><polyline points="0,32 10,30 20,31 30,24 40,22 50,25 60,18 70,16 80,19 90,10 100,8" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
       if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1"><b>' + esc(S.n) + '</b><span class="bu-ok"> ' + esc(S.gain) + '</span></div></div>';
@@ -2541,6 +2579,14 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       var right = dest + '<div class="secl"><span class="l1">' + esc(S.pace) + '</span></div><div class="td-hero"><span class="big td-num bu-ok">' + esc(S.n) + '</span><span class="td-cap wr">' + esc(S.unit) + '</span></div>' +
         '<div class="bu-pline l1">' + esc(S.y) + '</div><div class="bu-pline wr">' + esc(S.move) + '</div>';
       return full ? '<div class="cols2"><div style="flex:1 1 0">' + left + '</div><div style="flex:1 1 0">' + right + '</div></div>' : left + right;
+    },
+    spending: function (S, full) {
+      var k = '<div class="cols2">' + S.k.map(function (x) { return '<div style="flex:1 1 0;min-width:0"><div class="secl"><span class="l1">' + esc(x[0]) + '</span></div><div class="big" style="font-size:' + (full ? '2.6em' : '1.8em') + '">' + esc(x[1]) + '</div><div class="bu-pline q l1">' + esc(x[2]) + '</div></div>'; }).join('') + '</div>';
+      var bars = '';
+      for (var i = 0; i < 31; i++) { var v = 20 + ((i * 37) % 45); bars += '<rect x="' + (i * 3.2 + 0.6) + '" width="2" y="' + (40 - v * 0.5) + '" height="' + v * 0.5 + '" fill="' + (v > 55 ? '#fb817a' : 'currentColor') + '" opacity="' + (v > 55 ? 1 : 0.3) + '"/>'; }
+      var chart = '<svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block">' + bars + '<path d="M0,12 H75 V16 H100" fill="none" stroke="currentColor" stroke-width="1" vector-effect="non-scaling-stroke"/><polyline points="20,14 40,12 60,22 80,20 99,22" fill="none" stroke="#53b6eb" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
+      return k + '<div class="bu-pline q l1">' + esc(S.sec) + ' · ' + esc(S.legend.join(' · ')) + '</div><div class="l1"><b>' + esc(S.read) + '</b></div>' +
+        '<div style="height:' + (full ? '9em' : '5em') + ';margin:.4em 0">' + chart + '</div><div class="bu-pline l1">' + esc(S.hist) + '</div>';
     },
     investments: function (S, full) {
       var spark = '<svg viewBox="0 0 100 40" preserveAspectRatio="none" style="width:100%;height:100%;display:block"><polyline points="0,32 10,30 20,31 30,24 40,22 50,25 60,18 70,16 80,19 90,10 100,8" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';

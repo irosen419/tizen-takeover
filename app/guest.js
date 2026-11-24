@@ -33,7 +33,7 @@
   'use strict';
 
   var KEY = 'homeHub.guest.v1';
-  var MONEY = ['awws', 'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments'];
+  var MONEY = ['awws', 'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'spending'];
   var CLS = 'guest-blur';
 
   // What gets blurred. Each is a RegExp source; a sign right before an amount

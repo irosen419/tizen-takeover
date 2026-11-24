@@ -163,12 +163,10 @@ var HUB_CONFIG = {
     ] },
     { id: 'budget', name: 'Budget', layout: [
       { widget: 'budget-room',   x: 0, y: 0, w: 4, h: 3 },
-      { widget: 'budget-card',   x: 4, y: 0, w: 4, h: 3 },
-      { widget: 'budget-goals',  x: 8, y: 0, w: 4, h: 3 },
+      { widget: 'spending',      x: 4, y: 0, w: 8, h: 3 },
       { widget: 'budget-lab',    x: 0, y: 3, w: 4, h: 3 },
-      { widget: 'calendar',      x: 4, y: 3, w: 4, h: 3 },
-      { widget: 'today',         x: 8, y: 3, w: 4, h: 1 },
-      { widget: 'entertainment', x: 8, y: 4, w: 4, h: 2 }
+      { widget: 'budget-card',   x: 4, y: 3, w: 4, h: 3 },
+      { widget: 'budget-goals',  x: 8, y: 3, w: 4, h: 3 }
     ] },
     // Plant sun alone, to try it out (a new widget gets a layout of its own first).
     { id: 'plant-wall', name: 'Plants', layout: [
@@ -447,9 +445,10 @@ var HUB_CONFIG = {
     },
 
     /*
-     * Personal budget: Daily room, Card day, Goals and Budget lab (budget-room,
-     * budget-card, budget-goals, budget-lab, on the "Budget" layout; the lab
-     * is the pace streak and a daily cap to try out), and a banner across
+     * Personal budget: Daily room, Card day, Goals, Budget lab and Spending
+     * (budget-room, budget-card, budget-goals, budget-lab, spending, on the
+     * "Budget" layout; the lab is the pace streak and a daily cap to try out,
+     * Spending the trend of everyday spending against the goal), and a banner across
      * the top when a charge posts at a merchant that was cut ("New charge:
      * ...", never an amount; OK dismisses it). The budget app on the Pi sends
      * only totals to the hub server there (docs/budget-snapshot.md).
