@@ -61,12 +61,26 @@
     try { return !!L && typeof L.lang === 'function' && L.lang() === 'es'; } catch (e) { return false; }
   }
 
+  // The two choices are shared by every screen (app/prefs.js, the Pi's
+  // "prefs"); without prefs.js, this screen's own storage as before.
+  var PREF = { 'homeHub.clock.face': 'clock.face', 'homeHub.clock.hours': 'clock.hours' };
+
+  function P() { var p = window.HUB_PREFS; return p && typeof p.get === 'function' && typeof p.set === 'function' ? p : null; }
+
+  function pick(key, allowed, fallback) {
+    var p = P();
+    if (!p) return load(key, allowed, fallback);
+    var v = p.get(PREF[key]);
+    return allowed.indexOf(v) >= 0 ? v : fallback;
+  }
+
   function save(key, value) {
+    if (P()) { P().set(PREF[key], value); return; }
     try { if (window.localStorage) localStorage.setItem(key, value); } catch (e) { /* not kept; fine */ }
   }
 
-  var face = load(FACE_KEY, ['digital', 'analog'], 'digital');
-  var hours = load(HOURS_KEY, ['12', '24'], '12');
+  var face = pick(FACE_KEY, ['digital', 'analog'], 'digital');
+  var hours = pick(HOURS_KEY, ['12', '24'], '12');
 
   /* ---------- small helpers ---------- */
 
@@ -483,7 +497,12 @@
       var P = window.HUB_PIN;
       if (!P || typeof P.ask !== 'function' || P.isOpen()) return;
       var post = ctx.live && typeof ctx.live.post === 'function' ? ctx.live.post : null;
-      P.ask({ on: want, post: post }, function (ok) {
+      P.ask({ on: want, post: post }, function (ok, info) {
+        // "All screens": the Pi sent it everywhere; say so here.
+        if (ok && info && info.all && typeof ctx.toast === 'function') {
+          var gw = function (k, en) { return I18N() ? I18N().t(k, en) : en; };
+          ctx.toast(want ? gw('guest.allOn', 'Guest mode is on for all screens') : gw('guest.allOff', 'Guest mode is off for all screens'), 3500);
+        }
         if (!ok || window.HUB_GUEST.on() === want) return;
         window.HUB_GUEST.set(want);
         // Focus stays on the same choice (redrawPanel keeps its data-key).
@@ -509,6 +528,19 @@
 
     init: function (ctx) {
       setInterval(tick, 15000);
+      // Face or 12/24 picked on another screen: this one follows.
+      if (P() && typeof P().onChange === 'function') {
+        P().onChange(function (key) {
+          if (key !== 'clock.face' && key !== 'clock.hours') return;
+          var f = pick(FACE_KEY, ['digital', 'analog'], 'digital');
+          var h = pick(HOURS_KEY, ['12', '24'], '12');
+          if (f === face && h === hours) return;
+          face = f;
+          hours = h;
+          try { ctx.redrawTile(); } catch (e) { /* the next draw has it */ }
+          if (page && ctx.isOpen && ctx.isOpen()) ctx.redrawPanel();
+        });
+      }
       // A new language (picked here, or sent from the Pi): an open page
       // redraws with its label; focus stays on the same choice.
       if (I18N() && typeof I18N().onChange === 'function') {

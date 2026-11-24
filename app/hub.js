@@ -139,7 +139,7 @@
 (function () {
   'use strict';
 
-  var BUILD = 'v0.68.0';
+  var BUILD = 'v0.69.0';
   // Widgets that remember a frame-rate check per build (nowplaying-viz.js) read it here.
   window.HUB_BUILD = BUILD;
   var SERVICE = 'http://127.0.0.1:8095';
@@ -3884,7 +3884,8 @@
         var P = window.HUB_PIN;
         if (!window.HUB_GUEST || window.HUB_GUEST.on() === want || !P || typeof P.ask !== 'function' || P.isOpen()) return;
         var Lv = liveFacade();
-        P.ask({ on: want, post: Lv && typeof Lv.post === 'function' ? Lv.post : undefined }, function (ok) {
+        P.ask({ on: want, post: Lv && typeof Lv.post === 'function' ? Lv.post : undefined }, function (ok, info) {
+          if (ok && info && info.all) toast(want ? aboutWord('guest.allOn', 'Guest mode is on for all screens') : aboutWord('guest.allOff', 'Guest mode is off for all screens'), 3500);
           if (ok && window.HUB_GUEST.on() !== want) window.HUB_GUEST.set(want);
           drawSettings();
         });

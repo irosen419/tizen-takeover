@@ -9,6 +9,14 @@
  *             HUB_LIVE.post when left out
  *       ok    true once the PIN was right (or a new one was created);
  *             false when cancelled. Never called twice.
+ *       info  { all } as a second argument: all is true when "All screens"
+ *             was picked and the Pi turned Guest mode on or off on every
+ *             screen (the guestall resource; guest.js applies it on each)
+ *
+ * "Apply to: This screen | All screens" under the dots (This screen at
+ * first). Left from the keypad's first column reaches it, OK flips it,
+ * Right goes back; a tap picks a side. With All screens, the check (or the
+ * new PIN) carries { all: true, on } and the Pi does the rest.
  *   HUB_PIN.isOpen()     the pop-up is showing
  *   HUB_PIN.cancel()     closes it as if Back was pressed with no digits
  *   HUB_PIN.state()      { stage, filled, message, locked, busy, focus } (tests)
@@ -40,6 +48,7 @@
   // The keypad, row by row: 'c' is Cancel, 'd' Delete.
   var PAD = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'c', '0', 'd'];
   var COLS = 3;
+  var SCOPE = PAD.length;    // the focus index of the "Apply to" switch
   var LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" ' +
     'stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/>' +
     '<path d="M8.25 10.5V7.75a3.75 3.75 0 0 1 7.5 0v2.75"/><path d="M12 14.5v2.25"/></svg>';
@@ -101,6 +110,24 @@
     }
     var msg = el('div', 'pin-msg', info);
     msg.setAttribute('aria-live', 'polite');
+    // Apply to: this screen, or every screen (the Pi sends it to all).
+    var scopeBox = el('div', 'pin-scope', info);
+    el('div', 'pin-scope-label', scopeBox, T('scopeLabel', 'Apply to'));
+    var seg = el('div', 'pin-seg', scopeBox);
+    seg.setAttribute('role', 'button');
+    var here = el('span', 'pin-seg-opt is-on', seg, T('scopeHere', 'This screen'));
+    var all = el('span', 'pin-seg-opt', seg, T('scopeAll', 'All screens'));
+    function pickScope(v) {
+      return function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!S) return;
+        setFocus(SCOPE);
+        setScope(v);
+      };
+    }
+    here.addEventListener('click', pickScope(false));
+    all.addEventListener('click', pickScope(true));
     el('div', 'pin-hint', info, T('hint', 'The number keys on the remote work too.'));
 
     var pad = el('div', 'pin-pad', card);
@@ -125,7 +152,15 @@
     }
     // A click on the dimmed screen around the card does nothing (no stray close).
     wrap.addEventListener('click', function (e) { e.stopPropagation(); });
-    return { wrap: wrap, card: card, title: title, sub: sub, dots: dots, dotEls: dotEls, msg: msg, keys: keys };
+    keys.push(seg);                                   // index SCOPE
+    return { wrap: wrap, card: card, title: title, sub: sub, dots: dots, dotEls: dotEls, msg: msg, keys: keys,
+      seg: seg, here: here, all: all };
+  }
+
+  function setScope(all) {
+    S.all = !!all;
+    S.ui.here.className = 'pin-seg-opt' + (S.all ? '' : ' is-on');
+    S.ui.all.className = 'pin-seg-opt' + (S.all ? ' is-on' : '');
   }
 
   function drawSub() {
@@ -218,6 +253,13 @@
     }
   }
 
+  // With All screens picked: the Pi turns Guest mode on or off everywhere
+  // once the PIN is right.
+  function scoped(body) {
+    if (S.all) { body.all = true; body.on = S.on; }
+    return body;
+  }
+
   function unreachable() {
     S.digits = '';
     drawDots();
@@ -253,7 +295,7 @@
         setMessage(T('mismatch', 'The PINs didn’t match. Start again.'), 'error');
         return;
       }
-      send({ action: 'set', pin: pin }, function (err, data, code) {
+      send(scoped({ action: 'set', pin: pin }), function (err, data, code) {
         S.first = '';
         if (err && code !== 409) {
           S.stage = 'create';
@@ -270,13 +312,13 @@
           setMessage('');
           return;
         }
-        finish(true);
+        finish(true, data);
       });
       return;
     }
-    send({ action: 'check', pin: pin }, function (err, data) {
+    send(scoped({ action: 'check', pin: pin }), function (err, data) {
       if (err) { unreachable(); return; }
-      if (data.match === true) { finish(true); return; }
+      if (data.match === true) { finish(true, data); return; }
       S.digits = '';
       drawDots();
       if (data.set === false) {
@@ -317,6 +359,7 @@
 
   function activate(v) {
     if (!S) return;
+    if (v === 'scope') { setScope(!S.all); return; }
     pressKey(S.focus);
     if (v === 'c') finish(false);
     else if (v === 'd') back();
@@ -324,6 +367,17 @@
   }
 
   function move(dx, dy) {
+    // The "Apply to" switch sits left of the keypad: Right goes back to the
+    // key Left came from; Up and Down stay.
+    if (S.focus === SCOPE) {
+      if (dx > 0) setFocus(S.padFocus || 0);
+      return;
+    }
+    if (dx < 0 && S.focus % COLS === 0) {
+      S.padFocus = S.focus;
+      setFocus(SCOPE);
+      return;
+    }
     var r = Math.floor(S.focus / COLS);
     var c = S.focus % COLS;
     var rows = Math.ceil(PAD.length / COLS);
@@ -353,7 +407,7 @@
     var d = digitOf(e);
     if (d) { if (!e.repeat) digit(d); return; }
     if (c === 10009 || c === 27 || c === 8) { if (!e.repeat) back(); return; }
-    if (c === 13) { if (!e.repeat) activate(PAD[S.focus]); return; }
+    if (c === 13) { if (!e.repeat) activate(S.focus === SCOPE ? 'scope' : PAD[S.focus]); return; }
     if (c === 37) move(-1, 0);
     else if (c === 39) move(1, 0);
     else if (c === 38) move(0, -1);
@@ -362,13 +416,13 @@
 
   /* ---------- open and close ---------- */
 
-  function finish(ok) {
+  function finish(ok, data) {
     if (!S) return;
     var s = S;
     S = null;
     if (s.lockTimer) clearTimeout(s.lockTimer);
     if (s.ui.wrap.parentNode) s.ui.wrap.parentNode.removeChild(s.ui.wrap);
-    try { s.done(!!ok); } catch (e) {
+    try { s.done(!!ok, { all: !!ok && s.all && !!data && data.all === true }); } catch (e) {
       try { if (window.console && console.warn) console.warn('Guest PIN: ' + (e && e.message)); } catch (e2) { /* ignore */ }
     }
   }
@@ -385,7 +439,7 @@
     S = {
       ui: ui, post: post, done: typeof done === 'function' ? done : function () {},
       stage: 'enter', digits: '', first: '', message: '', busy: false,
-      lockedUntil: 0, lockTimer: null, focus: -1
+      lockedUntil: 0, lockTimer: null, focus: -1, on: !!opts.on, all: false, padFocus: 0
     };
     drawSub();
     drawDots();
@@ -408,7 +462,7 @@
     state: function () {
       if (!S) return null;
       return { stage: S.stage, filled: S.digits.length, message: S.message, locked: locked(), busy: S.busy,
-        focus: S.focus >= 0 ? PAD[S.focus] : '' };
+        focus: S.focus === SCOPE ? 'scope' : S.focus >= 0 ? PAD[S.focus] : '', all: S.all };
     }
   };
 })();

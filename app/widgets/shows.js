@@ -312,7 +312,12 @@
     return d.getTime();
   }
 
-  function hours24() { return load(HOURS_KEY) === '24'; }
+  // The Clock's 12 / 24 choice, shared by every screen (app/prefs.js).
+  function hours24() {
+    var p = window.HUB_PREFS;
+    if (p && typeof p.get === 'function') return p.get('clock.hours') === '24';
+    return load(HOURS_KEY) === '24';
+  }
 
   function pad(n) { return (n < 10 ? '0' : '') + n; }
 

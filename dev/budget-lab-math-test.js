@@ -272,6 +272,23 @@ check('edge: a saved cap from the last cycle is dropped, never carried over', ()
   assert.strictEqual(L.readPref({ v: 1, cardDate: '2026-12-01', keep: 1 }, lab(0, { daysLeft: 0 })), null, 'no saved cap on card day');
 });
 
+check('the daily goal stands in as the saved cap when none is saved (and after card day drops one); a saved cap still wins', () => {
+  const p = pace(underDays(10));
+  p.goals = [{ from: '2026-11-10', goal: 60 }];
+  let r = run({ pace: p });
+  assert.strictEqual(r.saved.cap, 60);
+  assert.strictEqual(r.saved.fromGoal, true);
+  assert.strictEqual(r.gapBase, 'saved');
+  assert.strictEqual(r.monthly.saved, 60 * r.D);
+  assert.strictEqual(r.capIsCalculated, true, 'the slider itself still starts at Safe today');
+  r = run({ pace: p, pref: { v: 1, cardDate: '2026-11-01', keep: 214 } });
+  assert.strictEqual(r.saved.cap, 60, 'last cycle dropped: the goal again');
+  r = run({ pace: p, pref: { v: 1, cardDate: '2026-12-01', keep: 214 } });
+  assert.strictEqual(r.saved.fromGoal, false);
+  assert.notStrictEqual(r.saved.cap, 60);
+  assert.strictEqual(run().saved, null, 'no goal and none saved: none');
+});
+
 check('edge: a saved cap never goes below $0 a day', () => {
   const r = run({ lab: lab(100), pref: { v: 1, cardDate: '2026-12-01', keep: 214 } });
   assert.strictEqual(r.saved.cap, 0);

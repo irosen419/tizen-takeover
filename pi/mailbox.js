@@ -770,6 +770,14 @@ const COMMANDS = {
       return { message: budgetgoal.setText(r), data: { changed: r.changed, from: r.from } };
     }
   },
+  'prefs.show': {
+    // The widget preferences every screen shares (prefs.js): keys and times, never values.
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/prefs');
+      return { message: r.message, data: { keys: r.keys, at: r.at, guestAll: r.guestAll } };
+    }
+  },
   'shows.list': {
     args: {},
     run: async (a, ctx) => {
