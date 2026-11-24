@@ -802,7 +802,7 @@ function createPantry(options) {
       categoryIds: all('SELECT category_id FROM category_products WHERE product_id = ?', p.id).map((r) => r.category_id),
       upc: p.barcode || '', size: p.size, unit: p.unit, photo: cp && cp.image ? cp.image : p.photo, notes: p.notes,
       qty: p.quantity_remaining, restockAt: p.restock_at, buy: p.purchase_quantity, autoAdd: !!p.auto_add, held: !!p.auto_held,
-      mode: p.substitution_mode, location: p.location, owned: !!p.owned, low: isLow(p),
+      mode: p.substitution_mode, location: p.location, store: p.preferred_store || '', owned: !!p.owned, low: isLow(p),
       onList: !!li, listItemId: li ? li.id : null, checked: !!(li && li.checked), inCart: !!((g && g.done) || (li && li.checked)), listSource: li ? li.source : '', listQty: li ? li.quantity : 0, modeOverride: li ? li.mode_override : null,
       replacements: all('SELECT replacement_id FROM replacements WHERE product_id = ? ORDER BY rank', p.id).map((r) => r.replacement_id),
       updatedAt: p.updated_at
@@ -868,10 +868,10 @@ function createPantry(options) {
   // For the export (GET /api/grocery/export): why a grocery row is there.
   function groceryInfo() {
     const m = {};
-    all('SELECT li.grocery_id, li.source, p.owned FROM list_items li JOIN products p ON p.id = li.product_id WHERE li.list_id = ?', openListId()).forEach((r) => {
+    all('SELECT li.grocery_id, li.source, p.owned, p.preferred_store FROM list_items li JOIN products p ON p.id = li.product_id WHERE li.list_id = ?', openListId()).forEach((r) => {
       if (!r.grocery_id) return;
       const fromPantry = r.owned === 1;
-      m[r.grocery_id] = { fromPantry: fromPantry, reason: r.source === 'auto' ? 'low' : (fromPantry ? 'manual' : '') };
+      m[r.grocery_id] = { store: r.preferred_store || '', fromPantry: fromPantry, reason: r.source === 'auto' ? 'low' : (fromPantry ? 'manual' : '') };
     });
     return m;
   }

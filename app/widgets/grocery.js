@@ -160,6 +160,7 @@
     plus: 'M12 5v14M5 12h14',
     camera: 'M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.5-2h5.6l1.5 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z M12 10a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z',
     edit: 'M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z M14.5 7.5l3 3',
+    barcode: 'M3 7V5.5A1.5 1.5 0 0 1 4.5 4H7 M17 4h2.5A1.5 1.5 0 0 1 21 5.5V7 M21 17v1.5a1.5 1.5 0 0 1-1.5 1.5H17 M7 20H4.5A1.5 1.5 0 0 1 3 18.5V17 M7 8.5v7 M9.5 8.5v7 M12 8.5v7 M14 8.5v7 M17 8.5v7',
     bars: 'M5 6v12 M8 6v12 M10.5 6v12 M14 6v12 M16.5 6v12 M19 6v12',
     basket: 'M4 9h16l-1.6 9.2a2 2 0 0 1-2 1.8H7.6a2 2 0 0 1-2-1.8z M8.5 9l3.5-5 3.5 5 M9.5 13v3 M14.5 13v3'
   };
@@ -247,7 +248,7 @@
       scanBtn = el('button', 'gx-scan');
       scanBtn.type = 'button';
       scanBtn.setAttribute('aria-label', T('grocery.scanLabel', 'Scan a barcode'));
-      scanBtn.appendChild(icon('camera'));
+      scanBtn.appendChild(icon('barcode'));
       scanBtn.appendChild(el('span', 'gx-scan-word', T('grocery.scan', 'Scan')));
       scanBtn.addEventListener('click', function () { root.HUB_SCAN.open(ctx, { destination: 'grocery', destinations: ['grocery', 'pantry'], returnFocus: scanBtn }); });
       form.appendChild(scanBtn);
@@ -377,6 +378,10 @@
       var sub = p ? [p.brand, p.size].filter(function (x) { return x; }).join(' · ') : '';
       if (sub && p.brand) text.appendChild(el('span', 'gx-sub', sub));
       else if (item.upc) text.appendChild(el('span', 'gx-sub is-missing', sub ? sub + ' · ' + T('grocery.noBrand', 'no brand yet') : T('grocery.noBrand', 'no brand yet')));
+      // Where to get it, from the pantry's preferred store for this code.
+      var pd = ctx.peek ? ctx.peek('pantry') : null, store = '';
+      if (item.upc && pd && pd.products) pd.products.forEach(function (x) { if (x.upc === item.upc && x.store) store = x.store; });
+      if (store) text.appendChild(el('span', 'gx-sub gx-store', store));
       tick.appendChild(text);
       var del = el('button', 'gx-del');
       del.type = 'button';
@@ -509,6 +514,12 @@
     root.HUB_SCAN.register('grocery', {
       label: function (t) { return t('grocery.destLabel', 'Groceries'); },
       chip: function (t) { return t('grocery.destChip', 'Groceries'); },
+      // Pasting a list skips what is on the list and not yet in the cart.
+      has: function (product, ctx) {
+        var d = ctx.id === 'grocery' ? ctx.data && ctx.data() : ctx.peek && ctx.peek('grocery');
+        var hit = byUpc(d && d.items ? d.items : [], product.upc);
+        return !!hit && !hit.done;
+      },
       note: function (product, ctx, t) {
         // Opened from another view: its data() is not this list, so peek at the list.
         var d = ctx.id === 'grocery' ? ctx.data && ctx.data() : ctx.peek && ctx.peek('grocery');

@@ -692,4 +692,39 @@ body.sc-open { overflow: hidden; }
   .tx-glow::after, .tx-box.is-pop, .tx-tray { animation: none; }
 }
 
+/* ---------- paste a list of codes (scan.js: many at once) ---------- */
+.sc-link {
+  display: block; max-width: 520px; margin: 4px auto 0; min-height: 48px; padding: 6px 4px; border: 0; background: none;
+  color: var(--ok-sky); font-size: 0.9375rem; font-weight: 500; line-height: var(--lh); text-align: left; overflow-wrap: anywhere;
+}
+.sc-link:active { opacity: 0.7; }
+.sc-many { display: none; max-width: 520px; margin: 0 auto; }
+.sc-dock.is-many .sc-many { display: block; }
+.sc-dock.is-many .sc-dock-row { display: none; }
+.sc-many-in { display: block; padding: 12px 16px; min-height: 112px; resize: none; font-size: 1rem; letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
+.sc-many-go { margin-top: 10px; }
+.sc-bulk { list-style: none; margin: 14px 0 0; padding: 0; }
+.sc-bulk-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--hair); }
+.sc-bulk-badge {
+  flex: none; display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%;
+  background: var(--card-2); color: var(--text-3);
+}
+.sc-bulk-badge .sc-ic { font-size: 16px; stroke-width: 2.2; }
+.sc-bulk-badge .sc-spin { width: 16px; height: 16px; }
+.sc-bulk-row.is-added .sc-bulk-badge { background: rgba(90, 197, 118, 0.16); color: var(--ok-passive); }
+.sc-bulk-row.is-have .sc-bulk-badge { background: rgba(83, 182, 235, 0.16); color: var(--ok-sky); }
+.sc-bulk-row.is-missing .sc-bulk-badge { background: rgba(214, 162, 10, 0.16); color: var(--ok-optional); }
+.sc-bulk-row.is-invalid .sc-bulk-badge, .sc-bulk-row.is-error .sc-bulk-badge { background: rgba(251, 129, 122, 0.16); color: var(--ok-must); }
+.sc-bulk-text { flex: 1; min-width: 0; }
+.sc-bulk-name { font-size: 1rem; line-height: var(--lh); overflow-wrap: anywhere; }
+.sc-bulk-state { color: var(--text-3); font-size: 0.875rem; line-height: var(--lh); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.sc-bulk-details {
+  flex: none; max-width: 40%; min-height: 48px; padding: 4px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl);
+  background: transparent; color: var(--text); font-size: 0.875rem; line-height: var(--lh); text-align: center;
+}
+.sc-bulk-actions { flex-wrap: wrap; margin-top: 16px; }
+.sc-bulk-actions .sc-btn { margin-top: 0; }
+.sc-bulk-actions .sc-primary { width: auto; flex: 1; }
+.gx-store { color: var(--ok-sky); }
+
 .css-end { top: 0; }
