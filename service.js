@@ -28,7 +28,7 @@ var urlLib = require('url');
 var os = require('os');
 
 var PORT = 8095;
-var VERSION = '0.60.4';
+var VERSION = '0.60.5';
 var TOKEN_FILE = '/home/owner/share/tizen-takeover-remote-token.txt';
 var REMOTE_NAME = new Buffer('Home Hub').toString('base64');
 
