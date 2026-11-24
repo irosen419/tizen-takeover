@@ -133,6 +133,34 @@ async function main() {
     p.close();
   });
 
+  await check('an old "Milk" category becomes Dairy in place, keeping its products; yogurt and cheese guess Dairy', () => {
+    const dir = tmp();
+    let p = pantrydb.createPantry({ dataDir: dir });
+    const cats = p.view([]).data.categories;
+    assert(cats.some((c) => c.key === 'dairy' && c.name === 'Dairy') && !cats.some((c) => c.key === 'milk'), 'new database says Dairy');
+    // Put a database back as the first build left it: Milk with a yogurt in it.
+    const dairyId = cats.find((c) => c.key === 'dairy').id;
+    p.applyOps([{ op: 'add', name: 'Greek yogurt', qty: 1, categoryIds: [dairyId] }], []);
+    p.db.prepare("UPDATE categories SET name = 'Milk', key = 'milk' WHERE id = ?").run(dairyId);
+    p.close();
+    p = pantrydb.createPantry({ dataDir: dir });
+    const after = p.view([]).data;
+    assert.strictEqual(after.categories.filter((c) => c.key === 'dairy').length, 1);
+    assert(!after.categories.some((c) => c.key === 'milk'), 'Milk is gone');
+    const y = after.products.find((x) => x.name === 'Greek yogurt');
+    assert.deepStrictEqual(y.categoryIds, [dairyId], 'the yogurt kept its category');
+    p.close();
+    // A second start changes nothing.
+    p = pantrydb.createPantry({ dataDir: dir });
+    assert.strictEqual(p.view([]).data.categories.length, 13);
+    p.applyOps([{ op: 'add', name: 'Cheddar cheese', qty: 1 }, { op: 'add', name: 'Peanut butter', qty: 1 }], []);
+    const v = p.view([]).data;
+    const catOf = (n) => v.categories.filter((c) => v.products.find((x) => x.name === n).categoryIds.indexOf(c.id) >= 0).map((c) => c.key);
+    assert.deepStrictEqual(catOf('Cheddar cheese'), ['dairy']);
+    assert.deepStrictEqual(catOf('Peanut butter'), ['dry goods']);
+    p.close();
+  });
+
   await check('a file database uses WAL', () => {
     const p = pantrydb.createPantry({ dataDir: tmp() });
     assert.strictEqual(p.db.prepare('PRAGMA journal_mode').get().journal_mode, 'wal');

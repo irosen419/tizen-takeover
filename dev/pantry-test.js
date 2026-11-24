@@ -244,6 +244,38 @@ async function main() {
       await page.ctx.close();
     });
 
+    await check('My picks: the list shows only on that mode; same-category first; add, reorder, remove; saves ranked ids', async () => {
+      const page = await open();
+      const eggs = byName('Eggs'), peas = byName('Frozen peas'), towels = byName('Paper towels');
+      await page.click('.px-row[data-id="' + eggs.id + '"] .px-open');
+      await page.waitForSelector('.px-sheet.is-on');
+      assert(!(await page.isVisible('.px-subs')), 'hidden on Something similar');
+      await page.selectOption('.px-mode select', 'preselected');
+      assert(await page.isVisible('.px-subs'), 'shown on My picks');
+      await page.fill('.px-subs input', 'pea');
+      await page.click('.px-subs .px-option:has-text("Frozen peas")');
+      await page.fill('.px-subs input', 'towel');
+      await page.click('.px-subs .px-option:has-text("Paper towels")');
+      assert((await texts(page, '.px-subname')).join('|') === 'Frozen peas|Bounty Paper towels', 'two rows in order');
+      await page.click('.px-subrow:nth-child(2) [aria-label="Move up"]');
+      assert((await texts(page, '.px-subname')).join('|') === 'Bounty Paper towels|Frozen peas', 'moved up');
+      await shot(page, 'pantry-picks-en.png');
+      await page.click('.px-sheet .px-primary');
+      await page.waitForSelector('.px-sheet', { state: 'detached' });
+      await page.waitForTimeout(400);
+      const e = byName('Eggs');
+      assert(e.mode === 'preselected' && e.replacements.join() === [towels.id, peas.id].join(), JSON.stringify(e.replacements));
+      // Remove one and save: the Pi keeps the rest.
+      await page.click('.px-row[data-id="' + eggs.id + '"] .px-open');
+      await page.waitForSelector('.px-sheet.is-on');
+      await page.click('.px-subrow:nth-child(1) [aria-label="Remove"]');
+      await page.click('.px-sheet .px-primary');
+      await page.waitForTimeout(400);
+      assert(byName('Eggs').replacements.join() === String(peas.id), 'one left');
+      assert(!page.errors.length, page.errors.join('; '));
+      await page.ctx.close();
+    });
+
     await check('typing a name adds it to the pantry in the chosen place', async () => {
       const page = await open();
       await page.click('.px-chip:has-text("Freezer")');

@@ -215,6 +215,15 @@ body.px-open { overflow: hidden; }
 }
 .px-option.is-add { color: var(--ok-sky); border-style: dashed; }
 
+/* My picks: numbered rows, each with up, down, remove (44 px targets). */
+.px-sublist { list-style: none; margin: 0 0 8px; padding: 0; }
+.px-sublist:empty { display: none; }
+.px-subrow { display: flex; align-items: center; gap: 4px; min-height: 52px; border-bottom: 1px solid var(--hair); }
+.px-subnum { flex: 0 0 24px; color: var(--text-3); font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+.px-subname { flex: 1 1 auto; min-width: 0; font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
+.px-subtool { flex: 0 0 44px; width: 44px; height: 44px; }
+.px-subtool:disabled { opacity: 0.3; }
+
 .px-sheet-foot {
   display: flex; flex-direction: column; gap: 8px;
   padding: 12px 20px calc(16px + env(safe-area-inset-bottom)); border-top: 1px solid var(--hair);
