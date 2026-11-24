@@ -1440,10 +1440,15 @@
     anchor = Math.floor(anchor / H) * H - 0.75;
     anchor = Math.max(0, Math.min(24 * H - vh, anchor));
     if (!(anchor >= 0)) anchor = 0;
-    inner.style.transform = 'translateY(' + (-anchor) + 'rem)';
+    // A tablet scrolls the box itself, so a finger can move it too (app/tablet.css).
+    if (onTablet()) viewBox.scrollTop = Math.round(anchor * rem);
+    else inner.style.transform = 'translateY(' + (-anchor) + 'rem)';
 
     drawDetail(detailBox, de);
   }
+
+  // Tablet mode (hub.js): touch scrolls the hours and the week's columns.
+  function onTablet() { return document.body.classList.contains('tablet'); }
 
   function clockMin(t) { var c = clockOf(zone, t); return c.h * 60 + c.m; }
 
@@ -1635,7 +1640,8 @@
       var vh = s.view.clientHeight;
       var shift = 0;
       if (s.sel && s.sel.offsetTop + s.sel.offsetHeight > vh) shift = s.sel.offsetTop + s.sel.offsetHeight - vh + 2;
-      if (shift) s.list.style.transform = 'translateY(' + (-shift) + 'px)';
+      if (shift && onTablet()) s.view.scrollTop = shift;
+      else if (shift) s.list.style.transform = 'translateY(' + (-shift) + 'px)';
       var hidden = 0;
       var items = s.list.childNodes;
       for (var m = 0; m < items.length; m++) {

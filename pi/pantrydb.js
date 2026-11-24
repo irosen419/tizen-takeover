@@ -67,22 +67,22 @@ const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g;
 
 // Starting "buy more at" by kind of item; every product can change its own.
 const KINDS = {
-  eggs: 6, milk: 1, bread: 1, produce: 1, meat: 1,
+  eggs: 6, dairy: 1, bread: 1, produce: 1, meat: 1,
   frozen: 2, canned: 2, 'dry goods': 2, snacks: 2, drinks: 2,
   'paper goods': 1, cleaning: 1, other: 1
 };
 // The categories a new database starts with (one per kind), in this order.
-const SEED_CATEGORIES = ['Eggs', 'Milk', 'Bread', 'Produce', 'Meat', 'Frozen', 'Canned', 'Dry goods', 'Snacks', 'Drinks', 'Paper goods', 'Cleaning', 'Other'];
+const SEED_CATEGORIES = ['Eggs', 'Dairy', 'Bread', 'Produce', 'Meat', 'Frozen', 'Canned', 'Dry goods', 'Snacks', 'Drinks', 'Paper goods', 'Cleaning', 'Other'];
 // Words that guess a kind from a product's name (English and Spanish).
 const KIND_WORDS = {
   eggs: ['egg', 'eggs', 'huevo', 'huevos'],
-  milk: ['milk', 'leche', 'creamer', 'half and half', 'yogurt', 'yoghurt'],
+  dairy: ['dairy', 'milk', 'leche', 'creamer', 'half and half', 'yogurt', 'yoghurt', 'cheese', 'queso', 'butter', 'mantequilla', 'sour cream', 'cream cheese'],
   bread: ['bread', 'bagel', 'bagels', 'bun', 'buns', 'tortilla', 'tortillas', 'pan', 'muffins'],
   produce: ['apple', 'apples', 'banana', 'bananas', 'lettuce', 'spinach', 'tomato', 'tomatoes', 'onion', 'onions', 'potato', 'potatoes', 'avocado', 'avocados', 'lemon', 'lemons', 'lime', 'limes', 'berries', 'strawberries', 'carrot', 'carrots', 'pepper', 'peppers', 'fruit', 'garlic', 'cilantro'],
   meat: ['chicken', 'beef', 'pork', 'turkey', 'bacon', 'sausage', 'ham', 'steak', 'salmon', 'fish', 'shrimp', 'pollo', 'carne'],
   frozen: ['frozen', 'ice cream', 'pizza'],
   canned: ['canned', 'can', 'beans', 'soup', 'tuna'],
-  'dry goods': ['rice', 'pasta', 'flour', 'sugar', 'cereal', 'oats', 'oatmeal', 'arroz', 'noodles'],
+  'dry goods': ['peanut butter', 'almond butter', 'cashew butter', 'apple butter', 'nut butter', 'mantequilla de mani', 'rice', 'pasta', 'flour', 'sugar', 'cereal', 'oats', 'oatmeal', 'arroz', 'noodles'],
   snacks: ['chips', 'crackers', 'cookies', 'snack', 'snacks', 'popcorn', 'nuts', 'pretzels'],
   drinks: ['water', 'juice', 'soda', 'coffee', 'tea', 'beer', 'wine', 'sparkling', 'cola'],
   'paper goods': ['paper towels', 'paper towel', 'toilet paper', 'napkins', 'tissues', 'paper'],
@@ -358,6 +358,24 @@ function createPantry(options) {
 
   let revNow = Number(metaGet('rev')) || 0;
   function bump() { revNow += 1; metaSet('rev', revNow); }
+
+  // Older databases started with a "Milk" category (yogurt, creamer and
+  // cheese all went there). It becomes "Dairy", keeping every product link.
+  // Runs once (a meta flag), so a "Milk" category made later is left alone.
+  tx(() => {
+    if (metaGet('dairyMigrated') !== null) return;
+    metaSet('dairyMigrated', 1);
+    const old = one("SELECT id FROM categories WHERE key = 'milk'");
+    if (!old) return;
+    const dairy = one("SELECT id FROM categories WHERE key = 'dairy'");
+    if (!dairy) {
+      run("UPDATE categories SET name = 'Dairy', key = 'dairy' WHERE id = ?", old.id);
+    } else {
+      run('INSERT OR IGNORE INTO category_products (category_id, product_id) SELECT ?, product_id FROM category_products WHERE category_id = ?', dairy.id, old.id);
+      run('DELETE FROM categories WHERE id = ?', old.id);
+    }
+    bump();
+  });
 
   /* --- brands and categories: create or pick, never a second spelling --- */
 

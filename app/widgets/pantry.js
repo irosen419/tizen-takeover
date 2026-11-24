@@ -29,7 +29,7 @@
   var MODES = ['similar', 'preselected', 'refund', 'contact_me'];
   var UNITS = ['oz', 'fl_oz', 'lb', 'g', 'kg', 'ml', 'l', 'gal', 'count', 'pack'];
   // The categories the Pi starts with get Spanish names; ones made later stay as typed.
-  var SEEDED = { eggs: 1, milk: 1, bread: 1, produce: 1, meat: 1, frozen: 1, canned: 1, 'dry goods': 1, snacks: 1, drinks: 1, 'paper goods': 1, cleaning: 1, other: 1 };
+  var SEEDED = { eggs: 1, dairy: 1, bread: 1, produce: 1, meat: 1, frozen: 1, canned: 1, 'dry goods': 1, snacks: 1, drinks: 1, 'paper goods': 1, cleaning: 1, other: 1 };
 
   /* ---------- logic ---------- */
 
@@ -101,11 +101,30 @@
         if (typeof o.restockAt === 'number') n.restockAt = o.restockAt;
         if (typeof o.autoAdd === 'boolean') n.autoAdd = o.autoAdd;
         if (o.substitutionMode) n.mode = o.substitutionMode;
+        if (o.replacements) n.replacements = o.replacements.slice();
       } else return;
       n.low = isLow(n);
       list[at] = n;
     });
     return copy(data, { products: list });
+  }
+
+  var MAX_SUBS = 5;
+
+  // Products that could stand in for p: not p, not already picked, sharing a
+  // category first (then by name). q narrows by name or brand; with no q only
+  // same-category ones are offered, so the list stays short.
+  function subCandidates(products, p, picked, q) {
+    var mine = p.categoryIds || [];
+    function shares(x) { return (x.categoryIds || []).some(function (c) { return mine.indexOf(c) >= 0; }); }
+    var out = (products || []).filter(function (x) {
+      return x.id !== p.id && (picked || []).indexOf(x.id) < 0 && (fold(q) ? matches(x, q) : shares(x));
+    });
+    out.sort(function (a, b) {
+      var sa = shares(a) ? 0 : 1, sb = shares(b) ? 0 : 1;
+      return sa !== sb ? sa - sb : byName(a, b);
+    });
+    return out;
   }
 
   // A number typed in a box: null when empty, NaN when not a number in range.
@@ -122,7 +141,7 @@
     return String(Math.round(n * 100) / 100);
   }
 
-  var Logic = { PLACES: PLACES, MODES: MODES, UNITS: UNITS, fold: fold, matches: matches, stock: stock, usual: usual, counts: counts, applyLocal: applyLocal, readNumber: readNumber };
+  var Logic = { PLACES: PLACES, MODES: MODES, UNITS: UNITS, fold: fold, matches: matches, subCandidates: subCandidates, MAX_SUBS: MAX_SUBS, stock: stock, usual: usual, counts: counts, applyLocal: applyLocal, readNumber: readNumber };
   root.HUB_PANTRY = Logic;
   if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
   if (typeof document === 'undefined') return;
@@ -139,7 +158,9 @@
     search: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13z M15.5 15.5L20 20',
     bars: 'M5 6v12 M8 6v12 M10.5 6v12 M14 6v12 M16.5 6v12 M19 6v12',
     shelf: 'M4 4h16v16H4z M4 10h16 M4 15h16 M8 7h2 M13 12h3 M7 17.5h4',
-    check: 'M5 12.5l4.2 4.2L19 7'
+    check: 'M5 12.5l4.2 4.2L19 7',
+    up: 'M6 14l6-6 6 6',
+    down: 'M6 10l6 6 6-6'
   };
 
   function icon(name, cls) {
@@ -474,7 +495,8 @@
         location: p0.location, restockAt: amount(p0.restockAt), buy: String(p0.buy || 1), autoAdd: p0.autoAdd !== false,
         mode: p0.mode || 'similar', size: p0.size == null ? '' : String(p0.size), unit: p0.unit || '',
         brand: p0.brandId ? { id: p0.brandId, name: p0.brand } : null,
-        category: null
+        category: null,
+        subs: (p0.replacements || []).slice(0, MAX_SUBS)
       };
       (d0.categories || []).forEach(function (c) { if (!draft.category && (p0.categoryIds || []).indexOf(c.id) >= 0) draft.category = { id: c.id, name: categoryName(T, c) }; });
 
@@ -589,6 +611,60 @@
       var fMode = selectField(T('pantry.modeLabel', 'If it is out'), MODES.map(function (m) { return [m, modeName(T, m)]; }), draft.mode, 'px-mode');
       bodyEl.appendChild(fMode.wrap);
 
+      // My picks: up to five other products, in the order to try them.
+      var subsWrap = el('div', 'px-field px-subs');
+      var subsId = newId('subs');
+      subsWrap.appendChild(fieldHead(T('pantry.subsLabel', 'My picks, in order'), subsId));
+      var subsList = el('ol', 'px-sublist');
+      subsList.id = subsId;
+      subsWrap.appendChild(subsList);
+      var subsFind = el('input', 'px-input');
+      subsFind.type = 'text';
+      subsFind.setAttribute('autocomplete', 'off');
+      subsFind.setAttribute('maxlength', '40');
+      subsFind.setAttribute('aria-label', T('pantry.subsFind', 'Find a product to add'));
+      subsFind.placeholder = T('pantry.subsFind', 'Find a product to add');
+      subsWrap.appendChild(subsFind);
+      var subsOpts = el('div', 'px-options');
+      subsWrap.appendChild(subsOpts);
+      subsWrap.appendChild(el('p', 'px-hint', T('pantry.subsHint', 'Up to {n}. The store tries them from the top.', { n: MAX_SUBS })));
+      function subName(pid) {
+        var q = productById(pid);
+        return q ? (q.brand ? q.brand + ' ' : '') + q.name : T('pantry.subGone', 'A product no longer in the pantry');
+      }
+      function paintSubs() {
+        subsWrap.style.display = fMode.select.value === 'preselected' ? '' : 'none';
+        subsList.innerHTML = '';
+        draft.subs.forEach(function (pid, i) {
+          var li = el('li', 'px-subrow');
+          li.appendChild(el('span', 'px-subnum', String(i + 1)));
+          li.appendChild(el('span', 'px-subname', subName(pid)));
+          function tool(label, ic, fn, off) {
+            var b = btn('px-round px-subtool', null, ic);
+            b.setAttribute('aria-label', label);
+            if (off) b.disabled = true;
+            b.addEventListener('click', fn);
+            li.appendChild(b);
+          }
+          tool(T('pantry.subUp', 'Move up'), 'up', function () { draft.subs.splice(i - 1, 0, draft.subs.splice(i, 1)[0]); paintSubs(); }, i === 0);
+          tool(T('pantry.subDown', 'Move down'), 'down', function () { draft.subs.splice(i + 1, 0, draft.subs.splice(i, 1)[0]); paintSubs(); }, i === draft.subs.length - 1);
+          tool(T('pantry.subRemove', 'Remove'), 'cross', function () { draft.subs.splice(i, 1); paintSubs(); });
+          subsList.appendChild(li);
+        });
+        subsOpts.innerHTML = '';
+        if (draft.subs.length >= MAX_SUBS) return;
+        var q = subsFind.value.replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+        subCandidates(products(), p0, draft.subs, q).slice(0, 6).forEach(function (x) {
+          var b = btn('px-option', (x.brand ? x.brand + ' ' : '') + x.name, 'plus');
+          b.addEventListener('click', function () { draft.subs.push(x.id); subsFind.value = ''; paintSubs(); });
+          subsOpts.appendChild(b);
+        });
+      }
+      subsFind.addEventListener('input', paintSubs);
+      fMode.select.addEventListener('change', paintSubs);
+      bodyEl.appendChild(subsWrap);
+      paintSubs();
+
       // Brand and category: pick one of the Pi's, or create one (never a second spelling).
       function picker(kind, labelText, listFn, nameFn, current) {
         var w = el('div', 'px-field px-picker px-picker-' + kind);
@@ -678,6 +754,8 @@
         if (buy !== null && buy !== p.buy) op.purchaseQuantity = buy;
         if (draft.autoAdd !== p.autoAdd) op.autoAdd = draft.autoAdd;
         if (fMode.select.value !== p.mode) op.substitutionMode = fMode.select.value;
+        var was = (p.replacements || []).join(',');
+        if (fMode.select.value === 'preselected' && draft.subs.join(',') !== was) op.replacements = draft.subs.slice();
         var unit = fUnit.select.value || null;
         if ((size === null ? null : size) !== (p.size == null ? null : p.size)) op.size = size === 0 ? null : size;
         if (unit !== (p.unit || null)) op.unit = unit;
