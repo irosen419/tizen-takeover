@@ -253,6 +253,46 @@ async function main() {
       assert(await page.evaluate(() => !document.querySelector('.sh-go-card')), 'the card stayed');
     });
 
+    await check('Tablet (no service.js): Watch goes to the Pi with the title and link at once, then "Go to: <title>" until a tap; YouTube goes as TizenTube (EN, ES)', async () => {
+      const r = await page.evaluate(async () => {
+        const T = window.HUB_SHOWS._test;
+        const C = T.ctx();
+        const keep = { noHelper: C.noHelper, launchOnTv: C.launchOnTv };
+        const sent = [];
+        C.noHelper = true;
+        C.launchOnTv = function (req, cb) { sent.push(JSON.parse(JSON.stringify(req))); setTimeout(function () { cb(null); }, 30); };
+        const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+        const text = () => { const c = document.querySelector('.sh-go-card'); return c ? c.firstChild.textContent + ' | ' + c.lastChild.textContent : ''; };
+        try {
+          const out = {};
+          out.did = T.watch({ id: 'st', name: 'Stranger Things', service: 'Netflix', watch: 'Netflix', link: '80057281' }, []);
+          out.early = text();
+          await wait(200);
+          out.card = text();
+          document.querySelector('.sh-go-card').click();
+          await wait(50);
+          out.gone = !document.querySelector('.sh-go-card');
+          T.watch({ id: 'ho', name: 'Hot Ones', service: 'YouTube', watch: 'YouTube' }, []);
+          await wait(200);
+          out.yt = text();
+          document.querySelector('.sh-go-card').click();
+          // The Pi refused: no card.
+          C.launchOnTv = function (req, cb) { sent.push(req); cb('no'); };
+          T.watch({ id: 'x', name: 'Andor', service: 'Disney+', watch: 'Disney+' }, []);
+          await wait(100);
+          out.none = !document.querySelector('.sh-go-card');
+          out.sent = sent;
+          return out;
+        } finally { C.noHelper = keep.noHelper; C.launchOnTv = keep.launchOnTv; }
+      });
+      assert(r.did === 'tv' && r.early === '', JSON.stringify(r));
+      assert(r.card === 'Go to: Stranger Things | Find it in Netflix on the TV. Tap to close.', r.card);
+      assert(r.gone && r.none, JSON.stringify(r));
+      assert(r.sent[0].kind === 'app' && r.sent[0].name === 'Netflix' && r.sent[0].title === 'Stranger Things' && r.sent[0].link === '80057281', JSON.stringify(r.sent[0]));
+      assert(r.sent[1].kind === 'tizentube' && r.sent[1].name === 'YouTube' && r.sent[1].title === 'Hot Ones' && !r.sent[1].link && !r.sent[1].match, JSON.stringify(r.sent[1]));
+      assert(r.yt === 'Go to: Hot Ones | Find it in YouTube on the TV. Tap to close.', r.yt);
+    });
+
     await check('The ladder: every service has a fallback app and a search hint; unknown names open by name', async () => {
       const v = await page.evaluate(() => {
         const T = window.HUB_SHOWS._test;
@@ -399,6 +439,8 @@ async function main() {
         await H.key(es, 'Enter');
         await H.until(() => es.evaluate(() => !!document.querySelector('.sh-go-card')), 1500, 'no card');
         assert(await cardText(es) === 'Disney+ se abre en su pantalla de inicio | Busca: Paradise', await cardText(es));
+        const go = await es.evaluate(() => { const w = window.HUB_SHOWS._test.word; return w('goTo', { name: 'Él' }) + ' | ' + w('goToLine', { service: 'Netflix' }); });
+        assert(go === 'Ir a: Él | Búscalo en Netflix en la TV. Toca para cerrar.', go);
         await H.key(es, 'Enter');
       } finally { await es.ctx.close(); }
     });

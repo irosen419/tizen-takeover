@@ -4,12 +4,13 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
 
 ## Where it comes from
 
-- **The list** lives on the Pi in `data/shows.json`, started from `pi/shows-seed.json` (Hell's Kitchen and Shark Tank on Disney+, The Great British Baking Show on Netflix, Stick on Apple TV). Each entry is `{ name, service?, tvmazeId?, serviceOverride?, alsoOn?, via? }`:
+- **The list** lives on the Pi in `data/shows.json`, started from `pi/shows-seed.json` (Hell's Kitchen and Shark Tank on Disney+, The Great British Baking Show on Netflix, Stick on Apple TV). Each entry is `{ name, service?, tvmazeId?, serviceOverride?, alsoOn?, via?, link? }`:
   - `name`: the show as the owner says it.
   - `service`: the show's watch app and its badge on the TV. It wins over what TVmaze says.
   - `serviceOverride`: the app Watch opens when it differs from the badge.
   - `alsoOn`: up to 4 other apps that carry it. The TV offers each as "Also on ...".
   - `via`: the app the show is billed through and opened in, such as `Prime Video` for HBO Max through Prime Video Channels.
+  - `link`: the show's id in its app (a Netflix or Prime number, a YouTube video id): letters, digits and `. _ : -`, up to 80. Optional.
   - `tvmazeId`: filled in by the first lookup and kept.
   - `watched`: optional, the episodes marked watched: `[{ s, e, at }]` (season, episode, when it was marked; at most 400 per show, the oldest go first). Never written by hand: the TV marks them, `./hub shows watched|unwatch` and the mailbox correct them.
   - `upTo`: optional, `{ s, e, at }`, "watched up to here": every numbered episode of an earlier season, or of season `s` up to number `e`, counts as watched.
@@ -70,6 +71,7 @@ What the Pi sends the TV for the Schedule in the Entertainment panel, and for th
 | `channel` | Where TVmaze says it airs (`FOX`, `FX on Hulu`). Informational. |
 | `alsoOn` | Optional: other apps that carry it. |
 | `via` | Optional (`null` when not set): the app it is billed through. The badge still names `service`; the TV adds a small "via Prime Video" and Watch opens that app. |
+| `link` | Optional (`null` when not set): the show's id in its app. The tablet sends it with Watch to `POST /tv/launch`; today the Pi still opens only the app (no title link works on this TV), so nothing else uses it. |
 | `status`, `running` | TVmaze's status (`Running`, `Ended`, `To Be Determined`, `In Development`), and whether that means it continues. The TV shows "Still running" or "Ended". |
 | `checkedAt` | When this show was last read well, or `null` if never. |
 | `stale`, `error` | Present when the last read failed and this is the last good copy. `error` is a code only: `timeout`, `unreachable`, `not-found`, `rate-limited`, `http-503`, `not-json` or `no-id`. |

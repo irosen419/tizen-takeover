@@ -211,7 +211,7 @@ async function main() {
     assert.deepStrictEqual(shows.normalizeEntry({ name: 'X', tvmazeId: '42', serviceOverride: 'max' }), { name: 'X', tvmazeId: 42, serviceOverride: 'HBO Max' });
     assert.throws(() => shows.normalizeEntry({ service: 'Netflix' }), /"name" is missing/);
     assert.throws(() => shows.normalizeEntry({ name: 'X', tvmazeId: -1 }), /whole number/);
-    assert.throws(() => shows.normalizeEntry({ name: 'X', link: 'y' }), /unknown field "link"/);
+    assert.throws(() => shows.normalizeEntry({ name: 'X', url: 'y' }), /unknown field "url"/);
     assert.throws(() => shows.normalizeEntry(JSON.parse('{"name":"X","__proto__":{"a":1}}')), /unknown field/);
     assert.throws(() => shows.normalizeList([{ name: 'Stick' }, { name: 'stick' }]), /twice/);
     assert.strictEqual(shows.slug("Hell's Kitchen"), 'hells-kitchen');
@@ -223,6 +223,11 @@ async function main() {
     assert.strictEqual(shows.normalizeEntry({ name: 'X', service: 'Max', via: 'Prime Video' }).via, 'Prime Video');
     assert.strictEqual(shows.normalizeEntry({ name: 'X', service: 'Max', via: 'Prime Video' }).service, 'HBO Max');
     assert.throws(() => shows.normalizeEntry({ name: 'X', via: 3 }), /"via" must be text/);
+    // link: the show's id in its app, optional; never a whole address.
+    assert.strictEqual(shows.normalizeEntry({ name: 'X', link: ' 80057281 ' }).link, '80057281');
+    assert.strictEqual(shows.normalizeEntry({ name: 'X', link: 'amzn1.dv.gti.abc-123' }).link, 'amzn1.dv.gti.abc-123');
+    assert.strictEqual(shows.normalizeEntry({ name: 'X', link: '' }).link, undefined);
+    ['https://netflix.com/title/1', 'a b', 'x'.repeat(81), 7].forEach((v) => assert.throws(() => shows.normalizeEntry({ name: 'X', link: v }), /"link"/));
   });
 
   await check('the seed list is the four shows, used when there is no list yet; a damaged list falls back to it', () => {
@@ -267,6 +272,10 @@ async function main() {
     assert.deepStrictEqual(shows.buildShow({ name: 'Z', alsoOn: ['Hulu'] }, {}, [], NOW).alsoOn, ['Hulu']);
     assert.strictEqual(shows.buildShow({ name: 'Z', service: 'HBO Max', via: 'Prime Video' }, {}, [], NOW).via, 'Prime Video');
     assert.strictEqual(an.via, null);
+    assert.strictEqual(an.link, null);
+    assert.strictEqual(shows.buildShow({ name: 'Z', link: 'dQw4w9WgXcQ' }, {}, [], NOW).link, 'dQw4w9WgXcQ');
+    assert.strictEqual(shows.cleanData({ v: 1, shows: [{ name: 'Z', link: 'dQw4w9WgXcQ' }] }).shows[0].link, 'dQw4w9WgXcQ');
+    assert.strictEqual(shows.cleanData({ v: 1, shows: [{ name: 'Z', link: 'http://x/y' }] }).shows[0].link, null);
     const tbd = shows.buildShow({ name: 'Y' }, { id: 9, status: 'To Be Determined' }, [{ season: 3, number: 9, airstamp: at(-30) }], NOW);
     assert.deepStrictEqual(tbd.returning, { season: 4, label: 'Season 4', date: null, airstamp: null });
     assert.strictEqual(tbd.running, true);
@@ -460,9 +469,9 @@ async function main() {
       assert.strictEqual(out.stdout.trim(), 'Removed Paradise from the show list. The TV drops it now.');
       out = await hubctl(h, ['shows', 'refresh']);
       assert.strictEqual(out.stdout.trim(), 'Read 3 shows from TVmaze (no change).');
-      out = await hubctl(h, ['shows', 'add', 'The Pitt', '--service', 'HBO Max', '--via', 'Prime Video']);
+      out = await hubctl(h, ['shows', 'add', 'The Pitt', '--service', 'HBO Max', '--via', 'Prime Video', '--link', 'B0DNRR8QWG']);
       out = await hubctl(h, ['shows', 'list']);
-      assert.ok(/The Pitt \(HBO Max, via Prime Video\)/.test(out.stdout), out.stdout);
+      assert.ok(/The Pitt \(HBO Max, via Prime Video, link set\)/.test(out.stdout), out.stdout);
       out = await hubctl(h, ['shows', 'remove', 'The Pitt']);
       out = await hubctl(h, ['shows', 'nonsense']);
       assert.strictEqual(out.status, 1);
@@ -483,8 +492,9 @@ async function main() {
       r = await mail(h, 'shows.add', { name: 'Paradise', service: 'Hulu', tvmazeId: 77, alsoOn: ['Disney+'] });
       assert.strictEqual(r.data.entry.tvmazeId, 77);
       assert.deepStrictEqual(r.data.entry.alsoOn, ['Disney+']);
-      r = await mail(h, 'shows.add', { name: 'The Pitt', service: 'HBO Max', via: 'Prime Video' });
+      r = await mail(h, 'shows.add', { name: 'The Pitt', service: 'HBO Max', via: 'Prime Video', link: 'B0DNRR8QWG' });
       assert.strictEqual(r.data.entry.via, 'Prime Video');
+      assert.strictEqual(r.data.entry.link, 'B0DNRR8QWG');
       r = await mail(h, 'shows.remove', { name: 'The Pitt' });
       r = await mail(h, 'shows.remove', { name: 'Paradise' });
       assert.strictEqual(r.data.removed.name, 'Paradise');
@@ -493,7 +503,7 @@ async function main() {
       r = await mail(h, 'shows.refresh');
       assert.strictEqual(r.data.done, true);
       assert.strictEqual(r.data.shows.length, 2);
-      assert.throws(() => mailbox.checkEnvelope('c123456', Buffer.from(JSON.stringify({ id: 'c123456', created: new Date().toISOString(), cmd: 'shows.add', args: { name: 'X', link: 'y' } })), Date.now()), /does not take "link"/);
+      assert.throws(() => mailbox.checkEnvelope('c123456', Buffer.from(JSON.stringify({ id: 'c123456', created: new Date().toISOString(), cmd: 'shows.add', args: { name: 'X', url: 'y' } })), Date.now()), /does not take "url"/);
       r = await mail(h, 'linktests.show');
       assert.ok(/No watch link tests yet/.test(r.message));
     } finally {
