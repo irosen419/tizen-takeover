@@ -163,6 +163,38 @@
   color: var(--text-3);
   word-wrap: break-word;
 }
+/* Filter chips (panel and full screen): Place and Store rows sit side by
+   side when they fit and wrap under each other when they don't. */
+.pn-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin: 0.45rem 0.9rem 0;
+}
+.pn-frow {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  margin-right: 2rem;
+}
+.pn-flabel {
+  flex: 0 0 auto;
+  margin: 0.36rem 0.7rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.pn-fchips { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; }
+.pn-btn.pn-fchip { margin: 0 0.4rem 0.4rem 0; padding: 0.2rem 0.8rem; font-size: 0.9rem; }
+.pn-panel.is-full .pn-flabel { font-size: 0.95rem; margin-top: 0.4rem; }
+.pn-panel.is-full .pn-btn.pn-fchip { font-size: 1rem; padding: 0.25rem 0.95rem; }
+/* The preferred store at the end of a row's meta line. */
+.pn-store { color: var(--pn-sky); }
+.is-ticked .pn-store { color: inherit; }
+
 .pn-sec { padding-top: 0.8rem; }
 .pn-sec-head {
   display: flex;

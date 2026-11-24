@@ -30,7 +30,10 @@
  *     dimmed, focus on the next row, the counts follow; OK unticks it; Right
  *     then OK on Details opens the product; a refusal takes the tick back
  *     with a toast; a quantity drop on an auto-add product adds a row (Auto).
- *   - Spanish +25%: the product page and a ticked List, nothing cut.
+ *   - Filters: Place and Store chips on the expanded Pantry, Store chips on
+ *     the List (never the tile), single pick, All clears, reset on close;
+ *     each row's meta ends with its preferred store.
+ *   - Spanish +25%: the product page, the chips and a ticked List, nothing cut.
  *
  * --shots <folder> (or PANTRY_SHOTS) saves pictures at device scale 2: the
  * Groceries layout, the product page and a ticked List, English and Spanish.
@@ -497,6 +500,73 @@ async function main() {
     });
     await page.ctx.close();
 
+    await check('filters: Place and Store chips on the expanded Pantry, Store chips on the List, one pick each, All clears; rows end with their store; the tile ignores them', async () => {
+      const P = require('../app/widgets/pantry-tv.js');
+      const box = { window: {}, setTimeout: setTimeout, Date: Date, JSON: JSON };
+      box.window = box;
+      vm.runInNewContext(STUB, box);
+      const d = P.fromServer(box.PANTRY_STUB.data);
+      const prow = P.pantryOf(d.products).map((x) => ({ product: x }));
+      const ch = P.filterChoices(prow, d.stores);
+      assert(ch.places.join() === 'fridge,freezer,pantry,other' && ch.stores.join() === 'Costco,CVS,Tom Thumb,Whole Foods', JSON.stringify(ch));
+      assert(P.filterChoices(prow.filter((r) => r.product.location === 'fridge'), d.stores).places.length === 0, 'one place in use still shows chips');
+      assert(P.filterRows(prow, 'fridge', 'Tom Thumb').map((r) => r.product.name).sort().join() === 'Orange juice,Salted butter,Whole milk', 'filterRows');
+
+      const q = await open({});
+      await openPanel(q, 'pantry');
+      const rowsNow = () => q.evaluate(() => [].map.call(document.querySelectorAll('#panel .pn-row'), (r) => r.querySelector('.pn-name').textContent));
+      const chips = await q.evaluate(() => [].map.call(document.querySelectorAll('#panel .pn-fchip'), (n) => n.getAttribute('data-key') + '=' + n.textContent));
+      assert(chips.join() === 'fplace:all=All,fplace:fridge=Fridge,fplace:freezer=Freezer,fplace:pantry=Pantry,fplace:other=Other,fstore:all=All,fstore:0=Costco,fstore:1=CVS,fstore:2=Tom Thumb,fstore:3=Whole Foods', chips.join());
+      assert(/^prod:\d+$/.test(await focused(q)), 'focus did not start on a row: ' + await focused(q));
+      assert(await q.evaluate(() => !document.querySelector('.cell .tile .pn-fchip')), 'chips on the tile');
+      const milkMeta = await q.evaluate(() => [].filter.call(document.querySelectorAll('#panel .pn-row'), (r) => /Whole milk/.test(r.textContent))[0].querySelector('.pn-meta').textContent);
+      assert(milkMeta === 'Organic Valley · 0.5 gal · Fridge · Tom Thumb', milkMeta);
+      assert((await rowsNow()).length === 18, 'rows ' + (await rowsNow()).length);
+      await focusKey(q, 'fplace:fridge');
+      await key(q, 'Enter');
+      await until(async () => (await rowsNow()).length === 6, 2000, 'fridge rows: ' + (await rowsNow()).join());
+      assert(await focused(q) === 'fplace:fridge', 'focus left the chip: ' + await focused(q));
+      await focusKey(q, 'fstore:2');
+      await key(q, 'Enter');
+      await until(async () => (await rowsNow()).sort().join() === 'Orange juice,Salted butter,Whole milk', 2000, 'fridge + Tom Thumb: ' + (await rowsNow()).join());
+      const on = await q.evaluate(() => [].map.call(document.querySelectorAll('#panel .pn-fchip.is-on'), (n) => n.getAttribute('data-key')));
+      assert(on.join() === 'fplace:fridge,fstore:2', 'on: ' + on.join());
+      await focusKey(q, 'fplace:freezer');
+      await key(q, 'Enter');
+      await until(() => q.evaluate(() => /Nothing matches these filters/.test((document.querySelector('#panel .pn-empty') || {}).textContent || '')), 2000, 'no empty note');
+      const tile = await q.evaluate(() => document.querySelector('.cell[data-widget="pantry"] .tile-body').innerText);
+      assert(/Whole milk|21 Whole Grains/.test(tile), 'the tile was filtered: ' + tile.slice(0, 80));
+      await focusKey(q, 'fstore:all');
+      await key(q, 'Enter');
+      await focusKey(q, 'fplace:all');
+      await key(q, 'Enter');
+      await until(async () => (await rowsNow()).length === 18, 2000, 'All did not clear');
+      await focusKey(q, 'fstore:0');
+      await key(q, 'Enter');
+      await until(async () => (await rowsNow()).length === 3, 2000, 'Costco');
+      await q.evaluate(() => window.HUB_TEST.closePanel());
+      await settle(q);
+      await openPanel(q, 'pantry');
+      assert((await rowsNow()).length === 18, 'filters kept after close');
+      await q.evaluate(() => window.HUB_TEST.closePanel());
+      await settle(q);
+
+      await openPanel(q, 'list');
+      const lchips = await q.evaluate(() => [].map.call(document.querySelectorAll('#panel .pn-fchip'), (n) => n.textContent));
+      assert(lchips.join() === 'All,Tom Thumb,Whole Foods', 'list chips: ' + lchips.join());
+      await focusKey(q, 'fstore:1');
+      await key(q, 'Enter');
+      await until(async () => (await rowsNow()).join() === 'Large brown eggs,Oat milk', 2000, 'Whole Foods: ' + (await rowsNow()).join());
+      await focusKey(q, 'tick:2');
+      await key(q, 'Enter');
+      await until(() => q.evaluate(() => !!document.querySelector('#panel .pn-sec-cart [data-key="untick:2"]')), 2000, 'not ticked');
+      assert(await focused(q) === 'tick:6', 'focus after a tick: ' + await focused(q));
+      const sub = await q.evaluate(() => document.querySelector('#panel').innerText);
+      assert(/7 to buy · 1 in the cart/.test(sub), 'the counts follow the whole list');
+      assert(!q.ctx.errors.length, 'console: ' + q.ctx.errors.join(' | '));
+      await q.ctx.close();
+    });
+
     await check('Spanish +25%: the product page and a ticked List in full screen, nothing cut or outside the screen', async () => {
       const p = await open({ lang: 'es', grow: true });
       await openPanel(p, 'pantry');
@@ -507,6 +577,12 @@ async function main() {
       assert(!r.problems.length, 'page: ' + r.problems.slice(0, 4).join(', '));
       const over = await p.evaluate(() => { const b = document.querySelector('#panel .pn-page').getBoundingClientRect(); return b.right > window.innerWidth + 1; });
       assert(!over, 'wider than the screen');
+      await key(p, 'Escape');
+      await until(() => p.evaluate(() => !document.querySelector('#panel .pn-page') && !!document.querySelector('#panel .pn-fchip')), 2000, 'no chips in full screen');
+      await settle(p);
+      r = await measure(p, '#panel');
+      assert(!r.problems.length, 'pantry with chips: ' + r.problems.slice(0, 4).join(', '));
+      assert(/Lugar/.test(r.text) && /Tienda/.test(r.text), 'no Spanish chip labels: ' + r.text.slice(0, 120));
       await p.evaluate(() => window.HUB_TEST.closePanel());
       await settle(p);
       await openPanel(p, 'list');
@@ -536,6 +612,8 @@ async function main() {
           await sleep(600);
           await shot(p, 'groceries-layout-' + lang + '.png');
           await openPanel(p, 'pantry');
+          await sleep(400);
+          await shot(p, 'pantry-panel-' + lang + '.png', '#panel');
           await key(p, 'Enter');
           await until(() => p.evaluate(() => !!document.querySelector('#panel .pn-page')), 4000, 'no page');
           await settle(p);
@@ -543,6 +621,8 @@ async function main() {
           await shot(p, 'product-page-' + lang + '.png');
           await key(p, 'Escape');
           await settle(p);
+          await sleep(400);
+          await shot(p, 'pantry-full-' + lang + '.png');
           await key(p, 'Escape');
           await settle(p);
           await p.evaluate(() => window.HUB_TEST.closePanel());

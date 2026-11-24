@@ -42,11 +42,16 @@
   var list = [[1, 1, 2, 'auto', 0], [2, 4, 1, 'auto', 0], [3, 15, 6, 'manual', 0], [4, 14, 1, 'auto', 0], [5, 16, 1, 'auto', 0],
     [6, 19, 1, 'manual', 0], [7, 6, 2, 'manual', 0], [8, 20, 1, 'manual', 0]];
 
+  // Preferred stores (pantrydb.js stores table and products.preferred_store), by product id; the rest have none.
+  var stores = [[1, 'Costco'], [2, 'CVS'], [3, 'Tom Thumb'], [4, 'Whole Foods']];
+  var storeOf = { 1: 'Tom Thumb', 2: 'Tom Thumb', 3: 'Whole Foods', 4: 'Whole Foods', 5: 'Costco', 9: 'Whole Foods', 10: 'Costco',
+    13: 'Costco', 14: 'Tom Thumb', 15: 'Tom Thumb', 16: 'Tom Thumb', 17: 'CVS', 19: 'Whole Foods' };
+
   var B = brands.map(function (b) { return { id: b[0], name: b[1], key: b[1].toLowerCase().replace(/[^a-z0-9 ]+/g, '') }; });
   var P = rows.map(function (r) {
     return { id: r[0], name: r[2], brand: r[1] ? brands[r[1] - 1][1] : '', brandId: r[1] || null, categoryIds: [], upc: '',
       size: r[3], unit: r[4], photo: '', notes: r[12], qty: r[6], restockAt: r[7], buy: r[8], autoAdd: !!r[9], held: false,
-      mode: r[10], location: r[5], owned: !!r[11], low: false, onList: false, listItemId: null, checked: false, inCart: false,
+      mode: r[10], location: r[5], store: storeOf[r[0]] || '', owned: !!r[11], low: false, onList: false, listItemId: null, checked: false, inCart: false,
       listSource: '', listQty: 0, modeOverride: null, replacements: [], updatedAt: 1763900000000 };
   });
   var L = list.map(function (l, i) {
@@ -67,7 +72,7 @@
     });
     var owned = P.filter(function (p) { return p.owned; });
     return {
-      products: JSON.parse(JSON.stringify(P)), brands: B, categories: [], kinds: {}, list: JSON.parse(JSON.stringify(L)),
+      products: JSON.parse(JSON.stringify(P)), brands: B, categories: [], stores: stores.map(function (x) { return { id: x[0], name: x[1] }; }), kinds: {}, list: JSON.parse(JSON.stringify(L)),
       counts: { items: owned.length, low: P.filter(function (p) { return p.low; }).length, onList: L.length }
     };
   }
