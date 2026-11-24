@@ -191,7 +191,7 @@ function sheetUp(page) {
       const page = await hub(env, { route: noHelper, touch: true, query: 'as=tv' });
       await H.sleep(3500);
       const s = await state(page);
-      assert(!s.body && !s.tab && !s.t.on && s.apps, JSON.stringify(s));
+      assert(!s.body && !s.t.on && !s.t.peek && s.apps, JSON.stringify(s));
       await page.ctx.close();
     });
 
