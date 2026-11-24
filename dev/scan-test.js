@@ -50,6 +50,7 @@ async function shot(page, name) {
 // Valid EAN-13 codes (check digits worked out by hand).
 const KNOWN = '0012345678905';      // UPC-A 012345678905, saved before the tests
 const UNKNOWN = '0070123456787';    // not in the catalog; web lookups are off
+const FRESH = '5012345678900';      // valid, never saved: not found
 const PRINTED = '4006381333931';    // drawn as bars for the real decoder
 
 // In the page: a fake reader that returns whatever the test queues.
@@ -264,6 +265,49 @@ async function main() {
       await page.click('.sc-done');
       await page.waitForFunction(() => !document.querySelector('.sc'));
       await page.ctx.close();
+    });
+
+    await check('paste a list: added, not found (with details), not valid, repeats skipped; Spanish fits', async () => {
+      const page = await open();
+      await openScanner(page);
+      await page.click('.sc-many-toggle');
+      await page.fill('.sc-many-in', [KNOWN, FRESH, '12345', '0 12345 67890 5'].join('\n') + '\n' + KNOWN);
+      await shot(page, 'scan-many-en.png');
+      await page.click('.sc-many-go');
+      await page.waitForSelector('.sc-bulk-done');
+      const rows = await page.$$eval('.sc-bulk-row', (n) => n.map((x) => x.className.replace('sc-bulk-row ', '')));
+      assert(rows.join() === 'is-have,is-missing,is-invalid', rows.join());
+      assert(/1 already in/.test(await page.textContent('.sc-bulk-sum')) && /1 not found/.test(await page.textContent('.sc-bulk-sum')), await page.textContent('.sc-bulk-sum'));
+      assert(/Skipped 2 repeated/.test(await page.textContent('.sc-bulk-repeats')), await page.textContent('.sc-bulk-repeats'));
+            await shot(page, 'scan-bulk-en.png');
+      await page.click('.sc-bulk-details');
+      await page.waitForSelector('.sc-sheet .sc-form');
+      await page.fill('.sc-field.is-name input', 'Test jam');
+      await page.click('.sc-save');
+      await page.waitForSelector('.sc-bulk-done');
+      const after = await page.$$eval('.sc-bulk-row', (n) => n.map((x) => x.className.replace('sc-bulk-row ', '')));
+      assert(after.join() === 'is-have,is-added,is-invalid', after.join());
+      // the same list again: everything found is already on the list
+      await page.click('.sc-bulk-more');
+      await page.fill('.sc-type', KNOWN + ', ' + FRESH);
+      await page.press('.sc-type', 'Enter');
+      await page.waitForSelector('.sc-bulk-done');
+      const again = await page.$$eval('.sc-bulk-row', (n) => n.map((x) => x.className.replace('sc-bulk-row ', '')));
+      assert(again.join() === 'is-have,is-have', again.join());
+      assert(!page.errors.length, page.errors.join('; '));
+      await page.ctx.close();
+      const es = await open({ lang: 'es' });
+      await openScanner(es);
+      await es.click('.sc-many-toggle');
+      await es.fill('.sc-many-in', [KNOWN, '99999'].join('\n'));
+      await es.click('.sc-many-go');
+      await es.waitForSelector('.sc-bulk-done');
+      await shot(es, 'scan-bulk-es.png');
+      const t = await es.evaluate(() => document.querySelector('.sc-sheet').innerText);
+      assert(/Ya está en|no válido/.test(t) && !/\b(Added|Checked|Done)\b/.test(t), t);
+      const sideways = await es.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      assert(!sideways, 'page scrolls sideways');
+      await es.ctx.close();
     });
 
     await check('no secure address: a calm message, no camera asked for, typing still works', async () => {

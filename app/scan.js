@@ -1,7 +1,7 @@
 /*
  * Scan a barcode on the phone (the touch app only; the TV never loads this).
  *
- *   HUB_SCAN.register(id, { label(t), chip?(t), add(product, ctx, done(err)), note?(product, ctx, t) })
+ *   HUB_SCAN.register(id, { label(t), chip?(t), add(product, ctx, done(err)), note?(product, ctx, t), has?(product, ctx) })
  *                         where a scan can go. The grocery list registers
  *                         'grocery' (app/widgets/grocery.js), the pantry
  *                         'pantry' (app/widgets/pantry.js). add() gets the
@@ -16,6 +16,11 @@
  *                         looked up on the Pi (GET /products/lookup); found ->
  *                         confirm card -> add; not found -> a short form
  *                         (POST /products/save) -> the same card.
+ *                         "Paste a list" takes many codes (a line or a comma
+ *                         each): every one is looked up the same way and, when
+ *                         found and not already there (dest.has), added; the
+ *                         sheet lists each as added, already there, not found
+ *                         (with "Add details"), not valid or failed.
  *
  *   HUB_SCAN.open(ctx, { edit: product, onSaved(product), returnFocus })
  *                         no camera: the form prefilled with a saved product's
@@ -38,6 +43,9 @@
   var LOOKUP_TIMEOUT = 25000;   // the Pi may try three web sources, ~6 s each
   var FRAME_MS = 140;           // between detector passes
   var REPEAT_MS = 3000;         // the same code is ignored this long after a resume
+  var MANY_MAX = 200;           // codes in one pasted list
+  var WAIT_MS = 15000;          // after the Pi says "too many lookups"
+  var WAIT_TRIES = 4;
   var PHOTO_MAX = 320;          // px, the longer side of a saved photo
   var PHOTO_BYTES = 150 * 1024;
 
@@ -58,6 +66,7 @@
     camera: 'M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.5-2h5.6l1.5 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z M12 10a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z',
     plus: 'M12 5v14M5 12h14',
     check: 'M5 12.5l4.2 4.2L19 7',
+    barcode: 'M3 7V5.5A1.5 1.5 0 0 1 4.5 4H7 M17 4h2.5A1.5 1.5 0 0 1 21 5.5V7 M21 17v1.5a1.5 1.5 0 0 1-1.5 1.5H17 M7 20H4.5A1.5 1.5 0 0 1 3 18.5V17 M7 8.5v7 M9.5 8.5v7 M12 8.5v7 M14 8.5v7 M17 8.5v7',
     bars: 'M5 6v12 M8 6v12 M10.5 6v12 M14 6v12 M16.5 6v12 M19 6v12'
   };
 
@@ -88,6 +97,32 @@
   }
 
   function digits(s) { return String(s == null ? '' : s).replace(/\D+/g, ''); }
+
+  function validLength(c) { return c.length === 8 || c.length === 12 || c.length === 13 || c.length === 14; }
+
+  // A typed or pasted list -> [{ code, ok }] in order, repeats dropped (a UPC-A
+  // and its EAN-13 form are one pack). Lines and commas split codes; spaces and
+  // dashes inside one belong to it ("0 12345 67890 5"). A single line of codes
+  // split by spaces only (a phone turns pasted lines into spaces) splits too.
+  function parseCodes(text) {
+    var parts = String(text == null ? '' : text).split(/[\r\n,;]+/);
+    if (parts.length === 1) {
+      var words = parts[0].split(/\s+/).filter(Boolean);
+      var each = words.length > 1 && words.every(function (w) { return validLength(digits(w)); });
+      if (each) parts = words;
+    }
+    var out = [], seen = {}, repeats = 0;
+    parts.forEach(function (p) {
+      var c = digits(p);
+      if (!c) return;
+      var k = c.replace(/^0+/, '');
+      if (seen[k]) { repeats++; return; }
+      seen[k] = 1;
+      out.push({ code: c, ok: validLength(c) });
+    });
+    out.repeats = repeats;
+    return out;
+  }
 
   // 0 123456 789012 (EAN-13), 1234 5678 (EAN-8): how the numbers sit under the bars.
   function pretty(code) {
@@ -267,17 +302,37 @@
     typeIn.type = 'text';
     typeIn.setAttribute('inputmode', 'numeric');
     typeIn.setAttribute('enterkeyhint', 'search');
-    typeIn.setAttribute('maxlength', '20');
+    typeIn.setAttribute('maxlength', '400');
     typeIn.placeholder = T('scan.typePlaceholder', 'Digits under the bars');
     var lookBtn = el('button', 'sc-btn sc-look', T('scan.lookUp', 'Look up'));
     lookBtn.type = 'submit';
     typeRow.appendChild(typeIn);
     typeRow.appendChild(lookBtn);
+    // Many at once: a box for a pasted list, one code a line or comma between.
+    var manyId = 'sc-many-' + Math.floor(Math.random() * 1e6);
+    var manyWrap = el('div', 'sc-many');
+    var manyIn = el('textarea', 'sc-input sc-many-in');
+    manyIn.id = manyId;
+    manyIn.rows = 4;
+    manyIn.setAttribute('inputmode', 'numeric');
+    manyIn.setAttribute('autocapitalize', 'none');
+    manyIn.setAttribute('autocorrect', 'off');
+    manyIn.setAttribute('spellcheck', 'false');
+    manyIn.placeholder = T('scan.manyPlaceholder', 'One code on each line, or commas between');
+    var manyGo = el('button', 'sc-btn sc-primary sc-many-go', T('scan.manyGo', 'Check and add all'));
+    manyGo.type = 'button';
+    manyWrap.appendChild(manyIn);
+    manyWrap.appendChild(manyGo);
     var typeMsg = el('p', 'sc-dock-msg');
     typeMsg.setAttribute('aria-live', 'polite');
+    var manyToggle = el('button', 'sc-link sc-many-toggle', T('scan.manyOpen', 'Paste a list of codes'));
+    manyToggle.type = 'button';
+    manyToggle.setAttribute('aria-expanded', 'false');
     dock.appendChild(typeLabel);
     dock.appendChild(typeRow);
+    dock.appendChild(manyWrap);
     dock.appendChild(typeMsg);
+    dock.appendChild(manyToggle);
     box.appendChild(dock);
 
     var sheet = el('section', 'sc-sheet');
@@ -540,6 +595,7 @@
 
     function resume() {
       found = null;
+      if (dock.className.indexOf('is-many') >= 0) setMany(false, true);
       lastAt = Date.now();
       setState('scan');
       if (!det) typeIn.focus();
@@ -622,7 +678,7 @@
       save.type = 'submit';
       form.appendChild(save);
       var cancel = button('sc-btn sc-quiet sc-cancel', T('scan.cancel', 'Cancel'));
-      cancel.addEventListener('click', function () { if (opts.edit) close(); else resume(); });
+      cancel.addEventListener('click', function () { if (opts.edit) close(); else if (!leaveForm()) resume(); });
       form.appendChild(cancel);
       sheet.appendChild(form);
 
@@ -650,7 +706,19 @@
             if (opts.onSaved) opts.onSaved(saved);
             return;
           }
-          showFound(j.product || { upc: code, brand: b, name: n, size: z, image: '' });
+          var made = j.product || { upc: code, brand: b, name: n, size: z, image: '' };
+          if (bulk && bulk.formRow) {
+            // From the list: add the new product there, then back to the list.
+            var row = bulk.formRow;
+            row.product = made;
+            dest.add(made, ctx, function (e2) {
+              if (closed) return;
+              if (e2) { row.status = 'error'; row.why = String(e2); } else row.status = 'added';
+              leaveForm();
+            });
+            return;
+          }
+          showFound(made);
         }, function (err) {
           if (closed) return;
           save.disabled = false;
@@ -661,10 +729,201 @@
       brand.input.focus();
     }
 
+    /* --- many codes at once --- */
+
+    var bulk = null;   // { rows, running, stopped, repeats, formRow }
+
+    var STATUS_ICON = { added: 'check', have: 'check', missing: 'cross', invalid: 'cross', error: 'cross' };
+    function statusText(r) {
+      switch (r.status) {
+        case 'added': return T('scan.rowAdded', 'Added');
+        case 'have': return T('scan.rowHave', 'Already in {dest}', { dest: destLabel });
+        case 'missing': return T('scan.rowMissing', 'Not found');
+        case 'invalid': return T('scan.rowInvalid', 'Not a valid barcode');
+        case 'error': return T('scan.rowError', 'Couldn’t look it up: {why}', { why: r.why || '' });
+        case 'checking': return T('scan.rowChecking', 'Checking…');
+        case 'waiting': return T('scan.rowWaiting', 'Too many lookups; waiting a moment…');
+        default: return T('scan.rowQueued', 'Waiting');
+      }
+    }
+
+    function counts() {
+      var c = { added: 0, have: 0, missing: 0, invalid: 0, error: 0, left: 0 };
+      bulk.rows.forEach(function (r) {
+        if (c[r.status] !== undefined) c[r.status]++; else c.left++;
+      });
+      return c;
+    }
+
+    function renderBulk() {
+      if (!bulk) return;
+      var keep = sheet.scrollTop;
+      sheet.innerHTML = '';
+      var c = counts();
+      var total = bulk.rows.length, done = total - c.left;
+      var head = el('div', 'sc-form-head');
+      head.appendChild(el('h2', 'sc-form-title', bulk.running ?
+        T('scan.bulkRunning', 'Checking {i} of {n}', { i: Math.min(done + 1, total), n: total }) :
+        T('scan.bulkDone', 'Checked {n}', { n: total })));
+      var bits = [];
+      if (c.added) bits.push(T('scan.sumAdded', '{n} added', { n: c.added }));
+      if (c.have) bits.push(T('scan.sumHave', '{n} already in {dest}', { n: c.have, dest: destLabel }));
+      if (c.missing) bits.push(T('scan.sumMissing', '{n} not found', { n: c.missing }));
+      if (c.invalid) bits.push(T('scan.sumInvalid', '{n} not valid', { n: c.invalid }));
+      if (c.error) bits.push(T('scan.sumError', '{n} failed', { n: c.error }));
+      var sum = el('p', 'sc-form-text sc-bulk-sum', bits.join(' · ') || T('scan.rowQueued', 'Waiting'));
+      sum.setAttribute('role', 'status');
+      head.appendChild(sum);
+      if (bulk.repeats) head.appendChild(el('p', 'sc-form-text sc-bulk-repeats', T('scan.sumRepeats', 'Skipped {n} repeated', { n: bulk.repeats })));
+      sheet.appendChild(head);
+
+      var list = el('ul', 'sc-bulk');
+      bulk.rows.forEach(function (r) {
+        var li = el('li', 'sc-bulk-row is-' + r.status);
+        var badge = el('span', 'sc-bulk-badge');
+        if (STATUS_ICON[r.status]) badge.appendChild(icon(STATUS_ICON[r.status]));
+        else if (r.status === 'checking' || r.status === 'waiting') badge.appendChild(el('span', 'sc-spin'));
+        li.appendChild(badge);
+        var text = el('div', 'sc-bulk-text');
+        text.appendChild(el('p', 'sc-bulk-name', r.product ? (line(r.product) || pretty(r.code)) : pretty(r.code)));
+        text.appendChild(el('p', 'sc-bulk-state', (r.product ? pretty(r.code) + ' · ' : '') + statusText(r)));
+        li.appendChild(text);
+        if (r.status === 'missing' && !bulk.running) {
+          var det = button('sc-bulk-details', T('scan.rowDetails', 'Add details'));
+          det.addEventListener('click', function () { bulk.formRow = r; showForm(r.code); });
+          li.appendChild(det);
+        }
+        list.appendChild(li);
+      });
+      sheet.appendChild(list);
+
+      var actions = el('div', 'sc-pair sc-bulk-actions');
+      if (bulk.running) {
+        var stop = button('sc-btn sc-quiet sc-bulk-stop', T('scan.bulkStop', 'Stop'));
+        stop.addEventListener('click', function () { bulk.stopped = true; stop.disabled = true; });
+        actions.appendChild(stop);
+      } else {
+        if (c.error) {
+          var retry = button('sc-btn sc-quiet sc-bulk-retry', T('scan.bulkRetry', 'Try the failed ones again'));
+          retry.addEventListener('click', function () {
+            bulk.rows.forEach(function (r) { if (r.status === 'error') { r.status = 'queued'; r.why = ''; } });
+            runBulk();
+          });
+          actions.appendChild(retry);
+        }
+        var more = button('sc-btn sc-quiet sc-bulk-more', T('scan.bulkMore', 'Add more'));
+        more.addEventListener('click', function () { bulk = null; resume(); });
+        var fin = button('sc-btn sc-primary sc-bulk-done', T('scan.done', 'Done'));
+        fin.addEventListener('click', function () { close(); });
+        actions.appendChild(more);
+        actions.appendChild(fin);
+      }
+      sheet.appendChild(actions);
+      sheet.scrollTop = keep;
+    }
+
+    function nap(ms) {
+      return new Promise(function (resolve) {
+        var t0 = Date.now();
+        (function wait() {
+          if (closed || bulk.stopped || Date.now() - t0 >= ms) return resolve();
+          setTimeout(wait, 250);
+        })();
+      });
+    }
+
+    function checkRow(r, tries) {
+      r.status = 'checking';
+      renderBulk();
+      var url = '/products/lookup?upc=' + encodeURIComponent(r.code);
+      return ctx.call('GET', url, undefined, LOOKUP_TIMEOUT).then(function (j) {
+        if (closed) return;
+        if (!j.found || !j.product) { r.status = 'missing'; return; }
+        r.product = j.product;
+        if (dest && dest.has && dest.has(j.product, ctx)) { r.status = 'have'; return; }
+        return new Promise(function (resolve) {
+          dest.add(j.product, ctx, function (err) {
+            if (err) { r.status = 'error'; r.why = String(err); } else r.status = 'added';
+            resolve();
+          });
+        });
+      }, function (e) {
+        if (closed) return;
+        var why = e && e.message || '';
+        if (/valid barcode/i.test(why)) { r.status = 'invalid'; return; }
+        if (/too many/i.test(why) && tries < WAIT_TRIES && !bulk.stopped) {
+          r.status = 'waiting';
+          renderBulk();
+          return nap(WAIT_MS).then(function () { if (!closed && !bulk.stopped) return checkRow(r, tries + 1); r.status = 'queued'; });
+        }
+        r.status = 'error';
+        r.why = why;
+      });
+    }
+
+    function runBulk() {
+      var run = bulk;
+      run.running = true;
+      run.stopped = false;
+      setState('bulk');
+      renderBulk();
+      var i = 0;
+      (function next() {
+        if (closed || bulk !== run) return;
+        while (i < run.rows.length && run.rows[i].status !== 'queued') i++;
+        if (run.stopped || i >= run.rows.length) {
+          run.running = false;
+          renderBulk();
+          var again = sheet.querySelector('.sc-bulk-done');
+          if (again) again.focus();
+          return;
+        }
+        var r = run.rows[i];
+        if (!r.ok) { r.status = 'invalid'; next(); return; }
+        checkRow(r, 0).then(function () { renderBulk(); next(); });
+      })();
+    }
+
+    function startBulk(list) {
+      if (!list.length) { say(T('scan.invalid', 'That isn’t a valid barcode number.'), 'bad'); return; }
+      if (list.length > MANY_MAX) { say(T('scan.manyTooMany', 'That’s a lot at once. Paste up to {n} codes.', { n: MANY_MAX }), 'bad'); return; }
+      if (!dest) return;
+      say('');
+      manyIn.value = '';
+      typeIn.value = '';
+      typeIn.blur();
+      manyIn.blur();
+      bulk = { rows: list.map(function (p) { return { code: p.code, ok: p.ok, status: 'queued', product: null }; }), running: false, stopped: false, repeats: list.repeats || 0, formRow: null };
+      runBulk();
+    }
+
+    function leaveForm() {
+      var row = bulk && bulk.formRow;
+      if (!row) return false;
+      bulk.formRow = null;
+      setState('bulk');
+      renderBulk();
+      return true;
+    }
+
+    function setMany(on, quiet) {
+      dock.className = 'sc-dock' + (on ? ' is-many' : '');
+      manyToggle.textContent = on ? T('scan.manyClose', 'Type one number instead') : T('scan.manyOpen', 'Paste a list of codes');
+      manyToggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+      typeLabel.textContent = on ? T('scan.manyLabel', 'Paste your codes') : T('scan.typeLabel', 'Or type the number');
+      typeLabel.setAttribute('for', on ? manyId : typeId);
+      say('');
+      if (!quiet) (on ? manyIn : typeIn).focus();
+    }
+    manyToggle.addEventListener('click', function () { setMany(dock.className.indexOf('is-many') < 0); });
+    manyGo.addEventListener('click', function () { startBulk(parseCodes(manyIn.value)); });
+
     /* --- wiring --- */
 
     dock.addEventListener('submit', function (e) {
       e.preventDefault();
+      var many = parseCodes(typeIn.value);
+      if (many.length > 1) { startBulk(many); return; }
       var code = digits(typeIn.value);
       if (code.length !== 8 && code.length !== 12 && code.length !== 13 && code.length !== 14) {
         say(T('scan.invalid', 'That isn’t a valid barcode number.'), 'bad');
@@ -678,6 +937,8 @@
     closeBtn.addEventListener('click', function () { close(); });
     function onKey(e) {
       if (e.key !== 'Escape' && e.keyCode !== 27) return;
+      if (state === 'form' && leaveForm()) return;
+      if (state === 'bulk' && bulk && !bulk.running) { bulk = null; resume(); return; }
       if (!opts.edit && (state === 'found' || state === 'form')) resume(); else close();
     }
     document.addEventListener('keydown', onKey);

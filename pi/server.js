@@ -62,7 +62,7 @@
  *   POST /api/grocery/ops  grocery changes: add, check, remove, clear
  *   GET  /api/grocery/export   the list for a shopping run: each item with its product's
  *                        brand, name, size and a "search" text (products.js), and
- *                        fromPantry / reason (low, manual or '') from the pantry
+ *                        store (the product's preferred store), fromPantry / reason (low, manual or '') from the pantry
  *   GET  /api/pantry     the pantry (pantrydb.js, SQLite data/pantry.db): products, brands, categories
  *   POST /api/pantry/ops pantry changes (the same ops as POST /pantry/ops)
  *   GET  /api/pantry/low the pantry items at or under their restock point
@@ -168,7 +168,7 @@ const guestpin = require('./guestpin');
 const photos = require('./photos');
 const budgetgoal = require('./budgetgoal');
 
-const SERVER_VERSION = '0.35.0';
+const SERVER_VERSION = '0.35.1';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1134,7 +1134,8 @@ function start(options) {
     const info = pantry ? pantry.groceryInfo() : {};
     let n = 0;
     r.items.forEach((i) => {
-      const x = info[i.id] || { fromPantry: false, reason: '' };
+      const x = info[i.id] || { store: '', fromPantry: false, reason: '' };
+      i.store = x.store || '';
       i.fromPantry = x.fromPantry;
       i.reason = x.reason;
       if (x.fromPantry) n++;

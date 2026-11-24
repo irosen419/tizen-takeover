@@ -101,6 +101,7 @@
         if (typeof o.restockAt === 'number') n.restockAt = o.restockAt;
         if (typeof o.autoAdd === 'boolean') n.autoAdd = o.autoAdd;
         if (o.substitutionMode) n.mode = o.substitutionMode;
+        if (typeof o.preferredStore === 'string') n.store = o.preferredStore;
         if (o.replacements) n.replacements = o.replacements.slice();
       } else return;
       n.low = isLow(n);
@@ -156,6 +157,7 @@
     camera: 'M4 8.5A1.5 1.5 0 0 1 5.5 7h2.2l1.5-2h5.6l1.5 2h2.2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z M12 10a3.2 3.2 0 1 0 0 6.4 3.2 3.2 0 0 0 0-6.4z',
     cart: 'M3 4h2.2l2.2 10.5a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.1L20.5 8H6.2 M9.5 20.2a.8.8 0 1 0 0-1.6.8.8 0 0 0 0 1.6z M17 20.2a.8.8 0 1 0 0-1.6.8.8 0 0 0 0 1.6z',
     search: 'M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13z M15.5 15.5L20 20',
+    barcode: 'M3 7V5.5A1.5 1.5 0 0 1 4.5 4H7 M17 4h2.5A1.5 1.5 0 0 1 21 5.5V7 M21 17v1.5a1.5 1.5 0 0 1-1.5 1.5H17 M7 20H4.5A1.5 1.5 0 0 1 3 18.5V17 M7 8.5v7 M9.5 8.5v7 M12 8.5v7 M14 8.5v7 M17 8.5v7',
     bars: 'M5 6v12 M8 6v12 M10.5 6v12 M14 6v12 M16.5 6v12 M19 6v12',
     shelf: 'M4 4h16v16H4z M4 10h16 M4 15h16 M8 7h2 M13 12h3 M7 17.5h4',
     check: 'M5 12.5l4.2 4.2L19 7',
@@ -287,7 +289,7 @@
     form.appendChild(addIn);
     var scanBtn = null;
     if (root.HUB_SCAN && ctx.call) {
-      scanBtn = btn('px-scan', T('pantry.scan', 'Scan'), 'camera');
+      scanBtn = btn('px-scan', T('pantry.scan', 'Scan'), 'barcode');
       scanBtn.setAttribute('aria-label', T('pantry.scanLabel', 'Scan a barcode'));
       scanBtn.addEventListener('click', function () {
         root.HUB_SCAN.open(ctx, { destination: 'pantry', destinations: ['pantry', 'grocery'], returnFocus: scanBtn });
@@ -413,6 +415,7 @@
       else meta.appendChild(el('span', 'px-at', T('pantry.notHere', 'Not at home')));
       if (p.onList && p.listSource === 'auto') meta.appendChild(el('span', 'px-badge px-auto', T('pantry.autoAdded', 'Added to list for you')));
       if (!place && p.owned) meta.appendChild(el('span', 'px-where', placeName(T, p.location)));
+      if (p.store) meta.appendChild(el('span', 'px-where px-store', p.store));
       li.appendChild(meta);
 
       var ctl = el('div', 'px-ctl');
@@ -492,6 +495,7 @@
       if (!p0) return;
       var d0 = data() || {};
       var draft = {
+        store: p0.store || '',
         location: p0.location, restockAt: amount(p0.restockAt), buy: String(p0.buy || 1), autoAdd: p0.autoAdd !== false,
         mode: p0.mode || 'similar', size: p0.size == null ? '' : String(p0.size), unit: p0.unit || '',
         brand: p0.brandId ? { id: p0.brandId, name: p0.brand } : null,
@@ -610,6 +614,27 @@
       }
       var fMode = selectField(T('pantry.modeLabel', 'If it is out'), MODES.map(function (m) { return [m, modeName(T, m)]; }), draft.mode, 'px-mode');
       bodyEl.appendChild(fMode.wrap);
+
+      // Preferred store: where to get it (Tom Thumb, CVS); stores already used are suggested.
+      var storeWrap = el('div', 'px-field px-storefield');
+      var storeId = newId('st');
+      storeWrap.appendChild(fieldHead(T('pantry.storeLabel', 'Preferred store'), storeId));
+      var storeIn = el('input', 'px-input px-store-in');
+      storeIn.id = storeId;
+      storeIn.type = 'text';
+      storeIn.setAttribute('maxlength', '40');
+      storeIn.setAttribute('autocapitalize', 'words');
+      storeIn.placeholder = T('pantry.storePlaceholder', 'e.g. Tom Thumb, CVS');
+      storeIn.value = draft.store;
+      var listId = storeId + '-list';
+      storeIn.setAttribute('list', listId);
+      var dl = el('datalist');
+      dl.id = listId;
+      var seenStore = {};
+      ((d0.products || [])).forEach(function (x) { if (x.store && !seenStore[x.store]) { seenStore[x.store] = 1; var o = el('option'); o.value = x.store; dl.appendChild(o); } });
+      storeWrap.appendChild(storeIn);
+      storeWrap.appendChild(dl);
+      bodyEl.appendChild(storeWrap);
 
       // My picks: up to five other products, in the order to try them.
       var subsWrap = el('div', 'px-field px-subs');
@@ -753,6 +778,8 @@
         if (restock !== null && restock !== p.restockAt) op.restockAt = restock;
         if (buy !== null && buy !== p.buy) op.purchaseQuantity = buy;
         if (draft.autoAdd !== p.autoAdd) op.autoAdd = draft.autoAdd;
+        var store = storeIn.value.replace(/\s+/g, ' ').replace(/^ | $/g, '');
+        if (store !== (p.store || '')) op.preferredStore = store;
         if (fMode.select.value !== p.mode) op.substitutionMode = fMode.select.value;
         var was = (p.replacements || []).join(',');
         if (fMode.select.value === 'preselected' && draft.subs.join(',') !== was) op.replacements = draft.subs.slice();
@@ -822,19 +849,27 @@
     return c.low ? t('pantry.summaryLow', '{n} low', { n: c.low }) : t('pantry.total', '{n} at home', { n: c.items });
   }
 
+  // The pantry row for a scanned product when it is at home (owned), else null.
+  function homeHit(product, ctx) {
+    var d = ctx.id === 'pantry' && ctx.data ? ctx.data() : (ctx.peek ? ctx.peek('pantry') : null) || lastData;
+    var list = d && d.products ? d.products : [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].upc === product.upc && list[i].owned) return list[i];
+    }
+    return null;
+  }
+
   // Where a scan can go (app/scan.js): into the pantry, one more of it.
   if (root.HUB_SCAN) {
     root.HUB_SCAN.register('pantry', {
       label: function (t) { return t('pantry.destLabel', 'Pantry'); },
       chip: function (t) { return t('pantry.destChip', 'Pantry'); },
       note: function (product, ctx, t) {
-        var d = ctx.id === 'pantry' && ctx.data ? ctx.data() : (ctx.peek ? ctx.peek('pantry') : null) || lastData;
-        var list = d && d.products ? d.products : [];
-        for (var i = 0; i < list.length; i++) {
-          if (list[i].upc === product.upc && list[i].owned) return t('pantry.scanHave', 'At home: {n}. Adding counts one more.', { n: amount(list[i].qty) });
-        }
-        return '';
+        var hit = homeHit(product, ctx);
+        return hit ? t('pantry.scanHave', 'At home: {n}. Adding counts one more.', { n: amount(hit.qty) }) : '';
       },
+      // Pasting a list skips what is at home already.
+      has: function (product, ctx) { return !!homeHit(product, ctx); },
       add: function (product, ctx, done) {
         var ops = [{ op: 'add', upc: product.upc, qty: 1 }];
         if (ctx.id === 'pantry') {

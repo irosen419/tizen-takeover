@@ -232,4 +232,7 @@ body.px-open { overflow: hidden; }
 .px-primary { border: 0; background: var(--text); color: var(--page); font-weight: 600; }
 .px-danger { border: 1px solid rgba(251, 129, 122, 0.35); background: transparent; color: var(--ok-must); }
 
+.px-scan .px-ic { color: var(--ok-sky); }
+.px-store { color: var(--ok-sky); overflow-wrap: anywhere; }
+
 .css-end { top: 0; }

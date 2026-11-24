@@ -335,8 +335,13 @@ async function main() {
     assert.strictEqual(cola.inCart, true);
     assert.strictEqual(cola.owned, false, 'on the list is not in the pantry');
     const info = p.groceryInfo();
-    assert.deepStrictEqual(info.a, { fromPantry: true, reason: 'manual' });
-    assert.deepStrictEqual(info.c, { fromPantry: false, reason: '' });
+    assert.deepStrictEqual(info.a, { store: '', fromPantry: true, reason: 'manual' });
+    assert.deepStrictEqual(info.c, { store: '', fromPantry: false, reason: '' });
+    // A preferred store set on the phone shows in the view and on the export row's info.
+    const cafe = v.products.find((x) => pantrydb.keyOf(x.name) === 'cafe');
+    p.applyOps([{ op: 'edit', id: cafe.id, preferredStore: '  CVS ' }], g);
+    assert.strictEqual(p.view(g).data.products.find((x) => x.id === cafe.id).store, 'CVS');
+    assert.strictEqual(p.groceryInfo().a.store, 'CVS');
     p.syncGrocery(g, []);
     assert.strictEqual(p.db.prepare('SELECT COUNT(*) AS n FROM list_items').get().n, 3, 'mirroring again adds nothing');
     p.close();
@@ -522,7 +527,7 @@ async function main() {
     const bread = r.json.items.find((i) => i.name === 'Bread');
     assert.deepStrictEqual([eggs.fromPantry, eggs.reason], [true, 'low']);
     assert.deepStrictEqual([bread.fromPantry, bread.reason], [false, '']);
-    assert.deepStrictEqual(Object.keys(bread).sort(), ['addedAt', 'brand', 'done', 'fromPantry', 'id', 'imagePath', 'name', 'productName', 'reason', 'search', 'size', 'source', 'upc']);
+    assert.deepStrictEqual(Object.keys(bread).sort(), ['addedAt', 'brand', 'done', 'fromPantry', 'id', 'imagePath', 'name', 'productName', 'reason', 'search', 'size', 'source', 'store', 'upc']);
     // Removing the auto row while low holds it: the next drop does not re-add.
     r = await request(P, 'POST', '/grocery/ops', { headers: phone, body: { ops: [{ op: 'remove', id: eggs.id }] } });
     const pid = (await request(P, 'GET', '/api/pantry', { token: TOKEN })).json.data.products.find((x) => x.name === 'Eggs').id;
