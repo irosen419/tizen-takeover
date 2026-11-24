@@ -134,11 +134,16 @@
     readUnder: '{n} under the {g} goal',
     readEven: 'Right at the {g} goal',
     readNoGoal: 'No goal that day',
+    readBefore: 'Before your goal started',
     readNoData: 'No figure for this day',
     goalLabel: '{n} goal',
     avgLabel: '7-day {n}',
+    // The Safe-today cap the budget app works out each morning (Budget lab's figure).
+    capLabel: 'Safe today {n}',
+    readCap: 'Safe today was {n}',
     changeTick: '{d} · {n} goal',
-    legend: { avg: '7-day average', goal: 'Goal', note: 'Each point is that day and the 6 before it' },
+    legend: { avg: '7-day average', goal: 'Goal', cap: 'Safe today', note: 'Each point is that day and the 6 before it',
+      capNote: 'Safe today is worked out again each morning' },
     history: 'Your goal',
     from: 'from {d}',
     noGoal: 'No goal set yet: the goal line and the days under it show once there is one.',
@@ -382,28 +387,39 @@
       var rw = rows[i];
       if (rw.spent !== null && rw.spent > top) top = rw.spent;
       if (rw.goal !== null && rw.goal > top) top = rw.goal;
+      if (rw.ref !== null && rw.ref > top) top = rw.ref;
+      if (o.cap && rw.cap !== null && rw.cap > top) top = rw.cap;
       if (o.avg && rw.avg7 !== null && rw.avg7 > top) top = rw.avg7;
     }
     top = top > 0 ? top * 1.08 : 1;
     var last = rows[n - 1];
+    // The goal at the right end: the one in force, else the first one (a goal
+    // set today shows across the chart before any day is judged against it).
+    var goalEnd = last.goal !== null ? last.goal : last.ref;
+    var capEnd = null;
+    if (o.cap) for (i = n - 1; i >= 0 && capEnd === null; i--) capEnd = rows[i].cap;
     var labs = el('div', 'sp-labs', box);
 
     // Direct labels at the right end (page, wide tile) or a key above (small tile).
     var gl = null;
     var al = null;
+    var kl = null;
     var gutter = 0;
     if (o.gutter) {
-      if (last.goal !== null) gl = el('span', 'sp-lab is-goal', labs, fill(STRINGS.goalLabel, { n: cash(last.goal) }));
+      if (goalEnd !== null) gl = el('span', 'sp-lab is-goal', labs, fill(STRINGS.goalLabel, { n: cash(goalEnd) }));
+      if (capEnd !== null) kl = el('span', 'sp-lab is-cap', labs, fill(STRINGS.capLabel, { n: cash(capEnd) }));
       if (o.avg && last.avg7 !== null) al = el('span', 'sp-lab is-avg', labs, fill(STRINGS.avgLabel, { n: cash(last.avg7) }));
-      gutter = Math.max(gl ? gl.offsetWidth : 0, al ? al.offsetWidth : 0);
+      gutter = Math.max(gl ? gl.offsetWidth : 0, al ? al.offsetWidth : 0, kl ? kl.offsetWidth : 0);
+      // The cap's label is the longest: it goes first when the gutter is too wide.
+      if (kl && gutter > w * 0.34) { drop(kl); kl = null; gutter = Math.max(gl ? gl.offsetWidth : 0, al ? al.offsetWidth : 0); }
       if (gutter > w * 0.34) { drop(gl); drop(al); gl = al = null; gutter = 0; }
       if (gutter) gutter += rem * 0.7;
     }
     var keyH = 0;
-    if (o.key && last.goal !== null) {
+    if (o.key && goalEnd !== null) {
       var key = el('span', 'sp-lab is-key', labs);
       el('span', 'sp-key', key);
-      key.appendChild(document.createTextNode(fill(STRINGS.goalLabel, { n: cash(last.goal) })));
+      key.appendChild(document.createTextNode(fill(STRINGS.goalLabel, { n: cash(goalEnd) })));
       key.style.right = '0px';
       key.style.top = '0px';
       if (key.offsetWidth > w) drop(key);
@@ -494,6 +510,41 @@
       goalPath.style.transformOrigin = px(X0) + 'px 0px';
     }
 
+    // Days before the first goal: the same line dashed (shown, never judged).
+    var rd = '';
+    for (i = 0; i < n; i++) {
+      var rv = rows[i].ref;
+      if (rv === null) continue;
+      var rx = X0 + slot * i;
+      rd += (i > 0 && rows[i - 1].ref !== null ? 'L' : 'M') + px(rx) + ',' + px(y(rv)) + 'L' + px(rx + slot) + ',' + px(y(rv));
+    }
+    var refPath = null;
+    if (rd) {
+      refPath = svgEl('path', 'sp-goal is-ref', svg);
+      refPath.setAttribute('d', rd);
+      refPath.style.webkitTransformOrigin = px(X0) + 'px 0px';
+      refPath.style.transformOrigin = px(X0) + 'px 0px';
+    }
+
+    // The Safe-today cap logged each morning: a dotted step a day, broken
+    // on a day with none logged.
+    var capPath = null;
+    if (o.cap) {
+      var kd = '';
+      for (i = 0; i < n; i++) {
+        var kv = rows[i].cap;
+        if (kv === null) continue;
+        var kx = X0 + slot * i;
+        kd += (i > 0 && rows[i - 1].cap !== null ? 'L' : 'M') + px(kx) + ',' + px(y(kv)) + 'L' + px(kx + slot) + ',' + px(y(kv));
+      }
+      if (kd) {
+        capPath = svgEl('path', 'sp-cap', svg);
+        capPath.setAttribute('d', kd);
+        capPath.style.webkitTransformOrigin = px(X0) + 'px 0px';
+        capPath.style.transformOrigin = px(X0) + 'px 0px';
+      }
+    }
+
     // The 7-day average, from the first day it has a whole week.
     var avgEnd = null;
     if (o.avg) {
@@ -519,18 +570,23 @@
       }
     }
 
-    // Direct labels, kept apart when the two ends are close.
-    if (gl || al) {
-      var gy = gl ? y(last.goal) - gl.offsetHeight / 2 : 0;
-      var ay = al ? y(last.avg7) - al.offsetHeight / 2 : 0;
-      if (gl && al && Math.abs(gy - ay) < gl.offsetHeight) {
-        var mid = (gy + ay) / 2;
-        var half = gl.offsetHeight / 2 + 1;
-        if (gy <= ay) { gy = mid - half; ay = mid + half; } else { gy = mid + half; ay = mid - half; }
+    // Direct labels at their line's end, pushed apart top to bottom when close,
+    // then the stack moved up as one if it runs past the baseline.
+    var tags = [];
+    if (gl) tags.push({ node: gl, at: y(goalEnd) });
+    if (kl) tags.push({ node: kl, at: y(capEnd) });
+    if (al) tags.push({ node: al, at: y(last.avg7) });
+    if (tags.length) {
+      var th = tags[0].node.offsetHeight + 1;
+      for (i = 0; i < tags.length; i++) tags[i].top = tags[i].at - th / 2;
+      tags.sort(function (t1, t2) { return t1.top - t2.top; });
+      for (i = 1; i < tags.length; i++) if (tags[i].top < tags[i - 1].top + th) tags[i].top = tags[i - 1].top + th;
+      var over = tags[tags.length - 1].top + th - base;
+      for (i = 0; i < tags.length; i++) {
+        var tt = Math.max(0, tags[i].top - Math.max(0, over));
+        tags[i].node.style.left = px(X1 + rem * 0.5) + 'px';
+        tags[i].node.style.top = px(tt) + 'px';
       }
-      var maxY = base - (gl ? gl.offsetHeight : al.offsetHeight);
-      if (gl) { gl.style.left = px(X1 + rem * 0.5) + 'px'; gl.style.top = px(Math.max(0, Math.min(maxY, gy))) + 'px'; }
-      if (al) { al.style.left = px(X1 + rem * 0.5) + 'px'; al.style.top = px(Math.max(0, Math.min(maxY, ay))) + 'px'; }
     }
 
     // Dates under the bars: the day the goal changed first (bold, with its
@@ -570,7 +626,7 @@
       }
     }
 
-    var refs = { rows: rows, bars: bars, slot: slot, X0: X0, cx: cx, base: base, n: n, labs: labs, goal: goalPath, avgEnd: avgEnd };
+    var refs = { rows: rows, bars: bars, slot: slot, X0: X0, cx: cx, base: base, n: n, labs: labs, goal: goalPath, ref: refPath, cap: capPath, avgEnd: avgEnd };
     if (o.marker) {
       var cross = el('div', 'sp-cross', box);
       cross.style.height = px(base) + 'px';
@@ -586,13 +642,21 @@
     var it = el('span', 'sp-leg is-avg', box);
     el('span', 'sp-leg-dash', it);
     el('span', 'sp-leg-text', it, STRINGS.legend.avg);
-    if (r.hasGoal) {
+    if (r.hasGoal || r.goalNow !== null) {
       it = el('span', 'sp-leg is-goal', box);
       el('span', 'sp-leg-dash', it);
       el('span', 'sp-leg-text', it, STRINGS.legend.goal);
     }
-    // The line moves each day: say so where there is room (the page).
-    if (cls === 'is-page') el('div', 'sp-leg-note', box, STRINGS.legend.note);
+    if (r.hasCap) {
+      it = el('span', 'sp-leg is-cap', box);
+      el('span', 'sp-leg-dash', it);
+      el('span', 'sp-leg-text', it, STRINGS.legend.cap);
+    }
+    // The lines move each day: say so where there is room (the page).
+    if (cls === 'is-page') {
+      el('div', 'sp-leg-note', box, STRINGS.legend.note);
+      if (r.hasCap) el('div', 'sp-leg-note', box, STRINGS.legend.capNote);
+    }
     return box;
   }
 
@@ -757,7 +821,7 @@
     }
     var rows = r.chart;
     var tall = box.clientHeight >= remPx() * 5.5;
-    var refs = drawChart(box, rows, { avg: true, gutter: true, axis: tall, change: tall ? r.change : -1 });
+    var refs = drawChart(box, rows, { avg: true, cap: true, gutter: true, axis: tall, change: tall ? r.change : -1 });
     if (!refs) { drop(box); drop(leg); }
   }
 
@@ -837,11 +901,12 @@
     node.appendChild(document.createTextNode(STRINGS.sep + cash(row.spent)));
     var text = '';
     var tone = '';
-    if (row.goal === null) text = STRINGS.readNoGoal;
+    if (row.goal === null) text = row.ref !== null && row.ref !== undefined ? STRINGS.readBefore : STRINGS.readNoGoal;
     else if (row.over !== null && Math.round(row.over) > 0) { text = fill(STRINGS.readOver, { n: cash(row.over), g: cash(row.goal) }); tone = ' is-neg'; }
     else if (Math.round(row.goal - row.spent) === 0) { text = fill(STRINGS.readEven, { g: cash(row.goal) }); tone = ' is-ok'; }
     else { text = fill(STRINGS.readUnder, { n: cash(row.goal - row.spent), g: cash(row.goal) }); tone = ' is-ok'; }
     el('span', 'sp-read-note' + tone, node, text);
+    if (row.cap !== null && row.cap !== undefined) el('span', 'sp-read-note is-cap', node, fill(STRINGS.readCap, { n: cash(row.cap) }));
   }
 
   function setFocus(i, glide) {
@@ -874,7 +939,7 @@
 
   function historyLine(parent, r) {
     var f = el('div', 'sp-hist', parent);
-    if (!r.hasGoal || !r.history.length) {
+    if (!r.history.length) {
       el('span', 'sp-hist-none', f, STRINGS.noGoal);
       return f;
     }
@@ -983,7 +1048,7 @@
     var foot = el('div', 'sp-pfoot', page);
     el('span', 'sp-hint', foot, ctx.tablet ? STRINGS.hintTouch : STRINGS.hint);
     historyLine(foot, r);
-    var chart = drawChart(box, r.chart, { avg: true, gutter: true, axis: true, marker: true, change: r.change, anim: anim });
+    var chart = drawChart(box, r.chart, { avg: true, cap: true, gutter: true, axis: true, marker: true, change: r.change, anim: anim });
     S.refs = { read: read, chart: chart, at: null, glide: false, box: box };
     if (chart) {
       var at = chart.n - 1;
@@ -1250,7 +1315,7 @@
   function drawWhere(root, ctx, r, full) {
     var W = STRINGS.where;
     var m = MATH();
-    var wh = m.where(trendsOf(), r.goal);
+    var wh = m.where(trendsOf(), r.goalNow);
     // Figures for another month (the budget app has not sent this one yet) are
     // never shown as this month's.
     var month = thisMonth();

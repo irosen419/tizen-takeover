@@ -20,6 +20,7 @@
   --sp-over: var(--ok-must);
   --sp-ok: var(--ok-passive);
   --sp-sky: var(--ok-sky);
+  --sp-cap: var(--ok-optional);
   --sp-surface: #0b0f16;
 }
 .theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .sp-tile {
@@ -93,6 +94,10 @@
 .sp-zero { fill: var(--sp-bar); }
 .sp-over { fill: var(--sp-over); }
 .sp-goal { fill: none; stroke: var(--sp-ink); stroke-width: 2; opacity: 0.75; }
+/* Before the first goal: the same line, dashed (shown, not judged). */
+.sp-goal.is-ref { stroke-dasharray: 7 6; }
+/* The Safe-today cap, worked out each morning: amber dots. */
+.sp-cap { fill: none; stroke: var(--sp-cap); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 0.1 6.5; }
 .sp-avg { fill: none; stroke: var(--sp-sky); stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; }
 .sp-avg-end { fill: var(--sp-sky); stroke: var(--sp-surface); stroke-width: 3; }
 .sp-labs { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
@@ -107,6 +112,7 @@
 .sp-lab { font-size: 0.9rem; font-weight: 500; color: var(--sp-ink2); }
 .sp-lab.is-goal { color: var(--sp-ink); }
 .sp-lab.is-avg { color: var(--sp-sky); }
+.sp-lab.is-cap { color: var(--sp-cap); }
 .sp-lab.is-key { left: auto; }
 .sp-key { display: inline-block; vertical-align: middle; width: 1.3em; height: 0.12rem; margin-right: 0.4em; background: var(--sp-ink); opacity: 0.75; }
 .sp-tick { font-size: 0.85rem; color: var(--sp-ink3); }
@@ -200,6 +206,14 @@
 .sp-leg:last-child { margin-right: 0; }
 .sp-leg-dash { display: inline-block; vertical-align: middle; width: 1.3em; height: 0.2rem; margin-right: 0.45em; background: var(--sp-sky); border-radius: 0.1rem; }
 .sp-leg.is-goal .sp-leg-dash { height: 0.12rem; background: var(--sp-ink); opacity: 0.75; }
+/* Three dots, as the line is drawn (background-image is fine on Chrome 52). */
+.sp-leg.is-cap .sp-leg-dash {
+  height: 0.2rem;
+  background: none;
+  background-image: radial-gradient(circle, var(--sp-cap) 48%, transparent 52%);
+  background-size: 0.433em 0.2rem;
+  background-repeat: repeat-x;
+}
 
 /* ---------- the Trend page ---------- */
 
@@ -231,6 +245,7 @@
 .sp-read-note { display: inline-block; margin-left: 0.7rem; color: var(--sp-ink2); }
 .sp-read-note.is-neg { color: var(--sp-over); }
 .sp-read-note.is-ok { color: var(--sp-ok); }
+.sp-read-note.is-cap { color: var(--sp-cap); }
 .sp-chart.is-page { min-height: 11rem; max-height: 30rem; margin: 0.4rem 0 0; border-radius: 0.8rem; }
 .sp-chart.is-page .sp-lab { font-size: 1.05rem; }
 .sp-chart.is-page .sp-tick { font-size: 1rem; }
@@ -324,7 +339,8 @@
   -webkit-animation: sp-grow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   animation: sp-grow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-.sp-anim .sp-goal {
+.sp-anim .sp-goal,
+.sp-anim .sp-cap {
   -webkit-animation: sp-sweep 0.6s cubic-bezier(0.3, 0.7, 0.2, 1) 0.4s both;
   animation: sp-sweep 0.6s cubic-bezier(0.3, 0.7, 0.2, 1) 0.4s both;
 }
@@ -369,6 +385,7 @@
 @media (prefers-reduced-motion: reduce) {
   .sp-anim .sp-day,
   .sp-anim .sp-goal,
+  .sp-anim .sp-cap,
   .sp-anim .sp-avg,
   .sp-anim .sp-labs,
   .sp-anim .sp-avg-end,
