@@ -67,6 +67,7 @@ function normalize(raw) {
     req.match = raw.match.slice();
   }
   if (!req.match.length) req.match = [raw.name];
+  req.match = withAliases(req.match);
   if (raw.kind === 'key') {
     if (typeof raw.key !== 'string' || !KEY_RE.test(raw.key)) throw bad('"key" must look like KEY_HDMI1');
     req.key = raw.key;
@@ -81,7 +82,17 @@ function normalize(raw) {
   return req;
 }
 
-function lower(s) { return str(s).toLowerCase().replace(/\s+/g, ' ').trim(); }
+// Spaces and punctuation ignored, so "Tizen Brew" and "TizenBrew" are one name.
+function lower(s) { return str(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ''); }
+
+// Names the TV lists differently from what a caller says (its source list reads
+// "TizenBrewNextGeneration" for TizenBrew). Keys are lower(); extras are tried after the asked name.
+const ALIASES = { tizenbrew: ['TizenBrewNextGeneration', 'TizenBrew Next Generation'] };
+function withAliases(names) {
+  const out = names.slice();
+  names.forEach((n) => (ALIASES[lower(n)] || []).forEach((a) => { if (out.map(lower).indexOf(lower(a)) < 0) out.push(a); }));
+  return out;
+}
 
 // The TV's own name for an app, from its source list: an exact match on any
 // wanted name first, then a name that starts with one. '' when none.
@@ -303,4 +314,4 @@ function lines(s) {
   return out;
 }
 
-module.exports = { create: create, configFromEnv: configFromEnv, normalize: normalize, pickSource: pickSource, lines: lines, KINDS: KINDS };
+module.exports = { create: create, configFromEnv: configFromEnv, normalize: normalize, pickSource: pickSource, withAliases: withAliases, lines: lines, KINDS: KINDS };
