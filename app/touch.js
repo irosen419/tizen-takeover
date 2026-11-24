@@ -45,7 +45,7 @@
     'budget-goals': ['budget.titles.goals', 'Goals'], 'budget-lab': ['budgetLab.titles.lab', 'Budget lab'],
     soundctl: ['soundctl.title', 'Sound control'],
     sunpath: ['sunpath.title', 'Plant sun'], list: ['pantry.listTitle', 'List'], architecture: ['touch.name.architecture', 'Architecture'],
-    investments: ['investments.title', 'Investments'], shows: ['shows.title', 'Schedule']
+    investments: ['investments.title', 'Investments'], spending: ['spending.title', 'Spending'], shows: ['shows.title', 'Schedule']
   };
 
   /* ---------- device ---------- */

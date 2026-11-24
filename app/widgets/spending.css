@@ -1,0 +1,303 @@
+/* Spending tile and its Trend page. Every class starts with sp-.
+
+   Same rules as budget.css: no grid, no flex gap, only opacity and transform
+   ever animate (the page's entrance and the day marker's glide). Every line
+   of text has a line-height of 1.3 or more and no text line is cut by
+   overflow: hidden unless it is fitted first (fitWidth, fitForms in
+   spending.js). Nothing under 0.85rem on a tile or 1rem on the page.
+   Colours are the theme's (app/theme.css): --ok-must for the part over the
+   goal, --ok-passive for under, --ok-sky for the 7-day line; day glass
+   takes their darker inks (theme.css) and a darker sky below. */
+
+.sp-tile,
+.sp-panel {
+  --sp-ink: var(--text);
+  --sp-ink2: var(--text-2);
+  --sp-ink3: var(--text-3);
+  --sp-hair: rgba(255, 255, 255, 0.14);
+  --sp-bar: rgba(255, 255, 255, 0.30);
+  --sp-free: rgba(255, 255, 255, 0.16);
+  --sp-over: var(--ok-must);
+  --sp-ok: var(--ok-passive);
+  --sp-sky: var(--ok-sky);
+  --sp-surface: #0b0f16;
+}
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .sp-tile {
+  --sp-hair: rgba(21, 27, 36, 0.16);
+  --sp-bar: rgba(21, 27, 36, 0.30);
+  --sp-free: rgba(21, 27, 36, 0.14);
+  --sp-sky: #1f78b4;
+  --sp-surface: #dfe5ea;
+}
+
+.sp-cut {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sp-tile .is-ok, .sp-panel .is-ok { color: var(--sp-ok); }
+.sp-tile .is-neg, .sp-panel .is-neg { color: var(--sp-over); }
+.sp-tile .is-quiet { color: var(--sp-ink3); }
+
+/* ---------- tile ---------- */
+
+.sp-tile {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: 0.2rem;
+  color: var(--sp-ink);
+}
+.sp-tile.is-stale,
+.sp-page.is-stale { opacity: 0.55; }
+
+.sp-hero {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  min-width: 0;
+}
+.sp-hero-num {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  margin-right: 0.6rem;
+  font-size: 3.8rem;
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tile-h2 .sp-hero-num { font-size: 3.2rem; }
+.sp-hero-cap { flex: 0 1 auto; min-width: 0; font-size: 1.1rem; line-height: 1.35; color: var(--sp-ink2); }
+.sp-verdict { flex: 0 0 auto; font-size: 1.1rem; line-height: 1.35; font-weight: 500; color: var(--sp-ink2); white-space: nowrap; }
+.sp-verdict.is-ok { color: var(--sp-ok); }
+.sp-verdict.is-neg { color: var(--sp-over); }
+
+.sp-chart { position: relative; flex: 1 1 auto; min-height: 0; }
+.sp-chart.is-small { margin: 0.8rem 0 0.4rem; }
+.sp-chart.is-tile { margin-top: 0.9rem; }
+.sp-svg { position: absolute; left: 0; top: 0; overflow: visible; }
+.sp-base { stroke: var(--sp-hair); stroke-width: 1.5; }
+.sp-bar { fill: var(--sp-bar); }
+.sp-bar.is-free { fill: var(--sp-free); }
+.sp-zero { fill: var(--sp-bar); }
+.sp-over { fill: var(--sp-over); }
+.sp-goal { fill: none; stroke: var(--sp-ink); stroke-width: 2; opacity: 0.75; }
+.sp-avg { fill: none; stroke: var(--sp-sky); stroke-width: 3.5; stroke-linejoin: round; stroke-linecap: round; }
+.sp-avg-end { fill: var(--sp-sky); stroke: var(--sp-surface); stroke-width: 3; }
+.sp-labs { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }
+.sp-lab,
+.sp-tick {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+.sp-lab { font-size: 0.9rem; font-weight: 500; color: var(--sp-ink2); }
+.sp-lab.is-goal { color: var(--sp-ink); }
+.sp-lab.is-avg { color: var(--sp-sky); }
+.sp-lab.is-key { left: auto; }
+.sp-key { display: inline-block; vertical-align: middle; width: 1.3em; height: 0.12rem; margin-right: 0.4em; background: var(--sp-ink); opacity: 0.75; }
+.sp-tick { font-size: 0.85rem; color: var(--sp-ink3); }
+.sp-tick.is-change { color: var(--sp-ink); font-weight: 600; }
+
+.sp-foot {
+  flex: 0 0 auto;
+  margin-top: 0.3rem;
+  padding-top: 0.55rem;
+  border-top: 0.06rem solid var(--sp-hair);
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--sp-ink2);
+  overflow: hidden;
+}
+.sp-foot-kept { float: right; margin-left: 0.8rem; font-weight: 600; white-space: nowrap; }
+
+/* 1 column: the one figure */
+.sp-tile.sp-solo { justify-content: center; align-items: center; }
+.sp-solo-num { max-width: 100%; font-size: 2.4rem; font-weight: 300; line-height: 1.3; white-space: nowrap; overflow: hidden; }
+
+/* strip: one line */
+.sp-tile.sp-strip { justify-content: center; padding-top: 0; }
+.sp-strip-line { white-space: nowrap; overflow: hidden; line-height: 1.35; font-size: 1.15rem; }
+.sp-strip-num { font-size: 1.6rem; font-weight: 300; }
+.sp-strip-cap { color: var(--sp-ink2); }
+.sp-strip-text { font-size: 1rem; line-height: 1.35; }
+
+/* numbers across (wide tile and page) */
+.sp-kpis { flex: 0 0 auto; white-space: nowrap; font-size: 0; }
+.sp-kpi {
+  display: inline-block;
+  vertical-align: top;
+  width: 31.3%;
+  margin-right: 3%;
+  white-space: normal;
+  font-size: 1rem;
+}
+.sp-kpi:last-child { margin-right: 0; }
+.sp-kpi.is-n4 { width: 22.75%; }
+.sp-kpi-label {
+  padding-bottom: 0.3rem;
+  margin-bottom: 0.25rem;
+  border-bottom: 0.06rem solid var(--sp-hair);
+  font-size: 0.9rem;
+  line-height: 1.3;
+  font-weight: 500;
+  color: var(--sp-ink3);
+}
+.sp-kpi-val {
+  font-size: 2.6rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sp-kpis.is-tight .sp-kpi-val { font-size: 2rem; }
+.sp-kpis.is-tight .sp-kpi-label { padding-bottom: 0.15rem; }
+.sp-kpis.is-tight .sp-kpi-small { font-size: 0.45em; }
+.sp-kpi-num { font-weight: 300; letter-spacing: -0.01em; }
+.sp-kpi-small { margin-left: 0.35em; font-size: 0.38em; color: var(--sp-ink2); letter-spacing: 0; }
+.sp-kpi-sub { margin-top: 0.1rem; font-size: 0.95rem; line-height: 1.35; color: var(--sp-ink2); }
+.sp-kpi-sub.is-ok { color: var(--sp-ok); }
+.sp-kpi-sub.is-neg { color: var(--sp-over); }
+
+/* states */
+.sp-msg { position: relative; z-index: 1; padding-top: 0.2rem; }
+.sp-msg-head { font-size: 1.3rem; line-height: 1.3; color: var(--sp-ink); word-wrap: break-word; }
+.sp-msg-head.is-small { font-size: 1.05rem; }
+.sp-msg-line { margin-top: 0.35rem; font-size: 0.95rem; line-height: 1.35; color: var(--sp-ink2); word-wrap: break-word; }
+.sp-mark {
+  position: absolute;
+  right: -0.4rem;
+  bottom: -0.4rem;
+  width: 4.6rem;
+  height: 4.6rem;
+  opacity: 0.12;
+  color: var(--sp-ink);
+}
+.sp-mark svg { display: block; width: 100%; height: 100%; }
+.sp-mark.is-solo { position: static; width: 2rem; height: 2rem; margin: auto; opacity: 0.45; }
+.sp-mark.is-panel { width: 10rem; height: 10rem; right: 0; bottom: 0; }
+
+/* the key to the lines: a dash in each line's colour and its name */
+.sp-legend { flex: 0 0 auto; font-size: 0.9rem; line-height: 1.35; color: var(--sp-ink2); }
+.sp-legend.is-tile { margin-top: 0.3rem; white-space: nowrap; overflow: hidden; }
+.sp-legend.is-page { flex: 0 1 auto; max-width: 45%; margin-left: 1.6rem; font-size: 1rem; text-align: right; }
+.sp-leg-note { margin-top: 0.15rem; font-size: 0.95rem; color: var(--sp-ink3); }
+.sp-leg { display: inline-block; margin-right: 1.1rem; white-space: nowrap; }
+.sp-leg:last-child { margin-right: 0; }
+.sp-leg-dash { display: inline-block; vertical-align: middle; width: 1.3em; height: 0.2rem; margin-right: 0.45em; background: var(--sp-sky); border-radius: 0.1rem; }
+.sp-leg.is-goal .sp-leg-dash { height: 0.12rem; background: var(--sp-ink); opacity: 0.75; }
+
+/* ---------- the Trend page ---------- */
+
+.sp-panel { position: relative; min-height: 100%; color: var(--sp-ink); }
+.sp-pmsg { position: relative; z-index: 1; max-width: 40rem; padding-top: 0.6rem; }
+.sp-pmsg-head { font-size: 1.6rem; line-height: 1.35; word-wrap: break-word; }
+.sp-pmsg-line { margin-top: 0.7rem; font-size: 1.1rem; line-height: 1.45; color: var(--sp-ink2); word-wrap: break-word; }
+.sp-page {
+  display: flex;
+  flex-direction: column;
+  -webkit-box-flex: 1;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 24rem;
+}
+.sp-panel.is-full .sp-page { min-height: 33rem; }
+.sp-page .sp-kpis { margin-bottom: 1.2rem; }
+.sp-page .sp-kpi-val { font-size: 3rem; }
+.sp-page.is-full .sp-kpi-val { font-size: 3.4rem; }
+.sp-page .sp-kpi-label { font-size: 1rem; }
+.sp-page .sp-kpi-sub { font-size: 1rem; }
+.sp-sec { flex: 0 0 auto; display: flex; align-items: flex-start; font-size: 1rem; line-height: 1.35; color: var(--sp-ink3); }
+.sp-sec-left { flex: 1 1 auto; min-width: 0; }
+.sp-sec-head { margin-right: 0.9rem; font-weight: 500; }
+.sp-sec-note { display: inline-block; }
+.sp-read { min-height: 1.75rem; margin: 0.25rem 0 0.2rem; font-size: 1.3rem; line-height: 1.35; color: var(--sp-ink); }
+.sp-read-date { font-weight: 600; }
+.sp-read-note { display: inline-block; margin-left: 0.7rem; color: var(--sp-ink2); }
+.sp-read-note.is-neg { color: var(--sp-over); }
+.sp-read-note.is-ok { color: var(--sp-ok); }
+.sp-chart.is-page { min-height: 11rem; max-height: 30rem; margin: 0.4rem 0 0; border-radius: 0.8rem; }
+.sp-chart.is-page .sp-lab { font-size: 1.05rem; }
+.sp-chart.is-page .sp-tick { font-size: 1rem; }
+.sp-chart .sp-bar.is-focus,
+.sp-chart .sp-zero.is-focus { fill: var(--sp-ink); }
+.sp-cross {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0.12rem;
+  background: var(--sp-ink);
+  opacity: 0.35;
+  pointer-events: none;
+}
+.sp-cross.is-glide {
+  -webkit-transition: -webkit-transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition: transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.sp-pfoot { flex: 0 0 auto; margin-top: 1rem; font-size: 1.05rem; line-height: 1.4; color: var(--sp-ink2); overflow: hidden; }
+.sp-hint { float: right; margin-left: 1.2rem; color: var(--sp-ink3); font-size: 1rem; line-height: 1.6; }
+.sp-hist-label { margin-right: 0.3rem; }
+.sp-hist-item { display: inline-block; margin-left: 0.6rem; white-space: nowrap; }
+.sp-hist-item.is-old { opacity: 0.6; }
+.sp-hist-goal { margin-right: 0.35rem; font-size: 1.3rem; font-weight: 600; color: var(--sp-ink); }
+
+/* ---------- motion: once per open, transform and opacity only ---------- */
+
+.sp-anim .sp-day {
+  -webkit-animation: sp-grow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: sp-grow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.sp-anim .sp-goal {
+  -webkit-animation: sp-sweep 0.6s cubic-bezier(0.3, 0.7, 0.2, 1) 0.4s both;
+  animation: sp-sweep 0.6s cubic-bezier(0.3, 0.7, 0.2, 1) 0.4s both;
+}
+.sp-anim .sp-avg {
+  -webkit-animation: sp-sweep 0.7s cubic-bezier(0.3, 0.7, 0.2, 1) 0.6s both;
+  animation: sp-sweep 0.7s cubic-bezier(0.3, 0.7, 0.2, 1) 0.6s both;
+}
+.sp-anim .sp-labs,
+.sp-anim .sp-avg-end {
+  -webkit-animation: sp-fade 0.4s ease-out 1.1s both;
+  animation: sp-fade 0.4s ease-out 1.1s both;
+}
+.sp-anim .sp-kpi {
+  -webkit-animation: sp-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: sp-rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.sp-anim .sp-kpi + .sp-kpi { -webkit-animation-delay: 0.08s; animation-delay: 0.08s; }
+.sp-anim .sp-kpi + .sp-kpi + .sp-kpi { -webkit-animation-delay: 0.16s; animation-delay: 0.16s; }
+.sp-anim .sp-kpi + .sp-kpi + .sp-kpi + .sp-kpi { -webkit-animation-delay: 0.24s; animation-delay: 0.24s; }
+
+@-webkit-keyframes sp-grow { from { -webkit-transform: scaleY(0); transform: scaleY(0); } to { -webkit-transform: scaleY(1); transform: scaleY(1); } }
+@keyframes sp-grow { from { -webkit-transform: scaleY(0); transform: scaleY(0); } to { -webkit-transform: scaleY(1); transform: scaleY(1); } }
+@-webkit-keyframes sp-sweep { from { -webkit-transform: scaleX(0); transform: scaleX(0); opacity: 0; } to { -webkit-transform: scaleX(1); transform: scaleX(1); opacity: 1; } }
+@keyframes sp-sweep { from { -webkit-transform: scaleX(0); transform: scaleX(0); opacity: 0; } to { -webkit-transform: scaleX(1); transform: scaleX(1); opacity: 1; } }
+@-webkit-keyframes sp-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sp-fade { from { opacity: 0; } to { opacity: 1; } }
+@-webkit-keyframes sp-rise { from { opacity: 0; -webkit-transform: translateY(10px); transform: translateY(10px); } to { opacity: 1; -webkit-transform: none; transform: none; } }
+@keyframes sp-rise { from { opacity: 0; -webkit-transform: translateY(10px); transform: translateY(10px); } to { opacity: 1; -webkit-transform: none; transform: none; } }
+
+/* Less motion asked for: everything in place at once (the widget also
+   skips the motion then; this is the second guard). */
+@media (prefers-reduced-motion: reduce) {
+  .sp-anim .sp-day,
+  .sp-anim .sp-goal,
+  .sp-anim .sp-avg,
+  .sp-anim .sp-labs,
+  .sp-anim .sp-avg-end,
+  .sp-anim .sp-kpi { -webkit-animation: none; animation: none; }
+  .sp-cross.is-glide { -webkit-transition: none; transition: none; }
+}
+
+.css-end { top: 0; }
