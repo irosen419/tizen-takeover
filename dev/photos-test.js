@@ -209,7 +209,7 @@ async function open(o) {
     if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') return route.abort();
     return route.fallback();
   });
-  const cfgExtra = '\n;HUB_CONFIG.widgets.photos = { seconds: ' + (o.seconds || 60) + ' };\n';
+  const cfgExtra = '\n;HUB_CONFIG.widgets.photos = { seconds: ' + (o.seconds || 60) + ", order: '" + (o.order || 'newest') + "' };\n";
   await context.route(/\/config\.js(\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: 'application/javascript', body: CONFIG + cfgExtra }));
   if (o.grow) await context.route(/\/i18n\.js(\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: 'application/javascript', body: I18N + GROW }));
   // "Before": the hub without the Photo album (its files answer with nothing in them).
@@ -588,6 +588,55 @@ async function main() {
       await close(p);
       PI.items = PHOTOS.slice();
       PI.rev = 'r6';
+    });
+
+    await check('Viewer: a clip that would not start shows a big play mark; a tap in the middle plays it (inside the tap); OK then goes on', async () => {
+      if (!PI.clip) return;
+      PI.items = [PHOTOS[0], VIDEO, PHOTOS[1]];
+      PI.rev = 'rv4';
+      PI.clipOff = true;
+      const p = await open({ seconds: 60 });
+      await p.evaluate(() => window.HUB_TEST.openPanel('photos'));
+      await until(() => p.evaluate(() => document.querySelectorAll('#panel .ph-thumb').length === 3 && !window.HUB_TEST.busy()), 6000, 'no grid');
+      await key(p, 'ArrowRight');
+      await key(p, 'Enter');
+      // It tries twice by itself, then waits with the mark up.
+      await until(() => p.evaluate(() => { const v = document.querySelector('#panel .ph-viewer.is-paused .ph-view-play'); return v && getComputedStyle(v).opacity === '1'; }), 8000, 'no play mark');
+      assert(!(await p.evaluate(() => document.querySelector('#panel .ph-viewer video'))), 'a dead video was left');
+      if (SHOTS) {
+        const r = await p.evaluate(() => { const b = document.querySelector('#panel .ph-viewer').getBoundingClientRect(); return { x: b.left, y: b.top, width: b.width, height: b.height }; });
+        await p.screenshot({ path: path.join(SHOTS, '14-viewer-play-after.png'), clip: r });
+        await p.evaluate(() => { document.querySelector('#panel .ph-view-play').style.display = 'none'; });
+        await p.screenshot({ path: path.join(SHOTS, '14-viewer-play-before.png'), clip: r });
+        await p.evaluate(() => { document.querySelector('#panel .ph-view-play').style.display = ''; });
+      }
+      PI.clipOff = false;
+      const box = await p.evaluate(() => { const b = document.querySelector('#panel .ph-viewer').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+      await p.mouse.click(box.x, box.y);
+      await until(() => p.evaluate(() => document.querySelector('#panel .ph-viewer video.is-playing')), 6000, 'the tap did not play it');
+      assert(await p.evaluate(() => !document.querySelector('#panel .ph-viewer.is-paused') && document.querySelector('#panel .ph-view-count').textContent === '2 of 3'), 'mark still up, or moved on');
+      await until(() => p.evaluate(() => { const el = document.querySelector('#panel .ph-viewer video'); return el && el.ended && document.querySelector('#panel .ph-viewer.is-paused'); }), 6000, 'no replay mark at the end');
+      // After it played, OK goes on.
+      await key(p, 'Enter');
+      await until(() => p.evaluate(() => document.querySelector('#panel .ph-view-count').textContent === '3 of 3' && !document.querySelector('#panel .ph-viewer.is-paused')), 3000, 'OK did not go on');
+      await close(p);
+      PI.items = PHOTOS.slice();
+      PI.rev = 'r7';
+    });
+
+    await check('Random order by default: every photo once per pass, never the same twice in a row', async () => {
+      const p = await open({ seconds: 60, order: 'shuffle' });
+      const seen = [await p.evaluate(() => window.HUB_PHOTOS.state().index)];
+      for (let k = 0; k < 13; k++) {
+        await p.evaluate(() => window.HUB_PHOTOS.advance());
+        seen.push(await p.evaluate(() => window.HUB_PHOTOS.state().index));
+        await sleep(60);
+      }
+      const first = seen.slice(0, 7);
+      assert(new Set(first).size === 7, 'first pass ' + seen.join(','));
+      for (let k = 1; k < seen.length; k++) assert(seen[k] !== seen[k - 1], 'twice in a row ' + seen.join(','));
+      assert(seen.join(',') !== '0,1,2,3,4,5,6,0,1,2,3,4,5,6', 'not shuffled');
+      await close(p);
     });
 
     await check('No photos: a quiet "No photos yet" with a hint; the grid says so too; no error box', async () => {

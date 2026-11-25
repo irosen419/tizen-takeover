@@ -135,8 +135,14 @@ rm -f "$LIST"
 fi
 
 # Videos: a small H.264 clip and a still of the first frame for each.
-# Long side 1280 px at most (the still 1440), 30 fps, no sound, 30 s at most,
-# moov at the front (+faststart) so it starts playing at once.
+# Long side 960 px at most, 30 fps, no sound, 30 s at most, Baseline profile
+# (the wall calendar's old WebView decodes it smoothly; Main at 1280 stuttered
+# and caught up too fast), moov at the front (+faststart) so it starts at once.
+# CLIP_V is the recipe: when clip/.recipe says another, every clip is made
+# again (the old one stays served until its new one is in).
+CLIP_V=2
+REDO=0
+[ "$(cat "$CLIP/.recipe" 2>/dev/null)" = "$CLIP_V" ] || REDO=1
 FIT='trunc(min(1\,LONG/max(iw\,ih))*iw/2)*2:trunc(min(1\,LONG/max(iw\,ih))*ih/2)*2'
 CONVERTED=0
 BAD=0
@@ -146,10 +152,11 @@ if command -v ffmpeg >/dev/null 2>&1; then
     name=$(basename "$f")
     case "$(printf '%s' "$name" | tr 'A-Z' 'a-z')" in *.mp4|*.mov|*.m4v) ;; *) continue ;; esac
     id=$(idof "$name")
-    [ -e "$CLIP/$id.mp4" ] || [ -e "$CLIP/$id.bad" ] && continue
+    [ -e "$CLIP/$id.bad" ] && continue
+    [ -e "$CLIP/$id.mp4" ] && [ "$REDO" = 0 ] && continue
     if $TV nice -n 10 ffmpeg -nostdin -v error -y -i "$f" -t 30 -an -sn -dn \
-         -vf "scale=$(printf '%s' "$FIT" | sed 's/LONG/1280/g'),fps=30,format=yuv420p" \
-         -c:v libx264 -profile:v main -level 4.0 -preset veryfast -crf 26 \
+         -vf "scale=$(printf '%s' "$FIT" | sed 's/LONG/960/g'),fps=30,format=yuv420p" \
+         -c:v libx264 -profile:v baseline -level 3.1 -preset veryfast -crf 25 -g 30 \
          -movflags +faststart -f mp4 "$CLIP/.$id.mp4" </dev/null >/dev/null 2>&1 &&
        $T ffmpeg -nostdin -v error -y -i "$CLIP/.$id.mp4" -frames:v 1 -q:v 3 -f image2 "$STILL/.$id.jpg" </dev/null >/dev/null 2>&1 &&
        $T ffmpeg -nostdin -v error -y -i "$STILL/.$id.jpg" -vf "scale=480:-2" -q:v 4 -f image2 "$THUMB/.$id.jpg" </dev/null >/dev/null 2>&1; then
@@ -164,6 +171,7 @@ if command -v ffmpeg >/dev/null 2>&1; then
       BAD=$((BAD + 1))
     fi
   done
+  [ -w "$CLIP" ] && printf '%s\n' "$CLIP_V" > "$CLIP/.recipe"
 else
   WAIT=$(pending_videos)
   [ "$WAIT" -gt 0 ] && echo "photos: $(vids "$WAIT") waiting for ffmpeg (sudo apt install -y ffmpeg)"

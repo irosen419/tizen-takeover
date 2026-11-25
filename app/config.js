@@ -562,10 +562,12 @@ var HUB_CONFIG = {
     /*
      * Photo album: friends' photos from the Pi (app/widgets/photos.js).
      *   seconds  how long each photo shows on the tile (3 or more; 12 by default)
+     *   order    'shuffle' (random, every photo once per pass; the default)
+     *            or 'newest' (straight through, newest first)
      * The photos come from the hub server (live.server above). The tile is on
      * the "Photos" layout; OK opens the grid and the viewer in full screen.
      */
-    photos: { seconds: 12 },
+    photos: { seconds: 12, order: 'shuffle' },
 
     sunpath: {
       roofAngle: 40,

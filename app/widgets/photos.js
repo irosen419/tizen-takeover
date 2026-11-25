@@ -16,6 +16,9 @@
  * quiet frame says so, never an error box.
  *
  *   tile       one photo at a time, ~12 s each (HUB_CONFIG.widgets.photos.seconds),
+ *              in random order by default (order: 'shuffle'; 'newest' goes
+ *              straight through): every photo once per pass, shuffled again
+ *              at the end, never the same one twice in a row.
  *              crossfaded by opacity between two stacked layers once the next
  *              image has loaded. A photo whose shape is close to the tile's
  *              covers it; any other (a portrait on a landscape tile) is shown
@@ -23,7 +26,8 @@
  *              once (a static layer, never animated). A month caption
  *              ("November 2026") on a soft gradient at the bottom, except on
  *              1-column tiles. A hairline at the bottom shows the time left.
- *              A video item shows its first frame, plays ONCE (muted, inline),
+ *              A video item shows its first frame and, once the crossfade is
+ *              over, plays ONCE (muted, inline),
  *              stays on its last frame for a moment, then moves on; the
  *              hairline runs for the clip's length. A clip that will not play
  *              (no autoplay, a codec the screen lacks, 8 s with no picture)
@@ -35,7 +39,11 @@
  *              the photo whole, the month and "12 of 38"; Left/Right (or a
  *              tap on the left/right half) go to the previous/next; Back goes
  *              back to the grid, then closes. A video plays once there too;
- *              its grid thumbnail carries a small play mark.
+ *              its grid thumbnail carries a small play mark. When it is not
+ *              playing (would not start, or ended) a big play mark shows in the
+ *              middle: a tap there (or OK, until it has played) plays it from
+ *              the tap itself, which every screen allows. Opening the grid
+ *              stops the tile's clip, so the viewer's has the decoder.
  *
  * Guest mode leaves photos alone (they are not amounts). Plain ES5; only
  * opacity and transform animate; focus changes are instant.
@@ -49,6 +57,8 @@
   var THUMB_PX = 520;             // frames up to this many device pixels use the thumb
   var THUMB_BATCH = 24;           // grid thumbnails loaded at first, the rest as they show
   var CLIP_START_MS = 8000;       // a clip with no picture by then is given up (the still stays)
+  var VIEW_START_MS = 15000;      // the same in the viewer, where someone is waiting for it
+  var CLIP_RECIPE = 2;            // pi/photos-sync.sh CLIP_V: new clips, new URLs (the old are cached a day)
   var CLIP_HOLD_MS = 700;         // the last frame stays this long before the next photo
   var CLIP_MAX_MS = 45000;        // a clip is never on longer than this (the Pi cuts them at 30 s)
 
@@ -58,6 +68,7 @@
     rev: null,
     state: 'loading',             // loading | ok | empty | offline
     index: 0,                     // the photo on the tile
+    deck: null,                   // the tile's shuffled pass: { n, order, pos }
     tile: null,                   // { body, frame, stage, bar }
     timer: null,
     clipping: false,              // the tile's clip is playing (its end moves on)
@@ -130,7 +141,7 @@
   }
 
   function clipUrl(id) {
-    return server() + '/photos/clip/' + encodeURIComponent(id);
+    return server() + '/photos/clip/' + encodeURIComponent(id) + '?v=' + CLIP_RECIPE;
   }
 
   // The Pi's list, cleaned: only items with an id, sizes as numbers.
@@ -168,7 +179,8 @@
       var viewedId = (S.viewing >= 0 && S.items[S.viewing]) ? S.items[S.viewing].id : null;
       S.rev = data.rev === undefined ? null : data.rev;
       S.items = cleanList(data);
-      S.index = 0;
+      S.deck = null;
+      S.index = shuffleOn() && S.items.length ? Math.floor(Math.random() * S.items.length) : 0;
       for (var i = 0; current !== null && i < S.items.length; i++) if (S.items[i].id === current) { S.index = i; break; }
       if (viewedId !== null) {
         var vi = -1;
@@ -228,6 +240,42 @@
     var s = S.ctx && S.ctx.config ? +S.ctx.config.seconds : 0;
     return s >= 3 ? s : DEFAULT_SECONDS;
   }
+
+  // Random order unless the config says order: 'newest'.
+  function shuffleOn() {
+    var o = S.ctx && S.ctx.config ? S.ctx.config.order : null;
+    return o !== 'newest';
+  }
+
+  // The order the photos come in: each pass is every photo but the one
+  // showing (cur), shuffled, so nothing shows twice in a row or twice in a
+  // pass. deck is { n, order, pos } or null (a new pass starts).
+  function deckNext(deck, n, cur) {
+    if (n < 2) return 0;
+    if (!shuffleOn()) return (cur + 1) % n;
+    if (!deck.order || deck.n !== n || deck.pos >= deck.order.length - 1) {
+      var list = [];
+      for (var i = 0; i < n; i++) if (i !== cur) list.push(i);
+      for (var j = list.length - 1; j > 0; j--) {
+        var k = Math.floor(Math.random() * (j + 1));
+        var t = list[j]; list[j] = list[k]; list[k] = t;
+      }
+      deck.n = n;
+      deck.order = list;
+      deck.pos = -1;
+    }
+    deck.pos++;
+    return deck.order[deck.pos];
+  }
+
+  // The one after next, when it is known (for preloading), else -1.
+  function deckPeek(deck, n, cur) {
+    if (n < 2) return -1;
+    if (!shuffleOn()) return (cur + 1) % n;
+    return deck && deck.order && deck.n === n && deck.pos < deck.order.length - 1 ? deck.order[deck.pos + 1] : -1;
+  }
+
+  function tileDeck() { return S.deck || (S.deck = { n: 0, order: null, pos: -1 }); }
 
   // 'cover' when the photo's shape is close to the frame's (a little is
   // cropped at the edges); 'contain' otherwise, and always for a portrait
@@ -321,6 +369,8 @@
       // Two frames, so the browser has the new layer drawn before it fades.
       if (first || lessMotion()) addClass(st.el, 'is-quick'); else removeClass(st.el, 'is-quick');
       if (first) addClass(st.el, 'is-instant');
+      // How long until the new layer is fully in (a clip starts after that).
+      st.fadeMs = first ? 0 : (lessMotion() ? 400 : 1450);
       setTimeout(function () {
         addClass(L.el, 'is-on');
         if (old) {
@@ -350,7 +400,7 @@
     var v = L && L.video;
     if (!v) return;
     L.video = null;
-    v.onplaying = v.onended = v.onerror = null;
+    v.onplaying = v.onended = v.onerror = v.ontimeupdate = null;
     try { v.pause(); } catch (e) { /* ignore */ }
     v.removeAttribute('src');
     try { v.load(); } catch (e) { /* ignore */ }
@@ -366,7 +416,9 @@
   // Plays item's clip once over its still on the stage's front layer.
   // done(true) after it ended (the last frame stays up), done(false) when it
   // would not play (the still stays up). Called once, unless the stage moved on.
-  function playClip(st, item, done) {
+  // opts: { startMs, onPlaying() } (the viewer's).
+  function playClip(st, item, done, opts) {
+    opts = opts || {};
     var L = st.layers[st.front];
     if (!item || !item.video || !L || L.el.getAttribute('data-id') !== item.id || noClips()) { done(false); return; }
     dropClip(L);
@@ -380,7 +432,7 @@
       finished = true;
       clearTimeout(startTimer);
       clearTimeout(maxTimer);
-      v.onplaying = v.onended = v.onerror = null;
+      v.onplaying = v.onended = v.onerror = v.ontimeupdate = null;
       if (!ok) dropClip(L);
       if (token === st.clipToken && st.want === item.id) done(ok);
     }
@@ -393,12 +445,17 @@
     v.setAttribute('aria-hidden', 'true');
     v.onplaying = function () {
       clearTimeout(startTimer);
-      // The clip's first frame is the still under it: the swap is invisible.
-      addClass(v, 'is-playing');
+      if (opts.onPlaying) opts.onPlaying();
     };
-    v.onended = function () { finish(true); };
+    // Shown once frames are really moving (some players say "playing" before
+    // they have drawn one). Its first frame is the still under it, so the
+    // swap is invisible.
+    v.ontimeupdate = function () {
+      if (v.currentTime > 0.04 && !hasClass(v, 'is-playing')) { clearTimeout(startTimer); addClass(v, 'is-playing'); }
+    };
+    v.onended = function () { addClass(v, 'is-playing'); finish(true); };
     v.onerror = function () { finish(false); };
-    startTimer = setTimeout(function () { finish(false); }, CLIP_START_MS);
+    startTimer = setTimeout(function () { finish(false); }, opts.startMs || CLIP_START_MS);
     maxTimer = setTimeout(function () { finish(true); }, Math.min(CLIP_MAX_MS, ((item.dur || 30) + 10) * 1000));
     L.video = v;
     L.el.insertBefore(v, L.img.nextSibling);
@@ -439,14 +496,21 @@
     if (!t || !t.stage || !it || !it.video || (S.ctx && S.ctx.isOpen()) || document.hidden) { schedule(); preloadNext(); return; }
     clearTimer();
     S.clipping = true;
-    if (it.dur) restartBar(it.dur + CLIP_HOLD_MS / 1000);
-    playClip(t.stage, it, function (ok) {
-      if (!S.clipping) return;
-      S.clipping = false;
-      if (!ok) { schedule(); return; }
-      if (S.items.length < 2) return; // one video: it stays on its last frame
-      S.timer = setTimeout(advance, CLIP_HOLD_MS);
-    });
+    var wait = t.stage.fadeMs || 0;
+    if (it.dur) restartBar(it.dur + (wait + CLIP_HOLD_MS) / 1000);
+    // The clip starts once the still has fully faded in: a video under a
+    // layer that is still fading draws badly on older screens.
+    S.timer = setTimeout(function () {
+      S.timer = null;
+      if (!S.clipping || S.items[S.index] !== it) return;
+      playClip(t.stage, it, function (ok) {
+        if (!S.clipping) return;
+        S.clipping = false;
+        if (!ok) { schedule(); return; }
+        if (S.items.length < 2) return; // one video: it stays on its last frame
+        S.timer = setTimeout(advance, CLIP_HOLD_MS);
+      });
+    }, wait);
     preloadNext();
   }
 
@@ -458,7 +522,7 @@
     if ((S.ctx && S.ctx.isOpen()) || document.hidden) { schedule(); return; }
     var tries = 0;
     (function step() {
-      S.index = (S.index + 1) % S.items.length;
+      S.index = deckNext(tileDeck(), S.items.length, S.index);
       show(t.stage, S.items[S.index], function (ok) {
         if (!ok && ++tries < Math.min(5, S.items.length)) { step(); return; }
         settle();
@@ -469,8 +533,8 @@
   function preloadNext() {
     var t = S.tile;
     if (!t || !t.stage || S.items.length < 2) return;
-    var it = S.items[(S.index + 1) % S.items.length];
-    preload(imgUrl(it.id, sizeFor(t.stage)));
+    var n = deckPeek(S.deck, S.items.length, S.index);
+    if (n >= 0) preload(imgUrl(S.items[n].id, sizeFor(t.stage)));
   }
 
   /* ---------- a slideshow anywhere (the tablet's Slideshow, hub.js) ---------- */
@@ -484,7 +548,8 @@
     var st = makeStage(parent, { fit: 'auto', caption: true, full: true });
     var on = true;
     var timer = null;
-    var i = S.items.length ? S.index - 1 : -1;
+    var i = -1;
+    var deck = { n: 0, order: null, pos: -1 };
     function empty() { if (on && typeof opts.onEmpty === 'function') opts.onEmpty(); }
     function next() {
       timer = null;
@@ -492,17 +557,23 @@
       if (!S.items.length) { empty(); return; }
       var tries = 0;
       (function go() {
-        i = (i + 1) % S.items.length;
+        // It starts on the tile's photo, then goes on in the same order rule.
+        i = i < 0 && S.index < S.items.length ? S.index : deckNext(deck, S.items.length, i < 0 ? 0 : i);
         show(st, S.items[i], function (ok) {
           if (!on) return;
           if (!ok && ++tries < Math.min(5, S.items.length)) { go(); return; }
           if (!ok && st.front < 0) { empty(); return; }
-          if (S.items.length > 1) preload(imgUrl(S.items[(i + 1) % S.items.length].id, 'full'));
+          var pk = deckPeek(deck, S.items.length, i);
+          if (pk >= 0) preload(imgUrl(S.items[pk].id, 'full'));
           var it = S.items[i];
           if (ok && it && it.video) {
-            playClip(st, it, function (played) {
-              if (on && S.items.length > 1) timer = setTimeout(next, played ? CLIP_HOLD_MS : seconds() * 1000);
-            });
+            timer = setTimeout(function () {
+              timer = null;
+              if (!on) return;
+              playClip(st, it, function (played) {
+                if (on && S.items.length > 1) timer = setTimeout(next, played ? CLIP_HOLD_MS : seconds() * 1000);
+              });
+            }, st.fadeMs || 0);
             return;
           }
           if (S.items.length > 1) timer = setTimeout(next, seconds() * 1000);
@@ -679,26 +750,59 @@
     icon('back', 'ph-nav-icon', prev);
     var next = div('ph-nav ph-nav-next', v);
     icon('back', 'ph-nav-icon', next);
+    var play = div('ph-view-play', v);
     var foot = div('ph-view-foot', v);
     var month = div('ph-view-month', foot, monthLabel(it.month));
     var count = div('ph-view-count', foot, countText(S.viewing + 1, S.items.length));
     div('ph-view-tip', foot, T('photos.tipView', 'Left and right for more'));
-    S.view = { stage: st, month: month, count: count };
+    S.view = { stage: st, month: month, count: count, el: v, play: play, clip: '' };
     // A tap on the left or right half goes back or on (the hub's own click
-    // would only press OK, which goes on).
+    // would only press OK, which goes on). On a video that is not playing, a
+    // tap in the middle plays it, inside the tap so no screen can refuse.
     st.el.parentNode.addEventListener('click', function (e) {
       e.stopPropagation();
       var r = v.getBoundingClientRect();
       var x = (e.clientX || 0) - r.left;
+      if (x > r.width * 0.25 && x < r.width * 0.75 && playInViewer()) return;
       step(x < r.width / 2 ? -1 : 1);
     });
     stopTileClip();
-    show(st, it, function (ok) { preloadAround(); if (ok) viewerClip(st, it); });
+    setViewClip(it && it.video ? 'wait' : '');
+    show(st, it, function (ok) { preloadAround(); if (ok) viewerClip(st, it, false); });
   }
 
-  // The viewer's clip plays once and stays on its last frame.
-  function viewerClip(st, it) {
-    if (it && it.video) playClip(st, it, function () {});
+  // '' (a photo), 'wait' (starting), 'playing', 'ended', 'idle' (would not
+  // start). The play mark shows on 'ended' and 'idle'.
+  function setViewClip(state) {
+    var V = S.view;
+    if (!V) return;
+    V.clip = state;
+    if (state === 'idle' || state === 'ended') addClass(V.el, 'is-paused'); else removeClass(V.el, 'is-paused');
+  }
+
+  // The viewer's clip plays once and stays on its last frame. One that would
+  // not start is tried once more by itself (the tile's decoder may still be
+  // letting go), then waits for a tap.
+  function viewerClip(st, it, again) {
+    if (!it || !it.video || !S.view || S.view.stage !== st) return;
+    if (noClips()) { setViewClip(''); return; }
+    setViewClip('wait');
+    playClip(st, it, function (ok) {
+      if (!S.view || S.view.stage !== st || S.items[S.viewing] !== it) return;
+      if (ok) { setViewClip('ended'); return; }
+      if (!again) { setTimeout(function () { if (S.view && S.view.stage === st && S.view.clip === 'wait' && S.items[S.viewing] === it) viewerClip(st, it, true); }, 700); return; }
+      setViewClip('idle');
+    }, { startMs: VIEW_START_MS, onPlaying: function () { if (S.view && S.view.stage === st) setViewClip('playing'); } });
+  }
+
+  // A tap or OK on a video that is not playing: play it now. true when it did.
+  function playInViewer() {
+    var V = S.view;
+    var it = S.items[S.viewing];
+    if (!V || !it || !it.video || noClips() || V.clip === 'playing') return false;
+    if (V.stage.shown !== it.id) return false;
+    viewerClip(V.stage, it, true);
+    return true;
   }
 
   // One decoder at a time (the TV has few): the viewer stops the tile's clip.
@@ -726,12 +830,15 @@
     S.view.count.textContent = countText(S.viewing + 1, n);
     var st = S.view.stage;
     stopClip(st);
-    show(st, it, function (ok) { preloadAround(); if (ok) viewerClip(st, it); });
+    setViewClip(it.video ? 'wait' : '');
+    show(st, it, function (ok) { preloadAround(); if (ok) viewerClip(st, it, false); });
   }
 
   function renderPanel(body, ctx) {
     if (S.view) stopClip(S.view.stage);
     S.view = null;
+    // Open: the tile's clip lets go of the decoder now, before the viewer wants it.
+    stopTileClip();
     var full = ctx.mode && ctx.mode() === 'full';
     var root = div('ph-panel' + (full ? ' is-full' : ''), body);
     if (S.state !== 'ok' || !S.items.length) {
@@ -810,7 +917,12 @@
 
     onSelect: function (target, ctx) {
       if (!target) return;
-      if (hasClass(target, 'ph-viewer')) { step(1); return; }
+      if (hasClass(target, 'ph-viewer')) {
+        // OK on a video that never got to play plays it; after that OK goes on.
+        if (S.view && S.view.clip === 'idle' && playInViewer()) return;
+        step(1);
+        return;
+      }
       var i = parseInt(target.getAttribute('data-i'), 10);
       if (i >= 0 && i < S.items.length) {
         S.viewing = i;
