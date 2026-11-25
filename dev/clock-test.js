@@ -668,7 +668,19 @@ async function checkSunPath() {
   page = await openHub({ face: 'sun', hours: '12', at: SUN_NIGHT });
   t = await clockPage.tile(page);
   assert(t.face === 'sun' && t.night && t.moon === 'lit', 'night tile: ' + JSON.stringify(t));
-  assert(/9:40/.test(t.text) && /Sunrise 6:5\d\u00a0AM/.test(t.text), 'night tile text: ' + t.text);
+  assert(/9:40/.test(t.text) && /Tomorrow 6:5\d\u00a0AM/.test(t.text), 'night tile text: ' + t.text);
+  // The arc's horizon sits on the bottom (baseline) of "Tomorrow 6:5x AM".
+  const gap = await page.evaluate(() => {
+    const q = (s) => document.querySelector('.cell[data-widget="today"] ' + s);
+    const probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0';
+    q('.today-sun-next').appendChild(probe);
+    const base = probe.getBoundingClientRect().top;
+    probe.remove();
+    const h = q('.sun-horizon').getBoundingClientRect();
+    return Math.abs(h.top + h.height / 2 - base);
+  });
+  assert(gap < 1.5, 'the horizon is ' + gap + 'px off the text baseline');
   await clockPage.open(page);
   s = await clockPage.state(page);
   assert(/Sunset5:2\d\u00a0PM/.test(s.text) && /Sunrise in9 h \d+ min/.test(s.text) && /Sunrise6:5\d\u00a0AM/.test(s.text), 'night page: ' + s.text);
@@ -696,7 +708,7 @@ async function checkSunSpanish() {
     await page.evaluate(() => window.HUB_I18N.setLang('es'));
     await sleep(200);
     const t = await clockPage.tile(page);
-    assert(/18 nov/.test(t.text) && /(Atardecer|Amanecer) \d/.test(t.text), 'Spanish tile: ' + t.text);
+    assert(/18 nov/.test(t.text) && /(Atardecer|Amanecer|Mañana) \d/.test(t.text), 'Spanish tile: ' + t.text);
     let cut = await sunCut(page);
     assert(!cut.length, 'Spanish tile cut: ' + cut.join(' | '));
     await clockPage.open(page);

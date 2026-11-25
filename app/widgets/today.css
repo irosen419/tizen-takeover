@@ -345,6 +345,9 @@
 .today-sun.is-strip .today-sun-txt { flex: 1 1 auto; width: auto; padding: 0 0 0 0.8rem; text-align: left; }
 .today-sun.is-strip .today-sun-date { font-size: 1.75rem; }
 .today-sun.is-strip .today-sun-next { margin-top: 0.1rem; }
+/* "Tomorrow 7:06 AM" at night: a small sunrise mark says what it is. */
+.today-sun-mark { display: inline-block; width: 1.15em; height: 1.15em; margin-right: 0.3em; vertical-align: -0.2em; }
+.today-sun-mark svg { display: block; width: 100%; height: 100%; }
 /* A 2-column strip: the date only. A 1x1: the arc and the time only. */
 .today-sun.is-cols-2 .today-sun-next,
 .today-sun.is-cols-1 .today-sun-next,
