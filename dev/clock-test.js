@@ -232,23 +232,37 @@ async function checkDigital24() {
 }
 
 async function checkAnalog() {
-  // 24-hour is remembered but doesn't matter on Analog.
-  const page = await openHub({ face: 'analog', hours: '24', at: SUNDAY });
+  // Ian's layout: the clock is a 3x1 strip, so the small face with the
+  // digital time and the short date beside it (12/24 applies there).
+  const page = await openHub({ face: 'analog', hours: '12', at: SUNDAY });
   const t = await clockPage.tile(page);
-  assert(t.face === 'analog', 'face: ' + t.face);
-  assert(t.digits === null && !(await page.$('.cell[data-widget="today"] .today-time, .cell[data-widget="today"] .today-digits')),
-    'a digital time element on the analog tile');
-  assertNoDigitalTime(t, 'analog tile');
-  // Ian's layout: the clock is a 3x1 strip, so a small face: "15" only.
-  assert(t.windowMode === 'day' && t.window === '15', 'window: ' + t.windowMode + ' "' + t.window + '"');
-  const hands = await page.evaluate(() => ['h', 'm', 's'].map((k) =>
+  assert(t.face === 'mini', 'face: ' + t.face);
+  assert(t.digits === '10:09' && t.ampm === 'AM', 'time: ' + t.digits + ' ' + t.ampm);
+  assert(/Sun, Nov 15/.test(t.text), 'date: ' + t.text);
+  assert(t.window === null && t.second === null, 'the small face has a window or a second hand');
+  // 10:09:30: hour 304.5, minute 57.
+  assert(t.hands[0] === 'rotate(304.50 100 100)' && t.hands[1] === 'rotate(57.00 100 100)', 'hands: ' + t.hands.join(', '));
+  const clipped = await page.evaluate(() => Array.prototype.filter.call(document.querySelectorAll('.today-mini-time, .today-mini-date'),
+    (n) => n.scrollWidth > n.clientWidth + 1).map((n) => n.textContent));
+  assert(!clipped.length, 'cut: ' + clipped.join(' | '));
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, '3-tile-analog-strip.png') });
+  noErrors(page);
+  await page.context().close();
+
+  // A 2x1 strip is too narrow for the time: the face alone, "15" in the window.
+  const p2 = await openHub({ face: 'analog', hours: '24', layout: [2, 1], at: SUNDAY });
+  const t2 = await clockPage.tile(p2);
+  assert(t2.face === 'analog', '2x1 face: ' + t2.face);
+  assertNoDigitalTime(t2, '2x1 analog tile');
+  assert(t2.windowMode === 'day' && t2.window === '15', 'window: ' + t2.windowMode + ' "' + t2.window + '"');
+  const hands = await p2.evaluate(() => ['h', 'm', 's'].map((k) =>
     document.querySelector('.cell[data-widget="today"] .clock-hand-' + k).getAttribute('transform')));
   // 10:09:30: hour 304.5, minute 57, second 180.
   assert(hands[0] === 'rotate(304.50 100 100)' && hands[1] === 'rotate(57.00 100 100)' && hands[2] === 'rotate(180.00 100 100)',
     'hands: ' + hands.join(', '));
-  checkWindowFits(await measure(page), 'Ian\'s layout');
-  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, '3-tile-analog.png') });
-  noErrors(page);
+  checkWindowFits(await measure(p2), '2x1');
+  if (SHOTS) await p2.screenshot({ path: path.join(SHOTS, '3-tile-analog.png') });
+  noErrors(p2);
 }
 
 async function checkSecondHand() {
@@ -294,14 +308,14 @@ async function checkLiveSwitch() {
   await clockPage.open(page);
   let s = await clockPage.state(page);
   assert(s.face === 'digital' && s.readout, 'page on Digital has no digital time');
-  assert(s.keys.join(',') === 'face-digital,face-analog,hours-12,hours-24,look-auto,look-day,look-night,lang-en,lang-es,guest-off,guest-on', 'Digital page options: ' + s.keys.join(','));
+  assert(s.keys.join(',') === 'face-digital,face-analog,face-sun,hours-12,hours-24,look-auto,look-day,look-night,lang-en,lang-es,guest-off,guest-on', 'Digital page options: ' + s.keys.join(','));
   assert(s.focused === 'face-digital', 'opened on ' + s.focused);
 
   await clockPage.pick(page, 'face-analog');
   s = await clockPage.state(page);
   assert(s.face === 'analog', 'the page did not switch to Analog');
   assert(!s.readout, 'the page on Analog still shows a digital time');
-  assert(s.keys.join(',') === 'face-digital,face-analog,look-auto,look-day,look-night,lang-en,lang-es,guest-off,guest-on', 'Analog page options: ' + s.keys.join(','));
+  assert(s.keys.join(',') === 'face-digital,face-analog,face-sun,look-auto,look-day,look-night,lang-en,lang-es,guest-off,guest-on', 'Analog page options: ' + s.keys.join(','));
   assert(s.focused === 'face-analog', 'focus after the switch: ' + s.focused);
   assert(!/\d{1,2}:\d{2}|\b[AP]M\b/.test(s.text), 'the Analog page text has a time: ' + s.text);
   let t = await clockPage.tile(page);
@@ -338,7 +352,7 @@ async function checkLiveSwitch() {
   // Analog again from the 12/24 group: the group goes, focus lands on the face choice.
   await clockPage.pick(page, 'face-analog');
   s = await clockPage.state(page);
-  assert(s.focused === 'face-analog' && s.keys.length === 9, 'Analog from 24-hour: ' + JSON.stringify(s));
+  assert(s.focused === 'face-analog' && s.keys.length === 10, 'Analog from 24-hour: ' + JSON.stringify(s));
   await clockPage.close(page);
 
   // Closed, on Analog: one more once-a-second loop (the tile's), not more.
@@ -366,7 +380,7 @@ async function checkPageOpensOnAnalog() {
   const page = await openHub({ face: 'analog', hours: '12', at: SUNDAY });
   await clockPage.open(page);
   const s = await clockPage.state(page);
-  assert(s.face === 'analog' && !s.readout && s.keys.join(',') === 'face-digital,face-analog,look-auto,look-day,look-night,lang-en,lang-es,guest-off,guest-on', JSON.stringify(s));
+  assert(s.face === 'analog' && !s.readout && s.keys.join(',') === 'face-digital,face-analog,face-sun,look-auto,look-day,look-night,lang-en,lang-es,guest-off,guest-on', JSON.stringify(s));
   assert(s.focused === 'face-analog', 'opened on ' + s.focused);
   const win = await page.evaluate(() => document.querySelector('#panel .clock-window-text').textContent);
   assert(win === 'SUN 15', 'page window: ' + win);
@@ -390,10 +404,25 @@ async function checkPageOpensOnAnalog() {
 }
 
 async function checkSizes(spanish, at, crops) {
-  const expectDay = { '1x1': 'day', '2x1': 'day', '3x1': 'day', '12x1': 'day', '2x2': 'full', '3x4': 'full' };
+  const expectDay = { '1x1': 'day', '2x1': 'day', '2x2': 'full', '3x4': 'full' };
   for (const [w, h] of SIZES) {
     const page = await openHub({ face: 'analog', layout: [w, h], at: at, spanish: spanish });
     const name = w + 'x' + h;
+    if (h === 1 && w >= 3) {
+      // A wide strip: the small face, the time and the date, nothing cut.
+      const t = await clockPage.tile(page);
+      assert(t.face === 'mini', name + ': face ' + t.face);
+      const cut = await page.evaluate(() => Array.prototype.filter.call(document.querySelectorAll('.today-mini-time, .today-mini-date'),
+        (n) => n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1).map((n) => n.textContent));
+      assert(!cut.length, name + ': cut ' + cut.join(' | '));
+      if (crops) {
+        const box = await page.locator('.cell[data-widget="today"]').boundingBox();
+        crops.push({ name: name, png: (await page.screenshot({ clip: box })).toString('base64'), w: box.width, h: box.height, win: '' });
+      }
+      noErrors(page);
+      await page.context().close();
+      continue;
+    }
     const m = await measure(page);
     checkWindowFits(m, name);
     const t = await clockPage.tile(page);
@@ -516,7 +545,7 @@ async function checkLook() {
     !!document.querySelector('.clock-page.is-full')), 4000, 'no full screen');
   bad = await controlsFit(page);
   assert(!bad.length, 'Spanish full screen: ' + bad.join('; '));
-  const fs = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.clock-opt')).fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize));
+  const fs = await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.clock-opt[data-key="lang-en"]')).fontSize) / parseFloat(getComputedStyle(document.documentElement).fontSize));
   assert(fs > 1, 'full screen pills shrank: ' + fs + 'rem');
   noErrors(page);
 }
@@ -594,6 +623,129 @@ async function clip() {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
+// Every Sun path text on the tile and the page whole (it may shrink to
+// 72%, never be cut), and tall enough for accents.
+function sunCut(page) {
+  return page.evaluate(() => Array.prototype.filter.call(
+    document.querySelectorAll('.today-sun-time, .today-sun-date, .today-sun-next, .sun-time, .sun-k, .sun-v, .sun-note, .sun-date'),
+    (n) => n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1).map((n) => n.className + ' "' + n.textContent + '"'));
+}
+
+const SUN_DAY = Date.parse('2026-11-15T16:09:30Z');      // Sun 15 Nov, 10:09 AM Central
+const SUN_NIGHT = Date.parse('2026-11-16T03:40:00Z');    // Sun 15 Nov, 9:40 PM
+const NEW_MOON = Date.parse('2026-11-10T03:40:00Z');     // Mon 9 Nov, 9:40 PM: the new moon
+
+async function checkSunPath() {
+  // Day, on Ian's 3x1: the arc with the sun, "Nov 15", "Sunset 5:2x PM".
+  let page = await openHub({ face: 'sun', hours: '12', at: SUN_DAY });
+  let t = await clockPage.tile(page);
+  assert(t.face === 'sun' && !t.night && !t.moon, 'day tile: ' + JSON.stringify(t));
+  assert(/10:09/.test(t.text) && /Nov 15/.test(t.text) && /Sunset 5:2\d\u00a0PM/.test(t.text), 'day tile text: ' + t.text);
+  let cut = await sunCut(page);
+  assert(!cut.length, 'day tile cut: ' + cut.join(' | '));
+  await clockPage.open(page);
+  let s = await clockPage.state(page);
+  assert(s.face === 'sun' && s.readout, 'page: ' + JSON.stringify(s));
+  assert(s.keys.join(',') === 'face-digital,face-analog,face-sun,hours-12,hours-24,look-auto,look-day,look-night,lang-en,lang-es,guest-off,guest-on', 'keys: ' + s.keys.join(','));
+  assert(s.focused === 'face-sun', 'opened on ' + s.focused);
+  // Dallas, 15 November: sunrise about 6:58 AM, sunset about 5:24 PM (NOAA).
+  assert(/Sunrise6:5\d\u00a0AM/.test(s.text) && /Daylight left7 h \d+ min/.test(s.text) && /Sunset5:2\d\u00a0PM/.test(s.text), 'day page: ' + s.text);
+  assert(/Day length 10 h \d+ min · 1 min shorter than yesterday/.test(s.text), 'day note: ' + s.text);
+  assert(/Sunday, November 15/.test(s.text) && !/2026/.test(s.text), 'date: ' + s.text);
+  cut = await sunCut(page);
+  assert(!cut.length, 'day page cut: ' + cut.join(' | '));
+  let bad = await controlsFit(page);
+  assert(!bad.length, 'controls: ' + bad.join('; '));
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, '11-sun-page-day.png') });
+  // 24-hour applies here too.
+  await clockPage.pick(page, 'hours-24');
+  t = await clockPage.tile(page);
+  assert(/10:09/.test(t.text) && /Sunset 17:2\d/.test(t.text), '24-hour tile: ' + t.text);
+  noErrors(page);
+  await page.context().close();
+
+  // Night: the same arc, sunset to sunrise, the moon (waxing crescent) on it.
+  page = await openHub({ face: 'sun', hours: '12', at: SUN_NIGHT });
+  t = await clockPage.tile(page);
+  assert(t.face === 'sun' && t.night && t.moon === 'lit', 'night tile: ' + JSON.stringify(t));
+  assert(/9:40/.test(t.text) && /Sunrise 6:5\d\u00a0AM/.test(t.text), 'night tile text: ' + t.text);
+  await clockPage.open(page);
+  s = await clockPage.state(page);
+  assert(/Sunset5:2\d\u00a0PM/.test(s.text) && /Sunrise in9 h \d+ min/.test(s.text) && /Sunrise6:5\d\u00a0AM/.test(s.text), 'night page: ' + s.text);
+  assert(/Tomorrow: 10 h \d+ min of daylight/.test(s.text), 'night note: ' + s.text);
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, '12-sun-page-night.png') });
+  // Back to Analog from the page: the tile follows.
+  await clockPage.pick(page, 'face-analog');
+  t = await clockPage.tile(page);
+  assert(t.face === 'mini', 'tile after Analog: ' + t.face);
+  noErrors(page);
+  await page.context().close();
+
+  // The new moon: only the dark disc.
+  page = await openHub({ face: 'sun', at: NEW_MOON });
+  t = await clockPage.tile(page);
+  assert(t.night && t.moon === 'new', 'new moon: ' + JSON.stringify(t));
+  noErrors(page);
+  await page.context().close();
+}
+
+async function checkSunSpanish() {
+  // Spanish, the longest date (miércoles 18), on the tile, the page and full screen.
+  for (const at of [Date.parse('2026-11-18T16:09:30Z'), Date.parse('2026-11-19T03:40:00Z')]) {
+    const page = await openHub({ face: 'sun', hours: '12', at: at, spanish: true });
+    await page.evaluate(() => window.HUB_I18N.setLang('es'));
+    await sleep(200);
+    const t = await clockPage.tile(page);
+    assert(/18 nov/.test(t.text) && /(Atardecer|Amanecer) \d/.test(t.text), 'Spanish tile: ' + t.text);
+    let cut = await sunCut(page);
+    assert(!cut.length, 'Spanish tile cut: ' + cut.join(' | '));
+    await clockPage.open(page);
+    const s = await clockPage.state(page);
+    assert(/miércoles, 18 de noviembre/.test(s.text), 'Spanish page: ' + s.text);
+    assert(/Luz que queda|Amanece en/.test(s.text) && /Duración del día|Mañana:/.test(s.text), 'Spanish figures: ' + s.text);
+    cut = await sunCut(page);
+    assert(!cut.length, 'Spanish page cut: ' + cut.join(' | '));
+    let bad = await controlsFit(page);
+    assert(!bad.length, 'Spanish controls: ' + bad.join('; '));
+    await page.evaluate(() => document.querySelector('#panel .panel-btn').click());
+    await until(() => page.evaluate(() => window.HUB_TEST.mode() === 'full' && !window.HUB_TEST.busy() &&
+      !!document.querySelector('.clock-page.is-full')), 4000, 'no full screen');
+    cut = await sunCut(page);
+    assert(!cut.length, 'Spanish full screen cut: ' + cut.join(' | '));
+    bad = await controlsFit(page);
+    assert(!bad.length, 'Spanish full screen controls: ' + bad.join('; '));
+    const inside = await page.evaluate(() => {
+      const d = document.querySelector('.clock-display').getBoundingClientRect();
+      const p = document.querySelector('.sun-page').getBoundingClientRect();
+      return p.bottom <= d.bottom + 0.5 && p.top >= d.top - 0.5;
+    });
+    assert(inside, 'the Sun path page spills out of full screen');
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, '13-sun-full-es-' + (at % 2) + '.png') });
+    noErrors(page);
+    await page.context().close();
+  }
+}
+
+async function checkSunSizes() {
+  // Every size: the arc inside the tile, no text cut.
+  for (const [w, h] of SIZES) {
+    const page = await openHub({ face: 'sun', layout: [w, h], at: SUN_DAY });
+    const name = w + 'x' + h;
+    const t = await clockPage.tile(page);
+    assert(t.face === 'sun', name + ': face ' + t.face);
+    const cut = await sunCut(page);
+    assert(!cut.length, name + ': cut ' + cut.join(' | '));
+    const inside = await page.evaluate(() => {
+      const tile = document.querySelector('.cell[data-widget="today"] .tile').getBoundingClientRect();
+      const svg = document.querySelector('.cell[data-widget="today"] .sun-svg').getBoundingClientRect();
+      return svg.width > 20 && svg.left >= tile.left - 0.5 && svg.right <= tile.right + 0.5 && svg.top >= tile.top - 0.5 && svg.bottom <= tile.bottom + 0.5;
+    });
+    assert(inside, name + ': the arc spills out of the tile');
+    noErrors(page);
+    await page.context().close();
+  }
+}
+
 /* ---------- run ---------- */
 
 async function main() {
@@ -609,7 +761,7 @@ async function main() {
 
   await check('1. Digital, 12-hour: the tile shows 2:41 PM and the date', checkDigital12);
   await check('2. Digital, 24-hour: the tile shows 14:41', checkDigital24);
-  await check('3. Analog: only the face on the tile, hands right, the day in the window, no digital time', checkAnalog);
+  await check('3. Analog: a 3x1 strip shows the small face, the time and the date; a 2x1 only the face, the day in the window', checkAnalog);
   await check('4. Analog: the second hand turns once a second', checkSecondHand);
   await check('5. Changes on the page redraw the tile at once; the tile\'s loop starts and stops', checkLiveSwitch);
   await check('6. The page on Analog: no digital time, no 12/24 group, focus and arrows fine', checkPageOpensOnAnalog);
@@ -617,6 +769,9 @@ async function main() {
   await check('8. The same in Spanish (sábado, miércoles), on the tile and the page', checkSizesSpanish);
   await check('8b. Look on the page: Auto, Light, Dark, remembered, Spanish fits', checkLook);
   await check('9. Language on the page: English and Español, remembered, fits +25% in the panel and full screen', checkLanguage);
+  await check('11. Sun path: day and night on the tile and the page, sunrise and sunset, the moon', checkSunPath);
+  await check('12. Sun path in Spanish: tile, page and full screen, nothing cut', checkSunSpanish);
+  await check('13. Sun path at ' + SIZES.length + ' tile sizes: the arc inside, nothing cut', checkSunSizes);
   if (SHOTS) await check('10. Clip of the face switch', clip);
 }
 

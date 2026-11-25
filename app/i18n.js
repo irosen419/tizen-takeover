@@ -1351,6 +1351,18 @@
     'today.hours12': '12 horas',
     'today.hours24': '24 horas',
     'today.broken': 'No se pudo mostrar la página del reloj.',
+    'today.sun': 'Sol',
+    'today.sunrise': 'Amanecer',
+    'today.sunset': 'Atardecer',
+    'today.daylightLeft': 'Luz que queda',
+    'today.sunriseIn': 'Amanece en',
+    'today.hm': '{h} h {m} min',
+    'today.m': '{m} min',
+    'today.dayLength': 'Duración del día: {d}',
+    'today.shorter': '{n} min menos que ayer',
+    'today.longer': '{n} min más que ayer',
+    'today.tomorrowLight': 'Mañana: {d} de luz',
+    'today.todayLight': 'Hoy: {d} de luz',
 
     /* ---- To-do (app/widgets/todo.js) ----
      * Key 'todo.<path in EN>'; the English is in todo.js. The MUST pill and

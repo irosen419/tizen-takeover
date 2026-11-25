@@ -238,5 +238,169 @@
 .clock-controls.is-tighter .clock-group-label { margin-bottom: 0.2rem; }
 .clock-page.is-full .clock-controls.is-tighter .clock-group + .clock-group { margin-top: 0.7rem; }
 
+/* ---------- the small analog strip (Analog in a 3x1 or wider strip) ----------
+   A plain face, the digital time and "Tue, Nov 24" beside it. */
+
+.tile-body.today-mini { flex-direction: row; align-items: center; overflow: visible; }
+.today-mini-face { position: relative; flex: 0 0 auto; height: 100%; width: 6.2rem; max-width: 34%; }
+.today-mini-face .clock-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.clock-svg-mini .clock-dial { fill: rgba(255, 255, 255, 0.06); stroke: none; }
+.clock-svg-mini .clock-tick-h { stroke-width: 4; }
+.clock-svg-mini .clock-tick-h.is-quarter { stroke-width: 6; }
+.clock-svg-mini .clock-hand-h line { stroke-width: 10; }
+.clock-svg-mini .clock-hand-m line { stroke-width: 6; }
+.theme-day.is-glass .tile:not(.is-planned):not(.is-lifted) .clock-svg-mini .clock-dial { fill: rgba(21, 27, 36, 0.06); stroke: none; }
+.today-mini-txt { flex: 1 1 auto; min-width: 0; padding-left: 1.1rem; }
+.today-mini-time {
+  font-size: 2.9rem;
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--text);
+}
+.today-mini-time .today-ampm { margin-left: 0.3rem; font-size: 1rem; letter-spacing: 0; font-weight: 400; color: var(--text-2); }
+.today-mini-date {
+  margin-top: 0.1rem;
+  padding-top: 0.08em;   /* room above an accent */
+  font-size: 1.15rem;
+  line-height: 1.3;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Sun path: the arc (tile and page) ----------
+   Day: a warm sun on the half circle from sunrise (left) to sunset
+   (right). Night: the same arc in cool blue, sunset to sunrise, with the
+   moon in its phase. The page sits on the panel's dark glass, so only the
+   tile takes the darker day inks. */
+
+.sun-svg { display: block; overflow: visible; }
+.sun-track { fill: none; stroke: rgba(255, 255, 255, 0.5); stroke-width: 3; stroke-dasharray: 1 8; stroke-linecap: round; }
+.sun-horizon { stroke: rgba(255, 255, 255, 0.3); stroke-width: 1.5; }
+.sun-lit { fill: none; stroke-width: 4; stroke-linecap: round; }
+.sun-g0 { stop-color: #ff7a59; }
+.sun-g1 { stop-color: #ffc061; }
+.sun-glow { fill: #ffb347; fill-opacity: 0.22; }
+.sun-disc { fill: #ffc061; }
+.sun-foot { fill: rgba(255, 255, 255, 0.55); }
+.sun-svg.is-night .sun-g0 { stop-color: #6f7fd6; }
+.sun-svg.is-night .sun-g1 { stop-color: #c3ccff; }
+.sun-svg.is-night .sun-glow { fill: #b9c6ff; fill-opacity: 0.16; }
+.moon-dark { fill: #2a3352; stroke: rgba(228, 232, 255, 0.35); stroke-width: 1; }
+.moon-lit { fill: #e4e8ff; }
+
+.theme-day .today-sun .sun-track { stroke: rgba(21, 27, 36, 0.5); }
+.theme-day .today-sun .sun-horizon { stroke: rgba(21, 27, 36, 0.32); }
+.theme-day .today-sun .sun-g0 { stop-color: #d4572f; }
+.theme-day .today-sun .sun-g1 { stop-color: #e08a12; }
+.theme-day .today-sun .sun-glow { fill: #f0a020; fill-opacity: 0.25; }
+.theme-day .today-sun .sun-disc { fill: #ef9a12; stroke: #b86a00; stroke-width: 1.5; }
+.theme-day .today-sun .sun-foot { fill: rgba(21, 27, 36, 0.5); }
+.theme-day .today-sun .sun-svg.is-night .sun-g0 { stop-color: #3d4f9e; }
+.theme-day .today-sun .sun-svg.is-night .sun-g1 { stop-color: #6a7bd0; }
+.theme-day .today-sun .moon-dark { fill: rgba(61, 79, 158, 0.18); stroke: #5867b8; }
+.theme-day .today-sun .moon-lit { fill: #5867b8; }
+
+/* ---------- Sun path: the tile ---------- */
+
+.tile-body.today-sun { flex-direction: column; align-items: center; justify-content: center; overflow: visible; color: var(--text); }
+.tile:not(.tile-h1) > .tile-body.today-tile.today-sun { justify-content: center; }
+.today-sun.is-cols-1 .today-sun-date { font-size: 1.15rem; }
+/* today.js sizes a bigger tile's arc (twice as wide as tall) and the time. */
+.today-sun-arc { position: relative; flex: 0 0 auto; width: 100%; height: 50%; }
+.today-sun-svg { position: absolute; top: 0; left: 0; right: 0; bottom: 0.15rem; }
+.today-sun-svg .sun-svg { width: 100%; height: 100%; }
+.today-sun-time {
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 0.35rem;
+  text-align: center;
+  font-size: 2.4rem;
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.today-sun-txt { flex: 0 0 auto; width: 100%; min-width: 0; text-align: center; padding-top: 0.3rem; }
+.today-sun-date,
+.today-sun-next {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+  padding-top: 0.08em;   /* room above an accent */
+}
+.today-sun-date { font-size: 1.4rem; font-weight: 300; }
+.today-sun-next { font-size: 1.05rem; color: var(--text-2); }
+/* A strip: the arc on the left, the date and what comes next beside it. */
+.tile-body.today-sun.is-strip { flex-direction: row; align-items: center; justify-content: flex-start; }
+.today-sun.is-strip .today-sun-arc { flex: 0 0 auto; height: 100%; width: 7.5rem; max-width: 46%; }
+.today-sun.is-strip .today-sun-time { left: 10%; right: 10%; font-size: 1.7rem; }
+.today-sun.is-strip .today-sun-txt { flex: 1 1 auto; width: auto; padding: 0 0 0 0.8rem; text-align: left; }
+.today-sun.is-strip .today-sun-date { font-size: 1.75rem; }
+.today-sun.is-strip .today-sun-next { margin-top: 0.1rem; }
+/* A 2-column strip: the date only. A 1x1: the arc and the time only. */
+.today-sun.is-cols-2 .today-sun-next,
+.today-sun.is-cols-1 .today-sun-next,
+.today-sun.is-strip.is-cols-1 .today-sun-txt { display: none; }
+.today-sun.is-cols-1 .today-sun-time { left: 4%; right: 4%; }
+.today-sun.is-cols-2 .today-sun-arc { width: 6.4rem; }
+.today-sun.is-cols-2 .today-sun-date { font-size: 1.45rem; }
+.today-sun.is-strip.is-cols-1 .today-sun-arc { flex: 1 1 auto; width: auto; max-width: none; }
+
+/* ---------- Sun path: the page ---------- */
+
+.sun-page { width: 100%; max-width: 40rem; min-width: 0; margin: 0 auto; color: var(--text); }
+.sun-stage { position: relative; width: 100%; }
+.sun-stage-svg .sun-svg { width: 100%; height: auto; }
+.sun-read { position: absolute; left: 14%; right: 14%; bottom: 3%; text-align: center; }
+.sun-time {
+  font-size: 4.6rem;
+  font-weight: 200;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--text);
+}
+.sun-time .clock-ampm { margin-left: 0.5rem; font-size: 0.34em; letter-spacing: 0.02em; }
+.sun-page .sun-date {
+  display: block;
+  margin-top: 0.15rem;
+  text-align: center;
+  font-size: 1.45rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sun-stats { display: flex; margin-top: 0.85rem; }
+.sun-stat { flex: 1 1 0; min-width: 0; }
+.sun-stat.is-mid { text-align: center; padding: 0 0.4rem; }
+.sun-stat.is-end { text-align: right; }
+.sun-k,
+.sun-v,
+.sun-note {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-top: 0.08em;   /* room above an accent */
+}
+.sun-k { font-size: 0.8rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; line-height: 1.4; color: var(--text-2); }
+.sun-v { font-size: 1.7rem; font-weight: 300; line-height: 1.3; }
+.sun-stat.is-mid .sun-v { color: #ffc061; }
+.sun-page.is-night .sun-stat.is-mid .sun-v { color: #cdd6ff; }
+.sun-note { margin-top: 0.4rem; font-size: 1.05rem; line-height: 1.35; text-align: center; color: var(--text-2); }
+
+.clock-page.is-full .sun-time { font-size: 7rem; }
+.clock-page.is-full .sun-page .sun-date { font-size: 2rem; }
+.clock-page.is-full .sun-k { font-size: 1rem; }
+.clock-page.is-full .sun-v { font-size: 2.4rem; }
+.clock-page.is-full .sun-note { font-size: 1.4rem; }
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }
