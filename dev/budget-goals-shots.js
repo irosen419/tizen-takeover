@@ -4,7 +4,7 @@
  *
  * The Budget layout (Spending, Budget lab, Card day, Goals) with the made-up
  * sample (dev/budget-sample.js) and four made-up goals in the shape the budget
- * app sends (label, state, text, pct, and since v0.74.0 spent, limit, pace).
+ * app sends (label, state, text, pct, and since v0.75.0 spent, limit, pace).
  * A checkout that predates spent/limit drops them, so the same script serves
  * both versions. Each in English and Spanish (<prefix>-<shot>-<en|es>.png):
  *

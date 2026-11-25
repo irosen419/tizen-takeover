@@ -187,7 +187,7 @@
     usingAutopayShort: 'autopay days',
     // Goals
     goalStates: { clean: 'Clean', 'on-pace': 'Heading over', over: 'Over', under: 'Under' },
-    // When the budget app sends a goal's spent and monthly limit (since v0.74.0)
+    // When the budget app sends a goal's spent and monthly limit (since v0.75.0)
     goalsWhat: 'Monthly spending limits',
     goalsWhatShort: 'Monthly limits',
     goalOver: '{n} over',

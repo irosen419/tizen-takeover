@@ -157,7 +157,7 @@ A list of at most 8 goals, shown in this order.
 | `state` | `clean`, `on-pace`, `over` or `under` | required. `clean`: nothing spent where nothing should be. `under`: under its limit |
 | `text` | text, 20 | optional: the goal's own words, shown as written, e.g. "$62 over", "12 days" |
 | `pct` | number, 0 to 100 | optional: how full its bar is. Without it the goal shows its state in words |
-| `spent` | dollars | optional (hub v0.74.0): spent toward the goal this calendar month. Sent with `limit` or not at all |
+| `spent` | dollars | optional (hub v0.75.0): spent toward the goal this calendar month. Sent with `limit` or not at all |
 | `limit` | dollars, more than 0 | optional: the goal's monthly limit. With `spent`, the TV words the goal itself, in its own language: "$62 over" or "$82 left", and "$462 of $400 this month · 116%" under the bar, and the tile says "Monthly spending limits" |
 | `pace` | dollars | optional, only with `limit`: where today's pace ends the month. An `on-pace` goal (heading over its limit) shows "on pace for $229" |
 
