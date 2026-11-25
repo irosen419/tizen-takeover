@@ -124,6 +124,16 @@ function start(extra) {
 }
 const stop = (h) => new Promise((r) => h.close(r));
 
+// A tiny made-up MP4: ftyp, then moov/mvhd with a time scale and duration.
+function mp4(scale, dur, v1) {
+  const body = Buffer.alloc(v1 ? 32 : 20);
+  body[0] = v1 ? 1 : 0;
+  if (v1) { body.writeUInt32BE(scale, 20); body.writeBigUInt64BE(BigInt(dur), 24); }
+  else { body.writeUInt32BE(scale, 12); body.writeUInt32BE(dur, 16); }
+  const box = (type, payload) => { const h = Buffer.alloc(8); h.writeUInt32BE(8 + payload.length, 0); h.write(type, 4, 'ascii'); return Buffer.concat([h, payload]); };
+  return Buffer.concat([box('ftyp', Buffer.from('isom\0\0\0\0')), box('moov', box('mvhd', Buffer.concat([body, Buffer.alloc(80)])))]);
+}
+
 // A made-up album: names a real phone might give, never real photos.
 const NAMES = ['IMG_friend_one.webp', 'party photo.JPG', 'lossless.webp', 'clip.mp4', 'notes.txt'];
 function album(dataDir) {
@@ -141,6 +151,18 @@ function album(dataDir) {
   fs.writeFileSync(path.join(dir, 'thumb', photos.idFor('IMG_friend_one.webp') + '.jpg'), jpeg(480, 640));
   fs.writeFileSync(path.join(dir, 'orig', '.part-123'), webpVP8(10, 10)); // a pull in progress
   return dir;
+}
+
+// Gives clip.mp4 its converted clip and still, as photos-sync.sh does with ffmpeg.
+function convert(dir) {
+  const id = photos.idFor('clip.mp4');
+  fs.mkdirSync(path.join(dir, 'clip'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'still'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'clip', id + '.mp4'), mp4(1000, 3200));
+  fs.writeFileSync(path.join(dir, 'still', id + '.jpg'), jpeg(720, 1280));
+  const t = new Date('2026-08-01T12:00:00');
+  fs.utimesSync(path.join(dir, 'orig', 'clip.mp4'), t, t);
+  return id;
 }
 
 async function main() {
@@ -171,7 +193,7 @@ async function main() {
     const d = tmp();
     const dir = album(d);
     const r = photos.buildIndex(dir, 1000);
-    assert.deepStrictEqual(r, { count: 3, skipped: 0 });
+    assert.deepStrictEqual(r, { count: 3, skipped: 0, waiting: 1 }); // clip.mp4 waits for ffmpeg
     const idx = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
     assert.deepStrictEqual(idx.items.map((i) => i.month), ['2026-11', '2026-10', '2026-09']);
     assert.deepStrictEqual(idx.items[0], { id: photos.idFor('party photo.JPG'), w: 1440, h: 1080, month: '2026-11', added: 1000 });
@@ -187,7 +209,31 @@ async function main() {
     assert.strictEqual(idx2.items.find((i) => i.id === photos.idFor('later.png')).added, 2000);
     assert.deepStrictEqual(fs.readdirSync(dir).filter((n) => /\.tmp$/.test(n)), []);
     // A missing folder is just an empty album.
-    assert.deepStrictEqual(photos.buildIndex(path.join(tmp(), 'photos')), { count: 0, skipped: 0 });
+    assert.deepStrictEqual(photos.buildIndex(path.join(tmp(), 'photos')), { count: 0, skipped: 0, waiting: 0 });
+  });
+
+  await check('mp4Duration: mvhd v0 and v1, junk gives 0', () => {
+    assert.strictEqual(photos.mp4Duration(mp4(1000, 3200)), 3.2);
+    assert.strictEqual(photos.mp4Duration(mp4(600, 1800, true)), 3);
+    [Buffer.alloc(0), Buffer.from('not a video at all'), mp4(0, 5), mp4(1000, 3200).subarray(0, 30), null].forEach((b, i) =>
+      assert.strictEqual(photos.mp4Duration(b), 0, 'case ' + i));
+  });
+
+  await check('buildIndex: a video joins once its clip and still exist (video: 1, still size, dur)', async () => {
+    const dir = album(tmp());
+    const id = convert(dir);
+    assert.deepStrictEqual(photos.buildIndex(dir, 5), { count: 4, skipped: 0, waiting: 0 });
+    const idx = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8'));
+    assert.deepStrictEqual(idx.items[3], { id: id, w: 720, h: 1280, month: '2026-08', added: 5, video: 1, dur: 3.2 });
+    const s = photos.createLocalStore({ dir: dir });
+    assert.strictEqual(path.basename((await s.readOriginal(id)).file), id + '.jpg');
+    assert.strictEqual((await s.readThumb(id)).type, 'image/jpeg');
+    const c = await s.readClip(id);
+    assert.strictEqual(c.type, 'video/mp4');
+    assert.strictEqual(await s.readClip(photos.idFor('lossless.webp')), null);
+    // A still without its clip (a run cut short) is not in yet.
+    fs.unlinkSync(path.join(dir, 'clip', id + '.mp4'));
+    assert.deepStrictEqual(photos.buildIndex(dir), { count: 3, skipped: 0, waiting: 1 });
   });
 
   await check('store: list caps at 500 and has a rev; readThumb falls back; stat; ids not in the index are refused', async () => {
@@ -218,8 +264,9 @@ async function main() {
   const h = await start();
   const P = h.port;
   const dir = album(h.dataDir);
+  const idClip = convert(dir);
   photos.buildIndex(dir);
-  photos.writeState(dir, { lastRun: '2026-11-23T10:30:00.000Z', ok: true, count: 3, newCount: 2 });
+  photos.writeState(dir, { lastRun: '2026-11-23T10:30:00.000Z', ok: true, count: 4, newCount: 2 });
   const idWebp = photos.idFor('IMG_friend_one.webp');
   const idJpg = photos.idFor('party photo.JPG');
 
@@ -227,8 +274,9 @@ async function main() {
     const r = await request(P, 'GET', '/photos/list');
     assert.strictEqual(r.status, 200);
     assert.deepStrictEqual(Object.keys(r.json).sort(), ['count', 'items', 'ok', 'rev']);
-    assert.strictEqual(r.json.count, 3);
+    assert.strictEqual(r.json.count, 4);
     assert.deepStrictEqual(Object.keys(r.json.items[0]).sort(), ['h', 'id', 'month', 'w']);
+    assert.deepStrictEqual(r.json.items[3], { id: idClip, w: 720, h: 1280, month: '2026-08', video: 1, dur: 3.2 });
     assert.strictEqual(r.json.items[0].id, idJpg);
     NAMES.forEach((n) => assert.ok(r.body.toString().indexOf(n) < 0));
     const again = await request(P, 'GET', '/photos/list');
@@ -242,9 +290,9 @@ async function main() {
     const t = new Date(Date.now() + 5000); // a later mtime, even on a coarse clock
     fs.utimesSync(path.join(dir, 'index.json'), t, t);
     const r = await request(P, 'GET', '/photos/list');
-    assert.strictEqual(r.json.count, 4);
+    assert.strictEqual(r.json.count, 5);
     assert.notStrictEqual(r.json.rev, before);
-    assert.ok(h.lines.some((l) => / photos: the album now has 4 photos$/.test(l)), h.lines.join('\n'));
+    assert.ok(h.lines.some((l) => / photos: the album now has 5 photos$/.test(l)), h.lines.join('\n'));
   });
 
   await check('GET /photos/img/<id>: full and thumb, right types, immutable cache, HEAD', async () => {
@@ -266,10 +314,41 @@ async function main() {
     assert.strictEqual(Number(r.headers['content-length']), jpeg(1440, 1080).length);
   });
 
-  await check('bad ids, path tricks, videos, bad size and POST are refused', async () => {
+  await check('GET /photos/clip/<id>: video/mp4, whole and by Range (206, 416), HEAD; img gives the still', async () => {
+    const whole = mp4(1000, 3200);
+    let r = await request(P, 'GET', '/photos/clip/' + idClip);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.headers['content-type'], 'video/mp4');
+    assert.strictEqual(r.headers['accept-ranges'], 'bytes');
+    assert.strictEqual(r.headers['cache-control'], 'public, max-age=86400, immutable');
+    assert.ok(r.body.equals(whole));
+    r = await request(P, 'GET', '/photos/clip/' + idClip, { headers: { Range: 'bytes=0-9' } });
+    assert.strictEqual(r.status, 206);
+    assert.strictEqual(r.headers['content-range'], 'bytes 0-9/' + whole.length);
+    assert.ok(r.body.equals(whole.subarray(0, 10)));
+    r = await request(P, 'GET', '/photos/clip/' + idClip, { headers: { Range: 'bytes=20-' } });
+    assert.ok(r.status === 206 && r.body.equals(whole.subarray(20)));
+    r = await request(P, 'GET', '/photos/clip/' + idClip, { headers: { Range: 'bytes=-8' } });
+    assert.ok(r.status === 206 && r.body.equals(whole.subarray(whole.length - 8)));
+    r = await request(P, 'GET', '/photos/clip/' + idClip, { headers: { Range: 'bytes=99999-' } });
+    assert.strictEqual(r.status, 416);
+    r = await request(P, 'HEAD', '/photos/clip/' + idClip);
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.length, 0);
+    r = await request(P, 'GET', '/photos/img/' + idClip);
+    assert.strictEqual(r.headers['content-type'], 'image/jpeg');
+    assert.ok(r.body.equals(jpeg(720, 1280)));
+    for (const p of ['/photos/clip/' + idWebp, '/photos/clip/../x', '/photos/clip/ffffffffffff', '/photos/clip/']) {
+      assert.strictEqual((await request(P, 'GET', p)).status, 404, p);
+    }
+    assert.strictEqual((await request(P, 'GET', '/photos/clip/' + idClip, { headers: { 'x-test-ip': '8.8.8.8' } })).status, 403);
+    assert.strictEqual((await request(P, 'POST', '/photos/clip/' + idClip)).status, 405);
+  });
+
+  await check('bad ids, path tricks, unconverted files, bad size and POST are refused', async () => {
     const bad = ['/photos/img/../index.json', '/photos/img/..%2findex.json', '/photos/img/' + idWebp.toUpperCase(),
       '/photos/img/' + idWebp + 'a', '/photos/img/' + idWebp.slice(1), '/photos/img/', '/photos/img/%2e%2e',
-      '/photos/img/' + photos.idFor('clip.mp4'), '/photos/img/' + photos.idFor('notes.txt'), '/photos/img/ffffffffffff',
+      '/photos/img/' + photos.idFor('notes.txt'), '/photos/img/ffffffffffff',
       '/photos/img/' + photos.idFor('.part-123')];
     for (const p of bad) {
       const r = await request(P, 'GET', p);
@@ -292,16 +371,16 @@ async function main() {
   await check('GET /api/photos (token), ./hub photos status and mailbox photos.status: counts only', async () => {
     assert.strictEqual((await request(P, 'GET', '/api/photos')).status, 401);
     const r = await request(P, 'GET', '/api/photos', { token: TOKEN });
-    assert.deepStrictEqual(r.json, { ok: true, store: 'local', count: 4, lastRun: '2026-11-23T10:30:00.000Z', syncOk: true, newCount: 2 });
+    assert.deepStrictEqual(r.json, { ok: true, store: 'local', count: 5, lastRun: '2026-11-23T10:30:00.000Z', syncOk: true, newCount: 2 });
     const line = hubctl.photosStatusText(r.json);
-    assert.ok(/^Photo album: 4 photos\. Last sync .+ \(ok, 2 new\)\.$/.test(line), line);
+    assert.ok(/^Photo album: 5 photos\. Last sync .+ \(ok, 2 new\)\.$/.test(line), line);
     assert.ok(/Never synced/.test(hubctl.photosStatusText({ count: 0, lastRun: null })));
     assert.ok(/some files could not be copied/.test(hubctl.photosStatusText({ count: 1, lastRun: '2026-11-23T10:30:00Z', syncOk: false, newCount: 0 })));
     const out = await mailbox.COMMANDS['photos.status'].run({}, {
       call: (m, p) => request(P, m, p, { token: TOKEN }).then((x) => x.json)
     });
     assert.strictEqual(out.message, line);
-    assert.deepStrictEqual(out.data, { count: 4, newCount: 2, lastRun: '2026-11-23T10:30:00.000Z', ok: true });
+    assert.deepStrictEqual(out.data, { count: 5, newCount: 2, lastRun: '2026-11-23T10:30:00.000Z', ok: true });
   });
 
   await check('no file name or id in any log line', () => {
@@ -330,7 +409,7 @@ async function main() {
     const d = tmp();
     album(d);
     const out = require('child_process').execFileSync(process.execPath, [path.join(__dirname, 'photos.js'), 'index', d, '--new', '3'], { encoding: 'utf8' });
-    assert.strictEqual(out.trim(), 'photos: 3 in the album, 3 new');
+    assert.strictEqual(out.trim(), 'photos: 3 in the album, 3 new, 1 video not converted yet');
     const st = JSON.parse(fs.readFileSync(path.join(d, 'photos', 'state.json'), 'utf8'));
     assert.deepStrictEqual([st.ok, st.count, st.newCount], [true, 3, 3]);
   });
@@ -369,23 +448,69 @@ async function main() {
       '  shell) shift; sh -c "$*" ;;',
       '  pull) shift; [ "$1" = "-a" ] && shift; cp "$1" "$2" ;;',
       'esac', ''].join('\n'), { mode: 0o755 });
+    // An ffmpeg that cannot read anything: the video is marked bad, the photos carry on.
+    fs.writeFileSync(path.join(bin, 'ffmpeg'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     const data = path.join(root, 'data');
     const env = Object.assign({}, process.env, {
       PATH: bin + path.delimiter + process.env.PATH, PHOTOS_SRC: cal, PHOTOS_DATA_DIR: data, ADB_LOG: path.join(root, 'adb.log')
     });
     const run = () => cp.execFileSync('sh', [path.join(__dirname, 'photos-sync.sh')], { env: env, encoding: 'utf8' });
     const out = run();
-    assert.strictEqual(out.trim(), 'photos: 3 in the album, 3 new');
+    assert.strictEqual(out.trim(), 'photos: 3 in the album, 4 new\nphotos: 1 video could not be converted (skipped from now on)');
     assert.ok(!/one photo|two|top|acct/.test(out));
     const orig = fs.readdirSync(path.join(data, 'photos', 'orig'));
-    assert.strictEqual(orig.length, 3);
-    assert.ok(orig.every((n) => /^[0-9a-f]{12}\.(webp|jpg|png)$/.test(n)), orig.join());
+    assert.strictEqual(orig.length, 4);
+    assert.ok(orig.every((n) => /^[0-9a-f]{12}\.(webp|jpg|png|mp4)$/.test(n)), orig.join());
+    assert.strictEqual(fs.readdirSync(path.join(data, 'photos', 'clip')).filter((n) => /\.bad$/.test(n)).length, 1);
     const idx = JSON.parse(fs.readFileSync(path.join(data, 'photos', 'index.json'), 'utf8'));
     assert.strictEqual(idx.items.length, 3);
     assert.ok(!fs.readFileSync(path.join(root, 'adb.log'), 'utf8').includes('.downloading/part'));
-    assert.strictEqual(run().trim(), 'photos: 3 in the album, 0 new'); // new files only
+    assert.strictEqual(run().trim(), 'photos: 3 in the album, 0 new'); // new files only, a bad video not tried again
     assert.ok(!/\b(rm|delete)\b/.test(fs.readFileSync(path.join(root, 'adb.log'), 'utf8')));
     assert.ok(fs.existsSync(path.join(deep, 'one photo.WEBP'))); // never deletes on the calendar
+  });
+
+  const hasFfmpeg = (() => { try { require('child_process').execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); return true; } catch (e) { return false; } })();
+  await check('photos-sync.sh with real ffmpeg (skipped without it): HEVC portrait -> H.264 clip + still + thumb; waits without ffmpeg', () => {
+    if (!hasFfmpeg) { console.log('     (no ffmpeg here, skipped)'); return; }
+    const cp = require('child_process');
+    const root = tmp();
+    const cal = path.join(root, 'cal');
+    fs.mkdirSync(cal);
+    const src = path.join(cal, 'live one.MP4');
+    let codec = 'libx265';
+    try { cp.execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=1080x1920:rate=30', '-t', '1', '-c:v', codec, src], { stdio: 'ignore' }); }
+    catch (e) { codec = 'mpeg4'; cp.execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc=size=1080x1920:rate=30', '-t', '1', '-c:v', codec, src], { stdio: 'ignore' }); }
+    const bin = path.join(root, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'adb'), [
+      '#!/bin/sh', '[ "$1" = "-s" ] && shift 2', 'case "$1" in', '  connect) exit 0 ;;',
+      '  get-state) [ -n "$OFF" ] && exit 1; echo device ;;', '  shell) shift; sh -c "$*" ;;',
+      '  pull) shift; [ "$1" = "-a" ] && shift; cp "$1" "$2" ;;', 'esac', ''].join('\n'), { mode: 0o755 });
+    // A PATH without ffmpeg first: the video waits, said in one line.
+    const noff = path.join(root, 'noff');
+    fs.mkdirSync(noff);
+    ['sh', 'sha1sum', 'cut', 'tr', 'basename', 'dirname', 'find', 'mkdir', 'rm', 'mv', 'cp', 'stat', 'sed', 'timeout', 'nice', 'id', 'cat', 'printf'].forEach((t) => {
+      const at = ['/usr/bin', '/bin', '/usr/local/bin'].map((d) => path.join(d, t)).filter((f) => fs.existsSync(f))[0];
+      if (at) fs.symlinkSync(at, path.join(noff, t));
+    });
+    fs.symlinkSync(process.execPath, path.join(noff, 'node'));
+    fs.symlinkSync(path.join(bin, 'adb'), path.join(noff, 'adb'));
+    const data = path.join(root, 'data');
+    const env = (pathv, extra) => Object.assign({}, process.env, { PATH: pathv, PHOTOS_SRC: cal, PHOTOS_DATA_DIR: data }, extra || {});
+    const run = (pathv, extra) => cp.execFileSync('/bin/sh', [path.join(__dirname, 'photos-sync.sh')], { env: env(pathv, extra), encoding: 'utf8' }).trim();
+    assert.strictEqual(run(noff), 'photos: 1 video waiting for ffmpeg (sudo apt install -y ffmpeg)\nphotos: 0 in the album, 1 new, 1 video not converted yet');
+    // ffmpeg now in, the calendar away: the video already here is converted.
+    assert.strictEqual(run(bin + path.delimiter + process.env.PATH, { OFF: '1' }), 'photos: 1 in the album, 0 new\nphotos: 1 video converted');
+    const id = photos.idFor(fs.readdirSync(path.join(data, 'photos', 'orig'))[0]);
+    const probe = cp.execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name,profile,width,height,pix_fmt', '-of', 'compact=p=0:nk=1',
+      path.join(data, 'photos', 'clip', id + '.mp4')], { encoding: 'utf8' }).trim();
+    assert.strictEqual(probe, 'h264|Main|720|1280|yuv420p');
+    const idx = JSON.parse(fs.readFileSync(path.join(data, 'photos', 'index.json'), 'utf8'));
+    assert.deepStrictEqual([idx.items[0].video, idx.items[0].w, idx.items[0].h, idx.items[0].dur], [1, 720, 1280, 1]);
+    assert.ok(fs.existsSync(path.join(data, 'photos', 'thumb', id + '.jpg')));
+    // Nothing to do, calendar away: quiet.
+    assert.strictEqual(run(bin + path.delimiter + process.env.PATH, { OFF: '1' }), '');
   });
 
   dirs.forEach((d) => fs.rmSync(d, { recursive: true, force: true }));

@@ -36,8 +36,10 @@
  *                        (the "guestall" live resource, prefs.js; server 0.37.0)
  *   POST /prefs          a widget preference shared by every screen: { key, value } (prefs.js KEYS;
  *                        null removes it). The "prefs" live resource carries them all
- *   GET  /photos/list    the photo album (photos.js): { ok, rev, count, items: [{ id, w, h, month }] },
- *                        newest first, at most 500; rev changes only when the album does
+ *   GET  /photos/list    the photo album (photos.js): { ok, rev, count, items: [{ id, w, h, month, video?, dur? }] },
+ *                        newest first, at most 500; rev changes only when the album does.
+ *                        video: 1 marks a clip ("live photo"); img/ then gives its still frame
+ *   GET  /photos/clip/<id>  a video's small H.264 clip (video/mp4), with Range (206) for players
  *   GET  /photos/img/<id>?size=full|thumb   one photo (image/webp, image/jpeg or image/png),
  *                        Cache-Control: public, max-age=86400, immutable; id is 12 hex digits.
  *                        Both are read only, on the touch door's trust (home and Tailscale
@@ -2168,9 +2170,14 @@ function start(options) {
     if (route === '/photos/list') {
       return albumList().then((v) => sendJson(res, 200, {
         ok: true, rev: v.rev, count: v.count,
-        items: v.items.map((i) => ({ id: i.id, w: i.w, h: i.h, month: i.month }))
+        items: v.items.map((i) => {
+          const o = { id: i.id, w: i.w, h: i.h, month: i.month };
+          if (i.video) { o.video = 1; if (i.dur) o.dur = i.dur; }
+          return o;
+        })
       }, cors), (e) => fail(res, e, cors));
     }
+    if (route.indexOf('/photos/clip/') === 0) return photoClip(req, res, route.slice('/photos/clip/'.length), cors);
     const id = route.slice('/photos/img/'.length);
     const size = query.get('size') || 'full';
     if (!photos.isId(id)) return sendJson(res, 404, { ok: false, error: 'not found' }, cors);
@@ -2188,6 +2195,43 @@ function start(options) {
         else res.destroy();
       });
       stream.once('open', () => res.writeHead(200, headers));
+      return stream.pipe(res);
+    }, (e) => fail(res, e, cors));
+  }
+
+  // GET /photos/clip/<id>: the clip, whole or one byte range ("bytes=a-b",
+  // "bytes=a-", "bytes=-n"); video players ask for ranges.
+  function photoClip(req, res, id, cors) {
+    if (!photos.isId(id)) return sendJson(res, 404, { ok: false, error: 'not found' }, cors);
+    return album.readClip(id).then((f) => {
+      if (!f) return sendJson(res, 404, { ok: false, error: 'not found' }, cors);
+      const headers = Object.assign({
+        'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes',
+        'Cache-Control': 'public, max-age=86400, immutable', 'X-Content-Type-Options': 'nosniff'
+      }, cors);
+      let start = 0;
+      let end = f.size - 1;
+      let status = 200;
+      const range = String(req.headers.range || '');
+      const m = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+      if (range && m && (m[1] !== '' || m[2] !== '')) {
+        if (m[1] === '') { start = Math.max(0, f.size - parseInt(m[2], 10)); }
+        else { start = parseInt(m[1], 10); if (m[2] !== '') end = Math.min(end, parseInt(m[2], 10)); }
+        if (start > end || start >= f.size) {
+          res.writeHead(416, Object.assign({ 'Content-Range': 'bytes */' + f.size, 'Content-Length': 0 }, headers));
+          return res.end();
+        }
+        status = 206;
+        headers['Content-Range'] = 'bytes ' + start + '-' + end + '/' + f.size;
+      }
+      headers['Content-Length'] = end - start + 1;
+      if (req.method === 'HEAD' || f.size === 0) { res.writeHead(status, headers); return res.end(); }
+      const stream = fs.createReadStream(f.file, { start: start, end: end });
+      stream.on('error', () => {
+        if (!res.headersSent) sendJson(res, 404, { ok: false, error: 'not found' }, cors);
+        else res.destroy();
+      });
+      stream.once('open', () => res.writeHead(status, headers));
       return stream.pipe(res);
     }, (e) => fail(res, e, cors));
   }
@@ -2567,7 +2611,7 @@ function start(options) {
         }
         if (route === '/api' || route.indexOf('/api/') === 0) return control(req, res, route, door, url.searchParams);
         if (door === 'main' && (route === '/' || route.indexOf('/app/') === 0)) return appFile(req, res, route, url.searchParams);
-        if (door === 'main' && (route === '/photos/list' || route.indexOf('/photos/img/') === 0)) return photoRoute(req, res, route, url.searchParams);
+        if (door === 'main' && (route === '/photos/list' || route.indexOf('/photos/img/') === 0 || route.indexOf('/photos/clip/') === 0)) return photoRoute(req, res, route, url.searchParams);
         if (door === 'main' && (TOUCH_ROUTES[route] || route.indexOf('/products/image/') === 0)) return touch(req, res, route, url.searchParams);
         if (door === 'main' && SCREEN_ROUTES[route]) return screen(req, res, route, url.searchParams);
         return sendJson(res, 404, { ok: false, error: 'not found' });

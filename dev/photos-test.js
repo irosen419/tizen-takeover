@@ -20,6 +20,11 @@
  *     grid); arrows move focus; OK opens the viewer ("2 of 7"); Left/Right go
  *     back and on; a tap on the left or right half too; Back goes to the grid
  *     (focus on the photo it showed), then closes.
+ *   - Live photos (video: 1, needs ffmpeg here to make a synthetic H.264 clip
+ *     the way the Pi does): the tile shows the still, plays the clip ONCE
+ *     (muted, inline), then moves on and frees the video; a clip that will
+ *     not load leaves the still up for the usual time; the grid thumb has a
+ *     play mark and "Video from ..."; the viewer plays it once too.
  *   - No photos: "No photos yet"; no Pi: "Photos live on the Pi"; no error box.
  *   - Sizes 1x1, 3x1, 3x2, 6x4 and Spanish with every photos text 25% longer
  *     (Á É ñ ¿ ¡): nothing outside its box, line-height at least 1.3.
@@ -91,12 +96,26 @@ const PHOTOS = [
   ['p1', 1440, 1080, '2026-08', ['#3e5151', '#decba4', '#4b3b2a', '#ffffff']]
 ];
 const EXTRA = ['p8', 1440, 1080, '2026-11', ['#1d2b64', '#f8cdda', '#24324a', '#fff0f5']];
-const PI = { mode: 'ok', rev: 'r1', items: PHOTOS.slice(), lists: 0, imgs: {}, imgHits: 0 };
+// A live photo: a still (the clip's first frame) plus a short H.264 clip.
+const VIDEO = ['v1', 720, 1280, '2026-11', ['#16222a', '#3a6073', '#1e2a22', '#fceabb'], 2];
+const PI = { mode: 'ok', rev: 'r1', items: PHOTOS.slice(), lists: 0, imgs: {}, imgHits: 0, clip: null, clipHits: 0, clipOff: false };
+
+// The clip the way photos-sync.sh makes it (H.264 Main, yuv420p, faststart, no sound). null without ffmpeg.
+function makeClip() {
+  const out = path.join(require('os').tmpdir(), 'hub-photos-clip-' + process.pid + '.mp4');
+  try {
+    childProcess.execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=720x1280:rate=30', '-t', String(VIDEO[5]), '-an',
+      '-vf', 'format=yuv420p', '-c:v', 'libx264', '-profile:v', 'main', '-level', '4.0', '-preset', 'veryfast', '-crf', '30', '-movflags', '+faststart', out], { stdio: 'ignore' });
+    const b = fs.readFileSync(out);
+    fs.unlinkSync(out);
+    return b;
+  } catch (e) { return null; }
+}
 
 async function makeImages(browser) {
   const page = await browser.newPage();
   await page.setContent('<canvas id="c"></canvas>');
-  for (const p of PHOTOS.concat([EXTRA])) {
+  for (const p of PHOTOS.concat([EXTRA, VIDEO])) {
     for (const size of ['full', 'thumb']) {
       const scale = size === 'full' ? 0.5 : 480 / p[1] / 1.6;
       const w = Math.round(p[1] * scale);
@@ -140,9 +159,16 @@ function startPi(port) {
     if (PI.mode === 'down') { res.writeHead(503, Object.assign({ 'Content-Type': 'application/json' }, cors)); return res.end('{"error":"down"}'); }
     if (u.pathname === '/photos/list') {
       PI.lists++;
-      const items = PI.mode === 'empty' ? [] : PI.items.map((p) => ({ id: p[0], w: p[1], h: p[2], month: p[3] }));
+      const items = PI.mode === 'empty' ? [] : PI.items.map((p) => (p[5] ? { id: p[0], w: p[1], h: p[2], month: p[3], video: 1, dur: p[5] } : { id: p[0], w: p[1], h: p[2], month: p[3] }));
       res.writeHead(200, Object.assign({ 'Content-Type': 'application/json' }, cors));
       return res.end(JSON.stringify({ rev: PI.mode === 'empty' ? 'r0' : PI.rev, count: items.length, items }));
+    }
+    const c = /^\/photos\/clip\/([\w-]+)$/.exec(u.pathname);
+    if (c) {
+      if (c[1] !== VIDEO[0] || !PI.clip || PI.clipOff) { res.writeHead(404, cors); return res.end(); }
+      PI.clipHits++;
+      res.writeHead(200, Object.assign({ 'Content-Type': 'video/mp4', 'Content-Length': PI.clip.length }, cors));
+      return res.end(PI.clip);
     }
     const m = /^\/photos\/img\/([\w-]+)$/.exec(u.pathname);
     if (m) {
@@ -290,6 +316,7 @@ async function main() {
   await until(() => getOk(env.PAGE + '/'), 10000, 'the preview did not start');
   env.browser = await chromium.launch();
   await makeImages(env.browser);
+  PI.clip = makeClip();
   env.pi = await startPi(env.PI_PORT);
 
   try {
@@ -441,6 +468,127 @@ async function main() {
       await until(() => page.evaluate(() => window.HUB_TEST.open() === null && !window.HUB_TEST.busy()), 5000, 'the second Back did not close');
     });
     await close(page);
+
+    // The tile's video, if any: { id, playing, ended, muted, src }.
+    const clipState = (p) => p.evaluate(() => {
+      const v = document.querySelector('.cell[data-widget="photos"] .ph-frame video');
+      if (!v) return null;
+      const lay = v.parentNode;
+      return { id: lay.getAttribute('data-id'), on: / is-on/.test(' ' + lay.className), playing: / is-playing/.test(' ' + v.className),
+        ended: v.ended, muted: v.muted, inline: v.hasAttribute('playsinline'), loop: v.loop, fit: getComputedStyle(v).objectFit, t: v.currentTime };
+    });
+
+    await check('Live photo on the tile: the still first, the clip plays ONCE (muted, inline, no loop), then the next photo; the video is freed', async () => {
+      if (!PI.clip) { console.log('      (no ffmpeg here: live photo checks skipped)'); return; }
+      PI.items = [PHOTOS[0], VIDEO, PHOTOS[1]];
+      PI.rev = 'rv1';
+      const p = await open({ seconds: 3 });
+      await until(async () => (await tileState(p)).id === 'v1', 8000, 'the video item never came up');
+      const still = await tileState(p);
+      assert(still.fit === 'contain' && still.fill, 'the still: ' + JSON.stringify(still));
+      const playing = await until(async () => { const c = await clipState(p); return c && c.playing ? c : false; }, 6000, 'the clip did not play');
+      assert(playing.id === 'v1' && playing.muted && playing.inline && !playing.loop && playing.fit === 'contain', JSON.stringify(playing));
+      assert((await p.evaluate(() => window.HUB_PHOTOS.state().clipping)), 'not marked as playing');
+      await shot(p, '11-live-photo-playing');
+      // It moves on only after the clip ended (2 s), not on the 3 s timer counted from the still.
+      await until(async () => { const c = await clipState(p); return c && c.ended; }, 6000, 'the clip did not end');
+      const atEnd = await tileState(p);
+      assert(atEnd.id === 'v1', 'left before the end: ' + atEnd.id);
+      await until(async () => (await tileState(p)).id === 'p6', 4000, 'did not move on after the clip');
+      await until(async () => !(await clipState(p)), 4000, 'the video element was not freed');
+      // Wraps round: p7 (3 s), then the clip plays again, once.
+      await until(async () => { const c = await clipState(p); return c && c.playing; }, 12000, 'the clip did not play the second time round');
+      await close(p);
+      PI.items = PHOTOS.slice();
+      PI.rev = 'r4';
+    });
+
+    await check('The tablet Slideshow plays a live photo once, then moves on', async () => {
+      if (!PI.clip) return;
+      PI.items = [VIDEO, PHOTOS[1]];
+      PI.rev = 'rv4';
+      const p = await open({ seconds: 3, layout: [{ widget: 'today', x: 0, y: 0, w: 3, h: 2 }] });
+      await p.evaluate(() => {
+        const box = document.createElement('div');
+        box.id = 'ss';
+        box.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:600px;z-index:99';
+        document.body.appendChild(box);
+        window.ssRun = window.HUB_PHOTOS.slideshow(box, { getJSON: function (u, ms, cb) { fetch(u).then((r) => r.json()).then((d) => cb(null, d), (e) => cb(e)); } });
+      });
+      await until(() => p.evaluate(() => { const v = document.querySelector('#ss video.is-playing'); return v && v.muted; }), 8000, 'no clip in the slideshow');
+      await until(() => p.evaluate(() => { const on = document.querySelector('#ss .ph-layer.is-on'); return on && on.getAttribute('data-id') === 'p6'; }), 8000, 'did not move on');
+      await p.evaluate(() => window.ssRun.stop());
+      await close(p);
+      PI.items = PHOTOS.slice();
+      PI.rev = 'r7';
+    });
+
+    await check('A clip that will not load: the still stays up for the usual time, then the next photo; no error box', async () => {
+      if (!PI.clip) return;
+      PI.items = [VIDEO, PHOTOS[1]];
+      PI.rev = 'rv2';
+      PI.clipOff = true;
+      const p = await open({ seconds: 3 });
+      await until(async () => (await tileState(p)).id === 'v1', 8000, 'no still');
+      const t0 = Date.now();
+      await until(async () => (await tileState(p)).id === 'p6', 9000, 'stuck on the still');
+      assert(Date.now() - t0 > 1500, 'moved on too soon');
+      const s = await tileState(p);
+      assert(!s.error, 'error box');
+      await close(p);
+      PI.clipOff = false;
+      PI.items = PHOTOS.slice();
+      PI.rev = 'r5';
+    });
+
+    await check('Live photo in full screen: a play mark and "Video from November 2026" on its thumb; the viewer plays it once', async () => {
+      if (!PI.clip) return;
+      PI.items = [PHOTOS[0], VIDEO, PHOTOS[1], PHOTOS[3]];
+      PI.rev = 'rv3';
+      const p = await open({ seconds: 60 });
+      await p.evaluate(() => window.HUB_TEST.openPanel('photos'));
+      await until(() => p.evaluate(() => document.querySelectorAll('#panel .ph-thumb').length === 4 && !window.HUB_TEST.busy()), 6000, 'no grid');
+      await sleep(500);
+      const g = await p.evaluate(() => {
+        const cells = document.querySelectorAll('#panel .ph-thumb');
+        const v = cells[1];
+        const mark = v.querySelector('.ph-play');
+        const r = mark && mark.getBoundingClientRect();
+        const cr = v.getBoundingClientRect();
+        return { label: v.getAttribute('aria-label'), mark: !!mark, inside: !!r && r.right <= cr.right && r.top >= cr.top && r.width > 10,
+          others: document.querySelectorAll('#panel .ph-play').length, photoLabel: cells[0].getAttribute('aria-label') };
+      });
+      assert(g.mark && g.inside && g.others === 1 && g.label === 'Video from November 2026' && g.photoLabel === 'Photo from November 2026', JSON.stringify(g));
+      await key(p, 'ArrowRight');
+      await shot(p, '12-grid-live-photo');
+      if (SHOTS) {
+        // Before/after of the one thing that changed: the play mark on the thumb.
+        const r = await p.evaluate(() => { const b = document.querySelector('#panel .ph-row').getBoundingClientRect(); return { x: b.left - 24, y: b.top - 70, width: b.width + 48, height: b.height + 70 }; });
+        await p.screenshot({ path: path.join(SHOTS, '13-grid-row-after.png'), clip: r });
+        await p.evaluate(() => document.querySelectorAll('#panel .ph-play').forEach((e) => { e.style.display = 'none'; }));
+        await p.screenshot({ path: path.join(SHOTS, '13-grid-row-before.png'), clip: r });
+        await p.evaluate(() => document.querySelectorAll('#panel .ph-play').forEach((e) => { e.style.display = ''; }));
+      }
+      await key(p, 'Enter');
+      const v = await until(() => p.evaluate(() => {
+        const el = document.querySelector('#panel .ph-viewer video.is-playing');
+        return el ? { muted: el.muted, loop: el.loop } : false;
+      }), 6000, 'the viewer did not play the clip');
+      assert(v.muted && !v.loop, JSON.stringify(v));
+      // Ends and stays on its last frame (the viewer does not move on by itself).
+      await until(() => p.evaluate(() => { const el = document.querySelector('#panel .ph-viewer video'); return el && el.ended; }), 6000, 'did not end');
+      assert(await p.evaluate(() => document.querySelector('#panel .ph-view-count').textContent === '2 of 4'), 'the viewer moved on');
+      await key(p, 'ArrowRight');
+      await until(() => p.evaluate(() => document.querySelector('#panel .ph-view-count').textContent === '3 of 4'), 3000, 'Right did nothing');
+      await until(() => p.evaluate(() => !document.querySelector('#panel .ph-viewer video')), 4000, 'the viewer kept the old video');
+      // Spanish: "Vídeo de ..."
+      await p.evaluate(() => window.HUB_I18N.setLang('es'));
+      await key(p, 'Escape');
+      await until(() => p.evaluate(() => { const c = document.querySelectorAll('#panel .ph-thumb')[1]; return c && /^Vídeo de noviembre de 2026$|^Vídeo de Noviembre de 2026$/.test(c.getAttribute('aria-label')); }), 4000, 'no Spanish label');
+      await close(p);
+      PI.items = PHOTOS.slice();
+      PI.rev = 'r6';
+    });
 
     await check('No photos: a quiet "No photos yet" with a hint; the grid says so too; no error box', async () => {
       PI.mode = 'empty';

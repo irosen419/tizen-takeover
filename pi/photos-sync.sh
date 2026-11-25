@@ -12,10 +12,15 @@
 #   PHOTOS_DATA_DIR   the hub's data folder (default pi/data)
 #
 # Never deletes anything, on the calendar or here: it only pulls files that
-# are not here yet. Searches the album folder at any depth. Only images
-# (.webp .jpg .jpeg .png, any case); videos and ".downloading" are skipped.
+# are not here yet. Searches the album folder at any depth. Images (.webp
+# .jpg .jpeg .png, any case) and videos, the "live photos" (.mp4 .mov .m4v);
+# ".downloading" is skipped. Each video becomes a small H.264 clip (clip/,
+# 1280 px at most, no sound, 30 s at most) and a still of its first frame
+# (still/, and a thumb) with ffmpeg; without ffmpeg the videos wait, counted
+# in one line, and the photos carry on. A video ffmpeg cannot read gets
+# clip/<id>.bad and is not tried again (delete it to retry).
 # Prints counts only, never a file name. A calendar that is off or away is
-# not an error: it exits 0 and says nothing.
+# not an error: it says nothing (videos already here are still converted).
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -28,16 +33,40 @@ THUMB="$DIR/thumb"
 
 command -v adb >/dev/null 2>&1 || { echo "photos: adb is not installed (sudo apt install android-tools-adb)"; exit 1; }
 
+CLIP="$DIR/clip"
+STILL="$DIR/still"
+
 T=""
 TP=""
-command -v timeout >/dev/null 2>&1 && { T="timeout 20"; TP="timeout 120"; }
+TV=""
+command -v timeout >/dev/null 2>&1 && { T="timeout 20"; TP="timeout 300"; TV="timeout 600"; }
 
-# Reachable? Quietly done when not.
+idof() { printf '%s' "$1" | sha1sum | cut -c1-12; }
+vids() { [ "$1" = 1 ] && echo "1 video" || echo "$1 videos"; }
+
+# Videos here with no clip yet (and not marked bad).
+pending_videos() {
+  n=0
+  for f in "$ORIG"/*; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    case "$(printf '%s' "$name" | tr 'A-Z' 'a-z')" in *.mp4|*.mov|*.m4v) ;; *) continue ;; esac
+    id=$(idof "$name")
+    [ -e "$CLIP/$id.mp4" ] || [ -e "$CLIP/$id.bad" ] || n=$((n + 1))
+  done
+  echo "$n"
+}
+
+# Reachable? When not: convert videos already here (if ffmpeg is in), else quietly done.
+PULL=1
 $T adb connect "$ADDR" >/dev/null 2>&1
-[ "$($T adb -s "$ADDR" get-state 2>/dev/null)" = "device" ] || exit 0
+if [ "$($T adb -s "$ADDR" get-state 2>/dev/null)" != "device" ]; then
+  command -v ffmpeg >/dev/null 2>&1 && [ -d "$ORIG" ] && [ "$(pending_videos)" -gt 0 ] || exit 0
+  PULL=0
+fi
 
-mkdir -p "$ORIG" "$THUMB" 2>/dev/null
-if [ ! -w "$ORIG" ] || [ ! -w "$THUMB" ] || [ ! -w "$DIR" ]; then
+mkdir -p "$ORIG" "$THUMB" "$CLIP" "$STILL" 2>/dev/null
+if [ ! -w "$ORIG" ] || [ ! -w "$THUMB" ] || [ ! -w "$DIR" ] || [ ! -w "$CLIP" ] || [ ! -w "$STILL" ]; then
   echo "photos: cannot write to pi/data/photos (fix once: sudo mkdir -p $DIR && sudo chown -R $(id -un): $DIR)"
   exit 1
 fi
@@ -52,10 +81,11 @@ if command -v magick >/dev/null 2>&1; then IM=magick
 elif command -v convert >/dev/null 2>&1; then IM=convert
 fi
 
-idof() { printf '%s' "$1" | sha1sum | cut -c1-12; }
-
-LIST="$DIR/.list.$$"
+NEW=0
+FAILED=0
 OK=1
+LIST="$DIR/.list.$$"
+if [ "$PULL" = 1 ]; then
 # Every file under the album, however deep (eCalendar keeps them around
 # CloudAlbum/cloud/<account>/photos/.../YYYY/MM/), as "size|path". Paths
 # with spaces are fine: the line is split at the first "|" only.
@@ -67,8 +97,6 @@ else
   exit 0
 fi
 
-NEW=0
-FAILED=0
 while IFS= read -r line; do
   size=${line%%|*}
   rpath=${line#*|}
@@ -83,6 +111,9 @@ while IFS= read -r line; do
     *.webp) ext=webp ;;
     *.jpg|*.jpeg) ext=jpg ;;
     *.png) ext=png ;;
+    *.mp4) ext=mp4 ;;
+    *.mov) ext=mov ;;
+    *.m4v) ext=m4v ;;
     *) continue ;;
   esac
   # The copy is named by file name + size, not by folder: the same photo in
@@ -101,6 +132,43 @@ while IFS= read -r line; do
 done < "$LIST"
 rm -f "$LIST"
 [ "$FAILED" -gt 0 ] && OK=0
+fi
+
+# Videos: a small H.264 clip and a still of the first frame for each.
+# Long side 1280 px at most (the still 1440), 30 fps, no sound, 30 s at most,
+# moov at the front (+faststart) so it starts playing at once.
+FIT='trunc(min(1\,LONG/max(iw\,ih))*iw/2)*2:trunc(min(1\,LONG/max(iw\,ih))*ih/2)*2'
+CONVERTED=0
+BAD=0
+if command -v ffmpeg >/dev/null 2>&1; then
+  for f in "$ORIG"/*; do
+    [ -f "$f" ] || continue
+    name=$(basename "$f")
+    case "$(printf '%s' "$name" | tr 'A-Z' 'a-z')" in *.mp4|*.mov|*.m4v) ;; *) continue ;; esac
+    id=$(idof "$name")
+    [ -e "$CLIP/$id.mp4" ] || [ -e "$CLIP/$id.bad" ] && continue
+    if $TV nice -n 10 ffmpeg -nostdin -v error -y -i "$f" -t 30 -an -sn -dn \
+         -vf "scale=$(printf '%s' "$FIT" | sed 's/LONG/1280/g'),fps=30,format=yuv420p" \
+         -c:v libx264 -profile:v main -level 4.0 -preset veryfast -crf 26 \
+         -movflags +faststart -f mp4 "$CLIP/.$id.mp4" </dev/null >/dev/null 2>&1 &&
+       $T ffmpeg -nostdin -v error -y -i "$CLIP/.$id.mp4" -frames:v 1 -q:v 3 -f image2 "$STILL/.$id.jpg" </dev/null >/dev/null 2>&1 &&
+       $T ffmpeg -nostdin -v error -y -i "$STILL/.$id.jpg" -vf "scale=480:-2" -q:v 4 -f image2 "$THUMB/.$id.jpg" </dev/null >/dev/null 2>&1; then
+      # The still before the clip: the index takes a video once both are in.
+      mv "$THUMB/.$id.jpg" "$THUMB/$id.jpg"
+      mv "$STILL/.$id.jpg" "$STILL/$id.jpg"
+      mv "$CLIP/.$id.mp4" "$CLIP/$id.mp4"
+      CONVERTED=$((CONVERTED + 1))
+    else
+      rm -f "$CLIP/.$id.mp4" "$STILL/.$id.jpg" "$THUMB/.$id.jpg"
+      : > "$CLIP/$id.bad"
+      BAD=$((BAD + 1))
+    fi
+  done
+else
+  WAIT=$(pending_videos)
+  [ "$WAIT" -gt 0 ] && echo "photos: $(vids "$WAIT") waiting for ffmpeg (sudo apt install -y ffmpeg)"
+fi
+[ "$PULL" = 0 ] && [ "$CONVERTED" = 0 ] && exit 0
 
 # A thumb for every original that has none (480 px wide JPEG, or a copy).
 for f in "$ORIG"/*; do
@@ -127,4 +195,6 @@ else
     node photos.js index /data --new "$NEW" --ok "$OK"
 fi
 [ "$FAILED" -gt 0 ] && echo "photos: $FAILED could not be copied (tried again next run)"
+[ "$CONVERTED" -gt 0 ] && echo "photos: $(vids "$CONVERTED") converted"
+[ "$BAD" -gt 0 ] && echo "photos: $(vids "$BAD") could not be converted (skipped from now on)"
 exit 0

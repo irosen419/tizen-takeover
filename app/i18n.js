@@ -2047,6 +2047,7 @@
     'photos.countOne': '1 foto',
     'photos.countAll': '{n} fotos',
     'photos.photoOf': 'Foto de {month}',
+    'photos.videoOf': 'Vídeo de {month}',
     'photos.tipView': 'Izquierda y derecha para ver más',
     'photos.backGrid': 'Atrás para ver todas las fotos'
   };
