@@ -822,10 +822,13 @@
     node.style.display = level > 0 ? '' : 'none';
   }
 
-  function drawAlert(parent, list, cls) {
+  // bare: just the count, as the rows below name each must-do.
+  function drawAlert(parent, list, cls, bare) {
     var box = el('div', 'todo-alert ' + cls, '', parent);
     setGlow(el('span', 'todo-glow', '', box), pulseLevel(list));
-    var text = fill(list.length === 1 ? STRINGS.alertOne : STRINGS.alertMany, list.length).replace('{t}', shownTitle(list[0]));
+    var tpl = list.length === 1 ? STRINGS.alertOne : STRINGS.alertMany;
+    if (bare) tpl = tpl.replace(/\s*[:\uFF1A]\s*\{t\}\s*$/, '');
+    var text = fill(tpl, list.length).replace('{t}', shownTitle(list[0]));
     var line = el('div', 'todo-alert-text', '', box);
     el('span', 'todo-alert-dot', '', line);
     line.appendChild(document.createTextNode(text));
@@ -894,33 +897,49 @@
     markTile(body, must);
     if (size && size.tier === 'strip') return drawStrip(body);
     var doneList = doneToday(false);
-    if (!doneList.length || !store.items.length) return fillTile(body, must, doneList, 'meta');
-    // Completed is the first thing to give way: the fullest form that keeps
-    // every open row the tile has without it and stays inside the tile,
-    // else nothing about it (the panel still lists them).
-    var base = fillTile(body, must, doneList, 'none').__fit;
+    // The open rows come first, at any size. If the big count leaves no
+    // room for all of them, drop it (and the title in the red strip, which
+    // the rows repeat) whenever that shows more rows.
+    // Still short of the must-dos: drop the red strip too, but only if then
+    // every must-do has its row (the tile's red edge and each row's MUST
+    // pill still say it).
+    var lean = 0;
+    var base = fillTile(body, must, doneList, 'none', 0).__fit;
     body.removeChild(body.lastChild);
-    var modes = ['full', 'line', 'meta'];
-    for (var i = 0; i < modes.length; i++) {
-      var f = fillTile(body, must, doneList, modes[i]).__fit;
-      if (f.shown >= base.shown && !f.over) return;
+    for (var k = 1; k <= 2 && base.shown < base.total; k++) {
+      if (k === 2 && !(must.length && base.shown < must.length)) break;
+      var bare = fillTile(body, must, doneList, 'none', k).__fit;
       body.removeChild(body.lastChild);
+      if (bare.shown > base.shown && (k === 1 || bare.shown >= must.length)) { lean = k; base = bare; }
     }
-    fillTile(body, must, doneList, 'none');
+    // Completed is the first thing to give way: the fullest form that keeps
+    // every open row and stays inside the tile, else nothing about it (the
+    // panel still lists them).
+    if (doneList.length && store.items.length) {
+      var modes = ['full', 'line', 'meta'];
+      for (var i = 0; i < modes.length; i++) {
+        var f = fillTile(body, must, doneList, modes[i], lean).__fit;
+        if (f.shown >= base.shown && !f.over) return;
+        body.removeChild(body.lastChild);
+      }
+    }
+    fillTile(body, must, doneList, 'none', lean);
   }
 
   // The tile's content; wrap.__fit says how many open rows fit and whether
   // the tile overflows. mode: 'meta' (the "{n} done today" line), 'line'
   // (the newest completed item on that line), 'full' (the Completed section)
-  // or 'none' (no word of the completed items).
-  function fillTile(body, must, doneList, mode) {
+  // or 'none' (no word of the completed items). lean, to give the rows room:
+  // 1 = no big count and the red strip without the first must-do's title,
+  // 2 = no big count and no red strip.
+  function fillTile(body, must, doneList, mode, lean) {
     var wrap = el('div', 'todo-tile', '', body);
     var now = today();
     var open = inLevel('must', false).concat(inLevel('optional', false));
     var coming = comingUp(false);
     var shown = 0;
 
-    if (must.length) drawAlert(wrap, must, 'todo-tile-alert');
+    if (must.length && lean < 2) drawAlert(wrap, must, 'todo-tile-alert', lean === 1);
     if (!store.items.length) {
       var empty = el('div', 'todo-tile-empty', '', wrap);
       el('div', 'todo-tile-empty-title', STRINGS.emptyTitle, empty);
@@ -928,6 +947,7 @@
     } else {
       // With the strip above, the number steps down so rows keep their room.
       var hero = el('div', 'todo-hero' + (must.length ? ' is-compact' : ''), '', wrap);
+      if (lean) hero.style.display = 'none';
       if (open.length) {
         el('span', 'todo-hero-num', String(open.length), hero);
         el('span', 'todo-hero-cap', open.length === 1 ? STRINGS.heroOne : STRINGS.heroMany, hero);
@@ -953,7 +973,7 @@
     if (w) el('div', 'todo-warn todo-tile-warn', w, wrap);
     var over = wrap.scrollHeight > wrap.clientHeight + 1;
     if (!over) over = pastTile(wrap);
-    wrap.__fit = { shown: shown, over: over };
+    wrap.__fit = { shown: shown, over: over, total: open.length };
     return wrap;
   }
 

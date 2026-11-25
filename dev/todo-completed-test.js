@@ -13,8 +13,9 @@
  *   - with many open rows the section is dropped (the open rows keep every
  *     row they have without it); the newest takes the meta line if that
  *     costs no row, else nothing about Completed shows
- *   - Ian's Main 3 x 2 (two must-dos in the strip, one done): nothing runs
- *     past the tile's bottom, in English and Spanish
+ *   - Ian's Main 3 x 2 (two must-dos, one done): both must-do rows show
+ *     (the big count and red strip give way first) and nothing runs past
+ *     the tile's bottom, in English and Spanish
  *   - strip tiles are unchanged
  *   - Spanish: "Completadas", "Ayer", nothing cut sideways, room for accents
  *
@@ -269,7 +270,7 @@ async function run(env) {
   for (const lang of ['en', 'es']) {
     p = await openHub(env, { at: T3PM, layout: MAIN, lang: lang, storage: storage(ian) });
     try {
-      await check('Main 3 x 2 (' + lang + '): nothing runs past the tile\'s bottom', async () => {
+      await check('Main 3 x 2 (' + lang + '): both must-dos listed first, nothing runs past the tile\'s bottom', async () => {
         const r = await p.evaluate(() => {
           const t = document.querySelector('.cell[data-widget="todo"] .tile');
           const w = t.querySelector('.todo-tile');
@@ -278,9 +279,10 @@ async function run(env) {
           let low = 0;
           const all = w.querySelectorAll('*');
           for (let i = 0; i < all.length; i++) { const b = all[i].getBoundingClientRect(); if (b.height) low = Math.max(low, b.bottom); }
-          return { low: low, limit: limit, sh: w.scrollHeight, ch: w.clientHeight };
+          return { low: low, limit: limit, sh: w.scrollHeight, ch: w.clientHeight, musts: w.querySelectorAll('.todo-tile-row.lv-must').length };
         });
         assert(r.low <= r.limit + 1 && r.sh <= r.ch + 1, JSON.stringify(r));
+        assert(r.musts === 2, 'both must-dos are not listed: ' + JSON.stringify(r));
       });
     } finally { await p.ctx.close(); }
   }
