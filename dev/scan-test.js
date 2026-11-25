@@ -169,8 +169,12 @@ async function main() {
       assert(await page.getAttribute('.sc-have', 'role') === 'status', 'announced');
       assert(!(await page.$('.sc-sheet .sc-add')) && !(await page.$('.sc-sheet .sc-note')), 'no Add, no small print');
       assert(await page.evaluate(() => document.activeElement && document.activeElement.className.indexOf('sc-again') >= 0), 'focus on Scan another');
+      assert((await page.textContent('.sc-anyway')) === 'Add anyway', 'a quiet way through for an old copy');
       await shot(page, 'scan-already-listed-en.png');
-      await page.click('.sc-again');
+      await page.click('.sc-anyway');
+      await page.waitForSelector('.sc-toast.is-on');
+      assert(/It was on the list already/.test(await page.textContent('.sc-toast')), await page.textContent('.sc-toast'));
+      await page.waitForTimeout(300);
       await page.waitForTimeout(200);
       assert(groceryItems().filter((i) => i.upc === KNOWN).length === 1, 'no double');
       await page.click('.sc-close');

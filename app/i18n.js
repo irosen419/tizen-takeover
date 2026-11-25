@@ -1859,6 +1859,7 @@
     'scan.leave': 'Dejarlo así',
     'scan.alreadyListed': 'Ya está en la lista',
     'scan.wasListed': 'Ya estaba en la lista',
+    'scan.addAnyway': 'Agregar de todos modos',
     'scan.addFailed': 'No se guardó: {why}',
     'scan.another': 'Escanear otro',
     'scan.done': 'Listo',

@@ -560,6 +560,11 @@
         have.appendChild(icon('check', 'sc-have-ic'));
         have.appendChild(el('span', 'sc-btn-word', T('scan.alreadyListed', 'Already on the list')));
         sheet.appendChild(have);
+        // This phone's copy may be a moment old (ticked or removed elsewhere):
+        // a quiet way through. The Pi never doubles a code, so it is safe.
+        var anyway = button('sc-link sc-anyway', T('scan.addAnyway', 'Add anyway'));
+        anyway.addEventListener('click', function () { addFound(); });
+        sheet.appendChild(anyway);
       } else {
         add = button('sc-btn sc-primary sc-add', home >= 0 ?
           T('scan.addOneMore', 'Add 1 more ({n} at home)', { n: String(Math.round(home * 100) / 100) }) :
@@ -612,6 +617,7 @@
       if (!found || !dest) return;
       var p = found;
       var more = !!(foundState && typeof foundState.home === 'number');
+      var listedNow = !!(foundState && foundState.listed);
       var label = destLabel;
       dest.add(p, ctx, function (err, info) {
         if (closed) return;
@@ -619,9 +625,12 @@
         // This phone's copy was old: the Pi's answer says it was there already.
         if (info && info.already && !more) {
           showToast(info.listed ? T('scan.wasListed', 'It was on the list already') : T('scan.addedMore', 'One more added to {dest}', { dest: label }));
+        } else if (info && !info.already && (more || listedNow)) {
+          showToast(T('scan.added', 'Added to {dest}', { dest: label }));
         }
       });
-      showToast(more ? T('scan.addedMore', 'One more added to {dest}', { dest: label }) : T('scan.added', 'Added to {dest}', { dest: label }));
+      showToast(more ? T('scan.addedMore', 'One more added to {dest}', { dest: label }) :
+        listedNow ? T('scan.wasListed', 'It was on the list already') : T('scan.added', 'Added to {dest}', { dest: label }));
       resume();
     }
 

@@ -207,6 +207,10 @@ async function main() {
     r = p.applyOps([{ op: 'add', name: 'Rice', onlyNew: true }], []);
     assert.strictEqual(r.results[0].existed, false);
     assert.strictEqual(p.view([]).data.products.find((x) => x.name === 'Rice').qty, 1);
+    p.applyOps([{ op: 'set', id: id, qty: 0 }], []);
+    r = p.applyOps([{ op: 'add', name: 'Beans', onlyNew: true }], []);
+    assert.strictEqual(r.results[0].skipped, undefined, 'run out (0 left): restocked');
+    assert.strictEqual(p.view([]).data.products.find((x) => x.id === id).qty, 1);
     p.applyOps([{ op: 'remove', id: id }], []);
     r = p.applyOps([{ op: 'add', name: 'Beans', onlyNew: true }], []);
     assert.strictEqual(r.results[0].existed, false, 'a removed product comes back');

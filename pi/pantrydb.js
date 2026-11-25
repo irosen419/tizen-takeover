@@ -773,9 +773,10 @@ function createPantry(options) {
           const p = product(pid);
           const set = editFields(p, { location: o.location, restockAt: o.restockAt, autoAdd: o.autoAdd, size: o.size, unit: o.unit, purchaseQuantity: o.purchaseQuantity, substitutionMode: o.substitutionMode });
           const wasHere = p.owned === 1 && p.archived === 0;
-          // onlyNew (a pasted list of codes): a product at home already is
-          // left as it is, so a phone with an old copy never counts it twice.
-          if (o.onlyNew !== undefined && bool(o.onlyNew, 'onlyNew') && wasHere) {
+          // onlyNew (a pasted list of codes): a product at home already (one
+          // or more left) is left as it is, so a phone with an old copy never
+          // counts it twice. One run out (0 left) is restocked.
+          if (o.onlyNew !== undefined && bool(o.onlyNew, 'onlyNew') && wasHere && p.quantity_remaining > 0) {
             out.results.push({ op: 'add', id: pid, existed: true, skipped: true });
             return;
           }

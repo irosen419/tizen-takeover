@@ -948,7 +948,8 @@
       // At home: the scan card's button reads "Add 1 more (n at home)".
       state: function (product, ctx) {
         var hit = homeHit(product, ctx);
-        return hit ? { home: hit.qty } : null;
+        // Run out (0 left): a plain Add, not "Leave as is".
+        return hit && hit.qty > 0 ? { home: hit.qty } : null;
       },
       // opts.onlyNew (a pasted list): the Pi leaves a product already at home.
       add: function (product, ctx, done, opts) {
