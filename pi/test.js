@@ -1145,11 +1145,11 @@ async function main() {
 
   await check('screen API refuses a request whose Host is another site\'s name', async () => {
     const h2 = await start();
-    for (const host of ['evil.example.com', 'evil.example.com:8097', '192.168.1.219.evil.example.com']) {
+    for (const host of ['evil.example.com', 'evil.example.com:8097', '192.168.1.40.evil.example.com']) {
       const r = await request(h2.port, 'GET', '/live/state', { headers: { Host: host } });
       assert.strictEqual(r.status, 403, host);
     }
-    for (const host of ['192.168.1.219:8097', '127.0.0.1', 'localhost:8097', 'raspberrypi.local:8097', '[::1]:8097']) {
+    for (const host of ['192.168.1.40:8097', '127.0.0.1', 'localhost:8097', 'raspberrypi.local:8097', '[::1]:8097']) {
       const r = await request(h2.port, 'GET', '/live/state', { headers: { Host: host } });
       assert.strictEqual(r.status, 200, host);
     }

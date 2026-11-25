@@ -245,7 +245,7 @@ async function main() {
     assert.ok(st.json.todo.data.items.some((i) => i.id === 'tphone1'), 'the state carries it');
     // No proof (another site's form post), a foreign Origin, a wrong method, a bad op, an address off the network.
     assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: { 'x-test-ip': '100.70.0.9' }, body: { ops: [] } })).status, 403);
-    assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: { 'X-Hub-Touch': '1', Origin: 'http://evil.example', Host: '192.168.1.219:8097' }, body: { ops: [] } })).status, 403);
+    assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: { 'X-Hub-Touch': '1', Origin: 'http://evil.example', Host: '192.168.1.40:8097' }, body: { ops: [] } })).status, 403);
     assert.strictEqual((await request(P, 'GET', '/touch/todo/ops', { headers: touchHd })).status, 405);
     assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: touchHd, body: { ops: [{ op: 'zap' }] } })).status, 400);
     assert.strictEqual((await request(P, 'POST', '/touch/todo/ops', { headers: { 'x-test-ip': '8.8.8.8', 'X-Hub-Touch': '1' }, body: { ops: [] } })).status, 403);
@@ -255,10 +255,10 @@ async function main() {
 
   await check('Origin: a foreign site is refused; the page\'s own address (http or https) and a listed one are allowed', async () => {
     const ops = { ops: [{ op: 'add', name: 'Bread' }] };
-    let r = await request(P, 'POST', '/grocery/ops', { headers: { Origin: 'http://evil.example', Host: '192.168.1.219:8097' }, body: ops });
+    let r = await request(P, 'POST', '/grocery/ops', { headers: { Origin: 'http://evil.example', Host: '192.168.1.40:8097' }, body: ops });
     assert.strictEqual(r.status, 403);
     assert.strictEqual(r.json.error, 'origin not allowed');
-    r = await request(P, 'POST', '/grocery/ops', { headers: { Origin: 'http://192.168.1.219:8097', Host: '192.168.1.219:8097' }, body: ops });
+    r = await request(P, 'POST', '/grocery/ops', { headers: { Origin: 'http://192.168.1.40:8097', Host: '192.168.1.40:8097' }, body: ops });
     assert.strictEqual(r.status, 200, r.text);
     r = await request(P, 'POST', '/grocery/ops', { headers: { Origin: 'https://pi.tail1234.ts.net', Host: 'pi.tail1234.ts.net' }, body: ops });
     assert.strictEqual(r.status, 200, r.text);
@@ -267,7 +267,7 @@ async function main() {
     r = await request(P, 'POST', '/grocery/ops', { headers: { Origin: 'http://127.0.0.1:8081' }, body: ops });
     assert.strictEqual(r.status, 200, 'the default listed origin');
     // The TV's own POSTs follow the same rule.
-    r = await request(P, 'POST', '/todo/ops', { headers: { Origin: 'http://192.168.1.219:8097', Host: '192.168.1.219:8097' }, body: { ops: [] } });
+    r = await request(P, 'POST', '/todo/ops', { headers: { Origin: 'http://192.168.1.40:8097', Host: '192.168.1.40:8097' }, body: { ops: [] } });
     assert.notStrictEqual(r.status, 403);
   });
 

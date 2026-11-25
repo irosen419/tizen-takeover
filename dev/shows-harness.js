@@ -20,7 +20,7 @@ const TZ = 'America/Chicago';
 // Tuesday 17 November 2026, 7:25 PM in Chicago: Paradise starts in 35 minutes.
 const TUESDAY = Date.parse('2026-11-18T01:25:00Z');
 const SAMPLE = path.join(__dirname, '..', 'pi', 'fixtures', 'shows-sample.json');
-const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219', 'api.tvmaze.com'];
+const BLOCKED = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', require('./pi-host'), 'api.tvmaze.com'];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

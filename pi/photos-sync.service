@@ -13,6 +13,7 @@ Wants=network-online.target
 Type=oneshot
 WorkingDirectory=%h/code/tizen-takeover/pi
 ExecStart=/bin/sh %h/code/tizen-takeover/pi/photos-sync.sh
-# Environment=PHOTOS_ADB_ADDR=192.168.1.208:5555
+# The calendar's address is the PHOTOS_ADB_ADDR= line in pi/.env (never here:
+# this file is public).
 Nice=10
 TimeoutStartSec=30min
