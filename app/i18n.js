@@ -1356,6 +1356,7 @@
     'today.sunset': 'Atardecer',
     'today.daylightLeft': 'Luz que queda',
     'today.sunriseIn': 'Amanece en',
+    'today.sunriseTomorrow': 'Mañana',
     'today.hm': '{h} h {m} min',
     'today.m': '{m} min',
     'today.dayLength': 'Duración del día: {d}',

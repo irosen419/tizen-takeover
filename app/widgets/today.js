@@ -641,9 +641,13 @@
     var s = sunNow(ms);
     var t = timeParts(now);
     var date = sunTile.short ? dateText(now, { month: 'short', day: 'numeric' }) : shortDate(now);
-    var next = s.day ? T('sunset', 'Sunset') + ' ' + at(s.to) : T('sunrise', 'Sunrise') + ' ' + at(s.to);
+    // At night before midnight the next sunrise is tomorrow's: a sunrise
+    // mark and "Tomorrow 7:06 AM" (short enough for the strip in Spanish).
+    var tomorrow = !s.day && new Date(s.to).toDateString() !== now.toDateString();
+    var next = s.day ? T('sunset', 'Sunset') + ' ' + at(s.to) :
+      (tomorrow ? T('sunriseTomorrow', 'Tomorrow') : T('sunrise', 'Sunrise')) + ' ' + at(s.to);
     // The arc moves about a pixel every few minutes: drawn again each minute.
-    var shape = t.digits + '|' + date + '|' + next + '|' + Math.floor(ms / 6e4);
+    var shape = t.digits + '|' + date + '|' + next + (tomorrow ? '+' : '') + '|' + Math.floor(ms / 6e4);
     if (sunTile.shown === shape && sunTile.sized) return;
     var refit = !sunTile.shown || sunTile.shown.split('|')[0].length !== t.digits.length;
     sunTile.shown = shape;
@@ -652,6 +656,12 @@
     sunTile.time.textContent = t.digits;
     sunTile.date.textContent = date;
     sunTile.next.textContent = next;
+    if (tomorrow && window.HUB_ICONS) {
+      var mark = document.createElement('span');
+      mark.className = 'today-sun-mark';
+      mark.innerHTML = window.HUB_ICONS['wx-sunrise'] || '';
+      sunTile.next.insertBefore(mark, sunTile.next.firstChild);
+    }
     if (!sunTile.sized) { sunTile.sized = sizeSunTile(); refit = true; }
     if (refit && sunTile.sized) {
       // From the proportional size, shrunk only if the digits still don't fit.
@@ -659,6 +669,35 @@
     }
     fitText(sunTile.date);
     fitText(sunTile.next);
+    if (sunTile.strip && sunTile.sized) alignSunStrip();
+  }
+
+  // Where a line of text sits (its baseline), in px from the top of the page.
+  function baseline(node) {
+    var probe = document.createElement('span');
+    probe.style.cssText = 'display:inline-block;width:0;height:0';
+    node.appendChild(probe);
+    var y = probe.getBoundingClientRect().top;
+    node.removeChild(probe);
+    return y;
+  }
+
+  // A strip: the arc raised so its horizon sits on the baseline of the
+  // last line beside it ("Sunrise 7:06 AM", or the date when that's
+  // hidden). The drawing sits at the bottom of its box, so the box's
+  // bottom (and the time's) moves up; the drawing never leaves the tile.
+  function alignSunStrip() {
+    var t = sunTile;
+    var line = t.next.offsetHeight ? t.next : t.date.offsetHeight ? t.date : null;
+    var hz = t.svgBox.querySelector('.sun-horizon');
+    if (!line || !hz) return;
+    var r = hz.getBoundingClientRect();
+    var lift = (parseFloat(t.lift) || 0) + (r.top + r.height / 2) - baseline(line);
+    lift = Math.max(0, Math.min(lift, t.arc.clientHeight * 0.3));
+    if (Math.abs(lift - (t.lift || 0)) < 0.5) return;
+    t.lift = Math.round(lift);
+    t.svgBox.style.bottom = 'calc(0.15rem + ' + t.lift + 'px)';
+    t.time.style.bottom = 'calc(0.35rem + ' + t.lift + 'px)';
   }
 
   /* ---------- the Sun path page ---------- */
