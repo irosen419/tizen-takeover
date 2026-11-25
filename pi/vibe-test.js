@@ -209,6 +209,29 @@ async function main() {
     again.close();
   });
 
+  await check('Spotify could not give the genres: the vibe is kept, the genres are asked again after a while, not on every poll', async () => {
+    rb.requests = [];
+    rb.answer = (id, req, res) => json(res, 200, FEATURES(id));
+    let t = Date.now();
+    let answer = null;
+    const calls = [];
+    const v = looker({ now: () => t, genres: (a) => { calls.push(a); return Promise.resolve(answer); } });
+    v.want('fail1', 'art2');
+    await settle(v);
+    assert.strictEqual(v.get('fail1').source, 'features');
+    assert.deepStrictEqual(v.get('fail1').genres, []);
+    assert.strictEqual(v.want('fail1', 'art2'), false, 'not asked again at once');
+    t += 31 * 60000;
+    answer = ['pop punk'];
+    assert.strictEqual(v.want('fail1', 'art2'), true, 'asked again later');
+    await settle(v);
+    assert.strictEqual(rb.requests.length, 1, 'ReccoBeats only once');
+    assert.deepStrictEqual(calls, ['art2', 'art2']);
+    assert.deepStrictEqual(v.get('fail1').genres, ['pop punk']);
+    assert.strictEqual(v.want('fail1', 'art2'), false);
+    v.close();
+  });
+
   await check('the file survives a restart (no new request); damaged files and 500+ songs are handled', async () => {
     rb.requests = [];
     rb.answer = (id, req, res) => json(res, 200, FEATURES(id));

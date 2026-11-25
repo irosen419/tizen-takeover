@@ -63,6 +63,7 @@
   var lastScene = { stage: '', corner: '' };
   var outfitShown = '';         // the track id whose outfit scene has played
   var lastOutfit = '';
+  var gen = 0;                  // counts leaves: a load from before one is dropped
   var visits = 0;
   var problem = '';
 
@@ -85,6 +86,7 @@
   // "pop punk" is punk, "country rock" is country. The artist list in the
   // config wins ({ "Green Day": "punk" }).
   var OUTFITS = ['punk', 'rock', 'country', 'hiphop', 'synth'];
+  var FIT_ART = { rock: 'grunge' };   // the outfit's pictures, when named otherwise
   var RULES = [
     ['punk', /punk|emo\b|\bska\b/],
     ['country', /country|americana|bluegrass|honky|outlaw/],
@@ -203,9 +205,10 @@
     },
     outfit: function (o) {
       var f = o.outfit;
+      var art = FIT_ART[f] || f;
       return { cast: [
-        { key: 'ian/fit-' + f, x: 0.45, z: 1.1, move: f === 'rock' ? 'sway' : 'lean' },
-        { key: 'ember/fit-' + f, x: 0.56, z: 1.2, move: 'bob', delay: 0.25 }
+        { key: 'ian/fit-' + art, x: 0.45, z: 1.1, move: f === 'rock' ? 'sway' : 'lean' },
+        { key: 'ember/fit-' + art, x: 0.56, z: 1.2, move: 'bob', delay: 0.25 }
       ], spots: [0.5], chip: f };
     },
     headphones: function (o) {
@@ -372,16 +375,29 @@
     var plan = SCENES[name](o);
     var keys = keysOf(plan, o);
     var forHost = host;
+    var mine = ++gen;
+    // Still this visit: no leave since, same page and kind, nobody pressed a key.
+    var still = function () {
+      return mine === gen && host === forHost && !!info && info.mode === mode && (hold || (info.playing && now() - lastKey >= QUIET_MS));
+    };
     cancelLoad = function () {};
     loadList(function (ok) {
+      if (mine !== gen) return;
       if (!ok) { cancelLoad = null; dueAt = now() + 20000; return; }
       cancelLoad = preload(keys, function (imgs) {
+        if (mine !== gen) return;
         cancelLoad = null;
-        if (!imgs) { dueAt = now() + 20000; return; }
-        if (host !== forHost || !info || (!info.playing && !hold) || scene) return;
+        if (!imgs) {
+          dueAt = now() + 20000;
+          // An outfit whose pictures fail doesn't hold up the other scenes.
+          if (name === 'outfit') outfitShown = o.trackId;
+          return;
+        }
+        if (!still() || scene) return;
         try {
           var layer = build(name, plan, o, imgs);
-          scene = { name: name, mode: mode, layer: layer, endAt: hold ? Infinity : now() + (mode === 'stage' ? STAGE_MS : CORNER_MS), chip: plan.chip || '' };
+          scene = { name: name, mode: mode, layer: layer, endAt: hold ? Infinity : now() + (mode === 'stage' ? STAGE_MS : CORNER_MS), chip: plan.chip || '',
+            corner: plan.corner ? { right: info.corner.right, floor: info.corner.floor, left: info.corner.right - info.corner.room } : null };
           lastScene[mode] = name;
           if (name === 'outfit') outfitShown = o.trackId;
           visits += 1;
@@ -404,6 +420,7 @@
   // Sends them off: a fade, then the layer goes. now: no fade (the host is
   // going away or changing).
   function leave(fast) {
+    gen += 1;
     if (cancelLoad) { try { cancelLoad(); } catch (e) { /* */ } cancelLoad = null; }
     if (!scene) return;
     var s = scene;
@@ -426,6 +443,7 @@
   function onKey() {
     lastKey = now();
     if (scene && scene.endAt !== Infinity) leave(false);
+    else if (cancelLoad && !(scene && scene.endAt === Infinity)) { gen += 1; try { cancelLoad(); } catch (e) { /* */ } cancelLoad = null; }
   }
 
   /* ---------- the hub's side ---------- */
@@ -450,6 +468,10 @@
     }
     info = i;
     if (!i.playing && scene && scene.endAt !== Infinity) leave(false);
+    // The corner moved (a chip came, the panel changed): off, rather than
+    // stand over a word. They come back at the next visit, measured again.
+    var c = scene && scene.corner;
+    if (c && i.corner && (i.corner.right - i.corner.room > c.left + 1 || Math.abs(i.corner.floor - c.floor) > 1 || Math.abs(i.corner.right - c.right) > 1)) leave(false);
     if (i.mode === 'stage' && outfit && outfit !== lastOutfit && outfitShown !== i.trackId) {
       lastOutfit = outfit;
       dueAt = Math.min(dueAt, now() + OUTFIT_SOON_MS);

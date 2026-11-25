@@ -21,7 +21,7 @@ The corner is measured each time: anything in the bottom strip (the picture, the
 
 ## Outfits
 
-The Pi sends the first artist's Spotify genres with every song's vibe (`pi/vibe.js`; since server 0.40.0 also for songs ReccoBeats knows, and for songs kept from before, asked once). The TV picks an outfit from them, in this order: `punk` (punk, emo, ska), `country` (country, americana, bluegrass), `hiphop` (hip hop, rap, trap, r&b), `synth` (synth, new wave, 80s, disco, electronic, house), `rock` (grunge, metal, rock, alternative). Nothing matches: no outfit, and the stage scenes play in everyday clothes. `HUB_CONFIG.widgets.nowplaying.bandOutfits` maps an artist's name (any case) to an outfit and wins over the genres: `{ 'Green Day': 'punk' }`.
+The Pi sends the first artist's Spotify genres with every song's vibe (`pi/vibe.js`; since server 0.40.0 also for songs ReccoBeats knows, and for songs kept from before, asked once; when Spotify can't answer, the song keeps its vibe and the genres are asked again 30 minutes later). The TV picks an outfit from them, in this order: `punk` (punk, emo, ska), `country` (country, americana, bluegrass), `hiphop` (hip hop, rap, trap, r&b), `synth` (synth, new wave, 80s, disco, electronic, house), `rock` (grunge, metal, rock, alternative). Nothing matches: no outfit, and the stage scenes play in everyday clothes. `HUB_CONFIG.widgets.nowplaying.bandOutfits` maps an artist's name (any case) to an outfit and wins over the genres: `{ 'Green Day': 'punk' }`.
 
 The chip says "Dressed for punk" ("Vestidos de punk"), first among the card's chips while the scene plays (the card keeps one row of chips; the last ones give way).
 

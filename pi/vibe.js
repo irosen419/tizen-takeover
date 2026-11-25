@@ -211,7 +211,7 @@ function getText(url, timeoutMs) {
  * o.dataDir       where vibes.json lives (null: memory only)
  * o.base          ReccoBeats' address (the stand-in in tests and the preview)
  * o.off           true: never ask ReccoBeats (SPOTIFY_VIBE=off)
- * o.genres(artistId)   resolves to Spotify's genre list for an artist ([] on any problem)
+ * o.genres(artistId)   resolves to Spotify's genre list for an artist ([] when there are none, null when Spotify could not answer)
  * o.found(trackId)     a lookup for this track finished (called whatever the result)
  * o.log, o.now, o.timeoutMs
  */
@@ -299,7 +299,9 @@ function createVibes(o) {
 
   function fresh(id) {
     const e = items.get(id);
-    if (e && e.vibe && e.vibe.source === 'features' && !e.g) return false;   // genres still to add
+    // A ReccoBeats vibe whose genres are still to add (kept from before, or
+    // Spotify could not answer last time and its wait is over).
+    if (e && e.vibe && e.vibe.source === 'features' && !e.g && (!e.retryAt || e.retryAt <= now())) return false;
     return !!e && (!e.retryAt || e.retryAt > now());
   }
 
@@ -341,9 +343,13 @@ function createVibes(o) {
 
   // A ReccoBeats vibe with the artist's genres added (or none, when Spotify
   // has none or refuses).
+  // When Spotify can't answer (null), the vibe is kept without them and the
+  // genres are asked for again after FAILED_RETRY_MS.
   function withGenres(id, vibe, artist) {
-    return askGenres(artist).then((g) => {
-      remember(id, Object.assign({}, vibe, { genres: cleanGenres(g && g.genres) }), 0, true);
+    const ask = goodId(artist) ? Promise.resolve().then(() => genresOf(artist)).catch(() => null) : Promise.resolve([]);
+    return ask.then((list) => {
+      if (Array.isArray(list)) remember(id, Object.assign({}, vibe, { genres: cleanGenres(list) }), 0, true);
+      else remember(id, Object.assign({}, vibe, { genres: [] }), FAILED_RETRY_MS, false);
     });
   }
 

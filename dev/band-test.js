@@ -282,6 +282,36 @@ async function main() {
     });
   }
 
+  await check('a rock song: the rock outfit (its grunge pictures) plays; a key while it loads stops it coming', async () => {
+    mock.reset();
+    mock.vibes('ok', 0);
+    for (let k = 0; k < 8; k++) {
+      await control(pi, 'POST', '/api/spotify/refresh', {});
+      const r = await control(pi, 'GET', '/api/spotify', undefined);
+      if (r.spotify && r.spotify.track && r.spotify.track.title === 'Él') break;
+      mock.next();
+    }
+    const s = await open(pi, ONLY(3, 2), { motion: 'push' });
+    await openFull(s.page);
+    await until(() => s.page.evaluate(() => { const b = window.HUB_NP_BAND.status(); return b.mode === 'stage' && b.outfit === 'rock' ? true : JSON.stringify(b) + ' ' + document.querySelector('.np-title').textContent; }).then((x) => x === true), 8000, 'the stage with the rock outfit');
+    // Slow pictures: a key pressed while they load means no visit.
+    await s.context.route('**/clay/music/*.webp', async (route) => { await sleep(1500); route.continue(); });
+    await hurry(s.page);
+    await until(() => band(s.page).then((b) => b.loading), 6000, 'not loading');
+    await s.page.keyboard.press('ArrowDown');
+    await sleep(2500);
+    let b = await band(s.page);
+    assert(!b.scene && !b.loading, 'a key during the load stops the visit: ' + JSON.stringify(b));
+    await s.context.unroute('**/clay/music/*.webp');
+    await hurry(s.page);
+    await until(() => band(s.page).then((x) => x.scene === 'outfit'), 15000, 'the outfit scene did not come');
+    const L = await layout(s.page);
+    assert(L.cast.map((c) => c.key).join() === 'ian/fit-grunge,ember/fit-grunge', L.cast.map((c) => c.key).join());
+    assert(L.chip === 'Dressed for rock', L.chip);
+    await shot(s.page, 'band-outfit-rock.jpg');
+    await s.context.close();
+  });
+
   await check('any key sends them off at once; a pause too; they come back later', async () => {
     mock.reset();
     await control(pi, 'POST', '/api/spotify/refresh', {});

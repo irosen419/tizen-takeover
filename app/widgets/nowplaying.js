@@ -675,7 +675,7 @@
     pageTick();
     fitPage(body);
     safe(vizSync)();
-        safe(bandSync)();
+    safe(bandSync)();
   }
 
   // The picture as large as the room allows, then the words in what is left.
@@ -1148,7 +1148,7 @@
       vizPress++;
       page = null;
       safe(vizSync)();
-        safe(bandSync)();
+      safe(bandSync)();
     },
 
     onStatus: safe(function () { refresh(false); })
