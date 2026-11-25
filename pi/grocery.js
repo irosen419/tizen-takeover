@@ -94,8 +94,10 @@ function purgeOld(items, now) {
 }
 
 // Applies ops to the list, returns a new list. Throws a 400 error (and the
-// caller keeps the old list) when an op is wrong.
-function applyOps(items, ops, now) {
+// caller keeps the old list) when an op is wrong. results (optional): an
+// array that gets one { op: 'add', id, already } per add, already true when
+// the item was on the list and not ticked (nothing changed).
+function applyOps(items, ops, now, results) {
   if (!Array.isArray(ops) || !ops.length) throw bad('send { "ops": [ ... ] }');
   if (ops.length > MAX_OPS) throw bad('at most ' + MAX_OPS + ' ops at a time');
   let list = purgeOld(items, now).slice();
@@ -111,12 +113,14 @@ function applyOps(items, ops, now) {
         same = list.findIndex((i) => i.name.toLowerCase() === name.toLowerCase() && (!upc || !i.upc || i.upc === upc));
       }
       if (same >= 0) {
+        if (results) results.push({ op: 'add', id: list[same].id, already: !list[same].done });
         if (list[same].done) list[same] = checkItem(list[same], false, now);
         if (upc && !list[same].upc) list[same] = Object.assign({}, list[same], { upc: upc });
         return;
       }
       if (list.length >= MAX_ITEMS) throw bad('the grocery list is full (' + MAX_ITEMS + ' items)');
       list.unshift(cleanItem({ name: name, upc: upc }, now));
+      if (results) results.push({ op: 'add', id: list[0].id, already: false });
     } else if (o.op === 'check' || o.op === 'remove') {
       const at = list.findIndex((i) => i.id === o.id);
       if (at < 0) throw bad('no grocery item has that id');
