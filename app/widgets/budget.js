@@ -186,7 +186,18 @@
     usingAutopay: 'using autopay days',
     usingAutopayShort: 'autopay days',
     // Goals
-    goalStates: { clean: 'Clean', 'on-pace': 'On pace', over: 'Over', under: 'Under' },
+    goalStates: { clean: 'Clean', 'on-pace': 'Heading over', over: 'Over', under: 'Under' },
+    // When the budget app sends a goal's spent and monthly limit (since v0.74.0)
+    goalsWhat: 'Monthly spending limits',
+    goalsWhatShort: 'Monthly limits',
+    goalOver: '{n} over',
+    goalLeft: '{n} left',
+    // {spent} and {limit} in dollars
+    goalOf: '{spent} of {limit} this month',
+    goalOfShort: '{spent} of {limit}',
+    goalPct: '{n}%',
+    goalPace: 'on pace for {n}',
+    goalsNote: 'Limits for this calendar month, set in the budget app (Trends). Not the same as your daily goal.',
     overN: '{n} over',
     overN1: '1 over',
     goalsN: '{n} goals',
@@ -1422,7 +1433,11 @@
     for (var i = 0; i < s.items.length; i++) {
       var g = s.items[i];
       if (!g || !str(g.label) || GOAL_STATES.indexOf(g.state) < 0) continue;
-      out.push({ label: str(g.label), state: g.state, text: str(g.text), pct: num(g.pct) });
+      var spent = num(g.spent);
+      var limit = num(g.limit);
+      var ok = spent !== null && limit !== null && limit > 0;
+      out.push({ label: str(g.label), state: g.state, text: str(g.text), pct: num(g.pct),
+        spent: ok ? spent : null, limit: ok ? limit : null, pace: ok ? num(g.pace) : null });
     }
     return out;
   }
@@ -1433,14 +1448,40 @@
     return n;
   }
 
+  // With spent and limit the TV words the goal itself, in the hub's language:
+  // "$62 over" or "$82 left" beside the label, "$462 of $400 this month · 116%"
+  // under the bar (or "on pace for $229" when it is heading over).
+  function goalWords(g) {
+    if (g.limit === null) return null;
+    // Whole dollars first, so "$62 over" and "$462 of $400" agree.
+    var gap = Math.round(g.spent) - Math.round(g.limit);
+    var side = g.spent > g.limit ? fill(STRINGS.goalOver, { n: cash(Math.max(1, gap)) })
+      : fill(STRINGS.goalLeft, { n: cash(Math.max(0, -gap)) });
+    var of = { spent: cash(g.spent), limit: cash(g.limit) };
+    var tail = g.state === 'on-pace' && g.pace !== null ? fill(STRINGS.goalPace, { n: cash(g.pace) })
+      : fill(STRINGS.goalPct, { n: fmtNum(g.spent / g.limit * 100) });
+    return { side: side, under: [fill(STRINGS.goalOf, of) + STRINGS.sep + tail, fill(STRINGS.goalOfShort, of) + STRINGS.sep + tail, fill(STRINGS.goalOfShort, of)] };
+  }
+
   // One goal: label, a bar (or its state in words when there is no
-  // percentage) and its own short text.
+  // percentage) and its own short text. Over its limit, the bar runs to what
+  // was spent with a mark where the limit is.
   function goalRow(g, panel) {
+    var words = goalWords(g);
     var row = el('div', 'bu-grow is-g-' + g.state + (panel ? ' bu-psec f' : ''));
     var top = el('div', 'bu-grow-top', row);
     el('span', 'bu-grow-label bu-cut', top, g.label);
-    el('span', 'bu-grow-text', top, g.text || STRINGS.goalStates[g.state]);
-    if (g.pct !== null) {
+    el('span', 'bu-grow-text', top, words ? words.side : (g.text || STRINGS.goalStates[g.state]));
+    if (words) {
+      var bar = el('div', 'bu-meter is-goal', row);
+      var over = g.spent > g.limit;
+      var w = over ? 100 : g.spent / g.limit * 100;
+      el('span', 'bu-meter-fill', bar).style.width = (w > 0 ? Math.max(2, Math.round(w)) : 0) + '%';
+      if (over) el('span', 'bu-meter-tick', bar).style.left = (g.limit / g.spent * 100).toFixed(1) + '%';
+      var sub = el('div', 'bu-grow-sub', row);
+      row.goalSub = function () { fitForms(sub, words.under); };
+      sub.textContent = words.under[0];
+    } else if (g.pct !== null) {
       var track = el('div', 'bu-meter is-goal', row);
       var f = el('span', 'bu-meter-fill', track);
       f.style.width = (g.pct > 0 ? Math.max(2, Math.round(g.pct)) : 0) + '%';
@@ -1448,6 +1489,16 @@
       el('div', 'bu-grow-state', row, STRINGS.goalStates[g.state]);
     }
     return row;
+  }
+
+  // Fits each row's line under the bar once the rows are on screen.
+  function fitSubs(rows) {
+    for (var i = 0; i < rows.length; i++) if (rows[i].goalSub && rows[i].parentNode) rows[i].goalSub();
+  }
+
+  function hasLimits(list) {
+    for (var i = 0; i < list.length; i++) if (list[i].limit !== null) return true;
+    return false;
   }
 
   function goalsSummary(list) {
@@ -1491,26 +1542,40 @@
       }
       return;
     }
+    if (hasLimits(list)) {
+      // What these goals are, and how many are over, above the rows.
+      var cap = el('div', 'bu-gcap', root);
+      var what = el('span', 'bu-gcap-what bu-cut', cap);
+      if (over) el('span', 'bu-gcap-over', cap, STRINGS.sep.replace(/^ /, '\u00a0') + (over === 1 ? STRINGS.overN1 : fill(STRINGS.overN, { n: fmtNum(over) })));
+      fitForms(what, [STRINGS.goalsWhat, STRINGS.goalsWhatShort]);
+    }
     var box = el('div', 'bu-list bu-glist' + (size.width === 'narrow' ? ' is-narrow' : ''), root);
     var more = el('div', 'bu-more', root);
     var rows = [];
     for (var k = 0; k < list.length; k++) rows.push(goalRow(list[k], false));
     fitRows(box, more, rows);
+    fitSubs(rows);
   }
 
   function goalsPanel(root, ctx, full) {
     var list = shown() ? goalsData() : null;
     if (!list) return panelMessage(root, emptyState());
     var wrap = el('div', 'bu-pwrap bu-gpanel' + (full ? ' is-full' : '') + (staleAt() ? ' is-stale' : ''), root);
-    var sum = el('div', 'bu-pline', wrap, goalsSummary(list)[0]);
-    if (overCount(list)) sum.className += ' is-neg';
+    var limits = hasLimits(list);
+    var sum = el('div', 'bu-pline', wrap);
+    if (limits) el('span', 'bu-gcap-what', sum, STRINGS.goalsWhat + STRINGS.sep);
+    el('span', overCount(list) ? 'is-neg' : '', sum, goalsSummary(list)[limits ? 1 : 0]);
     if (!list.length) el('div', 'bu-pline is-quiet', wrap, STRINGS.noGoals);
+    var rows = [];
     for (var i = 0; i < list.length; i++) {
       var row = goalRow(list[i], true);
       row.setAttribute('data-key', 'goal-' + i);
       if (i === 0) row.setAttribute('data-autofocus', '');
       wrap.appendChild(row);
+      rows.push(row);
     }
+    if (limits) el('div', 'bu-pline is-quiet bu-gnote', wrap, STRINGS.goalsNote);
+    fitSubs(rows);
   }
 
   /* ---------- the banner: a new charge at a merchant that was cut ---------- */
