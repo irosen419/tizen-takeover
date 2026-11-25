@@ -330,6 +330,15 @@ async function main() {
     assert.ok(/must be a list, or an object with "items"/.test(one('goals', 'many').error));
   });
 
+  await check('goals: spent and limit go together; pace only beside them', () => {
+    const g = { label: 'Dining', state: 'over', text: '$62 over', pct: 100 };
+    const full = one('goals', [Object.assign({}, g, { spent: 462.404, limit: 400, pace: 801 })]).clean.items[0];
+    assert.deepStrictEqual(full, Object.assign({}, g, { spent: 462.4, limit: 400, pace: 801 }));
+    assert.ok(/"spent" and "limit" go together/.test(one('goals', [Object.assign({}, g, { spent: 10 })]).error));
+    assert.ok(/"limit" must be a number more than 0/.test(one('goals', [Object.assign({}, g, { spent: 0, limit: 0 })]).error));
+    assert.strictEqual('pace' in one('goals', [Object.assign({}, g, { pace: 5 })]).clean.items[0], false);
+  });
+
   await check('alerts: id and label only (an amount is dropped), unique ids, at most 5', () => {
     const a = one('alerts', [{ id: 'x1', label: 'Corner Bakery Stand', amount: 6.5 }]).clean;
     assert.deepStrictEqual(a.items, [{ id: 'x1', label: 'Corner Bakery Stand' }]);

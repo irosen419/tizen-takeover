@@ -176,7 +176,7 @@ const photos = require('./photos');
 const budgetgoal = require('./budgetgoal');
 const prefs = require('./prefs');
 
-const SERVER_VERSION = '0.39.0';
+const SERVER_VERSION = '0.40.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
