@@ -180,14 +180,33 @@ async function main() {
     assert.ok(/^HomeHub\//.test(rb.requests[0].headers['user-agent']), rb.requests[0].headers['user-agent']);
     assert.strictEqual(rb.requests[0].headers.authorization, undefined);
     assert.strictEqual(rb.requests[0].headers.cookie, undefined);
-    assert.strictEqual(v.genreCalls.length, 0, 'no genres needed');
-    assert.deepStrictEqual(v.get('abc123'), { source: 'features', tempo: 120, energy: 0.8, valence: 0.6, dance: 0.7, acoustic: 0.1, genres: [], id: 'abc123' });
+    assert.strictEqual(v.genreCalls.length, 1, 'the artist\'s genres are asked for too (outfits on the TV)');
+    assert.deepStrictEqual(v.get('abc123'), { source: 'features', tempo: 120, energy: 0.8, valence: 0.6, dance: 0.7, acoustic: 0.1, genres: ['indie rock', 'garage rock'], id: 'abc123' });
     // A cache hit: no second request.
     assert.strictEqual(v.want('abc123', 'art1'), false);
     await sleep(50);
     assert.strictEqual(rb.requests.length, 1);
     v.flush();
     v.close();
+  });
+
+  await check('a song kept from before genres were added: only its genres are asked for, once', async () => {
+    rb.requests = [];
+    const dir = tmpDir();
+    const old = { source: 'features', tempo: 120, energy: 0.8, valence: 0.6, dance: 0.7, acoustic: 0.1, genres: [] };
+    fs.writeFileSync(path.join(dir, 'vibes.json'), JSON.stringify({ v: 1, items: [{ id: 'old1', vibe: old, at: Date.now(), retryAt: 0 }] }));
+    const v = looker({ dataDir: dir });
+    assert.strictEqual(v.want('old1', 'art9'), true);
+    await settle(v);
+    assert.strictEqual(rb.requests.length, 0, 'ReccoBeats is not asked again');
+    assert.deepStrictEqual(v.genreCalls, ['art9']);
+    assert.deepStrictEqual(v.get('old1').genres, ['indie rock', 'garage rock']);
+    assert.strictEqual(v.want('old1', 'art9'), false, 'now fresh');
+    v.flush();
+    v.close();
+    const again = looker({ dataDir: dir });
+    assert.strictEqual(again.want('old1', 'art9'), false, 'the genres-asked mark survives a restart');
+    again.close();
   });
 
   await check('the file survives a restart (no new request); damaged files and 500+ songs are handled', async () => {
@@ -396,7 +415,7 @@ async function main() {
     await piSettle(h);
     r = await state(h);
     assert.strictEqual(r.rev, rev0 + 1);
-    assert.deepStrictEqual(r.data.vibe, { source: 'features', tempo: 124, energy: 0.78, valence: 0.82, dance: 0.84, acoustic: 0.08, genres: [], id: 'mock0001' });
+    assert.deepStrictEqual(r.data.vibe, { source: 'features', tempo: 124, energy: 0.78, valence: 0.82, dance: 0.84, acoustic: 0.08, genres: ['indie pop', 'nu disco'], id: 'mock0001' });
     assert.ok(Math.abs(r.data.progressMs - 62000 - (Date.now() - r.data.at)) < 4000, 'the position was brought up to date');
     for (let i = 0; i < 3; i++) { await sleep(60); await h.spotify.poll(); }
     assert.strictEqual((await state(h)).rev, rev0 + 1, 'no flicker, no repeats');

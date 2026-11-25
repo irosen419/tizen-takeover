@@ -246,7 +246,7 @@ function createVibes(o) {
         if (!isObj(e) || !goodId(e.id) || !isNum(e.at)) return;
         const v = e.vibe === null ? null : cleanVibe(e.vibe);
         if (e.vibe !== null && !v) return;
-        items.set(e.id, { vibe: v, at: e.at, retryAt: isNum(e.retryAt) ? e.retryAt : 0 });
+        items.set(e.id, { vibe: v, at: e.at, retryAt: isNum(e.retryAt) ? e.retryAt : 0, g: e.g === true });
       });
     } catch (e) { /* none yet, or damaged: start empty */ }
   }
@@ -267,7 +267,7 @@ function createVibes(o) {
     try {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       const list = [];
-      items.forEach((e, id) => list.push({ id: id, vibe: e.vibe, at: e.at, retryAt: e.retryAt }));
+      items.forEach((e, id) => list.push({ id: id, vibe: e.vibe, at: e.at, retryAt: e.retryAt, g: e.g === true }));
       const tmp = file + '.tmp-' + process.pid;
       fs.writeFileSync(tmp, JSON.stringify({ v: 1, items: list }) + '\n');
       fs.renameSync(tmp, file);
@@ -276,9 +276,11 @@ function createVibes(o) {
     }
   }
 
-  function remember(id, vibe, retryAfter) {
+  // g: the artist's genres were asked for too (a vibe from ReccoBeats has
+  // none of its own; the TV dresses Ian and Ember by them).
+  function remember(id, vibe, retryAfter, g) {
     items.delete(id);                  // re-adding puts it last: newest
-    items.set(id, { vibe: vibe, at: now(), retryAt: retryAfter ? now() + retryAfter : 0 });
+    items.set(id, { vibe: vibe, at: now(), retryAt: retryAfter ? now() + retryAfter : 0, g: g === true });
     while (items.size > MAX_ITEMS) items.delete(items.keys().next().value);
     save();
   }
@@ -297,6 +299,7 @@ function createVibes(o) {
 
   function fresh(id) {
     const e = items.get(id);
+    if (e && e.vibe && e.vibe.source === 'features' && !e.g) return false;   // genres still to add
     return !!e && (!e.retryAt || e.retryAt > now());
   }
 
@@ -336,14 +339,25 @@ function createVibes(o) {
     return Promise.resolve().then(() => genresOf(artist)).then((list) => fromGenres(list), () => null);
   }
 
+  // A ReccoBeats vibe with the artist's genres added (or none, when Spotify
+  // has none or refuses).
+  function withGenres(id, vibe, artist) {
+    return askGenres(artist).then((g) => {
+      remember(id, Object.assign({}, vibe, { genres: cleanGenres(g && g.genres) }), 0, true);
+    });
+  }
+
   function run(id, artist) {
     busy = id;
     lookups += 1;
-    askRecco(id).then((r) => {
+    const kept = items.get(id);
+    const first = kept && kept.vibe && kept.vibe.source === 'features' && !kept.g
+      ? Promise.resolve({ kind: 'kept', vibe: kept.vibe }) : askRecco(id);
+    first.then((r) => {
+      if (r.kind === 'kept') return withGenres(id, r.vibe, artist);
       if (r.kind === 'found') {
         lastProblem = '';
-        remember(id, r.vibe, 0);
-        return;
+        return withGenres(id, r.vibe, artist);
       }
       if (r.kind === 'failed') problem(r.why);
       return askGenres(artist).then((g) => {

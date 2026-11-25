@@ -360,6 +360,13 @@
   // The song's vibe from the Pi (pi/vibe.js), checked again here: null when
   // there is none (an older Pi, a podcast, not known yet) or it belongs to
   // another song.
+  function genreList(g) {
+    var out = [];
+    if (!g || typeof g.length !== 'number') return out;
+    for (var i = 0; i < g.length && out.length < 8; i++) if (typeof g[i] === 'string' && g[i].length <= 60) out.push(g[i]);
+    return out;
+  }
+
   function vibeOf(v) {
     var x = data && data.vibe;
     if (!x || typeof x !== 'object' || !v.track || v.other || v.track.kind === 'episode') return null;
@@ -370,7 +377,8 @@
     return {
       source: x.source,
       tempo: typeof x.tempo === 'number' && x.tempo >= 40 && x.tempo <= 220 ? x.tempo : 0,
-      energy: u(x.energy, 0.5), valence: u(x.valence, 0.5), dance: u(x.dance, 0.5), acoustic: u(x.acoustic, 0.3)
+      energy: u(x.energy, 0.5), valence: u(x.valence, 0.5), dance: u(x.dance, 0.5), acoustic: u(x.acoustic, 0.3),
+      genres: genreList(x.genres)
     };
   }
 
@@ -667,6 +675,7 @@
     pageTick();
     fitPage(body);
     safe(vizSync)();
+        safe(bandSync)();
   }
 
   // The picture as large as the room allows, then the words in what is left.
@@ -867,6 +876,94 @@
     trimChips();
   }
 
+  /* ---------- Ian and Ember (nowplaying-band.js) ---------- */
+
+  // Full screen with the visualizer and the small card: the stage. The
+  // expanded page, or full screen without the visualizer: the corner, if the
+  // bottom right has room beside the chips and the button.
+  function bandSync() {
+    var B = window.HUB_NP_BAND;
+    if (!B || !B.sync) return;
+    var v = page && page.v;
+    var body = page && page.root.parentNode;
+    var host = body && body.parentNode;
+    var open = !!page && !!C && !!C.isOpen && C.isOpen();
+    if (!open || !host || !page.hasSong || !v.track || v.track.kind === 'episode' || (v.kind !== 'playing' && v.kind !== 'paused')) {
+      B.sync(null);
+      bandChip('');
+      return;
+    }
+    var stage = !!(page.full && page.vizOn && page.compact);
+    var vb = vibeOf(v);
+    var level = '';
+    if (stage) { try { level = window.HUB_NP_VIZ.plan(vizChoice(v)); } catch (e) { level = ''; } }
+    var info = {
+      mode: stage ? 'stage' : 'corner',
+      playing: v.kind === 'playing',
+      tempo: vb ? vb.tempo : 0,
+      level: level,
+      genres: vb ? vb.genres : [],
+      artist: v.track.artist || '',
+      trackId: String(v.track.id || v.track.title || ''),
+      config: (C && C.config) || {},
+      chip: bandChip
+    };
+    if (!stage) {
+      info.corner = bandCorner(host);
+      if (!info.corner) { B.sync(null); bandChip(''); return; }
+    }
+    B.sync(host, info);
+  }
+
+  // The free bottom-right corner of the page, in the panel's own px: right
+  // of anything in the bottom 170 px (times the zoom). The feet stand just
+  // above the panel's bottom edge.
+  function bandCorner(host) {
+    var r = rem();
+    var hr = host.getBoundingClientRect();
+    var k = host.offsetWidth ? hr.width / host.offsetWidth : 1;
+    if (!k) return null;
+    var H = host.offsetHeight, W = host.offsetWidth;
+    var z = page.full ? 1.3 : 1;
+    var floor = H - 0.35 * r;
+    var top = floor - 170 * z;
+    var left = 0;
+    var parts = [page.art];
+    var kids = page.foot ? page.foot.querySelectorAll('.np-chips, .np-chip, .np-actions, .np-viz-btn, .np-times, .np-bar') : [];
+    for (var i = 0; i < kids.length; i++) parts.push(kids[i]);
+    for (var j = 0; j < parts.length; j++) {
+      var n = parts[j];
+      if (!n || !n.getBoundingClientRect || n.offsetHeight === 0) continue;
+      var b = n.getBoundingClientRect();
+      var bt = (b.top - hr.top) / k, bb = (b.bottom - hr.top) / k, br = (b.right - hr.left) / k;
+      if (n.className.indexOf('np-chips') >= 0) {
+        // A chips row is as wide as its column; only its chips count.
+        continue;
+      }
+      if (bb > top && bt < floor && br > left) left = br;
+    }
+    var right = W - 1.4 * r;
+    return { right: right, floor: floor, room: right - left - 0.8 * r, z: z };
+  }
+
+  var OUTFIT_WORDS = { punk: 'punk', rock: 'rock', country: 'country', hiphop: 'hip hop', synth: 'synth-pop' };
+
+  // "Dressed for punk" among the chips while the outfit scene plays.
+  function bandChip(word) {
+    if (!page || !page.chips) return;
+    var chip = page.chips.querySelector('.np-chip-band');
+    if (!word || !OUTFIT_WORDS[word]) { if (chip) { chip.parentNode.removeChild(chip); trimChips(); } return; }
+    var text = T('nowplaying.bandChip', 'Dressed for {genre}', { genre: T('nowplaying.outfit.' + word, OUTFIT_WORDS[word]) });
+    if (!chip) {
+      // First in the row: while it plays it is the news, and a full card row
+      // drops chips from the end.
+      chip = el('span', 'np-chip np-chip-band');
+      page.chips.insertBefore(chip, page.chips.firstChild);
+    }
+    if (chip.textContent !== text) chip.textContent = text;
+    trimChips();
+  }
+
   /* ---------- keeping up ---------- */
 
   function tick() {
@@ -960,6 +1057,7 @@
         page.v = pv;
         pageTick();
         safe(vizSync)();
+        safe(bandSync)();
       }
       return;
     }
@@ -1030,6 +1128,7 @@
         body.innerHTML = '';
         el('div', 'np-fallback', body, T('nowplaying.broken', 'Now Playing couldn’t be shown.'));
         safe(vizSync)();
+        safe(bandSync)();
       }
     },
 
@@ -1049,6 +1148,7 @@
       vizPress++;
       page = null;
       safe(vizSync)();
+        safe(bandSync)();
     },
 
     onStatus: safe(function () { refresh(false); })
