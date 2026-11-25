@@ -27,4 +27,4 @@ PRs never change the version. Right before merging: `node dev/bump.js minor` (or
 `node dev/hub-remote.js status` (is the Pi up), `node dev/hub-remote.js <cmd> '<json args>'` (one-line result). Commands: COMMANDS in `pi/mailbox.js`. It cannot git pull or restart: Ian restarts (`hubup` on the Pi, see `pi/aliases.sh`); never ask him to run steps you can send through the mailbox.
 
 ## Deploy
-Data/content changes reach the TV through the mailbox, no restart. Code in `pi/`: Ian runs `hubup` (pull, restart hub, then budget). Restarts are always confirmed with Ian first. After merging to `main`, jsDelivr may lag; the About panel (Clock page) shows the real version.
+Data/content changes reach the TV through the mailbox, no restart. Code in `pi/`: Ian runs `hubup` (pull, restart hub, then budget). Restarts are always confirmed with Ian first. Any lasting change made by hand on the Pi (sudo, installs, timers, keys) gets a row with its undo in `docs/pi-commands-and-undos.md`. After merging to `main`, jsDelivr may lag; the About panel (Clock page) shows the real version.
