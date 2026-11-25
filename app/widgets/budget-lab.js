@@ -29,7 +29,7 @@
  * the math module's order: a freed dollar covers card day first.
  *
  * Session: the cap, the mode, the keep goal and the cuts, in this file's memory only,
- * until the hub reloads. Saved: 'budget.capPref' in app/prefs.js, shared by
+ * while the panel is open; closing it drops them (only OK saves). Saved: 'budget.capPref' in app/prefs.js, shared by
  * every screen through the Pi = { v: 1, cardDate, keep, at }, a keep amount
  * re-averaged each morning and dropped when card day moves on. With none
  * saved, the daily goal stands in as the saved cap ("Your goal $60 a day").
@@ -1954,9 +1954,14 @@
     onMove: function (dir, from) { return onMove(dir, from); },
     onSelect: function (target, ctx) { try { onSelect(target, ctx); } catch (e) { warn('select: ' + (e && e.message)); } },
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
-    // The tile's suggested move follows the session cap: drawn again once
-    // the panel closes, not on every key press.
-    onClose: function (ctx) { chartStop(); LAB.refs = null; LAB.hold = null; LAB.goal = { value: null, state: '' }; ctx.redrawTile(); }
+    // Leaving the lab in any way (Back, Menu, another page, a command)
+    // drops what was tried and not saved: the cap snaps back to the
+    // calculated one, so the tile never shows an unsaved figure. Only OK saves.
+    onClose: function (ctx) {
+      chartStop(); LAB.refs = null; LAB.hold = null; LAB.goal = { value: null, state: '' };
+      LAB.session = newSession();
+      ctx.redrawTile();
+    }
   };
   Object.defineProperty(widget, 'title', { get: function () { return STRINGS.titles.lab; }, enumerable: true, configurable: true });
   Object.defineProperty(widget, 'shortTitle', { get: function () { return STRINGS.titlesShort.lab; }, enumerable: true, configurable: true });

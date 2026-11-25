@@ -856,34 +856,36 @@ async function main() {
       }
     });
 
-    await check('Guest mode: Budget lab keeps the session and the saved cap; its amounts blur on the tile and the panel, and come back sharp', async () => {
+    await check('Guest mode: Budget lab keeps the saved cap; closing drops the unsaved cap; its amounts blur on the tile and the panel, and come back sharp', async () => {
       const pref = JSON.stringify({ v: 1, cardDate: '2026-11-19', keep: 3.4, at: FRESH });
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]', [PREF]: pref } });
       try {
+        const start = await text(page, LAB_TILE);
         await H.openPanel(page, 'budget-lab');
         await H.key(page, 'ArrowRight', 4);
         assert((await session(page)).cap === 66, 'session: ' + JSON.stringify(await session(page)));
         await H.key(page, 'Escape');
         await H.idle(page);
         const sharp = await text(page, LAB_TILE);
+        assert(sharp === start, 'the tile kept the unsaved cap: ' + start + ' -> ' + sharp);
         await page.evaluate(() => window.HUB_GUEST.set(true));
         await H.sleep(300);
         await allBlurred(page, LAB_TILE, 'tile');
         assert(await text(page, LAB_TILE) === sharp, 'the tile changed: ' + await text(page, LAB_TILE));
-        assert((await session(page)).cap === 66, 'session dropped: ' + JSON.stringify(await session(page)));
+        assert((await session(page)).cap === null, 'unsaved cap kept after closing: ' + JSON.stringify(await session(page)));
         assert(await page.evaluate(() => !!window.HUB_PREFS.get('budget.capPref')), 'Guest mode deleted the saved cap');
         await H.openPanel(page, 'budget-lab');
         await allBlurred(page, '#panel', 'panel');
         // A press still works and its new amount is blurred too.
         await H.key(page, 'ArrowRight');
-        assert((await session(page)).cap === 67, 'press: ' + JSON.stringify(await session(page)));
+        assert((await session(page)).cap === 63, 'press: ' + JSON.stringify(await session(page)));
         await allBlurred(page, '#panel', 'panel after a press');
         await H.key(page, 'Escape');
         await H.idle(page);
         await page.evaluate(() => window.HUB_GUEST.set(false));
         await H.sleep(300);
         assert(!(await has(page, '.guest-blur')), 'a blur stayed');
-        assert(/\$67/.test(await text(page, LAB_TILE)) || /Short by|Skip/.test(await text(page, LAB_TILE)), 'after Guest mode: ' + await text(page, LAB_TILE));
+        assert(await text(page, LAB_TILE) === start, 'after Guest mode: ' + await text(page, LAB_TILE));
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -1199,12 +1201,12 @@ async function main() {
         assert(after.end[1] < before.end[1] && after.end[1] >= 0, 'end: ' + before.end + ' to ' + after.end);
         const r = await page.evaluate(() => window.HUB_BUDGET_LAB_TEST.result());
         assert(after.gap === 'Short by $' + Math.ceil(-r.keep - 1e-9), 'the gap after release: ' + after.gap + ', K ' + r.keep);
-        // Drawn again from nothing at the same session, the owed line ends in the same place.
+        // Closed without OK and opened again: back at the calculated cap, the owed line where it started.
         await H.key(page, 'Escape');
         await H.idle(page);
         await H.openPanel(page, 'budget-lab');
         const again = await chartOf(page);
-        assert(again.end.join() === after.end.join() && again.gap === after.gap && again.room === before.room, 'redrawn: ' + again.end + ' vs ' + after.end);
+        assert(again.end.join() === before.end.join() && again.room === before.room, 'redrawn: ' + again.end + ' vs ' + before.end);
         noErrors(page);
       } finally {
         await page.ctx.close();
@@ -1239,7 +1241,7 @@ async function main() {
       }
     });
 
-    await check('Guest mode: Budget lab keeps the merchants and Put it somewhere with their names, amounts blurred, and the session cuts', async () => {
+    await check('Guest mode: Budget lab keeps the merchants and Put it somewhere with their names, amounts blurred, and the cuts; closing drops unsaved cuts', async () => {
       const page = await env.newPage({ layout: GUEST_ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         await H.openPanel(page, 'budget-lab');
@@ -1248,10 +1250,13 @@ async function main() {
         assert((await session(page)).cuts['Quick Bites Delivery'] === 5, 'session: ' + JSON.stringify(await session(page)));
         await H.key(page, 'Escape');
         await H.idle(page);
+        assert(!Object.keys((await session(page)).cuts).length, 'unsaved cuts kept after closing: ' + JSON.stringify(await session(page)));
         await page.evaluate(() => window.HUB_GUEST.set(true));
         await H.sleep(300);
-        assert((await session(page)).cuts['Quick Bites Delivery'] === 5, 'cuts dropped: ' + JSON.stringify(await session(page)));
         await H.openPanel(page, 'budget-lab');
+        await goTo(page, 'cut-1');
+        await press(page, 'ArrowRight', 5);
+        assert((await session(page)).cuts['Quick Bites Delivery'] === 5, 'cuts in guest mode: ' + JSON.stringify(await session(page)));
         assert(await has(page, '#panel .bl-cut') && await has(page, '#panel .bl-dest'), 'rows not drawn');
         const p = await allBlurred(page, '#panel', 'panel');
         assert(/Quick Bites/.test(p) && /Savings/.test(p), 'names: ' + p);
