@@ -23,6 +23,9 @@
  *            out here) on it. The time sits inside the arc. Sunrise and
  *            sunset are worked out on the TV for the weather's city point
  *            (HUB_CONFIG.widgets.weather.location), so no feed is needed.
+ *            At 3x2 and bigger the tile is a 24-hour dial instead: noon at
+ *            the top, midnight at the bottom, the sun at the time and the
+ *            moon where it really is (low-precision places, about a degree).
  *
  * A change on the page redraws the tile at once (ctx.redrawTile).
  *
@@ -44,6 +47,7 @@
   var tileFace = null; // the analog tile's face, or null
   var mini = null;    // the small analog strip's parts (face, time, date), or null
   var sunTile = null; // the Sun path tile's parts, or null
+  var sunDial = null; // the 24-hour Sun dial's parts (3x2 and bigger), or null
   var tileTimer = null;
   var page = null;    // the open page's parts, or null
   var pageTimer = null;
@@ -197,6 +201,7 @@
   function tick() {
     if (mini) miniTick();
     if (sunTile) sunTileTick();
+    if (sunDial) sunDialTick();
     if (!els) return;
     var now = new Date();
     var t = timeParts(now);
@@ -700,6 +705,182 @@
     t.time.style.bottom = 'calc(0.35rem + ' + t.lift + 'px)';
   }
 
+  /* ---------- the sun and the moon in the sky ---------- */
+
+  // Low-precision places of the sun and the moon (about a degree): where
+  // each is in the sky now, for the 24-hour dial. Days from J2000.0.
+  function j2000(ms) { return ms / DAY_MS - 10957.5; }
+
+  function sunRaDec(d) {
+    var L = 280.460 + 0.9856474 * d, g = rad(357.528 + 0.9856003 * d);
+    var lam = rad(L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)), e = rad(23.439);
+    return { ra: deg(Math.atan2(Math.cos(e) * Math.sin(lam), Math.cos(lam))), dec: deg(Math.asin(Math.sin(e) * Math.sin(lam))) };
+  }
+
+  function moonRaDec(d) {
+    var L = 218.316 + 13.176396 * d, M = rad(134.963 + 13.064993 * d), F = rad(93.272 + 13.229350 * d);
+    var D = rad(297.850 + 12.190749 * d), Ms = rad(357.529 + 0.98560028 * d);
+    var lon = rad(L + 6.289 * Math.sin(M) + 1.274 * Math.sin(2 * D - M) + 0.658 * Math.sin(2 * D) - 0.186 * Math.sin(Ms));
+    var lat = rad(5.128 * Math.sin(F)), e = rad(23.439);
+    return {
+      ra: deg(Math.atan2(Math.sin(lon) * Math.cos(e) - Math.tan(lat) * Math.sin(e), Math.cos(lon))),
+      dec: deg(Math.asin(Math.sin(lat) * Math.cos(e) + Math.cos(lat) * Math.sin(e) * Math.sin(lon)))
+    };
+  }
+
+  // Hour angle (degrees, -180 to 180: below zero is still rising, east)
+  // and height above the horizon (degrees) of a body at ms.
+  function skyPlace(ms, eq, at) {
+    var st = 280.46061837 + 360.98564736629 * j2000(ms) + at.lon;
+    var H = ((st - eq.ra) % 360 + 540) % 360 - 180;
+    var p = rad(at.lat), de = rad(eq.dec);
+    return { H: H, alt: deg(Math.asin(Math.sin(p) * Math.sin(de) + Math.cos(p) * Math.cos(de) * Math.cos(rad(H)))) };
+  }
+
+  function moonPlace(ms, at) { return skyPlace(ms, moonRaDec(j2000(ms)), at); }
+
+  // The next moonrise (up false) or moonset (up true) after ms, to five
+  // minutes, looking up to 36 hours ahead; null when there is none.
+  function moonNext(ms, at, up) {
+    var step = 3e5, prev = moonPlace(ms, at).alt - 0.125;
+    for (var t = ms + step; t < ms + 1.5 * DAY_MS; t += step) {
+      var a = moonPlace(t, at).alt - 0.125;
+      if (up ? (prev > 0 && a <= 0) : (prev < 0 && a >= 0)) return t - step * a / (a - prev);
+      prev = a;
+    }
+    return null;
+  }
+
+  /* ---------- the 24-hour Sun dial (3x2 and bigger) ---------- */
+
+  // The whole day on a dial: noon at the top, midnight at the bottom,
+  // morning on the left (east). The day (sunrise to sunset) is the warm
+  // part of the ring, the night the cool part, the dashed line between
+  // sunrise and sunset the horizon. The sun sits at the time, the moon
+  // where it really is (its hour angle against the sun's), faint when it's
+  // below the horizon. Beside it: the date, the next sunrise or sunset and
+  // the next moonrise or moonset.
+  function drawSunDial(el) {
+    el.classList.add('today-sund');
+    var art = div('sund-art', el);
+    var txt = div('sund-txt', el);
+    var date = div('sund-date', txt);
+    div('sund-rule', txt);
+    function stat() {
+      var box = div('sund-stat', txt);
+      var k = div('sund-k', box);
+      return { ic: span('sund-ic', k), k: span('sund-kt', k), v: div('sund-v', box) };
+    }
+    sunDial = { el: el, art: art, txt: txt, date: date, sun: stat(), moon: stat(), shown: '', sized: false, moonEv: null };
+    sunDialTick();
+    if (!sunDial.sized) {
+      var mine = sunDial;
+      setTimeout(function () { if (sunDial === mine) { mine.shown = ''; sunDialTick(); } }, 250);
+    }
+  }
+
+  // The dial as tall as the tile (at most 55% of its width); the text in
+  // proportion to it.
+  function sizeSunDial() {
+    var t = sunDial;
+    var h = t.el.clientHeight, w = t.el.clientWidth;
+    if (!h || !w) return false;
+    var px = Math.floor(Math.min(h, w * 0.55));
+    t.art.style.width = px + 'px';
+    t.art.style.height = px + 'px';
+    t.txt.style.fontSize = (px / 7.6).toFixed(1) + 'px';
+    return true;
+  }
+
+  function dialPoint(c, r, a) { return [c + r * Math.sin(a), c - r * Math.cos(a)]; }
+
+  // The angle (radians from the top, clockwise) of a clock time.
+  function dialAngle(ms) {
+    var d = new Date(ms);
+    return ((d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600) - 12) * Math.PI / 12;
+  }
+
+  function drawDial(parent, ms, s, moon, phase) {
+    var c = 100, R = 80, here = place();
+    var svg = svgEl('svg', { viewBox: '8 8 184 184', 'class': 'sund-svg', focusable: 'false', 'aria-hidden': 'true' }, parent);
+    svgEl('circle', { cx: c, cy: c, r: R + 10, 'class': 'sund-face' }, svg);
+    var rp = dialPoint(c, R, dialAngle(s.today.rise)), sp = dialPoint(c, R, dialAngle(s.today.set));
+    var rx = rp[0].toFixed(1), ry = rp[1].toFixed(1), sx = sp[0].toFixed(1), sy = sp[1].toFixed(1);
+    svgEl('path', { d: 'M ' + sx + ' ' + sy + ' A ' + R + ' ' + R + ' 0 1 1 ' + rx + ' ' + ry, 'class': 'sund-night' }, svg);
+    svgEl('path', { d: 'M ' + rx + ' ' + ry + ' A ' + R + ' ' + R + ' 0 0 1 ' + sx + ' ' + sy, 'class': 'sund-day' }, svg);
+    svgEl('line', { x1: (rp[0] - 10).toFixed(1), y1: ry, x2: (sp[0] + 10).toFixed(1), y2: sy, 'class': 'sund-horizon' }, svg);
+    for (var h = 0; h < 24; h++) {
+      var big = h % 6 === 0, a = (h - 12) * Math.PI / 12;
+      var p1 = dialPoint(c, R - 9, a), p2 = dialPoint(c, R - (big ? 17 : 12), a);
+      svgEl('line', { x1: p1[0].toFixed(1), y1: p1[1].toFixed(1), x2: p2[0].toFixed(1), y2: p2[1].toFixed(1), 'class': 'sund-tick' + (big ? ' is-big' : '') }, svg);
+    }
+    svgEl('text', { x: c, y: c - R + 32, 'class': 'sund-lab' }, svg).textContent = T('noon', 'Noon');
+    svgEl('text', { x: c, y: c + R - 23, 'class': 'sund-lab' }, svg).textContent = T('midnight', 'Midnight');
+    svgEl('circle', { cx: rx, cy: ry, r: 2.6, 'class': 'sund-foot' }, svg);
+    svgEl('circle', { cx: sx, cy: sy, r: 2.6, 'class': 'sund-foot' }, svg);
+    svgEl('text', { x: c, y: c + 11, 'class': 'sund-time' }, svg).textContent = timeParts(new Date(ms)).digits;
+    // The moon: as far round from the sun as its hour angle is from the sun's.
+    var sunH = skyPlace(ms, sunRaDec(j2000(ms)), here).H;
+    var mp = dialPoint(c, R, dialAngle(ms) + rad(moon.H - sunH));
+    var mx = +mp[0].toFixed(1), my = +mp[1].toFixed(1);
+    var mg = svgEl('g', { 'class': 'sund-moon' + (moon.alt > 0.125 ? '' : ' is-down') }, svg);
+    svgEl('circle', { cx: mx, cy: my, r: 17, 'class': 'sun-glow' }, mg);
+    svgEl('circle', { cx: mx, cy: my, r: 9, 'class': 'moon-dark' }, mg);
+    var lit = moonLit(mx, my, 9, phase);
+    if (lit) svgEl('path', { d: lit, 'class': 'moon-lit' }, mg);
+    var up = dialPoint(c, R, dialAngle(ms));
+    var sg = svgEl('g', { 'class': 'sund-sun' + (s.day ? '' : ' is-down') }, svg);
+    svgEl('circle', { cx: up[0].toFixed(1), cy: up[1].toFixed(1), r: 17, 'class': 'sun-glow' }, sg);
+    svgEl('circle', { cx: up[0].toFixed(1), cy: up[1].toFixed(1), r: 8.5, 'class': 'sun-disc' }, sg);
+    return svg;
+  }
+
+  // A small sun, a small moon in its phase, or the sunrise mark, for a line.
+  function dialIcon(box, kind, phase) {
+    box.innerHTML = '';
+    if (kind === 'rise') { box.innerHTML = (window.HUB_ICONS && window.HUB_ICONS['wx-sunrise']) || ''; return; }
+    var svg = svgEl('svg', { viewBox: '0 0 20 20', focusable: 'false', 'aria-hidden': 'true' }, box);
+    if (kind === 'sun') { svgEl('circle', { cx: 10, cy: 10, r: 5, 'class': 'sun-disc' }, svg); return; }
+    svgEl('circle', { cx: 10, cy: 10, r: 6, 'class': 'moon-dark' }, svg);
+    var lit = moonLit(10, 10, 6, phase);
+    if (lit) svgEl('path', { d: lit, 'class': 'moon-lit' }, svg);
+  }
+
+  function sunDialTick() {
+    var t = sunDial;
+    var now = new Date(), ms = now.getTime(), here = place();
+    var s = sunNow(ms);
+    var moon = moonPlace(ms, here), moonUp = moon.alt > 0.125, phase = moonPhase(ms);
+    if (!t.moonEv || ms >= t.moonEv.at || t.moonEv.up !== moonUp) {
+      var next = moonNext(ms, here, moonUp);
+      t.moonEv = next ? { at: next, up: moonUp } : null;
+    }
+    var tomorrow = !s.day && new Date(s.to).toDateString() !== now.toDateString();
+    var sunK = s.day ? T('sunset', 'Sunset') : tomorrow ? T('sunriseTomorrow', 'Tomorrow') : T('sunrise', 'Sunrise');
+    var moonK = moonUp ? T('moonset', 'Moonset') : T('moonrise', 'Moonrise');
+    var moonV = t.moonEv ? at(t.moonEv.at) : '–';
+    var date = shortDate(now);
+    var shape = Math.floor(ms / 6e4) + '|' + date + '|' + sunK + '|' + moonK + '|' + moonV + '|' + hours;
+    if (t.shown === shape && t.sized) return;
+    t.shown = shape;
+    if (!t.sized) t.sized = sizeSunDial();
+    t.art.innerHTML = '';
+    drawDial(t.art, ms, s, moon, phase);
+    t.date.textContent = date;
+    dialIcon(t.sun.ic, s.day ? 'sun' : tomorrow ? 'rise' : 'sun');
+    t.sun.k.textContent = sunK;
+    t.sun.v.textContent = at(s.to);
+    dialIcon(t.moon.ic, 'moon', phase);
+    t.moon.k.textContent = moonK;
+    t.moon.v.textContent = moonV;
+    fitText(t.date);
+    fitText(t.sun.k.parentNode);
+    fitText(t.sun.v);
+    fitText(t.moon.k.parentNode);
+    fitText(t.moon.v);
+  }
+
+
   /* ---------- the Sun path page ---------- */
 
   function drawSunPage(display) {
@@ -987,18 +1168,23 @@
       els = null;
       mini = null;
       sunTile = null;
+      sunDial = null;
       var size = ctx.size ? ctx.size() : null;
       var strip = !!size && size.tier === 'strip';
       el.classList.add('today-tile');
       el.classList.remove('today-mini');
       el.classList.remove('today-sun');
+      el.classList.remove('today-sund');
       el.classList.remove('is-strip');
       if (face === 'sun') {
         el.classList.remove('today-strip');
         el.classList.remove('today-analog');
-        // A wide 2-row tile is laid out like a strip too: arc left, text right.
-        var row = strip || (!!size && size.rows === 2 && size.cols >= 5);
-        drawSunTile(el, row, size ? size.cols : 3);
+        // 3 columns by 2 rows and bigger: the 24-hour dial. Smaller: the arc.
+        if (!strip && size && size.rows >= 2 && size.cols >= 3) {
+          drawSunDial(el);
+          return;
+        }
+        drawSunTile(el, strip, size ? size.cols : 3);
         return;
       }
       if (face === 'analog' && strip && size.cols >= 3) {
