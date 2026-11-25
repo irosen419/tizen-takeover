@@ -177,6 +177,12 @@
     // The page's button that opens the visualizer full screen.
     'nowplaying.viz': 'Visualizador',
     'nowplaying.vizHide': 'Ocultar visualizador',
+    'nowplaying.bandChip': 'Vestidos de {genre}',
+    'nowplaying.outfit.punk': 'punk',
+    'nowplaying.outfit.rock': 'rock',
+    'nowplaying.outfit.country': 'country',
+    'nowplaying.outfit.hiphop': 'hip hop',
+    'nowplaying.outfit.synth': 'synth-pop',
 
     /* ---- Clay wanderers' status in the About panel (app/clay.js) ----
      * Key 'clay.<name>'; scene names and error messages stay as they are. */

@@ -84,7 +84,7 @@ Support folders: `dev/` (tests, screenshot scripts, laptop preview, version tool
 | Network | `XMLHttpRequest`, not `fetch` | `http`, `fetch` |
 | Shared state | `window.HUB_*` globals | module exports |
 
-The main globals: `HUB_CONFIG` (`config.js`), `HUB_WIDGETS` (every widget), `HUB_I18N` (`i18n.js`, English and Spanish), `HUB_LIVE` (`live.js`), `HUB_GUEST`, `HUB_PIN` (`pin.js`), `HUB_ICONS`, `HUB_SHOWS`, `HUB_AUDIO`, `HUB_AGENTS`, `HUB_CLAY`, `HUB_FX`, `HUB_UPDATE`, `HUB_BUILD` (the version). `HUB_TEST` is for tests only. The bare `var HUB_PI` in `config.js` is the Pi's address.
+The main globals: `HUB_CONFIG` (`config.js`), `HUB_WIDGETS` (every widget), `HUB_I18N` (`i18n.js`, English and Spanish), `HUB_LIVE` (`live.js`), `HUB_GUEST`, `HUB_PIN` (`pin.js`), `HUB_ICONS`, `HUB_SHOWS`, `HUB_AUDIO`, `HUB_AGENTS`, `HUB_CLAY`, `HUB_NP_BAND` (Ian and Ember on the Now Playing page, `docs/band.md`), `HUB_FX`, `HUB_UPDATE`, `HUB_BUILD` (the version). `HUB_TEST` is for tests only. The bare `var HUB_PI` in `config.js` is the Pi's address.
 
 Ruby readers: `handler()` is a hand-rolled Rack app with route hashes; a widget is a duck-typed object (implement what you need, skip the rest); each test's `check(name, fn)` is a bare assert, no framework.
 

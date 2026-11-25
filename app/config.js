@@ -492,7 +492,10 @@ var HUB_CONFIG = {
      * ?viz=off|wash|glow|lite|classic|sharplite|sharp|native|radiant on the address
      * tries one for a visit.
      */
-    nowplaying: { visualizer: true },
+    // band: Ian and Ember come out on the Now Playing page (docs/band.md).
+    // bandOutfits: an artist's outfit, over the one its genres pick
+    // (punk, rock, country, hiphop, synth).
+    nowplaying: { visualizer: true, band: true, bandOutfits: { 'Green Day': 'punk' } },
 
     /*
      * Plant sun: when direct sun reaches the plant wall (the "Plants"

@@ -370,12 +370,18 @@ function createPlayer(o) {
     return false;
   }
 
+  // One renewal at a time: the player's poll and a genre lookup that both
+  // find the token stale share the same call.
+  let renewing = null;
   function freshAccess() {
     if (access && accessUntil - 60000 > now()) return Promise.resolve(access);
-    return tokenCall({ grant_type: 'refresh_token', refresh_token: refreshToken }).then((j) => {
+    if (renewing) return renewing;
+    renewing = tokenCall({ grant_type: 'refresh_token', refresh_token: refreshToken }).then((j) => {
+      renewing = null;
       if (takeTokens(j)) { try { saveToken(); } catch (e) { log('Spotify: could not save the renewed sign-in (' + e.message + ')'); } }
       return access;
-    });
+    }, (e) => { renewing = null; throw e; });
+    return renewing;
   }
 
   function apiGet(route) {
@@ -388,14 +394,17 @@ function createPlayer(o) {
     }));
   }
 
-  // Spotify's genres for an artist; [] on any problem (never an error state).
+  // Spotify's genres for an artist: a list (maybe empty), or null when they
+  // could not be read this time (not signed in, refused, down); never an
+  // error state. pi/vibe.js asks again later after a null.
   function artistGenres(artist) {
-    if (!cfg.configured || !refreshToken) return Promise.resolve([]);
+    if (!cfg.configured || !refreshToken) return Promise.resolve(null);
     return apiGet('/v1/artists/' + encodeURIComponent(artist)).then((r) => {
-      if (r.status !== 200) return [];
+      if (r.status === 404) return [];
+      if (r.status !== 200) return null;
       const j = parseJson(r.text);
-      return j && Array.isArray(j.genres) ? j.genres : [];
-    }, () => []);
+      return j && Array.isArray(j.genres) ? j.genres : null;
+    }, () => null);
   }
 
   // A lookup ended: if that song still plays and its vibe is new, push it.
