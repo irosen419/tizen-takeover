@@ -11,7 +11,7 @@
  * The keys are a fixed list (KEYS); anything else is refused, so a screen
  * cannot fill the file. A value of null removes the key.
  *
- *   clock.face        'digital' | 'analog'           (Clock tile and page)
+ *   clock.face        'digital' | 'analog' | 'sun'   (Clock tile and page)
  *   clock.hours       '12' | '24'                    (Clock, and the show times)
  *   budget.capPref    { v: 1, cardDate, keep, at }    (Budget lab's saved cap)
  *
@@ -49,7 +49,7 @@ function capPref(v) {
 }
 
 const KEYS = {
-  'clock.face': oneOf(['digital', 'analog']),
+  'clock.face': oneOf(['digital', 'analog', 'sun']),
   'clock.hours': oneOf(['12', '24']),
   'budget.capPref': capPref
 };

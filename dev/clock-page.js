@@ -21,7 +21,10 @@
  *   await clockPage.open(page);
  *   await clockPage.pick(page, 'face-analog');   // with the arrows and OK, like the remote
  *   const s = await clockPage.state(page);       // { face, keys, readout, focused, text }
- *   const t = await clockPage.tile(page);        // { face, digits, ampm, window, windowMode, text }
+ *   const t = await clockPage.tile(page);        // { face, digits, ampm, window, windowMode, hands, night, moon, text }
+ *
+ * tile().face is 'digital', 'analog', 'mini' (Analog in a 3x1 or wider
+ * strip: small face, time and date) or 'sun' (Sun path).
  *
  * On Analog the page has no digital time (readout false) and no 12/24
  * group (keys has no hours-*); on Digital it has both. Both faces end with
@@ -132,7 +135,7 @@ function state(page) {
     const root = document.querySelector('.clock-page');
     const f = document.querySelector('#panel .is-focused');
     return {
-      face: root ? (/\bis-analog\b/.test(root.className) ? 'analog' : 'digital') : null,
+      face: root ? (/\bis-analog\b/.test(root.className) ? 'analog' : /\bis-sun\b/.test(root.className) ? 'sun' : 'digital') : null,
       keys: Array.prototype.map.call(document.querySelectorAll('.clock-opt'), (e) => e.getAttribute('data-key')),
       readout: !!document.querySelector('.clock-page .clock-digits, .clock-page .clock-readout, .clock-page .clock-ampm'),
       focused: f ? f.getAttribute('data-key') || f.className : null,
@@ -149,12 +152,15 @@ function tile(page) {
     const q = (sel) => body.querySelector(sel);
     const win = q('.clock-window-text');
     return {
-      face: q('.today-face svg') ? 'analog' : q('.today-time') ? 'digital' : null,
+      face: q('.today-mini-face svg') ? 'mini' : q('.today-sun-arc svg') ? 'sun' : q('.today-face svg') ? 'analog' : q('.today-time') ? 'digital' : null,
       digits: q('.today-digits') ? q('.today-digits').textContent : null,
       ampm: q('.today-ampm') && q('.today-ampm').style.display !== 'none' ? q('.today-ampm').textContent : '',
       window: win ? win.textContent : null,
       windowMode: q('.today-face') ? q('.today-face').getAttribute('data-window') : null,
       second: q('.clock-hand-s') ? q('.clock-hand-s').getAttribute('transform') : null,
+      hands: ['h', 'm'].map((k) => (q('.clock-hand-' + k) ? q('.clock-hand-' + k).getAttribute('transform') : null)),
+      night: !!q('.sun-svg.is-night'),
+      moon: q('.moon-dark') ? (q('.moon-lit') ? 'lit' : 'new') : null,
       text: body.textContent
     };
   });
@@ -178,6 +184,7 @@ async function pick(page, key) {
     if (order.indexOf(atGroup) < 0) k = 'ArrowDown';
     else if (wantGroup !== atGroup) k = order.indexOf(wantGroup) > order.indexOf(atGroup) ? 'ArrowDown' : 'ArrowUp';
     else if (wantGroup === 'look') k = ['look-auto', 'look-day', 'look-night'].indexOf(key) > ['look-auto', 'look-day', 'look-night'].indexOf(at) ? 'ArrowRight' : 'ArrowLeft';
+    else if (wantGroup === 'face') k = ['face-digital', 'face-analog', 'face-sun'].indexOf(key) > ['face-digital', 'face-analog', 'face-sun'].indexOf(at) ? 'ArrowRight' : 'ArrowLeft';
     else k = /analog|24|-es$/.test(key) ? 'ArrowRight' : 'ArrowLeft';
     await page.keyboard.press(k);
     await sleep(80);

@@ -13,7 +13,16 @@
  *            "MON 16" when the face is big enough to read it, "16" on a
  *            small face (a 1x1 or a strip), no window on a tiny one. No
  *            digital time anywhere. The 12/24 choice doesn't apply, so the
- *            page hides it (it stays remembered for Digital).
+ *            page hides it (it stays remembered for Digital). In a strip
+ *            three or more columns wide (Ian's 3x1) the tile is a small
+ *            plain face (12 marks, no numbers) with the digital time and
+ *            the short date beside it, which reads better at that height.
+ *   Sun path the day as a half circle: sunrise on the left, sunset on the
+ *            right, the sun on it now; after dark the same arc is the
+ *            night, sunset to sunrise, with the moon (its real phase, worked
+ *            out here) on it. The time sits inside the arc. Sunrise and
+ *            sunset are worked out on the TV for the weather's city point
+ *            (HUB_CONFIG.widgets.weather.location), so no feed is needed.
  *
  * A change on the page redraws the tile at once (ctx.redrawTile).
  *
@@ -27,11 +36,14 @@
   'use strict';
 
   var SVGNS = 'http://www.w3.org/2000/svg';
-  var FACE_KEY = 'homeHub.clock.face';     // 'digital' | 'analog'
+  var FACE_KEY = 'homeHub.clock.face';     // 'digital' | 'analog' | 'sun'
+  var FACES = ['digital', 'analog', 'sun'];
   var HOURS_KEY = 'homeHub.clock.hours';   // '12' | '24'
 
   var els = null;     // the digital tile's parts, or null
   var tileFace = null; // the analog tile's face, or null
+  var mini = null;    // the small analog strip's parts (face, time, date), or null
+  var sunTile = null; // the Sun path tile's parts, or null
   var tileTimer = null;
   var page = null;    // the open page's parts, or null
   var pageTimer = null;
@@ -79,7 +91,7 @@
     try { if (window.localStorage) localStorage.setItem(key, value); } catch (e) { /* not kept; fine */ }
   }
 
-  var face = pick(FACE_KEY, ['digital', 'analog'], 'digital');
+  var face = pick(FACE_KEY, FACES, 'digital');
   var hours = pick(HOURS_KEY, ['12', '24'], '12');
 
   /* ---------- small helpers ---------- */
@@ -183,6 +195,8 @@
   }
 
   function tick() {
+    if (mini) miniTick();
+    if (sunTile) sunTileTick();
     if (!els) return;
     var now = new Date();
     var t = timeParts(now);
@@ -338,6 +352,379 @@
     tileTimer = null;
   }
 
+  /* ---------- the small analog strip (3x1 and wider) ---------- */
+
+  // A plain face for a small size: 12 marks (the quarters longer), the
+  // hour and minute hands, no numbers, no window, no second hand.
+  function drawMiniFace(parent) {
+    var svg = svgEl('svg', { viewBox: '0 0 200 200', 'class': 'clock-svg clock-svg-mini', focusable: 'false', 'aria-hidden': 'true' }, parent);
+    svgEl('circle', { cx: 100, cy: 100, r: 98, 'class': 'clock-dial' }, svg);
+    for (var i = 0; i < 12; i++) {
+      var a = i * Math.PI / 6;
+      var q = i % 3 === 0;
+      var r1 = q ? 74 : 84;
+      svgEl('line', {
+        x1: (100 + r1 * Math.sin(a)).toFixed(2), y1: (100 - r1 * Math.cos(a)).toFixed(2),
+        x2: (100 + 92 * Math.sin(a)).toFixed(2), y2: (100 - 92 * Math.cos(a)).toFixed(2),
+        'class': 'clock-tick-h' + (q ? ' is-quarter' : '')
+      }, svg);
+    }
+    var hh = svgEl('g', { 'class': 'clock-hand clock-hand-h' }, svg);
+    svgEl('line', { x1: 100, y1: 112, x2: 100, y2: 48 }, hh);
+    var mh = svgEl('g', { 'class': 'clock-hand clock-hand-m' }, svg);
+    svgEl('line', { x1: 100, y1: 114, x2: 100, y2: 20 }, mh);
+    svgEl('circle', { cx: 100, cy: 100, r: 7, 'class': 'clock-cap' }, svg);
+    svgEl('circle', { cx: 100, cy: 100, r: 2.6, 'class': 'clock-cap-dot' }, svg);
+    return { h: hh, m: mh };
+  }
+
+  function drawMiniTile(el) {
+    var box = div('today-mini-face', el);
+    var txt = div('today-mini-txt', el);
+    var time = div('today-mini-time', txt);
+    mini = {
+      face: drawMiniFace(box),
+      time: time,
+      digits: span('today-digits', time),
+      ampm: span('today-ampm', time),
+      date: div('today-mini-date', txt),
+      shown: ''
+    };
+    miniTick();
+  }
+
+  // Every 15 seconds with the digital tile's tick: the hands, the time and
+  // "Tue, Nov 24" ("mié, 30 sept"). Text only when it changes.
+  function miniTick() {
+    var now = new Date();
+    var m = now.getMinutes();
+    turn(mini.face.m, m * 6 + now.getSeconds() * 0.1);
+    turn(mini.face.h, (now.getHours() % 12) * 30 + m * 0.5);
+    var t = timeParts(now);
+    var date = shortDate(now);
+    var shape = t.digits + '|' + t.ampm + '|' + date;
+    if (mini.shown === shape) return;
+    mini.shown = shape;
+    mini.digits.textContent = t.digits;
+    mini.ampm.textContent = t.ampm;
+    mini.ampm.style.display = t.ampm ? '' : 'none';
+    mini.date.textContent = date;
+    fitWidth(mini.time, mini.ampm);
+    fitText(mini.date);
+  }
+
+  // "Tue, Nov 24" or "mié, 30 sept".
+  function shortDate(now) {
+    return dateText(now, { weekday: 'short' }) + ', ' + dateText(now, { month: 'short', day: 'numeric' });
+  }
+
+  // Shrinks one line of text to fit its width, down to 70%; past that the
+  // CSS ends it in "...". Only when drawn or when its text changes.
+  // keep: start from the size already set on it (not the CSS's).
+  function fitText(node, keep) {
+    if (!keep) node.style.fontSize = '';
+    if (!node.clientWidth || node.scrollWidth <= node.clientWidth + 1) return;
+    var size0 = parseFloat(window.getComputedStyle(node).fontSize) || 20;
+    var size = size0;
+    while (node.scrollWidth > node.clientWidth + 1 && size > size0 * 0.72) {
+      size = size * 0.94;
+      node.style.fontSize = size.toFixed(1) + 'px';
+    }
+  }
+
+  /* ---------- the sun and the moon ---------- */
+
+  var DAY_MS = 864e5;
+
+  // The weather's city point (a rounded spot, never an address).
+  function place() {
+    var all = (window.HUB_CONFIG && window.HUB_CONFIG.widgets) || {};
+    var wl = all.weather && all.weather.location;
+    var ok = wl && typeof wl === 'object';
+    var lat = ok && typeof wl.latitude === 'number' && isFinite(wl.latitude) ? wl.latitude : 32.78;
+    var lon = ok && typeof wl.longitude === 'number' && isFinite(wl.longitude) ? wl.longitude : -96.78;
+    return { lat: lat, lon: lon };
+  }
+
+  function rad(x) { return x * Math.PI / 180; }
+  function deg(x) { return x * 180 / Math.PI; }
+
+  // Sunrise or sunset (ms) on the local day that holds ms, or null when the
+  // sun doesn't rise or set that day. The Almanac for Computers method
+  // (zenith 90.833: the top edge of the sun, with refraction), good to a
+  // minute or two.
+  function riseSet(ms, rising, at) {
+    var d0 = new Date(ms);
+    var y = d0.getFullYear(), m = d0.getMonth() + 1, d = d0.getDate();
+    var mid = new Date(y, m - 1, d).getTime();
+    var n = Math.floor(275 * m / 9) - Math.floor((m + 9) / 12) * (1 + Math.floor((y - 4 * Math.floor(y / 4) + 2) / 3)) + d - 30;
+    var lh = at.lon / 15;
+    var t = n + ((rising ? 6 : 18) - lh) / 24;
+    var M = 0.9856 * t - 3.289;
+    var L = (M + 1.916 * Math.sin(rad(M)) + 0.020 * Math.sin(rad(2 * M)) + 282.634 + 720) % 360;
+    var ra = (deg(Math.atan(0.91764 * Math.tan(rad(L)))) + 360) % 360;
+    ra = (ra + Math.floor(L / 90) * 90 - Math.floor(ra / 90) * 90) / 15;
+    var sd = 0.39782 * Math.sin(rad(L));
+    var cd = Math.cos(Math.asin(sd));
+    var ch = (Math.cos(rad(90.833)) - sd * Math.sin(rad(at.lat))) / (cd * Math.cos(rad(at.lat)));
+    if (ch > 1 || ch < -1) return null;
+    var h = (rising ? 360 - deg(Math.acos(ch)) : deg(Math.acos(ch))) / 15;
+    var ut = ((h + ra - 0.06571 * t - 6.622 - lh) % 24 + 24) % 24;
+    var out = Date.UTC(y, m - 1, d) + ut * 36e5;
+    while (out < mid) out += DAY_MS;
+    while (out >= mid + DAY_MS) out -= DAY_MS;
+    return out;
+  }
+
+  // Sunrise and sunset for the day holding ms; 6:00 and 18:00 when the
+  // sun stays up or down all day (far north or south).
+  function sunDay(ms, at) {
+    var d = new Date(ms);
+    var mid = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    var rise = riseSet(ms, true, at);
+    var set = riseSet(ms, false, at);
+    if (rise === null || set === null || set <= rise) { rise = mid + 6 * 36e5; set = mid + 18 * 36e5; }
+    return { rise: rise, set: set };
+  }
+
+  // Where we are: in the day (sunrise to sunset) or the night (sunset to
+  // sunrise), how far through it (f, 0 to 1), and the times around it.
+  function sunNow(ms) {
+    var at = place();
+    var today = sunDay(ms, at);
+    var y = sunDay(ms - DAY_MS, at);
+    var tm = sunDay(ms + DAY_MS, at);
+    var s = { day: ms >= today.rise && ms < today.set, today: today, yesterday: y, tomorrow: tm };
+    if (s.day) { s.from = today.rise; s.to = today.set; }
+    else if (ms >= today.set) { s.from = today.set; s.to = tm.rise; }
+    else { s.from = y.set; s.to = today.rise; }
+    s.f = Math.max(0, Math.min(1, (ms - s.from) / (s.to - s.from)));
+    return s;
+  }
+
+  // The moon's age as a part of its 29.53-day cycle: 0 new, 0.25 first
+  // quarter, 0.5 full, 0.75 last quarter. From a known new moon (6 January
+  // 2000, 18:14 UTC); good to about half a day, plenty for a picture.
+  function moonPhase(ms) {
+    var p = ((ms - 947182440000) / DAY_MS / 29.530588853) % 1;
+    return p < 0 ? p + 1 : p;
+  }
+
+  // The lit part of the moon at (cx, cy), radius r, as an SVG path, seen
+  // from the north: it grows on the right, wanes from the right. '' near new.
+  function moonLit(cx, cy, r, p) {
+    if (p < 0.02 || p > 0.98) return '';
+    var rx = Math.abs(Math.cos(2 * Math.PI * p)) * r;
+    var top = cx.toFixed(1) + ' ' + (cy - r).toFixed(1);
+    var bottom = cx.toFixed(1) + ' ' + (cy + r).toFixed(1);
+    var waxing = p < 0.5;
+    var edge = waxing ? (p < 0.25 ? 0 : 1) : (p > 0.75 ? 1 : 0);
+    return 'M ' + top + ' A ' + r + ' ' + r + ' 0 0 ' + (waxing ? 1 : 0) + ' ' + bottom +
+      ' A ' + rx.toFixed(2) + ' ' + r + ' 0 0 ' + edge + ' ' + top + ' Z';
+  }
+
+  var arcIds = 0;
+
+  // The arc for where we are, W units across with radius r: the dotted
+  // path, the part already gone lit (warm by day, cool by night), the
+  // horizon, and the sun (or the moon in its phase) at now.
+  function drawArc(parent, s, W, r, small, ms) {
+    var cx = W / 2, cy = r + (small ? 14 : 20), x0 = cx - r, x1 = cx + r;
+    var night = !s.day;
+    var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + (cy + (small ? 4 : 8)), 'class': 'sun-svg' + (night ? ' is-night' : ''),
+      preserveAspectRatio: 'xMidYMax meet', focusable: 'false', 'aria-hidden': 'true' }, parent);
+    var id = 'sun-lit-' + (++arcIds);
+    var defs = svgEl('defs', {}, svg);
+    var g = svgEl('linearGradient', { id: id, x1: 0, x2: 1, y1: 0, y2: 0 }, defs);
+    svgEl('stop', { offset: 0, 'class': 'sun-g0' }, g);
+    svgEl('stop', { offset: 1, 'class': 'sun-g1' }, g);
+    var foot = small ? 10 : 34;
+    svgEl('path', { d: 'M ' + x0 + ' ' + cy + ' A ' + r + ' ' + r + ' 0 0 1 ' + x1 + ' ' + cy, 'class': 'sun-track' }, svg);
+    svgEl('line', { x1: x0 - foot, y1: cy, x2: x1 + foot, y2: cy, 'class': 'sun-horizon' }, svg);
+    var a = Math.PI * (1 - s.f);
+    var px = cx + r * Math.cos(a), py = cy - r * Math.sin(a);
+    if (s.f > 0.002) {
+      svgEl('path', { d: 'M ' + x0 + ' ' + cy + ' A ' + r + ' ' + r + ' 0 0 1 ' + px.toFixed(1) + ' ' + py.toFixed(1),
+        'class': 'sun-lit', stroke: 'url(#' + id + ')' }, svg);
+    }
+    var fr = small ? 2.5 : 4;
+    svgEl('circle', { cx: x0, cy: cy, r: fr, 'class': 'sun-foot' }, svg);
+    svgEl('circle', { cx: x1, cy: cy, r: fr, 'class': 'sun-foot' }, svg);
+    var dr = small ? 8 : night ? 19 : 15;
+    svgEl('circle', { cx: px.toFixed(1), cy: py.toFixed(1), r: small ? 13 : 30, 'class': 'sun-glow' }, svg);
+    if (!night) {
+      svgEl('circle', { cx: px.toFixed(1), cy: py.toFixed(1), r: dr, 'class': 'sun-disc' }, svg);
+    } else {
+      // The moon: its dark side faint, its lit side bright.
+      svgEl('circle', { cx: px.toFixed(1), cy: py.toFixed(1), r: dr, 'class': 'moon-dark' }, svg);
+      var lit = moonLit(px, py, dr, moonPhase(ms));
+      if (lit) svgEl('path', { d: lit, 'class': 'moon-lit' }, svg);
+    }
+    return svg;
+  }
+
+  // "7 h 13 min", "45 min".
+  function span2(ms) {
+    var t = Math.max(0, Math.round(ms / 6e4));
+    var h = Math.floor(t / 60), m = t % 60;
+    return h ? T('hm', '{h} h {m} min').replace('{h}', h).replace('{m}', m) : T('m', '{m} min').replace('{m}', m);
+  }
+
+  // "5:22 PM" (12- or 24-hour, as chosen).
+  function at(ms) {
+    var t = timeParts(new Date(ms));
+    return t.digits + (t.ampm ? ' ' + t.ampm : '');
+  }
+
+  /* ---------- the Sun path tile ---------- */
+
+  // A strip: the arc with the time in it, and beside it "Nov 24" over
+  // "Sunset 5:22 PM". Bigger tiles: the arc on top, the two lines under it.
+  // A 2-column strip has room for the date only; a 1x1 strip for the arc;
+  // a taller 1-column tile for the arc and "Nov 24".
+  function drawSunTile(el, strip, cols) {
+    el.classList.add('today-sun');
+    if (strip) el.classList.add('is-strip');
+    el.classList.remove('is-cols-1');
+    el.classList.remove('is-cols-2');
+    if (strip && cols < 3) el.classList.add('is-cols-' + Math.max(1, cols));
+    else if (cols <= 1) el.classList.add('is-cols-1');
+    var arc = div('today-sun-arc', el);
+    var txt = div('today-sun-txt', el);
+    sunTile = {
+      strip: strip,
+      short: strip || cols <= 1,
+      arc: arc,
+      svgBox: div('today-sun-svg', arc),
+      time: div('today-sun-time', arc),
+      date: div('today-sun-date', txt),
+      next: div('today-sun-next', txt),
+      el: el,
+      txt: txt,
+      sized: false,
+      shown: ''
+    };
+    sunTileTick();
+    // Not laid out yet (the hub is still placing the tile): measure again shortly.
+    if (!sunTile.sized) {
+      var mine = sunTile;
+      setTimeout(function () { if (sunTile === mine) sunTileTick(); }, 250);
+    }
+  }
+
+  // Once per draw, when the tile can be measured: a bigger tile gets an
+  // arc twice as wide as it is tall, as big as the room under the text
+  // allows (a strip's arc is set by the CSS), and the time inside it in
+  // proportion, so it sits under the arc at any size.
+  function sizeSunTile() {
+    var t = sunTile;
+    if (t.strip && t.el.clientHeight > 6 * rem()) {
+      // A wide 2-row tile: the arc as tall as the tile, up to half its width.
+      t.arc.style.width = Math.floor(Math.min(t.el.clientHeight * 2, t.el.clientWidth * 0.5)) + 'px';
+    } else if (!t.strip) {
+      var w = t.el.clientWidth;
+      var room = t.el.clientHeight - t.txt.offsetHeight - 0.3 * rem();
+      if (!w || room <= 0) return false;
+      w = Math.min(w, Math.floor(room * 2), Math.floor(18 * rem()));
+      t.arc.style.width = w + 'px';
+      t.arc.style.height = Math.floor(w / 2) + 'px';
+    }
+    var aw = t.arc.clientWidth;
+    if (!aw) return false;
+    t.time.style.fontSize = Math.max(14, Math.round(aw * 0.2)) + 'px';
+    return true;
+  }
+
+  function sunTileTick() {
+    var now = new Date();
+    var ms = now.getTime();
+    var s = sunNow(ms);
+    var t = timeParts(now);
+    var date = sunTile.short ? dateText(now, { month: 'short', day: 'numeric' }) : shortDate(now);
+    var next = s.day ? T('sunset', 'Sunset') + ' ' + at(s.to) : T('sunrise', 'Sunrise') + ' ' + at(s.to);
+    // The arc moves about a pixel every few minutes: drawn again each minute.
+    var shape = t.digits + '|' + date + '|' + next + '|' + Math.floor(ms / 6e4);
+    if (sunTile.shown === shape && sunTile.sized) return;
+    var refit = !sunTile.shown || sunTile.shown.split('|')[0].length !== t.digits.length;
+    sunTile.shown = shape;
+    sunTile.svgBox.innerHTML = '';
+    drawArc(sunTile.svgBox, s, 200, 82, true, ms);
+    sunTile.time.textContent = t.digits;
+    sunTile.date.textContent = date;
+    sunTile.next.textContent = next;
+    if (!sunTile.sized) { sunTile.sized = sizeSunTile(); refit = true; }
+    if (refit && sunTile.sized) {
+      // From the proportional size, shrunk only if the digits still don't fit.
+      fitText(sunTile.time, true);
+    }
+    fitText(sunTile.date);
+    fitText(sunTile.next);
+  }
+
+  /* ---------- the Sun path page ---------- */
+
+  function drawSunPage(display) {
+    var root = div('sun-page', display);
+    var stage = div('sun-stage', root);
+    var svgBox = div('sun-stage-svg', stage);
+    var read = div('sun-read', stage);
+    var big = div('sun-time', read);
+    page.digits = span('clock-digits', big);
+    page.ampm = span('clock-ampm', big);
+    page.fitBox = big;
+    page.date = div('clock-fulldate sun-date', root);
+    page.dow = span('clock-dow', page.date);
+    span('clock-sep', page.date, ', ');
+    page.mdy = span('clock-mdy', page.date);
+    var stats = div('sun-stats', root);
+    var cells = [];
+    for (var i = 0; i < 3; i++) {
+      var c = div('sun-stat' + (i === 1 ? ' is-mid' : i === 2 ? ' is-end' : ''), stats);
+      cells.push({ k: div('sun-k', c), v: div('sun-v', c) });
+    }
+    page.sun = { root: root, svgBox: svgBox, cells: cells, note: div('sun-note', root), key: '' };
+  }
+
+  // Once a minute while the page is open: the arc, the three figures and
+  // the line under them. Day: Sunrise, Daylight left, Sunset, and the day's
+  // length against yesterday's. Night: Sunset, Sunrise in, Sunrise, and
+  // tomorrow's daylight.
+  function sunPageTick(now) {
+    var ms = now.getTime();
+    var key = String(Math.floor(ms / 6e4)) + hours;
+    if (page.sun.key === key) return;
+    page.sun.key = key;
+    var s = sunNow(ms);
+    page.sun.root.className = 'sun-page' + (s.day ? '' : ' is-night');
+    page.sun.svgBox.innerHTML = '';
+    drawArc(page.sun.svgBox, s, 600, 215, false, ms);
+    var rows = s.day ?
+      [[T('sunrise', 'Sunrise'), at(s.from)], [T('daylightLeft', 'Daylight left'), span2(s.to - ms)], [T('sunset', 'Sunset'), at(s.to)]] :
+      [[T('sunset', 'Sunset'), at(s.from)], [T('sunriseIn', 'Sunrise in'), span2(s.to - ms)], [T('sunrise', 'Sunrise'), at(s.to)]];
+    for (var i = 0; i < 3; i++) {
+      page.sun.cells[i].k.textContent = rows[i][0];
+      page.sun.cells[i].v.textContent = rows[i][1];
+      fitText(page.sun.cells[i].k);
+      fitText(page.sun.cells[i].v);
+    }
+    var note;
+    if (s.day) {
+      var len = s.today.set - s.today.rise;
+      var diff = Math.round((len - (s.yesterday.set - s.yesterday.rise)) / 6e4);
+      note = T('dayLength', 'Day length {d}').replace('{d}', span2(len));
+      if (diff) {
+        note += ' · ' + (diff < 0 ? T('shorter', '{n} min shorter than yesterday') : T('longer', '{n} min longer than yesterday')).replace('{n}', Math.abs(diff));
+      }
+    } else {
+      // The coming day: tomorrow's after sunset, today's before sunrise.
+      var next = ms >= s.today.set ? s.tomorrow : s.today;
+      note = T('tomorrowLight', 'Tomorrow: {d} of daylight').replace('{d}', span2(next.set - next.rise));
+      if (next === s.today) note = T('todayLight', 'Today: {d} of daylight').replace('{d}', span2(next.set - next.rise));
+    }
+    page.sun.note.textContent = note;
+    fitText(page.sun.note);
+  }
+
   /* ---------- the page ---------- */
 
   function option(parent, key, label, selected) {
@@ -375,10 +762,11 @@
     // "Sunday" ", " "November 15, 2026": one line under the digital time,
     // the weekday over the rest beside the analog face.
     var dow = dateText(now, { weekday: 'long' });
-    var mdy = dateText(now, { month: 'long', day: 'numeric', year: 'numeric' });
+    var mdy = dateText(now, face === 'sun' ? { month: 'long', day: 'numeric' } : { month: 'long', day: 'numeric', year: 'numeric' });
     if (page.dow.textContent !== dow) page.dow.textContent = dow;
     if (page.mdy.textContent !== mdy) page.mdy.textContent = mdy;
     if (page.analog) setFace(page.analog, now);
+    if (page.sun) sunPageTick(now);
   }
 
   function startTicking() {
@@ -421,9 +809,11 @@
     var root = div('clock-page is-' + face + (full ? ' is-full' : ''), body);
     var main = div('clock-main', root);
     var display = div('clock-display', main);
-    page = { root: root, display: display, full: full, shown: null, analog: null, fitBox: null, digits: null, ampm: null };
+    page = { root: root, display: display, full: full, shown: null, analog: null, sun: null, fitBox: null, digits: null, ampm: null };
 
-    if (face === 'analog') {
+    if (face === 'sun') {
+      drawSunPage(display);
+    } else if (face === 'analog') {
       // Only the face and, beside it, the date: no digital time.
       var an = div('clock-analog', display);
       page.faceBox = div('clock-face', an);
@@ -440,10 +830,10 @@
     }
 
     var controls = div('clock-controls', main);
-    group(controls, T('face', 'Face'), [['face-digital', T('digital', 'Digital'), face === 'digital'], ['face-analog', T('analog', 'Analog'), face === 'analog']]);
-    // 12/24 only means something on the digital face; Analog leaves it
-    // out (focus and the arrows simply have one group fewer).
-    if (face === 'digital') {
+    group(controls, T('face', 'Face'), [['face-digital', T('digital', 'Digital'), face === 'digital'], ['face-analog', T('analog', 'Analog'), face === 'analog'], ['face-sun', T('sun', 'Sun'), face === 'sun']]);
+    // 12/24 only means something with a digital time (Digital, Sun path);
+    // Analog leaves it out (focus and the arrows simply have one group fewer).
+    if (face !== 'analog') {
       group(controls, T('clock', 'Clock'), [['hours-12', T('hours12', '12-hour'), hours === '12'], ['hours-24', T('hours24', '24-hour'), hours === '24']]);
     }
     // The look (hub.js HUB_LOOK): Auto follows the sun, Light is the day look, Dark the night look.
@@ -510,7 +900,7 @@
       });
       return;
     }
-    var nextFace = key === 'face-digital' ? 'digital' : key === 'face-analog' ? 'analog' : face;
+    var nextFace = key === 'face-digital' ? 'digital' : key === 'face-analog' ? 'analog' : key === 'face-sun' ? 'sun' : face;
     var nextHours = key === 'hours-12' ? '12' : key === 'hours-24' ? '24' : hours;
     if (nextFace === face && nextHours === hours) return;
     if (nextFace !== face) { face = nextFace; save(FACE_KEY, face); }
@@ -532,7 +922,7 @@
       if (P() && typeof P().onChange === 'function') {
         P().onChange(function (key) {
           if (key !== 'clock.face' && key !== 'clock.hours') return;
-          var f = pick(FACE_KEY, ['digital', 'analog'], 'digital');
+          var f = pick(FACE_KEY, FACES, 'digital');
           var h = pick(HOURS_KEY, ['12', '24'], '12');
           if (f === face && h === hours) return;
           face = f;
@@ -556,8 +946,30 @@
       stopTileTicking();
       tileFace = null;
       els = null;
+      mini = null;
+      sunTile = null;
       var size = ctx.size ? ctx.size() : null;
+      var strip = !!size && size.tier === 'strip';
       el.classList.add('today-tile');
+      el.classList.remove('today-mini');
+      el.classList.remove('today-sun');
+      el.classList.remove('is-strip');
+      if (face === 'sun') {
+        el.classList.remove('today-strip');
+        el.classList.remove('today-analog');
+        // A wide 2-row tile is laid out like a strip too: arc left, text right.
+        var row = strip || (!!size && size.rows === 2 && size.cols >= 5);
+        drawSunTile(el, row, size ? size.cols : 3);
+        return;
+      }
+      if (face === 'analog' && strip && size.cols >= 3) {
+        // A wide strip: the small face, the time and the date (miniTick).
+        el.classList.remove('today-strip');
+        el.classList.remove('today-analog');
+        el.classList.add('today-mini');
+        drawMiniTile(el);
+        return;
+      }
       if (face === 'analog') {
         // Only the face, filling the tile's box, centred.
         el.classList.remove('today-strip');
