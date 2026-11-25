@@ -312,6 +312,34 @@
 .ph-nav-icon { position: absolute; top: 0.75rem; left: 0.75rem; width: 1.5rem; height: 1.5rem; }
 .ph-nav-icon svg { width: 100%; height: 100%; display: block; }
 .ph-nav-next .ph-nav-icon { -webkit-transform: rotate(180deg); transform: rotate(180deg); }
+/* A video in the viewer that is not playing: a big play mark in the middle
+   (a tap there plays it). Shown and hidden by opacity only. */
+.ph-view-play {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 5.2rem;
+  height: 5.2rem;
+  margin: -2.6rem 0 0 -2.6rem;
+  border-radius: 50%;
+  background: rgba(10, 12, 16, 0.5);
+  box-shadow: 0 0 0 0.1rem rgba(255, 255, 255, 0.28), 0 0.4rem 1.6rem rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  -webkit-transform: scale(0.92);
+  transform: scale(0.92);
+  -webkit-transition: opacity 0.25s ease, -webkit-transform 0.25s ease;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+.ph-view-play:after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  margin: -1rem 0 0 -0.5rem;
+  border-style: solid;
+  border-width: 1rem 0 1rem 1.6rem;
+  border-color: transparent transparent transparent #ffffff;
+}
+.ph-viewer.is-paused .ph-view-play { opacity: 1; -webkit-transform: scale(1); transform: scale(1); }
 .ph-view-foot {
   position: absolute;
   left: 0; right: 0; bottom: 0;
