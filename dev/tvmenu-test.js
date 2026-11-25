@@ -11,6 +11,7 @@
  *   - the arrows move the focus between the settings, over to the layouts,
  *     and to Close; Up and Down stay in their column, which scrolls when
  *     nothing more is below; OK on a choice uses it (Language), and the focus stays
+ *   - Rotate layouts (below Guest mode) turns on and off with OK
  *   - Guest mode still asks for the PIN, and the sheet stays behind it
  *   - OK on a layout uses it and closes the sheet; Back closes it and the
  *     tile it came from has its focus back
@@ -113,15 +114,26 @@ async function keys(page, list) {
       assert(s.focus === 'set:guest-on', JSON.stringify(s));
       await shot(page, 'after-sheet-guest-focus.png');
       // Down stays in the column: About's button row, then the column scrolls.
+      // Down: Rotate layouts (On, the same column), OK turns it on and off.
       await keys(page, ['ArrowDown']);
       s = await st(page);
-      assert(/^about:/.test(s.focus), 'Down from Guest mode: ' + JSON.stringify(s));
+      assert(s.focus === 'set:rotate-on', 'Down from Guest mode: ' + JSON.stringify(s));
+      await keys(page, ['Enter']);
+      let r = await page.evaluate(() => window.HUB_TEST.rotate.state());
+      s = await st(page);
+      assert(r.on && s.focus === 'set:rotate-on' && s.rings === 1, 'Rotate on: ' + JSON.stringify([r, s]));
+      await keys(page, ['ArrowLeft', 'Enter']);
+      r = await page.evaluate(() => window.HUB_TEST.rotate.state());
+      assert(!r.on, 'Rotate off: ' + JSON.stringify(r));
+      await keys(page, ['ArrowDown']);
+      s = await st(page);
+      assert(/^about:/.test(s.focus), 'Down from Rotate layouts: ' + JSON.stringify(s));
       await shot(page, 'after-sheet-about-focus.png');
       const top0 = await page.evaluate(() => document.querySelector('.tsheet-left').scrollTop);
       await keys(page, ['ArrowDown', 'ArrowDown']);
       const top1 = await page.evaluate(() => document.querySelector('.tsheet-left').scrollTop);
       assert(top1 > top0, 'the column did not scroll: ' + top0 + ' ' + top1);
-      await keys(page, ['ArrowUp']);
+      await keys(page, ['ArrowUp', 'ArrowUp']);
       s = await st(page);
       assert(/^set:guest-/.test(s.focus), 'Up back to Guest mode: ' + JSON.stringify(s));
       await page.evaluate(() => { document.querySelector('.tsheet-left').scrollTop = 0; });
