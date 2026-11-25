@@ -24,7 +24,7 @@
  *   const t = await clockPage.tile(page);        // { face, digits, ampm, window, windowMode, hands, night, moon, text }
  *
  * tile().face is 'digital', 'analog', 'mini' (Analog in a 3x1 or wider
- * strip: small face, time and date) or 'sun' (Sun path).
+ * strip: small face, time and date) or 'sun' (Sun path: the arc, or the 24-hour dial at 3x2 and bigger).
  *
  * On Analog the page has no digital time (readout false) and no 12/24
  * group (keys has no hours-*); on Digital it has both. Both faces end with
@@ -152,7 +152,7 @@ function tile(page) {
     const q = (sel) => body.querySelector(sel);
     const win = q('.clock-window-text');
     return {
-      face: q('.today-mini-face svg') ? 'mini' : q('.today-sun-arc svg') ? 'sun' : q('.today-face svg') ? 'analog' : q('.today-time') ? 'digital' : null,
+      face: q('.today-mini-face svg') ? 'mini' : q('.today-sun-arc svg') || q('.sund-svg') ? 'sun' : q('.today-face svg') ? 'analog' : q('.today-time') ? 'digital' : null,
       digits: q('.today-digits') ? q('.today-digits').textContent : null,
       ampm: q('.today-ampm') && q('.today-ampm').style.display !== 'none' ? q('.today-ampm').textContent : '',
       window: win ? win.textContent : null,

@@ -357,6 +357,45 @@
 .today-sun.is-cols-2 .today-sun-date { font-size: 1.45rem; }
 .today-sun.is-strip.is-cols-1 .today-sun-arc { flex: 1 1 auto; width: auto; max-width: none; }
 
+/* ---------- Sun path: the 24-hour dial (3x2 and bigger) ----------
+   today.js sizes the dial (as tall as the tile) and the text beside it
+   (font-size in px from the dial), so the em sizes here scale with it. */
+.tile-body.today-sund { flex-direction: row; align-items: center; justify-content: center; overflow: visible; color: var(--text); }
+.sund-art { flex: 0 0 auto; width: 7.6rem; height: 7.6rem; }
+.sund-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.sund-txt { flex: 0 1 auto; min-width: 0; max-width: 11em; padding-left: 0.75em; }
+.sund-date { font-size: 0.95em; font-weight: 300; }
+.sund-date,
+.sund-k,
+.sund-v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.32; padding-top: 0.08em; }
+.sund-rule { height: 1px; background: currentColor; opacity: 0.18; margin: 0.45em 0 0.35em; }
+.sund-stat { margin-top: 0.35em; }
+.sund-rule + .sund-stat { margin-top: 0; }
+.sund-k { font-size: 0.7em; color: var(--text-2); }
+.sund-v { font-size: 0.92em; }
+.sund-ic { display: inline-block; width: 1.15em; height: 1.15em; margin-right: 0.35em; vertical-align: -0.2em; }
+.sund-ic svg { display: block; width: 100%; height: 100%; }
+.sund-face { fill: rgba(255, 255, 255, 0.05); }
+.sund-day { fill: none; stroke: #ffb347; stroke-opacity: 0.75; stroke-width: 5; stroke-linecap: round; }
+.sund-night { fill: none; stroke: #8796e6; stroke-opacity: 0.45; stroke-width: 5; stroke-linecap: round; }
+.sund-horizon { stroke: currentColor; stroke-opacity: 0.28; stroke-width: 1.2; stroke-dasharray: 3 4; }
+.sund-tick { stroke: currentColor; stroke-opacity: 0.3; stroke-width: 1.2; }
+.sund-tick.is-big { stroke-opacity: 0.6; stroke-width: 1.8; }
+.sund-lab { fill: currentColor; fill-opacity: 0.55; font-size: 10.5px; text-anchor: middle; letter-spacing: 0.04em; }
+.sund-foot { fill: currentColor; fill-opacity: 0.55; }
+.sund-time { fill: currentColor; font-size: 30px; font-weight: 300; text-anchor: middle; letter-spacing: -0.5px; }
+.sund-moon .sun-glow { fill: #b9c6ff; fill-opacity: 0.14; }
+.sund-moon.is-down,
+.sund-sun.is-down { opacity: 0.38; }
+.theme-day .today-sund .sund-face { fill: rgba(21, 27, 36, 0.05); }
+.theme-day .today-sund .sund-day { stroke: #e08a12; stroke-opacity: 0.85; }
+.theme-day .today-sund .sund-night { stroke: #5867b8; stroke-opacity: 0.5; }
+.theme-day .today-sund .sun-glow { fill: #f0a020; fill-opacity: 0.25; }
+.theme-day .today-sund .sun-disc { fill: #ef9a12; stroke: #b86a00; stroke-width: 1.2; }
+.theme-day .today-sund .sund-moon .sun-glow { fill-opacity: 0; }
+.theme-day .today-sund .moon-dark { fill: rgba(61, 79, 158, 0.15); stroke: #5867b8; }
+.theme-day .today-sund .moon-lit { fill: #5867b8; }
+
 /* ---------- Sun path: the page ---------- */
 
 .sun-page { width: 100%; max-width: 40rem; min-width: 0; margin: 0 auto; color: var(--text); }
