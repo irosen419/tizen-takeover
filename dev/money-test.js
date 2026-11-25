@@ -355,8 +355,11 @@ async function main() {
         noErrors(page);
         await H.openPanel(page, 'budget-lab');
         const p = await text(page, '#panel .panel-body');
-        assert(/Nov 30 is \$955 short, so this plan relies on autopay days through Dec 7/.test(p), 'lab header: ' + p);
-        assert(!/even at \$0 a day/.test(p) && await has(page, '#panel .bl-big'), 'lab panel: ' + p);
+        assert(/Nov 30 is \$955 short even at \$0 a day, so the cards wait for autopay \(through Dec 7\)/.test(p), 'lab header: ' + p);
+        assert(!/short for Dec 7 even at/.test(p) && await has(page, '#panel .bl-big'), 'lab panel: ' + p);
+        // Never a plain "covered" for the 1st: the card row and the line under the result name it short.
+        assert(/Put it somewhere, on Dec 7/.test(p) && /Cards\s*Nov 30 short \$/.test(p) && /Nov 30, every card paid by hand: short \$/.test(p), 'the 1st: ' + p);
+        assert(await has(page, '#panel .bl-dval.is-even') && await has(page, '#panel .bl-cmp-first'), 'the 1st is not amber');
         noErrors(page);
       } finally { await page.ctx.close(); }
       // Short with autopay too (no byAutopay): coral as before, with how short.
@@ -667,7 +670,7 @@ async function main() {
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const t = await text(page, LAB_TILE);
-        assert(/^\$62\s*safe today/.test(t.trim()) && /Keeps Nov 19 covered/.test(t) && !/New streak|nothing to spare/.test(t), 'tile: ' + t);
+        assert(/^\$62\s*calculated/.test(t.trim()) && /Keeps Nov 19 covered/.test(t) && !/New streak|nothing to spare/.test(t), 'tile: ' + t);
         assert(/1 day under/.test(t) && /Stay under \$62 today/.test(t), 'tile: ' + t);
         assert(await has(page, LAB_TILE + ' .bl-oline.is-even'), 'the on track line is not amber');
         assert(await has(page, LAB_TILE + ' .bl-sbox.is-on .bl-scount') && await has(page, LAB_TILE + ' .bl-pip.is-lit'), 'no streak box with its count');
@@ -677,7 +680,7 @@ async function main() {
         storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
       try {
         const t = await text(strip, LAB_TILE);
-        assert(/\$62 safe today · 1 day under/.test(t), 'strip: ' + t);
+        assert(/\$62 calculated · 1 day under/.test(t), 'strip: ' + t);
         noErrors(strip);
       } finally { await strip.ctx.close(); }
     });
@@ -709,9 +712,11 @@ async function main() {
         let p = await labPanel(page);
         assert(/\$62\s*a day/.test(p) && /Hold ◀ ▶ to change your daily cap/.test(p) && /Nov 19: on track at \$62 a day/.test(p) && !/covered, \$0 spare/i.test(p), 'panel: ' + p);
         assert(await has(page, '#panel .bl-result.is-even') && !(await has(page, '#panel .bl-result.is-ok')), 'the on track result is not amber');
-        assert(/Safe today \$62/.test(p) && /No saved cap yet/.test(p) && /Down for your daily goal/.test(p), 'panel: ' + p);
+        assert(/Calculated \$62 a day/.test(p) && /OK saves the cap on the slider as yours/.test(p) && /Down for merchants/.test(p), 'panel: ' + p);
         assert(/The Daily room tile uses \$60 a day/.test(p), 'panel: ' + p);
-        assert(/Stay under \$62 today for 2 days in a row/.test(p), 'pace: ' + p);
+        // The 7 day tracker carries the streak against each morning's cap; the old pace block is gone.
+        assert(/Last 7 days/.test(p) && /Calculated cap: 1 day/.test(p) && !/for 2 days in a row/.test(p) && await has(page, '#panel .bl-wk-row.is-day'), 'week: ' + p);
+        assert(/What these numbers mean/.test(p), 'no info block: ' + p);
         const look = await page.evaluate(() => {
           const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
           const big = getComputedStyle(document.querySelector('#panel .bl-big'));
@@ -750,16 +755,19 @@ async function main() {
         assert((await session(page)).cap === 61, 'after Left twice: ' + JSON.stringify(await session(page)));
         assert((await focusedKey(page)) === 'cap', 'Left moved focus away');
         assert(await has(page, '#panel .bl-result.is-ok'), 'covered is not green');
-        // OK on the cap saves it: stored as a keep amount for this card day, and a toast.
+        // OK on the cap saves it as your cap: the daily goal on the Pi, whole dollars, and a toast.
+        // (Answered here, so the Pi's goal history stays as it is for the checks after this one.)
+        const posted = [];
+        await page.route('**/budget/goal', (route) => { posted.push(route.request().postDataJSON()); route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
         await H.key(page, 'Enter');
+        await H.until(() => posted.length === 1, 3000, 'nothing posted');
+        assert(posted[0].goal === 61, 'posted: ' + JSON.stringify(posted));
         await H.sleep(150);
         const toast = await text(page, '#toast');
-        assert(/Cap saved: \$61 a day \(re-averaged each morning\)/.test(toast), 'toast: ' + toast);
-        const pref = await page.evaluate(() => window.HUB_PREFS.get('budget.capPref'));
-        assert(pref.v === 1 && pref.cardDate === '2026-11-19' && Math.abs(pref.keep - 3.4) < 0.001 && typeof pref.at === 'string', 'stored: ' + JSON.stringify(pref));
+        assert(/Your cap saved: \$61 a day, from today on/.test(toast), 'toast: ' + toast);
+        assert(await page.evaluate(() => !window.HUB_PREFS.get('budget.capPref')), 'a keep amount was stored');
         p = await labPanel(page);
-        assert(/Saved \$61 a day/.test(p) && /Nov 19: covered, \$3 spare/.test(p) && await has(page, '#panel .bl-result.is-ok'), 'after Save: ' + p);
-        assert(await page.evaluate(() => getComputedStyle(document.querySelector('#panel .bl-tick.is-saved')).display !== 'none'), 'no saved mark on the track');
+        assert(/Nov 19: covered, \$3 spare/.test(p) && await has(page, '#panel .bl-result.is-ok'), 'after Save: ' + p);
         // Down from the cap is Back to calculated (lit now); Left and Right do nothing there.
         await H.key(page, 'ArrowDown');
         assert((await focusedKey(page)) === 'reset', 'Down from the cap: ' + await focusedKey(page));
@@ -771,8 +779,7 @@ async function main() {
         assert((await focusedKey(page)) === 'cap', 'focus did not go back to the cap: ' + await focusedKey(page));
         assert(!(await has(page, '#panel .bl-reset.f')), 'Back to calculated still takes focus with nothing to reset');
         p = await labPanel(page);
-        assert(/\$62\s*a day/.test(p) && /Saved \$61 a day/.test(p) && /Using the calculated cap/.test(p), 'after reset: ' + p);
-        assert(await page.evaluate(() => !!window.HUB_PREFS.get('budget.capPref')), 'reset dropped the saved cap');
+        assert(/\$62\s*a day/.test(p) && /Using the calculated cap/.test(p), 'after reset: ' + p);
         noErrors(page);
       } finally { await page.ctx.close(); }
     });
@@ -807,28 +814,15 @@ async function main() {
       }
     });
 
-    await check('Budget lab: a saved cap survives a reload; a new card day drops it', async () => {
+    await check('Budget lab: an old saved keep amount (re-averaged each morning) is no longer read; your cap is the daily goal', async () => {
       const pref = JSON.stringify({ v: 1, cardDate: '2026-11-19', keep: 3.4, at: FRESH });
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]', [PREF]: pref } });
       try {
-        await page.reload();
-        await page.waitForFunction(() => window.HUB_TEST && document.querySelectorAll('#grid .tile').length > 0, null, { timeout: 15000 });
-        await H.until(() => page.evaluate(() => window.HUB_LIVE.status().state === 'live'), 10000, 'not live after the reload');
-        await H.idle(page);
         await H.openPanel(page, 'budget-lab');
-        let p = await labPanel(page);
-        assert(/Saved \$61 a day/.test(p) && /\$62\s*a day/.test(p), 'after the reload: ' + p);
-        const next = H.budgetSample.snapshot({ sentAt: FRESH });
-        next.lab.cardDate = '2026-11-20';
-        next.lab.daysLeft = 4;
-        await env.setBudget(next);
-        await H.until(async () => /No saved cap yet/.test(await labPanel(page)), 5000, 'the old cycle\'s cap stayed: ' + await labPanel(page));
-        assert(await page.evaluate(() => window.HUB_PREFS.get('budget.capPref') === null), 'the old cycle\'s cap is still stored');
+        const p = await labPanel(page);
+        assert(!/Saved \$61/.test(p) && /OK saves the cap on the slider as yours/.test(p), 'the old keep amount shows: ' + p);
         noErrors(page);
-      } finally {
-        await page.ctx.close();
-        await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH }));
-      }
+      } finally { await page.ctx.close(); }
     });
 
     await check('Budget lab: holding Right for 3 s (repeat after 500 ms, every 50 ms) lands where holdStep says', async () => {
@@ -964,19 +958,17 @@ async function main() {
         assert((await session(page)).cuts['Hilltop Grocer'] === P_I[0], 'at the top: ' + JSON.stringify(await session(page)));
         assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'row: ' + (await cutLabels(page))[0]);
         assert((await fills(page))[1] === 'scaleX(1)', 'full fill: ' + (await fills(page))[1]);
-        // Up and Down go through the rows in order; Back to calculated and the daily goal sit between the cap and the first row.
+        // Up and Down go through the rows in order; Back to calculated sits between the cap and the first row.
         await press(page, 'ArrowDown');
         assert((await focusedKey(page)) === 'cut-1', 'Down: ' + await focusedKey(page));
         await press(page, 'ArrowUp', 2);
-        assert((await focusedKey(page)) === 'goal', 'Up from the first row: ' + await focusedKey(page));
-        await press(page, 'ArrowUp');
-        assert((await focusedKey(page)) === 'reset', 'Up from the goal: ' + await focusedKey(page));
+        assert((await focusedKey(page)) === 'reset', 'Up from the first row: ' + await focusedKey(page));
         await press(page, 'ArrowUp');
         assert((await focusedKey(page)) === 'cap', 'Up from Back to calculated: ' + await focusedKey(page));
         // Full screen all along: the cap and the rows on the left, the runway and Put it somewhere on the right; the cut is still there.
         const cols = await page.evaluate(() => {
           const c = document.querySelectorAll('#panel .bl-pwrap > .bu-pcol');
-          return { n: c.length, cuts: c[0] && c[0].querySelectorAll('.bl-cut').length, dest: c[1] && !!c[1].querySelector('.bl-dest'), pace: c[1] && !!c[1].querySelector('.bl-pace'), paceLeft: !!c[0].querySelector('.bl-pace') };
+          return { n: c.length, cuts: c[0] && c[0].querySelectorAll('.bl-cut').length, dest: c[1] && !!c[1].querySelector('.bl-dest'), pace: c[1] && !!c[1].querySelector('.bl-wk'), paceLeft: !!c[0].querySelector('.bl-wk') };
         });
         assert(cols.n === 2 && cols.cuts === 5 && cols.dest && !cols.pace && cols.paceLeft, 'full screen: ' + JSON.stringify(cols));
         assert((await cutLabels(page))[0] === 'Hilltop Grocer · $184 so far · cut $35', 'full row: ' + (await cutLabels(page))[0]);
