@@ -61,6 +61,9 @@ var HUB_ICONS = (function () {
     // Word of the day: a speech bubble.
     speech: svg('<path d="M4.5 5.5h15a1.5 1.5 0 0 1 1.5 1.5v8.5a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 3.5V17H4.5A1.5 1.5 0 0 1 3 15.5V7a1.5 1.5 0 0 1 1.5-1.5z"/>' +
       '<path d="M7.5 10h9M7.5 13h5.5"/>'),
+    // Flashcards: a card in front of another, turned.
+    cards: svg('<path d="M7.2 5.6l7.9-2.1a1.4 1.4 0 0 1 1.7 1l.4 1.5"/>' +
+      '<rect x="4" y="7.5" width="14" height="13" rx="1.6"/><path d="M8 12.5h6M8 15.5h4"/>'),
     // Plant sun: a small sun over a leaf.
     'plant-sun': svg('<circle cx="16.5" cy="7" r="2.6"/><path d="M16.5 2.2v.9M16.5 10.9v.9M21.3 7h-.9M12.6 7h-.9' +
       'M19.9 3.6l-.6.6M13.7 9.8l-.6.6M19.9 10.4l-.6-.6M13.7 4.2l-.6-.6"/>' +

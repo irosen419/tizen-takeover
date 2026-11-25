@@ -39,6 +39,18 @@
  *     openView: function (name, ctx) {},   // asked to show one of its own views before its
  *                                          // panel opens (the About panel's watch link test
  *                                          // asks entertainment for 'linktests'); false = no
+ *     engage: true,           // (or a function (ctx) -> boolean, asked per press: a size
+ *                             // too small to use in place says false)
+ *                             // An interactive tile (Flashcards): a short OK on the
+ *                             // tile ENGAGES it instead of opening the panel. The ring
+ *                             // changes (class is-engaged) and a hint shows; Left and
+ *                             // Right (not held repeats) and a short OK go to
+ *                             // onEngagedKey; Back leaves; Up or Down leave and move on.
+ *                             // Holding OK (engaged or not) opens the panel. See
+ *                             // "engage on OK" below.
+ *     onEngagedKey: function (key, ctx) {}, // 'left' | 'right' | 'ok' while engaged
+ *     onEngage: function (ctx) {}, onDisengage: function (ctx) {},
+ *     engageHint: function (ctx) {},       // the hint's words while engaged (or the hub's)
  *     openMode: 'full',       // OK on the tile opens straight to full screen, and Back
  *                             // closes it (no small panel to shrink to). The owner can
  *                             // set it per widget too: HUB_CONFIG.widgets[id].openMode
@@ -99,6 +111,8 @@
  *                             tile-wm / tile-ww for CSS (and tile-w1 when one
  *                             column wide). A layout from the Pi
  *                             that changes a tile's size calls renderTile again.
+ *   ctx.engaged()             this tile is engaged (engage: true widgets)
+ *   ctx.disengage()           leave the engaged state
  *   ctx.setSub(text)          the small line in the panel head
  *   ctx.setTileSub(text)      the small line under the tile's title ('' hides it)
  *   ctx.focus(el)             move panel focus to el
@@ -1371,6 +1385,7 @@
     agentsHook('stop');
     // A tile of another size may want another layout: draw it again.
     for (var r = 0; r < resized.length; r++) drawTile(resized[r]);
+    if (engaged && !canEngage(engaged)) disengage();   // too small now to use in place
     retitleAll();
     fxCall('relayout', [focusRect()]);
   }
@@ -2056,6 +2071,8 @@
       accent: function (reason) { if (rec && rec.tile) fxCall('accent', [rec.tile, reason || 'update']); },
       live: liveFacade(),
       focus: function (node) { if (open === rec) focusPanel(node); },
+      engaged: function () { return !!rec && engaged === rec; },
+      disengage: function () { if (rec && engaged === rec) disengage(); },
       bloom: function (node) { return fxCall('bloom', [node]) || null; },
       activity: function (kind) { if (rec && rec.home && rec.tile) fxCall('activity', [rec.tile, kind]); },
       _bind: function (r) { rec = r; }
@@ -2177,6 +2194,7 @@
   /* ---------- home focus ---------- */
 
   function focusHome(i) {
+    if (engaged && widgets[i] !== engaged) disengage();
     if (tablet.peek) { tablet.peek = false; if (tablet.tab) tablet.tab.classList.remove('is-peek'); }
     if (homeIndex >= 0 && widgets[homeIndex]) widgets[homeIndex].tile.classList.remove('is-focused');
     homeIndex = i;
@@ -2198,6 +2216,133 @@
     else if (dir === 'left') openAbout();        // off the left edge: the About panel
     else if (dir === 'down') showPeek();         // off the bottom edge: the Menu tab (TV)
   }
+
+  /* ---------- engage on OK ---------- */
+
+  /*
+   * An interactive tile (w.engage, only Flashcards so far) is used in place.
+   * A short OK on it engages it: the ring changes (is-engaged on the tile,
+   * hub-engaged on the body for the gliding ring) and a hint shows at the
+   * tile's foot. Engaged, Left and Right and a short OK go to the widget's
+   * onEngagedKey; Back leaves; Up and Down leave and move on as usual. A long
+   * press of OK, engaged or not, opens the panel. Every other tile keeps
+   * OK = open, at once.
+   *
+   * Short or long: a keyup before HOLD_MS is short; a held key's repeated
+   * keydown, or no keyup by HOLD_MS, is long. Until a keyup has been seen
+   * once (a remote that never sends one), only the repeat counts, and with
+   * no repeat either the press is short after HOLD_WAIT_MS.
+   */
+  var HOLD_MS = 550;
+  var HOLD_WAIT_MS = 1000;
+  var engaged = null;        // the engaged tile's record
+  var okPress = null;        // { rec, decided, timer }: an OK on an interactive tile, still down
+  var keyupSeen = false;
+
+  // w.engage: true, or a function (ctx) that says so for the tile's size now.
+  // Tablet mode has no remote: the tile's own buttons take taps instead.
+  function canEngage(rec) {
+    if (!rec || !rec.expandable || !rec.w || !rec.w.engage || tablet.on) return false;
+    if (typeof rec.w.engage !== 'function') return true;
+    return !!call(rec, 'engage', [rec.ctx]);
+  }
+
+  function engageHintText(rec) {
+    var t = call(rec, 'engageHint', [rec.ctx]);
+    return t ? String(t) : hubWord('engageHint', 'Hold OK: open · Back: done');
+  }
+
+  function drawEngageHint(rec) {
+    if (!rec.engageHint) {
+      rec.engageHint = el('div', 'tile-engage-hint', rec.tile);
+      rec.engageHint.setAttribute('aria-hidden', 'true');
+    }
+    var h = rec.engageHint;
+    h.textContent = engageHintText(rec);
+    // A long hint (Spanish) steps down a little before it would end in "...".
+    h.style.fontSize = '';
+    var px = parseFloat(window.getComputedStyle(h).fontSize) || 14;
+    var min = px * 0.88;
+    for (var i = 0; i < 4 && h.scrollWidth > h.clientWidth + 1 && px > min; i++) {
+      px = Math.max(min, px * 0.96);
+      h.style.fontSize = px.toFixed(1) + 'px';
+    }
+  }
+
+  function engage(rec) {
+    if (engaged === rec) return;
+    if (engaged) disengage();
+    engaged = rec;
+    rec.tile.classList.add('is-engaged');
+    document.body.classList.add('hub-engaged');
+    drawEngageHint(rec);
+    rec.engageHint.classList.add('is-on');
+    call(rec, 'onEngage', [rec.ctx]);
+  }
+
+  function disengage() {
+    var rec = engaged;
+    if (!rec) return;
+    engaged = null;
+    rec.tile.classList.remove('is-engaged');
+    document.body.classList.remove('hub-engaged');
+    if (rec.engageHint) rec.engageHint.classList.remove('is-on');
+    call(rec, 'onDisengage', [rec.ctx]);
+  }
+
+  function clearPress() {
+    if (okPress && okPress.timer) clearTimeout(okPress.timer);
+    okPress = null;
+  }
+
+  function startPress(rec) {
+    // An earlier press still undecided (a remote with no keyup): it was short.
+    if (okPress && !okPress.decided) decidePress('short');
+    clearPress();
+    var press = okPress = { rec: rec, decided: false, timer: null };
+    press.timer = setTimeout(function () {
+      if (okPress !== press || press.decided) return;
+      if (keyupSeen) { decidePress('long'); return; }
+      press.timer = setTimeout(function () { if (okPress === press && !press.decided) decidePress('short'); }, HOLD_WAIT_MS - HOLD_MS);
+    }, HOLD_MS);
+  }
+
+  function decidePress(kind) {
+    var press = okPress;
+    if (!press || press.decided) return;
+    press.decided = true;
+    if (press.timer) { clearTimeout(press.timer); press.timer = null; }
+    var rec = press.rec;
+    if (busy || open || frameOpen || widgets[homeIndex] !== rec) return;
+    if (kind === 'long') {
+      disengage();
+      openPanel(rec);
+    } else if (engaged === rec) {
+      call(rec, 'onEngagedKey', ['ok', rec.ctx]);
+    } else {
+      engage(rec);
+    }
+  }
+
+  // Keys while a tile is engaged (home stage, nothing open).
+  function engagedKey(code, dir, repeat) {
+    if (isBack(code)) { clearPress(); disengage(); return; }
+    if (code === KEY.ENTER) { startPress(engaged); return; }
+    if (okPress && !okPress.decided) decidePress('short');   // OK, then an arrow before its keyup
+    if (!engaged) return;
+    if (dir === 'left' || dir === 'right') {
+      if (!repeat) call(engaged, 'onEngagedKey', [dir, engaged.ctx]);
+      return;
+    }
+    if (dir) { disengage(); moveHome(dir); }
+  }
+
+  document.addEventListener('keyup', function (e) {
+    if (e.keyCode !== KEY.ENTER) return;
+    keyupSeen = true;
+    if (okPress && !okPress.decided) decidePress('short');
+    clearPress();
+  });
 
   /* ---------- the panel ---------- */
 
@@ -2545,6 +2690,7 @@
    */
   function openPanel(rec, how) {
     if (busy || open || !rec.expandable) return;
+    if (engaged) disengage();
     closeAbout();                          // a panel the Pi opens goes over it: close it first
     clayHook('stop');
     open = rec;
@@ -2855,6 +3001,11 @@
     }
     if (!handled) return;
     e.preventDefault();
+    // A held OK on an interactive tile: the repeat makes it a long press.
+    if (code === KEY.ENTER && e.repeat && okPress) {
+      if (!okPress.decided) decidePress('long');
+      return;
+    }
     // A held OK or Back counts once. Otherwise holding OK on a tile would
     // carry on pressing things inside the panel it opens.
     if (e.repeat && !dir) return;
@@ -2895,8 +3046,14 @@
       return;
     }
 
+    if (engaged && !canEngage(engaged)) disengage();   // a layout made it too small
+    if (isBack(code) && okPress) clearPress();
+    if (engaged) { engagedKey(code, dir, e.repeat); keyRepeat = false; return; }
     if (dir) moveHome(dir);
-    else if (code === KEY.ENTER) { if (homeIndex >= 0) openPanel(widgets[homeIndex]); }
+    else if (code === KEY.ENTER && homeIndex >= 0) {
+      if (canEngage(widgets[homeIndex])) startPress(widgets[homeIndex]);
+      else openPanel(widgets[homeIndex]);
+    }
     // Back on the home stage does nothing: the hub is home.
     keyRepeat = false;
   });
@@ -3550,6 +3707,7 @@
 
   // For tests in a laptop browser.
   window.HUB_TEST.open = function () { return open ? open.w.id : null; };
+  window.HUB_TEST.engaged = function () { return engaged ? engaged.w.id : null; };
   window.HUB_TEST.mode = function () { return mode; };
   window.HUB_TEST.busy = function () { return busy; };
   // The About panel: open() and close() as Left and Right would (open only

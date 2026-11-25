@@ -1,0 +1,199 @@
+/* Flashcards (app/widgets/flashcards.js). Every class starts with fc-.
+
+   The card's two faces sit on top of each other; a flip cross-fades them
+   with a small lift (opacity and transform only, 180 ms). Every text keeps
+   a line height of 1.3 or more so accents (á, É, ñ) and ¿ ¡ never clip; the
+   buttons and the meta line end in "..." rather than wrap. No flex gap, no
+   grid. The tile's last 1.6rem (fc-foot) is where the hub's engage hint
+   shows (app/style.css, .tile-engage-hint). */
+
+.fc-tile { overflow: hidden; }
+
+.fc-meta {
+  flex: 0 0 auto;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 3.4rem;
+}
+
+.fc-card {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  cursor: pointer;
+}
+.fc-face {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  -webkit-transition: opacity 180ms ease-out, -webkit-transform 180ms ease-out;
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
+}
+.fc-face > *, .fc-empty > * { -webkit-flex-shrink: 0; flex-shrink: 0; }
+.fc-empty {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  cursor: default;
+}
+.fc-back { opacity: 0; -webkit-transform: translateY(0.4rem); transform: translateY(0.4rem); }
+.fc-card.is-flipped .fc-front { opacity: 0; -webkit-transform: translateY(-0.4rem); transform: translateY(-0.4rem); }
+.fc-card.is-flipped .fc-back { opacity: 1; -webkit-transform: none; transform: none; }
+
+.fc-big {
+  max-width: 100%;
+  font-size: 2.3rem;
+  font-weight: 600;
+  line-height: 1.3;
+  padding-top: 0.04em;      /* room above a capital's accent */
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fc-form { color: var(--ok-sky); }
+.fc-done { font-size: 1.6rem; }
+.fc-cue, .fc-gloss {
+  max-width: 100%;
+  font-size: 1rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fc-gloss { font-size: 0.9rem; color: var(--text-3); }
+
+/* A new card slides in from the right. */
+.fc-in { -webkit-animation: fc-in 220ms ease-out; animation: fc-in 220ms ease-out; }
+@-webkit-keyframes fc-in { from { opacity: 0; -webkit-transform: translateX(1.2rem); } to { opacity: 1; -webkit-transform: none; } }
+@keyframes fc-in { from { opacity: 0; transform: translateX(1.2rem); } to { opacity: 1; transform: none; } }
+
+.fc-row {
+  flex: 0 0 auto;
+  display: flex;
+  margin-top: 0.5rem;
+}
+.fc-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 0.6rem;
+  padding: 0.3rem 0.6rem;
+  border: var(--edge, 0.16rem) solid var(--line);
+  border-radius: 999px;
+  font-size: 1rem;
+  line-height: 1.35;
+  text-align: center;
+  color: var(--text);
+  background: transparent;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.fc-btn:first-child { margin-left: 0; }
+.fc-again { color: var(--ok-must); }
+.fc-got { color: var(--ok-passive); }
+.fc-btn.is-focused { border-color: var(--focus); background: var(--card-2); }
+.fc-btn.is-pressed { opacity: 0.6; }
+
+/* "OK to start": only while the tile has focus and is not engaged (or a tap
+   hint in tablet mode). Engaged, the hub's hint takes its place. */
+.fc-foot {
+  flex: 0 0 auto;
+  min-height: 1.6rem;
+  padding-top: 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  visibility: hidden;
+}
+.fc-foot.is-warn { color: var(--ok-optional); }
+.fc-foot.is-warn,
+.tile.is-focused:not(.is-engaged) .fc-foot,
+.tablet .fc-foot,
+.fc-touch .fc-foot { visibility: visible; }
+
+/* Engaged: the arrows on the buttons are what Left and Right do. */
+.tile.is-engaged .fc-btn { border-color: rgba(255, 255, 255, 0.28); }
+
+/* Too small to use in place: the next card on one line, or the count. */
+.fc-small { justify-content: center; }
+.fc-line {
+  font-size: 1.15rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fc-line-verb { font-weight: 600; color: var(--text); }
+.fc-small-n { font-size: 2rem; font-weight: 600; line-height: 1.3; color: var(--text); }
+.fc-small-l { font-size: 0.85rem; line-height: 1.35; color: var(--text-3); }
+
+/* The page: the same card, bigger, with a real sentence on the back. */
+.fc-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 16rem;
+}
+.fc-page .fc-meta, .fc-touch .fc-meta { font-size: 1rem; }
+.fc-page .fc-stage { min-height: 12rem; }
+.fc-page .fc-big { font-size: 3.6rem; }
+.fc-page .fc-cue { font-size: 1.25rem; }
+.fc-page .fc-gloss { font-size: 1.1rem; }
+.fc-page .fc-row { margin-top: 1rem; }
+.fc-page .fc-btn { font-size: 1.2rem; padding: 0.5rem 0.8rem; }
+.fc-ex {
+  max-width: 100%;
+  margin-top: 0.8rem;
+  font-size: 1.1rem;
+  line-height: 1.4;
+  white-space: normal;
+}
+.fc-ex-es { color: var(--text); font-style: italic; }
+.fc-ex-en { color: var(--text-3); font-size: 0.9em; }
+.fc-note {
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-3);
+  text-align: center;
+}
+.fc-note { color: var(--ok-optional); }
+
+/* The phone (app/touch.js). */
+.fc-touch { padding: 0.5rem 0; }
+.fc-touch .fc-stage { height: 15rem; }
+.fc-touch .fc-big { font-size: 2.6rem; }
+.fc-touch .fc-row { margin-top: 1rem; }
+.fc-touch .fc-btn { font-size: 1.1rem; padding: 0.7rem 0.8rem; border-color: rgba(127, 127, 127, 0.45); }
+.fc-touch .fc-foot { padding-top: 0.6rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-face { -webkit-transition: none; transition: none; }
+  .fc-in { -webkit-animation: none; animation: none; }
+}
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }

@@ -62,6 +62,8 @@
     'hub.tvNoPi': 'no se llega a la Pi',
     'hub.tvOldPi': 'la Pi necesita actualizarse',
     'hub.widgetProblem': '{name} tuvo un problema ({hook}).',
+    /* Engage on OK: the hint on an interactive tile while it is in use. */
+    'hub.engageHint': 'Mantén OK: abrir · Atrás: salir',
     'hub.layoutPicked': 'Diseño {name}',
     'hub.didntWork': 'No funcionó ({why}).',
     'hub.cantOpen': 'Este hub todavía no puede abrir eso.',
@@ -406,6 +408,27 @@
     'pin.scopeAll': 'Todas las pantallas',
     'pin.cancel': 'Cancelar',
     'pin.delete': 'Borrar',
+
+    /* ---- Flashcards (app/widgets/flashcards.js). The cards themselves
+     * (verbs, tú · pretérito, sentences) are Spanish in both languages. ---- */
+    'flash.title': 'Tarjetas',
+    'flash.again': 'Otra vez',
+    'flash.got': 'Me la sé',
+    'flash.flip': 'Voltear',
+    'flash.more': 'Diez más',
+    'flash.okStart': 'OK para empezar',
+    'flash.tapFlip': 'Toca la tarjeta para voltearla',
+    'flash.hint': 'OK: voltear · Mantén OK: abrir · Atrás: salir',
+    'flash.count': 'Tarjeta {n} de {total}',
+    'flash.counts': '{due} pendientes · {fresh} nuevas',
+    'flash.toStudy': 'por estudiar',
+    'flash.done': 'Listo por ahora',
+    'flash.clear': 'Todo al día',
+    'flash.noCards': 'Sin tarjetas',
+    'flash.answered': '{n} respondidas hoy',
+    'flash.notSavedShort': 'Aún sin guardar',
+    'flash.notSaved': 'Aún sin guardar: la Pi no responde. Lo intentará de nuevo sola.',
+    'flash.sub': 'Verbos en español · {due} pendientes',
 
     'wotd.title': 'Palabra del día',
     // Short form: only when "Palabra del día" doesn't fit the tile on one line.
