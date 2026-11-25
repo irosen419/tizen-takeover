@@ -174,7 +174,7 @@ const photos = require('./photos');
 const budgetgoal = require('./budgetgoal');
 const prefs = require('./prefs');
 
-const SERVER_VERSION = '0.37.0';
+const SERVER_VERSION = '0.38.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1199,14 +1199,15 @@ function start(options) {
   function groceryOps(body) {
     if (!isObj(body)) throw bad('the body must be a JSON object');
     const cur = state.resources.grocery.data.items;
-    const items = grocery.applyOps(cur, withProducts(body.ops), Date.now());
+    const results = [];
+    const items = grocery.applyOps(cur, withProducts(body.ops), Date.now(), results);
     const changed = JSON.stringify(items) !== JSON.stringify(cur);
     if (changed) {
       changeResource('grocery', { items: items });
       mirrorGrocery([]);
       publishPantry();
     }
-    return { ok: true, rev: state.rev, changed: changed, items: state.resources.grocery.data.items };
+    return { ok: true, rev: state.rev, changed: changed, items: state.resources.grocery.data.items, results: results };
   }
 
   // Applies a change to the to-do list: saves, bumps rev, tells every screen.

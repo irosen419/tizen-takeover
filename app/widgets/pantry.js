@@ -945,15 +945,30 @@
       },
       // Pasting a list skips what is at home already.
       has: function (product, ctx) { return !!homeHit(product, ctx); },
-      add: function (product, ctx, done) {
-        var ops = [{ op: 'add', upc: product.upc, qty: 1 }];
+      // At home: the scan card's button reads "Add 1 more (n at home)".
+      state: function (product, ctx) {
+        var hit = homeHit(product, ctx);
+        return hit ? { home: hit.qty } : null;
+      },
+      // opts.onlyNew (a pasted list): the Pi leaves a product already at home.
+      add: function (product, ctx, done, opts) {
+        var op = { op: 'add', upc: product.upc, qty: 1 };
+        if (opts && opts.onlyNew) op.onlyNew = true;
+        var ops = [op];
+        function answer(j) {
+          var r = j && j.results && j.results[0];
+          return { already: !!(r && r.existed) };
+        }
         if (ctx.id === 'pantry') {
-          ctx.send(ops, applyLocal(ctx.data(), ops), done);
+          // A pasted code at home already changes nothing, so nothing is drawn ahead.
+          ctx.send(ops, op.onlyNew && homeHit(product, ctx) ? ctx.data() : applyLocal(ctx.data(), ops), function (err, j) {
+            done(err, err ? null : answer(j));
+          });
           return;
         }
-        ctx.call('POST', '/pantry/ops', { ops: ops }).then(function () {
+        ctx.call('POST', '/pantry/ops', { ops: ops }).then(function (j) {
           if (ctx.refresh) ctx.refresh();
-          done(null);
+          done(null, answer(j));
         }, function (e) { done(e && e.message ? e.message : 'error'); });
       }
     });

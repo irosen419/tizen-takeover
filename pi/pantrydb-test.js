@@ -197,6 +197,23 @@ async function main() {
     p.close();
   });
 
+  await check('add onlyNew: a product at home already is left as it is', () => {
+    const p = mem();
+    let r = p.applyOps([{ op: 'add', name: 'Beans', qty: 2 }], []);
+    const id = r.results[0].id;
+    r = p.applyOps([{ op: 'add', name: 'Beans', onlyNew: true }], []);
+    assert.deepStrictEqual(r.results[0], { op: 'add', id: id, existed: true, skipped: true });
+    assert.strictEqual(p.view([]).data.products[0].qty, 2, 'not counted twice');
+    r = p.applyOps([{ op: 'add', name: 'Rice', onlyNew: true }], []);
+    assert.strictEqual(r.results[0].existed, false);
+    assert.strictEqual(p.view([]).data.products.find((x) => x.name === 'Rice').qty, 1);
+    p.applyOps([{ op: 'remove', id: id }], []);
+    r = p.applyOps([{ op: 'add', name: 'Beans', onlyNew: true }], []);
+    assert.strictEqual(r.results[0].existed, false, 'a removed product comes back');
+    assert.throws(() => p.applyOps([{ op: 'add', name: 'Beans', onlyNew: 'yes' }], []), /"onlyNew" must be true or false/);
+    p.close();
+  });
+
   await check('ops: adjust, set, edit with typed numbers and enums; wrong ops throw 400 and change nothing', () => {
     const p = mem();
     p.applyOps([{ op: 'add', name: 'Flour', qty: 3, location: 'pantry' }], []);

@@ -1,11 +1,19 @@
 /*
  * Scan a barcode on the phone (the touch app only; the TV never loads this).
  *
- *   HUB_SCAN.register(id, { label(t), chip?(t), add(product, ctx, done(err)), note?(product, ctx, t), has?(product, ctx) })
+ *   HUB_SCAN.register(id, { label(t), chip?(t), add(product, ctx, done(err, info), opts), note?(product, ctx, t),
+ *                           has?(product, ctx), state?(product, ctx) })
  *                         where a scan can go. The grocery list registers
  *                         'grocery' (app/widgets/grocery.js), the pantry
  *                         'pantry' (app/widgets/pantry.js). add() gets the
  *                         opening view's ctx, which may belong to the other one.
+ *                         state() -> null, { listed: true } (on the list, not
+ *                         ticked: the card says so and adds nothing) or
+ *                         { home: n } (at home: the button reads "Add 1 more
+ *                         (n at home)" next to "Leave as is"). done's info is
+ *                         { already } from the Pi's answer, so a phone with an
+ *                         old copy still gets the true word. opts.onlyNew (a
+ *                         pasted list): the Pi leaves a product already there.
  *   HUB_SCAN.open(ctx, { destination: 'grocery', destinations: ['pantry', 'grocery'], returnFocus: el })
  *                         destinations: an "Add to" chip on the card picks
  *                         one; the pick is remembered on this phone for the
@@ -246,7 +254,7 @@
     var dest = destinations[destId];
     var destLabel = dest && dest.label ? dest.label(T) : '';
     var state = 'scan', stream = null, track = null, det = null, timer = null, toastTimer = null;
-    var busy = false, closed = false, torchOn = false, lastCode = '', lastAt = 0, found = null;
+    var busy = false, closed = false, torchOn = false, lastCode = '', lastAt = 0, found = null, foundState = null;
     var grab = document.createElement('canvas');
 
     var box = el('div', 'sc');
@@ -537,21 +545,38 @@
       card.appendChild(text);
       sheet.appendChild(card);
       if (choices.length > 1) sheet.appendChild(destChips(p));
-      var note = dest && dest.note ? dest.note(p, ctx, T) : '';
+      // Already there: the card says so in its main spot, not in small print.
+      var st = dest && dest.state ? dest.state(p, ctx) : null;
+      foundState = st;
+      var listed = !!(st && st.listed);
+      var home = st && typeof st.home === 'number' ? st.home : -1;
+      var note = !st && dest && dest.note ? dest.note(p, ctx, T) : '';
       if (note) sheet.appendChild(el('p', 'sc-note', note));
-      var add = button('sc-btn sc-primary sc-add', T('scan.addTo', 'Add to {dest}', { dest: destLabel }), 'plus');
-      add.disabled = !dest;
-      add.addEventListener('click', function () { addFound(); });
-      sheet.appendChild(add);
+      var add = null;
+      if (listed) {
+        // Nothing to add: a status in the button's place, so nothing is tapped twice.
+        var have = el('p', 'sc-have');
+        have.setAttribute('role', 'status');
+        have.appendChild(icon('check', 'sc-have-ic'));
+        have.appendChild(el('span', 'sc-btn-word', T('scan.alreadyListed', 'Already on the list')));
+        sheet.appendChild(have);
+      } else {
+        add = button('sc-btn sc-primary sc-add', home >= 0 ?
+          T('scan.addOneMore', 'Add 1 more ({n} at home)', { n: String(Math.round(home * 100) / 100) }) :
+          T('scan.addTo', 'Add to {dest}', { dest: destLabel }), 'plus');
+        add.disabled = !dest;
+        add.addEventListener('click', function () { addFound(); });
+        sheet.appendChild(add);
+      }
       var row = el('div', 'sc-pair');
-      var again = button('sc-btn sc-quiet sc-again', T('scan.another', 'Scan another'));
+      var again = button('sc-btn sc-quiet sc-again', home >= 0 ? T('scan.leave', 'Leave as is') : T('scan.another', 'Scan another'));
       var done = button('sc-btn sc-quiet sc-done', T('scan.done', 'Done'));
       again.addEventListener('click', function () { resume(); });
       done.addEventListener('click', function () { close(); });
       row.appendChild(again);
       row.appendChild(done);
       sheet.appendChild(row);
-      add.focus();
+      (add || again).focus();
     }
 
     // "Add to: Groceries | Pantry": switching redraws the card for that place.
@@ -586,15 +611,23 @@
     function addFound() {
       if (!found || !dest) return;
       var p = found;
-      dest.add(p, ctx, function (err) {
-        if (err && !closed) showToast(T('scan.addFailed', 'That didn’t save: {why}', { why: err }), true);
+      var more = !!(foundState && typeof foundState.home === 'number');
+      var label = destLabel;
+      dest.add(p, ctx, function (err, info) {
+        if (closed) return;
+        if (err) { showToast(T('scan.addFailed', 'That didn’t save: {why}', { why: err }), true); return; }
+        // This phone's copy was old: the Pi's answer says it was there already.
+        if (info && info.already && !more) {
+          showToast(info.listed ? T('scan.wasListed', 'It was on the list already') : T('scan.addedMore', 'One more added to {dest}', { dest: label }));
+        }
       });
-      showToast(T('scan.added', 'Added to {dest}', { dest: destLabel }));
+      showToast(more ? T('scan.addedMore', 'One more added to {dest}', { dest: label }) : T('scan.added', 'Added to {dest}', { dest: label }));
       resume();
     }
 
     function resume() {
       found = null;
+      foundState = null;
       if (dock.className.indexOf('is-many') >= 0) setMany(false, true);
       lastAt = Date.now();
       setState('scan');
@@ -842,10 +875,11 @@
         r.product = j.product;
         if (dest && dest.has && dest.has(j.product, ctx)) { r.status = 'have'; return; }
         return new Promise(function (resolve) {
-          dest.add(j.product, ctx, function (err) {
-            if (err) { r.status = 'error'; r.why = String(err); } else r.status = 'added';
+          // onlyNew: the Pi itself leaves what is there, whatever this phone saw.
+          dest.add(j.product, ctx, function (err, info) {
+            if (err) { r.status = 'error'; r.why = String(err); } else r.status = info && info.already ? 'have' : 'added';
             resolve();
-          });
+          }, { onlyNew: true });
         });
       }, function (e) {
         if (closed) return;

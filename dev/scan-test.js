@@ -163,10 +163,15 @@ async function main() {
       await page.click('.gx-scan');
       await page.waitForSelector('.sc.is-on');
       await show(page, KNOWN, 'ean_13');
-      await page.waitForSelector('.sc-note');
-      assert(/Already on the list/.test(await page.textContent('.sc-note')), 'already note');
-      await page.click('.sc-add');
-      await page.waitForTimeout(400);
+      // Already there: a status in the Add button's place, no Add to tap twice.
+      await page.waitForSelector('.sc-sheet.is-on .sc-have');
+      assert((await page.textContent('.sc-have')) === 'Already on the list', await page.textContent('.sc-have'));
+      assert(await page.getAttribute('.sc-have', 'role') === 'status', 'announced');
+      assert(!(await page.$('.sc-sheet .sc-add')) && !(await page.$('.sc-sheet .sc-note')), 'no Add, no small print');
+      assert(await page.evaluate(() => document.activeElement && document.activeElement.className.indexOf('sc-again') >= 0), 'focus on Scan another');
+      await shot(page, 'scan-already-listed-en.png');
+      await page.click('.sc-again');
+      await page.waitForTimeout(200);
       assert(groceryItems().filter((i) => i.upc === KNOWN).length === 1, 'no double');
       await page.click('.sc-close');
       await page.evaluate(() => window.HUB_TOUCH.poll());
@@ -260,7 +265,7 @@ async function main() {
       await page.waitForFunction(() => /valid barcode/.test(document.querySelector('.sc-dock-msg').textContent) && document.querySelector('.sc').getAttribute('data-state') === 'scan');
       await page.fill('.sc-type', '0 12345 67890 5');
       await page.click('.sc-look');
-      await page.waitForSelector('.sc-sheet.is-on .sc-add');
+      await page.waitForSelector('.sc-sheet.is-on .sc-name');
       assert((await page.textContent('.sc-name')) === 'Oat milk, barista', 'typed lookup');
       await page.click('.sc-done');
       await page.waitForFunction(() => !document.querySelector('.sc'));
@@ -319,7 +324,7 @@ async function main() {
       await shot(page, 'scan-insecure-en.png');
       await page.fill('.sc-type', KNOWN);
       await page.press('.sc-type', 'Enter');
-      await page.waitForSelector('.sc-sheet.is-on .sc-add');
+      await page.waitForSelector('.sc-sheet.is-on .sc-name');
       await page.ctx.close();
     });
 
@@ -359,13 +364,14 @@ async function main() {
       let bad = await inflate('.sc-title-word, .sc-title-dest, .sc-aim, .sc-dock-label');
       assert(!bad.length, 'camera: ' + bad.join('; '));
       await show(page, KNOWN);
-      await page.waitForSelector('.sc-sheet.is-on .sc-add');
-      assert((await page.textContent('.sc-add')) === 'Agregar a la lista del súper', await page.textContent('.sc-add'));
+      // On the list already (the first test put it there): the status, in Spanish.
+      await page.waitForSelector('.sc-sheet.is-on .sc-have');
+      assert((await page.textContent('.sc-have')) === 'Ya está en la lista', await page.textContent('.sc-have'));
       left = await english();
       assert(!left.length, 'English left: ' + left.join(', '));
       await page.waitForTimeout(350);
       await shot(page, 'scan-found-es.png');
-      bad = await inflate('.sc-sheet .sc-btn-word, .sc-brand, .sc-name, .sc-note, .sc-size');
+      bad = await inflate('.sc-sheet .sc-btn-word, .sc-brand, .sc-name, .sc-note, .sc-size, .sc-have');
       assert(!bad.length, 'card: ' + bad.join('; '));
       await page.click('.sc-again');
       await page.fill('.sc-type', '5901234123457');
@@ -453,11 +459,53 @@ async function main() {
       await page.waitForSelector('.sc-sheet.is-on .sc-dests');
       chips = await page.$$eval('.sc-dest', (b) => b.map((x) => x.textContent + ':' + x.getAttribute('aria-pressed')));
       assert(chips.join(',') === 'Groceries:false,Pantry:true', 'remembered: ' + chips.join(','));
-      assert(/At home: 1/.test(await page.textContent('.sc-note')), 'pantry note');
+      // At home: the button itself says what a tap does, with Leave as is beside it.
+      assert((await page.textContent('.sc-add')) === 'Add 1 more (1 at home)', await page.textContent('.sc-add'));
+      assert((await page.textContent('.sc-again')) === 'Leave as is', await page.textContent('.sc-again'));
+      assert(!(await page.$('.sc-sheet .sc-note')), 'no small print repeating it');
+      await shot(page, 'scan-at-home-en.png');
       const small = await page.evaluate(() => Array.prototype.filter.call(document.querySelectorAll('.sc-dest'), (b) => b.getBoundingClientRect().height < 43.5).length);
       assert(!small, 'chips under 44 px');
+      await page.click('.sc-add');
+      await page.waitForSelector('.sc-toast.is-on');
+      assert(/One more added to Pantry/.test(await page.textContent('.sc-toast')), await page.textContent('.sc-toast'));
+      await page.waitForTimeout(500);
+      assert(hub.pantry.ownedList().find((p) => p.upc === KNOWN).qty === 2, 'counted one more');
+      // Leave as is changes nothing.
+      await page.waitForTimeout(3100);
+      await show(page, KNOWN);
+      await page.waitForSelector('.sc-sheet.is-on .sc-add');
+      assert((await page.textContent('.sc-add')) === 'Add 1 more (2 at home)', await page.textContent('.sc-add'));
+      await page.click('.sc-again');
+      await page.waitForTimeout(300);
+      assert(hub.pantry.ownedList().find((p) => p.upc === KNOWN).qty === 2, 'left as is');
+      // A pasted list: the Pi leaves what is at home even when this phone has not seen it yet.
+      await page.evaluate(() => { var d = window.HUB_TOUCH.store ? window.HUB_TOUCH.store.data.pantry : null; if (d) d.products = []; });
+      await page.click('.sc-many-toggle');
+      await page.fill('.sc-many-in', KNOWN);
+      await page.click('.sc-many-go');
+      await page.waitForSelector('.sc-bulk-done');
+      assert(/is-have/.test(await page.getAttribute('.sc-bulk-row', 'class')), await page.getAttribute('.sc-bulk-row', 'class'));
+      await page.waitForTimeout(300);
+      assert(hub.pantry.ownedList().find((p) => p.upc === KNOWN).qty === 2, 'not counted twice by a paste');
       assert(!page.errors.length, page.errors.join('; '));
       await page.ctx.close();
+      // Spanish: the at-home button and Leave as is fit, accents unclipped.
+      const es = await open({ lang: 'es' });
+      await openScanner(es);
+      await show(es, KNOWN);
+      await es.waitForSelector('.sc-sheet.is-on .sc-have');
+      assert((await es.textContent('.sc-have')) === 'Ya está en la lista', await es.textContent('.sc-have'));
+      await shot(es, 'scan-already-listed-es.png');
+      await es.click('.sc-dest[data-dest="pantry"]');
+      await es.waitForSelector('.sc-sheet.is-on .sc-add');
+      assert((await es.textContent('.sc-add')) === 'Agregar 1 más (2 en casa)', await es.textContent('.sc-add'));
+      assert((await es.textContent('.sc-again')) === 'Dejarlo así', await es.textContent('.sc-again'));
+      await shot(es, 'scan-at-home-es.png');
+      const clipped = await es.evaluate(() => Array.prototype.filter.call(document.querySelectorAll('.sc-have, .sc-add, .sc-again'), (n) => n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1).length);
+      assert(!clipped, 'clipped in Spanish');
+      assert(!es.errors.length, es.errors.join('; '));
+      await es.ctx.close();
     });
 
     await check('files: scan.js and grocery.js are ES5; vendor README names the versions; the TV never loads the scanner', async () => {

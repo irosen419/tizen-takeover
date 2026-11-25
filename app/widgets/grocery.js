@@ -570,6 +570,12 @@
         var hit = byUpc(d && d.items ? d.items : [], product.upc);
         return !!hit && !hit.done;
       },
+      // On the list and not ticked: the scan card says so and adds nothing.
+      state: function (product, ctx) {
+        var d = ctx.id === 'grocery' ? ctx.data && ctx.data() : ctx.peek && ctx.peek('grocery');
+        var hit = byUpc(d && d.items ? d.items : [], product.upc);
+        return hit && !hit.done ? { listed: true } : null;
+      },
       note: function (product, ctx, t) {
         // Opened from another view: its data() is not this list, so peek at the list.
         var d = ctx.id === 'grocery' ? ctx.data && ctx.data() : ctx.peek && ctx.peek('grocery');
@@ -581,18 +587,26 @@
         scanned[product.upc] = product;
         if (ctx.id !== 'grocery') {
           // Opened from the pantry: post straight to the list; the next poll shows it.
-          ctx.call('POST', '/grocery/ops', { ops: [{ op: 'add', upc: product.upc }] }).then(function () {
+          ctx.call('POST', '/grocery/ops', { ops: [{ op: 'add', upc: product.upc }] }).then(function (j) {
             if (ctx.refresh) ctx.refresh();
-            done(null);
+            done(null, answer(j));
           }, function (e) { done(e && e.message ? e.message : 'error'); });
           return;
         }
         var d = ctx.data && ctx.data();
         var items = d && d.items ? d.items : [];
         var name = root.HUB_SCAN.line(product) || product.upc;
-        ctx.send([{ op: 'add', upc: product.upc }], { items: applyLocal(items, [{ op: 'add', name: name, upc: product.upc }], Date.now()) }, done);
+        ctx.send([{ op: 'add', upc: product.upc }], { items: applyLocal(items, [{ op: 'add', name: name, upc: product.upc }], Date.now()) }, function (err, j) {
+          done(err, err ? null : answer(j));
+        });
       }
     });
+  }
+
+  // The Pi's answer to one scanned add: was it on the list already (server 0.38.0)?
+  function answer(j) {
+    var r = j && j.results && j.results[0];
+    return { already: !!(r && r.already), listed: true };
   }
 
   /* ---------- the TV tile and panel ---------- */
