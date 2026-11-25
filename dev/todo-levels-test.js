@@ -480,7 +480,8 @@ async function prefixes(env) {
       let s = await look(page);
       const strip = lang === 'es' ? '5 tareas clave para hoy: Take weekly shot' : '5 must-dos today: Take weekly shot';
       await check(lang + ' prefix: the tile strip and rows show titles without it', async () => {
-        assert(s.tile.alert === strip, 'strip: ' + s.tile.alert);
+        // Five must-dos: the strip gives way if that lets every one have a row.
+        assert(s.tile.alert === strip || (s.tile.alert === null && s.tile.rows.filter((r) => r.lv === 'must').length === 5), 'strip: ' + s.tile.alert + ' ' + JSON.stringify(s.tile.rows));
         assert(s.tile.rows.length > 0 && s.tile.rows.every((r) => !/^todo[!~]?:./i.test(r.title)), JSON.stringify(s.tile.rows));
         assert(s.tile.rows[0].title === 'Take weekly shot' && s.tile.rows[0].lv === 'must', JSON.stringify(s.tile.rows[0]));
         assert(s.tile.foot[0].indexOf('Concert tickets on sale Fri') === 0, 'foot: ' + JSON.stringify(s.tile.foot));
