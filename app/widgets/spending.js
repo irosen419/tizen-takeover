@@ -138,12 +138,12 @@
     readNoData: 'No figure for this day',
     goalLabel: '{n} goal',
     avgLabel: '7-day {n}',
-    // The Safe-today cap the budget app works out each morning (Budget lab's figure).
-    capLabel: 'Safe today {n}',
-    readCap: 'Safe today was {n}',
+    // The calculated cap the budget app works out each morning (Budget lab's figure).
+    capLabel: 'Calculated {n}',
+    readCap: 'Calculated cap was {n}',
     changeTick: '{d} · {n} goal',
-    legend: { avg: '7-day average', goal: 'Goal', cap: 'Safe today', note: 'Each point is that day and the 6 before it',
-      capNote: 'Safe today is worked out again each morning' },
+    legend: { avg: '7-day average', goal: 'Goal', cap: 'Calculated cap', note: 'Each point is that day and the 6 before it',
+      capNote: 'The calculated cap is worked out again each morning; it is not a cap you set' },
     history: 'Your goal',
     from: 'from {d}',
     noGoal: 'No goal set yet: the goal line and the days under it show once there is one.',

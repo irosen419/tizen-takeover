@@ -578,7 +578,18 @@ check('autopay: short on the 1st with a positive autopayRoom, the cap screen run
   assert.strictEqual(r.covered, true);
   assert.strictEqual(r.short, 0);
   assert.notStrictEqual(r.move && r.move.kind, 'moveMoney');
-  same(r.autopay, { firstShort: 955, date: '2026-12-07' });
+  // The 1st at the calculated $100 a day for 14 days: 954.20 + 1,400 short.
+  same(r.autopay, { firstShort: 955, date: '2026-12-07', shortAt: 2355 });
+  // Side by side: the calculated cap keeps nothing; no cap of your own yet.
+  same(r.compare, { calc: { cap: 100, keep: 0, short: 0, firstShort: 2355 }, mine: null });
+});
+
+check('autopay: your cap beside the calculated one, and the 1st at each', () => {
+  const r = run({ lab: lab(-954.2, { autopayRoom: 1400, autopayDate: '2026-12-07' }),
+    pace: { days: [], goals: [{ from: '2026-11-01', goal: 60 }] } });
+  // $60 a day for 14 days is 840: 560 left by the autopay day, the 1st 1,794.20 short.
+  same(r.compare.mine, { cap: 60, keep: 560, short: 0, firstShort: 1795 });
+  assert.strictEqual(r.saved.fromGoal, true);
 });
 
 check('autopay: both rooms negative, the move money screen with the autopay shortfall', () => {
@@ -587,7 +598,7 @@ check('autopay: both rooms negative, the move money screen with the autopay shor
   assert.strictEqual(r.c0, 0);
   assert.strictEqual(r.covered, false);
   same(r.move, { kind: 'moveMoney', amount: 81 });
-  same(r.autopay, { firstShort: 955, date: '2026-12-07' });
+  same(r.autopay, { firstShort: 955, date: '2026-12-07', shortAt: 955 });
 });
 
 check('autopay: ignored when the room is not below zero, or no autopayRoom is sent', () => {
@@ -601,7 +612,7 @@ check('autopay: ignored when the room is not below zero, or no autopayRoom is se
   assert.strictEqual(c.R, -20);
   assert.strictEqual(c.autopay, null);
   const d = run({ lab: lab(-20, { autopayRoom: 140 }) });
-  same(d.autopay, { firstShort: 20, date: null });
+  same(d.autopay, { firstShort: 20, date: null, shortAt: 160 });
 });
 
 /* ---------- the daily goal and the trend ---------- */
@@ -694,6 +705,32 @@ check('goal control: whole dollar steps from $1 to $1,000; starts at the 30 day 
   assert.strictEqual(L.goalStart({ avg30: 61.83 }), 60);
   assert.strictEqual(L.goalStart({ avg30: 3 }), 50);
   assert.strictEqual(L.goalStart(null), 50);
+});
+
+check('week: the last 7 days against your cap and that day\'s logged cap, each judged on its own day', () => {
+  const pace = { days: [
+    { date: '2026-11-09', spent: 10 },
+    { date: '2026-11-10', spent: 59.93 },
+    { date: '2026-11-11', spent: 144.58 },
+    { date: '2026-11-12', spent: 66.42, cap: 168.43 },
+    { date: '2026-11-13', spent: 300, cap: 200 },
+    { date: '2026-11-14', spent: 300, cap: 400 },
+    { date: '2026-11-16', spent: 29.29, cap: 241.82 }
+  ], goals: [{ from: '2026-11-11', goal: 60 }] };
+  const w = L.week(pace, '2026-11-17');
+  same(w.map((d) => d.date), ['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16']);
+  // Before the first goal: not judged against it.
+  same([w[0].vsGoal, w[0].underGoal, w[0].vsCap], [null, null, null]);
+  same([w[1].vsGoal, w[1].underGoal], [84.58, false]);
+  // $300 over a $200 cap stays a miss; the next day's $400 cap judges only that day.
+  same([w[3].vsCap, w[3].underCap, w[4].vsCap, w[4].underCap], [100, false, -100, true]);
+  // A day with no entry is neither.
+  same([w[5].spent, w[5].vsGoal, w[5].vsCap], [null, null, null]);
+  same([w[6].vsGoal, w[6].vsCap, w[6].underGoal, w[6].underCap], [-30.71, -212.53, true, true]);
+  // compute carries it, with the streak against the logged caps beside it.
+  const r = run({ pace: pace, today: '2026-11-17' });
+  assert.strictEqual(r.week.length, 7);
+  assert.strictEqual(r.streak.count, 2);
 });
 
 check('broken data never throws', () => {

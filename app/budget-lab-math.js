@@ -428,6 +428,35 @@
     return a >= 5 ? clamp(a, GOAL_MIN, GOAL_MAX) : 50;
   }
 
+  // The last 7 days, ending yesterday, oldest first: each day judged against
+  // your cap in force that day (pace.goals) and against that day's calculated
+  // cap as the budget app logged it that morning (pace.days[].cap, written
+  // once a date and never re-figured), so a later cap never turns a past miss
+  // into a win. { date, spent (null: no entry), goal, cap (null when none),
+  // vsGoal, vsCap (spent less the cap, cents: below zero is under), underGoal,
+  // underCap (null when not judged) }.
+  var WEEK = 7;
+  function weekOf(pace, today, trend) {
+    var days = readPace(pace, today);
+    var t = trend || goalTrend(pace, today);
+    var byDate = {};
+    for (var i = 0; i < days.length; i++) byDate[days[i].date] = days[i];
+    var out = [];
+    var series = t.series.slice(-WEEK);
+    for (i = 0; i < series.length; i++) {
+      var sd = series[i];
+      var d = byDate[sd.date];
+      var cap = d && d.cap !== null ? toCents(d.cap) : null;
+      var has = sd.spent !== null;
+      out.push({ date: sd.date, spent: sd.spent, goal: sd.goal, cap: cap,
+        vsGoal: has && sd.goal !== null ? toCents(sd.spent - sd.goal) : null,
+        vsCap: has && cap !== null ? toCents(sd.spent - cap) : null,
+        underGoal: has && sd.goal !== null ? !overBy(sd.spent, sd.goal) : null,
+        underCap: has && cap !== null ? under({ spent: sd.spent, cap: cap }) : null });
+    }
+    return out;
+  }
+
   /* ---------- the main sum ---------- */
 
   function compute(input) {
@@ -441,10 +470,12 @@
       streak: streakOf(input.pace, input.today),
       yesterday: yesterdayOf(input.pace, input.today),
       trend: goalTrend(input.pace, input.today),
+      week: null,
       merchants: [],
       move: null
     };
 
+    res.week = weekOf(input.pace, input.today, res.trend);
     if (!L) {
       res.reason = 'noLab';
       res.merchants = M.items.map(function (m) { return merchantRow(m, null); });
@@ -558,8 +589,29 @@
     res.gap = toCents((saved ? Ms : Mc) - Mc0);
     res.destinations = destinations(K, L.split, c * D - R);
     res.roomCap = roomCapNote(input.room, res.c0);
+    // The 1st itself when the plan runs to the autopay days: how short paying
+    // every card in full on card day is at the session cap (whole dollars,
+    // rounded up). Every dollar spent before the 1st makes it worse, and no
+    // cap fixes it, so the screen says so beside the autopay outcome.
+    if (res.autopay) res.autopay.shortAt = wholeUp(-(L.autopay.first - P));
+    res.compare = compareCaps(L, c0, res.saved);
     res.move = suggestedMove(res, rows, D, R, c, F, combinedLimit);
     return res;
+  }
+
+  // The calculated cap and the owner's own cap side by side, cuts left out:
+  // { calc, mine } each { cap, keep (what is left on the day the plan runs
+  // to, cents), short (whole dollars short then, 0 when covered),
+  // firstShort (whole dollars short on the 1st with the autopay plan, else
+  // null) }; mine is null with no cap of their own.
+  function compareCaps(L, c0, saved) {
+    function at(c) {
+      var P = c * L.D;
+      var K = toCents(L.R - P);
+      return { cap: toCents(c), keep: K, short: K < 0 ? wholeUp(-K) : 0,
+        firstShort: L.autopay ? wholeUp(-(L.autopay.first - P)) : null };
+    }
+    return { calc: at(c0), mine: saved ? at(saved.cap) : null };
   }
 
   function merchantRow(m, win) {
@@ -806,6 +858,7 @@
     streak: streakOf,
     yesterday: yesterdayOf,
     goalTrend: goalTrend,
+    week: weekOf,
     goalFor: goalFor,
     nudgeGoal: nudgeGoal,
     goalStart: goalStart,
