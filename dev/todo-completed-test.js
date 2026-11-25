@@ -3,17 +3,18 @@
  *
  * Opens the hub in headless Chromium at 1920x1080 with the clock fixed
  * (Chicago, UTC-6) and the list kept on the TV, and checks:
- *   - a done item stays until 24 hours after it was ticked: 23 hours stays,
- *     25 hours goes (and a remove is queued for the Pi); the same across
- *     midnight (ticked at 10 PM stays at 1 AM, ticked at 12:30 AM the day
- *     before goes)
- *   - the panel calls the section "Completed" and puts a quiet "Yesterday"
- *     on a done row from before today's midnight, and nothing on today's
+ *   - a done item stays until midnight: ticked at 1 AM stays at 3 PM, ticked
+ *     at 11 PM the night before goes (also from the saved list); at 1 AM,
+ *     ticked at 10 PM the night before goes and at 12:30 AM stays
+ *   - the panel calls the section "Completed", with no date on today's rows
  *   - the home tile shows a "Completed" section between the open rows and
  *     "Coming up": a label, at most 2 one-line rows (newest first, check
  *     circle, struck gray title) and "+N more"; no "{n} done today" line then
  *   - with many open rows the section is dropped (the open rows keep every
- *     row they have without it) and "{n} done today" comes back
+ *     row they have without it); the newest takes the meta line if that
+ *     costs no row, else nothing about Completed shows
+ *   - Ian's Main 3 x 2 (two must-dos in the strip, one done): nothing runs
+ *     past the tile's bottom, in English and Spanish
  *   - strip tiles are unchanged
  *   - Spanish: "Completadas", "Ayer", nothing cut sideways, room for accents
  *
@@ -141,51 +142,40 @@ function panel(page) {
 }
 
 async function run(env) {
-  // ---- 24 hours ----
+  // ---- until midnight ----
   let p = await openHub(env, { at: T3PM, storage: storage(BASE.concat([
-    done('d23', 'Done 23 hours ago', T3PM - 23 * HOUR),
-    done('d25', 'Done 25 hours ago', T3PM - 25 * HOUR),
+    done('d1am', 'Done at 1 AM today', Date.parse('2026-11-17T07:00:00Z')),
+    done('d11pm', 'Done at 11 PM last night', Date.parse('2026-11-17T05:00:00Z')),
     done('d1', 'Done an hour ago', T3PM - 1 * HOUR)])) });
   try {
-    await check('24 h: done 23 hours ago stays, 25 hours ago goes (also from the saved list)', async () => {
+    await check('midnight: done at 1 AM today stays, done at 11 PM last night goes (also from the saved list)', async () => {
       const ids = await titlesInStore(p);
-      assert(ids.indexOf('d23') >= 0 && ids.indexOf('d1') >= 0, 'a recent one went: ' + ids);
-      assert(ids.indexOf('d25') < 0, 'the 25-hour one stayed: ' + ids);
+      assert(ids.indexOf('d1am') >= 0 && ids.indexOf('d1') >= 0, 'one from today went: ' + ids);
+      assert(ids.indexOf('d11pm') < 0, 'last night\'s stayed: ' + ids);
     });
-    await check('yesterday evening (23 h ago, before midnight) is listed and labelled Yesterday in the panel', async () => {
+    await check('panel: Completed lists today\'s, with no date or Yesterday label', async () => {
       await H.openPanel(p, 'todo');
       const s = await panel(p);
-      assert(s.names.indexOf('Completed') >= 0 && s.names.join('|').indexOf('Done today') < 0, 'sections: ' + s.names);
-      const y = s.done.find((d) => d.title === 'Done 23 hours ago');
-      const t = s.done.find((d) => d.title === 'Done an hour ago');
-      assert(y && y.yday === 'Yesterday', 'no Yesterday: ' + JSON.stringify(s.done));
-      assert(t && t.yday === null && t.due === 0, 'today\'s row has a label: ' + JSON.stringify(t));
+      assert(s.names.indexOf('Completed') >= 0, 'sections: ' + s.names);
+      assert(s.done.length === 2 && s.done.every((d) => d.yday === null && d.due === 0), JSON.stringify(s.done));
     });
   } finally { await p.ctx.close(); }
 
   // Across midnight: 1 AM on the 18th.
   p = await openHub(env, { at: T1AM, storage: storage(BASE.concat([
     done('late', 'Ticked at 10 PM', Date.parse('2026-11-18T04:00:00Z')),       // 3 h ago, yesterday
-    done('mid', 'Ticked 12:30 AM the day before', Date.parse('2026-11-17T06:30:00Z')),   // 24.5 h ago
     done('new', 'Ticked at half past midnight', Date.parse('2026-11-18T06:30:00Z'))])) });   // 30 min ago, today
   try {
-    await check('across midnight: ticked 3 h ago (yesterday) stays; ticked 24.5 h ago goes', async () => {
+    await check('across midnight: ticked at 10 PM (3 h ago) goes; ticked at 12:30 AM stays', async () => {
       const ids = await titlesInStore(p);
-      assert(ids.indexOf('late') >= 0 && ids.indexOf('new') >= 0, 'went: ' + ids);
-      assert(ids.indexOf('mid') < 0, 'the old one stayed: ' + ids);
-    });
-    await check('across midnight: the panel labels the 10 PM one Yesterday, not the 12:30 AM one', async () => {
-      await H.openPanel(p, 'todo');
-      const s = await panel(p);
-      assert(s.done.length === 2, JSON.stringify(s.done));
-      assert(s.done.find((d) => d.title === 'Ticked at 10 PM').yday === 'Yesterday', JSON.stringify(s.done));
-      assert(s.done.find((d) => d.title === 'Ticked at half past midnight').yday === null, JSON.stringify(s.done));
+      assert(ids.indexOf('new') >= 0, 'went: ' + ids);
+      assert(ids.indexOf('late') < 0, 'yesterday\'s stayed: ' + ids);
     });
   } finally { await p.ctx.close(); }
 
   // ---- the tile ----
   const three = [done('c1', 'Water the plants', T3PM - 1 * HOUR), done('c2', 'Pay the water bill', T3PM - 2 * HOUR),
-    done('c3', 'Send the form', T3PM - 3 * HOUR), done('c4', 'Yesterday evening: drop off the parcel', T3PM - 18 * HOUR)];
+    done('c3', 'Send the form', T3PM - 3 * HOUR), done('c4', 'Drop off the parcel', T3PM - 4 * HOUR)];
   p = await openHub(env, { at: T3PM, storage: storage(FIT.concat(three)) });
   try {
     let s;
@@ -221,11 +211,11 @@ async function run(env) {
   try { rowsWithout = (await tile(without)).rows; } finally { await without.ctx.close(); }
   p = await openHub(env, { at: T3PM, storage: storage(many.concat(three)) });
   try {
-    await check('tile: open rows would be squeezed, so the newest completed takes the "done today" line: same open rows (' + rowsWithout + ' without any done items)', async () => {
+    await check('tile: open rows would be squeezed, so the newest completed takes the meta line: same open rows (' + rowsWithout + ' without any done items)', async () => {
       const s = await tile(p);
       assert(!s.sec, 'the section shows');
-      // The meta-height line costs one row, exactly as "4 done today" always did.
-      assert(rowsWithout >= 3 && s.rows === rowsWithout - 1, 'open rows ' + s.rows + ' vs ' + rowsWithout + ' without any done items');
+      // The line takes the "+N more" row's spare room, so it costs no row.
+      assert(rowsWithout >= 3 && s.rows === rowsWithout, 'open rows ' + s.rows + ' vs ' + rowsWithout + ' without any done items');
       const m = await p.evaluate(() => {
         const n = document.querySelector('.cell[data-widget="todo"] .todo-meta-done');
         return n && { t: n.querySelector('.todo-done-title').textContent, more: n.querySelector('.todo-meta-more').textContent, tick: !!n.querySelector('.todo-tick svg'),
@@ -256,6 +246,45 @@ async function run(env) {
     });
   } finally { await p.ctx.close(); }
 
+  // Four open rows fill the tile: any word of Completed would cost a row.
+  const four = [open('m1', 'Take weekly shot', 'must', { due: '2026-11-17' }), open('o1', 'Open to-do number 1', 'optional'),
+    open('o2', 'Open to-do number 2', 'optional'), open('o3', 'Open to-do number 3', 'optional'),
+    open('p1', 'Concert tickets on sale Fri', 'passive', { due: '2026-11-19' })];
+  p = await openHub(env, { at: T3PM, storage: storage(four.concat(three)) });
+  try {
+    await check('tile: when even one line would cost an open row, nothing about Completed shows', async () => {
+      const s = await tile(p);
+      const line = await p.evaluate(() => !!document.querySelector('.cell[data-widget="todo"] .todo-meta-done'));
+      assert(s.rows === 4 && !s.sec && !line && s.meta === null, JSON.stringify(s) + ' line ' + line);
+    });
+  } finally { await p.ctx.close(); }
+
+  // Ian's Main: the to-do tile 3 x 2 under the calendar, two must-dos in the
+  // strip and one done (photo 2026-11-25: Completed ran past the bottom).
+  const MAIN = [
+    { widget: 'today', x: 0, y: 0, w: 3, h: 2 }, { widget: 'calendar', x: 3, y: 0, w: 3, h: 2 },
+    { widget: 'todo', x: 3, y: 2, w: 3, h: 2 }, { widget: 'entertainment', x: 3, y: 4, w: 3, h: 2 }];
+  const ian = [open('m1', 'Call Stamford Health', 'must', { due: '2026-11-17' }), open('m2', 'Settle balance with HSA card', 'must', { due: '2026-11-17' }),
+    done('c1', 'Pick up plant shelf', T3PM - HOUR)];
+  for (const lang of ['en', 'es']) {
+    p = await openHub(env, { at: T3PM, layout: MAIN, lang: lang, storage: storage(ian) });
+    try {
+      await check('Main 3 x 2 (' + lang + '): nothing runs past the tile\'s bottom', async () => {
+        const r = await p.evaluate(() => {
+          const t = document.querySelector('.cell[data-widget="todo"] .tile');
+          const w = t.querySelector('.todo-tile');
+          const cs = getComputedStyle(t);
+          const limit = t.getBoundingClientRect().bottom - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth);
+          let low = 0;
+          const all = w.querySelectorAll('*');
+          for (let i = 0; i < all.length; i++) { const b = all[i].getBoundingClientRect(); if (b.height) low = Math.max(low, b.bottom); }
+          return { low: low, limit: limit, sh: w.scrollHeight, ch: w.clientHeight };
+        });
+        assert(r.low <= r.limit + 1 && r.sh <= r.ch + 1, JSON.stringify(r));
+      });
+    } finally { await p.ctx.close(); }
+  }
+
   // Strip: unchanged.
   p = await openHub(env, { at: T3PM, layout: STRIP, storage: storage(FIT.concat(three)) });
   try {
@@ -277,14 +306,14 @@ async function run(env) {
   // ---- Spanish, and 25% longer ----
   p = await openHub(env, { at: T3PM, lang: 'es', storage: storage(FIT.concat(three, [done('c5', 'Llamar a Ángela: ¿Ñandú? Él llevará la documentación médica completa del niño', T3PM - 30 * 60 * 1000)])) });
   try {
-    await check('Spanish: Completadas, one-line rows with ellipsis, +3 más, nothing cut, panel says Ayer', async () => {
+    await check('Spanish: Completadas, one-line rows with ellipsis, +3 más, nothing cut, panel lists all five', async () => {
       const s = await tile(p);
       assert(s.label === 'Completadas' && s.more === '+3 más', JSON.stringify(s));
       assert(s.lines.length === 2 && !s.bad.length && s.inside, JSON.stringify(s));
       await H.openPanel(p, 'todo');
       const pn = await panel(p);
       assert(pn.names.indexOf('Completadas') >= 0, 'sections: ' + pn.names);
-      assert(pn.done.some((d) => d.yday === 'Ayer'), JSON.stringify(pn.done));
+      assert(pn.done.length === 5 && pn.done.every((d) => d.yday === null), JSON.stringify(pn.done));
     });
     await check('Spanish 25% longer with accents: the Completed rows stay on one line, ellipsis not sideways cut', async () => {
       await p.evaluate(() => {

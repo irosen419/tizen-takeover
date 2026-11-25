@@ -16,7 +16,7 @@
  * Sections, as on the TV: "Must today" (red), "If you can" (yellow),
  * "Coming up" (passive items with no date, or due within their lead; no tick
  * box, as on the TV; the rest wait under "Later", one tap away) and
- * "Completed" (ticked in the last 24 hours; a tap unticks). A red strip says
+ * "Completed" (ticked today; gone at midnight; a tap unticks). A red strip says
  * how many must-dos are due today; from 5 PM it breathes (opacity only),
  * stronger when one is late. Each row's "..." opens a tray: move it to
  * another level, or remove it (Undo for 6 seconds).
@@ -34,7 +34,7 @@
   var MAX_TITLE = 80;
   var COMING_UP_DAYS = 2;
   var MAX_LEAD = 30;
-  var DONE_KEEP_MS = 24 * 60 * 60 * 1000;
+  var DONE_KEEP_MS = 24 * 60 * 60 * 1000;   // applyLocal's own trim
   var LEVELS = ['must', 'optional', 'passive'];
   var TAG_LEVEL = /\[level:(must|optional|passive)\]/;
   var TAG_LEAD = /\[lead:(\d{1,2})\]/;
@@ -87,11 +87,12 @@
   // The view's sections for a day ('YYYY-MM-DD'): list order within each,
   // the newest tick first in done.
   function sections(items, today, nowMs) {
-    var cut = (typeof nowMs === 'number' ? nowMs : new Date().getTime()) - DONE_KEEP_MS;
+    var at = new Date(typeof nowMs === 'number' ? nowMs : new Date().getTime());
+    var cut = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
     var out = { must: [], optional: [], coming: [], later: [], done: [], mustToday: [], late: false };
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
-      // Ticked over 24 hours ago: gone (the Pi drops it on the next change).
+      // Ticked before today's midnight: gone (the Pi drops it later).
       if (it.done) { if (!(typeof it.doneAt === 'number' && it.doneAt < cut)) out.done.push(it); continue; }
       var lv = levelOf(it);
       if (lv === 'passive') {
