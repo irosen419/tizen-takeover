@@ -25,6 +25,10 @@
  *   POST /pantry/screen-ops   the same ops from the TV (no token; the same trust as the TV's
  *                        POST /grocery/ops: home addresses, a listed Origin, OPTIONS answered).
  *                        The pantry is also a live resource ("pantry") in /live/state
+ *   GET  /spanish/progress   Flashcards progress (spanish.js, SQLite data/spanish.db):
+ *                        { ok, today, cards: { id: [box, due, misses] }, intro, reviewed }; touch door
+ *                        (home and Tailscale: the TV, the wall tablet, the phone), OPTIONS answered
+ *   POST /spanish/ops    { ops: [{ id: 'tener.pret.1', r: 'got' | 'again' }] } -> the changed cards
  *   POST /budget/goal    Budget lab's daily goal from the TV: { goal } (whole dollars, 1-1,000),
  *                        from today on (the Pi's local date); past days keep theirs (budgetgoal.js,
  *                        data/budget-goal.json). The history reaches the TV as the budget's pace.goals
@@ -174,9 +178,10 @@ const pantrydb = require('./pantrydb');
 const guestpin = require('./guestpin');
 const photos = require('./photos');
 const budgetgoal = require('./budgetgoal');
+const spanish = require('./spanish');
 const prefs = require('./prefs');
 
-const SERVER_VERSION = '0.41.0';
+const SERVER_VERSION = '0.42.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -1059,6 +1064,25 @@ function start(options) {
     }
   } else if (opt.pantry !== false) {
     log('pantry: off (this Node has no node:sqlite; it needs Node 22.13 or newer: docker compose pull)');
+  }
+
+  /* --- Spanish study progress (spanish.js): SQLite data/spanish.db --- */
+
+  let spanishDb = null;
+  if (opt.spanish !== false && spanish.available()) {
+    try {
+      spanishDb = spanish.createSpanish({ dataDir: dataDir, today: () => localToday() });
+    } catch (e) {
+      log('spanish: off, the database could not open (' + (e.code || e.message) + ')');
+      spanishDb = null;
+    }
+  }
+
+  function needSpanish() {
+    if (spanishDb) return spanishDb;
+    const e = new Error('Spanish progress is off on this server (it needs Node 22.13 or newer)');
+    e.status = 503;
+    throw e;
   }
 
   function needPantry() {
@@ -2242,10 +2266,10 @@ function start(options) {
   function touch(req, res, route, query) {
     const cors = corsHeaders(req);
     if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
-    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops')) {
+    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/spanish/ops' || route === '/spanish/progress')) {
       const h = Object.assign({ 'Cache-Control': 'no-store', 'Content-Length': 0 }, cors);
       if (cors['Access-Control-Allow-Origin']) {
-        h['Access-Control-Allow-Methods'] = 'POST';
+        h['Access-Control-Allow-Methods'] = route === '/spanish/progress' ? 'GET' : 'POST';
         h['Access-Control-Allow-Headers'] = 'Content-Type';
         h['Access-Control-Max-Age'] = '600';
       }
@@ -2253,7 +2277,7 @@ function start(options) {
       return res.end();
     }
     const image = route.indexOf('/products/image/') === 0;
-    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' ? 'POST' : 'GET';
+    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' || route === '/spanish/ops' ? 'POST' : 'GET';
     const okMethod = req.method === want || (image && req.method === 'HEAD');
     if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
@@ -2317,6 +2341,21 @@ function start(options) {
           fail(res, e, cors);
         }
       }, PRODUCT_BODY_LIMIT);
+    }
+    if (route === '/spanish/progress') {
+      // A plain read; nothing logged.
+      try { return sendJson(res, 200, needSpanish().progress(), cors); } catch (e) { return fail(res, e, cors); }
+    }
+    if (route === '/spanish/ops') {
+      return readBody(req, res, (body) => {
+        try {
+          const r = needSpanish().ops(body);
+          sendJson(res, 200, r, cors);
+          log('a screen answered ' + body.ops.length + ' Spanish flashcard' + (body.ops.length === 1 ? '' : 's'));
+        } catch (e) {
+          fail(res, e, cors);
+        }
+      });
     }
     if (route === '/pantry/ops' || route === '/pantry/screen-ops') {
       return readBody(req, res, (body) => {
@@ -2590,7 +2629,7 @@ function start(options) {
     '/echo/run': 1, '/guest/pin': 1
   };
 
-  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1 };
+  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1, '/spanish/progress': 1, '/spanish/ops': 1 };
 
   function handler(door) {
     return (req, res) => {
@@ -2736,6 +2775,7 @@ function start(options) {
     lights.close();
     catalog.close();
     if (pantry) pantry.close();
+    if (spanishDb) spanishDb.close();
     if (mbox) mbox.close();
     Array.from(sse).forEach((c) => dropSse(c, 'server stopping'));
     Array.from(polls).forEach((p) => finishPoll(p, pollAnswer(p, true)));

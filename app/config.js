@@ -216,6 +216,20 @@ var HUB_CONFIG = {
       { widget: 'calendar',      x: 0, y: 2, w: 3, h: 4 },
       { widget: 'todo',          x: 9, y: 2, w: 3, h: 4 },
       { widget: 'entertainment', x: 3, y: 4, w: 6, h: 2 }
+    ] },
+    /* Spanish: Flashcards (app/widgets/flashcards.js, progress on the Pi,
+       needs Pi server 0.42.0) beside Word of the day. On the TV, OK on the
+       Flashcards tile uses it in place (OK flips, Left again, Right got it,
+       Back leaves); holding OK opens the page. More Spanish widgets later. */
+    { id: 'spanish', name: 'Spanish', rotate: false, layout: [
+      { widget: 'wotd',          x: 0, y: 0, w: 3, h: 2 },
+      { widget: 'flashcards',    x: 3, y: 0, w: 3, h: 2 },
+      { widget: 'today',         x: 6, y: 0, w: 3, h: 2 },
+      { widget: 'weather',       x: 9, y: 0, w: 3, h: 2 },
+      { widget: 'calendar',      x: 0, y: 2, w: 6, h: 4 },
+      { widget: 'todo',          x: 6, y: 2, w: 3, h: 4 },
+      { widget: 'nowplaying',    x: 9, y: 2, w: 3, h: 2 },
+      { widget: 'entertainment', x: 9, y: 4, w: 3, h: 2 }
     ] }
   ],
 
