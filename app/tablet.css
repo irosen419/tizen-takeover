@@ -223,6 +223,13 @@ body.tablet .tsheet .switcher-bar {
   color: var(--text-2);
 }
 .tsheet-set-opts { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; }
+.tsheet-set-note {
+  margin: -0.2rem 0 0.6rem;
+  padding: 0 0.4rem 0 10.6rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: var(--text-3);
+}
 .tsheet-opt,
 .tsheet-btn {
   flex: 0 0 auto;

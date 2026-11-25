@@ -23,7 +23,7 @@
  *     mode on by itself
  *   - Ambience: a tap on a light's bar sets that level (never off), a drag
  *     scrubs it, a mouse click does the same; on a TV a click is still OK
- *   - Settings in the sheet (look, language, Guest mode behind the PIN, the
+ *   - Settings in the sheet (look, language, Guest mode behind the PIN, Rotate layouts, the
  *     same setters as the Clock page); Slideshow full screen until a tap or
  *     Back; the Photos layout in the sheet
  *   - Spanish: the chip, the tab and the sheet, accents not clipped
@@ -483,7 +483,7 @@ function sheetUp(page) {
       await H.until(() => sheetUp(p), 3000, 'not up');
       await H.sleep(400);
       const rows = await p.evaluate(() => Array.prototype.map.call(document.querySelectorAll('.tsheet-set-label'), (n) => n.textContent));
-      assert(rows.join('|') === 'Look|Language|Guest mode', rows.join('|'));
+      assert(rows.join('|') === 'Look|Language|Guest mode|Rotate layouts', rows.join('|'));
       await p.click('.tsheet-opt[data-set="lang-es"]');
       await H.sleep(300);
       let s = await p.evaluate(() => ({ lang: window.HUB_I18N.lang(), title: document.querySelector('.tsheet-title').textContent, on: document.querySelector('.tsheet-opt[data-set="lang-es"]').classList.contains('is-on'), up: window.HUB_TEST.tablet().sheet }));

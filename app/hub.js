@@ -1588,6 +1588,105 @@
     toast(hubWord('layoutPicked', '{name} layout', { name: layoutName(p) }), 1800);
   }
 
+  /* ---------- auto-rotate layouts ---------- */
+
+  // A setting in the Menu sheet (per screen, like Look and Language): when on,
+  // the hub moves to the next saved layout every 2 minutes. A key, click or
+  // touch pushes the next move to 5 minutes after it, since someone is
+  // reading. Nothing moves while a tile is open, a web page is full screen,
+  // the Menu, layout bar or About strip is up, the PIN pad or the slideshow
+  // shows, or a text box has the keyboard; the 5 minutes count from when that
+  // ends (closing it is a key or tap). Layouts with rotate: false in
+  // config.js (Default and the test layouts) are skipped. A layout with other
+  // widgets reloads the page (reloadForLayout); the 2 minutes start again then.
+  var ROTATE_KEY = 'homeHub.autoRotate';
+  var ROTATE_MS = 120000;       // between moves when nobody is using the hub
+  var ROTATE_AWAKE_MS = 300000; // after a key, click or touch
+  var ROTATE_TICK_MS = 5000;
+  var rot = { lastMove: new Date().getTime(), lastUse: 0, timer: null };
+
+  function rotateOn() {
+    try { return !!(window.localStorage && localStorage.getItem(ROTATE_KEY) === 'on'); } catch (e) { return false; }
+  }
+
+  function setRotate(on) {
+    try {
+      if (window.localStorage) {
+        if (on) localStorage.setItem(ROTATE_KEY, 'on');
+        else localStorage.removeItem(ROTATE_KEY);
+      }
+    } catch (e) { /* stays as it was */ }
+    rot.lastMove = new Date().getTime();   // the first move is a full 2 minutes away
+    rotateTimer();
+  }
+
+  function noteUse() { rot.lastUse = new Date().getTime(); }
+  document.addEventListener('keydown', noteUse, true);
+  document.addEventListener('click', noteUse, true);
+  document.addEventListener('touchstart', noteUse, true);
+
+  // Something is open or being used: no move now.
+  function rotateHeld() {
+    if (busy || open || frameOpen || sw.on || ab.on || tablet.sheetOn || tablet.show || tablet.peek) return true;
+    try { if (window.HUB_PIN && typeof window.HUB_PIN.isOpen === 'function' && window.HUB_PIN.isOpen()) return true; } catch (e) { /* no PIN pad */ }
+    return !!typingBox();
+  }
+
+  // When the next move is due (ms since 1970).
+  function rotateDue() {
+    return Math.max(rot.lastMove + ROTATE_MS, rot.lastUse ? rot.lastUse + ROTATE_AWAKE_MS : 0);
+  }
+
+  // The layouts it moves through, in the bar's order.
+  function rotatePresets() {
+    var all = switcherPresets();
+    var out = [];
+    var src = cfg.layouts || [];
+    for (var i = 0; i < all.length; i++) {
+      var skip = false;
+      for (var j = 0; j < src.length; j++) {
+        if (src[j] && src[j].rotate === false && (src[j].id || src[j].name) === (all[i].id || all[i].name)) skip = true;
+      }
+      if (!skip) out.push(all[i]);
+    }
+    return out;
+  }
+
+  // Where the screen is in that list: the picked one, else the one that looks the same, else -1.
+  function rotateIndex(list) {
+    var chosen = readChoice();
+    var id = isLiveChoice(chosen) ? 'main' : chosen.id;
+    for (var i = 0; i < list.length; i++) if ((list[i].id || list[i].name) === id) return i;
+    var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
+    for (var k = 0; k < list.length; k++) if (presetSig(list[k]) === current) return k;
+    return -1;
+  }
+
+  function rotateNext() {
+    var list = rotatePresets();
+    if (list.length < 2) return false;
+    var p = list[(rotateIndex(list) + 1) % list.length];
+    rot.lastMove = new Date().getTime();
+    saveChoice({ id: p.id || p.name, live: p.live });
+    saveLayout(p.layout);
+    pendingLayout = p.layout;
+    applyPendingLayout();
+    return true;
+  }
+
+  function rotateTick() {
+    if (!rotateOn()) return;
+    var now = new Date().getTime();
+    if (rotateHeld()) { rot.lastUse = now; return; }   // open counts as in use
+    if (now >= rotateDue()) rotateNext();
+  }
+
+  function rotateTimer() {
+    clearInterval(rot.timer);
+    rot.timer = rotateOn() ? setInterval(rotateTick, ROTATE_TICK_MS) : null;
+  }
+  rotateTimer();
+
   /* ---------- the About panel ---------- */
 
   // Press Left on a left-most tile and a strip of facts about the hub slides
@@ -3477,6 +3576,11 @@
   window.HUB_TEST.idle = hubIdle;
   window.HUB_TEST.setIdle = function (value) { idleOverride = value === true || value === false ? value : null; };
   window.HUB_TEST.setIdleMs = function (ms) { IDLE_MS = ms; };
+  window.HUB_TEST.rotate = {
+    times: function (moveMs, awakeMs, tickMs) { ROTATE_MS = moveMs; ROTATE_AWAKE_MS = awakeMs; ROTATE_TICK_MS = tickMs; rot.lastMove = new Date().getTime(); rotateTimer(); },
+    state: function () { return { on: rotateOn(), held: rotateHeld(), due: rotateDue() - new Date().getTime(), order: rotatePresets().map(function (p) { return p.id || p.name; }) }; },
+    next: rotateNext
+  };
   window.HUB_TEST.cleanLayout = cleanLayout;
   window.HUB_TEST.layout = function () { return layoutKey ? JSON.parse(layoutKey) : null; };
   window.HUB_TEST.layoutWaiting = function () { return pendingLayout !== undefined; };
@@ -3872,6 +3976,9 @@
       var g = window.HUB_GUEST.on();
       row(aboutWord('guest.label', 'Guest mode'), [['guest-off', aboutWord('guest.off', 'Off'), !g], ['guest-on', aboutWord('guest.on', 'On'), g]]);
     }
+    var ro = rotateOn();
+    row(hubWord('rotate.label', 'Rotate layouts'), [['rotate-off', aboutWord('guest.off', 'Off'), !ro], ['rotate-on', aboutWord('guest.on', 'On'), ro]]);
+    el('div', 'tsheet-set-note', box).textContent = hubWord('rotate.note', 'Every 2 minutes. Waits 5 minutes after you use it.');
     markSheetFocus();                       // drawn again: the remote's focus stays on its pill
   }
 
@@ -3879,6 +3986,7 @@
     try {
       if (key === 'lang-en' || key === 'lang-es') { window.HUB_I18N.setLang(key.slice(5)); drawSettings(); return; }
       if (key.indexOf('look-') === 0) { window.HUB_LOOK.set(key.slice(5)); drawSettings(); return; }
+      if (key === 'rotate-on' || key === 'rotate-off') { setRotate(key === 'rotate-on'); drawSettings(); return; }
       if (key === 'guest-on' || key === 'guest-off') {
         var want = key === 'guest-on';
         var P = window.HUB_PIN;

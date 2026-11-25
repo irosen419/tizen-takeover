@@ -54,6 +54,9 @@
     'hub.tablet.photos': 'Fotos',
     'hub.tablet.slideshow': 'Iniciar presentación',
     'hub.tablet.noPhotos': 'Todavía no hay fotos para mostrar.',
+    /* Auto-rotate layouts, a setting in the Menu sheet (app/hub.js). */
+    'hub.rotate.label': 'Rotar diseños',
+    'hub.rotate.note': 'Cada 2 minutos. Espera 5 minutos si lo usas.',
     'hub.tvOpening': 'Abriendo {name} en la TV…',
     'hub.tvOpenFailed': 'No se pudo abrir {name} en la TV ({why}).',
     'hub.tvNoPi': 'no se llega a la Pi',

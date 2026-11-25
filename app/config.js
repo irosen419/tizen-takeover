@@ -113,9 +113,10 @@ var HUB_CONFIG = {
      left-most one) and a bar of pills drops from the top. Pick one and it is applied (and sent to the Pi, so it
      is remembered). "Default" is the built-in layout above (id 'stock', kept so a saved pick still matches). Copy a layout here
      from the Layout Studio's saved list; widgets this hub doesn't have are
-     skipped, and a layout may leave widgets out to hide them. */
+     skipped, and a layout may leave widgets out to hide them.
+     rotate: false leaves a layout out of Auto-rotate (Menu > Settings > Rotate layouts). */
   layouts: [
-    { id: 'stock', name: 'Default', layout: null },
+    { id: 'stock', name: 'Default', layout: null, rotate: false },
     { id: 'main', name: 'Main', layout: [
       { widget: 'today',          x: 0, y: 0, w: 3, h: 1 },
       { widget: 'entertainment',  x: 0, y: 5, w: 3, h: 1 },
@@ -175,19 +176,19 @@ var HUB_CONFIG = {
     /* A test layout: Ambience (app/widgets/ambience.js, the room's lights)
        on its own, filling the screen, to try it before it joins a real
        layout. New widgets are tried the same way: one layout, one widget. */
-    { id: 'ambience-test', name: 'Ambience test', layout: [
+    { id: 'ambience-test', name: 'Ambience test', rotate: false, layout: [
       { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
     ] },
     /* Architecture (app/widgets/architecture.js, the map of the whole system,
        driven by the remote) on its own; it opens straight into a window (hub.js
        openSolo). The id still says test so a saved pick still matches. */
-    { id: 'architecture-test', name: 'Hub architecture', layout: [
+    { id: 'architecture-test', name: 'Hub architecture', rotate: false, layout: [
       { widget: 'architecture', x: 0, y: 0, w: 12, h: 6 }
     ] },
     /* A test layout: Groceries (app/widgets/grocery.js, the list kept on the
        Pi) among everyday tiles, so its panel opens in place and pushes them
        aside. Not alone at 12x6: that would open straight to full screen. */
-    { id: 'grocery-test', name: 'Groceries test', layout: [
+    { id: 'grocery-test', name: 'Groceries test', rotate: false, layout: [
       { widget: 'today',         x: 0, y: 0, w: 3, h: 2 },
       { widget: 'grocery',       x: 3, y: 0, w: 3, h: 4 },
       { widget: 'calendar',      x: 6, y: 0, w: 3, h: 4 },
