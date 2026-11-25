@@ -49,6 +49,9 @@
   object-fit: contain;
 }
 .ph-cover .ph-img { object-fit: cover; object-position: 50% 40%; }
+/* A clip over its still: shown once it has a picture (its first frame is the still). */
+.ph-clip { opacity: 0; background: transparent; }
+.ph-clip.is-playing { opacity: 1; }
 /* The blurred fill: the same photo, larger, blurred once and dimmed. */
 .ph-fill {
   position: absolute;
@@ -255,6 +258,25 @@
 .ph-thumb.is-loaded img { opacity: 1; }
 /* Focus: a plain border swap, instant. */
 .ph-thumb.is-focused { border-color: var(--focus, #ffffff); }
+/* A video ("live photo"): a small play mark in the corner, over the still. */
+.ph-play {
+  position: absolute;
+  top: 0.5rem; right: 0.5rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: rgba(10, 12, 16, 0.55);
+  box-shadow: 0 0 0 0.06rem rgba(255, 255, 255, 0.22);
+}
+.ph-play:after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  margin: -0.36rem 0 0 -0.2rem;
+  border-style: solid;
+  border-width: 0.36rem 0 0.36rem 0.58rem;
+  border-color: transparent transparent transparent #ffffff;
+}
 
 /* ---------- full screen: the viewer ---------- */
 

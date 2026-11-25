@@ -213,6 +213,17 @@
 .bu-grow.is-g-clean .bu-grow-state,
 .bu-grow.is-g-under .bu-grow-state { color: var(--bu-ok); }
 .bu-grow.is-g-on-pace .bu-grow-state { color: var(--bu-pace); }
+/* With a monthly limit: what the goals are above the rows, and spent of limit under each bar. */
+.bu-gcap { display: flex; align-items: baseline; flex: 0 0 auto; margin: -0.15rem 0 0.2rem; font-size: 0.85rem; line-height: 1.4; color: var(--text-3); white-space: nowrap; }
+.bu-gcap-what { flex: 0 1 auto; min-width: 0; }
+.bu-gcap-over { flex: 0 0 auto; color: var(--bu-neg); }
+.bu-panel .bu-gcap-what { color: var(--text-3); }
+.bu-meter.is-goal { position: relative; }
+.bu-meter-tick { position: absolute; top: 0; bottom: 0; width: 0.2rem; margin-left: -0.1rem; background: rgba(0, 0, 0, 0.55); }
+.bu-grow-sub { margin-top: 0.25rem; font-size: 0.85rem; line-height: 1.4; color: var(--text-3); white-space: nowrap; overflow: hidden; }
+.bu-panel .bu-grow-sub { font-size: 1rem; margin-top: 0.35rem; }
+.bu-panel.is-full .bu-grow-sub { font-size: 1.1rem; }
+.bu-gnote { margin-top: 0.6rem; }
 /* A narrow tile: label over its text, so neither is crushed. */
 .bu-glist.is-narrow .bu-grow-top { display: block; }
 .bu-glist.is-narrow .bu-grow-label { display: block; }

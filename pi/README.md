@@ -154,12 +154,12 @@ The TV then asks you to create a new one the next time you turn Guest mode on or
 
 ### Photo album (from the wall calendar)
 
-Friends' photos on the Dragon Touch wall calendar (eCalendar app, `/sdcard/CloudAlbum/`) are copied to the Pi so the TV and the tablet can show them. A script on the Pi itself, outside Docker (the container has no adb), runs every 30 minutes from a systemd **user** timer: `pi/photos-sync.sh` connects to the calendar over adb (`PHOTOS_ADB_ADDR`, default `192.168.1.208:5555`), pulls only the photos that are not here yet into `data/photos/orig/`, makes a 480 px wide thumb in `data/photos/thumb/`, then rebuilds `data/photos/index.json` and `state.json`. It never deletes anything, on the calendar or here. Videos are skipped for now. When the calendar is off it quietly does nothing. It prints counts only, never a file name; a photo's copy is named by a hash of its file name and size, found at any folder depth (the app keeps them about eight folders down), and `.downloading` folders are skipped.
+Friends' photos on the Dragon Touch wall calendar (eCalendar app, `/sdcard/CloudAlbum/`) are copied to the Pi so the TV and the tablet can show them. A script on the Pi itself, outside Docker (the container has no adb), runs every 30 minutes from a systemd **user** timer: `pi/photos-sync.sh` connects to the calendar over adb (`PHOTOS_ADB_ADDR`, default `192.168.1.208:5555`), pulls only the photos that are not here yet into `data/photos/orig/`, makes a 480 px wide thumb in `data/photos/thumb/`, then rebuilds `data/photos/index.json` and `state.json`. It never deletes anything, on the calendar or here. Videos (the "live photos", `.mp4 .mov .m4v`) are pulled too and, with ffmpeg, made into a small H.264 clip (`data/photos/clip/`, 1280 px at most, no sound, 30 s at most; HEVC plays on neither the TV nor the tablet) plus a still of the first frame (`still/`, and a thumb); the TV and tablet show the still, play the clip once and move on. Without ffmpeg the videos wait (one log line says how many) and join the album once it is installed, even while the calendar is away. A video ffmpeg cannot read gets `clip/<id>.bad` and is not tried again (delete that file to retry). When the calendar is off it quietly does nothing. It prints counts only, never a file name; a photo's copy is named by a hash of its file name and size, found at any folder depth (the app keeps them about eight folders down), and `.downloading` folders are skipped.
 
-Set it up once on the Pi (adb, ImageMagick with WebP for the thumbs; the data folder belongs to root because Docker made it, so give the photos folder to your user):
+Set it up once on the Pi (adb, ImageMagick with WebP for the thumbs, ffmpeg for the videos; the data folder belongs to root because Docker made it, so give the photos folder to your user):
 
 ```
-sudo apt install android-tools-adb imagemagick webp
+sudo apt install android-tools-adb imagemagick webp ffmpeg
 cd ~/code/tizen-takeover/pi && sudo mkdir -p data/photos && sudo chown -R $(id -un): data/photos
 mkdir -p ~/.config/systemd/user && cp photos-sync.service photos-sync.timer ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now photos-sync.timer
@@ -168,7 +168,7 @@ systemctl --user start photos-sync.service && ./hub photos status
 
 The calendar asks once to allow USB debugging from the Pi: tap Allow (and "Always allow"). If the repo is not at `~/code/tizen-takeover`, change the two paths in `photos-sync.service`. A different address: uncomment the `Environment=` line there. The timer only runs while you are logged in unless linger is on (`sudo loginctl enable-linger $(id -un)`). By hand: `pi/photos-sync.sh`. Without node on the Pi, it rebuilds the index with the hub's `node:22-alpine` image.
 
-Routes (read only, the touch door's trust: home and Tailscale addresses): `GET /photos/list` gives `{ ok, rev, count, items: [{ id, w, h, month }] }`, newest first, at most 500 (`rev` changes only when the album does); `GET /photos/img/<id>?size=full|thumb` gives the picture with a day-long immutable cache. Control API: `GET /api/photos` (counts, last sync). `./hub photos status`; mailbox `photos.status`. The server picks up new photos by itself, no restart; the code itself needs `hubup` once.
+Routes (read only, the touch door's trust: home and Tailscale addresses): `GET /photos/list` gives `{ ok, rev, count, items: [{ id, w, h, month }] }`, newest first, at most 500 (`rev` changes only when the album does); `GET /photos/img/<id>?size=full|thumb` gives the picture with a day-long immutable cache (a video's still); items with `video: 1` (and `dur`, seconds) also have `GET /photos/clip/<id>` (video/mp4, byte ranges). Control API: `GET /api/photos` (counts, last sync). `./hub photos status`; mailbox `photos.status`. The server picks up new photos by itself, no restart; the code itself needs `hubup` once.
 
 ## Tile layout
 

@@ -282,6 +282,16 @@ const CHECK = {
           if (typeof pct !== 'number' || !isFinite(pct) || pct < 0 || pct > 100) throw wrong('"pct" must be a number from 0 to 100', where);
           g.pct = Math.round(pct * 10) / 10;
         }
+        // The goal's month so far and its monthly limit, and where today's pace
+        // ends the month: the TV words the goal from them. Both or neither.
+        const spent = amountOf(e, 'spent', where, false);
+        const limit = amountOf(e, 'limit', where, false, { above0: true });
+        if ((spent === undefined) !== (limit === undefined)) throw wrong('"spent" and "limit" go together', where);
+        if (limit !== undefined) {
+          g.spent = spent;
+          g.limit = limit;
+          F.put(g, 'pace', amountOf(e, 'pace', where, false));
+        }
         return g;
       })
     };

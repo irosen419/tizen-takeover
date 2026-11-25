@@ -7,6 +7,8 @@
  *                                     newest first
  *   GET <server>/photos/img/<id>?size=full|thumb
  *                                     full ~1080x1440 WebP, thumb ~480 px wide
+ *   GET <server>/photos/clip/<id>     an item with video: 1 (a "live photo"): a
+ *                                     small H.264 MP4 (no sound); img/ is its first frame
  * <server> is the hub server the live line uses (?live=<address> on the page,
  * else HUB_CONFIG.live.server, else HUB_PI:8097). The list is fetched at boot
  * and every 10 minutes (and when a "photos" live resource arrives, if the Pi
@@ -21,12 +23,19 @@
  *              once (a static layer, never animated). A month caption
  *              ("November 2026") on a soft gradient at the bottom, except on
  *              1-column tiles. A hairline at the bottom shows the time left.
+ *              A video item shows its first frame, plays ONCE (muted, inline),
+ *              stays on its last frame for a moment, then moves on; the
+ *              hairline runs for the clip's length. A clip that will not play
+ *              (no autoplay, a codec the screen lacks, 8 s with no picture)
+ *              leaves the still frame up for the usual time, never an error.
+ *              One clip decodes at a time: the viewer stops the tile's.
  *   full       OK opens straight to full screen (openMode 'full'): the photos
  *              as thumbnails grouped by month (inline blocks, no CSS grid),
  *              loaded as they come into view. OK on one opens the viewer:
  *              the photo whole, the month and "12 of 38"; Left/Right (or a
  *              tap on the left/right half) go to the previous/next; Back goes
- *              back to the grid, then closes.
+ *              back to the grid, then closes. A video plays once there too;
+ *              its grid thumbnail carries a small play mark.
  *
  * Guest mode leaves photos alone (they are not amounts). Plain ES5; only
  * opacity and transform animate; focus changes are instant.
@@ -39,6 +48,9 @@
   var LOAD_WAIT_MS = 20000;       // an image that takes longer is skipped
   var THUMB_PX = 520;             // frames up to this many device pixels use the thumb
   var THUMB_BATCH = 24;           // grid thumbnails loaded at first, the rest as they show
+  var CLIP_START_MS = 8000;       // a clip with no picture by then is given up (the still stays)
+  var CLIP_HOLD_MS = 700;         // the last frame stays this long before the next photo
+  var CLIP_MAX_MS = 45000;        // a clip is never on longer than this (the Pi cuts them at 30 s)
 
   var S = {
     ctx: null,
@@ -48,6 +60,7 @@
     index: 0,                     // the photo on the tile
     tile: null,                   // { body, frame, stage, bar }
     timer: null,
+    clipping: false,              // the tile's clip is playing (its end moves on)
     loading: false,
     viewing: -1,                  // the photo in the viewer, -1 = the grid
     view: null,                   // { stage, month, count }
@@ -116,6 +129,10 @@
     return server() + '/photos/img/' + encodeURIComponent(id) + '?size=' + (size === 'thumb' ? 'thumb' : 'full');
   }
 
+  function clipUrl(id) {
+    return server() + '/photos/clip/' + encodeURIComponent(id);
+  }
+
   // The Pi's list, cleaned: only items with an id, sizes as numbers.
   function cleanList(data) {
     var out = [];
@@ -123,7 +140,12 @@
     for (var i = 0; i < list.length; i++) {
       var it = list[i];
       if (!it || (typeof it.id !== 'string' && typeof it.id !== 'number') || it.id === '') continue;
-      out.push({ id: String(it.id), w: +it.w > 0 ? +it.w : 0, h: +it.h > 0 ? +it.h : 0, month: String(it.month || '') });
+      var row = { id: String(it.id), w: +it.w > 0 ? +it.w : 0, h: +it.h > 0 ? +it.h : 0, month: String(it.month || '') };
+      if (it.video === 1 || it.video === true) {
+        row.video = true;
+        row.dur = +it.dur > 0 && +it.dur < 3600 ? +it.dur : 0;
+      }
+      out.push(row);
     }
     return out;
   }
@@ -244,7 +266,7 @@
       var shade = div('ph-cap', el);
       cap = div('ph-cap-text', shade);
     }
-    return { el: el, fill: fill, img: img, cap: cap };
+    return { el: el, fill: fill, img: img, cap: cap, video: null };
   }
 
   function stageSize(st) {
@@ -283,6 +305,7 @@
       if (!ok) { if (cb) cb(false); return; }
       var next = st.front === 0 ? 1 : 0;
       var L = st.layers[next];
+      dropClip(L);
       var z = stageSize(st);
       var fit = st.opts.fit === 'contain' ? 'contain' : fitFor(item, z.w, z.h);
       L.el.className = 'ph-layer ph-' + fit;
@@ -300,7 +323,11 @@
       if (first) addClass(st.el, 'is-instant');
       setTimeout(function () {
         addClass(L.el, 'is-on');
-        if (old) removeClass(old.el, 'is-on');
+        if (old) {
+          removeClass(old.el, 'is-on');
+          // Free the old layer's decoder once it has faded out.
+          if (old.video) setTimeout(function () { if (!hasClass(old.el, 'is-on')) dropClip(old); }, 1600);
+        }
         st.front = next;
         st.shown = item.id;
         if (first) setTimeout(function () { removeClass(st.el, 'is-instant'); }, 50);
@@ -309,25 +336,118 @@
     });
   }
 
+  /* ---------- video clips ("live photos") ---------- */
+
+  // Only the system's reduce-motion setting skips clips; the hub's own slow
+  // screen step-down (motion-fade) does not, they are the photo itself.
+  function noClips() {
+    try {
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (e) { return false; }
+  }
+
+  function dropClip(L) {
+    var v = L && L.video;
+    if (!v) return;
+    L.video = null;
+    v.onplaying = v.onended = v.onerror = null;
+    try { v.pause(); } catch (e) { /* ignore */ }
+    v.removeAttribute('src');
+    try { v.load(); } catch (e) { /* ignore */ }
+    if (v.parentNode) v.parentNode.removeChild(v);
+  }
+
+  function stopClip(st) {
+    if (!st) return;
+    st.clipToken = (st.clipToken || 0) + 1;
+    for (var i = 0; i < st.layers.length; i++) dropClip(st.layers[i]);
+  }
+
+  // Plays item's clip once over its still on the stage's front layer.
+  // done(true) after it ended (the last frame stays up), done(false) when it
+  // would not play (the still stays up). Called once, unless the stage moved on.
+  function playClip(st, item, done) {
+    var L = st.layers[st.front];
+    if (!item || !item.video || !L || L.el.getAttribute('data-id') !== item.id || noClips()) { done(false); return; }
+    dropClip(L);
+    var token = st.clipToken = (st.clipToken || 0) + 1;
+    var v = document.createElement('video');
+    var finished = false;
+    var startTimer = null;
+    var maxTimer = null;
+    function finish(ok) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(startTimer);
+      clearTimeout(maxTimer);
+      v.onplaying = v.onended = v.onerror = null;
+      if (!ok) dropClip(L);
+      if (token === st.clipToken && st.want === item.id) done(ok);
+    }
+    v.className = 'ph-img ph-clip';
+    v.muted = true;
+    v.setAttribute('muted', '');
+    v.setAttribute('playsinline', '');
+    v.setAttribute('webkit-playsinline', '');
+    v.setAttribute('preload', 'auto');
+    v.setAttribute('aria-hidden', 'true');
+    v.onplaying = function () {
+      clearTimeout(startTimer);
+      // The clip's first frame is the still under it: the swap is invisible.
+      addClass(v, 'is-playing');
+    };
+    v.onended = function () { finish(true); };
+    v.onerror = function () { finish(false); };
+    startTimer = setTimeout(function () { finish(false); }, CLIP_START_MS);
+    maxTimer = setTimeout(function () { finish(true); }, Math.min(CLIP_MAX_MS, ((item.dur || 30) + 10) * 1000));
+    L.video = v;
+    L.el.insertBefore(v, L.img.nextSibling);
+    v.src = clipUrl(item.id);
+    try {
+      var p = v.play();
+      if (p && typeof p.then === 'function') p.then(null, function () { finish(false); });
+    } catch (e) { finish(false); }
+  }
+
   /* ---------- the tile ---------- */
 
   function clearTimer() { if (S.timer) { clearTimeout(S.timer); S.timer = null; } }
 
-  function restartBar() {
+  function restartBar(secs) {
     var bar = S.tile && S.tile.bar;
     if (!bar) return;
     removeClass(bar, 'is-running');
     bar.style.webkitTransitionDuration = bar.style.transitionDuration = '0s';
     void bar.offsetWidth;
-    bar.style.webkitTransitionDuration = bar.style.transitionDuration = seconds() + 's';
+    bar.style.webkitTransitionDuration = bar.style.transitionDuration = (secs || seconds()) + 's';
     addClass(bar, 'is-running');
   }
 
   function schedule() {
     clearTimer();
+    S.clipping = false;
     if (S.state !== 'ok' || S.items.length < 2 || !S.tile || !S.tile.stage) return;
     S.timer = setTimeout(advance, seconds() * 1000);
     restartBar();
+  }
+
+  // After a photo is up on the tile: a video plays once and then moves on;
+  // anything else (or a clip that will not play) waits the usual time.
+  function settle() {
+    var t = S.tile;
+    var it = S.items[S.index];
+    if (!t || !t.stage || !it || !it.video || (S.ctx && S.ctx.isOpen()) || document.hidden) { schedule(); preloadNext(); return; }
+    clearTimer();
+    S.clipping = true;
+    if (it.dur) restartBar(it.dur + CLIP_HOLD_MS / 1000);
+    playClip(t.stage, it, function (ok) {
+      if (!S.clipping) return;
+      S.clipping = false;
+      if (!ok) { schedule(); return; }
+      if (S.items.length < 2) return; // one video: it stays on its last frame
+      S.timer = setTimeout(advance, CLIP_HOLD_MS);
+    });
+    preloadNext();
   }
 
   function advance() {
@@ -341,9 +461,7 @@
       S.index = (S.index + 1) % S.items.length;
       show(t.stage, S.items[S.index], function (ok) {
         if (!ok && ++tries < Math.min(5, S.items.length)) { step(); return; }
-        restartBar();
-        schedule();
-        preloadNext();
+        settle();
       });
     })();
   }
@@ -379,10 +497,15 @@
           if (!on) return;
           if (!ok && ++tries < Math.min(5, S.items.length)) { go(); return; }
           if (!ok && st.front < 0) { empty(); return; }
-          if (S.items.length > 1) {
-            timer = setTimeout(next, seconds() * 1000);
-            preload(imgUrl(S.items[(i + 1) % S.items.length].id, 'full'));
+          if (S.items.length > 1) preload(imgUrl(S.items[(i + 1) % S.items.length].id, 'full'));
+          var it = S.items[i];
+          if (ok && it && it.video) {
+            playClip(st, it, function (played) {
+              if (on && S.items.length > 1) timer = setTimeout(next, played ? CLIP_HOLD_MS : seconds() * 1000);
+            });
+            return;
           }
+          if (S.items.length > 1) timer = setTimeout(next, seconds() * 1000);
         });
       })();
     }
@@ -402,6 +525,7 @@
         on = false;
         if (timer) clearTimeout(timer);
         st.want = null;
+        stopClip(st);
         if (st.el.parentNode) st.el.parentNode.removeChild(st.el);
       }
     };
@@ -426,6 +550,8 @@
 
   function renderTile(body, ctx) {
     clearTimer();
+    if (S.tile && S.tile.stage) stopClip(S.tile.stage);
+    S.clipping = false;
     var size = ctx.size ? ctx.size() : { cols: 3, rows: 2, tier: 'standard', width: 'standard' };
     body.className = 'tile-body ph-tile' + (size.cols === 1 ? ' ph-tile-one' : '') + (size.tier === 'strip' ? ' ph-tile-strip' : '');
     var tile = body.parentNode;
@@ -451,9 +577,7 @@
     (function first() {
       show(st, S.items[S.index], function (ok) {
         if (!ok && ++tries < Math.min(5, S.items.length)) { S.index = (S.index + 1) % S.items.length; first(); return; }
-        restartBar();
-        schedule();
-        preloadNext();
+        settle();
       });
     })();
   }
@@ -527,11 +651,13 @@
         cell.setAttribute('data-id', it.id);
         cell.setAttribute('data-i', String(i));
         cell.setAttribute('role', 'button');
-        cell.setAttribute('aria-label', T('photos.photoOf', 'Photo from {month}', { month: label || '' }));
+        cell.setAttribute('aria-label', it.video ? T('photos.videoOf', 'Video from {month}', { month: label || '' })
+          : T('photos.photoOf', 'Photo from {month}', { month: label || '' }));
         if (it.w && it.h && it.h > it.w) addClass(cell, 'is-portrait');
         var img = document.createElement('img');
         img.alt = '';
         cell.appendChild(img);
+        if (it.video) { addClass(cell, 'is-video'); div('ph-play', cell); }
         if (i === S.lastThumb) cell.setAttribute('data-autofocus', '1');
         if (n < THUMB_BATCH) loadThumb(cell);
         n++;
@@ -566,7 +692,21 @@
       var x = (e.clientX || 0) - r.left;
       step(x < r.width / 2 ? -1 : 1);
     });
-    show(st, it, function () { preloadAround(); });
+    stopTileClip();
+    show(st, it, function (ok) { preloadAround(); if (ok) viewerClip(st, it); });
+  }
+
+  // The viewer's clip plays once and stays on its last frame.
+  function viewerClip(st, it) {
+    if (it && it.video) playClip(st, it, function () {});
+  }
+
+  // One decoder at a time (the TV has few): the viewer stops the tile's clip.
+  function stopTileClip() {
+    var t = S.tile;
+    if (!t || !t.stage) return;
+    stopClip(t.stage);
+    S.clipping = false;
   }
 
   function preloadAround() {
@@ -584,10 +724,13 @@
     var it = S.items[S.viewing];
     S.view.month.textContent = monthLabel(it.month);
     S.view.count.textContent = countText(S.viewing + 1, n);
-    show(S.view.stage, it, function () { preloadAround(); });
+    var st = S.view.stage;
+    stopClip(st);
+    show(st, it, function (ok) { preloadAround(); if (ok) viewerClip(st, it); });
   }
 
   function renderPanel(body, ctx) {
+    if (S.view) stopClip(S.view.stage);
     S.view = null;
     var full = ctx.mode && ctx.mode() === 'full';
     var root = div('ph-panel' + (full ? ' is-full' : ''), body);
@@ -706,6 +849,7 @@
 
     onClose: function (ctx) {
       S.viewing = -1;
+      if (S.view) stopClip(S.view.stage);
       S.view = null;
       var body = document.querySelector('#panel .panel-body');
       setScroller(body, false);
@@ -726,7 +870,7 @@
     monthLabel: monthLabel,
     cleanList: cleanList,
     server: server,
-    state: function () { return { state: S.state, index: S.index, count: S.items.length, rev: S.rev, viewing: S.viewing }; },
+    state: function () { return { state: S.state, index: S.index, count: S.items.length, rev: S.rev, viewing: S.viewing, clipping: !!S.clipping }; },
     advance: function () { clearTimer(); advance(); },
     reload: function () { load(true); },
     slideshow: slideshow,
