@@ -627,7 +627,7 @@ async function clip() {
 // 72%, never be cut), and tall enough for accents.
 function sunCut(page) {
   return page.evaluate(() => Array.prototype.filter.call(
-    document.querySelectorAll('.today-sun-time, .today-sun-date, .today-sun-next, .sun-time, .sun-k, .sun-v, .sun-note, .sun-date'),
+    document.querySelectorAll('.today-sun-time, .today-sun-date, .today-sun-next, .sund-date, .sund-k, .sund-v, .sun-time, .sun-k, .sun-v, .sun-note, .sun-date'),
     (n) => n.scrollWidth > n.clientWidth + 1 || n.scrollHeight > n.clientHeight + 1).map((n) => n.className + ' "' + n.textContent + '"'));
 }
 
@@ -738,6 +738,56 @@ async function checkSunSpanish() {
   }
 }
 
+// The 24-hour dial (3x2 and bigger): noon at the top, the sun at the
+// time, the moon where it is, the next sunrise or sunset and moonrise or
+// moonset beside it, in English and Spanish, with room for +25%.
+async function checkSunDial() {
+  const cases = [
+    // Tue 24 Nov 9:40 PM: full moon up in the east, sunrise tomorrow.
+    { at: Date.parse('2026-11-25T03:40:00Z'), re: /Tomorrow\s*7:0\d\u00a0AM/, moon: /Moonset\s*8:\d\d\u00a0AM/, moonUp: true, sunUp: false },
+    // Tue 24 Nov 10:09 AM: the moon below the horizon, rising at dusk.
+    { at: Date.parse('2026-11-24T16:09:30Z'), re: /Sunset\s*5:2\d\u00a0PM/, moon: /Moonrise\s*5:\d\d\u00a0PM/, moonUp: false, sunUp: true },
+    // Wed 25 Nov 2:15 AM: after midnight the sunrise is today's.
+    { at: Date.parse('2026-11-25T08:15:00Z'), re: /Sunrise\s*7:0\d\u00a0AM/, moon: /Moonset/, moonUp: true, sunUp: false },
+    // Spanish, mié 18 nov 9:40 PM.
+    { at: Date.parse('2026-11-19T03:40:00Z'), spanish: true, re: /Mañana\s*7:0\d\u00a0a\.\u00a0m\./, moon: /Puesta/, moonUp: true, sunUp: false }
+  ];
+  for (const c of cases) {
+    const page = await openHub({ face: 'sun', hours: '12', layout: [3, 2], at: c.at, spanish: c.spanish });
+    if (c.spanish) { await page.evaluate(() => window.HUB_I18N.setLang('es')); await sleep(200); }
+    const t = await page.evaluate(() => {
+      const b = document.querySelector('.cell[data-widget="today"] .tile-body');
+      const q = (s) => b.querySelector(s);
+      const svg = q('.sund-svg');
+      if (!svg) return { dial: false };
+      const pos = (n) => { const r = n.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
+      const ring = svg.getBoundingClientRect();
+      const roomy = Array.prototype.filter.call(b.querySelectorAll('.sund-date, .sund-k, .sund-v'),
+        (n) => n.scrollWidth * 1.25 > n.clientWidth / 0.72 + 1).map((n) => n.textContent);
+      return {
+        dial: true, text: b.textContent, roomy,
+        labs: Array.prototype.map.call(svg.querySelectorAll('.sund-lab'), (n) => n.textContent),
+        sun: pos(q('.sund-sun .sun-disc')), sunDown: q('.sund-sun').classList.contains('is-down'),
+        moon: pos(q('.sund-moon .moon-dark')), moonDown: q('.sund-moon').classList.contains('is-down'),
+        mid: { x: ring.left + ring.width / 2, y: ring.top + ring.height / 2 }
+      };
+    });
+    const name = new Date(c.at).toISOString();
+    assert(t.dial, name + ': no dial at 3x2');
+    assert(c.re.test(t.text) && c.moon.test(t.text), name + ': text ' + t.text);
+    assert(t.sunDown === !c.sunUp && t.moonDown === !c.moonUp, name + ': up/down ' + JSON.stringify(t));
+    // Up means above the horizon line, roughly the top part of the dial.
+    assert((t.sun.y < t.mid.y + 20) === c.sunUp, name + ': sun at ' + JSON.stringify(t.sun) + ' mid ' + JSON.stringify(t.mid));
+    assert((t.moon.y < t.mid.y + 20) === c.moonUp, name + ': moon at ' + JSON.stringify(t.moon));
+    assert(t.labs.join('|') === (c.spanish ? 'Mediodía|Medianoche' : 'Noon|Midnight'), name + ': labels ' + t.labs);
+    assert(!t.roomy.length, name + ': no room for +25%: ' + t.roomy.join(' | '));
+    const cut = await sunCut(page);
+    assert(!cut.length, name + ': cut ' + cut.join(' | '));
+    noErrors(page);
+    await page.context().close();
+  }
+}
+
 async function checkSunSizes() {
   // Every size: the arc inside the tile, no text cut.
   for (const [w, h] of SIZES) {
@@ -749,7 +799,7 @@ async function checkSunSizes() {
     assert(!cut.length, name + ': cut ' + cut.join(' | '));
     const inside = await page.evaluate(() => {
       const tile = document.querySelector('.cell[data-widget="today"] .tile').getBoundingClientRect();
-      const svg = document.querySelector('.cell[data-widget="today"] .sun-svg').getBoundingClientRect();
+      const svg = document.querySelector('.cell[data-widget="today"] .sun-svg, .cell[data-widget="today"] .sund-svg').getBoundingClientRect();
       return svg.width > 20 && svg.left >= tile.left - 0.5 && svg.right <= tile.right + 0.5 && svg.top >= tile.top - 0.5 && svg.bottom <= tile.bottom + 0.5;
     });
     assert(inside, name + ': the arc spills out of the tile');
@@ -783,6 +833,7 @@ async function main() {
   await check('9. Language on the page: English and Español, remembered, fits +25% in the panel and full screen', checkLanguage);
   await check('11. Sun path: day and night on the tile and the page, sunrise and sunset, the moon', checkSunPath);
   await check('12. Sun path in Spanish: tile, page and full screen, nothing cut', checkSunSpanish);
+  await check('12b. Sun dial at 3x2: the sun at the time, the moon where it is, sunrise and moonrise, English and Spanish', checkSunDial);
   await check('13. Sun path at ' + SIZES.length + ' tile sizes: the arc inside, nothing cut', checkSunSizes);
   if (SHOTS) await check('10. Clip of the face switch', clip);
 }
