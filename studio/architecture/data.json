@@ -1428,7 +1428,7 @@
        "status": "draft",
        "summary": "Friends' photos on the TV: a slideshow on the tile (about 12 s each, crossfaded, with the month), and in full screen a thumbnail grid by month with a big viewer.",
        "details": [
-        "Widget id 'photos' (app/widgets/photos.js and .css), on its own \"Photos\" layout. It fetches GET /photos/list at boot and every 10 minutes from the hub server the live line uses; an unchanged rev changes nothing. Images come from GET /photos/img/<id>?size=thumb|full.",
+        "Widget id 'photos' (app/widgets/photos.js and .css), on its own \"Photos\" layout. It fetches GET /photos/list at boot and every 10 minutes from the hub server the live line uses; an unchanged rev changes nothing. Images come from GET /photos/img/<id>?size=thumb|full; a live photo (video: 1) shows its still, plays GET /photos/clip/<id> once, muted, then moves on.",
         "A photo close to the tile's shape covers it; any other is shown whole over a blurred copy of itself (static, never animated). OK opens the grid; OK on a thumbnail opens the viewer (Left/Right for the previous/next, Back to the grid). No Pi, no photos: a quiet frame says so.",
         "Words in English and Spanish (app/i18n.js)."
        ],
@@ -1440,7 +1440,7 @@
        "talksTo": [
         {
          "to": "pi.photos",
-         "label": "GET /photos/list and /photos/img/<id>",
+         "label": "GET /photos/list, /photos/img/<id> and /photos/clip/<id>",
          "dir": "in"
         }
        ],
@@ -2948,7 +2948,7 @@
      "summary": "Friends' photos, copied from the wall calendar onto the Pi and handed to the TV and the tablet, read only.",
      "details": [
       "pi/photos.js is the one storage adapter (list, readOriginal, readThumb, stat), so an R2 store can replace the local folder later without touching server.js. Ids are the first 12 hex digits of the SHA-1 of the file name; file names never leave photos.js, not in an answer or a log line.",
-      "Routes in server.js (photoRoute()): GET /photos/list (newest first, at most 500, with a rev) and GET /photos/img/<id>?size=full|thumb (cached a day, immutable). Home and Tailscale addresses only, the touch door's trust. GET /api/photos gives counts and the last sync for ./hub photos status and the mailbox's photos.status.",
+      "Routes in server.js (photoRoute()): GET /photos/list (newest first, at most 500, with a rev) and GET /photos/img/<id>?size=full|thumb (cached a day, immutable), and GET /photos/clip/<id> (a live photo's H.264 clip that photos-sync.sh made with ffmpeg; byte ranges). Home and Tailscale addresses only, the touch door's trust. GET /api/photos gives counts and the last sync for ./hub photos status and the mailbox's photos.status.",
       "Only images (WebP, JPEG, PNG); width and height read from the file's own header, the month from its modified time. Videos are skipped for now."
      ],
      "files": [

@@ -5,14 +5,19 @@
  *
  * One storage interface, so the place the files live can change without
  * touching server.js:
- *   store.list()            -> { rev, count, items: [{ id, w, h, month, added }] }
+ *   store.list()            -> { rev, count, items: [{ id, w, h, month, added, video?, dur? }] }
  *                              newest first, at most MAX_LIST
- *   store.readOriginal(id)  -> { file, type, size } or null
+ *   store.readOriginal(id)  -> { file, type, size } or null (a video's still frame)
  *   store.readThumb(id)     -> the same; the original when there is no thumb
+ *   store.readClip(id)      -> a video's H.264 clip ({ file, type: 'video/mp4', size }), else null
  *   store.stat()            -> { count, lastRun, ok, newCount }
  * This file has the local-folder store (createLocalStore) over data/photos/:
  *   orig/        the files as pulled from the calendar
  *   thumb/       <id>.jpg (480 px wide), or <id>.<ext> (a copy) without ImageMagick
+ *   clip/        <id>.mp4: a video (a "live photo") made small and H.264 by
+ *                photos-sync.sh with ffmpeg (HEVC plays on neither the TV nor
+ *                the tablet); <id>.bad when ffmpeg could not read it
+ *   still/       <id>.jpg: the clip's first frame, shown before and after it plays
  *   index.json   { v: 1, items: [...] }, rebuilt by buildIndex (written atomically)
  *   state.json   { lastRun, ok, count, newCount } from the last sync
  * An R2 store (Cloudflare) will replace it later with the same four calls.
@@ -21,9 +26,12 @@
  * name. File names never leave this file: not in the index, an answer or a
  * log line. Callers log counts only.
  *
- * Only images: .webp .jpg .jpeg .png (videos are skipped for now). Width and
- * height come from the file's own header (WebP VP8/VP8L/VP8X, JPEG SOF, PNG
- * IHDR), month ("YYYY-MM") from the file's modified time.
+ * Images: .webp .jpg .jpeg .png. Width and height come from the file's own
+ * header (WebP VP8/VP8L/VP8X, JPEG SOF, PNG IHDR), month ("YYYY-MM") from the
+ * file's modified time. Videos (.mp4 .mov .m4v) join the index only once
+ * their clip and still exist (so without ffmpeg they simply wait): the item
+ * gets video: 1, its size from the still and dur (seconds) from the clip's
+ * mvhd box.
  *
  * CLI (run by photos-sync.sh): node photos.js index [dataDir] [--new N] [--ok 0|1]
  * rebuilds index.json and writes state.json; prints counts only.
@@ -39,6 +47,7 @@ const MAX_LIST = 500;
 const HEAD_BYTES = 512 * 1024; // a JPEG's EXIF block can push its SOF far in
 const ID_RE = /^[0-9a-f]{12}$/;
 const TYPES = { '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png' };
+const VIDEO_EXT = { '.mp4': 1, '.mov': 1, '.m4v': 1 };
 
 function idFor(name) {
   return crypto.createHash('sha1').update(String(name)).digest('hex').slice(0, 12);
@@ -50,6 +59,10 @@ function isId(v) {
 
 function typeOf(name) {
   return TYPES[path.extname(String(name)).toLowerCase()] || null;
+}
+
+function isVideo(name) {
+  return VIDEO_EXT[path.extname(String(name)).toLowerCase()] === 1;
 }
 
 /* ---------- image headers ---------- */
@@ -105,6 +118,38 @@ function imageSize(buf) {
   return s && s.w > 0 && s.h > 0 ? s : null;
 }
 
+// A clip's length in seconds (one decimal) from its moov/mvhd box, or 0.
+// ffmpeg's +faststart puts moov near the start, inside the head we read.
+function mp4Duration(b) {
+  if (!Buffer.isBuffer(b)) return 0;
+  function find(type, from, to) {
+    let i = from;
+    while (i + 8 <= to) {
+      let size = b.readUInt32BE(i);
+      let head = 8;
+      if (size === 1) {
+        if (i + 16 > to) return null;
+        size = Number(b.readBigUInt64BE(i + 8));
+        head = 16;
+      } else if (size === 0) size = to - i;
+      if (size < head) return null;
+      if (b.toString('ascii', i + 4, i + 8) === type) return { start: i + head, end: Math.min(i + size, to) };
+      i += size;
+    }
+    return null;
+  }
+  try {
+    const moov = find('moov', 0, b.length);
+    const mvhd = moov && find('mvhd', moov.start, moov.end);
+    if (!mvhd) return 0;
+    const v = b[mvhd.start];
+    const scale = v === 1 ? b.readUInt32BE(mvhd.start + 20) : b.readUInt32BE(mvhd.start + 12);
+    const dur = v === 1 ? Number(b.readBigUInt64BE(mvhd.start + 24)) : b.readUInt32BE(mvhd.start + 16);
+    if (!scale || !dur) return 0;
+    return Math.round(dur / scale * 10) / 10;
+  } catch (e) { return 0; }
+}
+
 function readHead(file) {
   const fd = fs.openSync(file, 'r');
   try {
@@ -155,6 +200,33 @@ function buildIndex(dir, now) {
   const byId = namesById(origDir);
   const rows = [];
   let skipped = 0;
+  let waiting = 0;
+  // Videos: in once their clip and still are made.
+  let origNames = [];
+  try { origNames = fs.readdirSync(origDir); } catch (e) { origNames = []; }
+  origNames.forEach((n) => {
+    if (n[0] === '.' || !isVideo(n)) return;
+    const id = idFor(n);
+    let st;
+    let size = null;
+    let dur = 0;
+    try {
+      st = fs.statSync(path.join(origDir, n));
+      const clip = path.join(dir, 'clip', id + '.mp4');
+      const still = path.join(dir, 'still', id + '.jpg');
+      if (st.isFile() && fs.existsSync(clip) && fs.existsSync(still)) {
+        size = imageSize(readHead(still));
+        dur = mp4Duration(readHead(clip));
+      }
+    } catch (e) { size = null; }
+    if (!size) {
+      if (!fs.existsSync(path.join(dir, 'clip', id + '.bad'))) waiting++;
+      return;
+    }
+    const item = { id: id, w: size.w, h: size.h, month: month(st.mtimeMs), added: added[id] || now, video: 1 };
+    if (dur > 0) item.dur = dur;
+    rows.push({ mtime: st.mtimeMs, item: item });
+  });
   Object.keys(byId).forEach((id) => {
     const file = path.join(origDir, byId[id]);
     let st;
@@ -170,7 +242,7 @@ function buildIndex(dir, now) {
   const items = rows.map((r) => r.item);
   fs.mkdirSync(dir, { recursive: true });
   writeAtomic(path.join(dir, 'index.json'), { v: 1, items: items });
-  return { count: items.length, skipped: skipped };
+  return { count: items.length, skipped: skipped, waiting: waiting };
 }
 
 function writeState(dir, st) {
@@ -205,7 +277,14 @@ function createLocalStore(opt) {
     const raw = readJson(indexFile);
     const items = (raw && Array.isArray(raw.items) ? raw.items : []).filter((i) =>
       i && isId(i.id) && Number.isInteger(i.w) && Number.isInteger(i.h) && /^\d{4}-\d{2}$/.test(i.month)
-    ).slice(0, MAX_LIST).map((i) => ({ id: i.id, w: i.w, h: i.h, month: i.month, added: typeof i.added === 'number' ? i.added : 0 }));
+    ).slice(0, MAX_LIST).map((i) => {
+      const o = { id: i.id, w: i.w, h: i.h, month: i.month, added: typeof i.added === 'number' ? i.added : 0 };
+      if (i.video === 1) {
+        o.video = 1;
+        if (typeof i.dur === 'number' && i.dur > 0 && i.dur < 3600) o.dur = i.dur;
+      }
+      return o;
+    });
     const rev = items.length ? crypto.createHash('sha1').update(JSON.stringify(items)).digest('hex').slice(0, 12) : '';
     cache = { mtime: m, view: { rev: rev, count: items.length, items: items } };
     return cache.view;
@@ -243,16 +322,36 @@ function createLocalStore(opt) {
 
   // Only ids in the index are served (a file pulled but not yet indexed waits).
   function known(id) {
-    return isId(id) && view().items.some((i) => i.id === id);
+    if (!isId(id)) return null;
+    const items = view().items;
+    for (let i = 0; i < items.length; i++) if (items[i].id === id) return items[i];
+    return null;
+  }
+
+  // A video's still frame stands in for its original.
+  function original(item) {
+    if (item.video) return fileInfo(path.join(dir, 'still'), item.id + '.jpg');
+    return fileInfo(origDir, lookup(names, origDir, item.id, true));
   }
 
   return {
     kind: 'local',
     list: async () => view(),
-    readOriginal: async (id) => (known(id) ? fileInfo(origDir, lookup(names, origDir, id, true)) : null),
+    readOriginal: async (id) => {
+      const it = known(id);
+      return it ? original(it) : null;
+    },
     readThumb: async (id) => {
-      if (!known(id)) return null;
-      return fileInfo(thumbDir, lookup(thumbs, thumbDir, id, false)) || fileInfo(origDir, lookup(names, origDir, id, true));
+      const it = known(id);
+      if (!it) return null;
+      return fileInfo(thumbDir, lookup(thumbs, thumbDir, id, false)) || original(it);
+    },
+    readClip: async (id) => {
+      const it = known(id);
+      if (!it || !it.video) return null;
+      const f = fileInfo(path.join(dir, 'clip'), id + '.mp4');
+      if (f) f.type = 'video/mp4';
+      return f;
     },
     stat: async () => {
       const s = readJson(path.join(dir, 'state.json')) || {};
@@ -271,7 +370,9 @@ module.exports = {
   idFor: idFor,
   isId: isId,
   typeOf: typeOf,
+  isVideo: isVideo,
   imageSize: imageSize,
+  mp4Duration: mp4Duration,
   buildIndex: buildIndex,
   writeState: writeState,
   createLocalStore: createLocalStore
@@ -297,7 +398,8 @@ if (require.main === module) {
   try {
     const r = buildIndex(dir);
     writeState(dir, { lastRun: new Date().toISOString(), ok: ok, count: r.count, newCount: newCount });
-    process.stdout.write('photos: ' + r.count + ' in the album, ' + newCount + ' new' + (r.skipped ? ', ' + r.skipped + ' unreadable' : '') + '\n');
+    process.stdout.write('photos: ' + r.count + ' in the album, ' + newCount + ' new' + (r.skipped ? ', ' + r.skipped + ' unreadable' : '') +
+      (r.waiting ? ', ' + r.waiting + ' video' + (r.waiting === 1 ? '' : 's') + ' not converted yet' : '') + '\n');
   } catch (e) {
     process.stderr.write('photos: index failed (' + (e.code || 'error') + ')\n');
     process.exit(1);
