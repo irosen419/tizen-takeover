@@ -183,7 +183,7 @@
       // A list resource answers { items, rev }; the pantry answers { data, rev }.
       if (!store.pending && (j.data || j.items)) { store.data[res] = j.data || { items: j.items }; store.rev[res] = j.rev; }
       refresh();
-      cb(null);
+      cb(null, j);
     }, function (e) {
       store.pending -= 1;
       if (!store.pending) store.data[res] = before;

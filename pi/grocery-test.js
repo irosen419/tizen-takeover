@@ -94,6 +94,22 @@ async function main() {
     assert.deepStrictEqual(l, []);
   });
 
+  await check('applyOps: results say which adds were on the list already', () => {
+    const res = [];
+    let l = grocery.applyOps([], [{ op: 'add', name: 'Rice', upc: '0012345678905' }], 1, res);
+    assert.deepStrictEqual(res, [{ op: 'add', id: l[0].id, already: false }]);
+    res.length = 0;
+    l = grocery.applyOps(l, [{ op: 'add', name: 'Rice again', upc: '0012345678905' }, { op: 'add', name: 'rice' }], 2, res);
+    assert.strictEqual(l.length, 1, 'the same code is never a second row');
+    assert.deepStrictEqual(res.map((x) => x.already), [true, true]);
+    l = grocery.applyOps(l, [{ op: 'check', id: l[0].id, done: true }], 3);
+    res.length = 0;
+    l = grocery.applyOps(l, [{ op: 'add', name: 'Rice', upc: '0012345678905' }], 4, res);
+    assert.strictEqual(res[0].already, false, 'a ticked one coming back is a change');
+    assert.strictEqual(l[0].done, false);
+    assert.strictEqual(grocery.applyOps(l, [{ op: 'add', name: 'Beans' }], 5).length, 2, 'results stays optional');
+  });
+
   await check('applyOps: wrong ops throw a 400 and change nothing', () => {
     const l = grocery.applyOps([], [{ op: 'add', name: 'Milk' }], 1);
     const cases = [
@@ -196,6 +212,10 @@ async function main() {
     const r = await request(P, 'POST', '/grocery/ops', { headers: { 'x-test-ip': '100.70.0.9' }, body: { ops: [{ op: 'add', name: 'Secret sauce' }] } });
     assert.strictEqual(r.status, 200, r.text);
     assert.strictEqual(r.json.items[0].name, 'Secret sauce');
+    assert.deepStrictEqual(r.json.results, [{ op: 'add', id: r.json.items[0].id, already: false }]);
+    const again = await request(P, 'POST', '/grocery/ops', { headers: { 'x-test-ip': '100.70.0.9' }, body: { ops: [{ op: 'add', name: 'secret SAUCE' }] } });
+    assert.strictEqual(again.json.results[0].already, true, 'the Pi says it was there');
+    assert.strictEqual(again.json.changed, false);
     const saved = JSON.parse(fs.readFileSync(path.join(h.dataDir || '', 'state.json'), 'utf8'));
     assert.strictEqual(saved.resources.grocery.data.items[0].name, 'Secret sauce');
     assert.ok(h.lines.some((l) => /touch app changed the grocery list/.test(l)));
