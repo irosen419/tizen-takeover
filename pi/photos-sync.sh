@@ -7,7 +7,10 @@
 #   pi/photos-sync.sh
 #
 # Settings (environment, all optional):
-#   PHOTOS_ADB_ADDR   the calendar's adb address (default 192.168.1.208:5555)
+#   PHOTOS_ADB_ADDR   the calendar's adb address, host:5555. Kept out of the
+#                     public repo: from the environment, else the
+#                     PHOTOS_ADB_ADDR= line in pi/.env, else the one network
+#                     device adb is already connected to
 #   PHOTOS_SRC        the folder on the calendar (default /sdcard/CloudAlbum)
 #   PHOTOS_DATA_DIR   the hub's data folder (default pi/data)
 #
@@ -24,7 +27,10 @@
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-ADDR="${PHOTOS_ADB_ADDR:-192.168.1.208:5555}"
+ADDR="${PHOTOS_ADB_ADDR:-}"
+if [ -z "$ADDR" ] && [ -r "$HERE/.env" ]; then
+  ADDR=$(sed -n 's/^PHOTOS_ADB_ADDR=//p' "$HERE/.env" | tail -n 1 | tr -d "\"' \r")
+fi
 SRC="${PHOTOS_SRC:-/sdcard/CloudAlbum}"
 DATA="${PHOTOS_DATA_DIR:-$HERE/data}"
 DIR="$DATA/photos"
@@ -32,6 +38,10 @@ ORIG="$DIR/orig"
 THUMB="$DIR/thumb"
 
 command -v adb >/dev/null 2>&1 || { echo "photos: adb is not installed (sudo apt install android-tools-adb)"; exit 1; }
+if [ -z "$ADDR" ]; then
+  ADDR=$(adb devices 2>/dev/null | awk '$2 == "device" && $1 ~ /:[0-9]+$/ { print $1 }' | head -n 1)
+fi
+[ -n "$ADDR" ] || { echo "photos: no calendar address (add PHOTOS_ADB_ADDR=<address>:5555 to pi/.env)"; exit 1; }
 
 CLIP="$DIR/clip"
 STILL="$DIR/still"

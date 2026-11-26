@@ -90,7 +90,7 @@ def today(offset=0):
 
 class Pure(unittest.TestCase):
     def test_scrub(self):
-        t = ph.scrub('from 192.168.1.219 fe80::1 aa:bb:cc:dd:ee:ff sensor.cpu_temp at 10:22:01 '
+        t = ph.scrub('from 192.168.1.40 fe80::1 aa:bb:cc:dd:ee:ff sensor.cpu_temp at 10:22:01 '
                      'budget.service hub-update.service ian@example.com https://x.y/z tok-123456', {'tok-123456'})
         for bad in ('192.168', 'fe80', 'aa:bb', 'sensor.cpu', 'example.com', 'https', 'tok-123456'):
             self.assertNotIn(bad, t)
@@ -139,7 +139,7 @@ class WholeRun(unittest.TestCase):
         hub = serve({
             '/api/status': need(HUB_TOKEN)(lambda b, p: (200, {
                 'ok': True, 'server': '0.15.0', 'uptime': 7200,
-                'screens': [{'since': '2026-11-19T10:00:00Z', 'via': 'events', 'address': '192.168.1.173'}],
+                'screens': [{'since': '2026-11-19T10:00:00Z', 'via': 'events', 'address': '192.168.1.60'}],
                 'calendar': {'configured': True, 'calendars': 5, 'lastRefresh': '2020-01-01T00:00:00Z'},
                 'mailbox': {'configured': True, 'connected': True, 'bucket': 'home-hub-mailbox', 'host': 'abc.r2.cloudflarestorage.com',
                             'lastOkAt': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'lastError': None, 'pendingResults': 0},

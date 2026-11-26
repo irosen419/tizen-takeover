@@ -30,7 +30,7 @@ const path = require('path');
 const childProcess = require('child_process');
 const { chromium } = require('playwright');
 
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', 'pub-1a6256c9f3df467ba787267fe45d9fee.r2.dev', require('./pi-host')];
 const SHOTS = process.env.WEATHER_TEST_SHOTS || '';
 const ZONE = 'America/Chicago';
 const KINDS = ['clear', 'partly', 'cloudy', 'fog', 'drizzle', 'rain-3', 'snow-2', 'storm'];

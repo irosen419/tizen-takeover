@@ -6,7 +6,7 @@
  * until HUB_LIVE.start() is called, so an old hub.js that never calls it is
  * not affected.
  *
- *   HUB_LIVE.start({ server: 'http://192.168.1.219:8097' })  true if it started
+ *   HUB_LIVE.start({ server: 'http://<Pi address>:8097' })  true if it started
  *   HUB_LIVE.stop()
  *   HUB_LIVE.status()          { state, text, since, epoch }
  *   HUB_LIVE.get(resource)     the data last applied, or undefined

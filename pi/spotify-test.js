@@ -129,7 +129,7 @@ async function main() {
     assert.strictEqual(ok.configured, true);
     assert.strictEqual(ok.clientId, CLIENT_ID);
     assert.strictEqual(ok.redirectUri, 'http://127.0.0.1:8123/spotify/callback');
-    const lan = spotify.configFromEnv(Object.assign({}, ENV, { SPOTIFY_REDIRECT_URI: 'http://192.168.1.219:8097/spotify/callback' }));
+    const lan = spotify.configFromEnv(Object.assign({}, ENV, { SPOTIFY_REDIRECT_URI: 'http://192.168.1.40:8097/spotify/callback' }));
     assert.strictEqual(lan.configured, false);
     assert.ok(/127\.0\.0\.1/.test(lan.problem));
     assert.strictEqual(spotify.configFromEnv(Object.assign({}, ENV, { SPOTIFY_REDIRECT_URI: 'https://example.org/cb' })).configured, true);

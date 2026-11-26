@@ -501,7 +501,7 @@ async function main() {
 
   const h = await start();
   const P = h.port;
-  const phone = { 'x-test-ip': '192.168.1.30', Host: '192.168.1.219:8097', Origin: 'http://192.168.1.219:8097' };
+  const phone = { 'x-test-ip': '192.168.1.30', Host: '192.168.1.40:8097', Origin: 'http://192.168.1.40:8097' };
 
   await check('control API: /api/pantry, /api/pantry/ops, /api/pantry/low need the token', async () => {
     assert.strictEqual((await request(P, 'GET', '/api/pantry')).status, 401);

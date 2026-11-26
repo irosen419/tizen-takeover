@@ -282,7 +282,7 @@ async function main() {
     assert.strictEqual(d.problem, '', 'a problem only goes with the error state');
     const art = allsounds.cleanArt;
     assert.strictEqual(art('/api/media_player_proxy/media_player.x?token=abc'), '');
-    assert.strictEqual(art('http://192.168.1.219:8123/api/x'), '');
+    assert.strictEqual(art('http://192.168.1.40:8123/api/x'), '');
     assert.strictEqual(art('https://user:pw@example.com/a.jpg'), '');
     assert.strictEqual(art('javascript:alert(1)'), '');
     assert.strictEqual(art('https://a.com/x" onerror="y'), '');

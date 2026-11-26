@@ -34,7 +34,7 @@ const OUT = process.argv[2];
 if (!OUT) { console.log('usage: node dev/architecture-shots.js <folder>'); process.exit(1); }
 fs.mkdirSync(OUT, { recursive: true });
 
-const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', '192.168.1.219'];
+const BLOCKED_HOSTS = ['api.open-meteo.com', 'geocoding-api.open-meteo.com', 'ipwho.is', 'get.geojs.io', require('./pi-host')];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const spare = () => new Promise((resolve, reject) => { const s = net.createServer(); s.once('error', reject); s.listen(0, '127.0.0.1', () => { const p = s.address().port; s.close(() => resolve(p)); }); });
 

@@ -452,7 +452,7 @@ async function main() {
     fs.writeFileSync(path.join(bin, 'ffmpeg'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
     const data = path.join(root, 'data');
     const env = Object.assign({}, process.env, {
-      PATH: bin + path.delimiter + process.env.PATH, PHOTOS_SRC: cal, PHOTOS_DATA_DIR: data, ADB_LOG: path.join(root, 'adb.log')
+      PATH: bin + path.delimiter + process.env.PATH, PHOTOS_ADB_ADDR: '192.0.2.10:5555', PHOTOS_SRC: cal, PHOTOS_DATA_DIR: data, ADB_LOG: path.join(root, 'adb.log')
     });
     const run = () => cp.execFileSync('sh', [path.join(__dirname, 'photos-sync.sh')], { env: env, encoding: 'utf8' });
     const out = run();
@@ -471,6 +471,22 @@ async function main() {
   });
 
   const hasFfmpeg = (() => { try { require('child_process').execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }); return true; } catch (e) { return false; } })();
+  await check('photos-sync.sh: no calendar address anywhere says so in one line (none in this public repo)', () => {
+    const cp = require('child_process');
+    const src = fs.readFileSync(path.join(__dirname, 'photos-sync.sh'), 'utf8');
+    assert.ok(!/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/.test(src), 'an address in photos-sync.sh');
+    if (fs.existsSync(path.join(__dirname, '.env'))) return; // a real .env (the Pi) may carry it
+    const root = tmp();
+    const bin = path.join(root, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'adb'), '#!/bin/sh\n[ "$1" = devices ] && echo "List of devices attached"\nexit 0\n', { mode: 0o755 });
+    const env = Object.assign({}, process.env, { PATH: bin + path.delimiter + process.env.PATH, PHOTOS_DATA_DIR: path.join(root, 'data') });
+    delete env.PHOTOS_ADB_ADDR;
+    const r = cp.spawnSync('sh', [path.join(__dirname, 'photos-sync.sh')], { env: env, encoding: 'utf8' });
+    assert.strictEqual(r.status, 1);
+    assert.strictEqual(r.stdout.trim(), 'photos: no calendar address (add PHOTOS_ADB_ADDR=<address>:5555 to pi/.env)');
+  });
+
   await check('photos-sync.sh with real ffmpeg (skipped without it): HEVC portrait -> H.264 clip + still + thumb; waits without ffmpeg', () => {
     if (!hasFfmpeg) { console.log('     (no ffmpeg here, skipped)'); return; }
     const cp = require('child_process');
@@ -497,7 +513,7 @@ async function main() {
     fs.symlinkSync(process.execPath, path.join(noff, 'node'));
     fs.symlinkSync(path.join(bin, 'adb'), path.join(noff, 'adb'));
     const data = path.join(root, 'data');
-    const env = (pathv, extra) => Object.assign({}, process.env, { PATH: pathv, PHOTOS_SRC: cal, PHOTOS_DATA_DIR: data }, extra || {});
+    const env = (pathv, extra) => Object.assign({}, process.env, { PATH: pathv, PHOTOS_ADB_ADDR: '192.0.2.10:5555', PHOTOS_SRC: cal, PHOTOS_DATA_DIR: data }, extra || {});
     const run = (pathv, extra) => cp.execFileSync('/bin/sh', [path.join(__dirname, 'photos-sync.sh')], { env: env(pathv, extra), encoding: 'utf8' }).trim();
     assert.strictEqual(run(noff), 'photos: 1 video waiting for ffmpeg (sudo apt install -y ffmpeg)\nphotos: 0 in the album, 1 new, 1 video not converted yet');
     // ffmpeg now in, the calendar away: the video already here is converted.
