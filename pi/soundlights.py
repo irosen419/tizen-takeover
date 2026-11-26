@@ -384,6 +384,7 @@ class Lamp:
                  ha=None, threaded=True):
         self.sock = sock
         self.ha = ha
+        self.ha_settle = 0.6 if threaded else 0.0
         self.threaded = threaded
         self.restorer = None
         self.ip = ip
@@ -459,6 +460,11 @@ class Lamp:
         if self.ha:
             if not self.ip:
                 return False
+            # Home Assistant only learns the lamp's real state from a status
+            # answer, and that answer lands on its port: ask, give it a moment.
+            self._send(msg_status())
+            if self.ha_settle:
+                time.sleep(self.ha_settle)
             st = self.ha.snapshot()
         else:
             if not self.ip and not self.discover():

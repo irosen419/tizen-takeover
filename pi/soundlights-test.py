@@ -256,7 +256,9 @@ class HaTests(unittest.TestCase):
         self.assertEqual(h.calls[0][:2], ("GET", "http://ha/api/states/light.x"))
         lamp.frame(sl.Out((9, 9, 9), 1.0, 0.0))
         self.assertTrue(all(a == ("1.1.1.1", 4003) for _, a in s.sent))
-        self.assertNotIn("devStatus", s.cmds())
+        # one status request first, so Home Assistant refreshes the lamp's state
+        self.assertEqual(s.cmds()[0], "devStatus")
+        self.assertEqual(s.cmds().count("devStatus"), 1)
         lamp.end()
         m, u, b = h.calls[-1]
         self.assertEqual((m, u), ("POST", "http://ha/api/services/light/turn_on"))
