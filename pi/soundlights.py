@@ -19,8 +19,15 @@ sound stops (and on SIGTERM or SIGINT) the saved state is put back exactly.
 
 Settings come from pi/.env (the file next to this script's folder):
     SOUNDLIGHTS=off          turns it off (default on)
-    GOVEE_LAMP_IP            the lamp's address; if empty the lamp is found
-                             by itself (LAN Control must be on in Govee Home)
+    GOVEE_LAMP_IP            the lamp's address (LAN Control must be on in
+                             Govee Home). With Home Assistant (below) it is
+                             required; without, if empty the lamp is found by
+                             itself (that needs UDP port 4002 to be free)
+    HA_TOKEN, HA_URL         Home Assistant (URL default http://127.0.0.1:8123)
+    SOUNDLIGHTS_HA_LAMP      the lamp's light entity id in Home Assistant. With
+                             HA_TOKEN set, the lamp's state is saved and put
+                             back through Home Assistant, and the color frames
+                             go straight to the lamp (we never bind port 4002)
     WLED_URL                 the plant wall's WLED controller (optional)
     SOUNDLIGHTS_DELAY_MS     0-1000, default 150: lights wait this long, to
                              match the Bluetooth speaker's own delay
@@ -38,6 +45,7 @@ address or a device id).
 """
 import argparse
 import array
+import errno
 import heapq
 import json
 import math
@@ -133,6 +141,9 @@ class Config:
         self.enabled = env.get("SOUNDLIGHTS", "on").strip().lower() not in (
             "off", "0", "false", "no")
         self.lamp_ip = env.get("GOVEE_LAMP_IP", "").strip()
+        self.ha_token = env.get("HA_TOKEN", "").strip()
+        self.ha_url = (env.get("HA_URL", "").strip() or "http://127.0.0.1:8123").rstrip("/")
+        self.ha_lamp = env.get("SOUNDLIGHTS_HA_LAMP", "").strip()
         url = env.get("WLED_URL", "").strip().rstrip("/")
         if url and "://" not in url:
             url = "http://" + url
@@ -210,6 +221,11 @@ def make_govee_socket():
     s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
     s.bind(("", GOVEE_REPLY_PORT))
     return s
+
+
+def make_direct_socket():
+    """Unbound (ephemeral port) socket: frames only, for Home Assistant mode."""
+    return socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 
 # ---------------------------------------------------------------- analysis
@@ -364,8 +380,12 @@ class DelayQueue:
 class Lamp:
     """The Govee lamp over its LAN API (UDP)."""
 
-    def __init__(self, sock, ip="", clock=time.monotonic, log=print, wait=1.0):
+    def __init__(self, sock, ip="", clock=time.monotonic, log=print, wait=1.0,
+                 ha=None, threaded=True):
         self.sock = sock
+        self.ha = ha
+        self.threaded = threaded
+        self.restorer = None
         self.ip = ip
         self.pinned = bool(ip)
         self.clock = clock
@@ -436,9 +456,14 @@ class Lamp:
         return False
 
     def begin(self):
-        if not self.ip and not self.discover():
-            return self._fail()
-        st = self.status()
+        if self.ha:
+            if not self.ip:
+                return False
+            st = self.ha.snapshot()
+        else:
+            if not self.ip and not self.discover():
+                return self._fail()
+            st = self.status()
         if st is None:
             return self._fail()
         if self.problem:
@@ -467,6 +492,14 @@ class Lamp:
         st, self.snapshot = self.snapshot, None
         if not st:
             return
+        if self.ha:
+            if self.threaded:       # off the audio thread; not a daemon, so exit waits
+                t = threading.Thread(target=self.ha.restore, args=(st,))
+                self.restorer = t
+                t.start()
+            else:
+                self.ha.restore(st)
+            return
         if not st.get("onOff"):
             self._send(msg_turn(False))
             return
@@ -480,12 +513,61 @@ class Lamp:
         self._send(msg_turn(True))
 
 
-def default_http(method, url, body=None, timeout=1.5):
+def default_http(method, url, body=None, timeout=1.5, headers=None):
     data = None if body is None else json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, method=method,
-                                 headers={"Content-Type": "application/json"})
+    h = {"Content-Type": "application/json"}
+    h.update(headers or {})
+    req = urllib.request.Request(url, data=data, method=method, headers=h)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8", "replace") or "null")
+
+
+class HaLamp:
+    """Saves and restores the lamp's state through Home Assistant's REST API."""
+
+    def __init__(self, url, token, entity, http=default_http):
+        self.url = url
+        self.entity = entity
+        if http is default_http:
+            auth = {"Authorization": "Bearer " + token}
+            http = lambda m, u, body=None, timeout=1.5: default_http(m, u, body, timeout, auth)
+        self.http = http
+
+    def _call(self, method, path, body=None, timeout=1.5):
+        return self.http(method, self.url + path, body, timeout)
+
+    def snapshot(self):
+        """The saved state, or None if Home Assistant did not answer for the entity."""
+        try:
+            st = self._call("GET", "/api/states/" + self.entity)
+            a = st.get("attributes") or {}
+            return {"onOff": st.get("state") == "on",
+                    "brightness": a.get("brightness"),
+                    "color_mode": a.get("color_mode"),
+                    "rgb_color": a.get("rgb_color"),
+                    "color_temp_kelvin": a.get("color_temp_kelvin")}
+        except Exception:
+            return None
+
+    def restore(self, st):
+        body = {"entity_id": self.entity}
+        if not st.get("onOff"):
+            svc = "turn_off"
+        else:
+            svc = "turn_on"
+            if st.get("brightness") is not None:
+                body["brightness"] = int(st["brightness"])
+            if st.get("color_mode") == "color_temp" and st.get("color_temp_kelvin"):
+                body["color_temp_kelvin"] = int(st["color_temp_kelvin"])
+            elif st.get("rgb_color"):
+                body["rgb_color"] = [int(v) for v in st["rgb_color"]][:3]
+            elif st.get("color_temp_kelvin"):
+                body["color_temp_kelvin"] = int(st["color_temp_kelvin"])
+        try:
+            self._call("POST", "/api/services/light/" + svc, body, 3.0)
+            return True
+        except Exception:
+            return False
 
 
 class Wled:
@@ -756,13 +838,36 @@ class Reporter:
 
 # --------------------------------------------------------------------- main
 
-def build_lights(cfg, log, sock_factory=make_govee_socket):
-    lights = []
+def ha_mode(cfg):
+    return bool(cfg.ha_token and cfg.ha_lamp)
+
+
+def make_lamp(cfg, log, sock_factory=make_govee_socket, direct_factory=make_direct_socket,
+              http=default_http):
+    """The lamp for this config, or None (with at most one log line)."""
+    if ha_mode(cfg):
+        if not cfg.lamp_ip:
+            log("Home Assistant mode needs GOVEE_LAMP_IP (the lamp's address); no lamp.")
+            return None
+        ha = HaLamp(cfg.ha_url, cfg.ha_token, cfg.ha_lamp, http)
+        return Lamp(direct_factory(), cfg.lamp_ip, log=log, ha=ha)
     try:
-        lamp = Lamp(sock_factory(), cfg.lamp_ip, log=log)
+        return Lamp(sock_factory(), cfg.lamp_ip, log=log)
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            log("Port 4002 is busy (Home Assistant's Govee integration?): "
+                "set GOVEE_LAMP_IP and SOUNDLIGHTS_HA_LAMP.")
+        else:
+            log("Lamp port is not available; the lamp is skipped.")
+        return None
+
+
+def build_lights(cfg, log, sock_factory=make_govee_socket, direct_factory=make_direct_socket,
+                 http=default_http):
+    lights = []
+    lamp = make_lamp(cfg, log, sock_factory, direct_factory, http)
+    if lamp:
         lights.append(lamp)
-    except OSError:
-        log("Lamp port is busy; the lamp is skipped.")
     if cfg.wled_url:
         lights.append(Wled(cfg.wled_url, log=log))
     return lights
@@ -808,9 +913,22 @@ def run(cfg, dry_run, log=print, stop=None):
 
 def once_status(cfg, log=print):
     lines = []
-    lamp = Lamp(make_govee_socket(), cfg.lamp_ip, log=lambda *_: None)
-    ok = (bool(lamp.ip) or lamp.discover()) and lamp.status() is not None
-    lines.append("Lamp: " + ("answers" if ok else "did not answer (LAN Control on?)"))
+    if ha_mode(cfg):
+        ha = HaLamp(cfg.ha_url, cfg.ha_token, cfg.ha_lamp)
+        ok = ha.snapshot() is not None
+        lines.append("Lamp: " + ("answers (through Home Assistant)" if ok
+                                 else "did not answer (through Home Assistant)"))
+        if not cfg.lamp_ip:
+            lines.append("Lamp address: GOVEE_LAMP_IP is needed")
+            ok = False
+    else:
+        try:
+            lamp = Lamp(make_govee_socket(), cfg.lamp_ip, log=lambda *_: None)
+            ok = (bool(lamp.ip) or lamp.discover()) and lamp.status() is not None
+            lines.append("Lamp: " + ("answers" if ok else "did not answer (LAN Control on?)"))
+        except OSError:
+            ok = False
+            lines.append("Lamp: port 4002 is busy (set GOVEE_LAMP_IP and SOUNDLIGHTS_HA_LAMP)")
     if cfg.wled_url:
         w = Wled(cfg.wled_url, log=lambda *_: None)
         got = w.begin()
@@ -827,9 +945,10 @@ def once_status(cfg, log=print):
 def test_lamp(cfg, log=print, sleep=time.sleep):
     quiet = lambda *_: None
     lights, names = [], []
-    lamp = Lamp(make_govee_socket(), cfg.lamp_ip, log=quiet)
-    lamp.pinned = lamp.pinned
-    lights.append(("Lamp", lamp))
+    lamp = make_lamp(cfg, quiet)
+    if lamp:
+        lamp.threaded = False          # put back before the program exits
+        lights.append(("Lamp", lamp))
     if cfg.wled_url:
         lights.append(("Plant wall", Wled(cfg.wled_url, log=quiet)))
     answered = []

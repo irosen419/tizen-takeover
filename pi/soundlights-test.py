@@ -9,6 +9,7 @@ One test starts a tiny Python program as a stand-in for pw-record.
 """
 import array
 import importlib.util
+import errno
 import json
 import math
 import os
@@ -235,6 +236,100 @@ class WledTests(unittest.TestCase):
         w = sl.Wled("http://w", FakeHttp(fail=True), log=logs.append, threaded=False)
         self.assertFalse(w.begin()); self.assertFalse(w.begin())
         self.assertEqual(logs, ["Plant wall did not answer."])
+
+
+class HaTests(unittest.TestCase):
+    RGB = {"state": "on", "attributes": {"brightness": 40, "color_mode": "rgb",
+                                         "rgb_color": [1, 2, 3], "color_temp_kelvin": None}}
+    CT = {"state": "on", "attributes": {"brightness": 200, "color_mode": "color_temp",
+                                        "rgb_color": [255, 180, 100], "color_temp_kelvin": 2700}}
+
+    def lamp(self, state, sock=None, **kw):
+        h = FakeHttp(state, **kw)
+        ha = sl.HaLamp("http://ha", "tok", "light.x", h)
+        return sl.Lamp(sock or FakeSock(), "1.1.1.1", log=lambda m: None, ha=ha, threaded=False), h
+
+    def test_rgb_roundtrip_frames_direct(self):
+        s = FakeSock()
+        lamp, h = self.lamp(self.RGB, s)
+        self.assertTrue(lamp.begin())
+        self.assertEqual(h.calls[0][:2], ("GET", "http://ha/api/states/light.x"))
+        lamp.frame(sl.Out((9, 9, 9), 1.0, 0.0))
+        self.assertTrue(all(a == ("1.1.1.1", 4003) for _, a in s.sent))
+        self.assertNotIn("devStatus", s.cmds())
+        lamp.end()
+        m, u, b = h.calls[-1]
+        self.assertEqual((m, u), ("POST", "http://ha/api/services/light/turn_on"))
+        self.assertEqual(b, {"entity_id": "light.x", "brightness": 40, "rgb_color": [1, 2, 3]})
+
+    def test_color_temp_and_off(self):
+        lamp, h = self.lamp(self.CT)
+        lamp.begin(); lamp.end()
+        self.assertEqual(h.calls[-1][2], {"entity_id": "light.x", "brightness": 200,
+                                          "color_temp_kelvin": 2700})
+        lamp, h = self.lamp({"state": "off", "attributes": {}})
+        lamp.begin(); lamp.end()
+        self.assertEqual(h.calls[-1][1], "http://ha/api/services/light/turn_off")
+
+    def test_ha_down_logs_once_and_no_end(self):
+        logs = []
+        h = FakeHttp(fail=True)
+        lamp = sl.Lamp(FakeSock(), "1.1.1.1", log=logs.append, threaded=False,
+                       ha=sl.HaLamp("http://ha", "tok", "light.x", h))
+        self.assertFalse(lamp.begin()); self.assertFalse(lamp.begin())
+        self.assertEqual(len(logs), 1)
+        lamp.end()
+        self.assertEqual(len(h.calls), 2)
+
+    def test_threaded_restore_joins(self):
+        h = FakeHttp(self.RGB)
+        lamp = sl.Lamp(FakeSock(), "1.1.1.1", log=lambda m: None,
+                       ha=sl.HaLamp("http://ha", "tok", "light.x", h))
+        lamp.begin(); lamp.end(); lamp.restorer.join(3)
+        self.assertEqual(h.calls[-1][0], "POST")
+
+
+class ModeTests(unittest.TestCase):
+    def cfg(self, **kw):
+        return sl.Config(dict(kw))
+
+    def test_ha_mode_uses_direct_socket_never_binds(self):
+        logs = []
+        def boom():
+            raise AssertionError("bound 4002")
+        c = self.cfg(HA_TOKEN="t", SOUNDLIGHTS_HA_LAMP="light.x", GOVEE_LAMP_IP="1.1.1.1")
+        lights = sl.build_lights(c, logs.append, sock_factory=boom, direct_factory=FakeSock)
+        self.assertEqual(len(lights), 1)
+        self.assertEqual(c.ha_url, "http://127.0.0.1:8123")
+        self.assertEqual(logs, [])
+
+    def test_ha_mode_without_ip(self):
+        logs = []
+        c = self.cfg(HA_TOKEN="t", SOUNDLIGHTS_HA_LAMP="light.x")
+        self.assertEqual(sl.build_lights(c, logs.append, direct_factory=FakeSock), [])
+        self.assertEqual(len(logs), 1)
+        self.assertNotIn("light.x", logs[0])
+
+    def test_fallback_busy_port(self):
+        logs = []
+        def busy():
+            raise OSError(errno.EADDRINUSE, "in use")
+        self.assertEqual(sl.build_lights(self.cfg(), logs.append, sock_factory=busy), [])
+        self.assertEqual(logs, ["Port 4002 is busy (Home Assistant's Govee integration?): "
+                                "set GOVEE_LAMP_IP and SOUNDLIGHTS_HA_LAMP."])
+
+    def test_once_status_ha(self):
+        c = self.cfg(HA_TOKEN="t", SOUNDLIGHTS_HA_LAMP="light.x", GOVEE_LAMP_IP="1.1.1.1")
+        out = []
+        orig = sl.default_http
+        sl.default_http = lambda *a, **k: HaTests.RGB
+        try:
+            sl.HaLamp.__init__.__defaults__ = (sl.default_http,)
+            self.assertEqual(sl.once_status(c, out.append), 0)
+        finally:
+            sl.default_http = orig
+            sl.HaLamp.__init__.__defaults__ = (orig,)
+        self.assertEqual(out[0], "Lamp: answers (through Home Assistant)")
 
 
 class Analysis(unittest.TestCase):

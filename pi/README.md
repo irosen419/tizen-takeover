@@ -702,13 +702,14 @@ When sound starts, each light's state is saved. About 8 seconds after the sound 
 ### Set it up (once)
 
 1. In the **Govee Home** app open the lamp's settings page and turn on **LAN Control**.
-2. Install and start the service:
+2. If the lamp is in Home Assistant (Govee Light Local), add two keys to `pi/.env` (see below). The lamp's address and entity id go only there, never in a message or a public file.
+3. Install and start the service:
    ```
    mkdir -p ~/.config/systemd/user
    cp ~/code/tizen-takeover/pi/soundlights.service ~/.config/systemd/user/
    systemctl --user daemon-reload && systemctl --user enable --now soundlights.service
    ```
-3. Check the lamp: `python3 ~/code/tizen-takeover/pi/soundlights.py --test-lamp`. It finds the lamp (and the plant wall), does a 2-second color sweep and one white flash, puts everything back and says what answered. `--once-status` only asks who answers; `--dry-run` listens and prints one line a second (level, bass, flashes) without touching any light.
+4. Check the lamp: `python3 ~/code/tizen-takeover/pi/soundlights.py --test-lamp`. It reaches the lamp (and the plant wall), does a 2-second color sweep and one white flash, puts everything back and says what answered. `--once-status` only asks who answers; `--dry-run` listens and prints one line a second (level, bass, flashes) without touching any light.
 
 Log: `journalctl --user -u soundlights -n 20`. A few plain lines: `Lamp found.`, `Following the sound.`, `Quiet, lights put back.`, `Lamp did not answer (LAN Control on?).`
 
@@ -717,7 +718,9 @@ Log: `journalctl --user -u soundlights -n 20`. A few plain lines: `Lamp found.`,
 | Key | Meaning |
 | --- | --- |
 | `SOUNDLIGHTS` | `off` turns it off (default on) |
-| `GOVEE_LAMP_IP` | the lamp's address; if empty it is found by itself (the H6076 is preferred, else the first Govee found; looked for again at most every 5 minutes) |
+| `GOVEE_LAMP_IP` | the lamp's address. Required with Home Assistant; otherwise, if empty, the lamp is found by itself (the H6076 is preferred, else the first Govee found; looked for again at most every 5 minutes) |
+| `HA_TOKEN`, `HA_URL` | Home Assistant, the same keys the hub uses (`HA_URL` defaults to `http://127.0.0.1:8123`) |
+| `SOUNDLIGHTS_HA_LAMP` | the lamp's light entity id in Home Assistant, such as `light.floor_lamp` |
 | `WLED_URL` | the plant wall's controller, as for Ambience |
 | `SOUNDLIGHTS_DELAY_MS` | 0 to 1000, default 150: the lights wait this long so they match the Bluetooth speaker's own delay |
 | `SOUNDLIGHTS_MAX_FPS` | 2 to 20, default 10: the most light updates a second |
@@ -733,7 +736,7 @@ Until the next boot: `systemctl --user stop soundlights`. For good: `systemctl -
 - It only hears sound the **Pi** plays. TV and Xbox sound does not go through the Pi, so those do nothing.
 - It listens before the Bluetooth speaker, which adds a short delay of its own. If the lights run ahead of the sound, raise `SOUNDLIGHTS_DELAY_MS`; if they lag, lower it.
 - When the speaker is off, PipeWire's output is a dummy one and the capture is silent: the lights simply stay as they were.
-- Home Assistant's **Govee lights local** integration listens on the same port (4002) for the lamp's answers. With both on, one of them may miss replies (the lamp then shows `Lamp did not answer`). Use Home Assistant's Govee integration only if this happens to work, or leave the lamp out of Home Assistant.
+- Home Assistant's **Govee Light Local** integration owns UDP port 4002 on the Pi, so the lamp's answers (discovery, status) never reach this program. That is why, with `HA_TOKEN` and `SOUNDLIGHTS_HA_LAMP` set, it works as a hybrid: the color and brightness frames go straight to the lamp (`GOVEE_LAMP_IP`, port 4003, never binding 4002), and the lamp's state is saved and put back through Home Assistant (`GET /api/states/<entity>`, then `light/turn_on` or `turn_off` with brightness and color or color temperature). `--once-status` then says `Lamp: answers (through Home Assistant)`. Without `SOUNDLIGHTS_HA_LAMP` it falls back to finding the lamp itself, which needs port 4002 free; if it is busy the log says so and the lamp is left out.
 - Test: `python3 pi/soundlights-test.py`.
 
 ## Weekly health report (server 0.15.0)
