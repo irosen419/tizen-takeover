@@ -1,0 +1,22 @@
+# Sound lights (pi/soundlights.py): the Govee lamp and the plant wall follow the
+# sound the Pi plays. A systemd user unit; install (pi/README.md, "Sound lights"):
+#   mkdir -p ~/.config/systemd/user
+#   cp pi/soundlights.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now soundlights.service
+# Off again: systemctl --user disable --now soundlights.service
+# %h is your home folder; change the path if the repo lives elsewhere.
+[Unit]
+Description=Home Hub sound lights (lamp and plant wall follow the Pi's sound)
+After=pipewire.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/code/tizen-takeover/pi
+ExecStart=/usr/bin/python3 %h/code/tizen-takeover/pi/soundlights.py
+Restart=on-failure
+RestartSec=30
+Nice=5
+
+[Install]
+WantedBy=default.target

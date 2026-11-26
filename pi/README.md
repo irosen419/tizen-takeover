@@ -693,6 +693,48 @@ Commands: `./hub allsounds status` (state, source, speaker, title and artist), `
 
 **Limits and the log.** At most 10 commands in 10 seconds (`Too many Echo commands; wait a few seconds.`). The log gets fixed words and target keys only, never a query, a speaker's name or a title: `echo: started Audible on show`, `echo: pause on dot (voice)`, `echo: volume on show`, `echo: label cleared on show (other playback)` (also `(timeout)`, `(stop)`), `echo: Home Assistant refused the token (401)`. The control API is `GET /api/echo` and `POST /api/echo` (`{ action, target?, app?, query?, level? }`); the TV cannot reach it. The Sound control widget (hub v0.39.0, server 0.24.0) uses its own screen route instead, `POST /echo/run` (`{ action, target?, app?, level?, step? }`): presets only (`audible`, `pandora`, `amazon-music`, `kera`, `news`, and from server 0.24.2 `npr` (Alexa asked to "play NPR News Now") and `spotify` ("play Spotify", or a Spotify search from `./hub`); no `tunein`, no query, unknown fields refused), `volume` takes `step: "up"|"down"` or `level` 0 to 100, a foreign Origin gets 403, more than 6 presses in 5 seconds gets 429, and the reply is only `{ ok, message }` (no address or token). The mailbox commands are `echo.status`, `echo.start`, `echo.pause`, `echo.resume`, `echo.next`, `echo.stop` and `echo.volume`.
 
+## Sound lights (Govee lamp and plant wall follow the Pi's sound)
+
+A small program on the Pi listens to whatever the Pi itself plays (music, ambience, storm sounds going to the Bluetooth speaker) and makes the Govee H6076 floor lamp, and the plant wall if `WLED_URL` is set, follow it: brighter when it is louder, warm colors for bass, cool colors for highs, and a bright white flash on a thunder clap. It runs on the Pi outside Docker, as a systemd **user** service, and uses only Python's standard library.
+
+When sound starts, each light's state is saved. About 8 seconds after the sound stops (or when the service stops) the saved state is put back exactly: the lamp's color, brightness and on or off, and the plant wall's on, brightness, color and effect. Without any lights it sits idle and logs almost nothing.
+
+### Set it up (once)
+
+1. In the **Govee Home** app open the lamp's settings page and turn on **LAN Control**.
+2. Install and start the service:
+   ```
+   mkdir -p ~/.config/systemd/user
+   cp ~/code/tizen-takeover/pi/soundlights.service ~/.config/systemd/user/
+   systemctl --user daemon-reload && systemctl --user enable --now soundlights.service
+   ```
+3. Check the lamp: `python3 ~/code/tizen-takeover/pi/soundlights.py --test-lamp`. It finds the lamp (and the plant wall), does a 2-second color sweep and one white flash, puts everything back and says what answered. `--once-status` only asks who answers; `--dry-run` listens and prints one line a second (level, bass, flashes) without touching any light.
+
+Log: `journalctl --user -u soundlights -n 20`. A few plain lines: `Lamp found.`, `Following the sound.`, `Quiet, lights put back.`, `Lamp did not answer (LAN Control on?).`
+
+### Settings (`pi/.env`, all optional)
+
+| Key | Meaning |
+| --- | --- |
+| `SOUNDLIGHTS` | `off` turns it off (default on) |
+| `GOVEE_LAMP_IP` | the lamp's address; if empty it is found by itself (the H6076 is preferred, else the first Govee found; looked for again at most every 5 minutes) |
+| `WLED_URL` | the plant wall's controller, as for Ambience |
+| `SOUNDLIGHTS_DELAY_MS` | 0 to 1000, default 150: the lights wait this long so they match the Bluetooth speaker's own delay |
+| `SOUNDLIGHTS_MAX_FPS` | 2 to 20, default 10: the most light updates a second |
+
+After changing `.env`: `systemctl --user restart soundlights`.
+
+### Turn it off
+
+Until the next boot: `systemctl --user stop soundlights`. For good: `systemctl --user disable --now soundlights`, or put `SOUNDLIGHTS=off` in `.env` (the service then starts and ends at once).
+
+### Limits
+
+- It only hears sound the **Pi** plays. TV and Xbox sound does not go through the Pi, so those do nothing.
+- It listens before the Bluetooth speaker, which adds a short delay of its own. If the lights run ahead of the sound, raise `SOUNDLIGHTS_DELAY_MS`; if they lag, lower it.
+- When the speaker is off, PipeWire's output is a dummy one and the capture is silent: the lights simply stay as they were.
+- Test: `python3 pi/soundlights-test.py`.
+
 ## Weekly health report (server 0.15.0)
 
 Once a week (Sundays at 3:15 AM Central) a script checks the whole Pi and writes one report, so Claude can tell you if anything is drifting before it breaks. It runs on the Pi itself, outside Docker, from a systemd **user** timer, so it needs no sudo.
