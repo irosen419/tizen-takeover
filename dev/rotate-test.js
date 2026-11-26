@@ -11,6 +11,8 @@
  *   - it wraps round and skips layouts with rotate: false
  *   - nothing moves while a tile is open; 5 minutes after it closes it does
  *   - off again: nothing moves
+ *   - a one-widget layout's window that opened by itself (Plants) does not
+ *     hold it: after 2 minutes the window closes and the next layout loads
  *
  * Prints one line per check and "N passed, M failed"; exits 1 on a failure.
  */
@@ -126,6 +128,31 @@ function assert(ok, text) { if (!ok) throw new Error(text); }
 
     await check('No console errors', async () => {
       const errs = H.errorsOf(page, true);
+      assert(!errs.length, errs.join('\n'));
+    });
+
+    // A one-widget 12x6 layout opens its window by itself (openSolo).
+    const S = [{ widget: 'weather', x: 0, y: 0, w: 12, h: 6 }];
+    const solo = await env.newPage({
+      layout: S, live: 'off', motion: 'fade',
+      storage: { 'homeHub.autoRotate': 'on' },
+      config: 'var lays = ' + JSON.stringify([{ id: 's', name: 'S', layout: S }, { id: 'a', name: 'A', layout: A }]) +
+        '; var cfg; Object.defineProperty(window, "HUB_CONFIG", { configurable: true, get: function () { return cfg; },' +
+        ' set: function (v) { cfg = v; if (v) v.layouts = lays; } });'
+    });
+    let soloNow = start;
+    await check('A window that opened by itself does not hold it', async () => {
+      await H.until(() => solo.evaluate(() => window.HUB_TEST.open() === 'weather' && !window.HUB_TEST.busy()), 5000, 'the solo window did not open');
+      const held = await solo.evaluate(() => { window.HUB_TEST.rotate.times(2 * 60000, 5 * 60000, 100); return window.HUB_TEST.rotate.state().held; });
+      assert(!held, 'the solo window holds rotation');
+      soloNow += 2.1 * MIN;
+      await solo.clock.setFixedTime(new Date(soloNow));
+      await H.until(() => solo.evaluate(() => window.HUB_TEST && JSON.stringify(window.HUB_TEST.layout())).catch(() => null)
+        .then((cur) => cur === JSON.stringify(A)), 10000, 'did not move on from the solo layout');
+    });
+
+    await check('No console errors (solo)', async () => {
+      const errs = H.errorsOf(solo, true);
       assert(!errs.length, errs.join('\n'));
     });
   } finally {
