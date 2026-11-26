@@ -180,6 +180,7 @@
   var homeIndex = -1;     // focused tile
   var FOCUS_KEEP_MS = 60000; // a layout arriving within this of a key press or click leaves focus alone
   var open = null;        // the widget record whose panel is open
+  var openAuto = false;   // that panel is a one-widget layout's own window (openSolo), not opened by a person
   var mode = null;        // 'panel' | 'full' | null
   var busy = false;       // a transition is running; keys are ignored
   var frameOpen = false;
@@ -1614,6 +1615,9 @@
   // ends (closing it is a key or tap). Layouts with rotate: false in
   // config.js (Default and the test layouts) are skipped. A layout with other
   // widgets reloads the page (reloadForLayout); the 2 minutes start again then.
+  // A one-widget layout's window that opened by itself (openSolo, e.g. Plants)
+  // does not count as an open tile: the move closes it first. A key or touch
+  // in it still waits the 5 minutes.
   var ROTATE_KEY = 'homeHub.autoRotate';
   var ROTATE_MS = 120000;       // between moves when nobody is using the hub
   var ROTATE_AWAKE_MS = 300000; // after a key, click or touch
@@ -1642,7 +1646,7 @@
 
   // Something is open or being used: no move now.
   function rotateHeld() {
-    if (busy || open || frameOpen || sw.on || ab.on || tablet.sheetOn || tablet.show || tablet.peek) return true;
+    if (busy || (open && !openAuto) || frameOpen || sw.on || ab.on || tablet.sheetOn || tablet.show || tablet.peek) return true;
     try { if (window.HUB_PIN && typeof window.HUB_PIN.isOpen === 'function' && window.HUB_PIN.isOpen()) return true; } catch (e) { /* no PIN pad */ }
     return !!typingBox();
   }
@@ -1685,7 +1689,8 @@
     saveChoice({ id: p.id || p.name, live: p.live });
     saveLayout(p.layout);
     pendingLayout = p.layout;
-    applyPendingLayout();
+    if (open && openAuto) closePanel();   // closing applies it (layoutChance)
+    else applyPendingLayout();
     return true;
   }
 
@@ -2694,6 +2699,7 @@
     closeAbout();                          // a panel the Pi opens goes over it: close it first
     clayHook('stop');
     open = rec;
+    openAuto = how === 'solo';
     syncPicLabel();
     // openMode: 'full' (a widget's own choice) opens straight to full screen.
     var direct = isDirect(rec.w);
@@ -2836,6 +2842,7 @@
       if (panelFocus) panelFocus.classList.remove('is-focused');
       panelFocus = null;
       open = null;
+      openAuto = false;
       syncPicLabel();
       mode = null;
       busy = false;
