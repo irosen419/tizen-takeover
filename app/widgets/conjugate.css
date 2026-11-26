@@ -1,0 +1,366 @@
+/* Conjugation table (app/widgets/conjugate.js). Every class starts with cj-.
+
+   The forms are the data, so they lead (white, regular weight); pronouns
+   and tense hints recede (--text-3). Amber (--ok-optional) marks a form that
+   is not the regular pattern; a sky ring marks the form a search found.
+   Every text keeps a line height of 1.3 or more, so accents (á, É, ñ) never
+   clip. The table is a <table> (no grid); no flex gap. Only the tile's
+   forms move when the tense or verb changes (opacity and transform). The
+   tile's last 1.6rem (cj-foot) is where the hub's engage hint shows. */
+
+.cj-tile { overflow: hidden; }
+.cj-none { font-size: 1rem; line-height: 1.4; color: var(--text-2); }
+
+/* ---------- the tile ---------- */
+
+.cj-top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  line-height: 1.3;
+}
+.cj-top .cj-verb { flex: 0 0 auto; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cj-top .cj-en { flex: 1 1 auto; min-width: 0; margin-left: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cj-verb {
+  font-size: 1.9rem;
+  font-weight: 600;
+  line-height: 1.3;
+  padding-top: 0.04em;     /* room above a capital's accent */
+  color: var(--text);
+}
+.cj-en { font-size: 1rem; line-height: 1.35; color: var(--text-2); }
+
+.cj-tline {
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+  font-size: 1rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cj-tline .cj-tname { font-weight: 600; color: var(--ok-sky); }
+.cj-tline .cj-tuse { margin-left: 0.5rem; font-size: 0.85rem; color: var(--text-3); }
+/* The arrows say what Left and Right do: only while engaged (or on a tablet, as buttons). */
+.cj-arrow {
+  display: none;
+  padding: 0 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.tile.is-engaged .cj-arrow, .tablet .cj-arrow { display: inline; }
+.cj-prev { padding-left: 0; }
+
+.cj-forms {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  margin-top: 0.35rem;
+  overflow: hidden;
+}
+.cj-col { flex: 1 1 0; min-width: 0; }
+.cj-col + .cj-col { margin-left: 1rem; }
+.cj-frow {
+  font-size: 1.05rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cj-frow .cj-who {
+  display: inline-block;
+  min-width: 4.6rem;
+  margin-right: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-3);
+}
+.cj-std .cj-frow .cj-who { min-width: 0; }
+.cj-std .cj-col:first-child .cj-who { min-width: 3.6rem; }
+.cj-std .cj-col + .cj-col .cj-who { min-width: 4.6rem; }
+.cj-frow .cj-f { color: var(--text); }
+.cj-frow .cj-f.is-irr { color: var(--ok-optional); }
+.cj-tight .cj-frow .cj-who { display: none; }
+.cj-tight .cj-frow { line-height: 1.3; }
+.cj-tile > .cj-parts { flex: 0 0 auto; margin-top: 0.2rem; font-size: 0.85rem; color: var(--text-3); }
+
+/* The forms arrive with a small slide when the tense or verb changes. */
+.cj-in { -webkit-animation: cj-in 200ms ease-out; animation: cj-in 200ms ease-out; }
+@-webkit-keyframes cj-in { from { opacity: 0; -webkit-transform: translateY(0.35rem); } to { opacity: 1; -webkit-transform: none; } }
+@keyframes cj-in { from { opacity: 0; transform: translateY(0.35rem); } to { opacity: 1; transform: none; } }
+
+.cj-tall .cj-verb { font-size: 2.3rem; }
+.cj-tall .cj-frow { font-size: 1.2rem; line-height: 1.45; }
+/* 3x4 and up: room to spare, so the forms read from the couch. */
+.cj-roomy .cj-frow { font-size: 1.4rem; line-height: 1.6; }
+.cj-roomy .cj-tline { margin-top: 0.5rem; font-size: 1.1rem; }
+
+.cj-foot {
+  flex: 0 0 auto;
+  min-height: 1.6rem;
+  padding-top: 0.35rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  visibility: hidden;
+}
+.tile.is-focused:not(.is-engaged) .cj-foot, .tablet .cj-foot { visibility: visible; }
+
+/* Strip: "tener  tengo, tienes, tiene, ..." on one line. */
+.cj-strip { justify-content: center; }
+.cj-line {
+  font-size: 1.15rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cj-line-verb { font-weight: 600; color: var(--text); }
+/* Narrow: the verb and its English. */
+.cj-narrow { justify-content: center; }
+.cj-narrow .cj-verb, .cj-narrow .cj-en { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cj-narrow .cj-verb { font-size: 1.5rem; }
+
+/* ---------- the table (the page, and Word of the day's tab) ---------- */
+
+.cj-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 1em;
+}
+.cj-table th, .cj-table td { padding: 0; text-align: left; vertical-align: top; font-weight: 400; }
+.cj-table .cj-corner { width: 16%; }
+.cj-r2 .cj-corner { width: 22%; }
+.cj-tense { padding: 0 0.6em 0.3em 0; }
+.cj-head-next .cj-tense, .cj-head-next .cj-corner { padding-top: 0.9em; }
+.cj-table .cj-tname {
+  font-size: 0.9em;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ok-sky);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cj-table .cj-tuse {
+  font-size: 0.72em;
+  line-height: 1.35;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cj-table .cj-who {
+  font-size: 0.8em;
+  line-height: 1.75;       /* the forms' line height, at their size */
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cj-table .cj-f {
+  padding-right: 0.6em;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-top: var(--hair-w, 0.06rem) solid var(--hair);
+}
+.cj-table .cj-f.is-irr { color: var(--ok-optional); }
+.cj-table .cj-f.is-none { color: var(--text-3); }
+.cj-hitbox {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 0.3em;
+  border-radius: 0.3em;
+  box-shadow: inset 0 0 0 0.12em var(--ok-sky);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}
+.cj-pform.is-hit { border-radius: 0.3em; box-shadow: 0 0 0 0.12em var(--ok-sky); }
+
+.cj-parts {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cj-plabel, .cj-psep { color: var(--text-3); }
+.cj-legend {
+  margin-top: 0.7rem;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: var(--text-3);
+}
+.cj-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: var(--ok-optional);
+  vertical-align: 0.05rem;
+}
+
+/* ---------- the page (always full screen on the TV and tablet) ---------- */
+
+.cj-page { display: flex; height: 100%; }
+.cj-side {
+  flex: 0 0 19rem;
+  width: 19rem;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cj-main {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-left: 2.4rem;
+  overflow: hidden;
+  font-size: 1.15rem;
+}
+.cj-twrap { margin-top: 1rem; font-size: 1.15rem; }
+
+.cj-q {
+  flex: 0 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.9rem;
+  border: var(--edge, 0.16rem) solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.35;
+  outline: none;
+  -webkit-appearance: none;
+}
+.cj-q::-webkit-input-placeholder { color: var(--text-3); }
+.cj-q.is-focused, .cj-q:focus { border-color: var(--focus); }
+
+.cj-today {
+  flex: 0 0 auto;
+  margin-top: 0.7rem;
+  padding: 0.35rem 0.9rem;
+  border: var(--edge, 0.16rem) solid transparent;
+  border-radius: 999px;
+  background: rgba(83, 182, 235, 0.12);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.cj-today-l { color: var(--text-2); }
+.cj-today-v { font-weight: 600; color: var(--ok-sky); }
+.cj-today.is-focused { border-color: var(--focus); }
+
+.cj-letters {
+  flex: 0 0 auto;
+  margin: 0.8rem -0.35rem 0 0;
+  font-size: 0;            /* no gaps between the inline-block letters */
+}
+.cj-let {
+  display: inline-block;
+  width: 2.6rem;
+  margin: 0 0.35rem 0.35rem 0;
+  padding: 0.2rem 0;
+  border: var(--edge, 0.16rem) solid var(--line);
+  border-radius: 0.8rem;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  text-align: center;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.cj-let.is-on { color: var(--text); background: var(--card-2); border-color: rgba(83, 182, 235, 0.55); }
+.cj-let.is-focused { border-color: var(--focus); color: var(--text); background: var(--card-2); }
+
+.cj-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 0.5rem;
+  overflow: hidden;
+  position: relative;
+}
+.cj-item {
+  padding: 0.3rem 0.8rem;
+  border: var(--edge, 0.16rem) solid transparent;
+  border-radius: 0.8rem;
+  font-size: 1.05rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.cj-item-form { color: var(--text-2); }
+.cj-item-verb { color: var(--text); font-weight: 600; }
+.cj-item-en { margin-left: 0.6rem; font-size: 0.85rem; color: var(--text-3); }
+.cj-item.is-on { background: rgba(83, 182, 235, 0.12); }
+.cj-item.is-on .cj-item-verb { color: var(--ok-sky); }
+.cj-item.is-focused { border-color: var(--focus); }
+.cj-empty { padding: 0.4rem 0.8rem; font-size: 0.9rem; line-height: 1.4; color: var(--text-3); white-space: normal; }
+
+.cj-mhead {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+.cj-mverb {
+  font-size: 2.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+  padding-top: 0.04em;
+  color: var(--text);
+}
+.cj-men { font-size: 1.2rem; color: var(--text-2); }
+.cj-badge {
+  display: inline-block;
+  margin-left: 0.8rem;
+  padding: 0.1rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(83, 182, 235, 0.14);
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ok-sky);
+  vertical-align: 0.45rem;
+}
+
+/* Day look: the sky tints need more ink on light glass. */
+.theme-day .cj-item.is-on, .theme-day .cj-today, .theme-day .cj-badge { background: rgba(30, 110, 170, 0.14); }
+
+/* ---------- the phone (app/touch.js) ---------- */
+
+.cj-touch { padding: 0.5rem 0; }
+.cj-page-touch { display: block; height: auto; }
+.cj-page-touch .cj-side { width: auto; display: block; }
+.cj-page-touch .cj-q { font-size: 1.05rem; padding: 0.6rem 1rem; border-color: rgba(127, 127, 127, 0.45); }
+.cj-page-touch .cj-let { width: 2.5rem; padding: 0.35rem 0; border-color: rgba(127, 127, 127, 0.35); }
+.cj-page-touch .cj-list { max-height: 12rem; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.cj-page-touch .cj-main { margin: 1rem 0 0; font-size: 1rem; }
+.cj-page-touch .cj-mverb { font-size: 2.2rem; }
+.cj-page-touch .cj-twrap { font-size: 1rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cj-in { -webkit-animation: none; animation: none; }
+}
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }
