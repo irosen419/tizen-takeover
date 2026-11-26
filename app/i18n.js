@@ -450,6 +450,33 @@
     'wotd.pos.interj': 'interjección',
     'wotd.pos.num': 'número',
     'wotd.none': 'No hay palabra para hoy.',
+    'wotd.tabWord': 'Palabra',
+    'wotd.tabConj': 'Conjugación',
+
+    /* ---- Conjugation table (app/widgets/conjugate.js). The forms and the
+     * tense names (Presente, Pretérito...) are Spanish in both languages. ---- */
+    'conj.title': 'Tabla de conjugación',
+    'conj.titleShort': 'Verbos',
+    'conj.use.pres': 'ahora, siempre',
+    'conj.use.pret': 'hecho, terminado',
+    'conj.use.imp': 'solía, estaba',
+    'conj.use.fut': 'lo que vendrá',
+    'conj.use.cond': 'lo que haría',
+    'conj.use.perf': 'lo que he hecho',
+    'conj.use.subj': 'deseos, dudas',
+    'conj.use.impv': 'órdenes',
+    'conj.gerund': 'gerundio',
+    'conj.participle': 'participio',
+    'conj.irregular': 'No sigue el patrón regular (irregular o cambio ortográfico)',
+    'conj.none': 'Sin verbos',
+    'conj.today': 'Palabra del día',
+    'conj.todayShort': 'Palabra del día',
+    'conj.tapOpen': 'Toca para buscar',
+    'conj.okUse': 'OK para explorar',
+    'conj.search': 'Buscar: tener, to have, tuve',
+    'conj.noMatch': 'Ningún verbo. Prueba el inicio de un verbo, su inglés o una forma.',
+    'conj.sub': '{n} verbos en español · ocho tiempos',
+    'conj.hint': '◀ ▶ tiempo · OK: verbo · Mantén OK: abrir',
 
     /* ---- Budget tiles: Daily room, Card day, Goals and the "New charge" banner (app/widgets/budget.js) ----
      * Key 'budget.<path in STRINGS>'; the English is STRINGS at that path in

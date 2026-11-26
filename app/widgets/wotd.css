@@ -157,5 +157,44 @@
 .wotd-panel.is-full .wotd-ex { font-size: 1.7rem; }
 .wotd-panel.is-full .wotd-ex-en { font-size: 1.25rem; }
 
+/* A verb's page: Word and Conjugation tabs over the content. */
+.wotd-tabbed { height: 100%; display: flex; flex-direction: column; }
+.wotd-tabs { flex: 0 0 auto; margin-bottom: 0.6rem; font-size: 0; }
+.wotd-tab {
+  display: inline-block;
+  margin-right: 0.5rem;
+  padding: 0.25rem 0.95rem;
+  border: var(--edge, 0.16rem) solid var(--line);
+  border-radius: 999px;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.wotd-tab.is-on { color: var(--text); background: var(--card-2); }
+.wotd-tab.is-focused { border-color: var(--focus); color: var(--text); }
+.wotd-tabbody { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+.wotd-tabbody > .wotd-panel { position: absolute; top: 0; right: 0; bottom: 0; left: 0; height: auto; }
+.wotd-conj { font-size: 1rem; }
+.wotd-conj-head {
+  font-size: 1.05rem;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wotd-conj-verb { font-size: 1.5rem; font-weight: 600; color: var(--text); }
+.wotd-conj-en, .wotd-conj-part { color: var(--text-3); }
+.wotd-conj-form { color: var(--text); }
+.wotd-conj-table { margin-top: 0.6rem; font-size: 1rem; }
+.wotd-conj .cj-legend { margin-top: 0.5rem; font-size: 0.8rem; }
+/* The small panel has no room for the tense hints; full screen shows them. */
+.wotd-conj .cj-tuse { display: none; }
+.wotd-conj.is-full .cj-tuse { display: block; }
+.wotd-conj.is-full .wotd-conj-verb { font-size: 2.4rem; }
+.wotd-conj.is-full .wotd-conj-head { font-size: 1.3rem; }
+.wotd-conj.is-full .wotd-conj-table { margin-top: 1.2rem; font-size: 1.4rem; }
+.wotd-conj.is-full .cj-legend { font-size: 1rem; }
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }

@@ -13,7 +13,9 @@
  *   standard   the word, "the cat · noun", and the Spanish example
  *   tall       adds the pronunciation hint, the definition and the
  *              example's English
- *   panel      everything: the date and level, both definitions, both examples
+ *   panel      everything: the date and level, both definitions, both examples;
+ *              a verb's page has a second tab, Conjugation: its table from
+ *              app/widgets/conjugate.js (window.HUB_CONJ)
  *   full       the same, bigger
  *
  * Everything that can't fit is left out, lowest first (never cut sideways):
@@ -256,12 +258,57 @@
     return s;
   }
 
+  // A verb's page has two tabs: the word, and its conjugation table (drawn
+  // by app/widgets/conjugate.js, window.HUB_CONJ). Other words: no tabs.
+  var tab = 'word';
+
+  function verbOf(w) {
+    var C = window.HUB_CONJ;
+    return w && w.pos === 'verb' && C && typeof C.find === 'function' ? C.find(w.es) : null;
+  }
+
+  function drawTabs(parent) {
+    var row = div('wotd-tabs', parent);
+    var names = [['word', T('wotd.tabWord', 'Word')], ['conj', T('wotd.tabConj', 'Conjugation')]];
+    for (var i = 0; i < names.length; i++) {
+      var b = div('wotd-tab f' + (tab === names[i][0] ? ' is-on' : ''), row, names[i][1]);
+      b.setAttribute('data-key', 'tab-' + names[i][0]);
+      b.setAttribute('data-tab', names[i][0]);
+    }
+  }
+
+  function drawConj(parent, v, full) {
+    var C = window.HUB_CONJ;
+    var box = div('wotd-conj' + (full ? ' is-full' : ''), parent);
+    var head = div('wotd-conj-head', box);
+    span('wotd-conj-verb', head, v.inf);
+    span('wotd-conj-en', head, '  ' + v.en + '  ·  ');
+    span('wotd-conj-part', head, T('conj.gerund', 'gerund') + ' ');
+    span('wotd-conj-form', head, v.ger);
+    span('wotd-conj-part', head, '  ·  ' + T('conj.participle', 'participle') + ' ');
+    span('wotd-conj-form', head, v.pp);
+    var wrap = div('wotd-conj-table', box);
+    C.drawTable(wrap, v, { perRow: 4 });
+    if (C.legend) C.legend(box);
+    var room = parent.clientHeight - (box.offsetHeight - wrap.offsetHeight);
+    if (C.fitTable) C.fitTable(wrap, room, 0.6);
+  }
+
   function renderPanel(body, ctx) {
     var now = new Date();
     var pick = wordFor(now);
     var full = ctx && ctx.mode && ctx.mode() === 'full';
     var es = lang() === 'es';
-    var root = div('wotd-panel' + (full ? ' is-full' : ''), body);
+    var verb = pick ? verbOf(pick.w) : null;
+    if (!verb) tab = 'word';
+    var host = body;
+    if (verb) {
+      var tabbed = div('wotd-tabbed', body);
+      drawTabs(tabbed);
+      host = div('wotd-tabbody', tabbed);
+      if (tab === 'conj') { drawConj(host, verb, full); return; }
+    }
+    var root = div('wotd-panel' + (full ? ' is-full' : ''), host);
     if (!pick) { div('wotd-none', root, T('wotd.none', 'No word for today.')); return; }
     var w = pick.w;
     var I = I18N();
@@ -327,6 +374,14 @@
     },
 
     renderPanel: function (body, ctx) { renderPanel(body, ctx); },
+
+    // A verb's tabs switch as focus lands on them (and on a tap).
+    onFocus: function (target, ctx) {
+      var t = target && target.getAttribute ? target.getAttribute('data-tab') : null;
+      if (t && t !== tab) { tab = t; ctx.redrawPanel(); }
+    },
+    onSelect: function (target, ctx) { widget.onFocus(target, ctx); },
+    onClose: function () { tab = 'word'; },
 
     onMode: function (mode, ctx) { ctx.redrawPanel(); }
   };
