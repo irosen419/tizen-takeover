@@ -76,6 +76,7 @@
       dir: 'agents/lift/',
       w: 140, h: 126,
       faces: 'right',
+      effects: 'stormlight',
       poses: {
         skate: [
           { file: 'lift.webp', left: 4, top: 14, w: 132, h: 112 },
@@ -146,9 +147,13 @@
   var host = null;
   var started = false;
   var off = '';                  // '' when on; else 'config' | 'query' | 'unknown'
-  var who = '';
-  var role = null;               // ROSTER[who]
-  var pics = { state: 'none', imgs: {}, failedAt: 0 };   // 'none' | 'loading' | 'ready' | 'failed'
+  var who = '';                  // the names in the rotation, for the About panel
+  // The rotation: one member per character in agents.who, in order. role:
+  // its ROSTER entry (a drop-in sheet's is made from its character.json
+  // once that loads); pics: its pictures ('none' | 'loading' | 'ready' |
+  // 'failed'). Each new visit goes to the next member that is ready.
+  var cast = [];
+  var turn = 0;
   var figs = [];                 // see enter()
   var layer = null;
   var seen = 0;
@@ -205,24 +210,189 @@
 
   /* ---------- settings ---------- */
 
+  // A drop-in folder's name: app/agents/<name>/ (letters, digits, - and _).
+  var NAME_RE = /^[a-z0-9][a-z0-9_-]{0,23}$/;
+
+  // { off, who: [names] }. agents.who is one name or a list (the rotation);
+  // a name is a ROSTER character or one of agents.sheets (drop-in folders,
+  // app/agents/<name>/character.json). Names that are neither are left out;
+  // when none is left, they are off ('unknown').
   function readSettings(cfg) {
     var q = readQuery('agent');
-    if (q === 'off') return { off: 'query', who: '' };
-    var name = q && q !== 'on' ? q : (cfg && typeof cfg === 'object' && typeof cfg.who === 'string' ? cfg.who : 'lift');
+    if (q === 'off') return { off: 'query', who: [] };
+    var obj = cfg && typeof cfg === 'object' ? cfg : null;
+    var sheets = [];
+    if (obj && obj.sheets && obj.sheets.length) {
+      for (var s = 0; s < obj.sheets.length; s++) {
+        var sn = String(obj.sheets[s]).toLowerCase();
+        if (NAME_RE.test(sn) && !ROSTER.hasOwnProperty(sn)) sheets.push(sn);
+      }
+    }
+    var asked = q && q !== 'on' ? [q] : obj && typeof obj.who === 'string' ? [obj.who] : obj && obj.who && obj.who.length ? obj.who : ['lift'];
     // ?agent=<name> picks one for this visit even when the config has them off.
-    if (!(q && q !== 'on') && (cfg === false || (cfg && typeof cfg === 'object' && cfg.on === false))) return { off: 'config', who: '' };
-    if (!ROSTER.hasOwnProperty(name)) return { off: 'unknown', who: String(name).slice(0, 24) };
-    return { off: '', who: name };
+    if (!(q && q !== 'on') && (cfg === false || (obj && obj.on === false))) return { off: 'config', who: [] };
+    var names = [];
+    for (var i = 0; i < asked.length && names.length < 12; i++) {
+      var n = String(asked[i]);
+      if ((ROSTER.hasOwnProperty(n) || sheets.indexOf(n) >= 0) && names.indexOf(n) < 0) names.push(n);
+    }
+    if (!names.length) return { off: 'unknown', who: [String(asked[0]).slice(0, 24)] };
+    return { off: '', who: names, sheets: sheets };
+  }
+
+  /* ---------- drop-in sprite sheets ---------- */
+
+  /* A character from a folder of sprite sheets: app/agents/<name>/ holds
+     the sheets (PNG, WebP or GIF, frames in a grid, read left to right,
+     top to bottom) and character.json:
+       { "name": "Shown name", "faces": "right", "scale": 2,
+         "frame": { "w": 32, "h": 48 },
+         "poses": { "skate": { "file": "walk.png", "frames": 6, "fps": 10 },
+                    "crouch": { "file": "sheet.png", "row": 2, "frames": 4 } },
+         "hand": { "x": 26, "y": 40 } }
+     frame: one frame's size in the sheet's own pixels (a pose may give its
+     own "w" and "h"); scale: screen pixels per sheet pixel at 1080p (1 to
+     8, default 2); each pose: "file", "frames" (default 1), "cols" (frames
+     per row in the sheet; default as many as fit across it), the first
+     frame as "start" (its number, from 0) or "row" (from 0), "fps"
+     (default 8). Only "skate" is needed, as for any character. hand: the
+     crouch's hand, in frame pixels (default 70% across, at the feet).
+     The art is drawn as it is: never redrawn or resized except by scale. */
+  var FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}\.(png|webp|gif)$/i;
+  var MANIFEST = 'character.json';
+
+  function num(v, lo, hi, dflt) {
+    var n = typeof v === 'number' ? v : parseFloat(v);
+    return isFinite(n) ? clamp(n, lo, hi) : dflt;
+  }
+
+  // character.json to a ROSTER entry, or null when it cannot be used.
+  function fromManifest(name, j) {
+    if (!j || typeof j !== 'object' || !j.frame || !j.poses || typeof j.poses !== 'object') return null;
+    var scale = num(j.scale, 1, 8, 2);
+    var fw = Math.round(num(j.frame.w, 1, 512, 0));
+    var fh = Math.round(num(j.frame.h, 1, 512, 0));
+    if (!fw || !fh) return null;
+    var r = { name: String(j.name || name).slice(0, 24), dir: 'agents/' + name + '/', w: fw * scale, h: fh * scale,
+      faces: j.faces === 'left' ? 'left' : 'right', effects: '', poses: {} };
+    for (var i = 0; i < POSES.length; i++) {
+      var s = j.poses[POSES[i]];
+      if (!s || typeof s !== 'object' || !FILE_RE.test(String(s.file || ''))) continue;
+      var pw = Math.round(num(s.w, 1, 512, fw));
+      var ph = Math.round(num(s.h, 1, 512, fh));
+      r.poses[POSES[i]] = [{
+        file: String(s.file),
+        // Centred in the box, feet on its bottom.
+        left: Math.round((fw - pw) / 2) * scale, top: (fh - ph) * scale, w: pw * scale, h: ph * scale,
+        sheet: { fw: pw, fh: ph, scale: scale, frames: Math.round(num(s.frames, 1, 64, 1)),
+          cols: Math.round(num(s.cols, 0, 64, 0)), start: Math.round(num(s.start, 0, 4095, -1)),
+          row: Math.round(num(s.row, 0, 255, 0)), fps: num(s.fps, 1, 30, 8) }
+      }];
+    }
+    if (!r.poses.skate) return null;
+    var hand = j.hand && typeof j.hand === 'object' ? j.hand : null;
+    if (hand) r.hand = { x: num(hand.x, 0, fw, fw * 0.7) * scale, y: num(hand.y, 0, fh, fh) * scale };
+    return r;
+  }
+
+  // GET dir/character.json (up to TRIES times); cb(json or null).
+  function getManifest(dir, cb) {
+    var n = 0;
+    function ask() {
+      n += 1;
+      var xhr = new XMLHttpRequest();
+      var done = false;
+      function fail(retry) {
+        if (done) return;
+        done = true;
+        if (retry && n < TRIES) later(RETRY_MS[n - 1] || RETRY_MS[RETRY_MS.length - 1], ask);
+        else cb(null);
+      }
+      xhr.onreadystatechange = safe(function () {
+        if (xhr.readyState !== 4 || done) return;
+        if (xhr.status === 200) {
+          var j = null;
+          try { j = JSON.parse(xhr.responseText); } catch (e) { j = null; }
+          done = true;
+          cb(j);
+        } else {
+          fail(xhr.status === 0 || xhr.status >= 500);
+        }
+      });
+      try {
+        xhr.open('GET', dir + MANIFEST, true);
+        xhr.timeout = 8000;
+        xhr.ontimeout = safe(function () { fail(true); });
+        xhr.send();
+      } catch (e) { fail(false); }
+    }
+    ask();
+  }
+
+  // Each sheet animation's @keyframes, made once (by its frames) in one
+  // style element: the sheet slides behind a frame-sized window, one step
+  // per frame (transform only, no in-between).
+  var sheetStyle = null;
+  var sheetAnims = {};
+  var sheetCount = 0;
+
+  function sheetAnim(spots) {
+    var key = spots.join(';');
+    if (sheetAnims[key]) return sheetAnims[key];
+    sheetCount += 1;
+    var name = 'ag-sheet-' + sheetCount;
+    var steps = '';
+    for (var i = 0; i <= spots.length; i++) {
+      var at = spots[Math.min(i, spots.length - 1)];
+      steps += Math.round(i / spots.length * 100000) / 1000 + '% { -webkit-transform: translate(' + at + '); transform: translate(' + at + '); }\n';
+    }
+    if (!sheetStyle) {
+      sheetStyle = document.createElement('style');
+      sheetStyle.id = 'ag-sheets';
+      (document.head || document.documentElement).appendChild(sheetStyle);
+    }
+    var text = '@-webkit-keyframes ' + name + ' {\n' + steps + '}\n@keyframes ' + name + ' {\n' + steps + '}\n';
+    sheetStyle.appendChild(document.createTextNode(text));
+    sheetAnims[key] = name;
+    return name;
+  }
+
+  // One sheet part: a frame-sized window (.ag-sheet) with the whole sheet
+  // in it, stepped through its frames by a CSS animation.
+  function sheetPart(part, img, holder) {
+    var sh = part.sheet;
+    var nw = img.naturalWidth || sh.fw;
+    var nh = img.naturalHeight || sh.fh;
+    var cols = sh.cols || Math.max(1, Math.floor(nw / sh.fw));
+    var first = sh.start >= 0 ? sh.start : sh.row * cols;
+    var box = el('span', 'ag-sheet', holder);
+    box.appendChild(img);
+    img.style.width = rem(nw * sh.scale);
+    img.style.height = rem(nh * sh.scale);
+    var spots = [];
+    for (var i = 0; i < sh.frames; i++) {
+      var k = first + i;
+      spots.push(rem(-(k % cols) * sh.fw * sh.scale) + ',' + rem(-Math.floor(k / cols) * sh.fh * sh.scale));
+    }
+    img.style.webkitTransform = img.style.transform = 'translate(' + spots[0] + ')';
+    if (spots.length > 1) {
+      var anim = sheetAnim(spots) + ' ' + Math.round(spots.length / sh.fps * 1000) + 'ms linear infinite';
+      img.style.webkitAnimation = anim;
+      img.style.animation = anim;
+      // Every keyframe holds (no sliding between frames).
+      img.style.webkitAnimationTimingFunction = img.style.animationTimingFunction = 'step-end';
+    }
+    return box;
   }
 
   /* ---------- pictures ---------- */
 
-  function partsOf(pose) {
+  function partsOf(role, pose) {
     return role.poses[pose] || role.poses.skate;
   }
 
   // Every picture of every pose, once each.
-  function files() {
+  function files(role) {
     var out = [];
     for (var i = 0; i < POSES.length; i++) {
       var parts = role.poses[POSES[i]] || [];
@@ -237,10 +407,31 @@
   function load() {
     clearTimeout(loadTimer);
     loadTimer = null;
-    if (off || pics.state === 'loading' || pics.state === 'ready') return;
+    if (off) return;
+    for (var i = 0; i < cast.length; i++) loadOne(cast[i]);
+  }
+
+  // One member: its character.json first, for a drop-in sheet, then its pictures.
+  function loadOne(m) {
+    var pics = m.pics;
+    if (pics.state === 'loading' || pics.state === 'ready') return;
     if (pics.state === 'failed' && Date.now() - pics.failedAt < FAILED_WAIT_MS) return;
     pics.state = 'loading';
-    var list = files();
+    if (!m.role) {
+      getManifest('agents/' + m.name + '/', function (j) {
+        m.role = fromManifest(m.name, j);
+        if (m.role) loadPics(m);
+        else { pics.state = 'failed'; pics.failedAt = Date.now(); }
+      });
+      return;
+    }
+    loadPics(m);
+  }
+
+  function loadPics(m) {
+    var role = m.role;
+    var pics = m.pics;
+    var list = files(role);
     var imgs = {};
     var left = list.length;
     var done = false;
@@ -382,8 +573,8 @@
   // Where she is drawn while she works (the crouch pose: each part's shape
   // boxes, or the whole part), in her box's own pixels, mirrored or not;
   // all: the boxes, and box: around them all.
-  function workArt(mirrored) {
-    var parts = partsOf('crouch');
+  function workArt(role, mirrored) {
+    var parts = partsOf(role, 'crouch');
     var all = [];
     var b = { left: 1e9, top: 1e9, right: -1e9, bottom: -1e9 };
     for (var i = 0; i < parts.length; i++) {
@@ -406,7 +597,7 @@
 
   // Where everything happens, measured once: the tile, her size, the side
   // she comes from, the corner she enters at, the spot and where she works.
-  function plan(tile) {
+  function plan(tile, role) {
     var R = remPx();
     var k = R / 24;
     var w = role.w * k;
@@ -443,7 +634,7 @@
       // words count four times).
       if (spot.row) {
         var words = wordBoxes(tile);
-        var shape = workArt(mirrored);
+        var shape = workArt(role, mirrored);
         var art = shape.box;
         var edge = fromLeft ? clamp(r.left + inset * 0.5, 0, W - w) : clamp(r.right - inset * 0.5 - w, 0, W - w);
         var xs = [wx, edge];
@@ -478,18 +669,22 @@
       at: { x: wx + hx, y: wy + hy } };
   }
 
-  function build() {
-    var node = el('div', 'ag-fig ag-' + who + ' is-pose-skate');
+  function build(m) {
+    var role = m.role;
+    var pics = m.pics;
+    var node = el('div', 'ag-fig ag-' + m.name + (role.effects ? '' : ' is-plain') + ' is-pose-skate');
     node.style.width = rem(role.w);
     node.style.height = rem(role.h);
     var ride = el('div', 'ag-ride', node);
     var lean = el('div', 'ag-lean', ride);
     var flip = el('div', 'ag-flip', lean);
     var bob = el('div', 'ag-bob', flip);
-    var trail = el('div', 'ag-trail', bob);
-    trail.style.left = rem(role.trail.x);
-    trail.style.top = rem(role.trail.y);
-    for (var t = 0; t < 5; t++) el('i', '', trail);
+    if (role.effects === 'stormlight') {
+      var trail = el('div', 'ag-trail', bob);
+      trail.style.left = rem(role.trail.x);
+      trail.style.top = rem(role.trail.y);
+      for (var t = 0; t < 5; t++) el('i', '', trail);
+    }
     for (var p = 0; p < POSES.length; p++) {
       if (!role.poses[POSES[p]]) continue;
       var holder = el('div', 'ag-pose ag-pose-' + POSES[p], bob);
@@ -501,7 +696,9 @@
         img.alt = '';
         img.setAttribute('draggable', 'false');
         var box = img;
-        if (part.sway) {
+        if (part.sheet) {
+          box = sheetPart(part, img, holder);
+        } else if (part.sway) {
           box = el('span', 'ag-spren', holder);
           box.appendChild(img);
         } else {
@@ -513,6 +710,7 @@
         box.style.height = rem(part.h);
       }
     }
+    if (role.effects !== 'stormlight') return { node: node, ride: ride, lean: lean, flip: flip };
     // The skid's spray: sparks fanning out from her front foot.
     var sp = role.spray || role.trail;
     var spray = el('div', 'ag-spray', bob);
@@ -550,7 +748,7 @@
   }
 
   function pose(f, name) {
-    if (!role.poses[name]) name = 'skate';
+    if (!f.role.poses[name]) name = 'skate';
     if (f.pose === name) return;
     cls(f, ['is-pose-' + name], ['is-pose-' + f.pose]);
     f.pose = name;
@@ -584,10 +782,34 @@
   }
 
   // enter: from the side, along the bottom edge, on the trail.
+  // The next member of the rotation whose pictures are in (null: none).
+  function nextReady(take) {
+    for (var i = 0; i < cast.length; i++) {
+      var k = (turn + i) % cast.length;
+      if (cast[k].pics.state === 'ready') {
+        if (take) turn = (k + 1) % cast.length;
+        return cast[k];
+      }
+    }
+    return null;
+  }
+
+  // All the members' pictures in one word: 'ready' when any one is.
+  function picsState() {
+    var st = { none: 0, loading: 0, ready: 0, failed: 0 };
+    for (var i = 0; i < cast.length; i++) st[cast[i].pics.state] += 1;
+    if (st.ready) return 'ready';
+    if (st.loading) return 'loading';
+    if (cast.length && st.failed === cast.length) return 'failed';
+    return 'none';
+  }
+
   function enter(tile, mode) {
-    var p = plan(tile);
-    var parts = build();
-    var f = { tile: tile, node: parts.node, ride: parts.ride, lean: parts.lean, flip: parts.flip, p: p,
+    var m = nextReady(true);
+    if (!m) return false;
+    var p = plan(tile, m.role);
+    var parts = build(m);
+    var f = { tile: tile, role: m.role, name: m.name, node: parts.node, ride: parts.ride, lean: parts.lean, flip: parts.flip, p: p,
       mode: mode, state: '', phases: [], pose: 'skate', timers: [], x: p.startX, dy: 0,
       wantReveal: false, wantDone: false, where: whereOf(tile), born: Date.now() };
     var s = f.node.style;
@@ -737,10 +959,11 @@
   // chip there replaces her.
   function willShow(tile, ok) {
     if (!started || off || !tile || tile.nodeType !== 1) return false;
-    if (pics.state !== 'ready') {
+    if (!nextReady(false)) {
       load();
       return false;
     }
+    if (picsState() !== 'ready' || cast.length > 1) load();   // the others (each loads once)
     if (!ok || !fullSpeed() || !document.documentElement.contains(tile)) return false;
     var others = 0;
     for (var i = 0; i < figs.length; i++) if (figs[i].tile !== tile) others += 1;
@@ -789,7 +1012,7 @@
     var fx = null;
     try { fx = F && typeof F.state === 'function' ? F.state() : null; } catch (e) { fx = null; }
     if (!F || (typeof F.on === 'function' && !F.on('activity'))) return tr('offChips', STRINGS.offChips);
-    if (pics.state === 'failed') return tr('offFailed', STRINGS.offFailed);
+    if (picsState() === 'failed') return tr('offFailed', STRINGS.offFailed);
     // She follows the light extras (the chips' rule), not full speed.
     var sp = fx ? (fx.lightSpeed || fx.speed) : 'fade';
     var why = sp !== 'ok' ? sp : lessMotion() ? 'calm' : '';
@@ -799,13 +1022,13 @@
   }
 
   function status() {
-    var out = { now: '', seen: '', drawing: drawingText(), who: who, off: off, pictures: pics.state, count: seen, asked: asked };
+    var out = { now: '', seen: '', drawing: drawingText(), who: who, off: off, pictures: picsState(), count: seen, asked: asked };
     if (!started || off) return out;
     var list = [];
     for (var i = 0; i < figs.length; i++) {
-      if (figs[i].state !== 'exit') list.push(tr('now', STRINGS.now, { who: role.name, where: figs[i].where }));
+      if (figs[i].state !== 'exit') list.push(tr('now', STRINGS.now, { who: figs[i].role.name, where: figs[i].where }));
     }
-    out.now = list.length ? list.join(' · ') : pics.state === 'loading' ? tr('loading', STRINGS.loading) : tr('none', STRINGS.none);
+    out.now = list.length ? list.join(' · ') : picsState() === 'loading' ? tr('loading', STRINGS.loading) : tr('none', STRINGS.none);
     out.seen = seen === 1 ? tr('seenOne', STRINGS.seenOne) : tr('seenMany', STRINGS.seenMany, { n: seen });
     return out;
   }
@@ -817,10 +1040,14 @@
     host = h || {};
     var s = readSettings(host.config);
     off = s.off;
-    who = s.who;
+    who = s.who.join(', ');
     started = true;
     if (off) return;
-    role = ROSTER[who];
+    cast = [];
+    for (var i = 0; i < s.who.length; i++) {
+      cast.push({ name: s.who[i], role: ROSTER.hasOwnProperty(s.who[i]) ? ROSTER[s.who[i]] : null,
+        pics: { state: 'none', imgs: {}, failedAt: 0 } });
+    }
     loadTimer = later(LOAD_AFTER_MS, load);
   }
 
@@ -844,18 +1071,18 @@
     test: {
       state: safe(function () {
         return {
-          on: started && !off, off: off, who: who, pictures: pics.state, seen: seen,
+          on: started && !off, off: off, who: who, pictures: picsState(), seen: seen,
           figs: figs.map(function (f) {
             var cell = f.tile.parentNode;
             return { widget: cell && cell.getAttribute ? cell.getAttribute('data-widget') || '' : '', state: f.state,
-              phases: f.phases.slice(), mode: f.mode, pose: f.pose, small: f.p.small, fromLeft: f.p.fromLeft,
+              name: f.name, phases: f.phases.slice(), mode: f.mode, pose: f.pose, small: f.p.small, fromLeft: f.p.fromLeft,
               spot: { x: f.p.spot.x, y: f.p.spot.y, marker: f.p.spot.marker }, at: f.p.at, covers: f.p.covers,
               tile: { left: f.p.r.left, top: f.p.r.top, right: f.p.r.right, bottom: f.p.r.bottom },
               x: f.x, y: f.p.baseY + f.dy };
           })
         };
       }),
-      load: safe(function () { clearTimeout(loadTimer); load(); return pics.state; })
+      load: safe(function () { clearTimeout(loadTimer); load(); return picsState(); })
     }
   };
 })();

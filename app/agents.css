@@ -283,5 +283,19 @@
   100% { transform: translateX(1.9rem) scale(0.5); opacity: 0; }
 }
 
+/* A drop-in sprite sheet (agents.js sheetPart): a frame-sized window with
+   the whole sheet in it; the sheet steps behind it one frame at a time (a
+   per-sheet @keyframes of transforms, made in agents.js, step-end: no
+   sliding between frames). */
+.ag-sheet {
+  position: absolute;
+  overflow: hidden;
+}
+.ag-sheet img {
+  top: 0; left: 0;
+  max-width: none;
+  will-change: transform;
+}
+
 /* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
 .css-end { top: 0; }

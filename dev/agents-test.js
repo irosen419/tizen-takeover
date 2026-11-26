@@ -185,9 +185,20 @@ async function open(o) {
   openContexts.add(context);
   context.on('close', () => openContexts.delete(context));
   const picHits = {};
+  const sheetHits = [];
   await context.route('**/*', (route) => {
     const u = new URL(route.request().url());
     if (BLOCKED.indexOf(u.hostname) >= 0) return route.abort();
+    // Drop-in sheets (o.sheets: { name: { manifest, png } }, or null for a folder that is not there).
+    const d = /\/agents\/([a-z0-9_-]+)\/([A-Za-z0-9._-]+)$/.exec(u.pathname);
+    if (o.sheets && d && o.sheets.hasOwnProperty(d[1])) {
+      const sh = o.sheets[d[1]];
+      sheetHits.push(d[1] + '/' + d[2]);
+      if (!sh) return route.fulfill({ status: 404, body: 'not found' });
+      if (d[2] === 'character.json') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sh.manifest) });
+      if (d[2] === 'sheet.png') return route.fulfill({ status: 200, contentType: 'image/png', body: sh.png });
+      return route.fulfill({ status: 404, body: 'not found' });
+    }
     const m = /\/agents\/[a-z]+\/([a-z-]+\.webp)$/.exec(u.pathname);
     if (m) {
       picHits[m[1]] = (picHits[m[1]] || 0) + 1;
@@ -210,6 +221,7 @@ async function open(o) {
   const page = await context.newPage();
   page.errors = [];
   page.picHits = picHits;
+  page.sheetHits = sheetHits;
   page.on('pageerror', (e) => page.errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|ERR_/.test(m.text())) page.errors.push(m.text()); });
   await page.goto(PAGE + '/hub.html?clay=off&live=' + encodeURIComponent(o.pi.url) + '&' + (o.query || 'motion=push'));
@@ -735,6 +747,85 @@ async function check11(pi) {
   noErrors(page);
 }
 
+async function check12(pi) {
+  const sample = require('./agents-sheet-sample');
+  const one = { manifest: sample.manifest, png: sample.sheet() };
+  const page = await open({ pi: pi, sheets: { sample: one },
+    config: 'HUB_CONFIG.agents = { on: true, who: ["lift", "sample", "nobody"], sheets: ["sample"] };' });
+  const st0 = await state(page);
+  assert(st0.who === 'lift, sample', 'who: ' + st0.who);
+  // Both load (the picsReady above waits for the first that is ready).
+  await until(() => page.sheetHits.indexOf('sample/sheet.png') >= 0, 6000, 'the sheet was not asked for');
+  await sleep(500);
+  const names = [];
+  for (let i = 0; i < 3; i++) {
+    await say(pi, 'hub:working todo');
+    const f = await figOn(page, 'todo', 'work', 5000);
+    names.push(f.name);
+    // AGENTS_SHOTS=<folder>: a picture of each at work on the to-do tile (for before/after mock-ups).
+    if (process.env.AGENTS_SHOTS && i < 2) {
+      await sleep(600);
+      const r = await rects(page, 'todo');
+      await page.screenshot({ path: path.join(process.env.AGENTS_SHOTS, 'work-' + f.name + '.png'),
+        clip: { x: r.tile.left - 20, y: r.tile.top - 40, width: r.tile.right - r.tile.left + 40, height: r.tile.bottom - r.tile.top + 60 } });
+    }
+    if (f.name === 'sample') {
+      const sh = await page.evaluate(() => {
+        const box = document.querySelector('.ag-fig.ag-sample .ag-pose-crouch .ag-sheet');
+        const img = box && box.querySelector('img');
+        const fig = document.querySelector('.ag-fig.ag-sample');
+        const cs = img && getComputedStyle(img);
+        return box && { box: [box.offsetWidth, box.offsetHeight], img: [img.offsetWidth, img.offsetHeight], anim: cs.animationName,
+          timing: cs.animationTimingFunction, dur: cs.animationDuration, plain: /is-plain/.test(fig.className),
+          trail: !!fig.querySelector('.ag-trail, .ag-stream, .ag-vine'),
+          sheets: (document.getElementById('ag-sheets') || {}).textContent || '', pixel: cs.imageRendering,
+          now: window.HUB_AGENTS.status().now };
+      });
+      assert(sh, 'no sheet window in the crouch pose');
+      // The window is one frame (24 x 40 at scale 3), the sheet is all of it (96 x 80 at scale 3).
+      assert(sh.box.join() === '72,120' && sh.img.join() === '288,240', 'sizes: ' + JSON.stringify(sh));
+      assert(/^ag-sheet-\d+$/.test(sh.anim) && /^(step-end|steps\(1(, end)?\))$/.test(sh.timing) && sh.dur === '1s', 'animation: ' + JSON.stringify(sh));
+      // Only transforms in its keyframes.
+      assert(!/opacity|left|top|width|background/.test(sh.sheets.replace(/-webkit-transform|transform|translate/g, '')), 'keyframes: ' + sh.sheets);
+      assert(sh.plain && !sh.trail, 'Lift\'s Stormlight on a sheet character');
+      assert(sh.pixel === 'pixelated', 'image-rendering: ' + sh.pixel);
+      assert(sh.now === 'Sample, on ' + sh.now.split(', on ')[1], 'now: ' + sh.now);
+      // It steps through frames: the sheet's transform changes over a second.
+      const seen = {};
+      for (let k = 0; k < 10; k++) {
+        seen[await page.evaluate(() => getComputedStyle(document.querySelector('.ag-fig.ag-sample .ag-pose-crouch .ag-sheet img')).transform)] = 1;
+        await sleep(110);
+      }
+      assert(Object.keys(seen).length >= 3, 'frames seen: ' + JSON.stringify(Object.keys(seen)));
+    }
+    await say(pi, 'hub:working todo done');
+    await noneLeft(page, 3000, 'she stayed');
+    await sleep(300);
+  }
+  assert(names.join() === 'lift,sample,lift', 'rotation: ' + names.join());
+  noErrors(page);
+  await page.context().close();
+
+  // A drop-in folder that is not there: no character, the chip, and the About row says the pictures did not load.
+  const p2 = await open({ pi: pi, sheets: { ghost: null }, noLoad: true,
+    config: 'HUB_CONFIG.agents = { on: true, who: ["ghost"], sheets: ["ghost"] };' });
+  await page2Load(p2);
+  await say(pi, 'hub:working todo');
+  await sleep(1500);
+  assert(await chipsIn(p2, 'todo') === 1 && !(await figLog(p2)).length, 'ghost: a character or no chip');
+  const row = await p2.evaluate(() => window.HUB_AGENTS.status().drawing);
+  assert(row === 'off (pictures did not load; tried again in 10 min)', 'ghost row: ' + row);
+  assert(p2.sheetHits.join() === 'ghost/character.json', 'ghost asked for: ' + p2.sheetHits.join());
+  await say(pi, 'hub:working todo done');
+  noErrors(p2);
+  await p2.context().close();
+}
+
+async function page2Load(page) {
+  await page.evaluate(() => window.HUB_AGENTS.test.load());
+  await until(() => page.evaluate(() => window.HUB_AGENTS.test.state().pictures === 'failed'), 6000, 'the missing folder did not fail');
+}
+
 async function check10(pi) {
   // English rows, then Spanish; none before the first chip.
   let page = await open({ pi: pi });
@@ -811,6 +902,7 @@ async function main() {
   await check('9. Layouts: a tile at the right edge has her come from the left, others from the right, facing her way, always on the tile; a 2x1 tile plays the short sequence', () => check9(pi));
   await check('10. The About panel\'s Characters rows (none before the first chip), in English and Spanish, nothing clipped', () => check10(pi));
   await check('11. The work spot: a [data-agent-spot] marker is used and kept inside the tile; the to-do list\'s own marker; a language change while she works', () => check11(pi));
+  await check('12. Drop-in sprite sheets: agents.who as a rotation (Lift, then a sheet character from character.json, then Lift), the sheet steps through its frames by transform only, a missing folder means the chip', () => check12(pi));
 }
 
 main().catch((e) => {

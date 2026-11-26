@@ -90,11 +90,15 @@ var HUB_CONFIG = {
      to-do"), stays while the chip does, and glides out when it ends. The
      chip itself is unchanged. Only when the screen keeps full speed; on a
      slow screen or in fade mode the chip shows alone.
-       who   which character: 'lift' (Lift and Wyndle, from Stormlight);
-             a name not in the roster turns them off
+       who     which character: 'lift' (Lift and Wyndle, from Stormlight),
+               or a list taking turns, e.g. ['lift', 'mychar']; names that
+               are not characters are left out (none left: off)
+       sheets  drop-in characters: folder names under app/agents/, each
+               with its sprite sheets and a character.json (docs/agents.md,
+               "Drop-in sprite sheets"); list them in who too
      agents: false (or on: false) turns them off; so does ?agent=off on the
      address. Off, nothing of theirs loads. */
-  agents: { on: true, who: 'lift' },
+  agents: { on: true, who: 'lift', sheets: [] },
 
   layout: [
     { widget: 'today',         x: 0, y: 0, w: 3, h: 1 },

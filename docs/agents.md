@@ -35,7 +35,8 @@ In `app/config.js`:
 agents: { on: true, who: 'lift' },
 ```
 
-- `who`: the character, a name in the roster (below). A name that is not there turns them off, with no error (the About panel says `off (no character called ...)`), and the chips show.
+- `who`: the character, a name in the roster (below) or in `sheets`, or a list of them taking turns. Names that are neither are left out; when none is left they are off, with no error (the About panel says `off (no character called ...)`), and the chips show.
+- `sheets`: drop-in sprite-sheet characters (folder names under `app/agents/`, see "Drop-in sprite sheets").
 - `agents: false` or `on: false` turns them off (the chips show, as before); so does `?agent=off` on the hub's address for one visit. Off, nothing of theirs loads and no element is added.
 - `?agent=lift` picks that character for one visit, even with the config off (for tests).
 
@@ -61,6 +62,38 @@ Press Left on a left-most tile. The **Characters** group, in the hub's language,
 1. Make the pictures: transparent WebP drawn at the size they are shown at 1080p, in `app/agents/<name>/`, every pose at the same art-pixel size, all facing the same way.
 2. Add an entry to `ROSTER` at the top of `app/agents.js`: `name`, `dir`, `w` and `h` (the box every pose is drawn in, feet on its bottom), `faces` (`'right'` or `'left'`), `poses` (for each of `skate`, `skid`, `crouch`, `leap`, `wave`: its parts, each a `file`, `left`, `top`, `w`, `h`; `sway: true` sways that part about its bottom middle; on the crouch, an optional `shape`, boxes `[left, top, w, h]` where that picture is not see-through, lets her keep clear of words more closely than its whole box), `trail` (where the Stormlight trail starts, behind the feet), `spray` (the skid's front foot), `hand` (the crouch's hand on the card: it goes on the work spot) and `vine` (where the vine curl grows from). Only `skate` is required: a pose that is missing is drawn with the skate pose, so a one-picture character still does the whole sequence by transform.
 3. Set `agents.who` in `app/config.js`.
+
+## Drop-in sprite sheets
+
+A character can also come from a folder of sprite sheets, with no code change: the art is used as it is (never redrawn; only scaled by a whole number, pixel for pixel).
+
+1. Make a folder `app/agents/<name>/` (lowercase letters, digits, `-`, `_`) and put the sheets in it: PNG, WebP or GIF, frames in a grid, all frames the same size, read left to right, top to bottom.
+2. Add `character.json` beside them:
+
+```json
+{
+  "name": "Shown name",
+  "faces": "right",
+  "scale": 2,
+  "frame": { "w": 32, "h": 48 },
+  "poses": {
+    "skate":  { "file": "walk.png", "frames": 6, "fps": 10 },
+    "crouch": { "file": "sheet.png", "row": 2, "frames": 4, "fps": 6 },
+    "wave":   { "file": "sheet.png", "start": 12, "frames": 3 }
+  },
+  "hand": { "x": 26, "y": 44 }
+}
+```
+
+- `frame`: one frame's size in the sheet's own pixels. A pose may give its own `w` and `h` (it is centred in the box, feet on the bottom).
+- `scale`: screen pixels per sheet pixel at 1080p, 1 to 8 (default 2).
+- Each pose (`skate`, `skid`, `crouch`, `leap`, `wave`; only `skate` is needed, a missing one uses `skate`): `file`, `frames` (default 1), `cols` (frames per row in the sheet; default as many as fit across it), the first frame as `start` (its number from 0) or `row` (from 0), `fps` (default 8). The frames loop while that pose shows.
+- `faces`: which way the art faces (`right` or `left`); she is mirrored to face her way.
+- `hand`: where the crouch's hand touches the card, in frame pixels (default 70% across, at the feet).
+
+3. In `app/config.js`: `agents: { on: true, who: ['lift', '<name>'], sheets: ['<name>'] }`. `who` is the rotation: each visit goes to the next character whose pictures are in. `?agent=<name>` tries one alone for a visit (it must still be in `sheets`).
+
+How it runs: `character.json` is fetched with the pictures (6 s after start, three tries). Each animated pose is a frame-sized window with the whole sheet inside, stepped by a CSS `@keyframes` of `transform: translate()` with `step-end` (no sliding between frames), made once per pose in one `<style id="ag-sheets">`. Lift's Stormlight effects (trail, spray, stream, vine) are hers only; a sheet character gets the same moves (enter, travel, work, reveal, exit) and the spark burst. If its `character.json` or a sheet does not load, it is left out of the rotation (tried again in 10 minutes); when no character is ready, the chip shows. A plain placeholder sheet to try it with: `node dev/agents-sheet-sample.js app/agents/sample` (grey blocks numbered by a bar; delete it after).
 
 ### How Lift's poses were made
 
