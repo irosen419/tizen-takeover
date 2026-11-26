@@ -733,6 +733,7 @@ Until the next boot: `systemctl --user stop soundlights`. For good: `systemctl -
 - It only hears sound the **Pi** plays. TV and Xbox sound does not go through the Pi, so those do nothing.
 - It listens before the Bluetooth speaker, which adds a short delay of its own. If the lights run ahead of the sound, raise `SOUNDLIGHTS_DELAY_MS`; if they lag, lower it.
 - When the speaker is off, PipeWire's output is a dummy one and the capture is silent: the lights simply stay as they were.
+- Home Assistant's **Govee lights local** integration listens on the same port (4002) for the lamp's answers. With both on, one of them may miss replies (the lamp then shows `Lamp did not answer`). Use Home Assistant's Govee integration only if this happens to work, or leave the lamp out of Home Assistant.
 - Test: `python3 pi/soundlights-test.py`.
 
 ## Weekly health report (server 0.15.0)
