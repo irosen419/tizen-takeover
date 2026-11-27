@@ -10,12 +10,13 @@
  *
  * Noticing a change: after music lights have started and a few seconds have
  * passed (our own start commands settle), the light's state is noted. It is
- * read again every few seconds; a different power, brightness, color mode,
- * color temperature, effect or color means someone else set it. Home
+ * read again every few seconds; a different power, brightness, effect or
+ * white temperature means someone else set it, and so does a color the
+ * engine never sent (Home Assistant reads back odd colors while sections
+ * are drawn, so a color alone is checked against what was sent). Home
  * Assistant itself only learns of a Govee app change on its next poll of the
  * light, so that can take a little while. LIGHTS_WATCH=power compares power,
- * brightness and effect only (in case the section frames ever show up as a
- * color change); LIGHTS_WATCH=off turns noticing off.
+ * brightness and effect only (never the color); LIGHTS_WATCH=off turns noticing off.
  *
  * Node 14 or newer, no npm packages.
  */
@@ -78,11 +79,29 @@ function readState(st) {
   };
 }
 
-// What counts as "someone else set it".
+// What counts as "someone else set it", apart from the color itself: power,
+// brightness, effect, and (full) a switch to white light. The color is
+// checked on its own (the engine's colorIsOurs), because while the engine
+// draws sections Home Assistant reads back odd colors such as [6, 0, 0]
+// (seen on the lamp 2026-11-27): only a color the engine never sent counts.
 function fingerprint(s, watch) {
   if (!s) return '';
   if (watch === 'power') return JSON.stringify([s.on, s.brightness, s.effect]);
-  return JSON.stringify([s.on, s.brightness, s.colorMode, s.kelvin, s.effect, s.rgb]);
+  return JSON.stringify([s.on, s.brightness, s.effect, s.colorMode === 'color_temp' ? s.kelvin : null]);
+}
+
+// Is this color (from Home Assistant) one of ours: dim, or the same hue
+// and mix as a color the engine sent to that light lately?
+function colorIsOurs(rgb, sent) {
+  if (!Array.isArray(rgb)) return true;
+  const mx = Math.max(rgb[0], rgb[1], rgb[2]);
+  if (mx < 60) return true;
+  const n = rgb.map((v) => v / mx);
+  return (sent || []).some((c) => {
+    const m = Math.max(c[0], c[1], c[2]);
+    if (m <= 0) return false;
+    return Math.abs(c[0] / m - n[0]) <= 0.1 && Math.abs(c[1] / m - n[1]) <= 0.1 && Math.abs(c[2] / m - n[2]) <= 0.1;
+  });
 }
 
 // The body that puts a saved state back.
@@ -121,6 +140,7 @@ module.exports = {
   configFromEnv: configFromEnv,
   readState: readState,
   fingerprint: fingerprint,
+  colorIsOurs: colorIsOurs,
   restoreCall: restoreCall,
   createHa: createHa
 };

@@ -500,7 +500,16 @@ async function main() {
     g.ha.states.bars = { on: false, available: false, brightness: null, colorMode: null, rgb: null, kelvin: null, effect: null };
     assert.deepStrictEqual(await g.e.watch(), [], 'a light dropping off for a moment is not a change');
     g.ha.states.bars = keep;
-    const mine = { on: true, available: true, brightness: 200, colorMode: 'rgb', rgb: [0, 0, 255], kelvin: null, effect: null };
+    // While sections are drawn, Home Assistant reads back odd or engine colors: not a change.
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { rgb: [6, 0, 0] });
+    assert.deepStrictEqual(await g.e.watch(), [], 'a near-black read-back is ours');
+    const lastLamp = g.sent.filter((x) => x.k === 'lamp' && x.msg.cmd === 'ptReal').pop();
+    const fb = Buffer.from(lastLamp.msg.data.command[0], 'base64');
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { rgb: [fb[4], fb[5], fb[6]].map((v) => Math.min(255, v * 2)) });
+    assert.deepStrictEqual(await g.e.watch(), [], 'a color the engine sent (any brightness) is ours');
+    assert.ok(g.e.session.isOn());
+    // Same brightness, a color the engine never sent: Ian picked it in the Govee app.
+    const mine = { on: true, available: true, brightness: 140, colorMode: 'rgb', rgb: [0, 0, 255], kelvin: null, effect: null };
     g.ha.states.lamp = mine;                              // Ian picks blue in the Govee app
     const before = g.sent.length;
     assert.deepStrictEqual(await g.e.watch(), ['lamp']);
@@ -598,8 +607,12 @@ async function main() {
     assert.strictEqual(haLib.configFromEnv({ LIGHTS_WATCH: 'power' }, govee.LIGHTS).watch, 'power');
     const a = haLib.readState({ state: 'on', attributes: { rgb_color: [1, 2, 3], brightness: 9, color_mode: 'rgb' } });
     const b = Object.assign({}, a, { rgb: [9, 9, 9] });
-    assert.notStrictEqual(haLib.fingerprint(a, 'full'), haLib.fingerprint(b, 'full'));
     assert.strictEqual(haLib.fingerprint(a, 'power'), haLib.fingerprint(b, 'power'));
+    assert.strictEqual(haLib.fingerprint(a, 'full'), haLib.fingerprint(b, 'full'), 'the color is checked on its own');
+    assert.notStrictEqual(haLib.fingerprint(a, 'full'), haLib.fingerprint(Object.assign({}, a, { colorMode: 'color_temp', kelvin: 3000 }), 'full'));
+    assert.strictEqual(haLib.colorIsOurs([6, 0, 0], []), true, 'dim read-back');
+    assert.strictEqual(haLib.colorIsOurs([220, 120, 30], [[110, 60, 15]]), true, 'same mix, other brightness');
+    assert.strictEqual(haLib.colorIsOurs([0, 0, 255], [[110, 60, 15]]), false);
   });
 
   /* ---------- the hub: store, routes, ./hub, mailbox ---------- */

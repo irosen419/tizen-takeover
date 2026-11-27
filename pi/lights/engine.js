@@ -132,6 +132,7 @@ function createEngine(o) {
   const lk = look.createLook({ palette: pal(), vibrancy: settings.vibrancy, beat: settings.beat });
   let saved = {};
   let baseline = {};
+  let sentColors = {};                   // per light: colors sent lately (the color check)
   let watchFrom = 0;
   let restoreKeys = keys.slice();
   let lastSent = {};
@@ -210,6 +211,8 @@ function createEngine(o) {
     const myGen = gen;
     saved = {};
     baseline = {};
+    sentColors = {};
+    keys.forEach((k) => remember(k, [[47, 181, 163]]));
     lastSent = {};
     restoreKeys = keys.slice();
     watchFrom = Infinity;
@@ -302,9 +305,22 @@ function createEngine(o) {
       const sig = JSON.stringify(c);
       if (lastSent[k] === sig) return;
       lastSent[k] = sig;
+      remember(k, c);
       const msgs = govee.sectionMessages(c);
       const go = () => { if (gen === myGen) msgs.forEach((m) => o.send(k, m)); };
       if (o.delayMs > 0) setTimeout(go, o.delayMs); else go();
+    });
+  }
+
+  // Keep the last 400 distinct colors sent to a light.
+  function remember(k, cols) {
+    const list = sentColors[k] || (sentColors[k] = []);
+    cols.forEach((c) => {
+      if (Math.max(c[0], c[1], c[2]) < 30) return;
+      const key = c.join(',');
+      if (list.some((x) => x.join(',') === key)) return;
+      list.push(c.slice());
+      if (list.length > 400) list.shift();
     });
   }
 
@@ -347,6 +363,7 @@ function createEngine(o) {
           continue;
         }
         if (baseline[k] !== ha.fingerprint(st)) changed.push(k);
+        else if (ha.watch === 'full' && st.colorMode !== 'color_temp' && !haLib.colorIsOurs(st.rgb, sentColors[k])) changed.push(k);
       }
     } finally {
       watching = false;
