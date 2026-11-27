@@ -613,6 +613,31 @@ async function main() {
     assert.deepStrictEqual(r.items[1], { id: 'g2', name: 'Bananas', done: true, addedAt: 6, upc: '', brand: '', productName: '', size: '', source: '', imagePath: '', search: 'Bananas' });
   });
 
+  await check('orderList: quantity, onList, size from the catalog or the pantry, store, substitution, doordash null', () => {
+    const now = Date.now();
+    const items = [
+      { id: 'g1', name: 'Fizz Co Cola', done: false, addedAt: now - 60000, upc: COLA_KEY },
+      { id: 'g2', name: 'Rice', done: false, addedAt: now - 30000, upc: '' },
+      { id: 'g3', name: 'Bananas', done: true, addedAt: now - 10000, upc: '' }
+    ];
+    const prod = { upc: COLA_KEY, brand: 'Fizz Co', name: 'Cola', size: '12 fl oz', source: 'off', image: '', addedAt: 1, updatedAt: 1 };
+    const info = {
+      g1: { quantity: 2, size: 355, unit: 'ml', store: 'Kroger', substitution: 'refund' },
+      g2: { quantity: 1, size: 2, unit: 'lb', store: '', substitution: 'similar' }
+    };
+    const r = products.orderList(items, (k) => (k === COLA_KEY ? prod : null), info, now);
+    assert.strictEqual(r.ok, true);
+    assert.strictEqual(r.generatedAt, new Date(now).toISOString());
+    assert.deepStrictEqual(r.counts, { onList: 2, ticked: 1 });
+    assert.deepStrictEqual(r.items[0], { id: 'g1', name: 'Fizz Co Cola', quantity: 2, onList: true, brand: 'Fizz Co', size: '12 fl oz', search: 'Fizz Co Cola 12 fl oz', upc: COLA_KEY, store: 'Kroger', substitution: 'refund', doordash: null });
+    assert.strictEqual(r.items[1].size, '2 lb', 'the pantry size when the catalog has none');
+    assert.deepStrictEqual([r.items[2].onList, r.items[2].quantity, r.items[2].substitution, r.items[2].size], [false, 1, 'similar', '']);
+    assert.strictEqual(products.orderList(items, () => null, undefined, now).items[0].quantity, 1, 'no pantry: quantity 1');
+    assert.strictEqual(products.sizeText(12, 'fl_oz'), '12 fl oz');
+    assert.strictEqual(products.sizeText(6, 'count'), '6 ct');
+    assert.strictEqual(products.sizeText(null, 'oz'), '');
+  });
+
   /* ---------- grocery adds by upc (grocery.js) ---------- */
 
   await check('grocery add with a upc: no double, a ticked one comes back, a same-name item gets the upc, another product gets its own row', () => {

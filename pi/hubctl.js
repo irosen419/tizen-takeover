@@ -80,6 +80,7 @@
  *   ./hub mailbox status             is the Claude mailbox (Cloudflare R2) connected
  *   ./hub log [--errors] [--lines 120]   the server's recent log lines (50 unless --lines says)
  *   ./hub token                      create the password, once
+ *   ./hub read-token                 create the read-only key (GET /api/grocery/list only), once
  *   ./hub help
  *
  * It reads HUB_TOKEN and HUB_PORT from pi/.env next to this file (real
@@ -1062,20 +1063,24 @@ async function spotifyCmd(args) {
 
 /* ---------- token ---------- */
 
-function token() {
+// name: HUB_TOKEN (the control API) or HUB_READ_TOKEN (the read-only key:
+// GET /api/grocery/list only). Never printed: it stays in pi/.env.
+function token(name) {
+  const key = name || 'HUB_TOKEN';
   let text = null;
   try { text = fs.readFileSync(ENV_FILE, 'utf8'); } catch (e) { /* not there yet */ }
-  if (text !== null && parseEnv(text).HUB_TOKEN) {
-    say('A token already exists in pi/.env. Nothing was changed.');
+  if (text !== null && parseEnv(text)[key]) {
+    say('A ' + (key === 'HUB_TOKEN' ? 'token' : 'read-only key') + ' already exists in pi/.env. Nothing was changed.');
     return;
   }
   if (text === null) {
     try { text = fs.readFileSync(EXAMPLE_FILE, 'utf8'); } catch (e) { text = ''; }
   }
   const value = crypto.randomBytes(24).toString('hex');
-  const line = 'HUB_TOKEN=' + value;
-  if (/^[ \t]*#?[ \t]*HUB_TOKEN[ \t]*=.*$/m.test(text)) {
-    text = text.replace(/^[ \t]*#?[ \t]*HUB_TOKEN[ \t]*=.*$/m, line);
+  const line = key + '=' + value;
+  const re = new RegExp('^[ \\t]*#?[ \\t]*' + key + '[ \\t]*=.*$', 'm');
+  if (re.test(text)) {
+    text = text.replace(re, line);
   } else {
     text = (text && !/\n$/.test(text) ? text + '\n' : text) + line + '\n';
   }
@@ -1083,7 +1088,9 @@ function token() {
   fs.writeFileSync(tmp, text, { mode: 0o600 });
   fs.renameSync(tmp, ENV_FILE);
   try { fs.chmodSync(ENV_FILE, 0o600); } catch (e) { /* not fatal */ }
-  say('Token created and saved in pi/.env. If the server is already running, restart it so it uses the token.');
+  say(key === 'HUB_TOKEN'
+    ? 'Token created and saved in pi/.env. If the server is already running, restart it so it uses the token.'
+    : 'Read-only key created and saved in pi/.env as HUB_READ_TOKEN. It opens only GET /api/grocery/list. Restart the server so it uses the key.');
 }
 
 /* ---------- status ---------- */
@@ -1644,7 +1651,8 @@ const HELP = [
   '  ./hub status                is the server running, which screens are on',
   '  ./hub mailbox status        is the Claude mailbox (Cloudflare R2) connected',
   '  ./hub log                   the server\'s last 50 log lines (add --errors, or --lines 120)',
-  '  ./hub token                 create the password in pi/.env (only once)'
+  '  ./hub token                 create the password in pi/.env (only once)',
+  '  ./hub read-token            create the read-only key (GET /api/grocery/list only)'
 ].join('\n');
 
 /* ---------- grocery (shared with mailbox.js) ---------- */
@@ -1954,6 +1962,7 @@ async function main(argv) {
   if (cmd === 'ambience') return ambienceCommand(rest);
   if (cmd === 'lights') return lightsCommand(rest);
   if (cmd === 'token') return token();
+  if (cmd === 'read-token') return token('HUB_READ_TOKEN');
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
 }
 

@@ -648,6 +648,15 @@ const COMMANDS = {
   'grocery.clear': { args: {}, run: (a, ctx) => hubctl.groceryClear(ctx.call) },
   // Counts and one search text ("Brand Name Size") per item to get.
   'grocery.export': { args: {}, run: (a, ctx) => hubctl.groceryExport(ctx.call) },
+  // The ordering list (GET /api/grocery/list): JSON rows, no message text to read.
+  'grocery.orderlist': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/grocery/list');
+      const c = r.counts || { onList: 0, ticked: 0 };
+      return { message: c.onList + ' on the list, ' + c.ticked + ' ticked.', data: { generatedAt: r.generatedAt, counts: c, items: r.items || [] } };
+    }
+  },
   // Keep an item in the pantry (a second add of the same one adds to its count).
   'pantry.add': {
     args: Object.assign({ name: [V.text(80), false], upc: [V.text(14), false], brand: [V.text(40), false] }, PANTRY_ARGS),
