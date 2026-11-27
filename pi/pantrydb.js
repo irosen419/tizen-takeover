@@ -952,6 +952,20 @@ function createPantry(options) {
     return m;
   }
 
+  // For GET /api/grocery/list (an ordering run): per grocery row, how many
+  // to buy, the pantry's size and unit, store and substitution choice.
+  function orderInfo() {
+    const m = {};
+    all('SELECT li.grocery_id, li.quantity, li.mode_override, p.size, p.unit, p.preferred_store, p.substitution_mode FROM list_items li JOIN products p ON p.id = li.product_id WHERE li.list_id = ?', openListId()).forEach((r) => {
+      if (!r.grocery_id) return;
+      m[r.grocery_id] = {
+        quantity: r.quantity, size: r.size === null ? null : r.size, unit: r.unit || '',
+        store: r.preferred_store || '', substitution: r.mode_override || r.substitution_mode || 'similar'
+      };
+    });
+    return m;
+  }
+
   // Codes the products catalog must keep (owned products).
   function barcodes() {
     return all('SELECT barcode FROM products WHERE barcode IS NOT NULL AND owned = 1').map((r) => r.barcode);
@@ -1035,6 +1049,7 @@ function createPantry(options) {
     ownedList: ownedList,
     find: find,
     groceryInfo: groceryInfo,
+    orderInfo: orderInfo,
     barcodes: barcodes,
     fromCatalog: fromCatalog,
     rev: () => revNow,

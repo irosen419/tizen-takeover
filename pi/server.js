@@ -73,6 +73,11 @@
  *   GET  /api/grocery/export   the list for a shopping run: each item with its product's
  *                        brand, name, size and a "search" text (products.js), and
  *                        store (the product's preferred store), fromPantry / reason (low, manual or '') from the pantry
+ *   GET  /api/grocery/list   read only, for an ordering run (products.js orderList):
+ *                        each row's id, name, quantity, onList, brand, size, search,
+ *                        upc, store, substitution and doordash (null: nothing pinned
+ *                        yet). Also takes the read-only key (HUB_READ_TOKEN in pi/.env),
+ *                        which opens this one route and nothing else.
  *   GET  /api/pantry     the pantry (pantrydb.js, SQLite data/pantry.db): products, brands, categories
  *   POST /api/pantry/ops pantry changes (the same ops as POST /pantry/ops)
  *   GET  /api/pantry/low the pantry items at or under their restock point
@@ -188,7 +193,7 @@ const budgetgoal = require('./budgetgoal');
 const spanish = require('./spanish');
 const prefs = require('./prefs');
 
-const SERVER_VERSION = '0.45.1';
+const SERVER_VERSION = '0.46.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -718,6 +723,10 @@ function start(options) {
   const token = typeof opt.token === 'string' ? opt.token : '';
   const tokenOk = token.length >= MIN_TOKEN;
   const tokenBuf = Buffer.from(token);
+  // The read-only key: GET /api/grocery/list only (READ_ONLY_ROUTES).
+  const readToken = typeof opt.readToken === 'string' ? opt.readToken : '';
+  const readTokenOk = readToken.length >= MIN_TOKEN && readToken !== token;
+  const readTokenBuf = Buffer.from(readToken);
   const port = opt.port !== undefined && opt.port !== null && opt.port !== '' ? Number(opt.port) : DEFAULT_PORT;
   const tunnelPortWanted = opt.tunnelPort !== undefined && opt.tunnelPort !== null && opt.tunnelPort !== ''
     ? Number(opt.tunnelPort) : null;
@@ -1801,17 +1810,27 @@ function start(options) {
 
   /* --- routing --- */
 
+  function sameKey(given, buf) {
+    if (given.length !== buf.length) {
+      crypto.timingSafeEqual(buf, buf); // same work either way
+      return false;
+    }
+    return crypto.timingSafeEqual(given, buf);
+  }
+
+  // 'full' (HUB_TOKEN), 'read' (HUB_READ_TOKEN) or '' (neither).
   function checkToken(req) {
     const h = req.headers.authorization || '';
     const m = /^Bearer\s+(.+)$/i.exec(h);
-    if (!m) return false;
+    if (!m) return '';
     const given = Buffer.from(m[1].trim());
-    if (given.length !== tokenBuf.length) {
-      crypto.timingSafeEqual(tokenBuf, tokenBuf); // same work either way
-      return false;
-    }
-    return crypto.timingSafeEqual(given, tokenBuf);
+    if (tokenOk && sameKey(given, tokenBuf)) return 'full';
+    if (readTokenOk && sameKey(given, readTokenBuf)) return 'read';
+    return '';
   }
+
+  // What the read-only key may do.
+  const READ_ONLY_ROUTES = { 'GET /api/grocery/list': 1 };
 
   function screenList() {
     forgetOld();
@@ -1828,6 +1847,7 @@ function start(options) {
     '/api/grocery': ['GET'],
     '/api/grocery/ops': ['POST'],
     '/api/grocery/export': ['GET'],
+    '/api/grocery/list': ['GET'],
     '/api/pantry': ['GET'],
     '/api/pantry/ops': ['POST'],
     '/api/pantry/low': ['GET'],
@@ -2148,6 +2168,10 @@ function start(options) {
           const r = groceryExport();
           return reply(200, r, r.items.length + ' items');
         }
+        if (route === '/api/grocery/list') {
+          const r = products.orderList(state.resources.grocery.data.items, catalog.get, pantry ? pantry.orderInfo() : {}, Date.now());
+          return reply(200, r, r.counts.onList + ' on the list');
+        }
         if (route === '/api/pantry') {
           needPantry();
           const v = pantryView();
@@ -2231,8 +2255,13 @@ function start(options) {
       log('control ' + what + ' -> ' + status + (note ? ' ' + note : '') + (door === 'tunnel' ? ' (side door)' : ''),
         route === '/api/log' && status === 200);
     };
-    if (!tokenOk) return done(503, { ok: false, error: 'no token set on the server' });
-    if (!checkToken(req)) return done(401, { ok: false, error: 'wrong token' });
+    if (!tokenOk && !readTokenOk) return done(503, { ok: false, error: 'no token set on the server' });
+    const key = checkToken(req);
+    if (!key) return done(401, { ok: false, error: 'wrong token' });
+    if (key === 'read' && !READ_ONLY_ROUTES[req.method + ' ' + route]) {
+      req.resume();
+      return done(403, { ok: false, error: 'the read-only key only opens GET /api/grocery/list' });
+    }
     if (ROUTES[route] && ROUTES[route].indexOf(req.method) < 0) res.setHeader('Allow', ROUTES[route].join(', '));
     if (route === '/api/products/image' && req.method === 'GET') {
       req.resume();
@@ -2961,6 +2990,7 @@ if (require.main === module) {
   const env = loadSettings(path.join(__dirname, '.env'));
   const hub = start({
     token: env.HUB_TOKEN || '',
+    readToken: env.HUB_READ_TOKEN || '',
     port: env.HUB_PORT || DEFAULT_PORT,
     tvIps: env.HUB_TV_IPS || '',
     tvRemoteIp: env.HUB_TV_REMOTE_IP || '',

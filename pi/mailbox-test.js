@@ -357,6 +357,18 @@ async function main() {
     assert.strictEqual(r.data.items.length, 1);
   });
 
+  await check('grocery.orderlist: the ordering rows as data, counts as the message', async () => {
+    let r = await run(fake, h, 'grocery.add', { items: ['Orderlist test item'] });
+    assert.strictEqual(r.ok, true, r.message);
+    r = await run(fake, h, 'grocery.orderlist');
+    assert.strictEqual(r.ok, true, r.message);
+    assert.ok(/^\d+ on the list, \d+ ticked\.$/.test(r.message), r.message);
+    const row = r.data.items.find((i) => i.name === 'Orderlist test item');
+    assert.deepStrictEqual([row.onList, row.quantity, row.doordash], [true, 1, null]);
+    assert.strictEqual(r.data.counts.onList, r.data.items.filter((i) => i.onList).length);
+    await run(fake, h, 'grocery.remove', { id: row.id });
+  });
+
   await check('pantry.add, pantry.set (auto-add when low), pantry.list, pantry.low', async () => {
     let r = await run(fake, h, 'pantry.add', { name: 'Paper towels', qty: 2, location: 'pantry' });
     assert.strictEqual(r.ok, true, r.message);

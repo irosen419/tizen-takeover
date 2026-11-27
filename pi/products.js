@@ -239,6 +239,44 @@ function exportList(items, get, now) {
   return { ok: true, generatedAt: new Date(now || Date.now()).toISOString(), counts: { left: left, ticked: out.length - left }, items: out };
 }
 
+/* ---------- the ordering list (GET /api/grocery/list) ---------- */
+
+const UNIT_TEXT = { fl_oz: 'fl oz', count: 'ct' };
+
+// "12 fl oz" from the pantry's size and unit; '' with no size.
+function sizeText(size, unit) {
+  if (typeof size !== 'number' || !(size > 0)) return '';
+  const n = String(Math.round(size * 1000) / 1000);
+  return unit ? n + ' ' + (UNIT_TEXT[unit] || unit) : n;
+}
+
+// A read-only list for an ordering run (a delivery app): every grocery row,
+// onList true for the ones still to get (a ticked row stays 48 hours with
+// onList false). items: the grocery list; get(upc): a catalog product or
+// null; info: pantrydb orderInfo() by grocery id ({} with the pantry off).
+// doordash is always null for now: no pinned product is stored yet.
+function orderList(items, get, info, now) {
+  const by = info || {};
+  const out = (items || []).map((i) => {
+    const p = i.upc ? get(i.upc) : null;
+    const x = by[i.id] || {};
+    return {
+      id: i.id, name: i.name,
+      quantity: typeof x.quantity === 'number' && x.quantity >= 1 ? x.quantity : 1,
+      onList: !i.done,
+      brand: p ? p.brand : '',
+      size: (p && p.size) || sizeText(x.size, x.unit),
+      search: searchText(p, i.name),
+      upc: i.upc || '',
+      store: x.store || '',
+      substitution: x.substitution || 'similar',
+      doordash: null
+    };
+  });
+  const on = out.filter((i) => i.onList).length;
+  return { ok: true, generatedAt: new Date(now || Date.now()).toISOString(), counts: { onList: on, ticked: out.length - on }, items: out };
+}
+
 /* ---------- addresses (for pictures from the web) ---------- */
 
 function v4Parts(a) {
@@ -802,6 +840,8 @@ module.exports = {
   lineName: lineName,
   searchText: searchText,
   exportList: exportList,
+  orderList: orderList,
+  sizeText: sizeText,
   isPublicIp: isPublicIp,
   imageUrlOk: imageUrlOk,
   sniffImage: sniffImage,

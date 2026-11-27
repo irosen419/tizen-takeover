@@ -558,6 +558,48 @@ async function main() {
     assert.strictEqual(r.json.groceryAdded, 1, 'the cart button still adds it by hand');
   });
 
+  await check('GET /api/grocery/list: the read-only key opens it and nothing else; quantity and substitution come from the open list', async () => {
+    const READ = 'pantry-read-key-0123456789abcdef';
+    const hr = await start({ readToken: READ });
+    const R = hr.port;
+    try {
+      let r = await request(R, 'POST', '/grocery/ops', { headers: phone, body: { ops: [{ op: 'add', name: 'Oat milk' }, { op: 'add', name: 'Bread' }] } });
+      assert.strictEqual(r.status, 200);
+      const oat = r.json.items.find((i) => i.name === 'Oat milk');
+      const bread = r.json.items.find((i) => i.name === 'Bread');
+      const pid = (await request(R, 'GET', '/api/pantry', { token: TOKEN })).json.data.products.find((x) => x.name === 'Oat milk').id;
+      r = await request(R, 'POST', '/pantry/ops', { headers: phone, body: { ops: [{ op: 'listQty', id: pid, quantity: 3 }, { op: 'listMode', id: pid, mode: 'refund' }, { op: 'edit', id: pid, preferredStore: 'Kroger', size: 64, unit: 'fl_oz' }] } });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+      await request(R, 'POST', '/grocery/ops', { headers: phone, body: { ops: [{ op: 'check', id: bread.id, done: true }] } });
+      assert.strictEqual((await request(R, 'GET', '/api/grocery/list')).status, 401);
+      assert.strictEqual((await request(R, 'GET', '/api/grocery/list', { token: 'wrong-key-0123456789abcdefgh' })).status, 401);
+      r = await request(R, 'GET', '/api/grocery/list', { token: READ });
+      assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+      assert.deepStrictEqual(r.json.counts, { onList: 1, ticked: 1 });
+      const o = r.json.items.find((i) => i.id === oat.id);
+      assert.deepStrictEqual(o, { id: oat.id, name: 'Oat milk', quantity: 3, onList: true, brand: '', size: '64 fl oz', search: 'Oat milk', upc: '', store: 'Kroger', substitution: 'refund', doordash: null });
+      assert.strictEqual(r.json.items.find((i) => i.id === bread.id).onList, false);
+      assert.strictEqual((await request(R, 'GET', '/api/grocery/list', { token: TOKEN })).status, 200, 'the full token works too');
+      for (const [m, p] of [['GET', '/api/grocery'], ['GET', '/api/grocery/export'], ['GET', '/api/pantry'], ['GET', '/api/status'], ['POST', '/api/grocery/ops']]) {
+        r = await request(R, m, p, { token: READ, body: m === 'POST' ? { ops: [{ op: 'clear' }] } : undefined });
+        assert.strictEqual(r.status, 403, m + ' ' + p);
+      }
+      assert.strictEqual((await request(R, 'POST', '/api/grocery/list', { token: TOKEN, body: {} })).status, 405);
+      assert.ok(!hr.lines.some((l) => /Oat milk|Kroger/.test(l)), 'the log names no item');
+    } finally {
+      await stop(hr);
+    }
+  });
+
+  await check('a read-only key equal to the full token is ignored', async () => {
+    const hs = await start({ readToken: TOKEN });
+    try {
+      assert.strictEqual((await request(hs.port, 'GET', '/api/status', { token: TOKEN })).status, 200, 'still the full token');
+    } finally {
+      await stop(hs);
+    }
+  });
+
   await check('the TV: POST /pantry/screen-ops (no token, listed Origin, preflight), pantry is a live resource in /live/state and /live/poll', async () => {
     const tv = { Origin: 'http://127.0.0.1:8081', 'x-test-ip': '192.168.1.50' };
     let r = await request(P, 'OPTIONS', '/pantry/screen-ops', { headers: tv });
