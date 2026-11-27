@@ -1,0 +1,125 @@
+/* Budget lab's planned buys (app/widgets/budget-planned.js): the list in
+   the reading column and the form that opens in its place. Rows are the
+   lab's focus rows (.bu-psec); no grid, no flex gap (Chrome 52 on the wall
+   tablet, the TV's own engine). Long words wrap; nothing is clipped, so
+   Spanish (about a quarter longer) and its accents fit. Only opacity and
+   transform animate. */
+
+.bp-sec { padding: 0.6rem 1.4rem 0.4rem; }
+.bp-sec > .bu-label:first-child { margin-top: 0; }
+.bp-sub { margin-bottom: 0.3rem; }
+.bp-none { padding: 0.3rem 0 0.4rem; font-size: 1.6rem; line-height: 1.4; color: var(--text-2); }
+
+/* A row: the label and the amount on top, the day and its state under it. */
+.bl-panel .bp-row { margin: 0.15rem -1.1rem; padding: 0.35rem 1.1rem 0.4rem; }
+.bp-top { display: flex; align-items: baseline; }
+.bp-check { flex: 0 0 auto; margin-right: 0.5rem; font-size: 1.6rem; line-height: 1.35; color: var(--bu-ok); }
+.bp-label { flex: 1 1 auto; min-width: 0; font-size: 1.7rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+.bp-amount { flex: 0 0 auto; margin-left: 0.9rem; font-size: 1.8rem; line-height: 1.35; font-weight: 600; color: var(--text); white-space: nowrap; }
+.bp-when { margin-top: 0.05rem; font-size: 1.45rem; line-height: 1.4; color: var(--text-3); word-wrap: break-word; }
+.bp-when.is-over { color: var(--bu-neg); }
+.bp-when.is-bought { color: var(--bu-ok); }
+.bp-row.is-bought .bp-label,
+.bp-row.is-bought .bp-amount { color: var(--text-2); }
+.bp-row.is-bought .bp-amount { font-weight: 400; text-decoration: line-through; }
+.bl-panel .bp-row.is-focused .bp-when { color: var(--text-2); }
+.bl-panel .bp-row.is-focused .bp-when.is-over { color: var(--bu-neg); }
+.bl-panel .bp-row.is-focused .bp-when.is-bought { color: var(--bu-ok); }
+
+.bp-add { display: flex; align-items: center; color: var(--text-2); }
+.bp-plus {
+  flex: 0 0 auto;
+  width: 2.2rem;
+  height: 2.2rem;
+  margin-right: 0.8rem;
+  border: 0.15rem solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  font-size: 1.7rem;
+  line-height: 1.95rem;
+  text-align: center;
+}
+.bp-add-text { flex: 1 1 auto; min-width: 0; font-size: 1.6rem; line-height: 1.4; word-wrap: break-word; }
+.bl-panel .bp-add.is-focused { color: var(--text); }
+.bl-panel .bp-add.is-focused .bp-plus { border-color: var(--text); }
+
+/* The form, in place of the list. */
+.bl-panel .bp-field { position: relative; margin: 0.35rem -1.1rem; padding: 0.4rem 1.1rem 0.5rem; border: 0.3rem solid transparent; border-radius: 1.2rem; }
+.bp-fname { font-size: 1.3rem; line-height: 1.4; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.bp-fhint { font-size: 1.3rem; line-height: 1.4; color: var(--text-3); opacity: 0; transition: opacity 160ms ease; }
+.bp-ahint { flex: 0 1 auto; min-width: 0; margin-left: 1.2rem; word-wrap: break-word; }
+.bl-panel .bp-field.is-focused .bp-fhint,
+.bp-ainput.is-focused ~ .bp-fhint { opacity: 1; }
+
+/* The text boxes: the input is the focusable; the frame after it draws the
+   ring, from the input's state (sibling selectors), as To-do's add row does. */
+.bp-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.2rem 0 0;
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  border-radius: 0.8rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.8rem;
+  line-height: 1.5;
+  outline: none;
+}
+.bp-input::-webkit-input-placeholder { color: var(--text-3); }
+.bp-input::placeholder { color: var(--text-3); }
+.bp-frame {
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  border: 0.3rem solid transparent;
+  border-radius: 1.2rem;
+  pointer-events: none;
+}
+.bp-input.is-focused ~ .bp-frame,
+.bp-input:focus ~ .bp-frame { border-color: var(--focus); box-shadow: 0 0 0 0.3rem rgba(255, 255, 255, 0.3); }
+.bp-input:focus { background: rgba(255, 255, 255, 0.16); }
+
+/* Amount and date: arrows either side, as on the cap slider. */
+.bp-aline { display: flex; align-items: center; margin-top: 0.15rem; }
+.bp-arrow { flex: 0 0 auto; font-size: 1.6rem; line-height: 1; color: var(--text); opacity: 0.3; transition: opacity 160ms ease; }
+.bp-arrow-l { margin-right: 0.7rem; }
+.bp-arrow-r { margin-left: 0.7rem; }
+.bl-panel .bp-field.is-focused .bp-arrow,
+.bp-ainput.is-focused ~ .bp-arrow { opacity: 1; }
+.bp-dollar { flex: 0 0 auto; margin-right: 0.15rem; font-size: 2.4rem; line-height: 1.3; font-weight: 600; color: var(--text); }
+.bp-aline .bp-ainput {
+  flex: 0 0 auto;
+  width: 7rem;
+  margin: 0;
+  padding: 0.1rem 0.3rem;
+  background: transparent;
+  font-size: 2.4rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.bp-dtext { flex: 0 1 auto; min-width: 0; font-size: 1.9rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+
+.bp-label-big { margin-top: 0.3rem; font-size: 2rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
+.bp-note { margin: 0.2rem 0 0.4rem; color: var(--bu-ok); }
+
+/* Save, Remove, Cancel: side by side, wrapping when a language runs long. */
+.bp-btns { margin: 0.5rem -0.3rem 0; font-size: 0; }
+.bl-panel .bp-btn {
+  display: inline-block;
+  vertical-align: top;
+  margin: 0.3rem;
+  padding: 0.45rem 1.5rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 1.6rem;
+  line-height: 1.4;
+  color: var(--text);
+  white-space: nowrap;
+}
+.bl-panel .bp-btn.is-main { background: rgba(255, 255, 255, 0.9); color: #10141c; font-weight: 600; }
+.bl-panel .bp-btn.is-remove { color: var(--bu-neg); }
+.bl-panel .bp-btn.is-armed { background: var(--bu-neg); color: #10141c; font-weight: 600; }
+.bl-panel .bp-btn.is-focused { transform: scale(1.04); }
+
+.css-end { top: 0; }

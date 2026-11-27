@@ -32,6 +32,9 @@
  *   POST /budget/goal    Budget lab's daily goal from the TV: { goal } (whole dollars, 1-1,000),
  *                        from today on (the Pi's local date); past days keep theirs (budgetgoal.js,
  *                        data/budget-goal.json). The history reaches the TV as the budget's pace.goals
+ *   POST /budget/planned Budget lab's planned buys: { op: add|edit|remove, id, label, amount, date },
+ *                        passed on to the budget app (budgetplanned.js), which keeps them; its whole
+ *                        list goes into the budget's planned section at once. Never logs a label or amount
  *   POST /guest/pin      the Guest mode PIN from the TV's Clock page (guestpin.js; a screen route:
  *                        home addresses, or only HUB_TV_IPS when set, a listed Origin, OPTIONS answered):
  *                        { action: 'status' | 'check' | 'set', pin }.
@@ -190,6 +193,7 @@ const pantrydb = require('./pantrydb');
 const guestpin = require('./guestpin');
 const photos = require('./photos');
 const budgetgoal = require('./budgetgoal');
+const budgetplanned = require('./budgetplanned');
 const spanish = require('./spanish');
 const prefs = require('./prefs');
 
@@ -1415,6 +1419,27 @@ function start(options) {
     return { ok: true, from: from, changed: r.changed, goals: goalHistory, rev: state.rev };
   }
 
+  // POST /budget/planned (a screen): add, edit or remove a planned buy in
+  // the budget app, which keeps them. Its answer (the whole list) goes into
+  // the budget resource's planned section at once, so every screen shows it
+  // before the next snapshot. Resolves to the reply for the screen.
+  function changePlanned(body) {
+    let op;
+    try { op = budgetplanned.checkOp(body); } catch (e) { return Promise.reject(e); }
+    const o = isObj(opt.budgetApp) ? opt.budgetApp : {};
+    return budgetplanned.send(op, { url: o.url, token: o.token, request: o.request }).then((reply) => {
+      const cur = state.resources.budget.data;
+      let section;
+      try {
+        section = budget.checkSection('planned', budgetplanned.listFrom(reply), new Date().toISOString());
+      } catch (e) {
+        throw Object.assign(new Error('the budget app made the change but sent a list the hub could not read'), { status: 502 });
+      }
+      if (cur && cur.sentAt) changeResource('budget', Object.assign({}, cur, { planned: section }));
+      return { ok: true, op: op.op, planned: section, rev: state.rev };
+    });
+  }
+
   // POST /prefs (a screen): one shared widget preference (prefs.js).
   function setPref(body) {
     const r = prefs.apply(state.resources.prefs.data, body, new Date().toISOString());
@@ -2551,7 +2576,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/budget/planned' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2657,6 +2682,18 @@ function start(options) {
         } catch (e) {
           fail(res, e, cors);
         }
+      });
+    }
+    if (route === '/budget/planned') {
+      // Budget lab's planned buys, passed on to the budget app. Never logs a label or an amount.
+      return readBody(req, res, (body) => {
+        changePlanned(body).then((r) => {
+          sendJson(res, 200, r, cors);
+          log(budgetplanned.logText(r));
+        }, (e) => {
+          if (e && e.status === 502) log('planned buy: ' + e.message);
+          fail(res, e, cors);
+        });
       });
     }
     if (route === '/prefs') {
@@ -2796,7 +2833,7 @@ function start(options) {
   }
 
   const SCREEN_ROUTES = {
-    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/budget/goal': 1, '/prefs': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
+    '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/budget/goal': 1, '/budget/planned': 1, '/prefs': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
     '/echo/run': 1, '/guest/pin': 1, '/lights/look': 1
   };
@@ -2991,6 +3028,8 @@ if (require.main === module) {
   const hub = start({
     token: env.HUB_TOKEN || '',
     readToken: env.HUB_READ_TOKEN || '',
+    // Planned buys from Budget lab go to the budget app on this Pi (budgetplanned.js).
+    budgetApp: { url: env.BUDGET_APP_URL || '', token: env.BUDGET_APP_TOKEN || env.HUB_TOKEN || '' },
     port: env.HUB_PORT || DEFAULT_PORT,
     tvIps: env.HUB_TV_IPS || '',
     tvRemoteIp: env.HUB_TV_REMOTE_IP || '',

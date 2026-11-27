@@ -61,7 +61,9 @@ One JSON object. `v` and `sentAt` are required. Every section is optional.
   "trends":    { "asOf": "...", "month": "2026-11",
                  "categories": [ { "label": "Food", "mtd": 412, "usual": 520 } ],
                  "merchants":  [ { "label": "Hilltop Grocer", "mtd": 184, "usual": 205 } ],
-                 "weekdays":   [ 38, 35, 44, 41, 71, 96, null ] }
+                 "weekdays":   [ 38, 35, 44, 41, 71, 96, null ] },
+  "planned":   { "asOf": "...", "cardDay": "2026-12-01",
+                 "items": [ { "id": "3f9a12c0", "label": "Headphones", "amount": 79, "date": "2026-12-05", "match": "amazon", "state": "upcoming" } ] }
 }
 ```
 
@@ -216,6 +218,19 @@ When `room` is below zero and `autopayRoom` is there, Budget lab works from `aut
 | `steps` | list, at most 40 | required, in date order, none after `end`: `{ "date": "2026-11-20", "delta": 2600, "kind": "pay" }`; `delta` is dollars, may be negative; `kind` is `pay` (`delta` 0 or more), `bill` or `reserve` (`delta` 0 or less). `reserve` is the bills from card day to the next payday, as one step on card day. No bill names: a `label` sent is dropped |
 
 The headroom on card day (`start` plus every `delta`) is the same figure as `lab.room`. The TV draws the runway without a dollar axis.
+
+### `planned`: planned buys
+
+The budget app's planned buys, all of them, in the owner's order (budget repository PR 158). The budget app is their only home: the hub keeps no list of its own and Budget lab on the TV shows exactly this section. Sent with every snapshot, `items: []` when there are none.
+
+| Field | Type | Notes |
+|---|---|---|
+| `cardDay` | date | optional: the card day the states were worked against |
+| `items` | list, at most 50 | required. Each: `id` (1 to 40 of `A-Z a-z 0-9 _ -`; the budget app uses 8 hex), `label` (text, 24, required), `amount` (dollars, more than 0, required), `date` (date or `null`: no day), `match` (text, 40, or `null`: the words a charge must hold; without it the label is matched), `state` (required) |
+
+`state` is `upcoming` (counted in Card day and the daily room: no date, or from today to the day before card day), `later` (on or after card day, not counted yet), `overdue` (its day passed with no charge; not counted) or `matched` (the charge is in; then `matchedDate`, `matchedAmount` and `matchedMerchant` (text, 40) say which, and that charge stays out of the daily goal and the streak).
+
+**Changes from the TV.** Budget lab's full screen lists them (Planned buys) and adds, changes and removes them with the remote. The TV posts `POST /budget/planned` to the hub server (`pi/budgetplanned.js`): `{ "op": "add", "label", "amount", "date", "match" }`, `{ "op": "edit", "id", ... }`, `{ "op": "remove", "id" }` or `{ "op": "unmatch", "id" }` ("not this charge"). The hub server passes it on to the budget app on the Pi (`BUDGET_APP_URL`, default `http://127.0.0.1:8000`; the hub's own `HUB_TOKEN` as a Bearer, or `BUDGET_APP_TOKEN`): `POST /api/planned`, `PUT /api/planned/<id>`, `DELETE /api/planned/<id>`, `POST /api/planned/<id>/unmatch`. The budget app answers with the whole list, which the hub stores as this section at once (so every screen shows it before the next snapshot), and then sends a fresh snapshot too. A refusal (400, 404) reaches the TV as a toast with the budget app's reason; a budget app that does not answer is a 502 and one log line. The log never names a buy or an amount: `screen added a planned buy`, `screen changed a planned buy`, `screen removed a planned buy`, `screen said a planned buy's charge was not it`. On the TV, guest mode blurs the amounts and makes the list read only. `./hub budget show` prints `4 planned buys (2 upcoming, 1 overdue, 1 matched)`.
 
 ### Privacy for Budget lab
 

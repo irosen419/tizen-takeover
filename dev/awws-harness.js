@@ -210,7 +210,8 @@ function getOk(url) {
 /*
  * Starts everything. opts: { at (UTC ms, default MONDAY), snapshot (false =
  * none; default the sample), calendars (false = a Pi with no calendars),
- * budgetGoals (the Pi's daily goal history, [{ from, goal }]) }. Returns an env with control(), setSnapshot(), feeds, the
+ * budgetGoals (the Pi's daily goal history, [{ from, goal }]), budgetApp ({ url, token }: where
+ * the Pi sends planned buy changes, pi/budgetplanned.js) }. Returns an env with control(), setSnapshot(), feeds, the
  * addresses, newPage() and stop().
  */
 async function start(opts) {
@@ -234,7 +235,7 @@ async function start(opts) {
   // opts.budgetGoals: the Pi's daily goal history (pi/budgetgoal.js), there from the start.
   if (opts.budgetGoals) fs.writeFileSync(path.join(env.dataDir, 'budget-goal.json'), JSON.stringify({ v: 1, history: opts.budgetGoals }));
   env.pi = await sample.startPi({ at: env.at, port: env.LIVE_PORT, token: TOKEN, origins: [env.PAGE],
-    dataDir: env.dataDir, calendars: opts.calendars === false ? [] : env.feeds.calendars });
+    dataDir: env.dataDir, calendars: opts.calendars === false ? [] : env.feeds.calendars, budgetApp: opts.budgetApp });
   env.control = (method, route, body) => control(env, method, route, body);
   env.setSnapshot = async (snap) => {
     const r = await env.control('POST', '/api/awws', { snapshot: snap });
