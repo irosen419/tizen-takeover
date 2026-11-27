@@ -321,6 +321,8 @@
 
   function MATH() { return window.HUB_BUDGET_LAB_MATH; }
   function B() { return window.HUB_BUDGET; }
+  // Planned buys (app/widgets/budget-planned.js): drawn here, keys passed on.
+  function PL() { return window.HUB_BUDGET_PLANNED || null; }
 
   /* ---------- small helpers (the same as budget.js, kept small) ---------- */
 
@@ -1720,10 +1722,14 @@
     if (short) {
       if (!hasGoal) drawPace(left, r, refs, true);
       drawMerchants(right, r, refs, true);
+      drawPlanned(right, ctx, refs);
     } else {
       if (!hasGoal && !weekShown) drawPace(left, r, refs, false);
       drawMerchants(left, r, refs, false);
       if (r.ok && r.roomCap) el('div', 'bl-note', left, fill(STRINGS.roomNote, { n: down(r.roomCap.cap) }));
+      // Planned buys: at full screen first in the reading column (under the
+      // runway when there is one), in the panel size under the merchants.
+      drawPlanned(right, ctx, refs);
       drawDest(right, r, refs);
     }
     // Short even at $0 a day the screen must fit with nothing to act on: no info block.
@@ -1734,6 +1740,15 @@
     if (refs.big) fitWidth(refs.big);
     LAB.refs = refs;
     return root;
+  }
+
+  function drawPlanned(col, ctx, refs) {
+    refs.planned = [];
+    if (!PL()) return;
+    try {
+      refs.planned = PL().draw(col, ctx) || [];
+      PL().fit();
+    } catch (e) { warn('planned: ' + (e && e.message)); }
   }
 
   /* ---------- keys ---------- */
@@ -1807,21 +1822,30 @@
   // The rows that take focus, in the order Up and Down visit them (the
   // columns do not matter): the cap, Back to calculated when it is showing,
   // then the merchants.
+  // Planned buys come after the cap at full screen (the top of the right
+  // column) and last in the panel size; while their form is open, only the
+  // form's rows take focus.
   function rowList(refs) {
     var out = [];
+    var planned = refs.planned || [];
+    if (PL() && PL().editing() && planned.length) return planned.slice();
     if (refs.slider) out.push(refs.slider);
     if (refs.reset && refs.changed) out.push(refs.reset);
+    if (refs.full) out = out.concat(planned);
     for (var i = 0; refs.cuts && i < refs.cuts.length; i++) out.push(refs.cuts[i].node);
+    if (!refs.full) out = out.concat(planned);
     return out;
   }
 
   function rowMove(dir, from, refs) {
     var list = rowList(refs);
+    // The form's buttons sit side by side: Up and Down treat them as one stop.
+    if (list.indexOf(from) < 0 && from && from.parentNode && /\bbp-btns\b/.test(from.parentNode.className || '')) from = from.parentNode.firstChild;
     var at = list.indexOf(from);
     if (at < 0) return undefined;
     var to = at + (dir === 'down' ? 1 : -1);
     if (to >= 0 && to < list.length) return list[to];
-    scrollBody(dir);
+    if (!(PL() && PL().editing())) scrollBody(dir);
     return true;
   }
 
@@ -1837,7 +1861,15 @@
   function onMove(dir, from) {
     var refs = LAB.refs;
     if (!refs) return undefined;
-    if (dir === 'up' || dir === 'down') return rowMove(dir, from, refs);
+    if (dir === 'up' || dir === 'down') {
+      var moved = rowMove(dir, from, refs);
+      // Focus stays in the planned buy form while it is open.
+      return moved === undefined && PL() && PL().editing() ? true : moved;
+    }
+    if (PL()) {
+      var pm = PL().onMove(dir, from);
+      if (pm !== undefined) return pm;
+    }
     if (dir !== 'left' && dir !== 'right') return undefined;
     var i = cutOf(refs, from);
     var slider = from === refs.slider && refs.slider ? 'cap' : i >= 0 ? refs.cuts[i].label : null;
@@ -1849,6 +1881,7 @@
   }
 
   function onSelect(target, ctx) {
+    if (PL() && PL().onSelect(target, ctx)) return;
     var key = target && target.getAttribute('data-key');
     var m = MATH();
     var r = result();
@@ -1953,12 +1986,16 @@
     },
     onMove: function (dir, from) { return onMove(dir, from); },
     onSelect: function (target, ctx) { try { onSelect(target, ctx); } catch (e) { warn('select: ' + (e && e.message)); } },
+    onSubmit: function (target, ctx) { try { if (PL()) PL().onSubmit(target, ctx); } catch (e) { warn('submit: ' + (e && e.message)); } },
+    // Back with the planned buy form open leaves the form, not the lab.
+    onBack: function (ctx) { try { return !!(PL() && PL().onBack(ctx)); } catch (e) { return false; } },
     onMode: function (mode, ctx) { ctx.redrawPanel(); },
     // Leaving the lab in any way (Back, Menu, another page, a command)
     // drops what was tried and not saved: the cap snaps back to the
     // calculated one, so the tile never shows an unsaved figure. Only OK saves.
     onClose: function (ctx) {
       chartStop(); LAB.refs = null; LAB.hold = null; LAB.goal = { value: null, state: '' };
+      if (PL()) PL().reset();
       LAB.session = newSession();
       ctx.redrawTile();
     }

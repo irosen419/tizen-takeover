@@ -39,7 +39,7 @@ const MAX_BYTES = 48 * 1024; // 49,152 bytes of JSON
 const MAX_FUTURE_MS = 10 * 60 * 1000;
 const MAX_AMOUNT = 1000000;
 const MAX_DAYS = 366;
-const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway', 'investments', 'trends'];
+const SECTIONS = ['room', 'cardDay', 'goals', 'alerts', 'lab', 'merchants', 'pace', 'runway', 'investments', 'trends', 'planned'];
 const GOAL_STATES = ['clean', 'on-pace', 'over', 'under'];
 // Budget lab: where spare money on card day goes, and the runway's steps.
 const SPLIT_KEYS = ['savings', 'awws', 'buffer', 'extra'];
@@ -66,8 +66,11 @@ const MAX_INVEST_HISTORY = 92;
 // trends (the Spending widget's Where it goes page): rows per list, weekdays.
 const MAX_TREND_ROWS = 8;
 const WEEKDAYS = 7;
+// Planned buys (the budget app owns them; Budget lab shows and edits them).
+const PLANNED_STATES = ['upcoming', 'later', 'overdue', 'matched'];
+const MAX_PLANNED = 50;
 // Sections that are lists; sent as a plain list or as { asOf, items }.
-const LISTS = { goals: 8, alerts: 5 };
+const LISTS = { goals: 8, alerts: 5, planned: MAX_PLANNED };
 
 const isObj = F.isObj;
 const has = F.has;
@@ -332,6 +335,32 @@ const CHECK = {
     return out;
   },
 
+  // Planned buys, as the budget app keeps them (it is their only home; the
+  // hub never keeps a list of its own), in the owner's order. Each has a
+  // label, an amount, a day (or none) and the shop text a charge must hold
+  // (or none), and its state: upcoming (counted before card day), later (on
+  // or after card day), overdue (the day passed with no charge) or matched
+  // (the charge is in: matchedDate and matchedAmount say when and how
+  // much, and it stays out of the daily goal and streak).
+  planned: (s) => {
+    const out = {};
+    F.put(out, 'cardDay', F.dateOf(s, 'cardDay', '', false));
+    const items = F.listOf(s, 'items', MAX_PLANNED, '', true);
+    out.items = F.eachWithId(items, 'planned buy', (e, where, id) => {
+      const it = { id: id, label: F.textOf(e, 'label', 24, where, true), amount: amountOf(e, 'amount', where, true, { above0: true }) };
+      // null or left out: no day, no shop text.
+      it.date = F.dateOf(e, 'date', where, false) || null;
+      it.match = F.textOf(e, 'match', 40, where, false) || null;
+      it.state = F.choiceOf(e, 'state', PLANNED_STATES, where);
+      if (it.state === 'matched') {
+        F.put(it, 'matchedDate', F.dateOf(e, 'matchedDate', where, false));
+        F.put(it, 'matchedAmount', amountOf(e, 'matchedAmount', where, false));
+      }
+      return it;
+    });
+    return out;
+  },
+
   // The top 5 merchants this month. Names and month-to-date totals are
   // allowed here because the owner asked for them; ./hub budget show still
   // prints only how many there are. "combined" is the five counted once
@@ -582,6 +611,11 @@ function sectionCounts(name, s) {
     return { cardDate: s.cardDate, daysLeft: s.daysLeft, monthDay: s.monthDay, state: s.room < 0 ? 'short' : s.room > 0 ? 'spare' : 'none', split: (s.split || []).length };
   }
   if (name === 'merchants') return { month: s.month, merchants: s.items.length };
+  if (name === 'planned') {
+    const c = { planned: s.items.length };
+    PLANNED_STATES.forEach((st) => { c[st] = s.items.filter((p) => p.state === st).length; });
+    return c;
+  }
   if (name === 'pace') {
     const n = s.days.length;
     return { days: n, capped: s.days.filter((d) => d.cap !== undefined).length, from: n ? s.days[0].date : null, to: n ? s.days[n - 1].date : null };
@@ -630,6 +664,10 @@ function sectionLine(name, s) {
       (c.split ? ', split in ' + c.split : '');
   }
   if (name === 'merchants') return plural(c.merchants, 'merchant') + ' in ' + c.month;
+  if (name === 'planned') {
+    const parts = PLANNED_STATES.filter((st) => c[st]).map((st) => c[st] + ' ' + st);
+    return plural(c.planned, 'planned buy') + (parts.length ? ' (' + parts.join(', ') + ')' : '');
+  }
   if (name === 'pace') {
     return c.days ? plural(c.days, 'day') + ' (' + c.capped + ' with a cap), ' + c.from + ' to ' + c.to : 'no days yet';
   }
@@ -705,6 +743,9 @@ module.exports = {
   SPLIT_KEYS: SPLIT_KEYS,
   STEP_KINDS: STEP_KINDS,
   PLAN_KINDS: PLAN_KINDS,
+  PLANNED_STATES: PLANNED_STATES,
+  MAX_PLANNED: MAX_PLANNED,
+  checkSection: checkSection,
   normalizeSnapshot: normalizeSnapshot,
   merge: merge,
   emptyData: emptyData,
