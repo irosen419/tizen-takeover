@@ -72,6 +72,7 @@ function setup() {
   const fake = path.join(root, 'fake-restart.sh');
   fs.writeFileSync(fake, '#!/bin/sh\n' +
     'if [ "$1" = has-budget ]; then [ -f "' + path.join(root, 'budget-exists') + '" ]; exit $?; fi\n' +
+    'if [ "$1" = has-lights ]; then [ -f "' + path.join(root, 'lights-exists') + '" ]; exit $?; fi\n' +
     'echo "$1" >> "' + calls + '"\n' +
     '[ -f "' + path.join(root, 'fail-' ) + '$1" ] && exit 1\nexit 0\n');
   fs.chmodSync(fake, 0o755);
@@ -138,6 +139,21 @@ async function main() {
     t.run();
     assert.deepStrictEqual(t.calls(), ['hub']);
     assert.ok(/, no restart$/.test(t.lines()[1]), t.log());
+  });
+
+  await check('a pi/lights/ file: restarts the hub, then the music light engine only when its unit runs it', async () => {
+    const t = setup();
+    t.push({ 'pi/lights/look.js': '// look\n' });
+    t.run();
+    assert.deepStrictEqual(t.calls(), ['hub'], 'the demo unit (no engine) is left alone');
+    fs.writeFileSync(path.join(t.root, 'lights-exists'), '');
+    t.push({ 'pi/lights/palettes.json': '{}\n' });
+    t.run();
+    assert.deepStrictEqual(t.calls(), ['hub', 'hub', 'lights']);
+    assert.ok(/restarted hub\+music-lights$/.test(t.lines()[1]), t.log());
+    t.push({ 'pi/server.js': '// only the server\n' });
+    t.run();
+    assert.deepStrictEqual(t.calls(), ['hub', 'hub', 'lights', 'hub'], 'a server-only change leaves the engine running');
   });
 
   await check('a failed hub restart is owed and done on the next run', async () => {

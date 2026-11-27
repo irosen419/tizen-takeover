@@ -43,6 +43,7 @@ const tvlaunch = require('./tvlaunch');
 const news = require('./news');
 const echo = require('./echo');
 const grocery = require('./grocery');
+const lightSettings = require('./lights/settings');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -499,6 +500,14 @@ function echoRun(action) {
     const out = { message: hubctl.echoText(r), data: { echo: r.echo || null } };
     if (!r.ok) out.ok = false;
     return out;
+  };
+}
+
+// A music lights change; the reply is the line ./hub lights prints.
+function lightsChange(bodyOf) {
+  return async (a, ctx) => {
+    const r = await ctx.call('POST', '/api/lights', bodyOf(a));
+    return { message: hubctl.lightsChangeText(r), data: { settings: r.settings } };
   };
 }
 
@@ -1002,6 +1011,41 @@ const COMMANDS = {
     run: async (a, ctx) => {
       const r = await ctx.call('POST', '/api/ambience/config', { config: null });
       return { message: hubctl.ambienceSetText(r, true), data: ambienceCounts(r.config) };
+    }
+  },
+  // Music lights (lights/store.js): the lamp and bars follow the Pi's music.
+  'lights.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/lights');
+      return { message: lines(hubctl.lightsStatusLines(r)), data: { settings: r.settings, engine: r.engine } };
+    }
+  },
+  'lights.on': { args: {}, run: lightsChange(() => ({ on: true })) },
+  'lights.off': { args: {}, run: lightsChange(() => ({ on: false })) },
+  'lights.set': {
+    args: {
+      palette: [V.oneOf(lightSettings.paletteIds()), false], vibrancy: [V.oneOf(lightSettings.LEVELS), false],
+      beat: [V.oneOf(lightSettings.LEVELS), false], preset: [V.oneOf(Object.keys(lightSettings.PRESETS)), false],
+      quiet: [(name, v) => {
+        if (v === 'never') return 0;
+        return V.int(0, lightSettings.MAX_QUIET_MIN)(name, v);
+      }, false],
+      on: [V.bool(), false]
+    },
+    check: (a) => { if (!Object.keys(a).length) throw argError('say what to set: palette, vibrancy, beat, preset, quiet or on'); },
+    run: lightsChange((a) => {
+      const body = {};
+      ['palette', 'vibrancy', 'beat', 'preset', 'on'].forEach((k) => { if (a[k] !== undefined) body[k] = a[k]; });
+      if (a.quiet !== undefined) body.quietMin = a.quiet;
+      return body;
+    })
+  },
+  'lights.palettes': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/lights');
+      return { message: lines(hubctl.lightsPaletteLines(r)), data: { palettes: r.palettes.map((p) => ({ id: p.id, name: p.name })) } };
     }
   },
   // Recent log lines. Always scrubbed on the Pi (addresses and names

@@ -18,7 +18,9 @@
 #     nothing to restart (the hub serves app/ fresh; app/appver.js reloads the
 #     tablet and phone). A server file in pi/ changed: restarts the hub, then
 #     the budget user service if there is one, the same order as hubup in
-#     pi/aliases.sh.
+#     pi/aliases.sh. A file in pi/lights/ (the music light engine) counts as a
+#     server file too, and also restarts the music-lights user unit, but only
+#     when that unit runs pi/lights/engine.js (never the old demo).
 #
 # Everything it writes lives in a folder the Pi user owns (pi/data is owned by
 # root on the Pi, so it is not used): ~/.local/state/tizen-takeover/autopull/
@@ -30,8 +32,9 @@
 #
 # For tests: AUTOPULL_REPO (the checkout; default: two folders up from here),
 # AUTOPULL_STATE (default: the folder above), AUTOPULL_NOW (seconds, for the backoff)
-# and AUTOPULL_RESTART_CMD (run as "$AUTOPULL_RESTART_CMD hub", "... budget"
-# and "... has-budget" instead of docker compose and systemctl).
+# and AUTOPULL_RESTART_CMD (run as "$AUTOPULL_RESTART_CMD hub", "... budget",
+# "... has-budget", "... lights" and "... has-lights" instead of docker compose
+# and systemctl).
 set -u
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -133,6 +136,15 @@ restart_budget() {
   if [ -n "$FAKE" ]; then $FAKE budget; return; fi
   systemctl --user restart budget >/dev/null 2>&1
 }
+# The music light engine (pi/lights/engine.js), only when the unit runs it.
+has_lights() {
+  if [ -n "$FAKE" ]; then $FAKE has-lights; return; fi
+  systemctl --user cat music-lights 2>/dev/null | grep -q 'lights/engine\.js'
+}
+restart_lights() {
+  if [ -n "$FAKE" ]; then $FAKE lights; return; fi
+  systemctl --user restart music-lights >/dev/null 2>&1
+}
 # Prints what was restarted ("hub+budget", "hub"); fails when the hub didn't.
 restart_all() {
   restart_hub || return 1
@@ -188,14 +200,18 @@ NCOMMITS=$(git rev-list --count "$OLD..$NEW")
 BYDIR=$(printf '%s\n' "$FILES" | grep . | awk -F/ '{ print (NF > 1 ? $1 : "top") }' | sort | uniq -c |
   awk '{ printf "%s%s %s", (NR > 1 ? ", " : ""), $2, $1 }')
 # Server files: pi/<file> but not its tests, notes, shortcuts or the ./hub wrapper.
-SERVER=$(printf '%s\n' "$FILES" | grep -E '^pi/[^/]+$' |
+SERVER=$(printf '%s\n' "$FILES" | grep -E '^pi/[^/]+$|^pi/lights/[^/]+\.(js|json)$' |
   grep -vE '(-test\.js|^pi/test\.js|\.md|^pi/aliases\.sh|^pi/hub|^pi/\.gitignore)$' | grep -c .)
+LIGHTS=$(printf '%s\n' "$FILES" | grep -cE '^pi/lights/[^/]+\.(js|json)$')
 WHAT="pulled $NCOMMITS commit(s), $NFILES file(s) ($BYDIR)"
 
 if [ "$SERVER" -gt 0 ]; then
   PENDING=hub
   save
   DID=$(restart_all) || fail "$WHAT, hub restart failed"
+  if [ "$LIGHTS" -gt 0 ] && has_lights; then
+    if restart_lights; then DID="$DID+music-lights"; else DID="$DID (music-lights restart failed)"; fi
+  fi
   PENDING=
   FAILS=0; REASON=pulled
   say "$WHAT, restarted $DID"

@@ -1,0 +1,23 @@
+# Music lights engine (pi/lights/engine.js): the Govee lamp and light bars
+# follow the sound the Pi plays. A systemd user unit; it replaces the demo
+# unit of the same name. Install (pi/README.md, "Music lights"):
+#   cp pi/lights/music-lights.service ~/.config/systemd/user/music-lights.service
+#   systemctl --user daemon-reload && systemctl --user enable --now music-lights
+# It idles until ./hub lights on. Stop it: systemctl --user disable --now music-lights
+# %h is your home folder; change the path if the repo lives elsewhere.
+[Unit]
+Description=Home Hub music lights (lamp and bars follow the Pi's sound)
+After=pipewire.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/code/tizen-takeover/pi
+ExecStart=/usr/bin/env node %h/code/tizen-takeover/pi/lights/engine.js
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=8
+Nice=5
+
+[Install]
+WantedBy=default.target

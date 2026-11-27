@@ -3168,6 +3168,52 @@
      "children": []
     },
     {
+     "id": "pi.lights",
+     "title": "Music lights engine",
+     "kind": "service",
+     "status": "unverified",
+     "summary": "The Govee lamp and light bars follow the music the Pi plays: two dials (Vibrancy, Beat), eight palettes, On/Off with quiet rules.",
+     "details": [
+      "Runs on the Pi itself (not in Docker) as the user unit music-lights, because it listens to the Pi's own sound (pw-record on the speaker's monitor). Draws 10 frames a second onto the lamp's 7 sections and the bars' 12 over the local network (UDP 4003, addresses from pi/.env).",
+      "The hub server keeps the settings (data/lights.json) and the engine asks for them once a second over 127.0.0.1, reporting what it does in the same call. The song's tempo from vibe.js comes back in the answer.",
+      "Quiet between songs: a calm glow. 15 quiet minutes (a setting, can be never): Off, lights put back through Home Assistant. Any other way of setting the lights wins: a hub scene, or a change Home Assistant sees (Govee app, voice), and music lights give way without putting old state back over it.",
+      "pi/lights/govee.js is the shared light geometry and frame format for every future look; pi/lights/palettes.json the shared palettes. Replaces the demo script and draft PR 207."
+     ],
+     "files": [
+      "pi/lights/engine.js",
+      "pi/lights/look.js",
+      "pi/lights/session.js",
+      "pi/lights/govee.js",
+      "pi/lights/palettes.json",
+      "pi/lights/settings.js",
+      "pi/lights/ha.js",
+      "pi/lights/store.js",
+      "pi/lights/music-lights.service",
+      "pi/lights-test.js"
+     ],
+     "talksTo": [
+      {
+       "to": "pi.server.control-api",
+       "label": "asks for settings once a second, reports state",
+       "dir": "both"
+      },
+      {
+       "to": "ext.smart-home.govee",
+       "label": "section colors over UDP",
+       "dir": "out"
+      },
+      {
+       "to": "ext.ha",
+       "label": "saves and puts back the lights, notices other changes",
+       "dir": "out"
+      }
+     ],
+     "notes": [
+      "Built 2026-11-27, phase 1 of the music lights plan. Checked with made-up audio only until it runs on the Pi. Controls: ./hub lights and the mailbox lights.* commands; phone page and TV row are phase 2."
+     ],
+     "children": []
+    },
+    {
      "id": "pi.health",
      "title": "Weekly health report",
      "kind": "script",
@@ -4222,6 +4268,21 @@
        ],
        "files": [],
        "talksTo": []
+      },
+      {
+       "id": "ext.smart-home.govee",
+       "title": "Govee lamp and light bars",
+       "kind": "external",
+       "status": "live",
+       "summary": "H6076 floor lamp (7 sections) and H6056 Flow Plus bars (two bars of 6), in Home Assistant through Govee lights local and driven section by section by the music lights engine.",
+       "files": [],
+       "talksTo": [
+        {
+         "to": "ext.ha",
+         "label": "state, scenes, moods",
+         "dir": "in"
+        }
+       ]
       }
      ]
     }
@@ -6035,6 +6096,33 @@
     {
      "node": "tv.widgets.photos",
      "say": "Within 10 minutes the tile fetches the list and the new photo joins the slideshow"
+    }
+   ]
+  },
+  {
+   "id": "flow.music-lights",
+   "title": "The lamp follows the music",
+   "summary": "./hub lights on, then the Pi's own sound drives the lamp and bars until Off, 15 quiet minutes, or another change wins.",
+   "steps": [
+    {
+     "node": "pi.hubctl",
+     "say": "./hub lights on (or the mailbox lights.on) saves On in data/lights.json"
+    },
+    {
+     "node": "pi.lights",
+     "say": "Within a second the engine sees it, saves each light's state through Home Assistant and fades in"
+    },
+    {
+     "node": "ext.smart-home.govee",
+     "say": "Ten times a second: palette colors per section, brightness and a gentle lift from the music"
+    },
+    {
+     "node": "ext.ha",
+     "say": "Every few seconds the engine checks the lights' state; a change made elsewhere makes it give way"
+    },
+    {
+     "node": "pi.server.control-api",
+     "say": "Off, quiet for 15 minutes, or a hub scene: the engine fades out and puts the lights back (not over a change made elsewhere)"
     }
    ]
   }
