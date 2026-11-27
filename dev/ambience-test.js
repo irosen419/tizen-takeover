@@ -345,7 +345,7 @@ async function main() {
     await key(page, 'ArrowUp');
     assert(await focused(page) === 'light:camera', 'Up: ' + await focused(page));
     await key(page, 'ArrowUp', 3);
-    assert(await focused(page) === 'look:warm-drift', 'Up to the presets (the last one): ' + await focused(page));
+    assert(await focused(page) === 'look:octane', 'Up to the presets (the first, none on): ' + await focused(page));
     await key(page, 'ArrowUp');
     assert(await focused(page) === 'scene:movie', 'Up to the scene focused last: ' + await focused(page));
     await key(page, 'ArrowLeft', 2);

@@ -698,6 +698,8 @@ async function main() {
   const lookById = (id) => LOCAL[id] || looksLib.BUILT_IN.find((l) => l.id === id);
   // Hand the rig's engine settings plus the preset the hub would send.
   const hubLook = (g, fields, def) => {
+    // The engine's first hub answer (no preset yet), as when it starts.
+    if (!g.started) { g.started = true; g.e.applyHub({ settings: Object.assign({}, g.settings), look: null, song: { bpm: 0 } }, 0); }
     Object.assign(g.settings, fields, { rev: g.settings.rev + 1 });
     if (fields.look) g.settings.lookAt = g.settings.rev;
     g.e.applyHub({ settings: Object.assign({}, g.settings), look: g.settings.look ? (def || lookById(g.settings.look)) : null, song: { bpm: 0 } }, 0);
@@ -833,6 +835,35 @@ async function main() {
     const ev = g.e.report().events.find((x) => x.type === 'look-changed');
     assert.ok(ev && ev.lookAt === g.settings.lookAt);
     assert.strictEqual(g.e.looking(), null);
+  });
+
+  await check('engine: after a restart a still preset is not painted over the lights; a moving one carries on', async () => {
+    const g = rig();
+    g.started = true;
+    Object.assign(g.settings, { look: 'octane', lookAt: 7, rev: 8 });
+    g.e.applyHub({ settings: Object.assign({}, g.settings), look: lookById('octane'), song: { bpm: 0 } }, 0);
+    await tick(g, 3000);
+    assert.strictEqual(g.sent.length, 0, 'nothing sent');
+    const w = rig();
+    w.started = true;
+    Object.assign(w.settings, { look: 'magenta-wave', lookAt: 7, rev: 8 });
+    w.e.applyHub({ settings: Object.assign({}, w.settings), look: lookById('magenta-wave'), song: { bpm: 0 } }, 0);
+    await tick(w, 2000);
+    assert.ok(!w.sent.some((x) => x.msg.cmd === 'turn' || x.msg.cmd === 'brightness'), 'no setup sent');
+    assert.ok(ptReals(w, 'lamp').length >= 5, 'the wave carries on');
+  });
+
+  await check('engine: a slow Home Assistant read of the old state right after a preset is not taken for a change', async () => {
+    const g = rig();
+    hubLook(g, { look: 'magenta-dusk' });
+    await tick(g, 1200);
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { brightness: 200 });   // still the old, brighter state
+    g.t.now += engineLib.WATCH_SETTLE_MS;
+    await g.e.watch();
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { brightness: 122 });   // now it shows 48%
+    assert.deepStrictEqual(await g.e.watch(), []);
+    assert.deepStrictEqual(await g.e.watch(), []);
+    assert.ok(g.e.looking(), 'the preset is still on');
   });
 
   await check('store: picking a preset turns music lights off (reason look), unknown ids refused; a scene or the engine ends it', async () => {

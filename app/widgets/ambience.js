@@ -1009,6 +1009,12 @@
     }));
   }
 
+  // Back up to the presets: the one on now, else the first.
+  function lookBack(lk) {
+    for (var i = 0; i < lk.length; i++) if (hasClass(lk[i], 'is-active')) return lk[i];
+    return lk[0] || null;
+  }
+
   /* ---------- keeping up ---------- */
 
   function signature() {
@@ -1154,14 +1160,14 @@
       if (from.getAttribute('data-light')) {
         at = rows.indexOf(from);
         if (dir === 'left' || dir === 'right') { changeLight(from.getAttribute('data-light'), dir === 'left' ? -1 : 1); return true; }
-        if (dir === 'up') return at > 0 ? rows[at - 1] : (lk[lk.length - 1] || cardBack() || undefined);
+        if (dir === 'up') return at > 0 ? rows[at - 1] : (lookBack(lk) || cardBack() || undefined);
         if (dir === 'down') return at < rows.length - 1 ? rows[at + 1] : (chips[0] || true);
       }
       if (from.getAttribute('data-mood')) {
         at = chips.indexOf(from);
         if (dir === 'left') return at > 0 ? chips[at - 1] : true;
         if (dir === 'right') return at < chips.length - 1 ? chips[at + 1] : true;
-        if (dir === 'up') return rows[rows.length - 1] || lk[lk.length - 1] || cardBack() || undefined;
+        if (dir === 'up') return rows[rows.length - 1] || lookBack(lk) || cardBack() || undefined;
         if (dir === 'down') return true;
       }
       // From the Full screen button: Down goes to the scenes.

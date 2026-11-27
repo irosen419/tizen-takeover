@@ -164,6 +164,7 @@ function createEngine(o) {
   let lookDef = null;                    // the preset the hub says is on (checked by the hub)
   let looking = null;                    // a preset being shown: { def, at, start, step, last, base, bright }
   let paintedAt = -1;                    // settings.lookAt of the preset last painted
+  let firstReply = true;                 // the hub's first answer since the engine started
   let restoringNow = false;              // a put-back (or a preset after music) is on its way
   const cloud = o.cloud || { configured: false, fire: async () => false, snapshotNames: async () => ({}) };
   let snapshotNames = {};                // per light: the Govee app snapshots it has (names)
@@ -212,9 +213,20 @@ function createEngine(o) {
       return;
     }
     if (!session.isOn()) {
+      if (firstReply && lookDef && !restoringNow) {
+        // Just restarted (a deploy, a reboot): the lights still show the
+        // preset, or something set since. Don't paint over them; a moving
+        // preset just carries on moving.
+        firstReply = false;
+        paintedAt = s.lookAt;
+        if (lookDef.motion !== 'still') { paintLook(true); log('music lights: preset carried on after a restart'); }
+        return;
+      }
+      firstReply = false;
       if (lookDef && s.lookAt !== paintedAt && !restoringNow) paintLook();
       return;
     }
+    firstReply = false;
     if (s.offReason === 'look' && lookDef) {
       // A preset picked while music played: stop at once and paint it.
       log('music lights: off (a preset was picked)');
@@ -369,7 +381,7 @@ function createEngine(o) {
     stopCapture();
     restoringNow = true;
     restoring = snapping.then(() => {
-      if (withLook && lookDef && settings.look === lookDef.id) {
+      if (withLook && lookDef && settings.look === lookDef.id && !session.isOn()) {
         paintLook();
         log('music lights: preset painted again');
         return 0;
@@ -393,25 +405,34 @@ function createEngine(o) {
 
   // Paint the preset the hub says is on: power, brightness, then the section
   // colors (twice, a moment apart). A drifting one keeps updating in lookTick.
-  function paintLook() {
-    if (!lookDef || !keys.length) return;
+  // resume: only start moving again (after a restart), sending no setup.
+  function paintLook(resume) {
+    if (!lookDef || !keys.length || session.isOn()) return;
     gen++;
     paintedAt = settings.lookAt;
     const first = looksLib.resolve(lookDef, 0);
+    const want = {};
+    keys.forEach((k) => { want[k] = first[k].brightness; });
+    looking = { def: lookDef, at: settings.lookAt, start: now(), step: resume ? LOOK_SEND_MS.length : 0, last: {}, base: {}, bright: {}, want: want, watchFrom: now() + WATCH_SETTLE_MS };
+    if (resume) return;
+    const mine = looking;
     keys.forEach((k) => {
       o.send(k, govee.turn(true));
       if (first[k].snapshot) {
         // The Govee app's own scene, through the cloud (rate-limited there).
         const b = first[k].brightness;
         cloud.fire(k, first[k].snapshot).then((ok) => {
-          if (ok && b && looking && looking.at === paintedAt) o.send(k, govee.brightness(b));
+          if (looking !== mine) return;
+          if (ok && b) o.send(k, govee.brightness(b));
+          // The cloud can be slow: notice outside changes only once it has landed.
+          mine.watchFrom = now() + WATCH_SETTLE_MS;
+          delete mine.base[k];
         });
         return;
       }
       o.send(k, govee.colorwc(first[k].colors[0]));   // leaves any scene or music mode
       o.send(k, govee.brightness(first[k].brightness));
     });
-    looking = { def: lookDef, at: settings.lookAt, start: now(), step: 0, last: {}, base: {}, bright: {}, watchFrom: now() + WATCH_SETTLE_MS };
   }
 
   function stopLook() {
@@ -457,7 +478,16 @@ function createEngine(o) {
         if (!ha.has(k)) continue;
         const st = await ha.snapshot(k);
         if (!st || !st.available) continue;
-        if (mine.base[k] === undefined) { mine.base[k] = ha.fingerprint(st); mine.bright[k] = st.brightness; continue; }
+        if (mine.base[k] === undefined) {
+          // Noted only once Home Assistant shows the preset (on, at its
+          // brightness), so a late read of the old state is not a change.
+          const w = mine.want[k];
+          if (st.on && (!w || st.brightness === null || Math.abs(st.brightness - Math.round(w * 2.55)) <= haLib.BRIGHTNESS_MARGIN)) {
+            mine.base[k] = ha.fingerprint(st);
+            mine.bright[k] = st.brightness;
+          }
+          continue;
+        }
         if (mine.base[k] !== ha.fingerprint(st) || haLib.brightnessMoved(mine.bright[k], st.brightness)) changed.push(k);
       }
     } finally {
