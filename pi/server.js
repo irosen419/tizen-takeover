@@ -172,6 +172,9 @@ const tvremote = require('./tvremote');
 const tvlaunch = require('./tvlaunch');
 const ambience = require('./ambience');
 const musicLightsLib = require('./lights/store');
+const lightsHaLib = require('./lights/ha');
+const looksLib = require('./lights/looks');
+const goveeLib = require('./lights/govee');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 const echo = require('./echo');
@@ -617,9 +620,16 @@ function freshState() {
       allsounds: { rev: 0, data: allsounds.notsetData() },
       ambience: { rev: 0, data: ambience.notsetData('noha') },
       prefs: { rev: 0, data: prefs.emptyData() },
-      guestall: { rev: 0, data: prefs.guestEmpty() }
+      guestall: { rev: 0, data: prefs.guestEmpty() },
+      lightlooks: { rev: 0, data: emptyLooksData() }
     }
   };
+}
+
+// The lamp and bars presets for the screens (lights/store.js screenData);
+// the server fills it in as it starts.
+function emptyLooksData() {
+  return { looks: [], on: '', music: false };
 }
 
 // Loads state.json, or starts a new one. A broken file is moved aside.
@@ -679,6 +689,9 @@ function loadState(dir, log) {
     // "All screens" choice (prefs.js): empty in older files.
     st.resources.prefs = prefs.cleanResource(st.resources.prefs);
     st.resources.guestall = prefs.guestClean(st.resources.guestall);
+    // The lamp and bars presets: rebuilt from lights/store.js as the server starts.
+    const ll = st.resources.lightlooks;
+    st.resources.lightlooks = { rev: isObj(ll) && Number.isInteger(ll.rev) && ll.rev >= 0 ? ll.rev : 0, data: emptyLooksData() };
     return st;
   } catch (e) {
     const aside = path.join(dir, 'state.bad-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json');
@@ -938,15 +951,63 @@ function start(options) {
 
   /* --- Music lights (lights/store.js): the engine on the Pi follows these --- */
 
-  const musicLights = musicLightsLib.createStore({
+  let looksSig = '';
+  function publishLooks() {
+    if (!musicLights) return;
+    const d = musicLights.screenData();
+    const sig = JSON.stringify(d);
+    if (sig === looksSig) return;
+    looksSig = sig;
+    try { changeResource('lightlooks', d); } catch (e) { /* changeResource already logged it */ }
+  }
+  // Reads the lamp and bars from Home Assistant, for "save what's on now".
+  const lightsHa = opt.lightsHa || lightsHaLib.createHa(lightsHaLib.configFromEnv(opt.ambienceEnv || {}, goveeLib.LIGHTS));
+  let musicLights = null;
+  musicLights = musicLightsLib.createStore({
     dataDir: dataDir,
     log: log,
+    onChange: () => publishLooks(),
     // The song's own tempo (vibe.js), only while Spotify plays.
     songBpm: () => {
       const d = state.resources.nowplaying.data;
       return d && d.state === 'playing' && d.vibe && d.vibe.tempo > 0 ? d.vibe.tempo : 0;
     }
   });
+  // At start the presets go into the state quietly (no new rev): screens
+  // read them with everything else; later changes are pushed as usual.
+  (function () {
+    const d = musicLights.screenData();
+    looksSig = JSON.stringify(d);
+    state.resources.lightlooks = { rev: state.resources.lightlooks ? state.resources.lightlooks.rev : 0, data: d };
+  }());
+
+  // POST /api/lights/looks: { save: "Name" } stores what the lamp and bars
+  // show now (one color and brightness each: all Govee reports), { add:
+  // {preset} } stores a whole preset (looks.js shape, e.g. Govee snapshots),
+  // or { forget: "my-id" }. GET lists them.
+  function looksCall(method, body) {
+    if (method === 'GET') return Promise.resolve({ status: 200, body: Object.assign({ ok: true }, musicLights.status()) });
+    const b = isObj(body) ? body : {};
+    const keys = Object.keys(b);
+    if (keys.length !== 1 || ['save', 'add', 'forget'].indexOf(keys[0]) < 0) return Promise.resolve({ status: 400, body: { ok: false, error: 'send { "save": "Name" }, { "add": {preset} } or { "forget": "id" }' } });
+    if (b.add !== undefined) {
+      return Promise.resolve().then(() => {
+        const look = looksLib.check(Object.assign({}, isObj(b.add) ? b.add : {}, { saved: true }), 'the preset');
+        return { status: 200, body: Object.assign({ ok: true, saved: look }, musicLights.saveLook(look)), note: 'added' };
+      });
+    }
+    if (b.forget !== undefined) {
+      return Promise.resolve().then(() => ({ status: 200, body: Object.assign({ ok: true, forgot: String(b.forget) }, musicLights.forgetLook(String(b.forget))), note: 'forgot' }));
+    }
+    if (!lightsHa.configured || !lightsHa.has('lamp') || !lightsHa.has('bars')) {
+      return Promise.resolve({ status: 400, body: { ok: false, error: 'saving needs Home Assistant and both lights set (HA_TOKEN, LIGHTS_HA_LAMP, LIGHTS_HA_BARS in pi/.env)' } });
+    }
+    return Promise.all([lightsHa.snapshot('lamp'), lightsHa.snapshot('bars')]).then((st) => {
+      const look = looksLib.fromStates(b.save, { lamp: st[0], bars: st[1] });
+      const r = musicLights.saveLook(look);
+      return { status: 200, body: Object.assign({ ok: true, saved: look }, r), note: 'saved' };
+    });
+  }
 
   /* --- replies --- */
 
@@ -1424,7 +1485,7 @@ function start(options) {
   const musicEntities = ['LIGHTS_HA_LAMP', 'LIGHTS_HA_BARS', 'SOUNDLIGHTS_HA_LAMP']
     .map((k) => String((opt.ambienceEnv || {})[k] || '').trim()).filter((x) => x);
   function giveWayFor(kind, id) {
-    if (!musicLights.settings().on) return Promise.resolve(false);
+    if (!musicLights.settings().on && !musicLights.settings().look) return Promise.resolve(false);
     let cfg = null;
     try { cfg = lights.getConfig(); } catch (e) { cfg = null; }
     if (!cfg) return Promise.resolve(false);
@@ -1811,7 +1872,8 @@ function start(options) {
     '/api/guest-pin/reset': ['POST'],
     '/api/photos': ['GET'],
     '/api/lights': ['GET', 'POST'],
-    '/api/lights/engine': ['POST']
+    '/api/lights/engine': ['POST'],
+    '/api/lights/looks': ['GET', 'POST']
   };
 
   function statusBody() {
@@ -1958,6 +2020,10 @@ function start(options) {
           return reply(200, Object.assign({ ok: true }, st), st.settings.on ? 'on' : 'off');
         }
         if (route === '/api/lights/engine') return reply(200, musicLights.engineReport(body), 'engine');
+        if (route === '/api/lights/looks') {
+          looksCall(method, body).then((a) => reply(a.status, a.body, a.note), failed);
+          return undefined;
+        }
         if (route.indexOf('/api/ambience') === 0) {
           ambienceCall(method, route.slice(4), body).then((a) => reply(a.status, a.body, a.note));
           return undefined;
@@ -2456,7 +2522,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2633,6 +2699,25 @@ function start(options) {
       });
       return undefined;
     }
+    if (route === '/lights/look') {
+      // A lamp and bars preset from the TV or phone: { id } ("" for none).
+      // Only ids the Pi knows; rate-limited like Ambience.
+      if (!lights.screenAllowed()) {
+        req.resume();
+        return sendJson(res, 429, { ok: false, error: 'slow down' }, cors);
+      }
+      readBody(req, res, (body) => {
+        try {
+          const id = isObj(body) && typeof body.id === 'string' ? body.id : null;
+          if (id === null) throw Object.assign(new Error('send { "id": "<preset id>" }'), { status: 400 });
+          musicLights.change({ look: id });
+          sendJson(res, 200, { ok: true, lightlooks: musicLights.screenData() }, cors);
+        } catch (e) {
+          sendJson(res, e && e.status ? e.status : 500, { ok: false, error: e && e.status ? e.message : 'the server had a problem' }, cors);
+        }
+      });
+      return undefined;
+    }
     if (route.indexOf('/ambience/') === 0) {
       // The TV holds no secret: it may only name ids from the saved
       // settings, and not too fast. Nothing about it is logged here (the
@@ -2684,7 +2769,7 @@ function start(options) {
   const SCREEN_ROUTES = {
     '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/budget/goal': 1, '/prefs': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
-    '/echo/run': 1, '/guest/pin': 1
+    '/echo/run': 1, '/guest/pin': 1, '/lights/look': 1
   };
 
   const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1, '/spanish/progress': 1, '/spanish/ops': 1 };

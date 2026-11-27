@@ -329,7 +329,7 @@ The Govee floor lamp and light bars follow whatever the Pi plays: your phone ove
 - `./hub lights palettes`: Warm drift (default), Lo-fi chill, Sunset, Dinner party, Rainforest, Aurora, Ocean drift, Octane. They live in `pi/lights/palettes.json`.
 - `./hub lights`: on or off and why, the dials, what the engine is doing.
 
-Mailbox: `lights.status`, `lights.on`, `lights.off`, `lights.set` `{ "palette": "sunset", "vibrancy": "high", "beat": "low", "preset": "party", "quiet": 15 }` (any of them; `"quiet": "never"`), `lights.palettes`.
+Mailbox: `lights.status`, `lights.on`, `lights.off`, `lights.set` `{ "palette": "sunset", "vibrancy": "high", "beat": "low", "preset": "party", "quiet": 15 }` (any of them; `"quiet": "never"`), `lights.palettes`. (`preset` here means the dials; the lamp and bars presets are below.)
 
 **Quiet.** Between songs it holds the palette and dims to a calm glow; music back fades it up within a second. After 15 quiet minutes (the `--quiet` setting) it turns itself off and puts the lights back, so nothing stays on overnight.
 
@@ -350,6 +350,25 @@ Mailbox: `lights.status`, `lights.on`, `lights.off`, `lights.set` `{ "palette": 
 The auto-pull timer restarts the unit when a file in `pi/lights/` changes (only when the unit runs the engine). Only that unit is ever restarted; never the audio services (that drops the speaker and the phone). If the speaker drops, the engine waits and tries listening again every 30 seconds.
 
 **The log** (`journalctl --user -u music-lights`) says states and counts only, never a song, an address or an entity id: `music lights: engine started (lamp, bars; Home Assistant on)`, `music lights: on`, `music lights: off`, `music lights: off after 15 quiet minutes`, `music lights: lights put back (2 of 2)`, `music lights: gave way (floor lamp: brightness)` (or `power or effect`, `color`), `music lights: listening stopped; trying again every 30 s`, `music lights: cannot reach the hub; keeping the last settings`. The hub's own log says `music lights: switched on`, `music lights: settings changed` and `music lights: off, the lights were set another way`; the engine's once-a-second report is never logged.
+
+### Lamp and bars presets (one tap sets both)
+
+In the Govee app the lamp and the bars are two devices. A **preset** sets both together: built-in ones in `pi/lights/looks.json` (Octane, Rainforest, Thunderstorm, Warm drift) and ones saved on the Pi in `data/lights-looks.json` (Chill, Chill moving). The engine paints them over the local network, so it must be running even when music lights are off.
+
+- Each light gets a brightness and one of: one `color`, a `gradient` (lamp bottom to top; bars up the left bar and down the right), `sections` (lamp 7, bars 12), a music `palette`, or a `snapshot`: the name of a Snapshot you saved in the Govee app (a real app scene that can move), fired through Govee's cloud with `GOVEE_API_KEY`. Govee allows about 10 cloud calls a minute per device, so the engine spaces them 6.5 s apart. Snapshot ids are read from Govee at run time; only the name is stored, and only on the Pi.
+- `"motion"`: `still` (default), `wave` (a slow sine wave rolls up the lamp, 17 s a wave, ten updates a second: Chill moving's lamp), or `drift` (the colors glide along and back over a minute). A snapshot light moves on its own either way.
+- `./hub lights presets` lists them; `./hub lights preset chill-moving` sets one (`off`: none). `./hub lights save "Pink"` saves what the lamp and bars show now (one color and brightness each, all that Govee reports); `./hub lights add chill.json` saves a whole preset; `./hub lights forget my-pink`; `./hub lights snapshots` lists the Govee app snapshots per light.
+- Mailbox: `lights.presets`, `lights.preset {"id": "octane"}`, `lights.save {"name": "Pink"}`, `lights.add {"look": {...}}`, `lights.forget {"id": "..."}`, `lights.snapshots`.
+- The TV's Ambience panel has a **Lamp and bars** row (OK sets one). Home Assistant (and so voice) can call the hub: `POST /api/lights` with `{"look": "octane"}` and the hub token, from a `rest_command`.
+- **Taking turns.** A preset stops music lights at once. Music lights on pause the preset; when they stop, the preset comes back (instead of putting back what Home Assistant saved). An Ambience scene with the lamp or bars, or a change in the Govee app or Home Assistant (power, effect, white, brightness), ends the preset.
+
+Example preset file (`./hub lights add chill-moving.json`):
+
+```json
+{ "id": "chill-moving", "name": "Chill moving", "es": "Chill en movimiento", "motion": "wave",
+  "lamp": { "brightness": 48, "gradient": [[255,19,200],[230,20,240],[180,30,255],[140,40,255],[100,50,255],[60,60,255],[40,70,255]] },
+  "bars": { "snapshot": "Chill purple and blue" } }
+```
 
 ## Spanish for your own text (server 0.12.0)
 

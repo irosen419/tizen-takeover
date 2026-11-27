@@ -67,6 +67,12 @@
  *   ./hub lights chill|groove|party  both dials at once (low/low, medium/medium, high/high)
  *   ./hub lights set --palette sunset --vibrancy high --beat low --quiet 15|never
  *   ./hub lights palettes            the palettes, with ids
+ *   ./hub lights presets             the lamp and bars presets, with ids
+ *   ./hub lights preset <id>|off     set the lamp and bars to a preset (music lights stop)
+ *   ./hub lights save "Name"         save what the lamp and bars show now as a preset
+ *   ./hub lights forget <id>         forget a saved preset
+ *   ./hub lights add <file.json|->   save a whole preset (pi/lights/looks.js shape; Govee snapshots too)
+ *   ./hub lights snapshots           the Snapshots saved in the Govee app, per light
  *   ./hub guest-pin status           is a Guest mode PIN set (never the PIN itself)
  *   ./hub guest-pin reset            forget it; the TV asks for a new PIN next time
  *   ./hub photos status              the photo album: how many photos, the last sync from the wall calendar
@@ -1420,7 +1426,63 @@ function lightsStatusLines(st) {
     out.push('Engine: not running' + (e.seenAgo !== null && e.seenAgo !== undefined ? ' (last heard ' + e.seenAgo + ' s ago)' : '') + '. On the Pi: systemctl --user status music-lights');
   }
   out.push(lightsQuietText(s.quietMin));
+  if (s.look) out.push('Preset: ' + lightsLookName(st, s.look) + (s.on ? ' (paused while music lights run; back when they stop).' : '.'));
   return out;
+}
+
+function lightsLookName(st, id) {
+  const l = ((st && st.looks) || []).find((x) => x.id === id);
+  return l ? l.name : id;
+}
+
+// ./hub lights presets and the mailbox's lights.presets.
+function lightsLookLines(st) {
+  const looks = (st && st.looks) || [];
+  if (!looks.length) return ['No presets.'];
+  return looks.map((l) => l.id + '  ' + l.name + (l.motion === 'drift' || l.motion === 'wave' ? '  (moves slowly)' : '') + (l.saved ? '  (saved)' : '') +
+    (st.settings.look === l.id ? '  (on' + (st.settings.on ? ', paused for music lights' : '') + ')' : ''));
+}
+
+// After picking a preset: "Magenta dusk on the lamp and light bars."
+function lightsLookText(st, id) {
+  const s = st.settings;
+  const e = st.engine || {};
+  if (!id) return 'No preset on; the lights stay as they are.';
+  let t = lightsLookName(st, id) + ' on the lamp and light bars' + (s.offReason === 'look' ? '; music lights stopped.' : '.');
+  if (!e.running) t += ' The music lights engine is not running, so nothing changes yet (systemctl --user status music-lights).';
+  return t;
+}
+
+// A preset file for ./hub lights add (or - for standard input).
+function readJsonArg(name) {
+  let text;
+  try {
+    text = name === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(name, 'utf8');
+  } catch (e) {
+    stop(name === '-' ? 'Could not read the preset from standard input.' : 'Could not read ' + name + ' (' + (e.code || e.message) + ').');
+  }
+  try { return JSON.parse(text); } catch (e) { return stop((name === '-' ? 'The input' : name) + ' is not valid JSON.'); }
+}
+
+// ./hub lights snapshots: the Govee app snapshots each light has.
+function lightsSnapshotLines(st) {
+  const e = st.engine || {};
+  if (!e.running) return ['The music lights engine is not running, so the Govee snapshots are not known (systemctl --user status music-lights).'];
+  const sn = e.snapshots || {};
+  const out = [];
+  ['lamp', 'bars'].forEach((k) => {
+    const list = sn[k] || [];
+    out.push((k === 'lamp' ? 'Floor lamp' : 'Light bars') + ': ' + (list.length ? list.map((n) => '"' + n + '"').join(', ') : 'no snapshots found (save one in the Govee app; GOVEE_API_KEY in pi/.env)'));
+  });
+  return out;
+}
+
+// After saving: "Saved "Pink" (lamp 48%, bars 48%); ./hub lights preset my-pink sets it."
+function lightsSavedText(r) {
+  const l = r.saved;
+  const part = (L) => (L.snapshot ? 'Govee snapshot "' + L.snapshot + '"' : (L.brightness + '%'));
+  const each = l.lamp.color && l.bars.color ? ', one color each' : '';
+  return 'Saved "' + l.name + '" (lamp ' + part(l.lamp) + ', bars ' + part(l.bars) + each + '); ./hub lights preset ' + l.id + ' sets it.';
 }
 
 // The one line after a change.
@@ -1448,10 +1510,35 @@ function lightsQuietArg(v) {
 async function lightsCommand(args) {
   const sub = (args[0] || 'status').toLowerCase();
   const use = 'Use one of: lights status, lights on, lights off, lights chill|groove|party, ' +
-    'lights set --palette <id> --vibrancy low|medium|high --beat low|medium|high --quiet <minutes>|never, lights palettes.';
+    'lights set --palette <id> --vibrancy low|medium|high --beat low|medium|high --quiet <minutes>|never, lights palettes, ' +
+    'lights presets, lights preset <id>|off, lights save "Name", lights add <file.json|->, lights forget <id>, lights snapshots.';
   const change = async (body) => say(lightsChangeText(await call('POST', '/api/lights', body), body));
   if (sub === 'status') { lightsStatusLines(await call('GET', '/api/lights')).forEach(say); return; }
   if (sub === 'palettes') { lightsPaletteLines(await call('GET', '/api/lights')).forEach(say); return; }
+  if (sub === 'presets') { lightsLookLines(await call('GET', '/api/lights')).forEach(say); return; }
+  if (sub === 'preset') {
+    const id = String(args[1] || '').toLowerCase();
+    if (!id) stop('Say which preset: ./hub lights preset magenta-dusk (./hub lights presets lists them), or off.');
+    const look = id === 'off' || id === 'none' ? '' : id;
+    return say(lightsLookText(await call('POST', '/api/lights', { look: look }), look));
+  }
+  if (sub === 'save') {
+    const name = args.slice(1).join(' ').trim();
+    if (!name) stop('Give it a name: ./hub lights save "Pink evening"');
+    return say(lightsSavedText(await call('POST', '/api/lights/looks', { save: name })));
+  }
+  if (sub === 'snapshots') { lightsSnapshotLines(await call('GET', '/api/lights')).forEach(say); return; }
+  if (sub === 'add') {
+    if (!args[1]) stop('Give a preset file: ./hub lights add chill.json (or - to read it from input).');
+    const look = readJsonArg(args[1]);
+    return say(lightsSavedText(await call('POST', '/api/lights/looks', { add: look })));
+  }
+  if (sub === 'forget') {
+    const id = String(args[1] || '').toLowerCase();
+    if (!id) stop('Say which saved preset: ./hub lights forget my-pink-evening');
+    await call('POST', '/api/lights/looks', { forget: id });
+    return say('Forgot the preset ' + id + '.');
+  }
   if (sub === 'on') return change({ on: true });
   if (sub === 'off') return change({ on: false });
   if (sub === 'chill' || sub === 'groove' || sub === 'party') return change({ preset: sub });
@@ -1549,6 +1636,8 @@ const HELP = [
   '  ./hub lights groove        both dials at once: chill (low), groove (medium), party (high)',
   '  ./hub lights set --palette sunset --vibrancy high --beat low --quiet 15   (--quiet never: stays on)',
   '  ./hub lights palettes      the palettes, with ids',
+  '  ./hub lights presets       the lamp and bars presets; ./hub lights preset magenta-dusk sets one (off: none)',
+  '  ./hub lights save "Pink"   save what the lamp and bars show now as a preset (./hub lights forget my-pink)',
   '  ./hub guest-pin status     is a Guest mode PIN set (the TV asks for it to turn Guest mode on or off)',
   '  ./hub guest-pin reset      forget the PIN; the TV asks you to create a new one next time',
   '  ./hub photos status        the photo album: how many photos, and the last sync from the wall calendar',
@@ -1932,6 +2021,10 @@ module.exports = {
   ambienceSetText: ambienceSetText,
   lightsStatusLines: lightsStatusLines,
   lightsChangeText: lightsChangeText,
+  lightsLookLines: lightsLookLines,
+  lightsLookText: lightsLookText,
+  lightsSavedText: lightsSavedText,
+  lightsSnapshotLines: lightsSnapshotLines,
   lightsPaletteLines: lightsPaletteLines
 };
 

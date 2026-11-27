@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "looks": [
+    { "id": "octane", "name": "Octane", "es": "Octane",
+      "lamp": { "brightness": 40, "gradient": [[0, 120, 20], [40, 255, 90], [90, 255, 0], [255, 150, 0]] },
+      "bars": { "brightness": 40, "sections": [[255, 150, 0], [90, 255, 0], [40, 255, 90], [0, 120, 20], [0, 120, 20], [0, 120, 20], [255, 150, 0], [90, 255, 0], [40, 255, 90], [0, 120, 20], [0, 120, 20], [0, 120, 20]] } },
+    { "id": "rainforest", "name": "Rainforest", "es": "Selva tropical",
+      "lamp": { "brightness": 40, "gradient": [[0, 90, 15], [20, 140, 40], [90, 200, 0], [220, 140, 10]] },
+      "bars": { "brightness": 40, "gradient": [[0, 90, 15], [20, 140, 40], [90, 200, 0], [20, 140, 40], [0, 90, 15]] } },
+    { "id": "thunderstorm", "name": "Thunderstorm", "es": "Tormenta",
+      "lamp": { "brightness": 30, "gradient": [[10, 20, 90], [20, 40, 140], [70, 90, 180]] },
+      "bars": { "brightness": 30, "gradient": [[20, 40, 140], [10, 20, 90], [40, 50, 110], [10, 20, 90], [20, 40, 140]] } },
+    { "id": "warm-drift", "name": "Warm drift", "es": "Deriva cálida", "motion": "drift",
+      "lamp": { "brightness": 45, "palette": "warm-drift" },
+      "bars": { "brightness": 45, "palette": "warm-drift" } }
+  ]
+}

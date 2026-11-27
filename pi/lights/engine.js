@@ -17,6 +17,10 @@
  *   a light set another way (Govee app, voice, a scene, the hub's own
  *   Ambience)   gives way at once: Off, that light is left as it was set,
  *   the others are put back
+ *   a paired preset (looks.js)   painted once (or drifting slowly) while
+ *   music lights are off; music lights On pause it, and when they stop the
+ *   preset is painted again instead of putting back what was saved. A light
+ *   then set another way ends the preset (the hub is told).
  *
  * Listening: pw-record on the default output's monitor (16 kHz mono, 20 ms
  * buffers so beats arrive on time rather than in 100 ms bursts). Only
@@ -47,6 +51,8 @@ const look = require('./look');
 const sessionLib = require('./session');
 const settingsLib = require('./settings');
 const haLib = require('./ha');
+const looksLib = require('./looks');
+const cloudLib = require('./govee-cloud');
 
 const ENV_FILE = path.join(__dirname, '..', '.env');
 const HUB_EVERY_MS = 1000;
@@ -55,6 +61,7 @@ const WATCH_SETTLE_MS = 5000;
 const COLOR_REPEATS = 3;               // a new color must hold for 3 checks (~9 s)
 const CAPTURE_RETRY_MS = 30000;
 const START_BRIGHTNESS = 55;            // the demo's device brightness
+const LOOK_SEND_MS = [250, 1000];       // a preset's colors go out twice (UDP can drop one)
 const CAPTURE_CMD = ['pw-record', '-P', '{ stream.capture.sink=true }', '--rate', String(look.RATE), '--channels', '1', '--format', 's16', '--latency', '20ms', '-'];
 
 function parseEnv(text) {
@@ -154,6 +161,12 @@ function createEngine(o) {
   let lastFrame = { state: 'off', gain: 0, rest: 1 };
   let watching = false;
   let skip = null;
+  let lookDef = null;                    // the preset the hub says is on (checked by the hub)
+  let looking = null;                    // a preset being shown: { def, at, start, step, last, base, bright }
+  let paintedAt = -1;                    // settings.lookAt of the preset last painted
+  let restoringNow = false;              // a put-back (or a preset after music) is on its way
+  const cloud = o.cloud || { configured: false, fire: async () => false, snapshotNames: async () => ({}) };
+  let snapshotNames = {};                // per light: the Govee app snapshots it has (names)
 
   // An off the engine decided itself (quiet, gave way) that the hub has not
   // confirmed yet: until it has, an "on" in the settings is stale.
@@ -172,6 +185,8 @@ function createEngine(o) {
       capture: captureState,
       lights: keys.slice(),
       ha: ha.configured,
+      look: looking ? looking.def.id : '',
+      snapshots: snapshotNames,
       events: events.slice()
     };
   }
@@ -182,19 +197,32 @@ function createEngine(o) {
     if (!reply || !reply.settings) return;
     events = events.slice(sentEvents || 0);
     const s = settingsLib.clean(reply.settings);
+    lookDef = s.look && reply.look && reply.look.id === s.look ? reply.look : null;
     const prev = settings;
     settings = s;
     lk.setSongBpm(reply.song && reply.song.bpm);
     if (s.palette !== prev.palette) lk.setPalette(pal());
     lk.setDials(s.vibrancy, s.beat);
     session.setQuietMin(s.quietMin);
+    if (!s.look && looking) stopLook();
     if (s.on) {
       if (offPending()) return;
       if (!session.isOn()) start();
       else if (session.state() === 'stopping') { session.on(now()); restoreKeys = keys.slice(); }
       return;
     }
-    if (!session.isOn()) return;
+    if (!session.isOn()) {
+      if (lookDef && s.lookAt !== paintedAt && !restoringNow) paintLook();
+      return;
+    }
+    if (s.offReason === 'look' && lookDef) {
+      // A preset picked while music played: stop at once and paint it.
+      log('music lights: off (a preset was picked)');
+      session.drop();
+      gen++;
+      finish([], true);
+      return;
+    }
     if (session.state() === 'stopping' && s.offReason !== 'gave-way') return;
     if (s.offReason === 'gave-way') {
       const hub = s.gaveWay.indexOf('hub') >= 0;
@@ -213,6 +241,7 @@ function createEngine(o) {
 
   function start() {
     if (!keys.length) { log('music lights: no light addresses set (GOVEE_LAMP_IP, GOVEE_BARS_IP)'); raise({ type: 'no-lights' }); return; }
+    stopLook();
     session.on(now());
     gen++;
     const myGen = gen;
@@ -290,7 +319,7 @@ function createEngine(o) {
 
   // No sound arriving (capture down or starting): keep time moving.
   function idle() {
-    if (!session.isOn()) return;
+    if (!session.isOn()) { lookTick(); return; }
     if (now() - lastBlockAt < 300) return;
     const silent = new Int16Array(look.BLOCK);
     for (let i = 0; i < 0.1 / look.BLOCK_S; i++) block(silent);
@@ -307,7 +336,7 @@ function createEngine(o) {
       raise({ type: 'quiet' });
       restoreKeys = keys.slice();
     }
-    if (r.events.indexOf('end') >= 0) { gen++; finish(r.restore ? restoreKeys : []); return; }
+    if (r.events.indexOf('end') >= 0) { gen++; finish(r.restore ? restoreKeys : [], true); return; }
     const cols = lk.render(r.gain, r.rest);
     const myGen = gen;
     keys.forEach((k) => {
@@ -335,10 +364,16 @@ function createEngine(o) {
   }
 
   // Stop sending and put these lights back (after the start's snapshots, if
-  // they are still coming).
-  function finish(putBack) {
+  // they are still coming). withLook: when a preset is on, paint it instead.
+  function finish(putBack, withLook) {
     stopCapture();
+    restoringNow = true;
     restoring = snapping.then(() => {
+      if (withLook && lookDef && settings.look === lookDef.id) {
+        paintLook();
+        log('music lights: preset painted again');
+        return 0;
+      }
       const list = putBack.filter((k) => saved[k]);
       const missing = putBack.filter((k) => !saved[k]);
       // Without a saved state (no Home Assistant) the light is switched off,
@@ -350,14 +385,97 @@ function createEngine(o) {
         log('music lights: lights put back (' + n + ' of ' + list.length + ')' + (missing.length ? ', ' + missing.length + ' switched off' : ''));
         return n;
       });
-    }).catch(() => 0);
+    }).catch(() => 0).then((n) => { restoringNow = false; return n; });
     return restoring;
+  }
+
+  /* ---------- paired presets ---------- */
+
+  // Paint the preset the hub says is on: power, brightness, then the section
+  // colors (twice, a moment apart). A drifting one keeps updating in lookTick.
+  function paintLook() {
+    if (!lookDef || !keys.length) return;
+    gen++;
+    paintedAt = settings.lookAt;
+    const first = looksLib.resolve(lookDef, 0);
+    keys.forEach((k) => {
+      o.send(k, govee.turn(true));
+      if (first[k].snapshot) {
+        // The Govee app's own scene, through the cloud (rate-limited there).
+        const b = first[k].brightness;
+        cloud.fire(k, first[k].snapshot).then((ok) => {
+          if (ok && b && looking && looking.at === paintedAt) o.send(k, govee.brightness(b));
+        });
+        return;
+      }
+      o.send(k, govee.colorwc(first[k].colors[0]));   // leaves any scene or music mode
+      o.send(k, govee.brightness(first[k].brightness));
+    });
+    looking = { def: lookDef, at: settings.lookAt, start: now(), step: 0, last: {}, base: {}, bright: {}, watchFrom: now() + WATCH_SETTLE_MS };
+  }
+
+  function stopLook() {
+    looking = null;
+  }
+
+  function sendLookColors(force) {
+    const r = looksLib.resolve(looking.def, now() - looking.start);
+    keys.forEach((k) => {
+      if (!r[k].colors) return;                      // a snapshot light
+      const sig = JSON.stringify(r[k].colors);
+      if (!force && looking.last[k] === sig) return;
+      looking.last[k] = sig;
+      govee.sectionMessages(r[k].colors).forEach((m) => o.send(k, m));
+    });
+  }
+
+  // Every 100 ms while music lights are off (the main loop's idle timer).
+  function lookTick() {
+    if (!looking) return;
+    const t = now() - looking.start;
+    if (looking.step < LOOK_SEND_MS.length) {
+      if (t >= LOOK_SEND_MS[looking.step]) { looking.step++; sendLookColors(true); }
+      return;
+    }
+    const every = looksLib.UPDATE_MS[looking.def.motion] || 0;
+    if (every && t - (looking.lastDrift || 0) >= every) {
+      looking.lastDrift = t;
+      sendLookColors(false);
+    }
+  }
+
+  // While a preset shows: was a light set another way (power, effect, white,
+  // brightness more than ~10%)? Then the preset has ended; tell the hub.
+  async function watchLook() {
+    if (!looking || watching || ha.watch === 'off' || now() < looking.watchFrom) return [];
+    watching = true;
+    const mine = looking;
+    const changed = [];
+    try {
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (!ha.has(k)) continue;
+        const st = await ha.snapshot(k);
+        if (!st || !st.available) continue;
+        if (mine.base[k] === undefined) { mine.base[k] = ha.fingerprint(st); mine.bright[k] = st.brightness; continue; }
+        if (mine.base[k] !== ha.fingerprint(st) || haLib.brightnessMoved(mine.bright[k], st.brightness)) changed.push(k);
+      }
+    } finally {
+      watching = false;
+    }
+    if (changed.length && looking === mine && !session.isOn()) {
+      log('music lights: preset ended (' + changed.map((k) => govee.LIGHTS[k].name.toLowerCase()).join(', ') + ' set another way)');
+      raise({ type: 'look-changed', lookAt: mine.at, lights: changed });
+      stopLook();
+    }
+    return changed;
   }
 
   // Every few seconds while On: was a light set another way? Armed only once
   // Home Assistant shows the engine's own start (on, brightness 55%), so a
   // late poll of the old state is never taken for a change.
   async function watch() {
+    if (!session.isOn() && looking) return watchLook();
     if (watching || ha.watch === 'off' || !session.isOn() || session.state() === 'stopping' || now() < watchFrom) return [];
     watching = true;
     const myGen = gen;
@@ -402,7 +520,7 @@ function createEngine(o) {
     gen++;
     log('music lights: gave way (' + changed.map((k) => govee.LIGHTS[k].name.toLowerCase() + ': ' + (why[k] || 'changed')).join(', ') + ')');
     raise({ type: 'gave-way', lights: changed });
-    return finish(keys.filter((k) => changed.indexOf(k) < 0));
+    return finish(keys.filter((k) => changed.indexOf(k) < 0), false);
   }
 
   // Stop now (shutting down): put everything back, no fade.
@@ -418,6 +536,9 @@ function createEngine(o) {
     report: report,
     applyHub: applyHub,
     pendingEvents: () => events.length,
+    lookTick: lookTick,
+    setSnapshotNames: (n) => { snapshotNames = n && typeof n === 'object' ? n : {}; },
+    looking: () => (looking ? { id: looking.def.id, at: looking.at, motion: looking.def.motion } : null),
     block: block,
     data: data,
     idle: idle,
@@ -491,6 +612,7 @@ function check(env) {
   lines.push('Home Assistant: ' + (haCfg.configured ? 'token set' : 'no HA_TOKEN: lights are switched off at the end instead of put back'));
   lines.push('Hub token: ' + (env.HUB_TOKEN ? 'set' : 'missing (run ./hub token)'));
   lines.push('Delay: ' + delayFromEnv(env) + ' ms; noticing changes: ' + haCfg.watch);
+  lines.push('Govee snapshots: ' + (String(env.GOVEE_API_KEY || '').trim() ? 'GOVEE_API_KEY set' : 'no GOVEE_API_KEY (presets that fire Govee app snapshots will not work)'));
   return lines;
 }
 
@@ -504,11 +626,14 @@ function main(argv) {
   sock.on('error', () => { /* a send to an absent light; nothing to do */ });
   const ha = haLib.createHa(haLib.configFromEnv(env, govee.LIGHTS));
   const capture = pwCapture(log);
+  const cloud = cloudLib.createCloud({ key: env.GOVEE_API_KEY, log: log });
   const engine = createEngine({
     addresses: addresses,
     send: (k, buf) => sock.send(buf, govee.PORT, addresses[k]),
-    ha: ha, log: log, capture: capture, delayMs: delayFromEnv(env)
+    ha: ha, log: log, capture: capture, delayMs: delayFromEnv(env), cloud: cloud
   });
+  // The Govee app snapshots each light has (names only), for ./hub lights snapshots.
+  const readSnapshots = () => { if (cloud.configured) cloud.snapshotNames(false).then((n) => engine.setSnapshotNames(n)).catch(() => {}); };
   log('music lights: engine started (' + (engine.keys.length ? engine.keys.join(', ') : 'no lights set') + '; Home Assistant ' + (ha.configured ? 'on' : 'off') + ')');
 
   let hubOk = null;
@@ -532,6 +657,7 @@ function main(argv) {
     setInterval(toHub, HUB_EVERY_MS),
     setInterval(() => engine.idle(), 100),
     setInterval(() => { engine.watch().catch(() => {}); }, WATCH_EVERY_MS),
+    setInterval(readSnapshots, cloudLib.LIST_EVERY_MS),
     setInterval(() => {
       if (engine.report().capture === 'down' && Date.now() - lastRetry > CAPTURE_RETRY_MS) {
         lastRetry = Date.now();
@@ -542,6 +668,7 @@ function main(argv) {
     }, 1000)
   ];
   toHub();
+  readSnapshots();
   let stopping = false;
   const stop = (code) => {
     if (stopping) return;

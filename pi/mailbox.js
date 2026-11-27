@@ -1049,6 +1049,50 @@ const COMMANDS = {
       return { message: lines(hubctl.lightsPaletteLines(r)), data: { palettes: r.palettes.map((p) => ({ id: p.id, name: p.name })) } };
     }
   },
+  // Lamp and bars presets (lights/looks.js): one name sets both lights.
+  'lights.presets': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/lights');
+      return { message: lines(hubctl.lightsLookLines(r)), data: { looks: r.looks.map((l) => ({ id: l.id, name: l.name, motion: l.motion, saved: l.saved })), on: r.settings.look } };
+    }
+  },
+  'lights.preset': {
+    args: { id: [V.text(40), true] },
+    run: async (a, ctx) => {
+      const look = a.id === 'off' || a.id === 'none' ? '' : a.id;
+      const r = await ctx.call('POST', '/api/lights', { look: look });
+      return { message: hubctl.lightsLookText(r, look), data: { settings: r.settings } };
+    }
+  },
+  'lights.save': {
+    args: { name: [V.text(32), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/lights/looks', { save: a.name });
+      return { message: hubctl.lightsSavedText(r), data: { saved: r.saved } };
+    }
+  },
+  'lights.add': {
+    args: { look: [V.object(), true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/lights/looks', { add: a.look });
+      return { message: hubctl.lightsSavedText(r), data: { saved: r.saved } };
+    }
+  },
+  'lights.snapshots': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/lights');
+      return { message: lines(hubctl.lightsSnapshotLines(r)), data: { snapshots: (r.engine && r.engine.snapshots) || {} } };
+    }
+  },
+  'lights.forget': {
+    args: { id: [V.text(40), true] },
+    run: async (a, ctx) => {
+      await ctx.call('POST', '/api/lights/looks', { forget: a.id });
+      return { message: 'Forgot the preset ' + a.id + '.', data: { forgot: a.id } };
+    }
+  },
   // Recent log lines. Always scrubbed on the Pi (addresses and names
   // replaced), so no raw log text reaches the bucket.
   // Spanish translations (translate.js): counts, tokens and estimated cost only, never the texts.
