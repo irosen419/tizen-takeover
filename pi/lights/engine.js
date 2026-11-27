@@ -52,6 +52,7 @@ const ENV_FILE = path.join(__dirname, '..', '.env');
 const HUB_EVERY_MS = 1000;
 const WATCH_EVERY_MS = 3000;
 const WATCH_SETTLE_MS = 5000;
+const COLOR_REPEATS = 3;               // a new color must hold for 3 checks (~9 s)
 const CAPTURE_RETRY_MS = 30000;
 const START_BRIGHTNESS = 55;            // the demo's device brightness
 const CAPTURE_CMD = ['pw-record', '-P', '{ stream.capture.sink=true }', '--rate', String(look.RATE), '--channels', '1', '--format', 's16', '--latency', '20ms', '-'];
@@ -133,6 +134,9 @@ function createEngine(o) {
   const lk = look.createLook({ palette: pal(), vibrancy: settings.vibrancy, beat: settings.beat });
   let saved = {};
   let baseline = {};
+  let armColor = {};
+  let colorHold = {};
+  const why = {};
   let sentColors = {};                   // per light: colors sent lately (the color check)
   let watchFrom = 0;
   let restoreKeys = keys.slice();
@@ -213,6 +217,8 @@ function createEngine(o) {
     const myGen = gen;
     saved = {};
     baseline = {};
+    armColor = {};
+    colorHold = {};
     sentColors = {};
     keys.forEach((k) => remember(k, [[47, 181, 163]]));
     lastSent = {};
@@ -361,11 +367,21 @@ function createEngine(o) {
         const st = await ha.snapshot(k);
         if (!st || !st.available) continue;              // a light dropping off for a moment is not a change
         if (baseline[k] === undefined) {
-          if (looksStarted(st)) baseline[k] = ha.fingerprint(st);
+          if (looksStarted(st)) { baseline[k] = ha.fingerprint(st); armColor[k] = st.rgb ? [st.rgb] : []; }
           continue;
         }
-        if (baseline[k] !== ha.fingerprint(st)) changed.push(k);
-        else if (ha.watch === 'full' && st.colorMode !== 'color_temp' && !haLib.colorIsOurs(st.rgb, sentColors[k])) changed.push(k);
+        if (baseline[k] !== ha.fingerprint(st)) { changed.push(k); why[k] = 'power, brightness or effect'; continue; }
+        // A color alone counts only when it is none the engine sent, not the
+        // one Home Assistant showed at the start (a stale read-back), and it
+        // reads the same on COLOR_REPEATS checks in a row: while the engine
+        // draws, the read-back keeps moving.
+        const odd = ha.watch === 'full' && st.colorMode !== 'color_temp' && Array.isArray(st.rgb) &&
+          !haLib.colorIsOurs(st.rgb, sentColors[k]) && !haLib.colorIsOurs(st.rgb, armColor[k]);
+        const sig = odd ? st.rgb.map((v) => Math.round(v)).join(',') : '';
+        if (!odd) { colorHold[k] = null; continue; }
+        if (colorHold[k] && colorHold[k].sig === sig) colorHold[k].n++;
+        else colorHold[k] = { sig: sig, n: 1 };
+        if (colorHold[k].n >= COLOR_REPEATS) { changed.push(k); why[k] = 'color'; }
       }
     } finally {
       watching = false;
@@ -381,7 +397,7 @@ function createEngine(o) {
   function giveWay(changed) {
     session.drop();
     gen++;
-    log('music lights: gave way (' + changed.map((k) => govee.LIGHTS[k].name.toLowerCase()).join(', ') + ' set another way)');
+    log('music lights: gave way (' + changed.map((k) => govee.LIGHTS[k].name.toLowerCase() + ': ' + (why[k] || 'changed')).join(', ') + ')');
     raise({ type: 'gave-way', lights: changed });
     return finish(keys.filter((k) => changed.indexOf(k) < 0));
   }
