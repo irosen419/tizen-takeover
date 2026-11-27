@@ -10,13 +10,15 @@
  *
  * Noticing a change: after music lights have started and a few seconds have
  * passed (our own start commands settle), the light's state is noted. It is
- * read again every few seconds; a different power, brightness, effect or
- * white temperature means someone else set it, and so does a color the
- * engine never sent (Home Assistant reads back odd colors while sections
- * are drawn, so a color alone is checked against what was sent). Home
- * Assistant itself only learns of a Govee app change on its next poll of the
- * light, so that can take a little while. LIGHTS_WATCH=power compares power,
- * brightness and effect only (never the color); LIGHTS_WATCH=off turns noticing off.
+ * read again every few seconds; a different power, effect or white
+ * temperature, or a brightness more than about 10% off, means someone else
+ * set it. A color alone is NOT checked by default: Home Assistant's read-back
+ * of the color wanders while sections are drawn (and the engine would paint
+ * over an app color within 100 ms anyway), which froze the lamp twice.
+ * LIGHTS_WATCH=color adds the color check (a color the engine never sent,
+ * holding for 3 checks); power leaves out the white temperature; off turns
+ * noticing off. Home Assistant only learns of a Govee app change on its next
+ * poll of the light, so that can take a little while.
  *
  * Node 14 or newer, no npm packages.
  */
@@ -61,7 +63,7 @@ function configFromEnv(env, lights) {
     if (id && /^light\.[a-z0-9_]+$/.test(id)) entities[k] = id;
   });
   const w = String(e.LIGHTS_WATCH || '').trim().toLowerCase();
-  return { token: token, url: url, entities: entities, watch: w === 'off' || w === 'power' ? w : 'full', configured: !!token };
+  return { token: token, url: url, entities: entities, watch: w === 'off' || w === 'power' || w === 'color' ? w : 'full', configured: !!token };
 }
 
 // The parts of a state that matter, from GET /api/states/<id>.
@@ -84,10 +86,21 @@ function readState(st) {
 // checked on its own (the engine's colorIsOurs), because while the engine
 // draws sections Home Assistant reads back odd colors such as [6, 0, 0]
 // (seen on the lamp 2026-11-27): only a color the engine never sent counts.
+// Brightness is left out: Home Assistant's read-back of it drifts a few
+// steps while the engine draws, so the engine compares it with a margin
+// (brightnessMoved).
 function fingerprint(s, watch) {
   if (!s) return '';
-  if (watch === 'power') return JSON.stringify([s.on, s.brightness, s.effect]);
-  return JSON.stringify([s.on, s.brightness, s.effect, s.colorMode === 'color_temp' ? s.kelvin : null]);
+  if (watch === 'power') return JSON.stringify([s.on, s.effect]);
+  // full and color
+  return JSON.stringify([s.on, s.effect, s.colorMode === 'color_temp' ? s.kelvin : null]);
+}
+
+// Did the brightness really change (more than about 10%)?
+const BRIGHTNESS_MARGIN = 26;
+function brightnessMoved(a, b) {
+  if (a === null || a === undefined || b === null || b === undefined) return false;
+  return Math.abs(a - b) > BRIGHTNESS_MARGIN;
 }
 
 // Is this color (from Home Assistant) one of ours: dim, or the same hue
@@ -140,6 +153,8 @@ module.exports = {
   configFromEnv: configFromEnv,
   readState: readState,
   fingerprint: fingerprint,
+  brightnessMoved: brightnessMoved,
+  BRIGHTNESS_MARGIN: BRIGHTNESS_MARGIN,
   colorIsOurs: colorIsOurs,
   restoreCall: restoreCall,
   createHa: createHa

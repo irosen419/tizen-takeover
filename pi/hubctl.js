@@ -1424,11 +1424,13 @@ function lightsStatusLines(st) {
 }
 
 // The one line after a change.
-function lightsChangeText(st) {
+function lightsChangeText(st, body) {
   const s = st.settings;
   const e = st.engine || {};
   let t = 'Music lights ' + (s.on ? 'on' : 'off') + ' (' + lightsDialsText(st) + ').';
   if (s.on && !e.running) t += ' The engine is not running, so nothing moves yet.';
+  // A dial change while off is saved, but nothing lights up: say so.
+  if (!s.on && body && body.on !== false) t += ' Saved; still off: ./hub lights on starts them.';
   return t;
 }
 
@@ -1447,7 +1449,7 @@ async function lightsCommand(args) {
   const sub = (args[0] || 'status').toLowerCase();
   const use = 'Use one of: lights status, lights on, lights off, lights chill|groove|party, ' +
     'lights set --palette <id> --vibrancy low|medium|high --beat low|medium|high --quiet <minutes>|never, lights palettes.';
-  const change = async (body) => say(lightsChangeText(await call('POST', '/api/lights', body)));
+  const change = async (body) => say(lightsChangeText(await call('POST', '/api/lights', body), body));
   if (sub === 'status') { lightsStatusLines(await call('GET', '/api/lights')).forEach(say); return; }
   if (sub === 'palettes') { lightsPaletteLines(await call('GET', '/api/lights')).forEach(say); return; }
   if (sub === 'on') return change({ on: true });

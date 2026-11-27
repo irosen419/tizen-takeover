@@ -508,7 +508,14 @@ async function main() {
     g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { rgb: [fb[4], fb[5], fb[6]].map((v) => Math.min(255, v * 2)) });
     assert.deepStrictEqual(await g.e.watch(), [], 'a color the engine sent (any brightness) is ours');
     assert.ok(g.e.session.isOn());
-    // Same brightness, a color the engine never sent: Ian picked it in the Govee app.
+    // Home Assistant's brightness read-back drifts a few steps: not a change.
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { brightness: 132 });
+    assert.deepStrictEqual(await g.e.watch(), [], 'brightness 140 read back as 132 is ours');
+    // By default a color alone is never a change (the read-back wanders).
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { rgb: [54, 114, 138] });
+    for (let i = 0; i < 4; i++) assert.deepStrictEqual(await g.e.watch(), [], 'a wandering color is not a change');
+    // With LIGHTS_WATCH=color: same brightness, a color the engine never sent: Ian picked it in the Govee app.
+    g.ha.watch = 'color';
     const mine = { on: true, available: true, brightness: 140, colorMode: 'rgb', rgb: [0, 0, 255], kelvin: null, effect: null };
     g.ha.states.lamp = mine;                              // Ian picks blue in the Govee app
     const before = g.sent.length;
@@ -607,6 +614,9 @@ async function main() {
     const c = haLib.configFromEnv({ HA_TOKEN: 't', SOUNDLIGHTS_HA_LAMP: 'light.lamp_1', LIGHTS_HA_BARS: 'not an id' }, govee.LIGHTS);
     assert.deepStrictEqual(c.entities, { lamp: 'light.lamp_1' });
     assert.strictEqual(haLib.configFromEnv({ LIGHTS_WATCH: 'power' }, govee.LIGHTS).watch, 'power');
+    assert.strictEqual(haLib.configFromEnv({ LIGHTS_WATCH: 'color' }, govee.LIGHTS).watch, 'color');
+    assert.strictEqual(haLib.brightnessMoved(140, 132), false, 'read-back drift');
+    assert.strictEqual(haLib.brightnessMoved(140, 60), true, 'dimmed in the app');
     const a = haLib.readState({ state: 'on', attributes: { rgb_color: [1, 2, 3], brightness: 9, color_mode: 'rgb' } });
     const b = Object.assign({}, a, { rgb: [9, 9, 9] });
     assert.strictEqual(haLib.fingerprint(a, 'power'), haLib.fingerprint(b, 'power'));
@@ -725,7 +735,9 @@ async function main() {
       'Turns itself off after 15 quiet minutes and puts the lights back.'
     ]);
     const off = await api('POST', '/api/lights', { on: false });
-    assert.strictEqual(hubctl.lightsChangeText(off), 'Music lights off (Warm drift, Groove: Vibrancy medium, Beat medium).');
+    assert.strictEqual(hubctl.lightsChangeText(off, { on: false }), 'Music lights off (Warm drift, Groove: Vibrancy medium, Beat medium).');
+    assert.strictEqual(hubctl.lightsChangeText(await api('POST', '/api/lights', { preset: 'groove' }), { preset: 'groove' }),
+      'Music lights off (Warm drift, Groove: Vibrancy medium, Beat medium). Saved; still off: ./hub lights on starts them.');
     await api('POST', '/api/lights', { on: true });
     await api('POST', '/api/lights/engine', { events: [{ type: 'gave-way', lights: ['lamp'] }] });
     assert.strictEqual(hubctl.lightsStatusLines(await api('GET', '/api/lights'))[0],
@@ -740,7 +752,7 @@ async function main() {
       return mailbox.COMMANDS[env.cmd].run(env.args, { call: async (m, r, b) => { const x = await h.api(m, r, b); if (!x.body.ok) throw new Error(x.body.error); return x.body; } });
     };
     const r = await mail('lights.set', { preset: 'party', quiet: 'never', palette: 'aurora' });
-    assert.match(r.message, /^Music lights off \(Aurora, Party: Vibrancy high, Beat high\)\.$/);
+    assert.match(r.message, /^Music lights off \(Aurora, Party: Vibrancy high, Beat high\)\. Saved; still off/);
     assert.strictEqual(r.data.settings.quietMin, 0);
     assert.match((await mail('lights.on')).message, /^Music lights on/);
     assert.match((await mail('lights.status')).message, /Never turns itself off\./);
