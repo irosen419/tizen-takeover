@@ -104,8 +104,8 @@ function checkChange(body) {
     out.quietMin = q;
   }
   if (body.look !== undefined) {
-    const l = body.look === null ? '' : body.look;
-    if (typeof l !== 'string' || (l !== '' && !LOOK_ID.test(l))) throw bad('look must be a preset id (./hub lights presets), or "" for none');
+    const l = body.look === null || body.look === 'off' || body.look === 'none' ? '' : body.look;
+    if (typeof l !== 'string' || (l !== '' && !LOOK_ID.test(l))) throw bad('look must be a preset id (./hub lights presets), or "off" for none');
     out.look = l;
   }
   if (!Object.keys(out).length) throw bad('nothing to change');

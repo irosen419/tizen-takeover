@@ -872,6 +872,8 @@ async function main() {
     const r = st.change({ look: 'octane' });
     assert.deepStrictEqual([r.settings.on, r.settings.offReason, r.settings.look, r.settings.lookAt], [false, 'look', 'octane', r.settings.rev]);
     assert.throws(() => st.change({ look: 'nope' }), /no preset "nope"/);
+    assert.deepStrictEqual(settingsLib.checkChange({ look: 'off' }), { look: '' }, 'Home Assistant sends "off"');
+    assert.deepStrictEqual(settingsLib.checkChange({ look: 'none' }), { look: '' });
     assert.strictEqual(st.engineReport({}).look.id, 'octane');
     st.change({ on: true });
     assert.strictEqual(st.settings().look, 'octane', 'music on pauses the preset, it is kept');
