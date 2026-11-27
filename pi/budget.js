@@ -340,8 +340,8 @@ const CHECK = {
   // label, an amount, a day (or none) and the shop text a charge must hold
   // (or none), and its state: upcoming (counted before card day), later (on
   // or after card day), overdue (the day passed with no charge) or matched
-  // (the charge is in: matchedDate, matchedAmount, matchedMerchant say
-  // which, and it stays out of the daily goal and streak).
+  // (the charge is in: matchedDate and matchedAmount say when and how
+  // much, and it stays out of the daily goal and streak).
   planned: (s) => {
     const out = {};
     F.put(out, 'cardDay', F.dateOf(s, 'cardDay', '', false));
@@ -355,7 +355,6 @@ const CHECK = {
       if (it.state === 'matched') {
         F.put(it, 'matchedDate', F.dateOf(e, 'matchedDate', where, false));
         F.put(it, 'matchedAmount', amountOf(e, 'matchedAmount', where, false));
-        F.put(it, 'matchedMerchant', F.textOf(e, 'matchedMerchant', 40, where, false));
       }
       return it;
     });

@@ -102,6 +102,7 @@
 
 .bp-label-big { margin-top: 0.3rem; font-size: 2rem; line-height: 1.35; color: var(--text); word-wrap: break-word; }
 .bp-note { margin: 0.2rem 0 0.4rem; color: var(--bu-ok); }
+.bp-shopnote { margin: -0.2rem 0 0.2rem; }
 
 /* Save, Remove, Cancel: side by side, wrapping when a language runs long. */
 .bp-btns { margin: 0.5rem -0.3rem 0; font-size: 0; }

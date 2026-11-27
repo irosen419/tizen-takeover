@@ -64,7 +64,7 @@ function fakeBudgetApp(env) {
     { id: 'a0000001', label: 'Gift for Sam', amount: 40, date: day(-2), match: null, state: 'overdue' },
     { id: 'a0000002', label: 'Concert tickets', amount: 85, date: day(2), match: null, state: 'upcoming' },
     { id: 'a0000003', label: 'Winter boots', amount: 120, date: day(6), match: 'zappos', state: 'upcoming' },
-    { id: 'a0000004', label: 'Desk lamp', amount: 35, date: day(-4), match: null, state: 'matched', matchedDate: day(-3), matchedAmount: 34.5, matchedMerchant: 'Lamp Shop' },
+    { id: 'a0000004', label: 'Desk lamp', amount: 35, date: day(-4), match: 'Lamp Shop', state: 'matched', matchedDate: day(-3), matchedAmount: 34.5 },
     { id: 'a0000005', label: 'Sofa', amount: 900, date: day(20), match: null, state: 'later' },
     { id: 'a0000006', label: 'Haircut', amount: 30, date: null, match: null, state: 'upcoming' }
   ], next: 7 };
@@ -78,7 +78,7 @@ function fakeBudgetApp(env) {
       if (app.refuse) return send(400, { error: 'that date is too far off' });
       const m = /^\/api\/planned(?:\/([^/]+))?(\/unmatch)?$/.exec(req.url);
       let code = 200;
-      const plain = (i) => { const o = Object.assign({}, i, { state: 'upcoming' }); delete o.matchedDate; delete o.matchedAmount; delete o.matchedMerchant; return o; };
+      const plain = (i) => { const o = Object.assign({}, i, { state: 'upcoming' }); delete o.matchedDate; delete o.matchedAmount; return o; };
       if (req.method === 'POST' && m[2]) app.items = app.items.map((i) => (i.id === m[1] ? plain(i) : i));
       else if (req.method === 'POST') { app.items.push(Object.assign({ id: 'a000000' + app.next++, date: null, match: null, state: 'upcoming' }, body)); code = 201; }
       else if (req.method === 'PUT') app.items = app.items.map((i) => (i.id === m[1] ? Object.assign({}, i, body) : i));

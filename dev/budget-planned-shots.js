@@ -29,7 +29,7 @@ const LAYOUT = [
 const PLANNED = { cardDay: '2026-12-01', items: [
   { id: 'b1000001', label: 'Winter boots', amount: 120, date: '2026-11-30', match: 'zappos', state: 'upcoming' },
   { id: 'b1000002', label: 'Birthday gift', amount: 40, date: '2026-11-22', match: null, state: 'overdue' },
-  { id: 'b1000003', label: 'Desk lamp', amount: 35, date: '2026-11-21', match: null, state: 'matched', matchedDate: '2026-11-23', matchedAmount: 34.5, matchedMerchant: 'Lamp Shop' },
+  { id: 'b1000003', label: 'Desk lamp', amount: 35, date: '2026-11-21', match: 'Lamp Shop', state: 'matched', matchedDate: '2026-11-23', matchedAmount: 34.5 },
   { id: 'b1000004', label: 'Concert tickets', amount: 85, date: '2026-12-05', match: null, state: 'later' },
   { id: 'b1000005', label: 'Haircut', amount: 30, date: null, match: null, state: 'upcoming' }
 ] };

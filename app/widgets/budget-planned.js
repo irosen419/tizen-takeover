@@ -20,7 +20,8 @@
  *
  * The form opens in place of the list (Back leaves it): What and Shop (text
  * boxes, OK types with the TV's keyboard; the shop is the words the charge
- * must hold, else the budget app matches on What), Amount (Left and Right
+ * must hold: the budget app matches only a buy that has one, at 85 to 150%
+ * of its amount), Amount (Left and Right
  * $1 a press, a held key $5 after 0.8 s and $25 after 2 s; OK types
  * digits), the Date (Left and Right a day, a held key a week; OK: no date),
  * then Save, Remove (a buy that is there already; OK twice) and Cancel side
@@ -66,8 +67,9 @@
     editHead: 'Planned buy',
     what: 'What',
     whatHint: 'e.g. Winter boots',
-    shop: 'Shop (optional)',
+    shop: 'Shop, to match the charge',
     shopHint: 'Words on the charge, e.g. Zappos',
+    shopNote: 'Without a shop it is never matched to a charge',
     amount: 'Amount',
     date: 'Date',
     arrowsHint: '◀ ▶ change · OK type',
@@ -189,10 +191,11 @@
     return { text: dateDay(it.date) + STRINGS.sep + (it.state === 'later' ? STRINGS.later : away(today, it.date)), tone: it.state === 'later' ? 'is-later' : '' };
   }
 
-  // "Bought Nov 23 at Lamp Shop · $34.50": the charge that matched it.
+  // "Bought Nov 23 at Lamp Shop · $34.50": when the charge came in and what
+  // it was, with the buy's own shop text (the budget app sends no merchant).
   function boughtText(it) {
     var on = it.matchedDate || it.date;
-    var t = it.matchedMerchant ? fill(STRINGS.boughtAt, { d: dateShort(on), shop: it.matchedMerchant }) : fill(STRINGS.bought, { d: dateShort(on) });
+    var t = it.match ? fill(STRINGS.boughtAt, { d: dateShort(on), shop: it.match }) : fill(STRINGS.bought, { d: dateShort(on) });
     return it.matchedAmount !== undefined ? t + STRINGS.sep + cash(it.matchedAmount) : t;
   }
 
@@ -257,6 +260,7 @@
       // What, and the shop: the inputs are the focusables (hub.js starts typing on OK).
       refs.focus.push(textBox(box, 'planned-what', STRINGS.what, STRINGS.whatHint, MAX_LABEL, 'label'));
       refs.focus.push(textBox(box, 'planned-shop', STRINGS.shop, STRINGS.shopHint, MAX_MATCH, 'match'));
+      el('div', 'bl-msub bp-shopnote', box, STRINGS.shopNote);
 
       // Amount: Left and Right step it; OK types digits into the box.
       var amt = el('div', 'bp-field bp-amt', box);

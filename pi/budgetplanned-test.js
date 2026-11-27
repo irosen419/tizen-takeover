@@ -133,14 +133,14 @@ async function main() {
     const items = [
       { id: 'p-1', label: 'Winter boots', amount: 120, date: day(5), match: null, state: 'upcoming', matchedDate: day(1) },
       { id: 'p-2', label: 'Gift', amount: 40, date: day(-3), state: 'overdue' },
-      { id: 'p-3', label: 'Desk lamp', amount: 35, date: day(-2), match: 'lamps', state: 'matched', matchedDate: day(-1), matchedAmount: 34.5, matchedMerchant: 'Lamp Shop' },
+      { id: 'p-3', label: 'Desk lamp', amount: 35, date: day(-2), match: 'lamps', state: 'matched', matchedDate: day(-1), matchedAmount: 34.5 },
       { id: 'p-4', label: 'Sofa', amount: 900, date: null, state: 'later' }
     ];
     const s = budget.checkSection('planned', { cardDay: day(4), items: items }, '2026-11-27T12:00:00Z');
     assert.strictEqual(s.cardDay, day(4));
     assert.strictEqual(s.items.length, 4);
     assert.ok(!('matchedDate' in s.items[0]), 'only a matched buy keeps matchedDate');
-    assert.deepStrictEqual([s.items[2].matchedAmount, s.items[2].matchedMerchant, s.items[2].match], [34.5, 'Lamp Shop', 'lamps']);
+    assert.deepStrictEqual([s.items[2].matchedAmount, s.items[2].match], [34.5, 'lamps']);
     assert.deepStrictEqual([s.items[3].date, s.items[3].match, s.items[1].match], [null, null, null]);
     assert.throws(() => budget.checkSection('planned', { items: [{ id: 'p-1', label: 'A', amount: 1, date: day(1), state: 'bought' }] }));
     const snap = JSON.parse(SAMPLE_TEXT);
