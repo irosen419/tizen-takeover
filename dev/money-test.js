@@ -190,8 +190,14 @@ async function blankTiles(page) {
   }, SEL);
 }
 
+// The whole text under sel, as Guest mode off would draw it: a blur (an
+// empty span in the page) counts as the amount it stands for.
 function text(page, sel) {
-  return page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s), (n) => n.textContent).join(' | '), sel);
+  return page.evaluate((s) => {
+    const full = (n) => n.nodeType === 3 ? n.nodeValue
+      : (n.className === 'guest-blur' ? window.HUB_GUEST.hidden(n) : Array.prototype.map.call(n.childNodes, full).join(''));
+    return Array.prototype.map.call(document.querySelectorAll(s), full).join(' | ');
+  }, sel);
 }
 
 function has(page, sel) { return page.evaluate((s) => !!document.querySelector(s), sel); }
@@ -211,7 +217,7 @@ function blurs(page, sel) {
     const out = [];
     document.querySelectorAll(s).forEach((n) => n.querySelectorAll('.guest-blur').forEach((b) => {
       const cs = getComputedStyle(b);
-      out.push({ t: b.textContent, ok: cs.webkitTextFillColor === 'rgba(0, 0, 0, 0)' && cs.textShadow !== 'none' });
+      out.push({ t: window.HUB_GUEST.hidden(b), ok: b.textContent === '' && cs.display === 'inline-block' && cs.boxShadow !== 'none' && b.offsetWidth > 0 });
     }));
     return out;
   }, sel);
@@ -898,8 +904,11 @@ async function main() {
       for (let i = 0; i < 16 && (await focusedKey(page)) !== want; i++) await press(page, dir || 'ArrowDown');
       assert((await focusedKey(page)) === want, 'could not reach ' + want + ', at ' + await focusedKey(page));
     };
-    const cutLabels = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-cut'), (n) =>
-      n.querySelector('.bl-clabel').textContent + ' · ' + n.querySelector('.bl-camount').textContent));
+    const cutLabels = async (page) => {
+      const labels = (await text(page, '#panel .bl-cut .bl-clabel')).split(' | ');
+      const amounts = (await text(page, '#panel .bl-cut .bl-camount')).split(' | ');
+      return labels.map((l, i) => l + ' · ' + amounts[i]);
+    };
     const destVals = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-drow'), (n) =>
       n.querySelector('.bl-dname').textContent + ': ' + n.querySelector('.bl-dval').textContent));
     const fills = (page) => page.evaluate(() => Array.prototype.map.call(document.querySelectorAll('#panel .bl-fill, #panel .bl-dfill'), (n) => n.style.transform));

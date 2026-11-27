@@ -2,7 +2,9 @@
  * Guest mode: blurs every dollar amount on the money tiles while guests are
  * over. The tiles, their layouts and their data stay as they are; only the
  * amounts ($42, −$12, +$8,111, $1,806, EUR 1,200) turn into a soft smudge.
- * Dates, counts, times, names and percentages stay readable.
+ * Every smudge is the same size and holds no digits, so a guest cannot read
+ * the amount or even count its digits. Dates, counts, times, names and
+ * percentages stay readable.
  *
  *   HUB_GUEST.on()           true while Guest mode is on
  *   HUB_GUEST.set(bool)      turns it on or off; remembered on this TV
@@ -12,10 +14,13 @@
  *                            draws outside a tile or panel can call it)
  *   HUB_GUEST.unmask(root)   takes the wraps off again
  *   HUB_GUEST.match(text)    the amounts found in text (tests)
+ *   HUB_GUEST.hidden(span)   the amount a blur stands for (tests)
  *
- * How: each amount in a text node is wrapped in <span class="guest-blur">
- * (style.css: transparent ink with a soft shadow of the text's own colour;
- * no filter, nothing animates). The roots are the tiles of the MONEY widgets
+ * How: each amount in a text node is swapped for an empty
+ * <span class="guest-blur"> (style.css: a fixed-size soft blob in the text's
+ * own colour; no filter, nothing animates). The amount leaves the page: the
+ * only copy is a property on the span (TEXT, not an attribute), used to put
+ * it back when Guest mode turns off. The roots are the tiles of the MONEY widgets
  * (.cell[data-widget]), the panel while one of them is open (hub.js sets
  * #panel's data-panel-widget) and the New charge banner (.bu-alert). One
  * MutationObserver re-masks whatever a widget draws again; its own wraps are
@@ -41,6 +46,7 @@
   var KEY = 'homeHub.guest.v1';
   var MONEY = ['awws', 'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'spending'];
   var CLS = 'guest-blur';
+  var TEXT = 'hubGuestText';   // the span's property holding the amount it replaced
 
   // What gets blurred. Each is a RegExp source; a sign right before an amount
   // goes with it (− is U+2212, the minus the money widgets draw).
@@ -136,7 +142,7 @@
         if (m.index > at) frag.appendChild(document.createTextNode(text.slice(at, m.index)));
         var s = document.createElement('span');
         s.className = CLS;
-        s.appendChild(document.createTextNode(m[0]));
+        s[TEXT] = m[0];
         frag.appendChild(s);
         at = m.index + m[0].length;
       } else {
@@ -175,7 +181,8 @@
     for (i = 0; i < spans.length; i++) {
       var p = spans[i].parentNode;
       if (!p) continue;
-      p.replaceChild(document.createTextNode(spans[i].textContent), spans[i]);
+      var was = spans[i][TEXT];
+      p.replaceChild(document.createTextNode(typeof was === 'string' ? was : ''), spans[i]);
       if (parents.indexOf(p) < 0) parents.push(p);
     }
     // One text node again where there was one, so widgets that write into it
@@ -306,6 +313,8 @@
     fromAll: fromAll,
     mask: function (root) { try { mask(root || document.body); } catch (e) { warn(e && e.message); } },
     unmask: function (root) { try { unmask(root || document.body); } catch (e) { warn(e && e.message); } },
-    match: match
+    match: match,
+    // The amount a blur stands for (tests); '' for anything else.
+    hidden: function (span) { return span && typeof span[TEXT] === 'string' ? span[TEXT] : ''; }
   };
 })();

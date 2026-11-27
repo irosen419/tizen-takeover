@@ -557,7 +557,10 @@ function edgeOn(p, id) {
           const ids = MONEY.filter((id) => lay.some((e) => e.widget === id));
           const bodiesOf = (q) => q.evaluate((list) => list.map((id) => {
             const c = document.querySelector('.cell[data-widget="' + id + '"] .tile-body');
-            return c ? c.textContent : null;
+            // A blur (an empty span) counts as the amount it stands for.
+            const full = (n) => n.nodeType === 3 ? n.nodeValue
+              : (n.className === 'guest-blur' ? window.HUB_GUEST.hidden(n) : Array.prototype.map.call(n.childNodes, full).join(''));
+            return c ? full(c) : null;
           }), ids);
           const bodies = await bodiesOf(off);
           await off.context().close();
