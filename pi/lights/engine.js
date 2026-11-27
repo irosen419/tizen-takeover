@@ -18,7 +18,8 @@
  *   Ambience)   gives way at once: Off, that light is left as it was set,
  *   the others are put back
  *
- * Listening: pw-record on the default output's monitor (16 kHz mono). Only
+ * Listening: pw-record on the default output's monitor (16 kHz mono, 20 ms
+ * buffers so beats arrive on time rather than in 100 ms bursts). Only
  * while On. If it fails (the speaker dropped) it waits and tries again every
  * 30 s; it never touches the audio services.
  *
@@ -53,7 +54,7 @@ const WATCH_EVERY_MS = 3000;
 const WATCH_SETTLE_MS = 5000;
 const CAPTURE_RETRY_MS = 30000;
 const START_BRIGHTNESS = 55;            // the demo's device brightness
-const CAPTURE_CMD = ['pw-record', '-P', '{ stream.capture.sink=true }', '--rate', String(look.RATE), '--channels', '1', '--format', 's16', '-'];
+const CAPTURE_CMD = ['pw-record', '-P', '{ stream.capture.sink=true }', '--rate', String(look.RATE), '--channels', '1', '--format', 's16', '--latency', '20ms', '-'];
 
 function parseEnv(text) {
   const out = {};
@@ -160,6 +161,7 @@ function createEngine(o) {
       state: session.isOn() ? lastFrame.state : 'off',
       sound: !!f.sound,
       bpm: f.bpm || 0,
+      beat: f.confidence || 0,
       vibe: Math.round(f.vibe * 100) / 100,
       quietFor: Math.round(session.quietFor(now()) / 1000),
       capture: captureState,
@@ -270,7 +272,7 @@ function createEngine(o) {
     }
   }
 
-  // One 50 ms block (tests call this straight).
+  // One 10 ms block (tests call this straight).
   function block(samples) {
     lastBlockAt = now();
     const due = lk.block(samples);
@@ -282,8 +284,8 @@ function createEngine(o) {
   function idle() {
     if (!session.isOn()) return;
     if (now() - lastBlockAt < 300) return;
-    block(new Int16Array(look.BLOCK));
-    block(new Int16Array(look.BLOCK));
+    const silent = new Int16Array(look.BLOCK);
+    for (let i = 0; i < 0.1 / look.BLOCK_S; i++) block(silent);
   }
 
   function frame() {
