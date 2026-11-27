@@ -27,7 +27,7 @@
  * GOVEE_LAMP_IP, GOVEE_BARS_IP (LAN Control on in Govee Home); HA_TOKEN,
  * HA_URL, LIGHTS_HA_LAMP, LIGHTS_HA_BARS (save, put back, notice changes;
  * see ha.js); LIGHTS_DELAY_MS 0-1000 (default 0: lights wait this long, to
- * line up with the Bluetooth speaker); LIGHTS_WATCH full|power|off.
+ * line up with the Bluetooth speaker); LIGHTS_WATCH full|color|power|off.
  *
  *   node pi/lights/engine.js            run (what the unit does)
  *   node pi/lights/engine.js --check    say what is set up, then exit
@@ -135,6 +135,7 @@ function createEngine(o) {
   let saved = {};
   let baseline = {};
   let armColor = {};
+  let armBright = {};
   let colorHold = {};
   const why = {};
   let sentColors = {};                   // per light: colors sent lately (the color check)
@@ -218,6 +219,7 @@ function createEngine(o) {
     saved = {};
     baseline = {};
     armColor = {};
+    armBright = {};
     colorHold = {};
     sentColors = {};
     keys.forEach((k) => remember(k, [[47, 181, 163]]));
@@ -367,15 +369,16 @@ function createEngine(o) {
         const st = await ha.snapshot(k);
         if (!st || !st.available) continue;              // a light dropping off for a moment is not a change
         if (baseline[k] === undefined) {
-          if (looksStarted(st)) { baseline[k] = ha.fingerprint(st); armColor[k] = st.rgb ? [st.rgb] : []; }
+          if (looksStarted(st)) { baseline[k] = ha.fingerprint(st); armBright[k] = st.brightness; armColor[k] = st.rgb ? [st.rgb] : []; }
           continue;
         }
-        if (baseline[k] !== ha.fingerprint(st)) { changed.push(k); why[k] = 'power, brightness or effect'; continue; }
+        if (baseline[k] !== ha.fingerprint(st)) { changed.push(k); why[k] = 'power or effect'; continue; }
+        if (haLib.brightnessMoved(armBright[k], st.brightness)) { changed.push(k); why[k] = 'brightness'; continue; }
         // A color alone counts only when it is none the engine sent, not the
         // one Home Assistant showed at the start (a stale read-back), and it
         // reads the same on COLOR_REPEATS checks in a row: while the engine
         // draws, the read-back keeps moving.
-        const odd = ha.watch === 'full' && st.colorMode !== 'color_temp' && Array.isArray(st.rgb) &&
+        const odd = ha.watch === 'color' && st.colorMode !== 'color_temp' && Array.isArray(st.rgb) &&
           !haLib.colorIsOurs(st.rgb, sentColors[k]) && !haLib.colorIsOurs(st.rgb, armColor[k]);
         const sig = odd ? st.rgb.map((v) => Math.round(v)).join(',') : '';
         if (!odd) { colorHold[k] = null; continue; }

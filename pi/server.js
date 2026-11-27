@@ -185,7 +185,7 @@ const budgetgoal = require('./budgetgoal');
 const spanish = require('./spanish');
 const prefs = require('./prefs');
 
-const SERVER_VERSION = '0.44.1';
+const SERVER_VERSION = '0.44.2';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;

@@ -506,8 +506,9 @@ function echoRun(action) {
 // A music lights change; the reply is the line ./hub lights prints.
 function lightsChange(bodyOf) {
   return async (a, ctx) => {
-    const r = await ctx.call('POST', '/api/lights', bodyOf(a));
-    return { message: hubctl.lightsChangeText(r), data: { settings: r.settings } };
+    const body = bodyOf(a);
+    const r = await ctx.call('POST', '/api/lights', body);
+    return { message: hubctl.lightsChangeText(r, body), data: { settings: r.settings } };
   };
 }
 
