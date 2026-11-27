@@ -512,14 +512,16 @@ async function main() {
     const mine = { on: true, available: true, brightness: 140, colorMode: 'rgb', rgb: [0, 0, 255], kelvin: null, effect: null };
     g.ha.states.lamp = mine;                              // Ian picks blue in the Govee app
     const before = g.sent.length;
-    assert.deepStrictEqual(await g.e.watch(), ['lamp']);
+    assert.deepStrictEqual(await g.e.watch(), [], 'a new color must hold first');
+    assert.deepStrictEqual(await g.e.watch(), []);
+    assert.deepStrictEqual(await g.e.watch(), ['lamp'], 'held for 3 checks: Ian set it');
     assert.strictEqual(g.e.session.state(), 'off');
     assert.deepStrictEqual(g.ha.calls.map((c) => c.k), ['bars'], 'only the bars are put back');
     assert.deepStrictEqual(g.ha.states.lamp, mine, 'the lamp keeps what Ian set');
     await g.feed(clickTrack(120, 2));
     assert.ok(!g.sent.slice(before).some((m) => m.k === 'lamp'), 'nothing more sent to the lamp');
     assert.deepStrictEqual(g.e.report().events.map((x) => [x.type, x.lights]), [['gave-way', ['lamp']]]);
-    assert.ok(g.logs.indexOf('music lights: gave way (floor lamp set another way)') >= 0, g.logs.join(' | '));
+    assert.ok(g.logs.indexOf('music lights: gave way (floor lamp: color)') >= 0, g.logs.join(' | '));
   });
 
   await check('engine: the hub\'s own scene or light gives way with nothing put back', async () => {
