@@ -340,6 +340,22 @@ async function main() {
       }
     });
 
+    await check('Daily room: the cap rounds down like Budget lab ($561.81 reads $561) and says what today used', async () => {
+      const snap = H.budgetSample.snapshot({ sentAt: FRESH });
+      Object.assign(snap.room, { cap: 561.81, roomPerDay: 539.31, daysLeft: 4 });
+      Object.assign(snap.lab, { spentToday: 90 });
+      await env.setBudget(snap);
+      const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
+      try {
+        const r = await text(page, tileOf('budget-room'));
+        assert(/\$539/.test(r) && /of \$561 a day/.test(r) && !/\$562/.test(r), 'room: ' + r);
+        await H.openPanel(page, 'budget-room');
+        const p = await text(page, '#panel .panel-body');
+        assert(/of \$561 a day/.test(p) && /today's \$90 so far, spread over the days left/.test(p), 'panel: ' + p);
+        noErrors(page);
+      } finally { await page.ctx.close(); await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH })); }
+    });
+
     await check('autopay days: short on the 1st but covered by autopay is amber with its plan rows; the room says so; still short with autopay stays coral', async () => {
       await env.setBudget(H.budgetSample.snapshot({ sentAt: FRESH, payday: true, autopay: true }));
       const page = await env.newPage({ layout: ROW, storage: { 'homeHub.budget.seen.v1': '["a-1042"]' } });
