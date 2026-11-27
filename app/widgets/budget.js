@@ -71,6 +71,8 @@
     refundShort: 'about {n} after the refund',
     refundTiny: '{n} after refund',
     underCap: 'under the cap',
+    todaySpread: "today's {n} so far, spread over the days left",
+    todaySpreadShort: "less today's {n} so far",
     overBudget: 'over the budget',
     // Card day
     covered: 'Covered',
@@ -686,11 +688,23 @@
     if (!s || num(s.cap) === null || num(s.roomPerDay) === null) return null;
     // Room is shown in whole dollars rounded down, so the TV never promises
     // a cent more than there is.
+    // The cap rounds down too, so it reads the same as Budget lab's
+    // "calculated" figure (both floor the same number).
     var refund = num(s.roomIfRefund);
-    var r = { cap: s.cap, per: Math.floor(s.roomPerDay), refund: refund === null ? null : Math.floor(refund),
+    var r = { cap: Math.floor(Math.round(s.cap * 100) / 100), per: Math.floor(s.roomPerDay), refund: refund === null ? null : Math.floor(refund),
       days: num(s.daysLeft), through: dayFromText(s.throughDate), auto: s.basis === 'autopay' };
     r.tone = r.per < 0 ? 'is-neg' : r.per < r.cap ? 'is-under' : 'is-ok';
+    // Spent today so far (Budget lab's lab.spentToday, pending included):
+    // the room is the cap less this, spread over the days left.
+    var lab = section('lab');
+    var used = lab ? num(lab.spentToday) : null;
+    r.today = used !== null && r.days && Math.round(used) >= 1 ? Math.round(used) : null;
     return r;
+  }
+
+  function todayForms(r) {
+    if (r.today === null) return null;
+    return [fill(STRINGS.todaySpread, { n: cash(r.today) }), fill(STRINGS.todaySpreadShort, { n: cash(r.today) })];
   }
 
   function daysLeftText(r) {
@@ -745,15 +759,17 @@
     var thru = r.through !== null ? el('div', 'bu-quiet', root) : null;
     var refund = r.refund !== null ? el('div', 'bu-note', root) : null;
     var auto = r.auto ? el('div', 'bu-quiet bu-auto-line', root, STRINGS.usingAutopay) : null;
+    var spent = todayForms(r) ? el('div', 'bu-quiet', root) : null;
     fitHero(h, STRINGS.aDay);
     fitForms(cap, roomForms(r, false));
+    if (spent) fitForms(spent, todayForms(r));
     if (thru) fitForms(thru, [fill(STRINGS.through, { d: dateText(r.through, 'long') }), fill(STRINGS.through, { d: dateText(r.through, 'short') })]);
     if (refund) {
       refund.textContent = fill(STRINGS.refund, { n: cash(r.refund) });
       if (overH(refund) || overW(refund)) fitForms(refund, [fill(STRINGS.refundShort, { n: cash(r.refund) }), fill(STRINGS.refundTiny, { n: cash(r.refund) })]);
     }
     if (auto) fitForms(auto, [STRINGS.usingAutopay, STRINGS.usingAutopayShort]);
-    trim(root, [cap, refund, thru, auto]);
+    trim(root, [cap, refund, thru, auto, spent]);
     if (overH(root) && bar.parentNode) root.removeChild(bar);
   }
 
@@ -771,7 +787,7 @@
     if (r.through !== null) lines.push(fill(STRINGS.through, { d: dateText(r.through, 'long') }));
     el('div', 'bu-pline', sec, lines.join(STRINGS.sep));
     if (r.per < 0) el('div', 'bu-pline is-neg', sec, STRINGS.overBudget);
-    else if (r.per < r.cap) el('div', 'bu-pline is-under', sec, STRINGS.underCap);
+    else if (r.per < r.cap) el('div', 'bu-pline is-under', sec, r.today !== null ? todayForms(r)[0] : STRINGS.underCap);
     if (r.refund !== null) el('div', 'bu-pline is-quiet', sec, fill(STRINGS.refund, { n: cash(r.refund) }));
     if (r.auto) el('div', 'bu-pline is-quiet', sec, STRINGS.usingAutopay);
     fitWidth(h.numEl);

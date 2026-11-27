@@ -515,6 +515,8 @@
     'budget.refundShort': 'unos {n} tras el reembolso',
     'budget.refundTiny': '{n} tras reembolso',
     'budget.underCap': 'por debajo del tope',
+    'budget.todaySpread': 'lo gastado hoy ({n}), repartido entre los días que quedan',
+    'budget.todaySpreadShort': 'menos lo gastado hoy ({n})',
     'budget.overBudget': 'por encima del presupuesto',
     'budget.covered': 'Cubierto',
     'budget.coveredWord': 'cubierto',
