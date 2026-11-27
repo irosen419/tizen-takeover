@@ -7,8 +7,8 @@
  *   POST /api/lights          a change: { on, palette, vibrancy, beat, preset, quietMin }
  *   POST /api/lights/engine   the engine's report; answers settings and the song's tempo
  *
- * Any other way of setting the lights wins: the hub's own Ambience scene,
- * light or mood calls giveWay('hub'), which turns music lights off without
+ * Any other way of setting the lights wins: an Ambience scene or light that
+ * includes the Govee lights calls giveWay('hub'), which turns music lights off without
  * putting old state back over the new one. The engine notices changes made
  * outside the hub (Govee app, voice, Home Assistant) itself and reports them.
  *
@@ -33,6 +33,8 @@ function createStore(opt) {
   try { s = settingsLib.clean(JSON.parse(fs.readFileSync(file, 'utf8'))); } catch (e) { /* first run */ }
   let engine = null;
   let engineAt = 0;
+  let onRev = s.on ? s.rev : 0;          // the rev of the last switch on
+  let waiters = [];                      // giveWay() calls waiting for the engine to stop
 
   function save() {
     try {
@@ -57,17 +59,26 @@ function createStore(opt) {
     if (c.on === false && s.on) { extra.offReason = 'you'; extra.gaveWay = []; }
     const was = s.on;
     setAll(Object.assign(c, extra));
+    if (!was && s.on) onRev = s.rev;
     if (was !== s.on) log('music lights: switched ' + (s.on ? 'on' : 'off'));
     else log('music lights: settings changed');
     return status();
   }
 
-  // The lights were set another way through the hub (Ambience).
-  function giveWay(who) {
-    if (!s.on) return false;
+  // The lights are about to be set another way through the hub (Ambience).
+  // Resolves true once the engine has stopped (its next report says off),
+  // or after waitMs, so the new setting is not painted over by a last frame.
+  // Resolves false at once when music lights were off.
+  function giveWay(who, waitMs) {
+    if (!s.on) return Promise.resolve(false);
     setAll({ on: false, offReason: 'gave-way', gaveWay: [who || 'hub'] });
     log('music lights: off, the lights were set another way');
-    return true;
+    if (!(engine && now() - engineAt < ENGINE_STALE_MS) || engine.state === 'off') return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const w = { resolve: resolve, timer: null };
+      w.timer = setTimeout(() => { waiters = waiters.filter((x) => x !== w); resolve(true); }, waitMs === undefined ? 2500 : waitMs);
+      waiters.push(w);
+    });
   }
 
   // The engine's once-a-second report.
@@ -84,8 +95,15 @@ function createStore(opt) {
       ha: b.ha === true
     };
     engineAt = now();
+    if (engine.state === 'off' && waiters.length) {
+      waiters.forEach((w) => { clearTimeout(w.timer); w.resolve(true); });
+      waiters = [];
+    }
     (Array.isArray(b.events) ? b.events : []).slice(0, 10).forEach((e) => {
       if (!e || typeof e !== 'object') return;
+      // Raised before the latest switch on (a resend, or news from an older
+      // session): it must not turn the new session off.
+      if (Number.isInteger(e.rev) && e.rev < onRev) return;
       if (e.type === 'quiet' && s.on) setAll({ on: false, offReason: 'quiet', gaveWay: [] });
       if (e.type === 'no-lights' && s.on) setAll({ on: false, offReason: '', gaveWay: [] });
       if (e.type === 'gave-way' && s.on) {

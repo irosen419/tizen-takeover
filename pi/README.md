@@ -333,7 +333,7 @@ Mailbox: `lights.status`, `lights.on`, `lights.off`, `lights.set` `{ "palette": 
 
 **Quiet.** Between songs it holds the palette and dims to a calm glow; music back fades it up within a second. After 15 quiet minutes (the `--quiet` setting) it turns itself off and puts the lights back, so nothing stays on overnight.
 
-**Anything else wins.** Setting the lights another way turns music lights off and leaves your change alone: a hub Ambience scene, light or mood straight away; the Govee app, a voice command or a Home Assistant scene as soon as Home Assistant sees the change (it checks every few seconds; the Govee app can take Home Assistant a little longer to notice). The light you changed keeps your setting; the other one is put back. Switch music lights on again when you want them.
+**Anything else wins.** Setting the lights another way turns music lights off and leaves your change alone: a hub Ambience scene or light that includes the lamp or bars straight away (music lights stop first, then the scene is set; with `LIGHTS_HA_LAMP`/`LIGHTS_HA_BARS` unset, any scene or light counts); the Govee app, a voice command or a Home Assistant scene as soon as Home Assistant sees the change (it checks every few seconds; the Govee app can take Home Assistant a little longer to notice). The light you changed keeps your setting; the other one is put back. Switch music lights on again when you want them.
 
 **Always true.** Nothing reads white, colors never cycle, a beat only changes brightness (never the color), and a lift always fades over more than 150 ms, under 3 a second. `pi/lights-test.js` checks all of it with made-up audio.
 

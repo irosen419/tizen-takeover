@@ -119,13 +119,14 @@ function createWavSkip() {
  *   o.capture  { start(onData), stop() }  raw s16 PCM chunks
  *   o.delayMs                    0-1000
  */
+const OFF_EVENTS = ['quiet', 'gave-way', 'no-lights'];
+
 function createEngine(o) {
   const keys = Object.keys(govee.LIGHTS).filter((k) => o.addresses && o.addresses[k]);
   const log = o.log || (() => {});
   const now = o.now || Date.now;
   const ha = o.ha || { configured: false, has: () => false, snapshot: async () => null, restore: async () => false, fingerprint: () => '', watch: 'off' };
   let settings = settingsLib.defaults();
-  let suppressRev = -1;                  // ignore "on" until the hub has seen our own off
   const session = sessionLib.createSession();
   const pal = () => settingsLib.paletteById(settings.palette).colors;
   const lk = look.createLook({ palette: pal(), vibrancy: settings.vibrancy, beat: settings.beat });
@@ -135,6 +136,9 @@ function createEngine(o) {
   let restoreKeys = keys.slice();
   let lastSent = {};
   let events = [];
+  let gen = 0;                           // goes up whenever sending must stop (delayed frames check it)
+  let snapping = Promise.resolve();      // the start's snapshots
+  let restoring = Promise.resolve();     // the last put-back
   let capturing = false;
   let captureState = 'off';
   let pcm = Buffer.alloc(0);
@@ -143,6 +147,11 @@ function createEngine(o) {
   let lastFrame = { state: 'off', gain: 0, rest: 1 };
   let watching = false;
   let skip = null;
+
+  // An off the engine decided itself (quiet, gave way) that the hub has not
+  // confirmed yet: until it has, an "on" in the settings is stale.
+  const offPending = () => events.some((e) => OFF_EVENTS.indexOf(e.type) >= 0);
+  const raise = (e) => events.push(Object.assign({ rev: settings.rev }, e));
 
   function report() {
     const f = lk.features();
@@ -160,6 +169,7 @@ function createEngine(o) {
   }
 
   // The hub's answer to a report: settings and the song's tempo.
+  // sentEvents: how many events that report carried (the hub has them now).
   function applyHub(reply, sentEvents) {
     if (!reply || !reply.settings) return;
     events = events.slice(sentEvents || 0);
@@ -170,31 +180,45 @@ function createEngine(o) {
     if (s.palette !== prev.palette) lk.setPalette(pal());
     lk.setDials(s.vibrancy, s.beat);
     session.setQuietMin(s.quietMin);
-    if (s.on && s.rev > suppressRev && !session.isOn()) start();
-    else if (s.on && s.rev > suppressRev && session.state() === 'stopping') session.on(now());
-    else if (!s.on && session.isOn() && session.state() !== 'stopping') {
-      if (s.offReason === 'gave-way') {
-        restoreKeys = s.gaveWay.indexOf('hub') >= 0 ? [] : keys.filter((k) => s.gaveWay.indexOf(k) < 0);
-        log('music lights: off (the lights were set another way)');
-      } else {
-        restoreKeys = keys.slice();
-        log('music lights: off');
-      }
-      session.off(now(), restoreKeys.length > 0);
+    if (s.on) {
+      if (offPending()) return;
+      if (!session.isOn()) start();
+      else if (session.state() === 'stopping') { session.on(now()); restoreKeys = keys.slice(); }
+      return;
     }
+    if (!session.isOn()) return;
+    if (session.state() === 'stopping' && s.offReason !== 'gave-way') return;
+    if (s.offReason === 'gave-way') {
+      const hub = s.gaveWay.indexOf('hub') >= 0;
+      restoreKeys = hub ? [] : keys.filter((k) => s.gaveWay.indexOf(k) < 0);
+      log('music lights: off (the lights were set another way)');
+      // At once, no fade: a fade would paint over what was just set.
+      session.drop();
+      gen++;
+      finish(restoreKeys);
+      return;
+    }
+    restoreKeys = keys.slice();
+    log('music lights: off');
+    session.off(now(), true);
   }
 
   function start() {
-    if (!keys.length) { log('music lights: no light addresses set (GOVEE_LAMP_IP, GOVEE_BARS_IP)'); suppressRev = settings.rev; events.push({ type: 'no-lights' }); return; }
+    if (!keys.length) { log('music lights: no light addresses set (GOVEE_LAMP_IP, GOVEE_BARS_IP)'); raise({ type: 'no-lights' }); return; }
     session.on(now());
+    gen++;
+    const myGen = gen;
     saved = {};
     baseline = {};
     lastSent = {};
     restoreKeys = keys.slice();
-    watchFrom = now() + WATCH_SETTLE_MS;
+    watchFrom = Infinity;
     log('music lights: on');
-    Promise.all(keys.map((k) => ha.snapshot(k).then((s) => { if (s) saved[k] = s; }))).then(() => {
-      if (!session.isOn()) return;
+    // Let a put-back still on its way finish first, so it is not saved as "how the lights were".
+    snapping = restoring.then(() => Promise.all(keys.map((k) => ha.snapshot(k).then((st) => {
+      if (st && st.available) saved[k] = st;
+    })))).then(() => {
+      if (gen !== myGen || !session.isOn()) return;
       keys.forEach((k) => {
         o.send(k, govee.turn(true));
         o.send(k, govee.colorwc([47, 181, 163]));      // leaves any music mode, as the demo does
@@ -267,71 +291,86 @@ function createEngine(o) {
     if (r.events.indexOf('quiet') >= 0) {
       const m = settings.quietMin;
       log('music lights: off after ' + m + ' quiet minute' + (m === 1 ? '' : 's'));
-      events.push({ type: 'quiet' });
-      suppressRev = settings.rev;
+      raise({ type: 'quiet' });
       restoreKeys = keys.slice();
     }
-    if (r.events.indexOf('end') >= 0) { finish(r.restore ? restoreKeys : []); return; }
+    if (r.events.indexOf('end') >= 0) { gen++; finish(r.restore ? restoreKeys : []); return; }
     const cols = lk.render(r.gain, r.rest);
+    const myGen = gen;
     keys.forEach((k) => {
       const c = cols[k];
       const sig = JSON.stringify(c);
       if (lastSent[k] === sig) return;
       lastSent[k] = sig;
       const msgs = govee.sectionMessages(c);
-      const go = () => msgs.forEach((m) => o.send(k, m));
+      const go = () => { if (gen === myGen) msgs.forEach((m) => o.send(k, m)); };
       if (o.delayMs > 0) setTimeout(go, o.delayMs); else go();
     });
   }
 
+  // Stop sending and put these lights back (after the start's snapshots, if
+  // they are still coming).
   function finish(putBack) {
     stopCapture();
-    const list = putBack.filter((k) => saved[k]);
-    const missing = putBack.filter((k) => !saved[k]);
-    // Without a saved state (no Home Assistant) the light is switched off,
-    // as the demo did, rather than left on the last music color.
-    missing.forEach((k) => o.send(k, govee.turn(false)));
-    if (!putBack.length) return Promise.resolve(0);
-    return Promise.all(list.map((k) => ha.restore(k, saved[k]))).then((r) => {
-      const n = r.filter(Boolean).length;
-      log('music lights: lights put back (' + n + ' of ' + list.length + ')' + (missing.length ? ', ' + missing.length + ' switched off' : ''));
-      return n;
-    });
+    restoring = snapping.then(() => {
+      const list = putBack.filter((k) => saved[k]);
+      const missing = putBack.filter((k) => !saved[k]);
+      // Without a saved state (no Home Assistant) the light is switched off,
+      // as the demo did, rather than left on the last music color.
+      missing.forEach((k) => o.send(k, govee.turn(false)));
+      if (!putBack.length) return 0;
+      return Promise.all(list.map((k) => ha.restore(k, saved[k]))).then((r) => {
+        const n = r.filter(Boolean).length;
+        log('music lights: lights put back (' + n + ' of ' + list.length + ')' + (missing.length ? ', ' + missing.length + ' switched off' : ''));
+        return n;
+      });
+    }).catch(() => 0);
+    return restoring;
   }
 
-  // Every few seconds while On: was a light set another way?
+  // Every few seconds while On: was a light set another way? Armed only once
+  // Home Assistant shows the engine's own start (on, brightness 55%), so a
+  // late poll of the old state is never taken for a change.
   async function watch() {
     if (watching || ha.watch === 'off' || !session.isOn() || session.state() === 'stopping' || now() < watchFrom) return [];
     watching = true;
+    const myGen = gen;
     const changed = [];
     try {
       for (let i = 0; i < keys.length; i++) {
         const k = keys[i];
         if (!ha.has(k)) continue;
-        const s = await ha.snapshot(k);
-        if (!s) continue;
-        const fp = ha.fingerprint(s);
-        if (baseline[k] === undefined) baseline[k] = fp;
-        else if (baseline[k] !== fp) changed.push(k);
+        const st = await ha.snapshot(k);
+        if (!st || !st.available) continue;              // a light dropping off for a moment is not a change
+        if (baseline[k] === undefined) {
+          if (looksStarted(st)) baseline[k] = ha.fingerprint(st);
+          continue;
+        }
+        if (baseline[k] !== ha.fingerprint(st)) changed.push(k);
       }
     } finally {
       watching = false;
     }
-    if (changed.length && session.isOn() && session.state() !== 'stopping') giveWay(changed);
+    if (changed.length && gen === myGen && session.isOn() && session.state() !== 'stopping') giveWay(changed);
     return changed;
+  }
+
+  function looksStarted(st) {
+    return st.on && (st.brightness === null || Math.abs(st.brightness - Math.round(START_BRIGHTNESS * 2.55)) <= 8);
   }
 
   function giveWay(changed) {
     session.drop();
+    gen++;
     log('music lights: gave way (' + changed.map((k) => govee.LIGHTS[k].name.toLowerCase()).join(', ') + ' set another way)');
-    events.push({ type: 'gave-way', lights: changed });
-    suppressRev = settings.rev;
+    raise({ type: 'gave-way', lights: changed });
     return finish(keys.filter((k) => changed.indexOf(k) < 0));
   }
 
   // Stop now (shutting down): put everything back, no fade.
   function shutdown() {
-    if (!session.isOn()) { stopCapture(); return Promise.resolve(0); }
+    gen++;
+    if (!session.isOn()) { stopCapture(); return restoring; }
     session.drop();
     return finish(restoreKeys);
   }
@@ -348,6 +387,7 @@ function createEngine(o) {
     shutdown: shutdown,
     session: session,
     settings: () => settings,
+    settled: () => Promise.all([snapping, restoring]),
     captureFailed: () => { capturing = false; captureState = 'down'; },
     wantsCapture: () => session.isOn() && !capturing,
     restartCapture: () => { if (session.isOn()) startCapture(); }

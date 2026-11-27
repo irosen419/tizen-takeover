@@ -27,6 +27,7 @@ const storeLib = require('./lights/store');
 const hubServer = require('./server');
 const hubctl = require('./hubctl');
 const mailbox = require('./mailbox');
+const mockLights = require('../dev/mock-lights');
 
 const TOKEN = 'test-token-0123456789abcdef-long-enough';
 let passed = 0;
@@ -160,7 +161,7 @@ function demoReference(pal, blocks) {
 
 /* ---------- a stand-in Home Assistant ---------- */
 
-function fakeHa(initial) {
+function fakeHa(initial, slowMs) {
   const states = JSON.parse(JSON.stringify(initial));
   const calls = [];
   return {
@@ -169,7 +170,11 @@ function fakeHa(initial) {
     configured: true,
     watch: 'full',
     has: (k) => !!states[k],
-    snapshot: async (k) => (states[k] ? JSON.parse(JSON.stringify(states[k])) : null),
+    snapshot: async (k) => {
+      const copy = states[k] ? JSON.parse(JSON.stringify(states[k])) : null;
+      if (slowMs) await new Promise((r) => setTimeout(r, slowMs));
+      return copy;
+    },
     restore: async (k, s) => { calls.push({ k: k, s: s }); states[k] = JSON.parse(JSON.stringify(s)); return true; },
     fingerprint: (s) => haLib.fingerprint(s, 'full')
   };
@@ -187,8 +192,15 @@ function rig(o) {
   const ha = opt.ha === undefined ? fakeHa({ lamp: LAMP_BEFORE, bars: BARS_BEFORE }) : opt.ha;
   const e = engineLib.createEngine({
     addresses: opt.addresses || { lamp: 'x', bars: 'y' },
-    send: (k, buf) => sent.push({ k: k, t: t.now, msg: JSON.parse(buf.toString()).msg }),
-    ha: ha, now: () => t.now, log: (s) => logs.push(s), capture: null, delayMs: 0
+    send: (k, buf) => {
+      const msg = JSON.parse(buf.toString()).msg;
+      sent.push({ k: k, t: t.now, msg: msg });
+      // Home Assistant sees the engine's own start (its next poll of the light).
+      if (ha && ha.states && ha.states[k] && msg.cmd === 'brightness') {
+        ha.states[k] = { on: true, available: true, brightness: Math.round(msg.data.value * 2.55), colorMode: 'rgb', rgb: [47, 181, 163], kelvin: null, effect: null };
+      }
+    },
+    ha: ha, now: () => t.now, log: (s) => logs.push(s), capture: null, delayMs: opt.delayMs || 0
   });
   let rev = 1;
   const settings = Object.assign(settingsLib.defaults(), opt.settings || {});
@@ -199,8 +211,10 @@ function rig(o) {
   const feed = async (blocks) => {
     for (const b of blocks) { t.now += 50; e.block(b); }
     await new Promise((r) => setImmediate(r));
+    await e.settled();
   };
-  return { t: t, sent: sent, logs: logs, ha: ha, e: e, hub: hub, feed: feed, settings: settings };
+  const types = () => e.report().events.map((x) => x.type);
+  return { t: t, sent: sent, logs: logs, ha: ha, e: e, hub: hub, feed: feed, settings: settings, types: types };
 }
 
 async function main() {
@@ -458,15 +472,18 @@ async function main() {
     await g.feed(clickTrack(120, 3));
     await g.feed(silence(63));
     assert.ok(g.logs.indexOf('music lights: off after 1 quiet minute') >= 0, g.logs.join(' | '));
-    const r = g.e.report();
-    assert.deepStrictEqual(r.events, [{ type: 'quiet' }]);
+    assert.deepStrictEqual(g.types(), ['quiet']);
+    assert.strictEqual(g.e.report().events[0].rev, g.settings.rev, 'the event carries the rev it was raised at');
     assert.strictEqual(g.ha.calls.length, 2);
-    // The hub has not seen the event yet and still says on, same rev: stays off.
-    g.e.applyHub({ settings: Object.assign({}, g.settings), song: {} }, 1);
+    // The hub has not taken the event yet and still says on, even at a newer rev (a palette change): stays off.
+    g.e.applyHub({ settings: Object.assign({}, g.settings), song: {} }, 0);
+    g.e.applyHub({ settings: Object.assign({}, g.settings, { palette: 'sunset', rev: g.settings.rev + 5 }), song: {} }, 0);
     await g.feed(silence(1));
     assert.strictEqual(g.e.session.state(), 'off');
+    // The hub takes it and answers off.
+    g.e.applyHub({ settings: Object.assign({}, g.settings, { on: false, offReason: 'quiet', rev: g.settings.rev + 6 }), song: {} }, 1);
     assert.strictEqual(g.e.report().events.length, 0, 'event cleared once the hub took it');
-    g.hub({ on: true });
+    g.hub({ on: true, rev: 0 });
     assert.ok(g.e.session.isOn(), 'switching on again works');
   });
 
@@ -477,8 +494,12 @@ async function main() {
     await g.e.watch();                                   // too soon: start commands still settling
     g.t.now += engineLib.WATCH_SETTLE_MS;
     await g.feed(clickTrack(120, 1));
-    assert.deepStrictEqual(await g.e.watch(), []);       // notes how they are
+    assert.deepStrictEqual(await g.e.watch(), []);       // notes how they are (Home Assistant shows the start)
     assert.deepStrictEqual(await g.e.watch(), []);       // nothing changed
+    const keep = g.ha.states.bars;
+    g.ha.states.bars = { on: false, available: false, brightness: null, colorMode: null, rgb: null, kelvin: null, effect: null };
+    assert.deepStrictEqual(await g.e.watch(), [], 'a light dropping off for a moment is not a change');
+    g.ha.states.bars = keep;
     const mine = { on: true, available: true, brightness: 200, colorMode: 'rgb', rgb: [0, 0, 255], kelvin: null, effect: null };
     g.ha.states.lamp = mine;                              // Ian picks blue in the Govee app
     const before = g.sent.length;
@@ -488,7 +509,7 @@ async function main() {
     assert.deepStrictEqual(g.ha.states.lamp, mine, 'the lamp keeps what Ian set');
     await g.feed(clickTrack(120, 2));
     assert.ok(!g.sent.slice(before).some((m) => m.k === 'lamp'), 'nothing more sent to the lamp');
-    assert.deepStrictEqual(g.e.report().events, [{ type: 'gave-way', lights: ['lamp'] }]);
+    assert.deepStrictEqual(g.e.report().events.map((x) => [x.type, x.lights]), [['gave-way', ['lamp']]]);
     assert.ok(g.logs.indexOf('music lights: gave way (floor lamp set another way)') >= 0, g.logs.join(' | '));
   });
 
@@ -512,7 +533,7 @@ async function main() {
     const n = rig({ addresses: {} });
     n.hub({ on: true });
     assert.strictEqual(n.e.session.isOn(), false);
-    assert.deepStrictEqual(n.e.report().events, [{ type: 'no-lights' }]);
+    assert.deepStrictEqual(n.types(), ['no-lights']);
   });
 
   await check('engine: without Home Assistant, Off switches the lights off rather than leaving music colors', async () => {
@@ -523,6 +544,40 @@ async function main() {
     await g.feed(silence(2));
     const offs = g.sent.filter((m) => m.msg.cmd === 'turn' && m.msg.data.value === 0).map((m) => m.k).sort();
     assert.deepStrictEqual(offs, ['bars', 'lamp']);
+  });
+
+  await check('engine: a late Home Assistant poll of the old state is not taken for a change', async () => {
+    const ha = fakeHa({ lamp: LAMP_BEFORE, bars: BARS_BEFORE });
+    const g = rig({ ha: ha });
+    g.hub({ on: true });
+    await g.feed(clickTrack(120, 1));
+    ha.states.lamp = LAMP_BEFORE;                          // HA has not polled the lamp since the start
+    g.t.now += engineLib.WATCH_SETTLE_MS;
+    await g.feed(clickTrack(120, 1));
+    assert.deepStrictEqual(await g.e.watch(), []);
+    ha.states.lamp = { on: true, available: true, brightness: 140, colorMode: 'rgb', rgb: [47, 181, 163], kelvin: null, effect: null };
+    assert.deepStrictEqual(await g.e.watch(), [], 'now it arms');
+    assert.ok(g.e.session.isOn());
+  });
+
+  await check('engine: frames waiting on the speaker delay are dropped once it gives way', async () => {
+    const g = rig({ delayMs: 40 });
+    g.hub({ on: true });
+    await g.feed(clickTrack(120, 2));
+    g.hub({ on: false, offReason: 'gave-way', gaveWay: ['hub'] });
+    const at = g.sent.length;
+    await new Promise((r) => setTimeout(r, 120));
+    assert.ok(!g.sent.slice(at).some((m) => m.msg.cmd === 'ptReal'), 'a delayed frame landed after giving way');
+  });
+
+  await check('engine: Off right after On waits for the saved state, then puts it back (not switched off)', async () => {
+    const g = rig({ ha: fakeHa({ lamp: LAMP_BEFORE, bars: BARS_BEFORE }, 40) });
+    g.hub({ on: true });
+    const s = g.e.shutdown();
+    await s;
+    await g.e.settled();
+    assert.deepStrictEqual(g.ha.states.lamp, LAMP_BEFORE);
+    assert.ok(!g.sent.some((m) => m.msg.cmd === 'turn' && m.msg.data.value === 0 && m.k === 'lamp'));
   });
 
   await check('engine: a WAV header from the capture is skipped', () => {
@@ -567,9 +622,36 @@ async function main() {
     assert.strictEqual(storeLib.createStore({ dataDir: dir }).settings().on, false, 'kept across a restart');
   });
 
-  await check('store: giving way only when on; the engine\'s gave-way names the light', () => {
+  await check('store: an event raised before the latest switch on is ignored (a resend cannot turn a new session off)', () => {
     const st = storeLib.createStore({ dataDir: tmpDir() });
-    assert.strictEqual(st.giveWay('hub'), false);
+    st.change({ on: true });
+    const old = st.settings().rev;
+    st.engineReport({ events: [{ type: 'quiet', rev: old }] });
+    assert.strictEqual(st.settings().on, false);
+    st.change({ on: true });
+    st.engineReport({ events: [{ type: 'quiet', rev: old }] });
+    assert.strictEqual(st.settings().on, true, 'the resent quiet was ignored');
+  });
+
+  await check('store: giveWay waits for the engine to report off (or gives up), and is instant without an engine', async () => {
+    const st = storeLib.createStore({ dataDir: tmpDir() });
+    assert.strictEqual(await st.giveWay('hub'), false);
+    st.change({ on: true });
+    assert.strictEqual(await st.giveWay('hub'), true, 'no engine running: at once');
+    st.change({ on: true });
+    st.engineReport({ state: 'playing', events: [] });
+    let done = false;
+    const p = st.giveWay('hub', 1000).then(() => { done = true; });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(done, false, 'waits while the engine still plays');
+    st.engineReport({ state: 'off', events: [] });
+    await p;
+    assert.strictEqual(done, true);
+  });
+
+  await check('store: giving way only when on; the engine\'s gave-way names the light', async () => {
+    const st = storeLib.createStore({ dataDir: tmpDir() });
+    assert.strictEqual(await st.giveWay('hub'), false);
     st.change({ on: true });
     st.engineReport({ events: [{ type: 'gave-way', lights: ['bars'] }] });
     assert.deepStrictEqual([st.settings().on, st.settings().offReason, st.settings().gaveWay], [false, 'gave-way', ['bars']]);
@@ -578,11 +660,16 @@ async function main() {
   });
 
   const logs = [];
+  const m = await mockLights.start({});
+  const EXAMPLE = JSON.parse(fs.readFileSync(path.join(__dirname, 'ambience.example.json'), 'utf8'));
   const h = hubServer.start({
     token: TOKEN, port: 0, host: '127.0.0.1', dataDir: tmpDir(), origins: ['http://127.0.0.1:8081'],
-    log: (s) => logs.push(String(s)), ambience: { manual: true, timeoutMs: 300 }
+    log: (s) => logs.push(String(s)), ambience: { manual: true, timeoutMs: 300 },
+    // Pretend the "geeni" light in the example is the Govee lamp.
+    ambienceEnv: { HA_URL: m.url, HA_TOKEN: m.token, WLED_URL: m.wledUrl, LIGHTS_HA_LAMP: 'light.example_geeni_1' }
   });
   await h.ready;
+  await h.api('POST', '/api/ambience/config', { config: EXAMPLE });
   const api = (m, r, b) => h.api(m, r, b).then((x) => x.body);
 
   await check('server: GET/POST /api/lights, engine report, Ambience scene turns music lights off (gave way)', async () => {
@@ -599,6 +686,16 @@ async function main() {
     assert.strictEqual(rep.settings.palette, 'sunset');
     assert.strictEqual((await api('GET', '/api/lights')).engine.running, true);
     await h.api('POST', '/api/ambience/scene', { id: 'nope' });
+    assert.strictEqual((await api('GET', '/api/lights')).settings.on, true, 'an unknown scene changes nothing');
+    await h.api('POST', '/api/ambience/light', { id: 'camera', on: true });
+    assert.strictEqual((await api('GET', '/api/lights')).settings.on, true, 'a light that is not the lamp or bars: music lights stay on');
+    // The engine is running and playing: the scene waits until it reports off.
+    const t0 = Date.now();
+    const scene = h.api('POST', '/api/ambience/scene', { id: 'chill' });
+    await new Promise((r) => setTimeout(r, 50));
+    await api('POST', '/api/lights/engine', { state: 'off', events: [] });
+    await scene;
+    assert.ok(Date.now() - t0 < 2000, 'answered as soon as the engine stopped');
     const after = await api('GET', '/api/lights');
     assert.deepStrictEqual([after.settings.on, after.settings.offReason, after.settings.gaveWay], [false, 'gave-way', ['hub']]);
   });
@@ -649,6 +746,7 @@ async function main() {
   });
 
   await new Promise((r) => h.close(r));
+  await m.close();
   tmpDirs.forEach((d) => { try { fs.rmSync(d, { recursive: true, force: true }); } catch (e) { /* fine */ } });
   console.log(passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);

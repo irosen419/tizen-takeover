@@ -1395,23 +1395,45 @@ function start(options) {
         const c = body.config === null ? lights.resetConfig() : lights.setConfig(body.config);
         return { status: 200, body: { ok: true, config: c, ambience: lights.status() }, note: body.config === null ? 'defaults' : 'saved' };
       }
-      // Setting the lights any other way wins over music lights.
-      if (sub === '/ambience/scene') { const id = idOf(); musicLights.giveWay('hub'); return done(lights.applyScene(id)); }
+      // Setting the music lights any other way wins: music lights stop first
+      // (and are not put back), then the scene or light is set.
+      if (sub === '/ambience/scene') {
+        const id = idOf();
+        return giveWayFor('scene', id).then(() => done(lights.applyScene(id)));
+      }
       if (sub === '/ambience/light') {
         const want = {};
         if (b.on !== undefined) want.on = b.on;
         if (b.pct !== undefined) want.pct = b.pct;
         const id = idOf();
-        musicLights.giveWay('hub');
-        return done(lights.setLight(id, want));
+        return giveWayFor('light', id).then(() => done(lights.setLight(id, want)));
       }
-      if (sub === '/ambience/mood') { const id = idOf(); musicLights.giveWay('hub'); return done(lights.applyMood(id)); }
+      if (sub === '/ambience/mood') return done(lights.applyMood(idOf()));
       throw bad('no such call');
     }).catch((e) => {
       const status = e && e.status ? e.status : 500;
       if (status === 500) log('ambience: unexpected problem with a command');
       return { status: status, body: { ok: false, error: e && e.status ? e.message : 'the server had a problem' } };
     });
+  }
+
+  // Does this Ambience scene or light include the Govee lamp or bars (their
+  // entity ids in .env, LIGHTS_HA_LAMP and LIGHTS_HA_BARS)? Without those ids
+  // set, any scene or light counts, to be safe. An unknown id: no (the call
+  // itself then says so).
+  const musicEntities = ['LIGHTS_HA_LAMP', 'LIGHTS_HA_BARS', 'SOUNDLIGHTS_HA_LAMP']
+    .map((k) => String((opt.ambienceEnv || {})[k] || '').trim()).filter((x) => x);
+  function giveWayFor(kind, id) {
+    if (!musicLights.settings().on) return Promise.resolve(false);
+    let cfg = null;
+    try { cfg = lights.getConfig(); } catch (e) { cfg = null; }
+    if (!cfg) return Promise.resolve(false);
+    const scene = kind === 'scene' ? (cfg.scenes || []).find((x) => x.id === id) : null;
+    const ids = kind === 'scene' ? (scene ? Object.keys(scene.lights || {}) : []) : [id];
+    const found = ids.map((lid) => (cfg.lights || []).find((l) => l.id === lid)).filter(Boolean);
+    if (!found.length) return Promise.resolve(false);
+    if (musicEntities.length && !found.some((l) => musicEntities.indexOf(l.entity) >= 0)) return Promise.resolve(false);
+    return musicLights.giveWay('hub');
   }
 
   /* --- Echo controls (echo.js) --- */
@@ -2127,13 +2149,19 @@ function start(options) {
     });
   }
 
+  let engineRefusedAt = 0;
   function control(req, res, route, door, query) {
     const what = req.method + ' ' + route;
     const done = (status, body, note) => {
       sendJson(res, status, body);
       // A good read of the log is printed but not kept, or reading would fill it.
-      // The music light engine reports once a second: a good report is not logged at all.
-      if (route === '/api/lights/engine' && status === 200) return;
+      // The music light engine reports once a second: a good report is not
+      // logged at all, a refused one at most once a minute.
+      if (route === '/api/lights/engine') {
+        if (status === 200) return;
+        if (Date.now() - engineRefusedAt < 60000) return;
+        engineRefusedAt = Date.now();
+      }
       log('control ' + what + ' -> ' + status + (note ? ' ' + note : '') + (door === 'tunnel' ? ' (side door)' : ''),
         route === '/api/log' && status === 200);
     };
