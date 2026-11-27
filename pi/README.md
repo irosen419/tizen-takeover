@@ -325,7 +325,7 @@ The Govee floor lamp and light bars follow whatever the Pi plays: your phone ove
 
 - `./hub lights on` / `./hub lights off`: on, it saves how each light is, fades in and follows the music. Off fades out and puts the lights back.
 - `./hub lights chill`, `groove`, `party`: both dials at once (Low/Low, Medium/Medium, High/High). Groove is the demo you approved.
-- `./hub lights set --vibrancy high --beat low --palette sunset --quiet 15`: **Vibrancy** is how rich and bright, **Beat** how much the rhythm shows; `--quiet` is the minutes of quiet before it turns itself off (`never` keeps it on).
+- `./hub lights set --vibrancy high --beat low --palette sunset --quiet 15`: **Vibrancy** is how rich and bright, **Beat** how dense the pulses are (Low once a bar, Medium every beat, High every beat plus the eighth notes when the song has them); `--quiet` is the minutes of quiet before it turns itself off (`never` keeps it on).
 - `./hub lights palettes`: Warm drift (default), Lo-fi chill, Sunset, Dinner party, Rainforest, Aurora, Ocean drift, Octane. They live in `pi/lights/palettes.json`.
 - `./hub lights`: on or off and why, the dials, what the engine is doing.
 
@@ -335,9 +335,11 @@ Mailbox: `lights.status`, `lights.on`, `lights.off`, `lights.set` `{ "palette": 
 
 **Anything else wins.** Setting the lights another way turns music lights off and leaves your change alone: a hub Ambience scene or light that includes the lamp or bars straight away (music lights stop first, then the scene is set; with `LIGHTS_HA_LAMP`/`LIGHTS_HA_BARS` unset, any scene or light counts); the Govee app, a voice command or a Home Assistant scene as soon as Home Assistant sees the change (it checks every few seconds; the Govee app can take Home Assistant a little longer to notice). The light you changed keeps your setting; the other one is put back. Switch music lights on again when you want them.
 
-**Always true.** Nothing reads white, colors never cycle, a beat only changes brightness (never the color), and a lift always fades over more than 150 ms, under 3 a second. `pi/lights-test.js` checks all of it with made-up audio.
+**Always true.** Nothing reads white, colors never cycle, a beat only changes brightness (never the color), and a pulse always fades over more than 150 ms, and eighth notes only show up to 150 BPM. `pi/lights-test.js` checks all of it with made-up audio.
 
-**Tempo.** The song's tempo comes from Spotify's track through `vibe.js` (ReccoBeats) when Spotify plays, and from listening for the beat otherwise; listening also finds where the beats fall.
+**Tempo.** The song's tempo comes from Spotify's track through `vibe.js` (ReccoBeats) when Spotify plays, and from listening for the beat otherwise; listening also finds where the beats fall, and the pulses land on them. With no steady beat (a pad, noise) there are no pulses, only the slow mood.
+
+**Song sections.** Loudness over a second or two is compared with the last few seconds: a chorus or a drop brightens the lights and moves the palette on one step, a quieter verse calms them again.
 
 ### Set up (once, on the Pi)
 

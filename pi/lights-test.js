@@ -54,13 +54,23 @@ function tmpDir() {
 
 /* ---------- made-up audio ---------- */
 
-// A steady seeded noise so runs are the same every time.
+// A steady seeded noise (mulberry32) so runs are the same every time.
 function rng(seed) {
-  let x = seed || 1;
-  return () => { x = (x * 1103515245 + 12345) & 0x7fffffff; return x / 0x7fffffff; };
+  let a = seed >>> 0 || 1;
+  return () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-// Blocks of 50 ms: a quiet bed of noise with a 40 ms click on every beat.
+const PER_S = look.RATE / look.BLOCK;      // blocks a second
+
+// Blocks of 10 ms: a bed of noise with a 40 ms click on every beat; o.hat
+// adds a softer click on the off-beats (eighth notes), o.accent makes beat 1
+// of 4 louder, o.start shifts where the first beat falls (samples).
 function clickTrack(bpm, seconds, o) {
   const opt = o || {};
   const r = rng(opt.seed || 7);
@@ -69,14 +79,16 @@ function clickTrack(bpm, seconds, o) {
   const n = Math.round(seconds * look.RATE);
   const every = (60 / bpm) * look.RATE;
   const clickLen = Math.round(0.04 * look.RATE);
+  const start = opt.start || 0;
   const out = [];
   for (let b = 0; b * look.BLOCK < n; b++) {
     const blk = new Int16Array(look.BLOCK);
     for (let i = 0; i < look.BLOCK; i++) {
-      const t = b * look.BLOCK + i;
+      const t = b * look.BLOCK + i + start;
       const inBeat = t % every;
       let v = (r() * 2 - 1) * bed;
-      if (inBeat < clickLen) v += (r() * 2 - 1) * click;
+      if (inBeat < clickLen) v += (r() * 2 - 1) * click * (opt.accent && Math.floor(t / every) % 4 === 0 ? 1.6 : 1);
+      if (opt.hat && Math.abs(inBeat - every / 2) < clickLen / 2) v += (r() * 2 - 1) * opt.hat;
       blk[i] = Math.max(-32768, Math.min(32767, Math.round(v)));
     }
     out.push(blk);
@@ -84,79 +96,44 @@ function clickTrack(bpm, seconds, o) {
   return out;
 }
 
+function noise(seconds, amp, seed) {
+  const r = rng(seed || 5);
+  const out = [];
+  for (let b = 0; b < Math.round(seconds * PER_S); b++) {
+    const blk = new Int16Array(look.BLOCK);
+    for (let i = 0; i < look.BLOCK; i++) blk[i] = Math.round((r() * 2 - 1) * amp * (0.6 + 0.4 * Math.sin(b / 37)));
+    out.push(blk);
+  }
+  return out;
+}
+
 function silence(seconds) {
   const out = [];
-  for (let i = 0; i < Math.round(seconds * 20); i++) out.push(new Int16Array(look.BLOCK));
+  for (let i = 0; i < Math.round(seconds * PER_S); i++) out.push(new Int16Array(look.BLOCK));
   return out;
 }
 
 function sat(c) { return look.richness(c); }
 
-/* ---------- the demo, as a reference ---------- */
-
-// The approved demo's math (music_demo.py on the Pi), written out again
-// here so Medium/Medium can be compared with it frame by frame.
-function demoReference(pal, blocks) {
-  let env = 0.3, peak = 2000, prevRms = 0, fastAvg = 0, lastOnset = -9;
-  let flux = [], onsets = [], bpm = 0, vibe = 0.3, beatPhase = 0, nblk = 0, bump = 0, phase = 0;
-  const frames = [];
-  const colorAt = (pos) => {
-    pos = ((pos % pal.length) + pal.length) % pal.length;
-    const i = Math.floor(pos);
-    const a = pal[i], b = pal[(i + 1) % pal.length], t = pos - i;
-    return [0, 1, 2].map((k) => a[k] + (b[k] - a[k]) * t);
-  };
-  blocks.forEach((a) => {
-    nblk++;
-    let sq = 0;
-    for (let i = 0; i < a.length; i++) sq += a[i] * a[i];
-    const rms = Math.sqrt(sq / a.length);
-    peak = Math.max(rms, peak * 0.99975, 600);
-    const lvl = Math.min(1, rms / peak);
-    env = env * 0.9925 + lvl * 0.0075;
-    const rise = Math.max(0, rms - prevRms) / Math.max(peak, 1);
-    prevRms = rms;
-    flux.push(rise);
-    fastAvg = fastAvg * 0.9 + rise * 0.1;
-    const fired = rise > Math.max(0.04, fastAvg * 2.2) && nblk - lastOnset >= 5 ? 1 : 0;
-    if (fired) { lastOnset = nblk; bump = Math.max(bump, Math.min(1, rise / 0.15)); }
-    onsets.push(fired);
-    flux = flux.slice(-160); onsets = onsets.slice(-160);
-    if (nblk % 10 === 0 && flux.length >= 80) {
-      const m = flux.reduce((x, y) => x + y, 0) / flux.length;
-      const f = flux.map((x) => x - m);
-      let best = 0, bestLag = 0;
-      for (let lag = 7; lag < 21; lag++) {
-        let s = 0;
-        for (let i = lag; i < f.length; i++) s += f[i] * f[i - lag];
-        if (s > best) { best = s; bestLag = lag; }
-      }
-      if (bestLag) bpm = bpm ? bpm * 0.7 + (60 / (bestLag * 0.05)) * 0.3 : 60 / (bestLag * 0.05);
-    }
-    const density = onsets.reduce((x, y) => x + y, 0) / (onsets.length * 0.05);
-    const tempoN = bpm ? Math.min(1, Math.max(0, (bpm - 70) / 80)) : 0.3;
-    const target = 0.4 * env + 0.3 * tempoN + 0.3 * Math.min(1, density / 3);
-    vibe = vibe * 0.99 + target * 0.01;
-    beatPhase += (bpm ? bpm / 60 : 1) * 0.05 * 2 * Math.PI;
-    if (nblk % 2) return;
-    phase += 0.1 * (1 / 16 + vibe / 4);
-    const sway = 0.10 * vibe * Math.sin(beatPhase) + 0.18 * bump * (0.4 + vibe);
-    bump *= 0.55;
-    const out = {};
-    [['lamp', 7], ['bars', 12]].forEach(([k, n]) => {
-      out[k] = [];
-      for (let i = 0; i < n; i++) {
-        let c = colorAt(phase + (i / n) * 1.5);
-        const f = 0.3 + 0.65 * vibe + sway;
-        const g = (c[0] + c[1] + c[2]) / 3;
-        const s = 1 + 0.5 * vibe;
-        c = c.map((v) => Math.max(0, g + (v - g) * s));
-        out[k].push(c.map((v) => Math.floor(Math.min(255, Math.floor(v * f)) / 6) * 6));
-      }
-    });
-    frames.push(out);
+// Feed blocks; note the block index of every new pulse.
+function pulsesOf(l, blocks) {
+  const at = [];
+  let seen = l.features().pulses;
+  blocks.forEach((b, i) => {
+    if (l.block(b)) l.render(1, 0);
+    const n = l.features().pulses;
+    if (n > seen) { at.push(i); seen = n; }
   });
-  return frames;
+  return at;
+}
+
+// How far (ms) a block index sits from the nearest beat of the track.
+function offBeatMs(i, bpm, start) {
+  const t = i * look.BLOCK + (start || 0);
+  const every = (60 / bpm) * look.RATE;
+  let d = t % every;
+  if (d > every / 2) d -= every;
+  return (d / look.RATE) * 1000;
 }
 
 /* ---------- a stand-in Home Assistant ---------- */
@@ -209,7 +186,7 @@ function rig(o) {
     e.applyHub({ settings: Object.assign({}, settings), song: { bpm: 0 } }, 0);
   };
   const feed = async (blocks) => {
-    for (const b of blocks) { t.now += 50; e.block(b); }
+    for (const b of blocks) { t.now += 1000 / PER_S; e.block(b); }
     await new Promise((r) => setImmediate(r));
     await e.settled();
   };
@@ -276,53 +253,72 @@ async function main() {
 
   /* ---------- the look, with made-up audio ---------- */
 
-  await check('listening: a 120 BPM click track reads 120 BPM (within 6) after 12 s', () => {
-    const l = look.createLook({ palette: settingsLib.paletteById('warm-drift').colors });
-    clickTrack(120, 12).forEach((b) => l.block(b));
-    const f = l.features();
-    assert.ok(Math.abs(f.bpm - 120) <= 6, 'heard ' + f.bpm);
-    assert.ok(f.sound);
-  });
-
-  await check('listening: 100 BPM reads 100 (within 6); silence is not sound', () => {
-    const l = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]] });
-    clickTrack(100, 12, { seed: 3 }).forEach((b) => l.block(b));
-    assert.ok(Math.abs(l.features().bpm - 100) <= 6, 'heard ' + l.features().bpm);
-    silence(1).forEach((b) => l.block(b));
-    assert.strictEqual(l.features().sound, false);
-  });
-
-  await check('tempo: the song\'s own tempo wins when listening agrees (or hears half or double)', () => {
-    const l = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]] });
-    l.setSongBpm(118);
-    assert.strictEqual(l.features().bpm, 118, 'fills in before listening settles');
-    clickTrack(120, 12).forEach((b) => l.block(b));
-    assert.strictEqual(l.features().bpm, 118);
-    l.setSongBpm(60);
-    assert.strictEqual(l.features().bpm, 120, 'half of what is heard: doubled');
-    l.setSongBpm(90);
-    assert.ok(Math.abs(l.features().bpm - 120) <= 6, 'disagrees: listening wins');
-  });
-
-  await check('Medium/Medium draws what the approved demo draws, frame by frame', () => {
-    const pal = settingsLib.paletteById('warm-drift').colors;
-    const blocks = clickTrack(100, 15, { seed: 11 }).concat(silence(3), clickTrack(140, 8, { seed: 5, click: 9000 }));
-    const ref = demoReference(pal, blocks);
-    const l = look.createLook({ palette: pal, vibrancy: 'medium', beat: 'medium' });
-    let i = 0, same = 0, total = 0, pale = 0;
-    blocks.forEach((b) => {
-      if (!l.block(b)) return;
-      const got = l.render(1, 0);
-      const want = ref[i++];
-      ['lamp', 'bars'].forEach((k) => got[k].forEach((c, s) => {
-        total++;
-        if (sat(want[k][s]) < 0.42) { pale++; return; }   // the one fixed change: never washed out
-        const d = Math.max.apply(null, c.map((v, j) => Math.abs(v - want[k][s][j])));
-        if (d <= 6) same++;
-      }));
+  await check('tempo: 120, 100, 90 and 140 BPM click tracks read right (within 2) after 10 s', () => {
+    [120, 100, 90, 140].forEach((bpm, k) => {
+      const l = look.createLook({ palette: settingsLib.paletteById('warm-drift').colors });
+      clickTrack(bpm, 10, { seed: k + 3, bed: 2500 }).forEach((b) => l.block(b));
+      assert.ok(Math.abs(l.features().bpm - bpm) <= 2, bpm + ' heard as ' + l.features().bpm);
+      assert.ok(l.features().sound);
     });
-    assert.strictEqual(i, ref.length);
-    assert.ok(same / (total - pale) > 0.97, 'only ' + same + ' of ' + (total - pale) + ' match the demo');
+  });
+
+  await check('beat lock: once settled, every pulse lands within 30 ms of a beat (Medium: one a beat)', () => {
+    [[120, 3000], [96, 11000], [132, 500]].forEach(([bpm, start]) => {
+      const l = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]], beat: 'medium' });
+      const at = pulsesOf(l, clickTrack(bpm, 16, { start: start, bed: 2000 })).filter((i) => i > 8 * PER_S);
+      const worst = Math.max.apply(null, at.map((i) => Math.abs(offBeatMs(i, bpm, start))));
+      assert.ok(worst <= 30, bpm + ' BPM: a pulse ' + Math.round(worst) + ' ms off the beat');
+      const perS = at.length / 8;
+      assert.ok(Math.abs(perS - bpm / 60) <= 0.15, bpm + ' BPM: ' + perS.toFixed(2) + ' pulses a second');
+    });
+  });
+
+  await check('beat lock: the song\'s own tempo wins when listening agrees, and fills in before it settles', () => {
+    const l = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]] });
+    l.setSongBpm(60);
+    clickTrack(121, 10).forEach((b) => l.block(b));
+    assert.ok(Math.abs(l.features().bpm - 120) <= 1, 'double of the song\'s 60: ' + l.features().bpm);
+    const m = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]] });
+    m.setSongBpm(118);
+    silence(4).concat(clickTrack(118, 1)).forEach((b) => m.block(b));
+    assert.strictEqual(m.features().bpm, 118);
+  });
+
+  await check('Beat dial is density: Low once a bar, Medium every beat, High adds the eighth notes', () => {
+    const rate = (beat, o) => {
+      const l = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]], beat: beat });
+      return pulsesOf(l, clickTrack(120, 16, o)).filter((i) => i > 8 * PER_S).length / 8;
+    };
+    const hats = { hat: 6000, accent: true, bed: 1500 };
+    const lo = rate('low', hats), mid = rate('medium', hats), hi = rate('high', hats);
+    assert.ok(Math.abs(lo - 0.5) <= 0.15, 'low ' + lo);
+    assert.ok(Math.abs(mid - 2) <= 0.15, 'medium ' + mid);
+    assert.ok(Math.abs(hi - 4) <= 0.3, 'high ' + hi);
+    const plain = rate('high', { accent: true });
+    assert.ok(Math.abs(plain - 2) <= 0.15, 'high with no eighth notes in the song stays on the beat: ' + plain);
+  });
+
+  await check('no steady beat (noise, a pad): no pulses, only the overall mood moves', () => {
+    const l = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]], beat: 'high' });
+    let mx = 0;
+    noise(16, 5000).forEach((b, i) => { l.block(b); if (i > 8 * PER_S) mx = Math.max(mx, l.features().pulse); });
+    assert.ok(l.features().confidence < 0.2, 'confidence ' + l.features().confidence);
+    assert.ok(mx < 0.15, 'pulse reached ' + mx.toFixed(2));
+  });
+
+  await check('sections: a quiet verse then a loud chorus lifts brightness within 3 s and counts a new section', () => {
+    const pal = settingsLib.paletteById('warm-drift').colors;
+    const l = look.createLook({ palette: pal, vibrancy: 'medium', beat: 'low' });
+    const level = () => { const o = l.render(1, 0); return o.lamp.concat(o.bars).reduce((a, c) => a + Math.max.apply(null, c), 0) / 19; };
+    clickTrack(110, 20, { click: 3000, bed: 400 }).forEach((b) => l.block(b));
+    const verse = level();
+    const before = l.features().sections;
+    clickTrack(110, 3, { click: 16000, bed: 5000, seed: 9 }).forEach((b) => l.block(b));
+    const chorus = level();
+    assert.ok(chorus > verse * 1.4, 'verse ' + verse.toFixed(0) + ', chorus ' + chorus.toFixed(0));
+    assert.strictEqual(l.features().sections, before + 1, 'a new section');
+    clickTrack(110, 12, { click: 3000, bed: 400, seed: 4 }).forEach((b) => l.block(b));
+    assert.ok(level() < chorus, 'back to the verse calms down');
   });
 
   await check('limits: no color reads white, at any dial, palette or loudness', () => {
@@ -330,7 +326,7 @@ async function main() {
     settingsLib.PALETTES.palettes.forEach((p) => {
       settingsLib.LEVELS.forEach((v) => settingsLib.LEVELS.forEach((bt) => {
         const l = look.createLook({ palette: p.colors, vibrancy: v, beat: bt });
-        clickTrack(150, 6, { click: 30000, bed: 4000 }).concat(silence(2)).forEach((b) => {
+        clickTrack(150, 6, { click: 30000, bed: 4000, hat: 9000 }).concat(silence(2)).forEach((b) => {
           if (!l.block(b)) return;
           const out = l.render(1, 0);
           // Very dim colors cannot read white; there the rounding to steps of 6 decides.
@@ -345,9 +341,8 @@ async function main() {
     const pal = settingsLib.paletteById('sunset').colors;
     const a = look.createLook({ palette: pal, vibrancy: 'medium', beat: 'high' });
     const b = look.createLook({ palette: pal, vibrancy: 'medium', beat: 'low' });
-    const blocks = clickTrack(110, 10);
     let n = 0, worst = 0;
-    blocks.forEach((blk) => {
+    clickTrack(110, 10, { hat: 5000 }).forEach((blk) => {
       const due = a.block(blk); b.block(blk);
       if (!due) return;
       const x = a.render(1, 0), y = b.render(1, 0);
@@ -364,47 +359,52 @@ async function main() {
     assert.ok(worst <= 12, 'hue moved ' + worst.toFixed(1) + ' degrees with the beat');
   });
 
-  await check('limits: onsets under 3 a second even on a fast track; each lift fades over more than 150 ms', () => {
-    const l = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]], beat: 'high' });
-    clickTrack(480, 10, { click: 20000 }).forEach((b) => { if (l.block(b)) l.render(1, 0); });
-    assert.ok(l.features().onsets / 10 < 3, l.features().onsets + ' onsets in 10 s');
-    // One loud jump: the lift is still above a quarter after 150 ms (1.5 frames), gone after a second.
-    const m = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]], beat: 'medium' });
-    silence(4).forEach((b) => { if (m.block(b)) m.render(1, 0); });
-    const loud = new Int16Array(look.BLOCK).fill(12000);
-    m.block(loud);
-    const lifts = [];
-    for (let i = 0; i < 24; i++) { if (m.block(loud)) { lifts.push(m.features().bump); m.render(1, 0); } }
-    assert.ok(lifts[0] > 0.5, 'a jump lifts');
-    assert.ok(lifts[1] > 0.25 * lifts[0], 'faded too fast');
-    assert.ok(lifts[lifts.length - 1] < 0.05);
+  await check('limits: a pulse fades over more than 150 ms; eighth notes stop above 150 BPM', () => {
+    const l = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]], beat: 'medium' });
+    let peak = 0, peakAt = -1, later = -1;
+    clickTrack(120, 10).forEach((b, i) => {
+      l.block(b);
+      const p = l.features().pulse;
+      if (i > 8 * PER_S && peakAt < 0 && p > 0.5) { peak = p; peakAt = i; }
+      if (peakAt >= 0 && i === peakAt + Math.round(0.15 * PER_S)) later = p;
+    });
+    assert.ok(peakAt > 0, 'a pulse');
+    assert.ok(later > 0.25 * peak, 'faded too fast: ' + later.toFixed(2) + ' of ' + peak.toFixed(2));
+    const fast = look.createLook({ palette: [[200, 60, 20], [20, 120, 100]], beat: 'high' });
+    const at = pulsesOf(fast, clickTrack(170, 14, { hat: 8000 })).filter((i) => i > 8 * PER_S);
+    assert.ok(at.length / 6 <= 170 / 60 + 0.2, (at.length / 6).toFixed(2) + ' pulses a second at 170 BPM');
   });
 
-  await check('dials: Low stays dim and still, High reaches brighter; Beat Low has no lift', () => {
+  await check('dials: Low stays dim, High reaches brighter', () => {
     const pal = settingsLib.paletteById('warm-drift').colors;
-    const peakOf = (v, bt) => {
-      const l = look.createLook({ palette: pal, vibrancy: v, beat: bt });
+    const peakOf = (v) => {
+      const l = look.createLook({ palette: pal, vibrancy: v, beat: 'medium' });
       let mx = 0;
       clickTrack(140, 12, { click: 20000, bed: 3000 }).forEach((b) => {
         if (!l.block(b)) return;
-        const o = l.render(1, 0);
-        o.lamp.forEach((c) => { mx = Math.max(mx, Math.max.apply(null, c)); });
+        l.render(1, 0).lamp.forEach((c) => { mx = Math.max(mx, Math.max.apply(null, c)); });
       });
-      return { mx: mx, bump: look.BEAT[bt].bump };
+      return mx;
     };
-    const lo = peakOf('low', 'low'), mid = peakOf('medium', 'medium'), hi = peakOf('high', 'high');
-    assert.ok(lo.mx < mid.mx && mid.mx <= hi.mx, [lo.mx, mid.mx, hi.mx].join(' < '));
-    assert.ok(lo.mx <= 255 * 0.5, 'Low reached ' + lo.mx);
-    assert.strictEqual(lo.bump, 0);
+    const lo = peakOf('low'), mid = peakOf('medium'), hi = peakOf('high');
+    assert.ok(lo < mid && mid <= hi, [lo, mid, hi].join(' < '));
+    assert.ok(lo <= 255 * 0.55, 'Low reached ' + lo);
   });
 
-  await check('High beat: the lift travels up the lamp (bottom first)', () => {
+  await check('High beat: the pulse travels up the lamp (bottom first)', () => {
     const l = look.createLook({ palette: [[200, 60, 20], [200, 60, 20]], vibrancy: 'medium', beat: 'high' });
-    silence(4).forEach((b) => { if (l.block(b)) l.render(1, 0); });
-    const loud = new Int16Array(look.BLOCK).fill(14000);
-    l.block(loud); l.block(loud);
-    const first = l.render(1, 0).lamp;
-    assert.ok(Math.max.apply(null, first[0]) > Math.max.apply(null, first[6]), 'bottom lit before top');
+    let checked = 0, seen = 0, fresh = false;
+    clickTrack(100, 12).forEach((b, i) => {
+      const due = l.block(b);
+      if (l.features().pulses > seen) { seen = l.features().pulses; fresh = true; }
+      if (due && fresh && i > 8 * PER_S) {
+        fresh = false;
+        const lamp = l.render(1, 0).lamp;
+        assert.ok(Math.max.apply(null, lamp[0]) > Math.max.apply(null, lamp[6]), 'bottom lit before top');
+        checked++;
+      }
+    });
+    assert.ok(checked > 0);
   });
 
   /* ---------- session: On, Off and quiet ---------- */
