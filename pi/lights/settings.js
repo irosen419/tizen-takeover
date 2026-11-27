@@ -10,6 +10,9 @@
  *             back (1-240), or 0 for never. Default 15.
  *   offReason why it is off: '' | 'you' | 'quiet' | 'gave-way'
  *   gaveWay   which lights were set another way ('lamp', 'bars', 'hub')
+ *   look      the paired preset on now (looks.js id), or ''. Music lights on
+ *             pause it; when they stop, the look is painted again.
+ *   lookAt    the rev when that look was picked (a repeat pick repaints)
  *   rev       goes up on every change
  *
  * Presets: chill = low/low, groove = medium/medium (the demo), party = high/high.
@@ -29,7 +32,8 @@ const PRESETS = {
 };
 const DEFAULT_QUIET_MIN = 15;
 const MAX_QUIET_MIN = 240;
-const OFF_REASONS = ['', 'you', 'quiet', 'gave-way'];
+const OFF_REASONS = ['', 'you', 'quiet', 'gave-way', 'look'];
+const LOOK_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
 const PALETTE_FILE = path.join(__dirname, 'palettes.json');
 
@@ -43,7 +47,7 @@ const paletteIds = () => PALETTES.palettes.map((p) => p.id);
 const paletteById = (id) => PALETTES.palettes.find((p) => p.id === id) || PALETTES.palettes.find((p) => p.id === PALETTES.default);
 
 function defaults() {
-  return { on: false, palette: PALETTES.default, vibrancy: 'medium', beat: 'medium', quietMin: DEFAULT_QUIET_MIN, offReason: '', gaveWay: [], rev: 0 };
+  return { on: false, palette: PALETTES.default, vibrancy: 'medium', beat: 'medium', quietMin: DEFAULT_QUIET_MIN, offReason: '', gaveWay: [], look: '', lookAt: 0, rev: 0 };
 }
 
 function bad(message) {
@@ -64,15 +68,17 @@ function clean(s) {
     quietMin: Number.isInteger(s.quietMin) && s.quietMin >= 0 && s.quietMin <= MAX_QUIET_MIN ? s.quietMin : d.quietMin,
     offReason: OFF_REASONS.indexOf(s.offReason) >= 0 ? s.offReason : '',
     gaveWay: Array.isArray(s.gaveWay) ? s.gaveWay.filter((x) => ['lamp', 'bars', 'hub'].indexOf(x) >= 0).slice(0, 3) : [],
+    look: typeof s.look === 'string' && LOOK_ID.test(s.look) ? s.look : '',
+    lookAt: Number.isInteger(s.lookAt) && s.lookAt >= 0 ? s.lookAt : 0,
     rev: Number.isInteger(s.rev) && s.rev >= 0 ? s.rev : 0
   };
 }
 
 // A change asked for by a person ({ on, palette, vibrancy, beat, preset,
-// quietMin }). Throws a 400 with a plain reason; returns only the fields to set.
+// quietMin, look }). look is an id ('' or null: none); the store checks it exists. Throws a 400 with a plain reason; returns only the fields to set.
 function checkChange(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw bad('send a JSON object such as { "on": true }');
-  const allowed = ['on', 'palette', 'vibrancy', 'beat', 'preset', 'quietMin'];
+  const allowed = ['on', 'palette', 'vibrancy', 'beat', 'preset', 'quietMin', 'look'];
   Object.keys(body).forEach((k) => { if (allowed.indexOf(k) < 0) throw bad('"' + k + '" is not a music lights setting (use ' + allowed.join(', ') + ')'); });
   const out = {};
   if (body.preset !== undefined) {
@@ -97,6 +103,11 @@ function checkChange(body) {
     if (!Number.isInteger(q) || q < 0 || q > MAX_QUIET_MIN) throw bad('quietMin must be whole minutes from 1 to ' + MAX_QUIET_MIN + ', or 0 / "never"');
     out.quietMin = q;
   }
+  if (body.look !== undefined) {
+    const l = body.look === null ? '' : body.look;
+    if (typeof l !== 'string' || (l !== '' && !LOOK_ID.test(l))) throw bad('look must be a preset id (./hub lights presets), or "" for none');
+    out.look = l;
+  }
   if (!Object.keys(out).length) throw bad('nothing to change');
   return out;
 }
@@ -112,6 +123,7 @@ module.exports = {
   PRESETS: PRESETS,
   DEFAULT_QUIET_MIN: DEFAULT_QUIET_MIN,
   MAX_QUIET_MIN: MAX_QUIET_MIN,
+  LOOK_ID: LOOK_ID,
   PALETTES: PALETTES,
   loadPalettes: loadPalettes,
   paletteIds: paletteIds,

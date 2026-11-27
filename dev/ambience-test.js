@@ -322,7 +322,7 @@ async function main() {
     assert(r.cards.join(',') === 'chill,lights-on,reading,movie,all-off', 'cards ' + r.cards);
     assert(r.rows === 3 && r.chips === 3, r.rows + ' rows, ' + r.chips + ' chips');
     assert(r.active.join() === 'chill', 'active ' + r.active);
-    assert(r.labels.join('|') === 'Scenes|Room lights|Plant wall', 'labels ' + r.labels);
+    assert(r.labels.join('|') === 'Scenes|Lamp and bars|Room lights|Plant wall', 'labels ' + r.labels);
     assert(await focused(page) === 'scene:chill', 'first focus ' + await focused(page));
   });
 
@@ -331,6 +331,8 @@ async function main() {
     assert(await focused(page) === 'scene:lights-on', 'Right: ' + await focused(page));
     await key(page, 'ArrowRight', 2);
     assert(await focused(page) === 'scene:movie', 'Right x2: ' + await focused(page));
+    await key(page, 'ArrowDown');
+    assert(await focused(page) === 'look:octane', 'Down to the presets: ' + await focused(page));
     await key(page, 'ArrowDown');
     assert(await focused(page) === 'light:geeni', 'Down: ' + await focused(page));
     assert(/dimmer or brighter/.test((await sub(page)).text), 'the hint for a light: ' + (await sub(page)).text);
@@ -343,9 +345,33 @@ async function main() {
     await key(page, 'ArrowUp');
     assert(await focused(page) === 'light:camera', 'Up: ' + await focused(page));
     await key(page, 'ArrowUp', 3);
+    assert(await focused(page) === 'look:octane', 'Up to the presets (the first, none on): ' + await focused(page));
+    await key(page, 'ArrowUp');
     assert(await focused(page) === 'scene:movie', 'Up to the scene focused last: ' + await focused(page));
     await key(page, 'ArrowLeft', 2);
     assert(await focused(page) === 'scene:lights-on', 'Left x2: ' + await focused(page));
+  });
+
+  await check('lamp and bars presets: a picture of each, OK sets one ("Sending..." then On now), Up goes back to the scene', async () => {
+    const cards = await page.evaluate(() => [].map.call(document.querySelectorAll('#panel .am-look'), (c) => ({
+      id: c.getAttribute('data-look'), name: c.querySelector('.am-look-name').textContent,
+      lamp: c.querySelector('.am-look-lamp').style.background, bars: c.querySelectorAll('.am-look-bar').length
+    })));
+    assert(cards.map((c) => c.id).join(',') === 'octane,rainforest,thunderstorm,warm-drift', 'presets ' + cards.map((c) => c.id));
+    assert(cards.every((c) => /gradient/.test(c.lamp) && c.bars === 2), 'pictures ' + JSON.stringify(cards[0]));
+    await key(page, 'ArrowDown');
+    await key(page, 'ArrowRight');
+    assert(await focused(page) === 'look:rainforest', 'Right: ' + await focused(page));
+    assert(/lamp and bars together/.test((await sub(page)).text), 'the hint: ' + (await sub(page)).text);
+    await page.keyboard.press('Enter');
+    await sleep(60);
+    const at = await page.evaluate(() => document.querySelector('#panel .am-look[data-look="rainforest"]').textContent);
+    assert(/Sending|On now/.test(at), 'right after OK: ' + at);
+    await until(() => page.evaluate(() => /is-active/.test(document.querySelector('#panel .am-look[data-look="rainforest"]').className)), 4000, 'Rainforest not marked on');
+    assert((await request(env.pi.port, 'GET', '/api/lights')).body.settings.look === 'rainforest', 'the Pi has it');
+    assert(/Rainforest on the lamp and bars/.test((await sub(page)).text), 'the head says ' + (await sub(page)).text);
+    await key(page, 'ArrowUp');
+    assert(await focused(page) === 'scene:lights-on', 'Up: ' + await focused(page));
   });
 
   await check('a scene: "Sending..." at once, then marked on by the Pi\'s push; the lamp is at the scene\'s level', async () => {
@@ -372,7 +398,7 @@ async function main() {
   });
 
   await check('a light: Right shows the new level at once, the lamp follows, focus stays', async () => {
-    await key(page, 'ArrowDown');
+    await key(page, 'ArrowDown', 2);
     assert(await focused(page) === 'light:geeni', 'on the Geeni lamp');
     await page.keyboard.press('ArrowRight');
     await sleep(40);
@@ -397,7 +423,7 @@ async function main() {
   });
 
   await check('rollback: no light answers a scene; Reading stays the active one, "Nothing changed"', async () => {
-    await key(page, 'ArrowUp');
+    await key(page, 'ArrowUp', 2);
     assert(await focused(page) === 'scene:reading', 'back on Reading: ' + await focused(page));
     await key(page, 'ArrowRight');
     assert(await focused(page) === 'scene:movie', 'on Movie');
@@ -478,7 +504,7 @@ async function main() {
       card: document.querySelector('#panel .am-card').getBoundingClientRect().width,
       chips: document.querySelector('#panel .am-chips').getBoundingClientRect().bottom <= window.innerHeight
     }));
-    assert(r.full && r.secs === 3 && r.card > 180 && r.chips, 'everything on one screen: ' + JSON.stringify(r));
+    assert(r.full && r.secs === 4 && r.card > 180 && r.chips, 'everything on one screen: ' + JSON.stringify(r));
     await key(page, 'ArrowDown');
     assert(/^scene:/.test(await focused(page)), 'Down from the button: ' + await focused(page));
     await key(page, 'Escape');
@@ -539,10 +565,10 @@ async function main() {
     assert(am.length >= 5, 'only ' + am.length + ' lines');
     const bad = [];
     env.lines.forEach((l) => {
-      if (am.indexOf(l) >= 0 && !/^ambience: /.test(l)) bad.push('no prefix: ' + l);
+      if (am.indexOf(l) >= 0 && !/^(ambience|music lights): /.test(l)) bad.push('no prefix: ' + l);
       if (l.indexOf(env.mock.token) >= 0 || /light\.example|switch\.example/.test(l)) bad.push('a secret or an entity id: ' + l);
       if ((am.indexOf(l) >= 0 || /^control .*ambience/.test(l)) && /127\.0\.0\.1|localhost|:\d{4,5}\b/.test(l)) bad.push('an address: ' + l);
-      if (/^ambience: /.test(l) && names.some((n) => l.indexOf(n) >= 0)) bad.push('a name: ' + l);
+      if (/^(ambience|music lights): /.test(l) && names.some((n) => l.indexOf(n) >= 0)) bad.push('a name: ' + l);
     });
     assert(!bad.length, bad.slice(0, 4).join(' | '));
   });

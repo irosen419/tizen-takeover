@@ -24,6 +24,8 @@ const settingsLib = require('./lights/settings');
 const haLib = require('./lights/ha');
 const engineLib = require('./lights/engine');
 const storeLib = require('./lights/store');
+const looksLib = require('./lights/looks');
+const cloudLib = require('./lights/govee-cloud');
 const hubServer = require('./server');
 const hubctl = require('./hubctl');
 const mailbox = require('./mailbox');
@@ -684,6 +686,221 @@ async function main() {
     assert.deepStrictEqual([st.settings().offReason, st.settings().gaveWay], ['', []]);
   });
 
+  /* ---------- paired presets (looks.js) ---------- */
+
+  const DUSK_LAMP = [[255, 19, 200], [230, 20, 240], [180, 30, 255], [140, 40, 255], [100, 50, 255], [60, 60, 255], [40, 70, 255]];
+  // Magenta presets live on the Pi (they fire Ian's Govee snapshots), so
+  // the tests bring LAN-only ones of their own.
+  const LOCAL = {
+    'magenta-dusk': looksLib.check({ id: 'magenta-dusk', name: 'Magenta dusk', lamp: { brightness: 48, gradient: DUSK_LAMP }, bars: { brightness: 48, color: [255, 19, 247] } }),
+    'magenta-wave': looksLib.check({ id: 'magenta-wave', name: 'Magenta wave', motion: 'wave', lamp: { brightness: 48, gradient: DUSK_LAMP }, bars: { brightness: 48, gradient: [[255, 19, 247], [200, 25, 255], [255, 19, 247]] } })
+  };
+  const lookById = (id) => LOCAL[id] || looksLib.BUILT_IN.find((l) => l.id === id);
+  // Hand the rig's engine settings plus the preset the hub would send.
+  const hubLook = (g, fields, def) => {
+    // The engine's first hub answer (no preset yet), as when it starts.
+    if (!g.started) { g.started = true; g.e.applyHub({ settings: Object.assign({}, g.settings), look: null, song: { bpm: 0 } }, 0); }
+    Object.assign(g.settings, fields, { rev: g.settings.rev + 1 });
+    if (fields.look) g.settings.lookAt = g.settings.rev;
+    g.e.applyHub({ settings: Object.assign({}, g.settings), look: g.settings.look ? (def || lookById(g.settings.look)) : null, song: { bpm: 0 } }, 0);
+  };
+  const tick = async (g, ms) => { for (let i = 0; i < ms / 100; i++) { g.t.now += 100; g.e.idle(); } await new Promise((r) => setImmediate(r)); await g.e.settled(); };
+  const ptReals = (g, k, from) => g.sent.filter((x) => x.k === k && x.msg.cmd === 'ptReal' && x.t >= (from || 0));
+  // The colors one light shows after these messages (by section).
+  const shown = (msgs, n) => {
+    const out = new Array(n).fill(null);
+    msgs.forEach((x) => x.msg.data.command.forEach((f) => {
+      const b = Buffer.from(f, 'base64');
+      const mask = b[12] | (b[13] << 8);
+      for (let i = 0; i < n; i++) if (mask & (1 << i)) out[i] = [b[4], b[5], b[6]];
+    }));
+    return out;
+  };
+
+  await check('looks: built-ins check out; a gradient lamp reads bottom to top (Magenta dusk) with solid magenta bars', () => {
+    assert.ok(looksLib.BUILT_IN.length >= 4);
+    ['octane', 'rainforest', 'thunderstorm', 'warm-drift'].forEach((id) => assert.ok(looksLib.BUILT_IN.find((l) => l.id === id), id));
+    looksLib.BUILT_IN.forEach((l) => assert.ok(l.name && l.es, 'Spanish name for ' + l.id));
+    const r = looksLib.resolve(lookById('magenta-dusk'), 0);
+    assert.deepStrictEqual(r.lamp.colors, DUSK_LAMP);
+    assert.deepStrictEqual(r.bars.colors, new Array(12).fill([255, 19, 247]));
+    assert.deepStrictEqual([r.lamp.brightness, r.bars.brightness], [48, 48]);
+    // Octane: gold at the top of both bars (sections 0 and 6), emerald at the bottom.
+    const o = looksLib.resolve(lookById('octane'), 0);
+    assert.deepStrictEqual([o.bars.colors[0], o.bars.colors[6], o.bars.colors[5]], [[255, 150, 0], [255, 150, 0], [0, 120, 20]]);
+    assert.deepStrictEqual(o.lamp.colors[0], [0, 120, 20]);
+    assert.deepStrictEqual(o.lamp.colors[6], [255, 150, 0]);
+  });
+
+  await check('looks: drift and wave move the colors along the lamp without new colors; checks refuse bad presets plainly', () => {
+    const w = lookById('magenta-wave');
+    const w0 = looksLib.resolve(w, 0).lamp.colors;
+    const w1 = looksLib.resolve(w, looksLib.WAVE_PERIOD_MS / 4).lamp.colors;
+    assert.notDeepStrictEqual(w0, w1);
+    assert.deepStrictEqual(looksLib.resolve(w, looksLib.WAVE_PERIOD_MS).lamp.colors, w0, 'one wave is 17 s');
+    assert.notDeepStrictEqual(w0[0], w0[3], 'each section is behind the one before');
+    [w0, w1].forEach((cols) => cols.forEach((c) => c.forEach((v) => assert.strictEqual(v % 2, 0, 'rounded to even steps'))));
+    const d = looksLib.check({ id: 'd', name: 'D', motion: 'drift', lamp: lookById('magenta-dusk').lamp, bars: { brightness: 40, color: [255, 19, 247] } });
+    const a = looksLib.resolve(d, 0).lamp.colors;
+    const b = looksLib.resolve(d, looksLib.DRIFT_PERIOD_MS / 4).lamp.colors;
+    assert.notDeepStrictEqual(a, b, 'a quarter period later the lamp has moved');
+    const inRange = (c) => c[0] >= 40 && c[0] <= 255 && c[2] >= 200;
+    [a, b, w0, w1].forEach((cols) => cols.forEach((c) => assert.ok(inRange(c), c + ' is not a pink-purple-blue')));
+    assert.throws(() => looksLib.check({ id: 'x', name: 'X', lamp: { brightness: 50 }, bars: { brightness: 50, color: [1, 2, 3] } }), /exactly one of/);
+    assert.throws(() => looksLib.check({ id: 'x', name: 'X', lamp: { brightness: 0, color: [1, 2, 3] }, bars: { brightness: 50, color: [1, 2, 3] } }), /brightness must be 1-100/);
+    assert.throws(() => looksLib.check({ id: 'x', name: 'X', lamp: { brightness: 5, sections: [[1, 2, 3]] }, bars: { brightness: 50, color: [1, 2, 3] } }), /sections must be 7/);
+    assert.throws(() => looksLib.check({ id: 'Bad id', name: 'X' }), /id must be/);
+    assert.strictEqual(looksLib.idFromName('Café rosado!'), 'my-cafe-rosado');
+    const saved = looksLib.fromStates('Pink', { lamp: { on: true, available: true, brightness: 122, rgb: [255, 19, 247] }, bars: { on: true, available: true, brightness: 122, rgb: [255, 19, 247] } });
+    assert.deepStrictEqual([saved.id, saved.lamp.brightness, saved.lamp.color], ['my-pink', 48, [255, 19, 247]]);
+    assert.throws(() => looksLib.fromStates('Pink', { lamp: { on: false, available: true }, bars: { on: true, available: true } }), /floor lamp is off/);
+  });
+
+  await check('engine: a preset paints both lights (power, brightness, then section colors twice), nothing put back', async () => {
+    const g = rig();
+    hubLook(g, { look: 'magenta-dusk' });
+    const setup = g.sent.filter((x) => x.t === 0).map((x) => x.k + ':' + x.msg.cmd);
+    assert.deepStrictEqual(setup, ['lamp:turn', 'lamp:colorwc', 'lamp:brightness', 'bars:turn', 'bars:colorwc', 'bars:brightness']);
+    assert.strictEqual(g.sent.find((x) => x.k === 'lamp' && x.msg.cmd === 'brightness').msg.data.value, 48);
+    await tick(g, 1200);
+    assert.deepStrictEqual(shown(ptReals(g, 'lamp'), 7), DUSK_LAMP);
+    assert.deepStrictEqual(shown(ptReals(g, 'bars'), 12), new Array(12).fill([255, 19, 247]));
+    const n = ptReals(g, 'lamp').length;
+    assert.ok(n >= 2, 'sent twice');
+    await tick(g, 3000);
+    assert.strictEqual(ptReals(g, 'lamp').length, n, 'a still preset is not resent over and over');
+    assert.deepStrictEqual(g.ha.calls, []);
+    // The same settings resent do not paint again; a new pick of the same preset does.
+    const before = g.sent.length;
+    g.e.applyHub({ settings: Object.assign({}, g.settings), look: lookById('magenta-dusk'), song: { bpm: 0 } }, 0);
+    assert.strictEqual(g.sent.length, before);
+    hubLook(g, { look: 'magenta-dusk' });
+    assert.ok(g.sent.length > before);
+  });
+
+  await check('engine: a wave preset keeps moving (ten updates a second at most); clearing it stops sending', async () => {
+    const g = rig();
+    hubLook(g, { look: 'magenta-wave' });
+    await tick(g, 1200);
+    const t0 = g.t.now;
+    await tick(g, 10000);
+    const n = ptReals(g, 'lamp', t0 + 1).length;
+    assert.ok(n >= 30 && n <= 10 * 10 * 2, n + ' lamp messages in 10 s');
+    hubLook(g, { look: '' });
+    const t1 = g.t.now;
+    await tick(g, 3000);
+    assert.strictEqual(ptReals(g, 'lamp', t1 + 1).length, 0);
+  });
+
+  await check('engine: music lights pause a preset and paint it again when they stop (not the saved state)', async () => {
+    const g = rig();
+    hubLook(g, { look: 'magenta-dusk' });
+    await tick(g, 1200);
+    hubLook(g, { on: true });
+    await g.feed(clickTrack(120, 3));
+    assert.notStrictEqual(g.e.session.state(), 'off');
+    const t0 = g.t.now;
+    hubLook(g, { on: false, offReason: 'you' });
+    await g.feed(silence(2));
+    await tick(g, 1200);
+    assert.strictEqual(g.e.session.state(), 'off');
+    assert.deepStrictEqual(g.ha.calls, [], 'nothing put back from Home Assistant');
+    assert.ok(g.logs.indexOf('music lights: preset painted again') >= 0, g.logs.join(' | '));
+    assert.deepStrictEqual(shown(ptReals(g, 'lamp', t0), 7), DUSK_LAMP);
+  });
+
+  await check('engine: a preset picked while music plays stops it at once (no fade) and paints the preset', async () => {
+    const g = rig();
+    hubLook(g, { on: true });
+    await g.feed(clickTrack(120, 3));
+    hubLook(g, { on: false, offReason: 'look', look: 'octane' });
+    assert.strictEqual(g.e.session.state(), 'off', 'no fade');
+    await g.e.settled();
+    const t0 = g.t.now;
+    await tick(g, 1200);
+    assert.deepStrictEqual(g.ha.calls, []);
+    const o = looksLib.resolve(lookById('octane'), 0);
+    assert.deepStrictEqual(shown(ptReals(g, 'bars', t0), 12), o.bars.colors);
+  });
+
+  await check('engine: a light set another way ends the preset and tells the hub (look-changed)', async () => {
+    const g = rig();
+    hubLook(g, { look: 'magenta-dusk' });
+    await tick(g, 1200);
+    g.t.now += engineLib.WATCH_SETTLE_MS;
+    await g.e.watch();                       // notes the preset's state
+    assert.deepStrictEqual(await g.e.watch(), []);
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { brightness: 250 });
+    assert.deepStrictEqual(await g.e.watch(), ['lamp']);
+    const ev = g.e.report().events.find((x) => x.type === 'look-changed');
+    assert.ok(ev && ev.lookAt === g.settings.lookAt);
+    assert.strictEqual(g.e.looking(), null);
+  });
+
+  await check('engine: after a restart a still preset is not painted over the lights; a moving one carries on', async () => {
+    const g = rig();
+    g.started = true;
+    Object.assign(g.settings, { look: 'octane', lookAt: 7, rev: 8 });
+    g.e.applyHub({ settings: Object.assign({}, g.settings), look: lookById('octane'), song: { bpm: 0 } }, 0);
+    await tick(g, 3000);
+    assert.strictEqual(g.sent.length, 0, 'nothing sent');
+    const w = rig();
+    w.started = true;
+    Object.assign(w.settings, { look: 'magenta-wave', lookAt: 7, rev: 8 });
+    w.e.applyHub({ settings: Object.assign({}, w.settings), look: lookById('magenta-wave'), song: { bpm: 0 } }, 0);
+    await tick(w, 2000);
+    assert.ok(!w.sent.some((x) => x.msg.cmd === 'turn' || x.msg.cmd === 'brightness'), 'no setup sent');
+    assert.ok(ptReals(w, 'lamp').length >= 5, 'the wave carries on');
+  });
+
+  await check('engine: a slow Home Assistant read of the old state right after a preset is not taken for a change', async () => {
+    const g = rig();
+    hubLook(g, { look: 'magenta-dusk' });
+    await tick(g, 1200);
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { brightness: 200 });   // still the old, brighter state
+    g.t.now += engineLib.WATCH_SETTLE_MS;
+    await g.e.watch();
+    g.ha.states.lamp = Object.assign({}, g.ha.states.lamp, { brightness: 122 });   // now it shows 48%
+    assert.deepStrictEqual(await g.e.watch(), []);
+    assert.deepStrictEqual(await g.e.watch(), []);
+    assert.ok(g.e.looking(), 'the preset is still on');
+  });
+
+  await check('store: picking a preset turns music lights off (reason look), unknown ids refused; a scene or the engine ends it', async () => {
+    const st = storeLib.createStore({ dataDir: tmpDir() });
+    st.change({ on: true });
+    const r = st.change({ look: 'octane' });
+    assert.deepStrictEqual([r.settings.on, r.settings.offReason, r.settings.look, r.settings.lookAt], [false, 'look', 'octane', r.settings.rev]);
+    assert.throws(() => st.change({ look: 'nope' }), /no preset "nope"/);
+    assert.strictEqual(st.engineReport({}).look.id, 'octane');
+    st.change({ on: true });
+    assert.strictEqual(st.settings().look, 'octane', 'music on pauses the preset, it is kept');
+    st.change({ on: false });
+    assert.strictEqual(st.settings().look, 'octane');
+    assert.strictEqual(await st.giveWay('hub'), false);
+    assert.strictEqual(st.settings().look, '', 'an Ambience scene ends the preset');
+    st.change({ look: 'rainforest' });
+    st.engineReport({ events: [{ type: 'look-changed', lookAt: st.settings().lookAt - 1 }] });
+    assert.strictEqual(st.settings().look, 'rainforest', 'news about an older pick is ignored');
+    st.engineReport({ events: [{ type: 'look-changed', lookAt: st.settings().lookAt }] });
+    assert.strictEqual(st.settings().look, '');
+    assert.deepStrictEqual(Object.keys(st.screenData()), ['looks', 'on', 'music']);
+  });
+
+  await check('store: saved presets kept in data/lights-looks.json; built-in names protected; forget', () => {
+    const dir = tmpDir();
+    const st = storeLib.createStore({ dataDir: dir });
+    const look = looksLib.fromStates('Pink', { lamp: { on: true, available: true, brightness: 122, rgb: [255, 19, 247] }, bars: { on: true, available: true, brightness: 122, rgb: [255, 19, 247] } });
+    st.saveLook(look);
+    const again = storeLib.createStore({ dataDir: dir });
+    assert.ok(again.lookById('my-pink') && again.lookById('my-pink').saved);
+    assert.throws(() => again.forgetLook('octane'), /built-in presets cannot be forgotten/);
+    again.change({ look: 'my-pink' });
+    again.forgetLook('my-pink');
+    assert.strictEqual(again.settings().look, '');
+    assert.strictEqual(storeLib.createStore({ dataDir: dir }).lookById('my-pink'), null);
+  });
+
   const logs = [];
   const m = await mockLights.start({});
   const EXAMPLE = JSON.parse(fs.readFileSync(path.join(__dirname, 'ambience.example.json'), 'utf8'));
@@ -691,7 +908,8 @@ async function main() {
     token: TOKEN, port: 0, host: '127.0.0.1', dataDir: tmpDir(), origins: ['http://127.0.0.1:8081'],
     log: (s) => logs.push(String(s)), ambience: { manual: true, timeoutMs: 300 },
     // Pretend the "geeni" light in the example is the Govee lamp.
-    ambienceEnv: { HA_URL: m.url, HA_TOKEN: m.token, WLED_URL: m.wledUrl, LIGHTS_HA_LAMP: 'light.example_geeni_1' }
+    ambienceEnv: { HA_URL: m.url, HA_TOKEN: m.token, WLED_URL: m.wledUrl, LIGHTS_HA_LAMP: 'light.example_geeni_1' },
+    lightsHa: fakeHa({ lamp: { on: true, available: true, brightness: 122, colorMode: 'rgb', rgb: [255, 19, 247], kelvin: null, effect: null }, bars: { on: true, available: true, brightness: 122, colorMode: 'rgb', rgb: [255, 19, 247], kelvin: null, effect: null } })
   });
   await h.ready;
   await h.api('POST', '/api/ambience/config', { config: EXAMPLE });
@@ -758,6 +976,128 @@ async function main() {
     assert.match((await mail('lights.status')).message, /Never turns itself off\./);
     assert.throws(() => mailbox.checkEnvelope('lt-test-2', Buffer.from(JSON.stringify({ id: 'lt-test-2', created: new Date().toISOString(), cmd: 'lights.set', args: { beat: 'max' } })), Date.now()), /beat/);
     assert.throws(() => mailbox.checkEnvelope('lt-test-3', Buffer.from(JSON.stringify({ id: 'lt-test-3', created: new Date().toISOString(), cmd: 'lights.set', args: {} })), Date.now()), /say what to set/);
+  });
+
+  // A screen's call (the TV or phone: no token), over real HTTP.
+  const scr = (method, p, body) => new Promise((resolve, reject) => {
+    const http = require('http');
+    const text = body === undefined ? '' : JSON.stringify(body);
+    const req = http.request({ host: '127.0.0.1', port: h.port, method: method, path: p, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(text) } }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => { let j = null; try { j = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch (e) { /* not JSON */ } resolve({ status: res.statusCode, body: j }); });
+    });
+    req.on('error', reject);
+    req.end(text);
+  });
+
+  await check('server: presets through /api/lights, save and forget, the screens\' /lights/look and lightlooks resource', async () => {
+    await api('POST', '/api/lights', { on: false });
+    const st0 = await scr('GET', '/live/state');
+    assert.ok(st0.body.resources.lightlooks.data.looks.some((l) => l.id === 'octane'));
+    const picked = await api('POST', '/api/lights', { look: 'octane' });
+    assert.strictEqual(picked.settings.look, 'octane');
+    assert.strictEqual(hubctl.lightsLookText(picked, 'octane').indexOf('Octane on the lamp and light bars'), 0);
+    assert.strictEqual((await h.api('POST', '/api/lights', { look: 'nope' })).status, 400);
+    const sv = await api('POST', '/api/lights/looks', { save: 'Pink evening' });
+    assert.strictEqual(hubctl.lightsSavedText(sv), 'Saved "Pink evening" (lamp 48%, bars 48%, one color each); ./hub lights preset my-pink-evening sets it.');
+    const lines = hubctl.lightsLookLines(await api('GET', '/api/lights'));
+    assert.ok(lines.indexOf('octane  Octane  (on)') >= 0, lines.join(' | '));
+    assert.ok(lines.indexOf('my-pink-evening  Pink evening  (saved)') >= 0);
+    // The TV picks one (no token), and the resource follows.
+    const tv = await scr('POST', '/lights/look', { id: 'my-pink-evening' });
+    assert.strictEqual(tv.status, 200, JSON.stringify(tv.body));
+    assert.strictEqual(tv.body.lightlooks.on, 'my-pink-evening');
+    assert.strictEqual((await scr('POST', '/lights/look', { id: 'nope' })).status, 400);
+    assert.strictEqual((await scr('GET', '/live/state')).body.resources.lightlooks.data.on, 'my-pink-evening');
+    assert.strictEqual((await h.api('POST', '/api/lights/looks', { forget: 'octane' })).status, 400);
+    await api('POST', '/api/lights/looks', { forget: 'my-pink-evening' });
+    assert.strictEqual((await api('GET', '/api/lights')).settings.look, '');
+  });
+
+  /* ---------- Govee app snapshots (govee-cloud.js) ---------- */
+
+  const DEVICES = { code: 200, data: [
+    { sku: 'H6076', device: 'AA:BB', capabilities: [{ type: 'devices.capabilities.dynamic_scene', instance: 'snapshot', parameters: { options: [{ name: 'Chill magenta and blue', value: 101 }] } }] },
+    { sku: 'H6056', device: 'CC:DD', capabilities: [{ type: 'devices.capabilities.dynamic_scene', instance: 'snapshot', parameters: { options: [{ name: 'Chill purple and blue', value: 202 }] } }] },
+    { sku: 'H9999', device: 'EE:FF', capabilities: [] }
+  ] };
+  const CHILL = { id: 'my-chill', name: 'Chill', lamp: { snapshot: 'Chill magenta and blue' }, bars: { snapshot: 'Chill purple and blue' } };
+  const CHILL_MOVING = { id: 'my-chill-moving', name: 'Chill moving', motion: 'wave',
+    lamp: { brightness: 48, gradient: [[255, 19, 200], [230, 20, 240], [180, 30, 255], [140, 40, 255], [100, 50, 255], [60, 60, 255], [40, 70, 255]] }, bars: { snapshot: 'Chill purple and blue' } };
+
+  await check('cloud: snapshots found by light model and name; calls to one light kept 6.5 s apart; a newer call replaces a waiting one', async () => {
+    const calls = [];
+    const t = { now: 100000 };
+    const waits = [];
+    const c = cloudLib.createCloud({
+      key: 'k', now: () => t.now,
+      wait: (ms) => { waits.push(ms); t.now += ms; return Promise.resolve(); },
+      http: async (m, p, b) => { calls.push({ m: m, p: p, b: b }); return m === 'GET' ? DEVICES : { code: 200 }; }
+    });
+    assert.deepStrictEqual(await c.snapshotNames(), { lamp: ['Chill magenta and blue'], bars: ['Chill purple and blue'] });
+    assert.strictEqual(await c.fire('bars', 'chill PURPLE and blue'), true);
+    const ctl = calls.find((x) => x.m === 'POST');
+    assert.deepStrictEqual(ctl.b.payload, { sku: 'H6056', device: 'CC:DD', capability: { type: 'devices.capabilities.dynamic_scene', instance: 'snapshot', value: 202 } });
+    assert.strictEqual(await c.fire('bars', 'Chill purple and blue'), true);
+    assert.ok(waits[0] >= 6000, 'waited ' + waits[0]);
+    assert.strictEqual(await c.fire('lamp', 'Nope'), false, 'an unknown name');
+    assert.strictEqual(calls.filter((x) => x.m === 'GET').length, 2, 'an unknown name reads the list again once');
+    const noKey = cloudLib.createCloud({ key: '', log: () => {} });
+    assert.strictEqual(await noKey.fire('lamp', 'x'), false);
+  });
+
+  await check('looks + engine: a snapshot preset fires both snapshots in the cloud; Chill moving waves the lamp under the bars\' snapshot', async () => {
+    const chill = looksLib.check(CHILL);
+    assert.throws(() => looksLib.check({ id: 'x', name: 'X', lamp: { snapshot: '' }, bars: { snapshot: 'a' } }), /snapshot must be/);
+    const fired = [];
+    const mk = () => {
+      const g = rig();
+      g.e = engineLib.createEngine({
+        addresses: { lamp: 'x', bars: 'y' }, send: (k, buf) => g.sent.push({ k: k, t: g.t.now, msg: JSON.parse(buf.toString()).msg }),
+        ha: g.ha, now: () => g.t.now, log: (s) => g.logs.push(s), capture: null, delayMs: 0,
+        cloud: { configured: true, fire: async (k, n) => { fired.push(k + ':' + n); return true; }, snapshotNames: async () => ({}) }
+      });
+      return g;
+    };
+    const g = mk();
+    hubLook(g, { look: 'my-chill' }, chill);
+    await tick(g, 1500);
+    assert.deepStrictEqual(fired, ['lamp:Chill magenta and blue', 'bars:Chill purple and blue']);
+    assert.strictEqual(ptReals(g, 'lamp').length + ptReals(g, 'bars').length, 0, 'no section colors over a snapshot');
+    assert.ok(!g.sent.some((x) => x.msg.cmd === 'colorwc'), 'colorwc would leave the snapshot');
+    fired.length = 0;
+    const g2 = mk();
+    hubLook(g2, { look: 'my-chill-moving' }, looksLib.check(CHILL_MOVING));
+    await tick(g2, 1200);
+    const t0 = g2.t.now;
+    await tick(g2, 6000);
+    assert.deepStrictEqual(fired, ['bars:Chill purple and blue']);
+    assert.ok(ptReals(g2, 'lamp', t0 + 1).length >= 20, 'the lamp waves');
+    assert.strictEqual(ptReals(g2, 'bars').length, 0);
+  });
+
+  await check('server + ./hub: add a snapshot preset, list snapshots from the engine report; the screens see no colors for it', async () => {
+    await api('POST', '/api/lights/engine', { state: 'off', lights: ['lamp', 'bars'], ha: true, events: [], snapshots: { lamp: ['Chill magenta and blue'], bars: ['Chill purple and blue'] } });
+    assert.deepStrictEqual(hubctl.lightsSnapshotLines(await api('GET', '/api/lights')), ['Floor lamp: "Chill magenta and blue"', 'Light bars: "Chill purple and blue"']);
+    const r = await api('POST', '/api/lights/looks', { add: CHILL });
+    assert.strictEqual(hubctl.lightsSavedText(r), 'Saved "Chill" (lamp Govee snapshot "Chill magenta and blue", bars Govee snapshot "Chill purple and blue"); ./hub lights preset my-chill sets it.');
+    const l = (await scr('GET', '/live/state')).body.resources.lightlooks.data.looks.find((x) => x.id === 'my-chill');
+    assert.deepStrictEqual([l.lamp, l.bars], [null, null]);
+    assert.strictEqual((await h.api('POST', '/api/lights/looks', { add: { id: 'octane', name: 'Octane', lamp: { snapshot: 'a' }, bars: { snapshot: 'b' } } })).status, 400);
+    assert.strictEqual((await h.api('POST', '/api/lights/looks', { add: { id: 'x' } })).status, 400);
+    await api('POST', '/api/lights/looks', { forget: 'my-chill' });
+  });
+
+  await check('mailbox: lights.presets, lights.preset (off clears), refused without an id', async () => {
+    const mail = async (cmd, args) => {
+      const env = mailbox.checkEnvelope('lp-test-1', Buffer.from(JSON.stringify({ id: 'lp-test-1', created: new Date().toISOString(), cmd: cmd, args: args })), Date.now());
+      return mailbox.COMMANDS[env.cmd].run(env.args, { call: async (mm, r, b) => { const x = await h.api(mm, r, b); if (!x.body.ok) throw new Error(x.body.error); return x.body; } });
+    };
+    assert.match((await mail('lights.presets')).message, /octane {2}Octane/);
+    assert.match((await mail('lights.preset', { id: 'rainforest' })).message, /^Rainforest on the lamp and light bars/);
+    assert.strictEqual((await mail('lights.preset', { id: 'off' })).message, 'No preset on; the lights stay as they are.');
+    assert.throws(() => mailbox.checkEnvelope('lp-test-2', Buffer.from(JSON.stringify({ id: 'lp-test-2', created: new Date().toISOString(), cmd: 'lights.preset', args: {} })), Date.now()), /id/);
   });
 
   await check('server log: the engine\'s once-a-second report is never logged; changes are, without names', async () => {

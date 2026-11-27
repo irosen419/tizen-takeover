@@ -17,7 +17,10 @@
  * column is the bulb and a count; a strip is one line; two rows add the
  * dots; wide and tall tiles add a row per light with its level.
  *
- * The panel: Scenes (cards on a rail; Left/Right, OK applies), Room lights
+ * The panel: Scenes (cards on a rail; Left/Right, OK applies), Lamp and
+ * bars (paired presets for the Govee floor lamp and light bars, from the
+ * Pi's resource "lightlooks", pi/lights/store.js; OK sets both lights and
+ * stops music lights; a small picture shows the lamp and both bars), Room lights
  * (one row each; Left/Right dim or brighten by 10, faster when held, OK
  * turns it on or off) and Plant wall (mood chips) when the Pi has one.
  * A choice shows at once ("Sending...") and is confirmed by the Pi's push,
@@ -36,6 +39,8 @@
   var lastSig = '';
   var pendingScene = null; // { id, at } while a scene is on its way
   var pendingMood = null;  // { id, at }
+  var looks = null;        // the lamp and bars presets: { looks, on, music }, or null
+  var pendingLook = null;  // { id, at }
   var pendingLight = {};   // id -> { on, pct, at, timer, sent }
   var note = null;         // { text, kind: 'ok'|'warn'|'bad', at } shown in the panel
   var noteTimer = null;
@@ -535,12 +540,15 @@
     var full = ctx.mode && ctx.mode() === 'full';
     var root = el('div', 'am-page am-k-' + v.kind + (full ? ' is-full' : '') + (v.stale ? ' is-stale' : ''), body);
     page = { root: root, v: v, full: full, cards: [], rows: [], chips: [] };
+    page.looks = [];
     if (v.kind !== 'ready') {
       var box = el('div', 'am-empty', root);
       glyph('bulb', 'am-empty-glyph', box);
       el('div', 'am-empty-title', box, v.msg);
       el('div', 'am-empty-hint', box, v.hint);
       if (v.kind === 'notset') el('div', 'am-empty-how', box, T('setUpHow', 'On the Pi: add HA_TOKEN to pi/.env, then ./hub ambience set with your lights (see pi/README.md).'));
+      // The lamp and bars presets work without Home Assistant.
+      if (v.kind === 'notset' && looksSection(root)) page.looks[0].setAttribute('data-autofocus', '');
       return;
     }
 
@@ -553,6 +561,7 @@
       page.track = track;
       for (var i = 0; i < v.scenes.length; i++) page.cards.push(sceneCard(track, v.scenes[i], v));
     }
+    looksSection(root);
     if (v.lights.length) {
       var ls = el('div', 'am-sec am-sec-lights', root);
       el('div', 'am-label', ls, T('lights', 'Room lights'));
@@ -586,7 +595,7 @@
     // First focus: the active scene, else the first scene, else the first light.
     var first = null;
     for (var c = 0; c < page.cards.length; c++) if (hasClass(page.cards[c], 'is-active')) first = page.cards[c];
-    first = first || page.cards[0] || page.rows[0] || page.chips[0];
+    first = first || page.cards[0] || page.looks[0] || page.rows[0] || page.chips[0];
     if (first) first.setAttribute('data-autofocus', '');
   }
 
@@ -610,6 +619,99 @@
     el('div', 'am-card-name', card, s.name);
     el('div', 'am-card-state', card, sending ? T('sending', 'Sending…') : active ? T('onNow', 'On now') : '');
     return card;
+  }
+
+  /* ---------- lamp and bars presets ---------- */
+
+  function looksOf(d) {
+    var out = [];
+    var raw = list(d && d.looks);
+    for (var i = 0; i < raw.length && out.length < 40; i++) {
+      var l = raw[i];
+      if (!l || typeof l.id !== 'string' || typeof l.name !== 'string') continue;
+      out.push({ id: l.id, name: str(l.name, 32), es: str(l.es, 32) || str(l.name, 32), motion: l.motion === 'drift' || l.motion === 'wave' ? l.motion : 'still',
+        lamp: isArr(l.lamp) ? l.lamp : null, bars: isArr(l.bars) ? l.bars : null });
+    }
+    return out;
+  }
+
+  function lookName(l) {
+    var L = window.HUB_I18N;
+    var lang = '';
+    try { lang = L && L.lang ? L.lang() : ''; } catch (e) { lang = ''; }
+    return lang === 'es' ? l.es : l.name;
+  }
+
+  function rgbOf(c) {
+    if (!isArr(c) || c.length !== 3) return 'rgb(60,60,70)';
+    return 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')';
+  }
+
+  // A vertical gradient through these colors, first color at 'from' (top or bottom).
+  function paintStrip(node, colors, from) {
+    if (!colors) { node.className += ' is-app'; return; }
+    var stops = [];
+    for (var i = 0; i < colors.length; i++) stops.push(rgbOf(colors[i]));
+    if (stops.length === 1) stops.push(stops[0]);
+    node.style.background = '-webkit-linear-gradient(' + from + ', ' + stops.join(', ') + ')';
+    node.style.background = 'linear-gradient(to ' + (from === 'bottom' ? 'top' : 'bottom') + ', ' + stops.join(', ') + ')';
+  }
+
+  // The lamp (sections bottom to top) and the two bars (each top to bottom).
+  function lookSwatch(parent, l) {
+    var sw = el('span', 'am-look-sw', parent);
+    paintStrip(el('i', 'am-look-lamp', sw), l.lamp, 'bottom');
+    paintStrip(el('i', 'am-look-bar', sw), l.bars ? l.bars.slice(0, 6) : null, 'top');
+    paintStrip(el('i', 'am-look-bar', sw), l.bars ? l.bars.slice(6, 12) : null, 'top');
+    return sw;
+  }
+
+  // The section, when the Pi has presets. Returns true when it drew one.
+  function looksSection(root) {
+    var all = looksOf(looks);
+    if (!all.length) return false;
+    root.className += ' has-looks';
+    var sec = el('div', 'am-sec am-sec-looks', root);
+    var lab = el('div', 'am-label', sec, T('looks', 'Lamp and bars'));
+    var active = pendingLook && now() - pendingLook.at < PENDING_MS ? pendingLook.id : (looks && typeof looks.on === 'string' ? looks.on : '');
+    if (active && looks && looks.music === true) el('span', 'am-label-note am-label-quiet', lab, T('looksPaused', 'paused for music lights'));
+    var rail = el('div', 'am-rail am-looks-rail', sec);
+    var wrap = el('div', 'am-track am-looks', rail);
+    page.lookRail = { rail: rail, track: wrap, shift: 0 };
+    for (var i = 0; i < all.length; i++) {
+      var l = all[i];
+      var sending = pendingLook && pendingLook.id === l.id && now() - pendingLook.at < PENDING_MS;
+      var card = el('div', 'f am-look' + (l.id === active ? ' is-active' : '') + (sending ? ' is-pending' : ''), wrap);
+      card.setAttribute('data-key', 'look:' + l.id);
+      card.setAttribute('data-look', l.id);
+      lookSwatch(card, l);
+      var words = el('span', 'am-look-words', card);
+      el('span', 'am-look-name', words, lookName(l));
+      var how = sending ? T('sending', 'Sending…') : l.id === active ? T('onNow', 'On now')
+        : (!l.lamp || !l.bars) ? T('looksApp', 'Govee scene') : l.motion !== 'still' ? T('looksMoving', 'Moves slowly') : '';
+      el('span', 'am-look-how', words, how);
+      page.looks.push(card);
+    }
+    return true;
+  }
+
+  function applyLook(id) {
+    var l = find(looksOf(looks), id);
+    if (!l) return;
+    var mine = { id: id, at: now() };
+    pendingLook = mine;
+    setNote(T('sending', 'Sending…'), 'ok');
+    redraw();
+    post('/lights/look', { id: id }, safe(function (err, r, code) {
+      if (pendingLook && pendingLook !== mine) return;
+      pendingLook = null;
+      if (err) setNote(failText(err, code), 'bad');
+      else {
+        if (r && r.lightlooks) looks = r.lightlooks;
+        setNote(T('lookOn', '{name} on the lamp and bars', { name: lookName(l) }), 'ok');
+      }
+      redraw();
+    }));
   }
 
   // The panel head's small line: what was just sent or went wrong, else
@@ -651,26 +753,29 @@
           : l && l.kind === 'switch' ? T('hintSwitch', 'OK turns it on or off')
             : T('hintLight', '◀ ▶ dimmer or brighter · OK turns it on or off');
       } else if (target.getAttribute('data-mood')) text = T('hintMood', 'OK sets the plant wall');
+      else if (target.getAttribute('data-look')) text = T('hintLook', 'OK sets the lamp and bars together (music lights stop)');
     }
     page.hint = text;
     paintStatus();
   }
 
   // Keeps the focused card on the rail in view (instant: focus never animates).
-  function railTo(card) {
-    if (!page || !page.rail || !card) return;
-    var railW = page.rail.clientWidth;
+  // r: { rail, track, shift } (the scenes' rail is the page itself).
+  function railTo(card, r) {
+    var R = r || page;
+    if (!page || !R || !R.rail || !card) return;
+    var railW = R.rail.clientWidth;
     var left = card.offsetLeft;
     var right = left + card.offsetWidth;
-    var shift = page.shift || 0;
+    var shift = R.shift || 0;
     var pad = 0.6 * rem();
     if (right - shift > railW - pad) shift = right - railW + pad;
     if (left - shift < pad) shift = Math.max(0, left - pad);
-    var max = Math.max(0, page.track.scrollWidth - railW);
+    var max = Math.max(0, R.track.scrollWidth - railW);
     shift = Math.max(0, Math.min(max, shift));
-    page.shift = shift;
-    page.track.style.webkitTransform = 'translateX(' + (-shift) + 'px)';
-    page.track.style.transform = 'translateX(' + (-shift) + 'px)';
+    R.shift = shift;
+    R.track.style.webkitTransform = 'translateX(' + (-shift) + 'px)';
+    R.track.style.transform = 'translateX(' + (-shift) + 'px)';
   }
 
   /* ---------- sending ---------- */
@@ -904,6 +1009,12 @@
     }));
   }
 
+  // Back up to the presets: the one on now, else the first.
+  function lookBack(lk) {
+    for (var i = 0; i < lk.length; i++) if (hasClass(lk[i], 'is-active')) return lk[i];
+    return lk[0] || null;
+  }
+
   /* ---------- keeping up ---------- */
 
   function signature() {
@@ -912,7 +1023,7 @@
     var lang = '';
     try { lang = L && L.lang ? L.lang() : ''; } catch (e) { lang = ''; }
     return JSON.stringify([lang, v.kind, v.stale, v.big, v.meta, v.note, v.tone, v.active, v.lights, v.scenes, v.moods, data && data.wled,
-      pendingScene && pendingScene.id, pendingMood && pendingMood.id]);
+      pendingScene && pendingScene.id, pendingMood && pendingMood.id, looks, pendingLook && pendingLook.id]);
   }
 
   function redraw() {
@@ -962,6 +1073,13 @@
           if (pendingScene && data && data.active === pendingScene.id) pendingScene = null;
           refresh(false);
         }));
+        var heldLooks = ctx.live.get('lightlooks');
+        if (heldLooks && typeof heldLooks === 'object') looks = heldLooks;
+        ctx.live.on('lightlooks', safe(function (d) {
+          looks = d && typeof d === 'object' ? d : null;
+          if (pendingLook && looks && looks.on === pendingLook.id) pendingLook = null;
+          refresh(false);
+        }));
         ctx.live.onStatus(safe(function () { refresh(false); }));
       }
       try {
@@ -997,6 +1115,7 @@
         lastCard = target.getAttribute('data-scene');
         railTo(target);
       }
+      if (target && target.getAttribute && target.getAttribute('data-look') && page.lookRail) railTo(target, page.lookRail);
       paintFoot(target);
     }),
 
@@ -1005,9 +1124,11 @@
       var s = target.getAttribute('data-scene');
       var l = target.getAttribute('data-light');
       var m = target.getAttribute('data-mood');
+      var k = target.getAttribute('data-look');
       if (s) applyScene(s);
       else if (l) changeLight(l, 0);
       else if (m) applyMood(m);
+      else if (k) applyLook(k);
     }),
 
     onMove: safe(function (dir, from) {
@@ -1015,6 +1136,7 @@
       var cards = page.cards;
       var rows = page.rows;
       var chips = page.chips;
+      var lk = page.looks || [];
       var at;
       var cardBack = function () {
         for (var i = 0; i < cards.length; i++) if (cards[i].getAttribute('data-scene') === lastCard) return cards[i];
@@ -1025,24 +1147,31 @@
         at = cards.indexOf(from);
         if (dir === 'left') return at > 0 ? cards[at - 1] : true;
         if (dir === 'right') return at < cards.length - 1 ? cards[at + 1] : true;
-        if (dir === 'down') return rows[0] || chips[0] || true;
+        if (dir === 'down') return lk[0] || rows[0] || chips[0] || true;
         return undefined;   // Up: the hub's Full screen button
+      }
+      if (from.getAttribute('data-look')) {
+        at = lk.indexOf(from);
+        if (dir === 'left') return at > 0 ? lk[at - 1] : true;
+        if (dir === 'right') return at < lk.length - 1 ? lk[at + 1] : true;
+        if (dir === 'up') return cardBack() || undefined;
+        if (dir === 'down') return rows[0] || chips[0] || true;
       }
       if (from.getAttribute('data-light')) {
         at = rows.indexOf(from);
         if (dir === 'left' || dir === 'right') { changeLight(from.getAttribute('data-light'), dir === 'left' ? -1 : 1); return true; }
-        if (dir === 'up') return at > 0 ? rows[at - 1] : (cardBack() || undefined);
+        if (dir === 'up') return at > 0 ? rows[at - 1] : (lookBack(lk) || cardBack() || undefined);
         if (dir === 'down') return at < rows.length - 1 ? rows[at + 1] : (chips[0] || true);
       }
       if (from.getAttribute('data-mood')) {
         at = chips.indexOf(from);
         if (dir === 'left') return at > 0 ? chips[at - 1] : true;
         if (dir === 'right') return at < chips.length - 1 ? chips[at + 1] : true;
-        if (dir === 'up') return rows[rows.length - 1] || cardBack() || undefined;
+        if (dir === 'up') return rows[rows.length - 1] || lookBack(lk) || cardBack() || undefined;
         if (dir === 'down') return true;
       }
       // From the Full screen button: Down goes to the scenes.
-      if (dir === 'down') return cardBack() || rows[0] || chips[0] || undefined;
+      if (dir === 'down') return cardBack() || lk[0] || rows[0] || chips[0] || undefined;
       return undefined;
     }),
 
