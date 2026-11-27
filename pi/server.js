@@ -197,7 +197,7 @@ const budgetplanned = require('./budgetplanned');
 const spanish = require('./spanish');
 const prefs = require('./prefs');
 
-const SERVER_VERSION = '0.46.0';
+const SERVER_VERSION = '0.47.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
@@ -2691,7 +2691,8 @@ function start(options) {
           sendJson(res, 200, r, cors);
           log(budgetplanned.logText(r));
         }, (e) => {
-          if (e && e.status === 502) log('planned buy: ' + e.message);
+          // Only the status or the error code: never the budget app's own text.
+          if (e && e.status === 502) log('planned buy: ' + (e.logText || e.message));
           fail(res, e, cors);
         });
       });

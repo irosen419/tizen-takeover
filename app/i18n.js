@@ -1049,7 +1049,7 @@
     'budgetPlanned.saved': 'Guardada en tu presupuesto',
     'budgetPlanned.removed': 'Quitada de tu presupuesto',
     'budgetPlanned.unmatched': 'La app de presupuesto buscará otro cargo',
-    'budgetPlanned.failed': 'No se pudo contactar con la app de presupuesto. No cambió nada.',
+    'budgetPlanned.failed': 'No se pudo contactar con la app de presupuesto. Revisa la lista antes de volver a intentarlo.',
 
     /* ---- Earned vs spent tile (awws-money in app/widgets/awws.js) ----
      * Key 'awws.<path in STRINGS>'; the English is STRINGS at that path in

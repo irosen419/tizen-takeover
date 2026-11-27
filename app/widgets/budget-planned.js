@@ -86,7 +86,7 @@
     saved: 'Saved to your budget',
     removed: 'Removed from your budget',
     unmatched: 'The budget app will look for another charge',
-    failed: 'Could not reach the budget app. Nothing changed.'
+    failed: 'Could not reach the budget app. Check the list before trying again.'
   };
 
   var STRINGS = EN;
@@ -277,7 +277,8 @@
       ain.setAttribute('placeholder', '0');
       ain.addEventListener('input', function () {
         // Digits and one point; cents kept to two places.
-        var m = /^(\d*)(?:[.,](\d{0,2}))?/.exec(String(ain.value).replace(/[^\d.,]/g, ''));
+        // Commas are thousands ($1,250); a point starts the cents.
+        var m = /^(\d*)(?:\.(\d{0,2}))?/.exec(String(ain.value).replace(/[^\d.]/g, ''));
         var v = m ? parseFloat((m[1] || '0') + '.' + (m[2] || '0')) : 0;
         if (S.form) S.form.amount = isNaN(v) ? 0 : Math.min(MAX_AMOUNT, v);
       }, false);
@@ -346,9 +347,11 @@
     refs.dateText.textContent = S.form.date ? dateDay(S.form.date) + STRINGS.sep + away(today, S.form.date) : STRINGS.noDate;
   }
 
-  function clampDate(s) {
+  // Within PAST_DAYS back and AHEAD_DAYS ahead, or no further out than from (a buy already dated further).
+  function clampDate(s, from) {
     var today = parse(todayIso());
-    var t = Math.max(today - PAST_DAYS * DAY_MS, Math.min(today + AHEAD_DAYS * DAY_MS, parse(s)));
+    var f = parse(from);
+    var t = Math.max(Math.min(today - PAST_DAYS * DAY_MS, f), Math.min(Math.max(today + AHEAD_DAYS * DAY_MS, f), parse(s)));
     return iso(t);
   }
 
@@ -375,7 +378,7 @@
       if (S.refs && S.refs.amount) S.refs.amount.value = amountText(f.amount);
     } else {
       // From no date, the first press starts at today.
-      f.date = f.date ? clampDate(iso(parse(f.date) + d * (held >= 800 ? 7 : 1) * DAY_MS)) : todayIso();
+      f.date = f.date ? clampDate(iso(parse(f.date) + d * (held >= 800 ? 7 : 1) * DAY_MS), f.date) : todayIso();
       paintDate(S.refs);
     }
   }
@@ -387,12 +390,14 @@
     if (!L || typeof L.post !== 'function') { toast(ctx, STRINGS.failed); return; }
     f.sending = kind;
     redraw(ctx);
-    L.post('/budget/planned', body, function (err, data) {
+    L.post('/budget/planned', body, function (err, data, code) {
       var still = S.form === f;
       if (still) f.sending = '';
       if (err) {
         // The Pi's or the budget app's reason when it gave one (a refusal), else "could not reach".
-        toast(ctx, data && data.error && /budget app said/.test(data.error) ? data.error.replace(/^the budget app said: /, '') : STRINGS.failed);
+        // A refusal (400: the hub's or the budget app's reason) is shown as
+        // it came; anything else may have saved, so the list is the answer.
+        toast(ctx, code === 400 && data && data.error ? data.error.replace(/^the budget app said: /, '') : STRINGS.failed);
         if (still) redraw(ctx);
         return;
       }

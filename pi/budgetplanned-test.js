@@ -77,6 +77,7 @@ function fakeBudgetApp() {
   let items = [{ id: 'a1b2c3d4', label: 'Winter boots', amount: 120, date: day(5), match: null, state: 'upcoming' }];
   let next = 2;
   let refuse = false;
+  let fail = 0;
   const srv = http.createServer((req, res) => {
     let text = '';
     req.on('data', (c) => { text += c; });
@@ -84,6 +85,7 @@ function fakeBudgetApp() {
       const body = text ? JSON.parse(text) : null;
       seen.push({ method: req.method, url: req.url, auth: req.headers.authorization || '', body: body });
       const send = (code, j) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(j)); };
+      if (fail) return send(fail, { error: 'Boots for 120 went wrong' });
       if (refuse) return send(400, { ok: false, error: 'that date is too far off' });
       const m = /^\/api\/planned(?:\/([^/]+))?(\/unmatch)?$/.exec(req.url);
       if (!m) return send(404, { error: 'not found' });
@@ -96,7 +98,7 @@ function fakeBudgetApp() {
     });
   });
   return new Promise((resolve) => srv.listen(0, '127.0.0.1', () => resolve({
-    srv: srv, port: srv.address().port, seen: seen, refuse: (on) => { refuse = on; }
+    srv: srv, port: srv.address().port, seen: seen, refuse: (on) => { refuse = on; }, fail: (code) => { fail = code; }
   })));
 }
 
@@ -191,6 +193,14 @@ async function main() {
       assert.ok(/too far off/.test(r.json.error), r.json.error);
       assert.strictEqual((await request(h.port, 'POST', '/budget/planned', { body: { op: 'add', label: '', amount: 1, date: day(1) } })).status, 400);
 
+      // A wrong token (401): a 502, logged by status only, never the budget app's text.
+      app.refuse(false);
+      app.fail(401);
+      r = await request(h.port, 'POST', '/budget/planned', { body: { op: 'remove', id: added } });
+      assert.strictEqual(r.status, 502);
+      app.fail(0);
+      assert.ok(lines.some((l) => /planned buy: the budget app answered HTTP 401$/.test(l)), lines.join('\n'));
+
       // Down: a 502 and one log line.
       await new Promise((res) => app.srv.close(res));
       r = await request(h.port, 'POST', '/budget/planned', { body: { op: 'remove', id: added } });
@@ -200,7 +210,7 @@ async function main() {
       assert.ok(/screen added a planned buy/.test(text) && /screen changed a planned buy/.test(text) && /screen removed a planned buy/.test(text) &&
         /screen said a planned buy's charge was not it/.test(text), text);
       assert.ok(/planned buy: the budget app is not answering/.test(text), text);
-      assert.ok(!/Concert|Rug|boots|\b85\b|\b90\b|budget-app-token/.test(text), 'no label, amount or token in the log');
+      assert.ok(!/Concert|Rug|boots|Boots|\b85\b|\b90\b|\b120\b|budget-app-token/.test(text), 'no label, amount or token in the log');
     } finally {
       await new Promise((res) => h.close(res));
       try { app.srv.close(); } catch (e) { /* closed */ }

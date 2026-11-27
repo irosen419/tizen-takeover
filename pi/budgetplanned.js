@@ -130,12 +130,22 @@ function send(op, opt) {
         let j = null;
         try { j = JSON.parse(text); } catch (e) { j = null; }
         if (res.statusCode >= 200 && res.statusCode < 300 && j && j.ok !== false) return resolve(j);
-        const why = j && typeof j.error === 'string' ? j.error.slice(0, 200) : 'HTTP ' + res.statusCode;
-        reject(bad('the budget app said: ' + why, res.statusCode >= 400 && res.statusCode < 500 ? 400 : 502));
+        // A 400 or 404 is the owner's mistake: its reason goes back to the
+        // screen. Anything else (a wrong token, a crash) is the setup's: a
+        // 502 whose log line carries only the HTTP status, never the text.
+        const refused = res.statusCode === 400 || res.statusCode === 404;
+        const why = refused && j && typeof j.error === 'string' ? j.error.slice(0, 200) : 'HTTP ' + res.statusCode;
+        const e = bad('the budget app said: ' + why, refused ? 400 : 502);
+        e.logText = 'the budget app answered HTTP ' + res.statusCode;
+        reject(e);
       });
     });
     req.on('timeout', () => req.destroy(new Error('timed out')));
-    req.on('error', (e) => reject(bad('the budget app is not answering (' + (e && e.message) + ')', 502)));
+    req.on('error', (e) => {
+      const err = bad('the budget app is not answering (' + (e && e.code || 'no answer') + ')', 502);
+      err.logText = err.message;
+      reject(err);
+    });
     if (data) req.write(data);
     req.end();
   });
