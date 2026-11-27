@@ -153,8 +153,14 @@ function open(env, o) {
   return env.newPage({ layout: o.layout || layoutOf(o.w || 3, o.h || 2), storage: storage, config: o.long ? longer : undefined, lang: o.lang });
 }
 
+// The whole text under sel, as Guest mode off would draw it: a blur (an
+// empty span in the page) counts as the amount it stands for.
 function text(page, sel) {
-  return page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s), (n) => n.textContent).join(' | '), sel);
+  return page.evaluate((s) => {
+    const full = (n) => n.nodeType === 3 ? n.nodeValue
+      : (n.className === 'guest-blur' ? window.HUB_GUEST.hidden(n) : Array.prototype.map.call(n.childNodes, full).join(''));
+    return Array.prototype.map.call(document.querySelectorAll(s), full).join(' | ');
+  }, sel);
 }
 
 // What a guest can read: the text without the Guest mode blur spans.
@@ -170,7 +176,7 @@ function seen(page, sel) {
 async function blursOk(page, sel, label) {
   const b = await page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s + ' .guest-blur'), (n) => {
     const cs = getComputedStyle(n);
-    return { t: n.textContent, ok: cs.webkitTextFillColor === 'rgba(0, 0, 0, 0)' && cs.textShadow !== 'none' };
+    return { t: window.HUB_GUEST.hidden(n), ok: n.textContent === '' && cs.display === 'inline-block' && cs.boxShadow !== 'none' && n.offsetWidth > 0 };
   }), sel);
   assert(b.length, label + ': nothing blurred');
   const bad = b.filter((x) => !/^[+\-\u2212]?\$\d[\d,]*(\.\d+)?$/.test(x.t) || !x.ok);

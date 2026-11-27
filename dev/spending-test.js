@@ -155,7 +155,7 @@ function seen(page, sel) {
 async function blursOk(page, sel, label) {
   const b = await page.evaluate((s) => Array.prototype.map.call(document.querySelectorAll(s + ' .guest-blur'), (n) => {
     const cs = getComputedStyle(n);
-    return { t: n.textContent, ok: cs.webkitTextFillColor === 'rgba(0, 0, 0, 0)' && cs.textShadow !== 'none' };
+    return { t: window.HUB_GUEST.hidden(n), ok: n.textContent === '' && cs.display === 'inline-block' && cs.boxShadow !== 'none' && n.offsetWidth > 0 };
   }), sel);
   assert(b.length, label + ': nothing blurred');
   const bad = b.filter((x) => !/^[+\-−]?\$\d[\d,]*(\.\d+)?$/.test(x.t) || !x.ok);
