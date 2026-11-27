@@ -319,6 +319,36 @@ The server asks Home Assistant how the lights are every 10 seconds while a TV is
 | Log `ambience: plant wall did not answer` | The WLED controller is off or `WLED_URL` is wrong | Open `WLED_URL` in a browser on the same network |
 | Log `ambience: plant wall off (WLED_URL does not look right)` | `WLED_URL` is not an `http://` address | Fix it in `.env` and restart |
 | Log `ambience: a screen sent commands too fast (asked it to slow down)` | Someone held a button down | Nothing: the TV waits and tries again |
+## Music lights (the lamp and bars follow the music)
+
+The Govee floor lamp and light bars follow whatever the Pi plays: your phone over Bluetooth, Spotify, anything going to the speaker. A small engine runs on the Pi itself (`pi/lights/engine.js`, not in Docker, because it listens to the Pi's own sound) as the user unit `music-lights`. The hub keeps the settings; you change them with `./hub lights` (or the mailbox), later from the phone and the TV.
+
+- `./hub lights on` / `./hub lights off`: on, it saves how each light is, fades in and follows the music. Off fades out and puts the lights back.
+- `./hub lights chill`, `groove`, `party`: both dials at once (Low/Low, Medium/Medium, High/High). Groove is the demo you approved.
+- `./hub lights set --vibrancy high --beat low --palette sunset --quiet 15`: **Vibrancy** is how rich and bright, **Beat** how much the rhythm shows; `--quiet` is the minutes of quiet before it turns itself off (`never` keeps it on).
+- `./hub lights palettes`: Warm drift (default), Lo-fi chill, Sunset, Dinner party, Rainforest, Aurora, Ocean drift, Octane. They live in `pi/lights/palettes.json`.
+- `./hub lights`: on or off and why, the dials, what the engine is doing.
+
+Mailbox: `lights.status`, `lights.on`, `lights.off`, `lights.set` `{ "palette": "sunset", "vibrancy": "high", "beat": "low", "preset": "party", "quiet": 15 }` (any of them; `"quiet": "never"`), `lights.palettes`.
+
+**Quiet.** Between songs it holds the palette and dims to a calm glow; music back fades it up within a second. After 15 quiet minutes (the `--quiet` setting) it turns itself off and puts the lights back, so nothing stays on overnight.
+
+**Anything else wins.** Setting the lights another way turns music lights off and leaves your change alone: a hub Ambience scene, light or mood straight away; the Govee app, a voice command or a Home Assistant scene as soon as Home Assistant sees the change (it checks every few seconds; the Govee app can take Home Assistant a little longer to notice). The light you changed keeps your setting; the other one is put back. Switch music lights on again when you want them.
+
+**Always true.** Nothing reads white, colors never cycle, a beat only changes brightness (never the color), and a lift always fades over more than 150 ms, under 3 a second. `pi/lights-test.js` checks all of it with made-up audio.
+
+**Tempo.** The song's tempo comes from Spotify's track through `vibe.js` (ReccoBeats) when Spotify plays, and from listening for the beat otherwise; listening also finds where the beats fall.
+
+### Set up (once, on the Pi)
+
+1. In `pi/.env`: `GOVEE_LAMP_IP`, `GOVEE_BARS_IP` and the two Home Assistant entity ids (`LIGHTS_HA_LAMP`, `LIGHTS_HA_BARS`; see `.env.example`). `HA_TOKEN` is already there.
+2. `node pi/lights/engine.js --check` says what it found (never an address).
+3. Install the unit: `cp pi/lights/music-lights.service ~/.config/systemd/user/music-lights.service`, then `systemctl --user daemon-reload && systemctl --user enable --now music-lights`. It idles until `./hub lights on`. Undo: `systemctl --user disable --now music-lights`.
+
+The auto-pull timer restarts the unit when a file in `pi/lights/` changes (only when the unit runs the engine). Only that unit is ever restarted; never the audio services (that drops the speaker and the phone). If the speaker drops, the engine waits and tries listening again every 30 seconds.
+
+**The log** (`journalctl --user -u music-lights`) says states and counts only, never a song, an address or an entity id: `music lights: engine started (lamp, bars; Home Assistant on)`, `music lights: on`, `music lights: off`, `music lights: off after 15 quiet minutes`, `music lights: lights put back (2 of 2)`, `music lights: gave way (floor lamp set another way)`, `music lights: listening stopped; trying again every 30 s`, `music lights: cannot reach the hub; keeping the last settings`. The hub's own log says `music lights: switched on`, `music lights: settings changed` and `music lights: off, the lights were set another way`; the engine's once-a-second report is never logged.
+
 ## Spanish for your own text (server 0.12.0)
 
 In Spanish mode the TV shows your to-dos, calendar events and AWWS task lines in Spanish. It sends new lines to `POST /translate`; the Pi answers lines it already knows from `data/translations-es.json` (up to 5000) and sends new ones to Gemini (`gemini-3.5-flash-lite`; 2.5 Flash-Lite refuses new keys with HTTP 403) in one batch, so each line is translated once. Show titles, songs and place names are kept as they are.

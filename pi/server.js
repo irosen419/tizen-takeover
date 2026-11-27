@@ -121,6 +121,9 @@
  *   POST /api/ambience/mood    a plant wall mood, { id }
  *   GET  /api/ambience/config  the saved lights, scenes and moods
  *   POST /api/ambience/config  replace them, { config }, or { config: null } for the defaults
+ *   GET  /api/lights     music lights: settings, palettes, what the engine does (lights/store.js)
+ *   POST /api/lights     { on?, palette?, vibrancy?, beat?, preset?, quietMin? }
+ *   POST /api/lights/engine   the engine's once-a-second report (never logged when fine)
  *   GET  /health         no token, just "is it running", and app: the BUILD of the
  *                        hub.js it serves (server 0.32.0; app/appver.js compares it
  *                        with its own, so the tablet and phone reload after a pull)
@@ -168,6 +171,7 @@ const linktests = require('./linktests');
 const tvremote = require('./tvremote');
 const tvlaunch = require('./tvlaunch');
 const ambience = require('./ambience');
+const musicLightsLib = require('./lights/store');
 const logscrub = require('./logscrub');
 const allsounds = require('./allsounds');
 const echo = require('./echo');
@@ -932,6 +936,18 @@ function start(options) {
   }));
   lights.start();
 
+  /* --- Music lights (lights/store.js): the engine on the Pi follows these --- */
+
+  const musicLights = musicLightsLib.createStore({
+    dataDir: dataDir,
+    log: log,
+    // The song's own tempo (vibe.js), only while Spotify plays.
+    songBpm: () => {
+      const d = state.resources.nowplaying.data;
+      return d && d.state === 'playing' && d.vibe && d.vibe.tempo > 0 ? d.vibe.tempo : 0;
+    }
+  });
+
   /* --- replies --- */
 
   function sendJson(res, status, body, extra) {
@@ -1379,14 +1395,17 @@ function start(options) {
         const c = body.config === null ? lights.resetConfig() : lights.setConfig(body.config);
         return { status: 200, body: { ok: true, config: c, ambience: lights.status() }, note: body.config === null ? 'defaults' : 'saved' };
       }
-      if (sub === '/ambience/scene') return done(lights.applyScene(idOf()));
+      // Setting the lights any other way wins over music lights.
+      if (sub === '/ambience/scene') { const id = idOf(); musicLights.giveWay('hub'); return done(lights.applyScene(id)); }
       if (sub === '/ambience/light') {
         const want = {};
         if (b.on !== undefined) want.on = b.on;
         if (b.pct !== undefined) want.pct = b.pct;
-        return done(lights.setLight(idOf(), want));
+        const id = idOf();
+        musicLights.giveWay('hub');
+        return done(lights.setLight(id, want));
       }
-      if (sub === '/ambience/mood') return done(lights.applyMood(idOf()));
+      if (sub === '/ambience/mood') { const id = idOf(); musicLights.giveWay('hub'); return done(lights.applyMood(id)); }
       throw bad('no such call');
     }).catch((e) => {
       const status = e && e.status ? e.status : 500;
@@ -1768,7 +1787,9 @@ function start(options) {
     '/api/translate/usage': ['GET'],
     '/api/guest-pin': ['GET'],
     '/api/guest-pin/reset': ['POST'],
-    '/api/photos': ['GET']
+    '/api/photos': ['GET'],
+    '/api/lights': ['GET', 'POST'],
+    '/api/lights/engine': ['POST']
   };
 
   function statusBody() {
@@ -1779,7 +1800,8 @@ function start(options) {
       mailbox: mbox ? mbox.info() : { configured: false, problem: mailboxCfg.problem || '' },
       spotify: player.status(),
       shows: { shows: tracker.list().length, lastRefresh: tracker.lastRefresh(), sample: !!state.resources.shows.data.sample },
-      ambience: lights.summary()
+      ambience: lights.summary(),
+      musicLights: { on: musicLights.settings().on, engine: musicLights.status().engine.running }
     };
   }
 
@@ -1908,6 +1930,12 @@ function start(options) {
           echoPost(body).then((a) => reply(a.status, a.body, a.note)).catch(failed);
           return undefined;
         }
+        if (route === '/api/lights') {
+          if (method === 'GET') return reply(200, Object.assign({ ok: true }, musicLights.status()));
+          const st = musicLights.change(body);
+          return reply(200, Object.assign({ ok: true }, st), st.settings.on ? 'on' : 'off');
+        }
+        if (route === '/api/lights/engine') return reply(200, musicLights.engineReport(body), 'engine');
         if (route.indexOf('/api/ambience') === 0) {
           ambienceCall(method, route.slice(4), body).then((a) => reply(a.status, a.body, a.note));
           return undefined;
@@ -2104,6 +2132,8 @@ function start(options) {
     const done = (status, body, note) => {
       sendJson(res, status, body);
       // A good read of the log is printed but not kept, or reading would fill it.
+      // The music light engine reports once a second: a good report is not logged at all.
+      if (route === '/api/lights/engine' && status === 200) return;
       log('control ' + what + ' -> ' + status + (note ? ' ' + note : '') + (door === 'tunnel' ? ' (side door)' : ''),
         route === '/api/log' && status === 200);
     };

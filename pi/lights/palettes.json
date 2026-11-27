@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "default": "warm-drift",
+  "palettes": [
+    { "id": "warm-drift", "name": "Warm drift", "es": "Deriva cálida", "colors": [[220, 120, 30], [200, 70, 55], [150, 65, 135], [20, 130, 110]] },
+    { "id": "lofi", "name": "Lo-fi chill", "es": "Lo-fi tranquilo", "colors": [[20, 120, 120], [210, 125, 35], [120, 70, 190], [80, 130, 60]] },
+    { "id": "sunset", "name": "Sunset", "es": "Atardecer", "colors": [[235, 150, 20], [230, 80, 50], [190, 30, 110], [120, 40, 120]] },
+    { "id": "dinner", "name": "Dinner party", "es": "Cena con amigos", "colors": [[230, 130, 35], [200, 60, 20], [190, 70, 80]] },
+    { "id": "rainforest", "name": "Rainforest", "es": "Selva tropical", "colors": [[20, 140, 40], [90, 200, 0], [220, 140, 10]] },
+    { "id": "aurora", "name": "Aurora", "es": "Aurora", "colors": [[20, 200, 90], [120, 50, 200], [10, 140, 140]] },
+    { "id": "ocean", "name": "Ocean drift", "es": "Deriva marina", "colors": [[20, 50, 180], [0, 150, 170], [20, 150, 90]] },
+    { "id": "octane", "name": "Octane", "es": "Octane", "colors": [[0, 120, 20], [90, 255, 0], [40, 255, 90], [255, 150, 0]] }
+  ]
+}

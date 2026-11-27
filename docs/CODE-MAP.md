@@ -35,6 +35,7 @@ Support folders: `dev/` (tests, screenshot scripts, laptop preview, version tool
 | `app/widgets/` | ES5, one file per widget | same | `app/widgets/wotd.js` |
 | `service.js` | ES5 Node | TV (TizenBrew service) | top of the file |
 | `pi/` | Node 22 CommonJS, async/await | Pi (Docker) | `pi/server.js` |
+| `pi/lights/` | Node 22 CommonJS | Pi itself, user unit `music-lights` (not Docker: it listens to the Pi's sound) | `pi/lights/engine.js` |
 | `dev/` | Node CommonJS, Playwright | laptop or cloud | `dev/run-affected.js` |
 | `studio/` | one HTML file + data | claude.ai artifact | `studio/README.md` |
 | `docs/` | Markdown | n/a | `docs/live-updates.md` |
@@ -134,6 +135,7 @@ More detail: "Writing a widget" in `README.md` and the top of `app/hub.js`.
 | Wall tablet (Fully Kiosk): panels won't close, no layout menu, an app won't open on the TV, a panel won't scroll by touch | "tablet mode" in `app/hub.js`, `app/tablet.css` (Touch scrolling), `docs/tablet-mode.md`; `dev/tablet-test.js`, `dev/scroll-test.js` |
 | Guest mode PIN pop-up, wrong PIN, forgotten PIN | `app/pin.js` + `app/pin.css` (the pop-up; `choose()` in `app/widgets/today.js` opens it), `POST /guest/pin` in `pi/server.js` -> `pi/guestpin.js` (hash in `data/guest-pin.json`, the lock); `./hub guest-pin reset`; `dev/pin-test.js`, `pi/guestpin-test.js` |
 | Flashcards wrong (cards, rounds, progress not saved), or a tile that should engage on OK (short OK uses it in place, holding OK opens it) | `app/widgets/flashcards.js` + `.css`, `app/flash-math.js`, `app/spanish-cards.js` (from `dev/build-spanish-cards.js`); "engage on OK" in `app/hub.js`, `.tile-engage-hint` in `app/style.css`; `pi/spanish.js` (`data/spanish.db`), `/spanish/*` in `pi/server.js`; `docs/spanish-flashcards.md`; `dev/flashcards-test.js`, `pi/spanish-test.js` |
+| Music lights (lamp and bars follow the Pi's music): won't start, wrong colors, gave way, quiet timer | `pi/lights/engine.js` (the runner), `pi/lights/look.js` (dials, limits), `pi/lights/session.js` (On, Off, quiet), `pi/lights/ha.js` (put back, noticing other changes), `pi/lights/govee.js` + `palettes.json` (shared light config), `pi/lights/store.js` (`/api/lights` on the hub); `./hub lights`, `node pi/lights/engine.js --check` on the Pi; `pi/lights-test.js` |
 | Conjugation table wrong (a verb missing, a wrong or unmarked form, the letter browse or search), or Word of the day's Conjugation tab | `app/widgets/conjugate.js` + `.css`, `app/spanish-verbs.js` (from `dev/build-spanish-verbs.js`); the tab in `app/widgets/wotd.js` + `.css`; `docs/spanish-study.md`; `dev/conjugate-test.js` |
 
 ## 9. Glossary

@@ -62,6 +62,11 @@
  *   ./hub ambience mood <id>         a plant wall mood (WLED)
  *   ./hub ambience set <file.json|->   new lights, scenes and moods (see ambience.example.json)
  *   ./hub ambience reset             back to the defaults (no lights)
+ *   ./hub lights [status]            music lights: on or off, palette, dials, what the engine does
+ *   ./hub lights on|off              switch music lights on or off
+ *   ./hub lights chill|groove|party  both dials at once (low/low, medium/medium, high/high)
+ *   ./hub lights set --palette sunset --vibrancy high --beat low --quiet 15|never
+ *   ./hub lights palettes            the palettes, with ids
  *   ./hub guest-pin status           is a Guest mode PIN set (never the PIN itself)
  *   ./hub guest-pin reset            forget it; the TV asks for a new PIN next time
  *   ./hub photos status              the photo album: how many photos, the last sync from the wall calendar
@@ -1363,6 +1368,104 @@ async function logCommand(args) {
   logLines(r, !!a.opts.errors).forEach(say);
 }
 
+/* ---------- Music lights (lights/store.js) ---------- */
+
+const LIGHT_NAMES = { lamp: 'the lamp', bars: 'the light bars', hub: 'a hub scene or light' };
+const STATE_WORDS = {
+  starting: 'starting', running: 'following the music', playing: 'following the music',
+  between: 'quiet between songs, dimming', resting: 'quiet, holding a calm glow', stopping: 'fading out', off: 'idle'
+};
+
+function lightsQuietText(min) {
+  if (!min) return 'Never turns itself off.';
+  return 'Turns itself off after ' + min + ' quiet minute' + (min === 1 ? '' : 's') + ' and puts the lights back.';
+}
+
+function lightsPaletteName(st, id) {
+  const p = ((st && st.palettes) || []).find((x) => x.id === id);
+  return p ? p.name : id;
+}
+
+function lightsDialsText(st) {
+  const s = st.settings;
+  const preset = st.preset ? st.preset[0].toUpperCase() + st.preset.slice(1) + ': ' : '';
+  return lightsPaletteName(st, s.palette) + ', ' + preset + 'Vibrancy ' + s.vibrancy + ', Beat ' + s.beat;
+}
+
+function lightsOffText(s) {
+  if (s.offReason === 'quiet') return 'off after ' + (s.quietMin || '') + ' quiet minutes, lights put back';
+  if (s.offReason === 'gave-way') {
+    const who = (s.gaveWay || []).map((k) => LIGHT_NAMES[k] || k);
+    return 'off: ' + (who.length ? who.join(' and ') : 'the lights') + ' set another way, left as set';
+  }
+  return 'off';
+}
+
+// ./hub lights status and the mailbox's lights.status.
+function lightsStatusLines(st) {
+  const s = st.settings;
+  const e = st.engine || {};
+  const out = [];
+  let head = 'Music lights: ' + (s.on ? 'on' : lightsOffText(s));
+  if (s.on && e.running) head += ', ' + (STATE_WORDS[e.state] || e.state);
+  out.push(head + ' (' + lightsDialsText(st) + ').');
+  if (e.running) {
+    const lights = (e.lights || []).map((k) => LIGHT_NAMES[k]);
+    let line = 'Engine: running, drives ' + (lights.length ? lights.join(' and ') : 'no lights (no addresses set)');
+    if (s.on && e.bpm) line += ', ' + e.bpm + ' BPM';
+    if (s.on && e.capture === 'down') line += ', cannot hear the Pi\'s sound right now';
+    if (!e.ha) line += '; no Home Assistant, so lights are switched off at the end instead of put back';
+    out.push(line + '.');
+  } else {
+    out.push('Engine: not running' + (e.seenAgo !== null && e.seenAgo !== undefined ? ' (last heard ' + e.seenAgo + ' s ago)' : '') + '. On the Pi: systemctl --user status music-lights');
+  }
+  out.push(lightsQuietText(s.quietMin));
+  return out;
+}
+
+// The one line after a change.
+function lightsChangeText(st) {
+  const s = st.settings;
+  const e = st.engine || {};
+  let t = 'Music lights ' + (s.on ? 'on' : 'off') + ' (' + lightsDialsText(st) + ').';
+  if (s.on && !e.running) t += ' The engine is not running, so nothing moves yet.';
+  return t;
+}
+
+function lightsPaletteLines(st) {
+  return ((st && st.palettes) || []).map((p) => p.id + '  ' + p.name + (st.settings.palette === p.id ? '  (current)' : ''));
+}
+
+// --quiet 15 or never -> minutes (0 = never), or a reason.
+function lightsQuietArg(v) {
+  if (String(v).toLowerCase() === 'never') return 0;
+  if (!/^\d{1,3}$/.test(String(v))) stop('--quiet takes whole minutes (1-240) or never.');
+  return Number(v);
+}
+
+async function lightsCommand(args) {
+  const sub = (args[0] || 'status').toLowerCase();
+  const use = 'Use one of: lights status, lights on, lights off, lights chill|groove|party, ' +
+    'lights set --palette <id> --vibrancy low|medium|high --beat low|medium|high --quiet <minutes>|never, lights palettes.';
+  const change = async (body) => say(lightsChangeText(await call('POST', '/api/lights', body)));
+  if (sub === 'status') { lightsStatusLines(await call('GET', '/api/lights')).forEach(say); return; }
+  if (sub === 'palettes') { lightsPaletteLines(await call('GET', '/api/lights')).forEach(say); return; }
+  if (sub === 'on') return change({ on: true });
+  if (sub === 'off') return change({ on: false });
+  if (sub === 'chill' || sub === 'groove' || sub === 'party') return change({ preset: sub });
+  if (sub === 'set') {
+    const a = parseArgs(args.slice(1), ['palette', 'vibrancy', 'beat', 'quiet']);
+    const body = {};
+    if (a.opts.palette !== undefined) body.palette = String(a.opts.palette).toLowerCase();
+    if (a.opts.vibrancy !== undefined) body.vibrancy = String(a.opts.vibrancy).toLowerCase();
+    if (a.opts.beat !== undefined) body.beat = String(a.opts.beat).toLowerCase();
+    if (a.opts.quiet !== undefined) body.quietMin = lightsQuietArg(a.opts.quiet);
+    if (!Object.keys(body).length) stop('Say what to set, for example: ./hub lights set --palette sunset --beat low');
+    return change(body);
+  }
+  stop(use);
+}
+
 /* ---------- help ---------- */
 
 const HELP = [
@@ -1439,6 +1542,11 @@ const HELP = [
   '  ./hub ambience mood dim     a plant wall mood (needs WLED_URL in pi/.env)',
   '  ./hub ambience set file.json   new lights, scenes and moods (see pi/ambience.example.json)',
   '  ./hub ambience reset        back to the defaults (no lights)',
+  '  ./hub lights               music lights: on or off, palette, dials, what the engine is doing',
+  '  ./hub lights on            the lamp and light bars follow the Pi\'s music (off: ./hub lights off)',
+  '  ./hub lights groove        both dials at once: chill (low), groove (medium), party (high)',
+  '  ./hub lights set --palette sunset --vibrancy high --beat low --quiet 15   (--quiet never: stays on)',
+  '  ./hub lights palettes      the palettes, with ids',
   '  ./hub guest-pin status     is a Guest mode PIN set (the TV asks for it to turn Guest mode on or off)',
   '  ./hub guest-pin reset      forget the PIN; the TV asks you to create a new one next time',
   '  ./hub photos status        the photo album: how many photos, and the last sync from the wall calendar',
@@ -1753,6 +1861,7 @@ async function main(argv) {
   if (cmd === 'allsounds') return allsoundsCmd(rest);
   if (cmd === 'echo') return echoCommand(rest);
   if (cmd === 'ambience') return ambienceCommand(rest);
+  if (cmd === 'lights') return lightsCommand(rest);
   if (cmd === 'token') return token();
   stop('I do not know "' + cmd + '". Run ./hub help to see the commands.');
 }
@@ -1818,7 +1927,10 @@ module.exports = {
   ambienceSceneText: ambienceSceneText,
   ambienceLightText: ambienceLightText,
   ambienceMoodText: ambienceMoodText,
-  ambienceSetText: ambienceSetText
+  ambienceSetText: ambienceSetText,
+  lightsStatusLines: lightsStatusLines,
+  lightsChangeText: lightsChangeText,
+  lightsPaletteLines: lightsPaletteLines
 };
 
 if (require.main === module) {
