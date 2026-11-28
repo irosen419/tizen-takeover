@@ -1297,6 +1297,34 @@
        "children": []
       },
       {
+       "id": "tv.widgets.moods",
+       "title": "Moods",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "The plant wall's moods on the TV, the wall tablet and the phone: a drawing of the wall lit in the mood's colours, a rail of mood cards, brightness and Lamp and bars.",
+       "details": [
+        "Focus on a card previews it on the drawing; OK sends it to the Pi and the Pi's push confirms it, or it rolls back with a plain line. The drawing is built from the wall map in the moods resource, so a wall fix moves it too.",
+        "Lives on its own Moods test layout beside Ambience. The TV never talks to WLED; it sends saved mood ids to the Pi."
+       ],
+       "files": [
+        "app/widgets/moods.js",
+        "app/widgets/moods.css",
+        "app/widgets/moods-touch.js",
+        "app/moods-wall.js",
+        "dev/moods-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.moods",
+         "label": "moods resource in, POST /moods/set out",
+         "dir": "both"
+        }
+       ],
+       "notes": [
+        "Checked in headless Chromium against the Pi server and a pretend wall only."
+       ]
+      },
+      {
        "id": "tv.widgets.architecture",
        "title": "Architecture",
        "kind": "component",
@@ -3217,6 +3245,88 @@
      "children": []
     },
     {
+     "id": "pi.moods",
+     "title": "Plant wall moods",
+     "kind": "component",
+     "status": "unverified",
+     "summary": "Turns a mood id from the TV, the phone, ./hub, the mailbox or Home Assistant into a checked, transient WLED state for the plant wall, pairs the lamp and bars, and puts the wall back on Off.",
+     "details": [
+      "One source of truth: pi/moods/moods.json (22 moods plus a hidden first-light check, designs, palettes, effects) and pi/moods/wall.json (bulb ranges, frame sides, candles, power). A Pi-only fix in data/moods-wall.json wins, so a wrong bulb number is fixed without a merge.",
+      "Passive: nothing is sent to WLED until a person sets a mood or runs a probe. The first mood saves a snapshot of the wall's state; Off sends it back (fallback: the live preset). A mood is one POST /json/state, checked first (ids, ranges, keys): it can select preset 2 but never saves or deletes a preset, playlist or config.",
+      "Power: every body is fitted under an 800 mA budget with one fixed scale, flashes capped again. The bulb current is assumed (55 mA) until moods probe reads it, so palette moods may look dim.",
+      "The lamp and bars change through the music lights store (a hidden look per mood), skipped while music lights are on. Thunder for the effects form dims the drum frame and returns; automatic thunder pauses 5 minutes after an outside cue.",
+      "Doors: /api/moods* (./hub moods, the mailbox moods.* commands), POST /moods/set for screens (saved ids only, rate limited), POST /api/command type mood for Home Assistant, GET /api/moods/now for its sensor. MOODS_DRY=1 makes every call a dry run."
+     ],
+     "files": [
+      "pi/moods/controller.js",
+      "pi/moods/catalog.js",
+      "pi/moods/compile.js",
+      "pi/moods/render.js",
+      "pi/moods/preview.js",
+      "pi/moods/moods.json",
+      "pi/moods/wall.json",
+      "pi/moods-test.js",
+      "pi/moods-data-test.js",
+      "pi/moods-compile-test.js",
+      "dev/mock-wall.js"
+     ],
+     "talksTo": [
+      {
+       "to": "ext.smart-home.plant-wall",
+       "label": "transient JSON state; snapshot first, put back on Off",
+       "dir": "out"
+      },
+      {
+       "to": "pi.lights",
+       "label": "lamp and bars look with the mood",
+       "dir": "out"
+      },
+      {
+       "to": "pi.server.screen",
+       "label": "pushes the moods resource",
+       "dir": "out"
+      },
+      {
+       "to": "pi.server.control-api",
+       "label": "/api/moods* from ./hub, the mailbox and Home Assistant",
+       "dir": "in"
+      }
+     ],
+     "notes": [
+      "Built 2026-11-28 against a pretend WLED (dev/mock-wall.js); nothing has run on the real wall. Vase, drop and side bulb numbers are derived, not measured: the hidden check mood is for first light."
+     ],
+     "children": [
+      {
+       "id": "pi.moods.engine",
+       "title": "Pi-drawn renderer",
+       "kind": "script",
+       "status": "unverified",
+       "summary": "forest-render.js (a byte copy, hash pinned) started by the hub as a child process: streams every bulb at 30 fps so thunder can dim 2 to 4 bulbs behind a painting.",
+       "details": [
+        "Off unless MOODS_ENGINE=forest is in pi/.env (mood = the general renderer, a stretch). Only the two Rainforest moods use it today; every other mood plays as WLED effects. The hub applies preset 2 first, so if the stream stops WLED shows Slow forest again within 2 seconds.",
+        "Thunder cues go to its trigger port on 127.0.0.1 (4810); timing lives in the hub, never --auto. The WLED host travels only in the child's WLED_HOST variable, never in its arguments or a log line."
+       ],
+       "files": [
+        "pi/moods/engine.js",
+        "pi/moods/forest-render.js",
+        "pi/moods/mood-render.js",
+        "pi/moods-engine-test.js",
+        "pi/forest-render-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "ext.smart-home.plant-wall",
+         "label": "every bulb over UDP (DRGB, 30 fps)",
+         "dir": "out"
+        }
+       ],
+       "notes": [
+        "Never run on the wall: brightness scale, drift and gamma are unverified. Switch it on only after the Pi-render thread's own first run with Ian watching."
+       ]
+      }
+     ]
+    },
+    {
      "id": "pi.health",
      "title": "Weekly health report",
      "kind": "script",
@@ -3600,6 +3710,28 @@
         {
          "to": "pi.server.control-api",
          "label": "reads the screen report, sends layout, show, scene and visualizer",
+         "dir": "out"
+        }
+       ]
+      },
+      {
+       "id": "ext.ha.moods",
+       "title": "Wall moods dashboard",
+       "kind": "component",
+       "status": "planned",
+       "summary": "A new Home Assistant dashboard (stage A) and later a package with a sensor, scripts and a select (stage B) that set the wall's moods through the hub.",
+       "details": [
+        "Stage A buttons call the existing rest_command.hub_command with type mood: no HA file change, no restart. Stage B adds a REST sensor on /api/moods/now, one script per mood and a Wall mood select; it needs Ian's OK for a reload or restart.",
+        "Generated by dev/moods-ha.js from pi/moods/moods.json; the YAML holds no entity id, address or token (HUB_BASE and !secret hub_lights_auth only)."
+       ],
+       "files": [
+        "dev/moods-ha.js",
+        "dev/moods-ha-test.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.server.control-api",
+         "label": "mood command; reads /api/moods/now (stage B)",
          "dir": "out"
         }
        ]
@@ -4286,10 +4418,11 @@
        "id": "ext.smart-home.plant-wall",
        "title": "Plant wall (WLED)",
        "kind": "external",
-       "status": "planned",
-       "summary": "A MagWLED-2 light controller for the plant wall, driven by WLED's JSON API; install status unknown.",
+       "status": "unverified",
+       "summary": "A MagWLED-2 controller driving the plant wall's 164 bulbs (162 lit) through WLED's JSON API; Moods and Ambience talk to it from the Pi.",
        "details": [
-        "Ian's Plant Wall Moods artifact already writes the WLED commands (22 moods). The Pi would call the board directly. Its mic gives only sound levels, so a future voice button needs extra hardware."
+        "Ian's live look is preset 2 (Slow forest on three segments); presets 1 and 2 are never written by the hub. Moods sends transient states and puts the snapshot back on Off; the Pi-drawn renderer streams every bulb over UDP when switched on.",
+        "Its mic gives only sound levels (the sound-reactive moods), so a future voice button needs extra hardware. Effect numbers, bulb current and frame sides are checked by ./hub moods probe and the check mood at first light."
        ],
        "files": [],
        "talksTo": []
@@ -6175,6 +6308,45 @@
     {
      "node": "tv.characters.clay",
      "say": "The TV plays one of the fetch scenes now, or says why not"
+    }
+   ]
+  },
+  {
+   "id": "flow.mood-set",
+   "title": "A mood reaches the plant wall",
+   "summary": "A mood picked on the TV or in Home Assistant becomes one checked WLED state, the lamp and bars follow, and Off puts the wall back as it was.",
+   "steps": [
+    {
+     "node": "tv.widgets.moods",
+     "say": "Ian focuses a mood card (the drawing previews it) and presses OK: POST /moods/set with the saved id"
+    },
+    {
+     "node": "ext.ha.moods",
+     "say": "Or a Wall moods button in Home Assistant sends the mood command with the hub token"
+    },
+    {
+     "node": "pi.moods",
+     "say": "The Pi compiles the mood, checks it (ranges, keys, power under 800 mA) and, for the first mood, saves a snapshot of the wall"
+    },
+    {
+     "node": "ext.smart-home.plant-wall",
+     "say": "One transient POST /json/state: segments, effects and colours; no preset is saved"
+    },
+    {
+     "node": "pi.lights",
+     "say": "The lamp and bars take the mood's look, unless music lights are on"
+    },
+    {
+     "node": "pi.moods.engine",
+     "say": "Rainforest moods with MOODS_ENGINE=forest: the renderer streams every bulb and takes thunder cues"
+    },
+    {
+     "node": "pi.server.screen",
+     "say": "The moods resource is pushed; the TV confirms the card, or rolls back with a plain line"
+    },
+    {
+     "node": "pi.moods",
+     "say": "Off: the renderer stops, the snapshot goes back to the wall and the mood's look is cleared"
     }
    ]
   }

@@ -84,11 +84,22 @@
       return Math.max(m.night.min, Math.min(m.night.max, Math.round(v)));
     }
 
+    // The Pi's refusals are English sentences (pi/moods/controller.js); the
+    // phone says them in its own words, in the chosen language.
+    function failText(msg) {
+      var s = String(msg || '');
+      if (/slow down/i.test(s)) return T('errBusy', 'Too many presses. Try again in a moment.');
+      if (/not set up|WLED_URL/.test(s)) return T('errNotSet', 'The wall isn’t set up on the Pi yet.');
+      if (/saved mood|no mood with that id/i.test(s)) return T('errGone', 'That mood isn’t saved on the Pi any more.');
+      if (/wall (did not|didn’t) answer|wall refused|wall isn/i.test(s)) return T('errWall', 'The wall didn’t answer. Nothing changed.');
+      return T('errPi', 'Couldn’t reach the Pi. Nothing changed.');
+    }
+
     function send(body, done) {
       ctx.call('POST', '/moods/set', body).then(function (j) {
-        if (j && j.result === 'failed') throw new Error(T('errWall', 'The wall didn’t answer. Nothing changed.'));
+        if (j && j.result === 'failed') throw new Error('the wall did not answer');
         done(null, j);
-      }).then(null, function (e) { done(e && e.message ? e.message : 'failed'); });
+      }).then(null, function (e) { done(failText(e && e.message)); });
     }
 
     function apply(id, d) {
@@ -102,7 +113,7 @@
       if (st.pair !== null) body.pair = st.pair;
       if (m && m.night) body.night = nightOf(d, m);
       send(body, function (err) {
-        if (err) { st.pending = null; st.note = { text: err === 'Offline' || /reach/i.test(err) ? T('errPi', 'Couldn’t reach the Pi. Nothing changed.') : err, kind: 'bad' }; }
+        if (err) { st.pending = null; st.note = { text: err, kind: 'bad' }; }
         else st.note = { text: m ? T('moodOn', '{name} is on', { name: nameOf(m) }) : T('offDone', 'The wall is back to how it was'), kind: '' };
         draw(true);
         ctx.refresh();
@@ -113,7 +124,7 @@
       var body = { id: id };
       for (var k in extra) if (extra.hasOwnProperty(k)) body[k] = extra[k];
       send(body, function (err) {
-        if (err) { st.bri = null; st.night = null; st.note = { text: T('errPi', 'Couldn’t reach the Pi. Nothing changed.'), kind: 'bad' }; draw(true); }
+        if (err) { st.bri = null; st.night = null; st.note = { text: err, kind: 'bad' }; draw(true); }
         ctx.refresh();
       });
     }

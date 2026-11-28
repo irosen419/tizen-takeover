@@ -17,8 +17,8 @@
    "id": "match-the-art",
    "name": "Match the art",
    "es": "A juego con el arte",
-   "desc": "Warm reds and oranges taken from beside each vase.",
-   "descEs": "Rojos y naranjas cálidos tomados de junto a cada florero.",
+   "desc": "Warm reds and oranges sampled beside each vase, with the frames lit to match.",
+   "descEs": "Rojos y naranjas cálidos tomados junto a cada jarrón, con los marcos a juego.",
    "group": "vases",
    "sw": [
     "#ff5163",
@@ -33,6 +33,15 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#ff7052"
+     ],
+     "halo.drum": [
+      "#ff7c4b"
+     ],
+     "halo.mic": [
+      "#ff624d"
+     ],
      "vase1": [
       "#ff5163"
      ],
@@ -44,41 +53,27 @@
      ],
      "vase4": [
       "#ff5a47"
-     ],
-     "halo.guitar": [
-      "#ff5163",
-      "#ff8d42"
-     ],
-     "halo.drum": [
-      "#ff5163",
-      "#ff6b53",
-      "#ff5a47",
-      "#ff8d42"
-     ],
-     "halo.mic": [
-      "#ff6b53",
-      "#ff5a47"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "solid",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "gradient",
-     "halo.drum": "gradient",
-     "halo.mic": "gradient"
+     "vase4": "solid"
     },
     "glint": null,
     "anim": "still",
     "lvl": {
-     "vase1": 0.66,
-     "vase2": 0.66,
-     "vase3": 0.66,
-     "vase4": 0.66,
-     "halo.guitar": 0.33,
-     "halo.drum": 0.33,
-     "halo.mic": 0.33
+     "halo.guitar": 0.49,
+     "halo.drum": 0.49,
+     "halo.mic": 0.49,
+     "vase1": 0.69,
+     "vase2": 0.69,
+     "vase3": 0.69,
+     "vase4": 0.69
     }
    }
   },
@@ -86,8 +81,8 @@
    "id": "paint-splash",
    "name": "Paint splash",
    "es": "Salpicadura de color",
-   "desc": "The accent colors from all three paintings, breathing slowly.",
-   "descEs": "Los colores de acento de los tres cuadros, que respiran despacio.",
+   "desc": "The accent colors from all three canvases, breathing slowly.",
+   "descEs": "Los colores de acento de los tres cuadros, respirando despacio.",
    "group": "vases",
    "sw": [
     "#ff4f8a",
@@ -102,6 +97,15 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#ff6e62"
+     ],
+     "halo.drum": [
+      "#c7738a"
+     ],
+     "halo.mic": [
+      "#5d8fb1"
+     ],
      "vase1": [
       "#ff4f8a"
      ],
@@ -113,41 +117,27 @@
      ],
      "vase4": [
       "#2fbf8f"
-     ],
-     "halo.guitar": [
-      "#ff4f8a",
-      "#ff8a3d"
-     ],
-     "halo.drum": [
-      "#ff4f8a",
-      "#8f5bd6",
-      "#2fbf8f",
-      "#ff8a3d"
-     ],
-     "halo.mic": [
-      "#8f5bd6",
-      "#2fbf8f"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "solid",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "gradient",
-     "halo.drum": "gradient",
-     "halo.mic": "gradient"
+     "vase4": "solid"
     },
     "glint": null,
-    "anim": "breathe",
+    "anim": "still",
     "lvl": {
-     "vase1": 0.69,
-     "vase2": 0.69,
-     "vase3": 0.69,
-     "vase4": 0.69,
-     "halo.guitar": 0.345,
-     "halo.drum": 0.345,
-     "halo.mic": 0.345
+     "halo.guitar": 0.5,
+     "halo.drum": 0.5,
+     "halo.mic": 0.5,
+     "vase1": 0.71,
+     "vase2": 0.71,
+     "vase3": 0.71,
+     "vase4": 0.71
     }
    }
   },
@@ -155,8 +145,8 @@
    "id": "lofi-chill",
    "name": "Lo-fi chill",
    "es": "Lo-fi tranquilo",
-   "desc": "Teal, amber and lavender on a slow breath.",
-   "descEs": "Verde azulado, ámbar y lavanda con una respiración lenta.",
+   "desc": "Teal, amber and lavender in a slow breathe.",
+   "descEs": "Turquesa, ámbar y lavanda con una respiración lenta.",
    "group": "vases",
    "sw": [
     "#2fb5a3",
@@ -171,6 +161,15 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#90ab74"
+     ],
+     "halo.drum": [
+      "#bb8f87"
+     ],
+     "halo.mic": [
+      "#6d9095"
+     ],
      "vase1": [
       "#2fb5a3"
      ],
@@ -182,41 +181,27 @@
      ],
      "vase4": [
       "#4fa36b"
-     ],
-     "halo.guitar": [
-      "#2fb5a3",
-      "#e8a24a"
-     ],
-     "halo.drum": [
-      "#2fb5a3",
-      "#8e7cc3",
-      "#4fa36b",
-      "#e8a24a"
-     ],
-     "halo.mic": [
-      "#8e7cc3",
-      "#4fa36b"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "solid",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "gradient",
-     "halo.drum": "gradient",
-     "halo.mic": "gradient"
+     "vase4": "solid"
     },
     "glint": null,
-    "anim": "breathe",
+    "anim": "still",
     "lvl": {
-     "vase1": 0.56,
-     "vase2": 0.56,
-     "vase3": 0.56,
-     "vase4": 0.56,
-     "halo.guitar": 0.28,
-     "halo.drum": 0.28,
-     "halo.mic": 0.28
+     "halo.guitar": 0.42,
+     "halo.drum": 0.42,
+     "halo.mic": 0.42,
+     "vase1": 0.59,
+     "vase2": 0.59,
+     "vase3": 0.59,
+     "vase4": 0.59
     }
    }
   },
@@ -224,14 +209,14 @@
    "id": "rainforest",
    "name": "Rainforest",
    "es": "Selva tropical",
-   "desc": "Slow forest light drifting over the whole wall.",
-   "descEs": "Luz de selva que se mueve despacio por todo el muro.",
+   "desc": "Slow forest greens drifting over the whole wall, wire runs included.",
+   "descEs": "Verdes de selva que se mueven despacio por toda la pared, cables incluidos.",
    "group": "wall",
    "sw": [
-    "#1f7a3a",
-    "#3f9e4d",
-    "#0e5a2a",
-    "#9acd32"
+    "#2f9a52",
+    "#8cc63f",
+    "#16775c",
+    "#e0a33a"
    ],
    "bri": 100,
    "tags": [
@@ -241,74 +226,96 @@
    "pv": {
     "z": {
      "vase1": [
-      "#006400",
-      "#006400",
-      "#556b2f"
+      "#0b6506",
+      "#006900",
+      "#007200",
+      "#007b00",
+      "#058205",
+      "#108510",
+      "#1b891b"
      ],
      "vase2": [
-      "#006400",
-      "#556b2f",
-      "#006400"
+      "#438916",
+      "#21840b",
+      "#018001",
+      "#0f841d",
+      "#1e8739",
+      "#2d8b54",
+      "#3e9e6f"
      ],
      "vase3": [
-      "#556b2f",
-      "#006400",
-      "#008000"
+      "#0b6506",
+      "#006900",
+      "#007200",
+      "#007b00",
+      "#058205",
+      "#108510",
+      "#1b891b"
      ],
      "vase4": [
-      "#006400",
-      "#008000",
-      "#228b22"
+      "#438916",
+      "#21840b",
+      "#018001",
+      "#0f841d",
+      "#1e8739",
+      "#2d8b54",
+      "#3e9e6f"
      ],
      "drops.left": [
-      "#008000",
-      "#228b22",
-      "#6b8e23"
+      "#298b22",
+      "#418c22",
+      "#588d23",
+      "#658d21"
      ],
      "drops.right": [
-      "#228b22",
-      "#6b8e23",
-      "#008000"
+      "#298b22",
+      "#418c22",
+      "#588d23",
+      "#658d21"
      ],
      "run.left": [
-      "#6b8e23",
-      "#008000",
-      "#2e8b57"
+      "#006400",
+      "#006400",
+      "#17660d",
+      "#4e6a2b",
+      "#266715",
+      "#62c8a4"
      ],
      "run.right": [
-      "#008000",
-      "#2e8b57",
-      "#66cdaa"
+      "#006400",
+      "#006400",
+      "#17660d",
+      "#4e6a2b",
+      "#266715",
+      "#62c8a4"
      ],
      "halo.guitar": [
-      "#2e8b57",
-      "#66cdaa",
-      "#32cd32",
-      "#9acd32",
-      "#90ee90",
-      "#7cfc00",
-      "#66cdaa",
-      "#9acd32"
+      "#59cd8d",
+      "#47cd32",
+      "#98d241",
+      "#8ef080",
+      "#7af90c",
+      "#64cba7",
+      "#238c25"
      ],
      "halo.drum": [
-      "#66cdaa",
-      "#32cd32",
-      "#9acd32",
-      "#90ee90",
-      "#7cfc00",
-      "#66cdaa",
-      "#9acd32",
-      "#006400"
+      "#006400",
+      "#506b2c",
+      "#048104",
+      "#598c1d",
+      "#3b9a6a",
+      "#4fcd32",
+      "#89f35f",
+      "#4bb374"
      ],
      "halo.mic": [
-      "#32cd32",
-      "#9acd32",
-      "#90ee90",
-      "#7cfc00",
-      "#66cdaa",
-      "#9acd32",
-      "#006400",
-      "#006400"
+      "#59cd8d",
+      "#47cd32",
+      "#98d241",
+      "#8ef080",
+      "#7af90c",
+      "#64cba7",
+      "#238c25"
      ]
     },
     "pat": {
@@ -345,8 +352,8 @@
    "id": "rainforest-night",
    "name": "Rainforest night",
    "es": "Selva de noche",
-   "desc": "Night canopy with fireflies in the vases and around every painting.",
-   "descEs": "Dosel nocturno con luciérnagas en los floreros y alrededor de cada cuadro.",
+   "desc": "Night canopy with fireflies blinking in the vases and around every painting.",
+   "descEs": "Dosel nocturno con luciérnagas que parpadean en los jarrones y alrededor de cada cuadro.",
    "group": "wall",
    "sw": [
     "#1f8a4a",
@@ -359,6 +366,18 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#146e32",
+      "#c8ff14"
+     ],
+     "halo.drum": [
+      "#146e32",
+      "#c8ff14"
+     ],
+     "halo.mic": [
+      "#146e32",
+      "#c8ff14"
+     ],
      "vase1": [
       "#1f8a4a"
      ],
@@ -370,36 +389,27 @@
      ],
      "vase4": [
       "#2c8f6c"
-     ],
-     "halo.guitar": [
-      "#146e32"
-     ],
-     "halo.drum": [
-      "#146e32"
-     ],
-     "halo.mic": [
-      "#146e32"
      ]
     },
     "pat": {
+     "halo.guitar": "dots",
+     "halo.drum": "dots",
+     "halo.mic": "dots",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "solid",
-     "halo.drum": "solid",
-     "halo.mic": "solid"
+     "vase4": "solid"
     },
     "glint": "#c8ff14",
     "anim": "twinkle",
     "lvl": {
-     "vase1": 0.58,
-     "vase2": 0.58,
-     "vase3": 0.58,
-     "vase4": 0.58,
-     "halo.guitar": 0.45,
-     "halo.drum": 0.45,
-     "halo.mic": 0.45
+     "halo.guitar": 0.69,
+     "halo.drum": 0.69,
+     "halo.mic": 0.69,
+     "vase1": 0.61,
+     "vase2": 0.61,
+     "vase3": 0.61,
+     "vase4": 0.61
     }
    }
   },
@@ -407,8 +417,8 @@
    "id": "thunderstorm",
    "name": "Thunderstorm",
    "es": "Tormenta",
-   "desc": "Rain glints in the vases and lightning flickers around the frames.",
-   "descEs": "La lluvia brilla en los floreros y los relámpagos parpadean en los marcos.",
+   "desc": "Rain glints in the vases, lightning on the guitar and mic, drums answer the thunder.",
+   "descEs": "Lluvia en los jarrones, relámpagos en la guitarra y el micrófono, y la batería responde al trueno.",
    "group": "wall",
    "sw": [
     "#24479a",
@@ -423,6 +433,18 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#0c1a40",
+      "#d2e1ff"
+     ],
+     "halo.drum": [
+      "#0c1a40",
+      "#e2ecff"
+     ],
+     "halo.mic": [
+      "#0c1a40",
+      "#d2e1ff"
+     ],
      "vase1": [
       "#24479a"
      ],
@@ -434,39 +456,27 @@
      ],
      "vase4": [
       "#1a3577"
-     ],
-     "halo.guitar": [
-      "#0c1a40",
-      "#1c3270"
-     ],
-     "halo.drum": [
-      "#0c1a40",
-      "#1c3270"
-     ],
-     "halo.mic": [
-      "#0c1a40",
-      "#1c3270"
      ]
     },
     "pat": {
+     "halo.guitar": "dots",
+     "halo.drum": "dots",
+     "halo.mic": "dots",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "dots",
-     "halo.drum": "dots",
-     "halo.mic": "dots"
+     "vase4": "solid"
     },
     "glint": "#d2e1ff",
     "anim": "twinkle",
     "lvl": {
-     "vase1": 0.49,
-     "vase2": 0.49,
-     "vase3": 0.49,
-     "vase4": 0.49,
-     "halo.guitar": 0.7,
-     "halo.drum": 0.7,
-     "halo.mic": 0.7
+     "halo.guitar": 0.89,
+     "halo.drum": 0.89,
+     "halo.mic": 0.89,
+     "vase1": 0.52,
+     "vase2": 0.52,
+     "vase3": 0.52,
+     "vase4": 0.52
     }
    }
   },
@@ -475,7 +485,7 @@
    "name": "Rainforest storm",
    "es": "Tormenta en la selva",
    "desc": "Slow forest light. Thunder dims a few bulbs behind a painting.",
-   "descEs": "Luz de selva lenta. Los truenos atenúan unos focos detrás de un cuadro.",
+   "descEs": "Luz de selva lenta. El trueno atenúa unas cuantas luces detrás de un cuadro.",
    "group": "wall",
    "sw": [
     "#1f8a4a",
@@ -491,74 +501,96 @@
    "pv": {
     "z": {
      "vase1": [
-      "#006400",
-      "#006400",
-      "#556b2f"
+      "#0b6506",
+      "#006900",
+      "#007200",
+      "#007b00",
+      "#058205",
+      "#108510",
+      "#1b891b"
      ],
      "vase2": [
-      "#006400",
-      "#556b2f",
-      "#006400"
+      "#438916",
+      "#21840b",
+      "#018001",
+      "#0f841d",
+      "#1e8739",
+      "#2d8b54",
+      "#3e9e6f"
      ],
      "vase3": [
-      "#556b2f",
-      "#006400",
-      "#008000"
+      "#0b6506",
+      "#006900",
+      "#007200",
+      "#007b00",
+      "#058205",
+      "#108510",
+      "#1b891b"
      ],
      "vase4": [
-      "#006400",
-      "#008000",
-      "#228b22"
+      "#438916",
+      "#21840b",
+      "#018001",
+      "#0f841d",
+      "#1e8739",
+      "#2d8b54",
+      "#3e9e6f"
      ],
      "drops.left": [
-      "#008000",
-      "#228b22",
-      "#6b8e23"
+      "#298b22",
+      "#418c22",
+      "#588d23",
+      "#658d21"
      ],
      "drops.right": [
-      "#228b22",
-      "#6b8e23",
-      "#008000"
+      "#298b22",
+      "#418c22",
+      "#588d23",
+      "#658d21"
      ],
      "run.left": [
-      "#6b8e23",
-      "#008000",
-      "#2e8b57"
+      "#006400",
+      "#006400",
+      "#17660d",
+      "#4e6a2b",
+      "#266715",
+      "#62c8a4"
      ],
      "run.right": [
-      "#008000",
-      "#2e8b57",
-      "#66cdaa"
+      "#006400",
+      "#006400",
+      "#17660d",
+      "#4e6a2b",
+      "#266715",
+      "#62c8a4"
      ],
      "halo.guitar": [
-      "#2e8b57",
-      "#66cdaa",
-      "#32cd32",
-      "#9acd32",
-      "#90ee90",
-      "#7cfc00",
-      "#66cdaa",
-      "#9acd32"
+      "#59cd8d",
+      "#47cd32",
+      "#98d241",
+      "#8ef080",
+      "#7af90c",
+      "#64cba7",
+      "#238c25"
      ],
      "halo.drum": [
-      "#66cdaa",
-      "#32cd32",
-      "#9acd32",
-      "#90ee90",
-      "#7cfc00",
-      "#66cdaa",
-      "#9acd32",
-      "#006400"
+      "#006400",
+      "#506b2c",
+      "#048104",
+      "#598c1d",
+      "#3b9a6a",
+      "#4fcd32",
+      "#89f35f",
+      "#4bb374"
      ],
      "halo.mic": [
-      "#32cd32",
-      "#9acd32",
-      "#90ee90",
-      "#7cfc00",
-      "#66cdaa",
-      "#9acd32",
-      "#006400",
-      "#006400"
+      "#59cd8d",
+      "#47cd32",
+      "#98d241",
+      "#8ef080",
+      "#7af90c",
+      "#64cba7",
+      "#238c25"
      ]
     },
     "pat": {
@@ -609,6 +641,21 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#19e3a0",
+      "#2fa8e0",
+      "#7a4fd8"
+     ],
+     "halo.drum": [
+      "#19e3a0",
+      "#2fa8e0",
+      "#7a4fd8"
+     ],
+     "halo.mic": [
+      "#19e3a0",
+      "#2fa8e0",
+      "#7a4fd8"
+     ],
      "vase1": [
       "#19e3a0"
      ],
@@ -620,43 +667,27 @@
      ],
      "vase4": [
       "#22c47a"
-     ],
-     "halo.guitar": [
-      "#19e3a0",
-      "#2fa8e0",
-      "#7a4fd8"
-     ],
-     "halo.drum": [
-      "#7a4fd8",
-      "#19e3a0",
-      "#2fa8e0",
-      "#7a4fd8"
-     ],
-     "halo.mic": [
-      "#2fa8e0",
-      "#7a4fd8",
-      "#19e3a0"
      ]
     },
     "pat": {
+     "halo.guitar": "gradient",
+     "halo.drum": "gradient",
+     "halo.mic": "gradient",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "gradient",
-     "halo.drum": "gradient",
-     "halo.mic": "gradient"
+     "vase4": "solid"
     },
     "glint": null,
-    "anim": "breathe",
+    "anim": "drift",
     "lvl": {
-     "vase1": 0.6,
-     "vase2": 0.6,
-     "vase3": 0.6,
-     "vase4": 0.6,
-     "halo.guitar": 0.6,
-     "halo.drum": 0.6,
-     "halo.mic": 0.6
+     "halo.guitar": 0.71,
+     "halo.drum": 0.71,
+     "halo.mic": 0.71,
+     "vase1": 0.63,
+     "vase2": 0.63,
+     "vase3": 0.63,
+     "vase4": 0.63
     }
    }
   },
@@ -664,8 +695,8 @@
    "id": "christmas",
    "name": "Christmas",
    "es": "Navidad",
-   "desc": "Red and green vases, C9 bulbs twinkling and a candy cane on the drums.",
-   "descEs": "Floreros rojos y verdes, focos C9 que titilan y un bastón de caramelo en la batería.",
+   "desc": "Red and green vases with warm twinkles, C9 bulbs and a candy cane stripe on the drums.",
+   "descEs": "Jarrones rojos y verdes con destellos cálidos, bombillas C9 y una franja de bastón de caramelo en la batería.",
    "group": "wall",
    "sw": [
     "#ff1a1a",
@@ -678,6 +709,23 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#ff0500",
+      "#c43902",
+      "#067e02",
+      "#1d3fc0"
+     ],
+     "halo.drum": [
+      "#ff1020",
+      "#ffffff",
+      "#ff1020"
+     ],
+     "halo.mic": [
+      "#ff0500",
+      "#c43902",
+      "#067e02",
+      "#1d3fc0"
+     ],
      "vase1": [
       "#ff1a1a"
      ],
@@ -689,43 +737,27 @@
      ],
      "vase4": [
       "#ff1a1a"
-     ],
-     "halo.guitar": [
-      "#ff0500",
-      "#c43902",
-      "#067e02",
-      "#1d3fc0"
-     ],
-     "halo.drum": [
-      "#ff1020",
-      "#ffffff"
-     ],
-     "halo.mic": [
-      "#ff0500",
-      "#c43902",
-      "#067e02",
-      "#1d3fc0"
      ]
     },
     "pat": {
+     "halo.guitar": "dots",
+     "halo.drum": "stripe",
+     "halo.mic": "dots",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "dots",
-     "halo.drum": "stripe",
-     "halo.mic": "dots"
+     "vase4": "solid"
     },
     "glint": "#fff1d6",
     "anim": "twinkle",
     "lvl": {
-     "vase1": 0.66,
-     "vase2": 0.66,
-     "vase3": 0.66,
-     "vase4": 0.66,
-     "halo.guitar": 0.6,
-     "halo.drum": 0.6,
-     "halo.mic": 0.6
+     "halo.guitar": 0.77,
+     "halo.drum": 0.77,
+     "halo.mic": 0.77,
+     "vase1": 0.69,
+     "vase2": 0.69,
+     "vase3": 0.69,
+     "vase4": 0.69
     }
    }
   },
@@ -733,8 +765,8 @@
    "id": "santa",
    "name": "Santa Claus Is Coming to Town",
    "es": "Santa Claus llegó a la ciudad",
-   "desc": "Play the song near the board and the whole wall moves with it.",
-   "descEs": "Pon la canción cerca de la placa y todo el muro se mueve con ella.",
+   "desc": "Play the song near the board: vases rise like meters and ripples race the drums.",
+   "descEs": "Pon la canción cerca de la placa: los jarrones suben como medidores y las ondas recorren la batería.",
    "group": "wall",
    "sw": [
     "#ff1a1a",
@@ -749,18 +781,6 @@
    "param": null,
    "pv": {
     "z": {
-     "vase1": [
-      "#ff1a1a"
-     ],
-     "vase2": [
-      "#14a03c"
-     ],
-     "vase3": [
-      "#14a03c"
-     ],
-     "vase4": [
-      "#ff1a1a"
-     ],
      "halo.guitar": [
       "#ff1a1a"
      ],
@@ -772,27 +792,39 @@
      ],
      "halo.mic": [
       "#14a03c"
+     ],
+     "vase1": [
+      "#ff1a1a"
+     ],
+     "vase2": [
+      "#14a03c"
+     ],
+     "vase3": [
+      "#14a03c"
+     ],
+     "vase4": [
+      "#ff1a1a"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "gradient",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "solid",
-     "halo.drum": "dots",
-     "halo.mic": "solid"
+     "vase4": "solid"
     },
-    "glint": null,
+    "glint": "#ff0500",
     "anim": "breathe",
     "lvl": {
-     "vase1": 0.8,
-     "vase2": 0.8,
-     "vase3": 0.8,
-     "vase4": 0.8,
-     "halo.guitar": 0.6,
-     "halo.drum": 0.6,
-     "halo.mic": 0.6
+     "halo.guitar": 0.86,
+     "halo.drum": 0.86,
+     "halo.mic": 0.86,
+     "vase1": 0.82,
+     "vase2": 0.82,
+     "vase3": 0.82,
+     "vase4": 0.82
     }
    }
   },
@@ -800,8 +832,8 @@
    "id": "carol-of-the-bells",
    "name": "Carol of the Bells",
    "es": "Carol of the Bells",
-   "desc": "Rings red and green with the music the board mic hears.",
-   "descEs": "Suena en rojo y verde con la música que oye el micrófono de la placa.",
+   "desc": "Play the song near the board: red and green bursts ring around the wall.",
+   "descEs": "Pon la canción cerca de la placa: destellos rojos y verdes suenan por toda la pared.",
    "group": "wall",
    "sw": [
     "#ff1a1a",
@@ -817,18 +849,6 @@
    "param": null,
    "pv": {
     "z": {
-     "vase1": [
-      "#ff1a1a"
-     ],
-     "vase2": [
-      "#14a03c"
-     ],
-     "vase3": [
-      "#14a03c"
-     ],
-     "vase4": [
-      "#ff1a1a"
-     ],
      "halo.guitar": [
       "#ff1a1a"
      ],
@@ -840,27 +860,39 @@
      ],
      "halo.mic": [
       "#14a03c"
+     ],
+     "vase1": [
+      "#ff1a1a"
+     ],
+     "vase2": [
+      "#14a03c"
+     ],
+     "vase3": [
+      "#14a03c"
+     ],
+     "vase4": [
+      "#ff1a1a"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "gradient",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "solid",
-     "halo.drum": "dots",
-     "halo.mic": "solid"
+     "vase4": "solid"
     },
-    "glint": null,
+    "glint": "#ff0500",
     "anim": "breathe",
     "lvl": {
-     "vase1": 0.8,
-     "vase2": 0.8,
-     "vase3": 0.8,
-     "vase4": 0.8,
-     "halo.guitar": 0.6,
-     "halo.drum": 0.6,
-     "halo.mic": 0.6
+     "halo.guitar": 0.86,
+     "halo.drum": 0.86,
+     "halo.mic": 0.86,
+     "vase1": 0.82,
+     "vase2": 0.82,
+     "vase3": 0.82,
+     "vase4": 0.82
     }
    }
   },
@@ -868,8 +900,8 @@
    "id": "hanukkah",
    "name": "Hanukkah",
    "es": "Janucá",
-   "desc": "Blue and white vases breathing, with blue and silver twinkles.",
-   "descEs": "Floreros azules y blancos que respiran, con destellos azules y plateados.",
+   "desc": "Blue and white vases breathing, blue and silver twinkles, soft white waves on the drums.",
+   "descEs": "Jarrones azules y blancos que respiran, destellos azules y plateados, y olas blancas en la batería.",
    "group": "wall",
    "sw": [
     "#1d4fe0",
@@ -882,6 +914,19 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#1440c8",
+      "#ffffff"
+     ],
+     "halo.drum": [
+      "#1440c8",
+      "#ffffff",
+      "#1440c8"
+     ],
+     "halo.mic": [
+      "#1440c8",
+      "#ffffff"
+     ],
      "vase1": [
       "#1d4fe0"
      ],
@@ -893,40 +938,27 @@
      ],
      "vase4": [
       "#1d4fe0"
-     ],
-     "halo.guitar": [
-      "#1440c8",
-      "#ffffff"
-     ],
-     "halo.drum": [
-      "#1440c8",
-      "#1440c8",
-      "#ffffff"
-     ],
-     "halo.mic": [
-      "#1440c8",
-      "#ffffff"
      ]
     },
     "pat": {
+     "halo.guitar": "dots",
+     "halo.drum": "stripe",
+     "halo.mic": "dots",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "dots",
-     "halo.drum": "stripe",
-     "halo.mic": "dots"
+     "vase4": "solid"
     },
     "glint": "#ffffff",
     "anim": "twinkle",
     "lvl": {
-     "vase1": 0.63,
-     "vase2": 0.63,
-     "vase3": 0.63,
-     "vase4": 0.63,
-     "halo.guitar": 0.55,
-     "halo.drum": 0.55,
-     "halo.mic": 0.55
+     "halo.guitar": 0.74,
+     "halo.drum": 0.74,
+     "halo.mic": 0.74,
+     "vase1": 0.66,
+     "vase2": 0.66,
+     "vase3": 0.66,
+     "vase4": 0.66
     }
    }
   },
@@ -934,8 +966,8 @@
    "id": "dreidel",
    "name": "Dreidel, Dreidel, Dreidel",
    "es": "Dreidel, dreidel, dreidel",
-   "desc": "A white spark spins around the drums on every bar the mic hears.",
-   "descEs": "Una chispa blanca gira alrededor de la batería en cada compás que oye el micrófono.",
+   "desc": "Play the song near the board: a white spark spins around the drum frame.",
+   "descEs": "Pon la canción cerca de la placa: una chispa blanca gira alrededor del marco de la batería.",
    "group": "wall",
    "sw": [
     "#1d4fe0",
@@ -951,6 +983,16 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#1d4fe0"
+     ],
+     "halo.drum": [
+      "#0c2a8a",
+      "#ffffff"
+     ],
+     "halo.mic": [
+      "#dfe8ff"
+     ],
      "vase1": [
       "#1d4fe0"
      ],
@@ -962,39 +1004,27 @@
      ],
      "vase4": [
       "#1d4fe0"
-     ],
-     "halo.guitar": [
-      "#1d4fe0"
-     ],
-     "halo.drum": [
-      "#0c2a8a",
-      "#0c2a8a",
-      "#0c2a8a",
-      "#ffffff"
-     ],
-     "halo.mic": [
-      "#dfe8ff"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "gradient",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "solid",
-     "halo.drum": "stripe",
-     "halo.mic": "solid"
+     "vase4": "solid"
     },
-    "glint": null,
+    "glint": "#ffffff",
     "anim": "breathe",
     "lvl": {
-     "vase1": 0.77,
-     "vase2": 0.77,
-     "vase3": 0.77,
-     "vase4": 0.77,
-     "halo.guitar": 0.6,
-     "halo.drum": 0.6,
-     "halo.mic": 0.6
+     "halo.guitar": 0.84,
+     "halo.drum": 0.84,
+     "halo.mic": 0.84,
+     "vase1": 0.79,
+     "vase2": 0.79,
+     "vase3": 0.79,
+     "vase4": 0.79
     }
    }
   },
@@ -1002,12 +1032,12 @@
    "id": "menorah",
    "name": "Menorah",
    "es": "Menorá",
-   "desc": "Gold candles flicker on a blue wall. Pick the night.",
-   "descEs": "Velas doradas titilan sobre un muro azul. Elige la noche.",
+   "desc": "Gold candles flicker on a blue wall. Pick the night; candles light from the right.",
+   "descEs": "Velas doradas parpadean sobre una pared azul. Elige la noche; las velas se encienden desde la derecha.",
    "group": "wall",
    "sw": [
     "#1d4fe0",
-    "#ffb347",
+    "#dfe8ff",
     "#dfe8ff",
     "#1d4fe0"
    ],
@@ -1024,6 +1054,15 @@
    },
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#1d4fe0"
+     ],
+     "halo.drum": [
+      "#1d4fe0"
+     ],
+     "halo.mic": [
+      "#1d4fe0"
+     ],
      "vase1": [
       "#1d4fe0"
      ],
@@ -1035,36 +1074,27 @@
      ],
      "vase4": [
       "#1d4fe0"
-     ],
-     "halo.guitar": [
-      "#1d4fe0"
-     ],
-     "halo.drum": [
-      "#1d4fe0"
-     ],
-     "halo.mic": [
-      "#1d4fe0"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "solid",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "solid",
-     "halo.drum": "solid",
-     "halo.mic": "solid"
+     "vase4": "solid"
     },
     "glint": "#ffb347",
     "anim": "still",
     "lvl": {
-     "vase1": 0.36,
-     "vase2": 0.36,
-     "vase3": 0.36,
-     "vase4": 0.36,
-     "halo.guitar": 0.55,
-     "halo.drum": 0.55,
-     "halo.mic": 0.55
+     "halo.guitar": 0.89,
+     "halo.drum": 0.89,
+     "halo.mic": 0.89,
+     "vase1": 0.4,
+     "vase2": 0.4,
+     "vase3": 0.4,
+     "vase4": 0.4
     }
    }
   },
@@ -1072,8 +1102,8 @@
    "id": "ocean-drift",
    "name": "Ocean drift",
    "es": "Marea lenta",
-   "desc": "Deep blue and aqua on a slow tide.",
-   "descEs": "Azul profundo y aguamarina en una marea lenta.",
+   "desc": "Deep blue and aqua, slow tide.",
+   "descEs": "Azul profundo y aguamarina, marea lenta.",
    "group": "vases",
    "sw": [
     "#1e6fd9",
@@ -1088,6 +1118,15 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#2095d4"
+     ],
+     "halo.drum": [
+      "#2e84d0"
+     ],
+     "halo.mic": [
+      "#4d94cb"
+     ],
      "vase1": [
       "#1e6fd9"
      ],
@@ -1099,41 +1138,27 @@
      ],
      "vase4": [
       "#5fd3c6"
-     ],
-     "halo.guitar": [
-      "#1e6fd9",
-      "#22b8cf"
-     ],
-     "halo.drum": [
-      "#1e6fd9",
-      "#3a4fd0",
-      "#5fd3c6",
-      "#22b8cf"
-     ],
-     "halo.mic": [
-      "#3a4fd0",
-      "#5fd3c6"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "solid",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "gradient",
-     "halo.drum": "gradient",
-     "halo.mic": "gradient"
+     "vase4": "solid"
     },
     "glint": null,
-    "anim": "breathe",
+    "anim": "still",
     "lvl": {
-     "vase1": 0.6,
-     "vase2": 0.6,
-     "vase3": 0.6,
-     "vase4": 0.6,
-     "halo.guitar": 0.3,
-     "halo.drum": 0.3,
-     "halo.mic": 0.3
+     "halo.guitar": 0.44,
+     "halo.drum": 0.44,
+     "halo.mic": 0.44,
+     "vase1": 0.63,
+     "vase2": 0.63,
+     "vase3": 0.63,
+     "vase4": 0.63
     }
    }
   },
@@ -1142,7 +1167,7 @@
    "name": "Movie night",
    "es": "Noche de cine",
    "desc": "Dim amber so the screen wins.",
-   "descEs": "Ámbar tenue para que la pantalla mande.",
+   "descEs": "Ámbar tenue para que mande la pantalla.",
    "group": "vases",
    "sw": [
     "#ff8a2a",
@@ -1177,10 +1202,10 @@
     "glint": null,
     "anim": "still",
     "lvl": {
-     "vase1": 0.23,
-     "vase2": 0.23,
-     "vase3": 0.23,
-     "vase4": 0.23
+     "vase1": 0.27,
+     "vase2": 0.27,
+     "vase3": 0.27,
+     "vase4": 0.27
     }
    }
   },
@@ -1189,7 +1214,7 @@
    "name": "TV glow",
    "es": "Brillo de tele",
    "desc": "Soft cool blue, easy on the eyes.",
-   "descEs": "Azul suave y fresco, descansado para la vista.",
+   "descEs": "Azul frío y suave, descansa la vista.",
    "group": "vases",
    "sw": [
     "#6f8cff",
@@ -1224,10 +1249,10 @@
     "glint": null,
     "anim": "still",
     "lvl": {
-     "vase1": 0.31,
-     "vase2": 0.31,
-     "vase3": 0.31,
-     "vase4": 0.31
+     "vase1": 0.34,
+     "vase2": 0.34,
+     "vase3": 0.34,
+     "vase4": 0.34
     }
    }
   },
@@ -1236,7 +1261,7 @@
    "name": "Dinner party",
    "es": "Cena con amigos",
    "desc": "Warm candle flicker for guests.",
-   "descEs": "Parpadeo cálido de vela para los invitados.",
+   "descEs": "Parpadeo cálido de velas para los invitados.",
    "group": "vases",
    "sw": [
     "#ff9b3d",
@@ -1249,6 +1274,18 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#ff9b3d",
+      "#ffb35c"
+     ],
+     "halo.drum": [
+      "#ff9b3d",
+      "#ffb35c"
+     ],
+     "halo.mic": [
+      "#ff9b3d",
+      "#ffb35c"
+     ],
      "vase1": [
       "#ff9b3d"
      ],
@@ -1260,36 +1297,27 @@
      ],
      "vase4": [
       "#ffb35c"
-     ],
-     "halo.guitar": [
-      "#ff9b3d"
-     ],
-     "halo.drum": [
-      "#ff9b3d"
-     ],
-     "halo.mic": [
-      "#ff9b3d"
      ]
     },
     "pat": {
+     "halo.guitar": "gradient",
+     "halo.drum": "gradient",
+     "halo.mic": "gradient",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "solid",
-     "halo.drum": "solid",
-     "halo.mic": "solid"
+     "vase4": "solid"
     },
-    "glint": "#ffc77a",
-    "anim": "twinkle",
+    "glint": null,
+    "anim": "breathe",
     "lvl": {
-     "vase1": 0.66,
-     "vase2": 0.66,
-     "vase3": 0.66,
-     "vase4": 0.66,
-     "halo.guitar": 0.3,
-     "halo.drum": 0.3,
-     "halo.mic": 0.3
+     "halo.guitar": 0.49,
+     "halo.drum": 0.49,
+     "halo.mic": 0.49,
+     "vase1": 0.69,
+     "vase2": 0.69,
+     "vase3": 0.69,
+     "vase4": 0.69
     }
    }
   },
@@ -1311,6 +1339,24 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#ff3d3d",
+      "#ffd23d",
+      "#3dd6ff",
+      "#9b3dff"
+     ],
+     "halo.drum": [
+      "#ff3d3d",
+      "#ffd23d",
+      "#3dd6ff",
+      "#9b3dff"
+     ],
+     "halo.mic": [
+      "#ff3d3d",
+      "#ffd23d",
+      "#3dd6ff",
+      "#9b3dff"
+     ],
      "vase1": [
       "#ff3d7f"
      ],
@@ -1322,46 +1368,27 @@
      ],
      "vase4": [
       "#9b3dff"
-     ],
-     "halo.guitar": [
-      "#ff3d3d",
-      "#ffd23d",
-      "#3dd6ff",
-      "#9b3dff"
-     ],
-     "halo.drum": [
-      "#ff3d3d",
-      "#ffd23d",
-      "#3dd6ff",
-      "#9b3dff",
-      "#ff3d3d"
-     ],
-     "halo.mic": [
-      "#9b3dff",
-      "#3dd6ff",
-      "#ffd23d",
-      "#ff3d3d"
      ]
     },
     "pat": {
+     "halo.guitar": "gradient",
+     "halo.drum": "gradient",
+     "halo.mic": "gradient",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "gradient",
-     "halo.drum": "gradient",
-     "halo.mic": "gradient"
+     "vase4": "solid"
     },
     "glint": null,
     "anim": "drift",
     "lvl": {
-     "vase1": 0.87,
-     "vase2": 0.87,
-     "vase3": 0.87,
-     "vase4": 0.87,
-     "halo.guitar": 0.6,
-     "halo.drum": 0.6,
-     "halo.mic": 0.6
+     "halo.guitar": 0.89,
+     "halo.drum": 0.89,
+     "halo.mic": 0.89,
+     "vase1": 0.89,
+     "vase2": 0.89,
+     "vase3": 0.89,
+     "vase4": 0.89
     }
    }
   },
@@ -1370,7 +1397,7 @@
    "name": "Sunset",
    "es": "Atardecer",
    "desc": "Gold to magenta across the wall.",
-   "descEs": "Del dorado al magenta a lo largo del muro.",
+   "descEs": "Del dorado al magenta por toda la pared.",
    "group": "vases",
    "sw": [
     "#ffb347",
@@ -1385,6 +1412,15 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#ff8d42"
+     ],
+     "halo.drum": [
+      "#f1585c"
+     ],
+     "halo.mic": [
+      "#b7429e"
+     ],
      "vase1": [
       "#ffb347"
      ],
@@ -1396,41 +1432,27 @@
      ],
      "vase4": [
       "#8f3fbf"
-     ],
-     "halo.guitar": [
-      "#ffb347",
-      "#ff6a3d"
-     ],
-     "halo.drum": [
-      "#ffb347",
-      "#e2457a",
-      "#8f3fbf",
-      "#ff6a3d"
-     ],
-     "halo.mic": [
-      "#e2457a",
-      "#8f3fbf"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "solid",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "gradient",
-     "halo.drum": "gradient",
-     "halo.mic": "gradient"
+     "vase4": "solid"
     },
     "glint": null,
     "anim": "still",
     "lvl": {
-     "vase1": 0.72,
-     "vase2": 0.72,
-     "vase3": 0.72,
-     "vase4": 0.72,
-     "halo.guitar": 0.36,
-     "halo.drum": 0.36,
-     "halo.mic": 0.36
+     "halo.guitar": 0.52,
+     "halo.drum": 0.52,
+     "halo.mic": 0.52,
+     "vase1": 0.74,
+     "vase2": 0.74,
+     "vase3": 0.74,
+     "vase4": 0.74
     }
    }
   },
@@ -1439,7 +1461,7 @@
    "name": "Game day",
    "es": "Día de partido",
    "desc": "Blue and silver, steady.",
-   "descEs": "Azul y plateado, fijo.",
+   "descEs": "Azul y plata, fijo.",
    "group": "vases",
    "sw": [
     "#2b6bff",
@@ -1454,6 +1476,15 @@
    "param": null,
    "pv": {
     "z": {
+     "halo.guitar": [
+      "#7ea1ef"
+     ],
+     "halo.drum": [
+      "#7a9ff0"
+     ],
+     "halo.mic": [
+      "#7ea1ef"
+     ],
      "vase1": [
       "#2b6bff"
      ],
@@ -1465,41 +1496,27 @@
      ],
      "vase4": [
       "#c9d3e0"
-     ],
-     "halo.guitar": [
-      "#2b6bff",
-      "#c9d3e0"
-     ],
-     "halo.drum": [
-      "#2b6bff",
-      "#2b6bff",
-      "#c9d3e0",
-      "#c9d3e0"
-     ],
-     "halo.mic": [
-      "#2b6bff",
-      "#c9d3e0"
      ]
     },
     "pat": {
+     "halo.guitar": "solid",
+     "halo.drum": "solid",
+     "halo.mic": "solid",
      "vase1": "solid",
      "vase2": "solid",
      "vase3": "solid",
-     "vase4": "solid",
-     "halo.guitar": "gradient",
-     "halo.drum": "gradient",
-     "halo.mic": "gradient"
+     "vase4": "solid"
     },
     "glint": null,
     "anim": "still",
     "lvl": {
-     "vase1": 0.77,
-     "vase2": 0.77,
-     "vase3": 0.77,
-     "vase4": 0.77,
-     "halo.guitar": 0.385,
-     "halo.drum": 0.385,
-     "halo.mic": 0.385
+     "halo.guitar": 0.56,
+     "halo.drum": 0.56,
+     "halo.mic": 0.56,
+     "vase1": 0.79,
+     "vase2": 0.79,
+     "vase3": 0.79,
+     "vase4": 0.79
     }
    }
   },
@@ -1508,7 +1525,7 @@
    "name": "Goodnight",
    "es": "Buenas noches",
    "desc": "Deep red, barely breathing.",
-   "descEs": "Rojo profundo que apenas respira.",
+   "descEs": "Rojo intenso, respirando apenas.",
    "group": "vases",
    "sw": [
     "#ff2a10",
@@ -1543,10 +1560,10 @@
     "glint": null,
     "anim": "breathe",
     "lvl": {
-     "vase1": 0.25,
-     "vase2": 0.25,
-     "vase3": 0.25,
-     "vase4": 0.25
+     "vase1": 0.2,
+     "vase2": 0.2,
+     "vase3": 0.2,
+     "vase4": 0.2
     }
    }
   }
@@ -1560,7 +1577,8 @@
       9,
       15
      ]
-    ]
+    ],
+    "sure": false
    },
    "vase2": {
     "r": [
@@ -1568,7 +1586,8 @@
       20,
       26
      ]
-    ]
+    ],
+    "sure": false
    },
    "vase3": {
     "r": [
@@ -1576,7 +1595,8 @@
       121,
       127
      ]
-    ]
+    ],
+    "sure": false
    },
    "vase4": {
     "r": [
@@ -1584,7 +1604,8 @@
       132,
       138
      ]
-    ]
+    ],
+    "sure": false
    },
    "drops.left": {
     "r": [
@@ -1592,7 +1613,8 @@
       16,
       19
      ]
-    ]
+    ],
+    "sure": false
    },
    "drops.right": {
     "r": [
@@ -1600,7 +1622,8 @@
       128,
       131
      ]
-    ]
+    ],
+    "sure": false
    },
    "run.left": {
     "r": [
@@ -1612,7 +1635,8 @@
       27,
       28
      ]
-    ]
+    ],
+    "sure": false
    },
    "run.right": {
     "r": [
@@ -1624,7 +1648,8 @@
       139,
       140
      ]
-    ]
+    ],
+    "sure": false
    },
    "halo.guitar": {
     "r": [
@@ -1632,7 +1657,8 @@
       29,
       49
      ]
-    ]
+    ],
+    "sure": true
    },
    "halo.drum": {
     "r": [
@@ -1640,7 +1666,8 @@
       50,
       111
      ]
-    ]
+    ],
+    "sure": true
    },
    "halo.mic": {
     "r": [
@@ -1648,7 +1675,8 @@
       141,
       161
      ]
-    ]
+    ],
+    "sure": true
    }
   },
   "menorah": {
@@ -1783,121 +1811,81 @@
     ],
     "drops.left": [
      [
-      26.75,
-      75.7
+      27.125,
+      69.5
      ],
      [
-      23.3,
-      75.7
-     ],
-     [
-      23.3,
-      63.7
-     ],
-     [
-      26.75,
-      63.7
+      27.125,
+      63
      ]
     ],
     "drops.right": [
      [
-      61.75,
-      75.7
+      61.375,
+      69.5
      ],
      [
-      65.2,
-      75.7
-     ],
-     [
-      65.2,
-      63.7
-     ],
-     [
-      61.75,
-      63.7
+      61.375,
+      63
      ]
     ],
-    "run.left": [
+    "run.left#0": [
      [
-      [
-       35.875,
-       55
-      ],
-      [
-       35.875,
-       76
-      ],
-      [
-       27.5,
-       76
-      ],
-      [
-       27.5,
-       74.6
-      ]
+      52,
+      55
      ],
      [
-      [
-       24.6,
-       61
-      ],
-      [
-       21,
-       61
-      ]
+      36.5,
+      55
+     ],
+     [
+      30,
+      70.5
      ]
     ],
-    "run.right": [
+    "run.left#1": [
      [
-      [
-       52.75,
-       65
-      ],
-      [
-       52.75,
-       71.5
-      ],
-      [
-       50.5,
-       73.4
-      ],
-      [
-       49.3,
-       72.3
-      ],
-      [
-       51.4,
-       70.3
-      ],
-      [
-       52.25,
-       73.4
-      ],
-      [
-       53.1,
-       76
-      ],
-      [
-       61,
-       76
-      ],
-      [
-       61,
-       74.6
-      ]
+      25,
+      60.5
      ],
      [
-      [
-       63.9,
-       61
-      ],
-      [
-       67.5,
-       61
-      ]
+      20.5,
+      61
+     ]
+    ],
+    "run.right#0": [
+     [
+      55,
+      53.5
+     ],
+     [
+      58.5,
+      56
+     ],
+     [
+      59,
+      70.5
+     ]
+    ],
+    "run.right#1": [
+     [
+      63.5,
+      60.5
+     ],
+     [
+      68,
+      61
      ]
     ]
-   }
+   },
+   "unsure": [
+    "drops.left",
+    "drops.right",
+    "run.left#0",
+    "run.left#1",
+    "run.right#0",
+    "run.right#1"
+   ]
   }
  },
  "last": {

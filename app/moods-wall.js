@@ -79,12 +79,17 @@
 
   /* ---------- where the bulbs are ---------- */
 
-  function ledsOf(zone) {
+  // The LEDs of a zone, one list per range ([[0, 8], [27, 28]] -> two lists).
+  function rangesOf(zone) {
     var out = [];
+    var total = 0;
     var r = zone && isArr(zone.r) ? zone.r : [];
     for (var i = 0; i < r.length; i++) {
-      if (!isArr(r[i]) || r[i].length < 2) continue;
-      for (var n = Math.round(r[i][0]); n <= Math.round(r[i][1]) && out.length < 400; n++) out.push(n);
+      var one = [];
+      if (isArr(r[i]) && r[i].length >= 2) {
+        for (var n = Math.round(r[i][0]); n <= Math.round(r[i][1]) && total < 400; n++) { one.push(n); total += 1; }
+      }
+      out.push(one);
     }
     return out;
   }
@@ -94,6 +99,29 @@
     if (!isArr(p) || !p.length) return [];
     if (isArr(p[0]) && isArr(p[0][0])) return p;
     return [p];
+  }
+
+  // The bulb positions of a zone that is not a vase. The Pi's wall map
+  // (pi/moods/wall.json) gives range k of a zone its own path "zone#k" (or
+  // "zone" for a one-range zone), the way pi/moods/catalog.js pathFor() reads
+  // it; an older map gave "zone" a list of lines, one per range. Each range
+  // is walked along its own line; with no line per range, the whole zone is
+  // walked along "zone".
+  function zonePoints(paths, name, ranges, count) {
+    var whole = polylines(paths[name]);
+    var per = [];
+    var k;
+    for (k = 0; k < ranges.length; k++) {
+      var p = paths[name + '#' + k];
+      if (!p && ranges.length > 1 && whole.length === ranges.length) p = whole[k];
+      if (!p && ranges.length === 1) p = paths[name];
+      if (!p) { per = null; break; }
+      per.push(polylines(p));
+    }
+    if (!per) return walk(whole, count);
+    var out = [];
+    for (k = 0; k < ranges.length; k++) out = out.concat(walk(per[k], ranges[k].length));
+    return out;
   }
 
   function lengthOf(line) {
@@ -161,11 +189,12 @@
     var leds = typeof wall.leds === 'number' ? wall.leds : 999;
     for (var name in zones) {
       if (!zones.hasOwnProperty(name)) continue;
-      var list = ledsOf(zones[name]);
+      var ranges = rangesOf(zones[name]);
+      var list = [].concat.apply([], ranges);
       var pts = [];
       var kind = /^halo\./.test(name) ? 'halo' : vaseAt[name] ? 'vase' : 'free';
       if (vaseAt[name]) pts = beads(num(vaseAt[name].x, 0), num(vaseAt[name].y, 0), list.length);
-      else pts = walk(polylines(paths[name]), list.length);
+      else pts = zonePoints(paths, name, ranges, list.length);
       for (var i = 0; i < list.length && i < pts.length; i++) {
         if (list[i] < 0 || list[i] >= leds) continue;
         out.push({ led: list[i], zone: name, x: pts[i][0], y: pts[i][1], kind: kind, i: i, n: list.length });

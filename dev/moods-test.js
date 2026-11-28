@@ -3,11 +3,14 @@
  * app/widgets/moods.css): node dev/moods-test.js
  *
  * The real hub in headless Chromium on the shared harness (dev/awws-harness.js),
- * against a made-up Pi that serves the live resource "moods"
- * (dev/samples/moods-sample.json, the shape of plan section 4.3) and takes
- * POST /moods/set, until the Pi's moods controller lands (then this moves to
- * the in-process Pi server and dev/mock-wall.js). Nothing reaches the
- * internet, the wall or the Pi. Checks:
+ * first against a made-up Pi that serves the live resource "moods"
+ * (dev/samples/moods-sample.json, checked below to have the real resource's
+ * shape) and takes POST /moods/set (it can fail on cue and grow the Spanish
+ * names), then against the real hub server (pi/server.js, pi/moods/controller.js)
+ * in this process with dev/mock-wall.js as the wall, dev/mock-lights.js as
+ * Home Assistant, the fake Pi-drawn engine (pi/moods/engine.js) and a
+ * throwaway data folder. Nothing reaches the internet, a real wall or the
+ * Pi. Checks:
  *   - the files are plain ES5; moods.css has no grid, no flex gap, animates
  *     only opacity and transform and ends with .css-end; hub.html, touch.html,
  *     dev/styles-test.js ORDER, app/touch.js and app/config.js know Moods; every
@@ -30,7 +33,14 @@
  *     a tap applies;
  *   - the phone (touch.html?as=phone, 390 wide): the wall, a real slider,
  *     cards in two columns, a tap applies, nothing wider than the screen;
- *   - no console errors.
+ *   - no console errors;
+ *   - the real Pi: nothing sent at start; 162 bulbs and all 22 moods from the
+ *     real resource ("Pi-drawn" only where the engine can draw it); OK sends
+ *     { id } and the wall gets exactly the golden body (pi/fixtures/moods/);
+ *     brightness pips; Off puts the wall back; Menorah nights 1, 2 and 8;
+ *     changed somewhere else; the wall not answering and back; the phone
+ *     door (/touch/state, touch.html?as=phone, a Spanish refusal); no
+ *     WLED_URL; no log line with the wall's address.
  * Needs Playwright and port 8095 free. Prints one line per check and
  * "N passed, M failed"; exits 1 on a failure.
  *
@@ -212,6 +222,101 @@ async function leftToControls(page) {
     if (/^ctl:/.test((await panelInfo(page)).focus)) return;
     await H.key(page, 'ArrowLeft');
   }
+}
+
+// With the remote, to a card on the rail (from a card or from the controls).
+async function goCard(page, id) {
+  for (let i = 0; i < 45; i++) {
+    const step = await page.evaluate((want) => {
+      const f = document.querySelector('#panel .is-focused');
+      const t = document.querySelector('#panel .md-card[data-mood="' + want + '"]');
+      if (!t) return 'missing';
+      if (f === t) return 'done';
+      const k = f ? f.getAttribute('data-key') || '' : '';
+      if (k === 'ctl:pair') return 'ArrowRight';
+      if (k === 'ctl:night') return 'ArrowUp';
+      if (/^ctl:/.test(k)) return 'ArrowDown';
+      if (!f || !f.getAttribute('data-row')) return 'ArrowDown';
+      if (f.getAttribute('data-row') !== t.getAttribute('data-row')) return t.getAttribute('data-row') === 'vases' ? 'ArrowDown' : 'ArrowUp';
+      const cards = [].slice.call(document.querySelectorAll('#panel .md-card[data-row="' + t.getAttribute('data-row') + '"]'));
+      return cards.indexOf(t) > cards.indexOf(f) ? 'ArrowRight' : 'ArrowLeft';
+    }, id);
+    if (step === 'done') return;
+    if (step === 'missing') throw new Error('no card ' + id);
+    await H.key(page, step);
+  }
+  throw new Error('could not reach the card ' + id);
+}
+
+/* ---------- the real Pi: pi/server.js in this process ---------- */
+
+const TOKEN = 'moods-ui-test-token-not-a-secret-0123';
+const TODAY = { y: 2026, m: 11, d: 28 };
+const os = require('os');
+const http = require('http');
+const C = require('../pi/moods/catalog');
+const W = require('../pi/moods/compile');
+const E = require('../pi/moods/engine');
+const ctlLib = require('../pi/moods/controller');
+const FIX = path.join(ROOT, 'pi', 'fixtures', 'moods');
+const fakeEngine = (h) => E.createFakeEngine({ log: h.log, onExit: h.onExit, start: () => ({ ok: true, why: '' }) });
+
+// The resource the real controller builds (the fake engine stands in for the forest one).
+function realResource(env) {
+  return ctlLib.createController({ env: env || { WLED_URL: 'http://127.0.0.1:9' }, engine: fakeEngine, today: () => TODAY }).start();
+}
+
+// The WLED bodies the real controller sends for a mood (compileWled with its context).
+function bodiesFor(id, extra) {
+  const L = C.load(null);
+  const m = C.moodById(L.catalog, id);
+  const ctx = Object.assign({ catalog: L.catalog, wall: L.wall, date: TODAY, fxIds: null, palIds: null, have: { mic: null }, briPct: m.bri }, extra || {});
+  return W.compileWled(m, ctx).bodies;
+}
+const golden = (file) => JSON.parse(fs.readFileSync(path.join(FIX, file), 'utf8')).bodies;
+
+function httpJson(port, method, route, body, headers) {
+  return new Promise((resolve, reject) => {
+    const text = body === undefined ? '' : JSON.stringify(body);
+    const h = Object.assign({ 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(text) }, headers || {});
+    const req = http.request({ host: '127.0.0.1', port: port, path: route, method: method, headers: h }, (res) => {
+      let out = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { out += c; });
+      res.on('end', () => { let j = null; try { j = JSON.parse(out); } catch (e) { j = out; } resolve({ status: res.statusCode, body: j }); });
+    });
+    req.on('error', reject);
+    req.end(text);
+  });
+}
+
+/*
+ * The hub server in this process, as on the Pi: the pretend wall
+ * (dev/mock-wall.js) as WLED_URL, a pretend Home Assistant (dev/mock-lights.js)
+ * so Ambience reads the wall (its read feeds "changed somewhere else"), the
+ * fake Pi-drawn engine and a throwaway data folder. o: { page, wall, ha, wled
+ * (false: no WLED_URL for Moods) }.
+ */
+async function startRealPi(o) {
+  const ambience = require('../pi/ambience');
+  const hubServer = require('../pi/server');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-moods-ui-'));
+  const example = ambience.validateConfig(JSON.parse(read('pi/ambience.example.json')));
+  ambience.saveConfig(dataDir, example);
+  const lines = [];
+  const server = hubServer.start({
+    token: TOKEN, port: 0, host: '127.0.0.1', origins: [o.page], dataDir: dataDir, allowHttp: true, calendars: [], appDir: path.join(ROOT, 'app'),
+    log: (s) => lines.push(String(s)),
+    ambienceEnv: { HA_URL: o.ha.url, HA_TOKEN: o.ha.token, WLED_URL: o.wall.url }, ambience: { timeoutMs: 700, screenMs: 1500, idleMs: 1500 },
+    moodsEnv: o.wled === false ? {} : { WLED_URL: o.wall.url },
+    moods: { engine: fakeEngine, today: () => TODAY }
+  });
+  await server.ready;
+  return {
+    server: server, port: server.port, url: 'http://127.0.0.1:' + server.port, dataDir: dataDir, lines: lines,
+    api: (method, route, body) => httpJson(server.port, method, route, body, { Authorization: 'Bearer ' + TOKEN }),
+    close: () => new Promise((r) => { server.close(() => { try { fs.rmSync(dataDir, { recursive: true, force: true }); } catch (e) { /* gone */ } r(); }); })
+  };
 }
 
 (async function main() {
@@ -520,7 +625,223 @@ async function leftToControls(page) {
       assert(!errors.length, errors.join(' | '));
       await ctx.close();
     });
+
+    /* ----- the same widget against the real Pi (pi/server.js in this process) ----- */
+
+    await check('dev/samples/moods-sample.json has the real resource\'s shape: the same moods (tags, pv, param) and wall', () => {
+      const real = realResource();
+      const sample = JSON.parse(SAMPLE);
+      assert(JSON.stringify(Object.keys(sample)) === JSON.stringify(Object.keys(real)), 'keys ' + Object.keys(sample) + ' vs ' + Object.keys(real));
+      assert(JSON.stringify(Object.keys(sample.now).sort()) === JSON.stringify(Object.keys(real.now).sort()), 'now keys');
+      const bad = real.moods.filter((m, i) => JSON.stringify(m) !== JSON.stringify(sample.moods[i])).map((m) => m.id);
+      assert(sample.moods.length === real.moods.length && !bad.length, 'moods differ: ' + bad.join(', ') + ' (rebuild the sample from the controller)');
+      assert(JSON.stringify(sample.wall) === JSON.stringify(real.wall), 'the wall differs from pi/moods/wall.json');
+    });
+
+    env.wall = await require('./mock-wall').start();
+    env.ha = await require('./mock-lights').start({});
+    env.real = await startRealPi({ page: env.PAGE, wall: env.wall, ha: env.ha });
+    const W0 = env.wall.state();
+    async function openReal(pi, o) {
+      o = o || {};
+      const p = await env.newPage({ layout: o.layout || TEST.layout, at: Date.now(), live: pi.url, waitLive: false,
+        storage: { 'homeHub.lang': o.lang || 'en' }, query: o.query, touch: o.touch });
+      p.sent = [];
+      p.on('request', (r) => { if (r.method() === 'POST' && /\/moods\/set$/.test(r.url())) { try { p.sent.push(JSON.parse(r.postData() || '{}')); } catch (e) { p.sent.push(null); } } });
+      await H.until(() => p.evaluate(() => window.HUB_LIVE.status().state === 'live'), 8000, 'the real Pi did not go live');
+      await H.until(() => p.evaluate(() => !!window.HUB_LIVE.get('moods')), 5000, 'no moods resource from the real Pi');
+      await H.sleep(500);
+      return p;
+    }
+    const wallPosts = () => env.wall.posts();
+    // Waits for the panel to confirm a mood, then the wall's new bodies since mark.
+    async function confirmed(p, want, mark) {
+      await H.until(async () => { const q = await panelInfo(p); return (want === 'off' ? !q.active.length || q.active[0] === 'off' : q.active[0] === want) && !q.pendingCards.length; }, 6000, want + ' not confirmed');
+      return wallPosts().slice(mark);
+    }
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+    const rp = await openReal(env.real);
+    await check('real Pi: nothing reaches the wall at start; the resource draws 162 bulbs and all 22 moods on the rail', async () => {
+      assert(!wallPosts().length, 'the wall got ' + wallPosts().length + ' changes at start');
+      const s = await rp.evaluate(survey, 'tile');
+      const leds = s.leds.slice().sort((a, b) => a - b);
+      assert(leds.length === 162 && leds[0] === 0 && leds[161] === 161, leds.length + ' bulbs in the tile');
+      assert(/No mood on/.test(s.text), s.text);
+      await H.openPanel(rp, 'moods');
+      const ids = await rp.evaluate(() => [].map.call(document.querySelectorAll('#panel .md-card'), (c) => c.getAttribute('data-mood')));
+      const real = realResource().moods.map((m) => m.id);
+      assert(ids[0] === 'off' && ids.length === 23, ids.join());
+      assert(same(ids.slice(1).sort(), real.slice().sort()), 'rail ' + ids.join());
+      const hero = await rp.evaluate(() => document.querySelectorAll('#panel .md-hero [data-led]').length);
+      assert(hero === 162, hero + ' bulbs in the hero');
+      // The real resource tags "Pi-drawn" only where an engine can draw the mood.
+      const tags = await rp.evaluate(() => { const o = {}; document.querySelectorAll('#panel .md-card').forEach((c) => { o[c.getAttribute('data-mood')] = [].map.call(c.querySelectorAll('.md-tag'), (t) => t.textContent).join('/'); }); return o; });
+      assert(/Pi-drawn/.test(tags.rainforest) && /Pi-drawn/.test(tags['rainforest-storm']) && !/Pi-drawn/.test(tags.christmas) && /Approximate/.test(tags.sunset), JSON.stringify(tags));
+      assert((await panelInfo(rp)).focus === 'mood:off', 'first focus');
+    });
+
+    await check('real Pi: OK on Christmas sends { id }; the wall gets exactly the golden body (pi/fixtures/moods/christmas.json); the push confirms', async () => {
+      const mark = wallPosts().length;
+      await goCard(rp, 'christmas');
+      await H.key(rp, 'Enter');
+      const got = await confirmed(rp, 'christmas', mark);
+      assert(same(rp.sent, [{ id: 'christmas' }]), 'sent ' + JSON.stringify(rp.sent));
+      assert(same(got, golden('christmas.json')), 'the wall got ' + JSON.stringify(got).slice(0, 200));
+      assert(env.wall.calls.some((c) => c.method === 'GET' && c.path === '/json/state'), 'no snapshot read');
+      const p = await panelInfo(rp);
+      assert(/is on/.test(p.sub) && /On now/.test(p.chip), JSON.stringify(p));
+      const now = (await env.real.api('GET', '/api/moods/now')).body;
+      assert(now.id === 'christmas' && now.on === true, JSON.stringify(now));
+      rp.sent.length = 0;
+    });
+
+    await check('real Pi: brightness pips send { id, bri } once; the wall gets the bodies at that brightness', async () => {
+      await leftToControls(rp);
+      let p = await panelInfo(rp);
+      assert(p.focus === 'ctl:bri', 'focus ' + p.focus);
+      const before = p.pips;
+      const mark = wallPosts().length;
+      await H.key(rp, before > 1 ? 'ArrowLeft' : 'ArrowRight');
+      p = await panelInfo(rp);
+      assert(p.pips === before + (before > 1 ? -1 : 1), 'pips ' + before + ' -> ' + p.pips);
+      await H.until(() => wallPosts().length > mark, 4000, 'the wall got nothing');
+      await H.sleep(600);
+      assert(rp.sent.length === 1 && rp.sent[0].id === 'christmas' && typeof rp.sent[0].bri === 'number', JSON.stringify(rp.sent));
+      const pct = rp.sent[0].bri;
+      assert(same(wallPosts().slice(mark), bodiesFor('christmas', { briPct: pct })), 'not the bodies at ' + pct + '%');
+      await H.until(async () => (await env.real.api('GET', '/api/moods/now')).body.bri === pct, 3000, 'the Pi did not keep ' + pct);
+      rp.sent.length = 0;
+    });
+
+    await check('real Pi: Off restores the wall as it was before the first mood (segments and preset)', async () => {
+      const mark = wallPosts().length;
+      await goCard(rp, 'off');
+      await H.key(rp, 'Enter');
+      await confirmed(rp, 'off', mark);
+      assert(same(rp.sent, [{ off: true }]), JSON.stringify(rp.sent));
+      const s = env.wall.state();
+      assert(s.ps === W0.ps && same(s.seg.map((x) => [x.id, x.start, x.stop]), W0.seg.map((x) => [x.id, x.start, x.stop])), 'the wall is ' + JSON.stringify({ ps: s.ps, seg: s.seg.map((x) => x.id) }));
+      assert(wallPosts().length > mark, 'nothing sent for Off');
+      rp.sent.length = 0;
+    });
+
+    await check('real Pi: Menorah sends its night; the stepper changes the bodies (golden nights 1 and 8); the candles follow', async () => {
+      let mark = wallPosts().length;
+      await goCard(rp, 'menorah');
+      await H.key(rp, 'Enter');
+      let got = await confirmed(rp, 'menorah', mark);
+      assert(same(rp.sent, [{ id: 'menorah', night: 1 }]), JSON.stringify(rp.sent));
+      assert(same(got, golden('menorah-night-1.json')), 'night 1 is not the golden body');
+      let q = await panelInfo(rp);
+      assert(q.night && q.candles === 1, JSON.stringify(q));
+      await leftToControls(rp);
+      await H.key(rp, 'ArrowDown', 2);
+      q = await panelInfo(rp);
+      assert(q.focus === 'ctl:night', 'focus ' + q.focus);
+      rp.sent.length = 0;
+      mark = wallPosts().length;
+      await H.key(rp, 'ArrowRight');
+      await H.until(() => wallPosts().length > mark, 4000, 'night 2 not sent');
+      await H.sleep(400);
+      got = wallPosts().slice(mark);
+      assert(same(rp.sent, [{ id: 'menorah', night: 2 }]), JSON.stringify(rp.sent));
+      assert(same(got, bodiesFor('menorah', { night: 2 })) && !same(got, golden('menorah-night-1.json')), 'night 2 bodies');
+      assert((await panelInfo(rp)).candles === 2, 'candles');
+      rp.sent.length = 0;
+      mark = wallPosts().length;
+      await H.key(rp, 'ArrowRight', 6);
+      await H.until(async () => (await env.real.api('GET', '/api/moods/now')).body.night === 8, 5000, 'night 8 not kept');
+      await H.sleep(300);
+      got = wallPosts().slice(mark);
+      assert(same(got.slice(-golden('menorah-night-8.json').length), golden('menorah-night-8.json')), 'night 8 is not the golden body');
+      assert((await panelInfo(rp)).candles === 8, 'candles');
+      rp.sent.length = 0;
+    });
+
+    await check('real Pi: changed somewhere else (the wall turned off behind the hub\'s back, seen by Ambience\'s read)', async () => {
+      env.wall.set({ on: false });
+      await env.real.server.ambience.poll();
+      await H.until(async () => /Changed somewhere else/.test((await rp.evaluate(survey, 'tile')).text), 5000, 'no note on the tile');
+      assert((await env.real.api('GET', '/api/moods/now')).body.stale === true, 'not stale on the Pi');
+      env.wall.set({ on: true });
+    });
+
+    await check('real Pi: the wall stops answering: rollback with a plain line, then "isn\'t answering"; back again on the next pick', async () => {
+      const before = (await panelInfo(rp)).active[0];
+      env.wall.mode('down');
+      await goCard(rp, 'aurora');
+      await H.key(rp, 'Enter');
+      await H.until(async () => /didn’t answer/.test((await panelInfo(rp)).sub), 9000, 'no plain line');
+      let p = await panelInfo(rp);
+      assert(p.active[0] === before && !p.pendingCards.length, JSON.stringify(p));
+      await H.until(async () => /The wall isn’t answering/.test((await rp.evaluate(survey, 'tile')).text), 5000, 'the tile does not say so');
+      assert((await env.real.api('GET', '/api/moods')).body.state === 'error', 'the resource is not "error"');
+      env.wall.mode('ok');
+      const mark = wallPosts().length;
+      await H.key(rp, 'Enter');
+      const got = await confirmed(rp, 'aurora', mark);
+      assert(same(got, golden('aurora.json')), 'aurora is not the golden body');
+      assert((await env.real.api('GET', '/api/moods')).body.state === 'ok', 'still "error"');
+      const errs = H.errorsOf(rp, true);
+      assert(!errs.length, errs.join(' | '));
+    });
+    await rp.ctx.close();
+
+    await check('real Pi: the phone door: /touch/state carries moods; touch.html?as=phone draws the wall, a tap sends and the wall follows; Spanish refusal', async () => {
+      const ts = await httpJson(env.real.port, 'GET', '/touch/state');
+      assert(ts.status === 200 && ts.body.moods && ts.body.moods.data && ts.body.moods.data.moods.length === 22 && ts.body.moods.data.now.id === 'aurora', JSON.stringify(ts.body).slice(0, 200));
+      const ctx = await env.browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+      const errors = [];
+      const p = await ctx.newPage();
+      p.on('pageerror', (e) => errors.push(e.message));
+      await p.goto(env.real.url + '/app/touch.html?as=phone#/moods');
+      await p.waitForSelector('.mt-hero svg', { timeout: 10000 });
+      const s = await p.evaluate(() => ({ wide: document.documentElement.scrollWidth, leds: document.querySelectorAll('.mt-hero [data-led]').length, name: (document.querySelector('.mt-name') || {}).textContent, cards: document.querySelectorAll('.mt-card').length }));
+      assert(s.wide <= 390 && s.leds === 162 && s.name === 'Aurora' && s.cards >= 22, JSON.stringify(s));
+      const mark = wallPosts().length;
+      await p.click('.mt-card[data-mood="sunset"]');
+      await H.until(() => p.evaluate(() => (document.querySelector('.mt-name') || {}).textContent === 'Sunset'), 6000, 'the phone did not follow');
+      assert(same(wallPosts().slice(mark), golden('sunset.json')), 'sunset is not the golden body');
+      await ctx.close();
+      // A refusal in the phone's own words, in Spanish.
+      const es = await env.browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+      await es.addInitScript(() => { try { localStorage.setItem('homeHub.lang', 'es'); } catch (e) { /* */ } });
+      const q = await es.newPage();
+      await q.goto(env.real.url + '/app/touch.html?as=phone#/moods');
+      await q.waitForSelector('.mt-hero svg', { timeout: 10000 });
+      env.wall.mode('down');
+      await q.click('.mt-card[data-mood="goodnight"]');
+      await H.until(() => q.evaluate(() => (document.querySelector('.mt-note') || {}).textContent === 'El muro no respondió. No cambió nada.'), 9000, 'no Spanish line');
+      env.wall.mode('ok');
+      await es.close();
+      assert(!errors.length, errors.join(' | '));
+    });
+
+    await check('real Pi with no WLED_URL: not set up on the tile and in the panel; the screen door says 409 and the wall hears nothing', async () => {
+      const bare = await startRealPi({ page: env.PAGE, wall: env.wall, ha: env.ha, wled: false });
+      try {
+        const p = await openReal(bare);
+        const s = await p.evaluate(survey, 'tile');
+        assert(/Not set up/.test(s.text) && !s.outside.length, s.text);
+        await H.openPanel(p, 'moods');
+        const t = await p.evaluate(survey, 'panel');
+        assert(/WLED_URL/.test(t.text) && t.leds.length === 162, t.text.slice(0, 80) + ' / ' + t.leds.length + ' bulbs');
+        await p.ctx.close();
+        const mark = env.wall.calls.length;
+        const r = await httpJson(bare.port, 'POST', '/moods/set', { id: 'christmas' });
+        assert(r.status === 409 && env.wall.calls.slice(mark).every((c) => c.method === 'GET'), r.status + ' ' + JSON.stringify(r.body));
+      } finally { await bare.close(); }
+    });
+
+    await check('real Pi: no log line names the wall\'s address', () => {
+      const leak = env.real.lines.filter((l) => l.indexOf(env.wall.url) >= 0 || l.indexOf(':' + env.wall.port) >= 0);
+      assert(!leak.length, leak.join(' | '));
+    });
   } finally {
+    try { if (env.real) await env.real.close(); } catch (e) { /* ignore */ }
+    try { if (env.wall) await env.wall.close(); } catch (e) { /* ignore */ }
+    try { if (env.ha) await env.ha.close(); } catch (e) { /* ignore */ }
     await env.stop();
   }
   console.log(passed + ' passed, ' + failed + ' failed');
