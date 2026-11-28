@@ -113,7 +113,7 @@ const screenreport = require('./screenreport');
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
 const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach',
-  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'allsounds', 'soundctl'];
+  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'allsounds', 'soundctl', 'sunpath', 'plantwall'];
 
 /* ---------- settings ---------- */
 
