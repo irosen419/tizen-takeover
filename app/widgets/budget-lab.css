@@ -615,4 +615,51 @@
   word-wrap: break-word;
 }
 
+/* Tablet mode (no remote; budget-lab.js tabletCap): the cap's line is
+   dragged by a round knob, and only the Save button saves. The line's touch
+   area reaches well past the drawn track (::before). pan-y: a sideways drag
+   stays ours, up and down still scroll the page. None of this on a TV. */
+.bl-knob, .bl-save { display: none; }
+.tablet .bl-hero { touch-action: pan-y; }
+.tablet .bl-track { margin: 1.5rem 1.4rem 1.3rem; }
+.tablet .bl-track:before {
+  content: '';
+  position: absolute;
+  left: -1.4rem;
+  right: -1.4rem;
+  top: -1.9rem;
+  bottom: -1.9rem;
+}
+.tablet .bl-knob {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 2.6rem;
+  height: 2.6rem;
+  margin: -1.3rem 0 0 -1.3rem;
+  border-radius: 50%;
+  background: var(--text);
+  box-shadow: 0 0 0 0.3rem rgba(0, 0, 0, 0.35);
+}
+.tablet .bl-save {
+  display: inline-block;
+  flex: 0 0 auto;
+  margin-left: 1rem;
+  padding: 0.45rem 1.5rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #10141c;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tablet .bl-save.is-done { background: rgba(255, 255, 255, 0.08); color: var(--text-2); font-weight: 500; cursor: default; }
+.tablet .bl-save.is-off { display: none; }
+/* The label wraps beside the button, so a long Spanish word never pushes it out. */
+.tablet .bl-herotop { align-items: center; }
+.tablet .bl-herotop .bl-label { min-width: 0; }
+
 .css-end { top: 0; }

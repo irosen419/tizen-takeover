@@ -466,6 +466,24 @@ check('steps: $1 ticks snap off the calculated cap and clamp at both ends', () =
   same(L.nudgeCut({ mode: 'cap', cap: null, cuts: { DoorDash: 1 } }, r, 'DoorDash', -1).cuts, {});
 });
 
+check('drag: a finger on the line sets the cap, $5 steps on a wide slider, $1 on a narrow one, snaps to the marks', () => {
+  const r = run();
+  assert.strictEqual(r.capMax, 196);
+  assert.strictEqual(L.capAt(L.newSession(), r, 0.5).cap, 98);
+  assert.strictEqual(L.capAt(L.newSession(), r, 0.5).mode, 'cap');
+  assert.strictEqual(L.capAt(L.newSession(), r, -1).cap, 0);
+  assert.strictEqual(L.capAt(L.newSession(), r, 2).cap, 196);
+  assert.strictEqual(L.capAt(L.newSession(), r, 0.5, 4).cap, r.c0);       // 98 is within $4 of 95.29
+  const wide = { ok: true, capMax: 1124, c0: 561.81, saved: { cap: 60 } };
+  assert.strictEqual(L.capAt(L.newSession(), wide, 61 / 1124).cap, 60);   // nearest $5
+  assert.strictEqual(L.capAt(L.newSession(), wide, 63 / 1124).cap, 65);
+  assert.strictEqual(L.capAt(L.newSession(), wide, 63 / 1124, 4).cap, 60); // the saved mark
+  assert.strictEqual(L.capAt(L.newSession(), wide, 1).cap, 1124);         // the top, off the grid
+  assert.strictEqual(L.capAt(L.newSession(), wide, 559 / 1124, 6).cap, 561.81);
+  assert.strictEqual(L.capAt({ mode: 'cap', cap: 10, cuts: { A: 3 } }, wide, 0.1).cuts.A, 3);
+  assert.strictEqual(L.capAt(L.newSession(), { ok: false }, 0.5).cap, null);
+});
+
 check('steps: a held key goes $1, $5, $25 on the cap and $5, $25, $100 on the keep goal', () => {
   same([0, 799, 800, 1999, 2000, 9000].map((t) => L.holdStep(t, 'cap')), [1, 1, 5, 5, 25, 25]);
   same([0, 799, 800, 2000].map((t) => L.holdStep(t, 'keep')), [5, 5, 25, 100]);

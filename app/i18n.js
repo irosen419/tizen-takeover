@@ -856,6 +856,11 @@
     // the line heights leave room).
     'budgetLab.capHint': 'Mantén \u25C0 \u25B6 para cambiar tu tope diario',
     'budgetLab.keyCap': '\u25C0 \u25B6 cambiar \u00B7 OK guardar',
+    'budgetLab.capHintTouch': 'Arrastra por la línea, o toca \u25C0 \u25B6 para $1',
+    'budgetLab.saveCap': 'Guardar {n}',
+    'budgetLab.savingCap': 'Guardando\u2026',
+    'budgetLab.savedCap': 'Guardado',
+    'budgetLab.guestLocked': 'El modo invitado está activo: el tope no se puede cambiar',
     'budgetLab.keyCut': '\u25C0 \u25B6 recortar \u00B7 OK guardar',
     'budgetLab.keyOk': 'OK',
     'budgetLab.keyMore': 'Abajo: comercios',
