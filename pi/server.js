@@ -202,7 +202,7 @@ const spanish = require('./spanish');
 const prefs = require('./prefs');
 const screenreport = require('./screenreport');
 
-const SERVER_VERSION = '0.47.0';
+const SERVER_VERSION = '0.48.0';
 const PROTOCOL = 1;
 
 const DEFAULT_PORT = 8097;
