@@ -42,10 +42,10 @@ const LONG = new Function('var real; Object.defineProperty(window, "HUB_I18N", {
   ' var s = es[k]; var add = Math.ceil(s.length / 4); var pad = ""; while (pad.length < add) pad += "ÁÉñ"; es[k] = s + pad.slice(0, add); } } });');
 
 // What the page says about the drawing.
-function survey() {
-  const svg = document.querySelector('.cell[data-widget="plantwall"] .pw-svg') || document.querySelector('#panel .pw-svg');
+function survey(where) {
+  const svg = document.querySelector(where === 'panel' ? '#panel .pw-svg' : '.cell[data-widget="plantwall"] .pw-svg');
   if (!svg) return null;
-  const tile = svg.closest('.tile') || svg.closest('#panel');
+  const tile = where === 'panel' ? svg.closest('#panel') : svg.closest('.tile');
   const tr = tile.getBoundingClientRect(), sr = svg.getBoundingClientRect();
   const vb = svg.viewBox.baseVal;
   const texts = [].slice.call(svg.querySelectorAll('text')).map((t) => {
@@ -99,8 +99,9 @@ function common(s) {
     });
     await check('OK opens full screen, Back closes', async () => {
       await H.openPanel(page, 'plantwall');
-      const s = await page.evaluate(survey);
+      const s = await page.evaluate(survey, 'panel');
       common(s);
+      assert(s.inside, 'the drawing runs past the panel');
       const full = await page.evaluate(() => document.body.className + ' ' + (document.getElementById('panel') || {}).className);
       assert(/full/.test(full), 'not full screen: ' + full);
       await H.key(page, 'Escape');
@@ -126,7 +127,9 @@ function common(s) {
       });
       await check(tag + ': full screen fits too', async () => {
         await H.openPanel(p, 'plantwall');
-        common(await p.evaluate(survey));
+        const s = await p.evaluate(survey, 'panel');
+        common(s);
+        assert(s.inside, 'the drawing runs past the panel');
         const head = await p.evaluate(() => document.getElementById('panel').textContent);
         assert(/Luces del muro de plantas/.test(head) && !/Plant wall lights/.test(head), 'panel head: ' + head.slice(0, 80));
         const errs = H.errorsOf(p, true);

@@ -265,15 +265,17 @@
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  var seq = 0;   // a gradient id of its own per drawing: tile and full screen can both be up
+
   function markup() {
-    var h = [], i, p;
+    var h = [], i, p, gid = 'pw-glow-' + (++seq);
     h.push('<svg xmlns="' + SVGNS + '" class="pw-svg" viewBox="' + VB + '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="' + esc(S.aria) + '">');
-    h.push('<defs><radialGradient id="pw-glow"><stop offset="0" class="pw-g0"/><stop offset="1" class="pw-g1"/></radialGradient></defs>');
+    h.push('<defs><radialGradient id="' + gid + '"><stop offset="0" class="pw-g0"/><stop offset="1" class="pw-g1"/></radialGradient></defs>');
     h.push(SHAPES);
     var lit = pairs(LIT, 3);
     for (i = 0; i < lit.length; i++) {
       p = lit[i];
-      h.push('<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + p[2] + '" fill="url(#pw-glow)"/><circle cx="' + p[0] + '" cy="' + p[1] + '" r="2.3" class="ledon"/>');
+      h.push('<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + p[2] + '" fill="url(#' + gid + ')"/><circle cx="' + p[0] + '" cy="' + p[1] + '" r="2.3" class="ledon"/>');
     }
     var dark = pairs(DARK, 2);
     for (i = 0; i < dark.length; i++) h.push('<circle cx="' + dark[i][0] + '" cy="' + dark[i][1] + '" r="2.6" class="leddark"/>');

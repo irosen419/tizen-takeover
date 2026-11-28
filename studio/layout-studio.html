@@ -2549,7 +2549,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     }
   };
   var X_PANEL = {
-    plantwall: function () { return '<div class="pl-lead">' + esc(SIZE_MATRIX.plantwall.full[lang]) + '</div>'; },
+    plantwall: function (S, full) { return '<div class="pl-lead">' + esc(SIZE_MATRIX.plantwall[full ? 'full' : 'panel'][lang]) + '</div>'; },
     photos: function (S, full) {
       if (!full) return '<div class="pl-lead">' + esc(SIZE_MATRIX.photos.panel[lang]) + '</div>';
       var cells = function (n, on) { var h = ''; for (var i = 0; i < n; i++) h += '<i' + (i === on ? ' class="on"' : '') + '></i>'; return h; };
