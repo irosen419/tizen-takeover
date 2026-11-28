@@ -131,7 +131,7 @@ function common(s) {
         common(s);
         assert(s.inside, 'the drawing runs past the panel');
         const head = await p.evaluate(() => document.getElementById('panel').textContent);
-        assert(/Luces del muro de plantas/.test(head) && !/Plant wall lights/.test(head), 'panel head: ' + head.slice(0, 80));
+        assert(/Luces de la pared de plantas/.test(head) && !/Plant wall lights/.test(head), 'panel head: ' + head.slice(0, 80));
         const errs = H.errorsOf(p, true);
         assert(!errs.length, errs.join(' | '));
       });

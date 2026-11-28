@@ -372,6 +372,46 @@ Example preset file (`./hub lights add chill-moving.json`):
   "bars": { "snapshot": "Chill purple and blue" } }
 ```
 
+## Moods (the plant wall's moods)
+
+Whole-wall looks for the plant wall's WLED controller (22 moods: Rainforest, Christmas, Menorah, Movie night...), set from the TV's **Moods** widget, the wall tablet, the phone, `./hub moods`, the mailbox or Home Assistant. The code is `moods/` (`controller.js` is the one place that talks to WLED for Moods); the TV only sends saved mood ids to the Pi. Each mood can also set the lamp and bars to a matching look.
+
+**Data.**
+- `moods/moods.json`: the moods (English and Spanish names), their vase and frame designs, palettes and WLED effects by name. One hidden mood, `check`, is for first light only: each vase, drop, frame side and candle in its own colour at 20%.
+- `moods/wall.json`: which bulbs are what (vases, drops, wire runs, the three frames and their sides, the menorah candles), the live preset's segments and the power budget. Numbers marked `"sure": false` are derived, not measured.
+- `data/moods-wall.json` (Pi only, optional): a fix of the wall map with any of `zones`, `sides`, `menorah`, `power`; it wins over `wall.json`, so a wrong bulb number is fixed without a merge. `./hub moods wall set fix.json` saves it, `./hub moods wall reset` removes it.
+- `data/moods-state.json`: what is on, the snapshot to put back, brightness per mood, tune values and the last probe.
+
+**Settings in `.env`** (see `.env.example`):
+- `WLED_URL`: the same line Ambience uses. Without it Moods says "not set up" and sends nothing.
+- `MOODS_ENGINE`: `none` (default), `forest` (the Pi draws the two Rainforest moods itself with `moods/forest-render.js`, streaming every bulb so thunder can dim just 2 to 4 bulbs), or `mood` (the general renderer, a stretch). Leave it unset until the Pi-drawn forest has been checked on the wall with Ian watching; every mood also has a WLED effects form that always works.
+- `MOODS_ENGINE_PORT`: the renderer's trigger port on 127.0.0.1 (4810).
+- `MOODS_DRY=1`: never send anything to the wall; every call answers as a dry run.
+After changing `.env`, restart the hub (`hubrestart`).
+
+**Commands.**
+- `./hub moods`: what is on, in one line (`./hub ambiance` works too). `./hub moods list`: the ids.
+- `./hub moods set christmas --bri 60`: a mood (`--no-pair` leaves the lamp and bars alone, `--night 3` for Menorah, `--dry-run` sends nothing and prints exactly what would be sent).
+- `./hub moods off`: the wall back to how it was before the first mood.
+- `./hub moods bri 40`: brightness (10 to 100) of the mood on now. `./hub moods event thunder 2`: a thunder cue (only Rainforest storm has one: a few bulbs dim behind a painting, or the drum frame in the effects form); automatic thunder then pauses 5 minutes.
+- `./hub moods probe`: reads the wall's effects, palettes, power limit, bulb current, colour gamma, segments and "receive realtime", changes nothing, and lists mismatches with the catalog.
+- `./hub moods tune rainforest --cycle 65.5 --spans 1` (`--gamma off`, `--clear`): the Pi-drawn drift, used the next time the mood is set.
+- Mailbox: `moods.status`, `moods.list`, `moods.set {"id": "christmas", "pair": false}`, `moods.off`, `moods.bri {"pct": 40}`, `moods.event {"name": "thunder", "n": 2}`, `moods.probe`, `moods.tune {"id": "rainforest", "cycleSeconds": 65.5}`, `moods.wall {"override": {...}}`.
+
+**API** (control token): `GET /api/moods` (list, what is on, engine, last probe); `GET /api/moods/now` (flat, for Home Assistant's sensor: `id`, `name`, `on`, `bri`, `path`, `stale`, `night`, `pair`, `since`); `POST /api/moods/set` `{ id, bri?, night?, pair?, dry? }`, `/off` `{ dry? }`, `/bri` `{ pct, id? }`, `/event` `{ name, n? }`, `/probe`, `/tune` `{ id, cycleSeconds?, spans?, gamma? }`, `/wall` `{ override }`. `POST /api/command` with `{ "type": "mood", "data": { "id": "christmas" } }` (or `"id": "off"`, `{ "bri": 60 }`, `{ "event": "thunder" }`) is handled on the Pi and never sent to a screen: Home Assistant's Wall moods buttons use it through the existing `rest_command.hub_command`. Screens use `POST /moods/set` `{ id }` or `{ off: true }` (saved ids only, never a dry run; a touch route: home and Tailscale addresses, the Origin check, rate limited); `{ id, bri }` only changes the brightness, and a control moved on a screen goes as `{ id, pair, step: true }` (only the lamp and bars) or `{ id, night, step: true }` (no resend for brightness or pairing, the renderer keeps running; a step for a mood that is no longer on never turns it back on: the brightness is kept for later, the pairing choice remembered, a night ignored), and Menorah's `night` is sent only when a person stepped it (otherwise the night on now, else tonight's from the date, else 8). The phone gets the moods in `GET /touch/state`. `MOODS_DRY=1` makes set, off, bri, event, probe, tune and wall answer as dry runs.
+
+**Safety rules (always true).**
+- Passive: nothing is sent to the wall at start or after a merge; only a mood, Off or a probe talks to it.
+- Transient states only: a mood is a `POST /json/state` checked before it is sent (segment ranges inside the 162 lit bulbs, ids 0 to 31, a short list of allowed keys). Presets, playlists and the config are never written; a mood may only *select* preset 2.
+- Power: every mood is fitted under 800 mA (the controller's limiter is 1000) with one fixed scale, and flashes are capped again. 55 mA per bulb is assumed, so palette moods can look dim; a probe that reads a higher bulb current tightens the budget, a lower one never loosens it. The Pi-only wall map fix (`data/moods-wall.json`) can only tighten it too: the limiter and base current cannot be changed, and a higher `budgetMa` or `flashMa` or a lower `ledMa` is kept at the file's value (each must be a number above 0). An older `data/moods-wall.json` that still sets `limiterMa` or `baseMa` keeps its zones but its power part is ignored, with the log line `moods: wall override ignored (power keys)`; Moods stays on. The hidden check mood takes no brightness change.
+- Gamma: the power estimate assumes WLED's colour gamma 2.8 (its default) until `./hub moods probe` confirms it on its gamma line (a "Note:" line says when it could not be read; another value is listed as a mismatch).
+- Presets: after a change that selects a preset, the hub waits about 0.7 seconds and reads the wall until it reports that preset (about 2 seconds at most) before sending the next change, so the preset's own brightness cannot land over it.
+- Off restores: the first mood saves a snapshot of the wall's state; Off stops the renderer, sends the snapshot back (deleting any extra segments; preset 2 if the snapshot cannot be used) and clears the mood's lamp and bars look if it is still on.
+- The lamp and bars are left alone while music lights are on, and Moods never switches music lights on.
+- The log says `moods:` with counts only: never an address, a token or a mood's name.
+
+Never run a mood together with the Pi's `storm-lights` unit until someone has read what that unit sends. If Off ever misbehaves, picking preset 2 in WLED's own page puts the live look back.
+
 ## Spanish for your own text (server 0.12.0)
 
 In Spanish mode the TV shows your to-dos, calendar events and AWWS task lines in Spanish. It sends new lines to `POST /translate`; the Pi answers lines it already knows from `data/translations-es.json` (up to 5000) and sends new ones to Gemini (`gemini-3.5-flash-lite`; 2.5 Flash-Lite refuses new keys with HTTP 403) in one batch, so each line is translated once. Show titles, songs and place names are kept as they are.

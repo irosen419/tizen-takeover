@@ -66,6 +66,10 @@
  *   ./hub ambience mood <id>         a plant wall mood (WLED)
  *   ./hub ambience set <file.json|->   new lights, scenes and moods (see ambience.example.json)
  *   ./hub ambience reset             back to the defaults (no lights)
+ *   ./hub moods                      plant wall moods: what is on, in one line (./hub ambiance too)
+ *   ./hub moods list | set <id> [--bri 60] [--night 3] [--no-pair] [--dry-run] | off |
+ *          bri <pct> [--id <id>] | event thunder [n] | probe |
+ *          tune <id> [--cycle 40] [--spans 2] [--gamma off] [--clear] | wall set <file|-> | wall reset
  *   ./hub lights [status]            music lights: on or off, palette, dials, what the engine does
  *   ./hub lights on|off              switch music lights on or off
  *   ./hub lights chill|groove|party  both dials at once (low/low, medium/medium, high/high)
@@ -113,7 +117,7 @@ const screenreport = require('./screenreport');
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
 const WIDGETS = ['weather', 'todo', 'calendar', 'entertainment', 'nowplaying', 'today', 'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach',
-  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'allsounds', 'soundctl', 'sunpath', 'plantwall'];
+  'awws-money', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'investments', 'allsounds', 'soundctl', 'sunpath', 'plantwall', 'moods'];
 
 /* ---------- settings ---------- */
 
@@ -212,7 +216,8 @@ function call(method, p, body, timeoutMs) {
       stop('The server has no token yet. Run ./hub token, then restart the server.');
     }
     // The Echo controls answer 200 with ok: false when Home Assistant said no; the message is the answer.
-    if (!r.json.ok && !(r.status === 200 && p === '/api/echo' && typeof r.json.message === 'string')) stop('The server said no: ' + (r.json.error || 'error ' + r.status) + '.');
+    // A Moods dry run answers 200 with ok: false when its checks failed; the plan is the answer.
+    if (!r.json.ok && !(r.status === 200 && p === '/api/echo' && typeof r.json.message === 'string') && !(r.status === 200 && r.json.dry === true)) stop('The server said no: ' + (r.json.error || 'error ' + r.status) + '.');
     return r.json;
   });
 }
@@ -1345,6 +1350,213 @@ async function ambienceCommand(args) {
   stop(use);
 }
 
+/* ---------- Moods (moods/controller.js): the plant wall's moods ---------- */
+
+const MOODS_UPDATE = 'This server does not know Moods yet (it needs an update): run git pull, then restart the hub (hubup).';
+const MOODS_USE = 'Use one of: moods, moods list, moods set <id> [--bri 60] [--night 3] [--no-pair] [--dry-run], moods off, ' +
+  'moods bri <10-100> [--id <id>], moods event thunder [1-6], moods probe, moods tune <id> [--cycle 40] [--spans 2] [--gamma off] [--clear], ' +
+  'moods wall set <file.json|->, moods wall reset. Run ./hub help for examples.';
+
+function moodsPath(p) {
+  return p === 'pi-drawn' ? 'Pi-drawn' : 'effects form';
+}
+
+function moodsGovee(g) {
+  return g === 'set' ? 'lamp and bars with the mood' : g === 'music' ? 'lamp and bars left alone (music lights on)'
+    : g === 'none' ? 'no lamp and bars look for this mood' : g === 'failed' ? 'lamp and bars could not be set' : 'lamp and bars left alone';
+}
+
+// ./hub moods and the mailbox's moods.status: one line.
+function moodsLine(s) {
+  if (!s || typeof s !== 'object' || !s.now) return MOODS_UPDATE;
+  if (s.problem === 'catalog') return 'Moods: the catalog could not be read on the Pi (pi/moods/*.json or data/moods-wall.json).';
+  if (!s.configured) {
+    return s.problem === 'badurl' ? 'Moods: not set up (WLED_URL in pi/.env does not look right). Fix it, then restart the hub.'
+      : 'Moods: not set up (add WLED_URL to pi/.env, then restart the hub).';
+  }
+  const n = s.now;
+  const count = plain((s.moods || []).length, 'mood');
+  let line;
+  if (n.id === 'off') line = 'Moods: off, the wall as it was (' + count + ').';
+  else {
+    line = 'Moods: ' + (n.name || n.id) + ' at ' + n.bri + '%, ' + moodsPath(n.path) + (n.night ? ', night ' + n.night : '') + '; ' + moodsGovee(n.govee) + '.';
+    if (n.stale) line += ' Changed somewhere else since.';
+  }
+  if (s.engine && s.engine.kind !== 'none') line += ' Pi-drawn engine: ' + s.engine.kind + (s.engine.running ? ', running.' : ', idle.');
+  if (s.state === 'error') line += s.problem === 'refused' ? ' Last change: the wall refused it.' : s.problem === 'reply' ? ' Last change: the wall gave an answer that could not be read.' : ' Last change: the wall did not answer.';
+  if (s.dry) line += ' Dry run only (MOODS_DRY=1).';
+  return line;
+}
+
+function moodsListLines(list) {
+  const out = [plain(list.length, 'mood') + ' (id, name, group, brightness, tags):'];
+  list.forEach((m) => out.push('  ' + m.id + '  ' + m.name + '  (' + [m.group, m.bri + '%'].concat(m.tags || []).concat(m.night ? ['night 1-8'] : []).join(', ') + ')'));
+  return out;
+}
+
+function moodsDryText(r) {
+  const p = r.plan || {};
+  const w = p.wled || [];
+  const bits = [plain(w.length, 'change') + ' for the wall'];
+  if (p.reads && p.reads.length) bits.push('a snapshot read first');
+  if (p.budget) bits.push('about ' + p.budget.ma + ' mA' + (p.budget.scale < 1 ? ' (scaled to ' + Math.round(p.budget.scale * 100) + '%)' : ''));
+  if (p.govee && p.govee.look) bits.push('lamp and bars look ' + p.govee.look.id);
+  else if (p.govee && p.govee.skip) bits.push('lamp and bars left alone (music lights on)');
+  else if (p.govee && p.govee.clear) bits.push('lamp and bars preset cleared');
+  if (p.engine && p.engine.args) bits.push('Pi-drawn engine ' + p.engine.kind);
+  else if (p.engine && p.engine.refused) bits.push('Pi-drawn engine refused (' + p.engine.refused + ')');
+  if (p.approx && p.approx.length) bits.push('approximate: ' + p.approx.join(', '));
+  if (p.checks && p.checks.length) bits.push('FAILED CHECKS: ' + p.checks.join('; '));
+  return 'Dry run, nothing sent: ' + bits.join(', ') + '.';
+}
+
+// After a set: "Christmas is on (effects form; lamp and bars with the mood)."
+function moodsSetText(r, name) {
+  if (r.dry) return moodsDryText(r);
+  const n = name || 'The mood';
+  const now = r.now || {};
+  const head = r.result === 'partial' ? n + ' is only partly on (the wall stopped answering part way).' : n + ' is on (' + moodsPath(now.path) + '; ' + moodsGovee(r.govee) + ').';
+  return head + (r.message ? ' ' + r.message : '');
+}
+
+function moodsOffText(r) {
+  if (r.dry) return moodsDryText(r);
+  if (r.nothing) return 'No mood was on; nothing sent.';
+  if (r.result === 'partial') return 'The wall is only partly back (it stopped answering part way). Run ./hub moods off again.';
+  return 'The wall is back to how it was.';
+}
+
+function moodsBriText(r, pct) {
+  if (r.dry) return moodsDryText(r);
+  if (!r.applied) return 'Kept ' + pct + '% for that mood; it is used the next time it is set.';
+  return 'Brightness ' + pct + '%.';
+}
+
+function moodsEventText(r, name) {
+  if (r.dry) return 'Dry run, nothing sent: ' + name + (r.plan && r.plan.engine ? ' to the Pi-drawn engine.' : ' as a dim on the wall.');
+  return r.to === 'renderer' ? name + ' sent to the Pi-drawn engine (' + r.n + ').' : name + ': a dim on the wall for about ' + Math.round((r.holdMs || 0) / 100) / 10 + ' seconds.';
+}
+
+// A dry run whose plan failed the safety checks: the command fails.
+function moodsDryFailed(r) {
+  return !!(r && r.dry && r.plan && Array.isArray(r.plan.checks) && r.plan.checks.length);
+}
+
+function moodsProbeLines(r) {
+  if (r.dry) return ['Dry run, nothing read: ' + (r.plan.wled || []).map((x) => x.path).join(', ') + '.'];
+  const c = r.counts || {};
+  const out = ['Read ' + r.read + ' of ' + r.of + ' from the wall' + (r.ver ? ' (WLED ' + r.ver + ')' : '') + ': ' +
+    [c.effects != null ? plain(c.effects, 'effect') : null, c.palettes != null ? plain(c.palettes, 'palette') : null,
+      c.segments != null ? plain(c.segments, 'segment') : null, r.leds != null ? r.leds + ' LEDs' : null,
+      r.maxPwr != null ? 'power limit ' + r.maxPwr + ' mA' : null, r.ledMa != null ? 'bulb ' + r.ledMa + ' mA' : null,
+      r.realtime != null ? 'receive realtime ' + (r.realtime ? 'on' : 'off') : null,
+      r.mic != null ? 'sound effects ' + (r.mic ? 'there' : 'missing') : null].filter(Boolean).join(', ') + '.'];
+  if (r.gamma != null) out[0] = out[0].replace(/\.$/, ', colour gamma ' + (r.gamma === 1 ? 'off' : r.gamma) + '.');
+  out.push(r.mismatches.length ? plain(r.mismatches.length, 'mismatch').replace(/mismatchs$/, 'mismatches') + ':' : 'No mismatches.');
+  r.mismatches.forEach((m) => out.push('  ' + m));
+  (r.notes || []).forEach((m) => out.push('Note: ' + m + '.'));
+  return out;
+}
+
+function moodsTuneText(r) {
+  const k = Object.keys(r.tune || {});
+  if (r.dry) return 'Dry run, nothing saved: ' + r.id + (k.length ? ' would use ' + k.map((x) => x + ' ' + r.tune[x]).join(', ') : ' would go back to the defaults') + '.';
+  return k.length ? 'Saved for ' + r.id + ': ' + k.map((x) => x + ' ' + r.tune[x]).join(', ') + '. Used the next time it is set.' : 'Back to the defaults for ' + r.id + '.';
+}
+
+function moodsWallText(r) {
+  if (r.dry) return r.override ? 'Dry run, nothing saved: the wall map fix fits (' + r.sure + ' of ' + r.zones + ' zones marked sure).' + (r.clamped && r.clamped.length ? ' Kept at the file\'s values: ' + r.clamped.join(', ') + '.' : '') : 'Dry run, nothing removed.';
+  const kept = r.clamped && r.clamped.length ? ' Kept at the file\'s values (a fix may only tighten the power budget): ' + r.clamped.join(', ') + '.' : '';
+  return (r.override ? 'Wall map fix saved (' + r.sure + ' of ' + r.zones + ' zones marked sure). Set the mood again to see it.' : 'Wall map fix removed; the map in pi/moods/wall.json is used.') + kept;
+}
+
+function moodsNum(v, flag, min, max, whole) {
+  const n = Number(v);
+  if (v === true || !isFinite(n) || n < min || n > max || (whole && Math.floor(n) !== n)) stop('--' + flag + ' must be ' + (whole ? 'a whole number' : 'a number') + ' from ' + min + ' to ' + max + '.');
+  return n;
+}
+
+async function moodsCommand(args) {
+  const sub = args[0];
+  const a = parseArgs(args.slice(1), ['bri', 'night', 'id', 'cycle', 'spans', 'gamma']);
+  const status = async () => {
+    const r = await call('GET', '/api/moods');
+    return r && r.now ? r : null;
+  };
+  const nameOf = async (id) => {
+    try { const s = await status(); return ((s && s.moods) || []).filter((m) => m.id === id).map((m) => m.name)[0] || ''; } catch (e) { return ''; }
+  };
+  const done = (text, r) => { if (r && r.result === 'partial') stop(text); say(text); };
+  if (!sub || sub === 'status') { say(moodsLine(await status())); return; }
+  if (sub === 'list') { moodsListLines((await status() || { moods: [] }).moods).forEach(say); return; }
+  if (sub === 'set') {
+    const id = a.words[0];
+    if (!id) stop('Say which mood, for example: ./hub moods set christmas (./hub moods list shows them).');
+    const body = { id: id };
+    if (a.opts.bri !== undefined) body.bri = moodsNum(a.opts.bri, 'bri', 10, 100, true);
+    if (a.opts.night !== undefined) body.night = moodsNum(a.opts.night, 'night', 1, 8, true);
+    if (a.opts['no-pair']) body.pair = false;
+    if (a.opts.pair) body.pair = true;
+    if (a.opts['dry-run']) body.dry = true;
+    const r = await call('POST', '/api/moods/set', body);
+    const text = moodsSetText(r, await nameOf(id));
+    if (moodsDryFailed(r)) { say(text); stop(JSON.stringify(r.plan, null, 1)); }
+    done(text, r);
+    if (r.dry) say(JSON.stringify(r.plan, null, 1));
+    return;
+  }
+  if (sub === 'off') {
+    const r = await call('POST', '/api/moods/off', a.opts['dry-run'] ? { dry: true } : {});
+    done(moodsOffText(r), r);
+    return;
+  }
+  if (sub === 'bri') {
+    const pct = moodsNum(a.words[0], 'pct', 10, 100, true);
+    const body = { pct: pct };
+    if (typeof a.opts.id === 'string') body.id = a.opts.id;
+    const r = await call('POST', '/api/moods/bri', body);
+    say(moodsBriText(r, pct));
+    return;
+  }
+  if (sub === 'event') {
+    const name = a.words[0];
+    if (!name) stop('Say which event, for example: ./hub moods event thunder 2');
+    const body = { name: name };
+    if (a.words[1] !== undefined) body.n = moodsNum(a.words[1], 'n', 1, 6, true);
+    const r = await call('POST', '/api/moods/event', body);
+    say(moodsEventText(r, name.charAt(0).toUpperCase() + name.slice(1)));
+    return;
+  }
+  if (sub === 'probe') { moodsProbeLines(await call('POST', '/api/moods/probe', {})).forEach(say); return; }
+  if (sub === 'tune') {
+    const id = a.words[0];
+    if (!id) stop('Say which mood, for example: ./hub moods tune rainforest --cycle 65.5 --spans 1');
+    const body = { id: id };
+    if (a.opts.clear) { body.cycleSeconds = null; body.spans = null; body.gamma = null; }
+    if (a.opts.cycle !== undefined) body.cycleSeconds = moodsNum(a.opts.cycle, 'cycle', 1, 3600, false);
+    if (a.opts.spans !== undefined) body.spans = moodsNum(a.opts.spans, 'spans', 1, 16, true);
+    if (a.opts.gamma !== undefined) body.gamma = a.opts.gamma === 'off' ? 'off' : moodsNum(a.opts.gamma, 'gamma', 0.5, 5, false);
+    if (Object.keys(body).length === 1) stop('Say what to tune: --cycle, --spans, --gamma, or --clear.');
+    say(moodsTuneText(await call('POST', '/api/moods/tune', body)));
+    return;
+  }
+  if (sub === 'wall') {
+    if (a.words[0] === 'reset') { say(moodsWallText(await call('POST', '/api/moods/wall', { override: null }))); return; }
+    if (a.words[0] === 'set' && a.words[1]) {
+      const name = a.words[1];
+      let text;
+      try { text = name === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(name, 'utf8'); } catch (e) { stop('Could not read ' + (name === '-' ? 'standard input' : name) + ' (' + (e.code || e.message) + ').'); }
+      let data;
+      try { data = JSON.parse(text); } catch (e) { stop((name === '-' ? 'The input' : name) + ' is not valid JSON.'); }
+      if (data && typeof data === 'object' && !Array.isArray(data) && 'override' in data) data = data.override;
+      say(moodsWallText(await call('POST', '/api/moods/wall', { override: data })));
+      return;
+    }
+    stop('Use ./hub moods wall set <file.json|-> or ./hub moods wall reset.');
+  }
+  stop(MOODS_USE);
+}
+
 /* ---------- recent log lines ---------- */
 
 function problemsText(n) {
@@ -1659,6 +1871,14 @@ const HELP = [
   '  ./hub ambience mood dim     a plant wall mood (needs WLED_URL in pi/.env)',
   '  ./hub ambience set file.json   new lights, scenes and moods (see pi/ambience.example.json)',
   '  ./hub ambience reset        back to the defaults (no lights)',
+  '  ./hub moods                the plant wall\'s mood now, in one line (./hub ambiance works too)',
+  '  ./hub moods list           the moods, with ids; ./hub moods set christmas --bri 60 (--no-pair, --night 3, --dry-run)',
+  '  ./hub moods off            the wall back to how it was before the first mood',
+  '  ./hub moods bri 40         brightness of the mood on now (10 to 100)',
+  '  ./hub moods event thunder  a thunder cue (Rainforest storm); automatic thunder pauses 5 minutes',
+  '  ./hub moods probe          read-only check of the wall: effects, palettes, power, segments',
+  '  ./hub moods tune rainforest --cycle 65.5 --spans 1   the Pi-drawn drift (--gamma off, --clear)',
+  '  ./hub moods wall set fix.json   a Pi-only fix of the wall map (./hub moods wall reset removes it)',
   '  ./hub lights               music lights: on or off, palette, dials, what the engine is doing',
   '  ./hub lights on            the lamp and light bars follow the Pi\'s music (off: ./hub lights off)',
   '  ./hub lights groove        both dials at once: chill (low), groove (medium), party (high)',
@@ -1995,6 +2215,7 @@ async function main(argv) {
   if (cmd === 'allsounds') return allsoundsCmd(rest);
   if (cmd === 'echo') return echoCommand(rest);
   if (cmd === 'ambience') return ambienceCommand(rest);
+  if (cmd === 'moods' || cmd === 'ambiance') return moodsCommand(rest);
   if (cmd === 'lights') return lightsCommand(rest);
   if (cmd === 'token') return token();
   if (cmd === 'read-token') return token('HUB_READ_TOKEN');
@@ -2064,6 +2285,17 @@ module.exports = {
   ambienceLightText: ambienceLightText,
   ambienceMoodText: ambienceMoodText,
   ambienceSetText: ambienceSetText,
+  moodsLine: moodsLine,
+  moodsListLines: moodsListLines,
+  moodsSetText: moodsSetText,
+  moodsOffText: moodsOffText,
+  moodsBriText: moodsBriText,
+  moodsEventText: moodsEventText,
+  moodsProbeLines: moodsProbeLines,
+  moodsDryFailed: moodsDryFailed,
+  moodsTuneText: moodsTuneText,
+  moodsWallText: moodsWallText,
+  moodsDryText: moodsDryText,
   lightsStatusLines: lightsStatusLines,
   lightsChangeText: lightsChangeText,
   lightsLookLines: lightsLookLines,

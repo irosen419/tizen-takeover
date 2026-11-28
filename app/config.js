@@ -181,6 +181,13 @@ var HUB_CONFIG = {
     { id: 'ambience-test', name: 'Ambience test', rotate: false, layout: [
       { widget: 'ambience',      x: 0, y: 0, w: 12, h: 6 }
     ] },
+    /* A test layout: Moods (app/widgets/moods.js, the plant wall's moods,
+       the Pi's live resource "moods") big beside Ambience, to try it before
+       it joins a real layout. Main is untouched. */
+    { id: 'moods-test', name: 'Moods test', rotate: false, layout: [
+      { widget: 'moods',         x: 0, y: 0, w: 8, h: 6 },
+      { widget: 'ambience',      x: 8, y: 0, w: 4, h: 6 }
+    ] },
     /* Architecture (app/widgets/architecture.js, the map of the whole system,
        driven by the remote) on its own; it opens straight into a window (hub.js
        openSolo). The id still says test so a saved pick still matches. */

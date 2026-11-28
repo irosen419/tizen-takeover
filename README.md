@@ -17,6 +17,7 @@ Out of the box:
 - **Now Playing also shows any sound:** whatever is playing anywhere in the house, not just Spotify: an Echo playing TuneIn, iHeartRadio or Amazon Music (through Home Assistant on the Pi), or Spotify. The old All sounds widget and its test layout are gone (see [Any sound in Now Playing](#any-sound-in-now-playing)).
 - **A World Worth Saving:** the book project at a glance: the next school visit, this week, and the to-do board, from the Pi.
 - **Ambience:** the room's lights from the TV: scenes such as "Chill night", each light's level, and the plant wall's moods, through Home Assistant on the Pi. Only on its own "Ambience test" layout for now (see [Ambience](#ambience)).
+- **Moods:** whole-wall looks for the plant wall's lights (Rainforest, Christmas, Menorah, Movie night and more), with the lamp and bars to match; on its own "Moods test" layout, also on the phone and through `./hub moods` and Home Assistant (see [pi/README.md](pi/README.md#moods-the-plant-walls-moods)).
 - **Coming soon:** Ambiance and Mirror. These tiles hold their spot with a "Soon" tag until they're built.
 
 Press OK on a tile to open it in a panel in the middle of the screen; the other tiles slide out of the way. The panel has a **Full screen** button. The tiles sit on a picture of the ocean, frosted like glass.

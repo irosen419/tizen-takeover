@@ -44,7 +44,7 @@
     'budget-room': ['budget.titles.room', 'Daily room'], 'budget-card': ['budget.titles.card', 'Card day'],
     'budget-goals': ['budget.titles.goals', 'Goals'], 'budget-lab': ['budgetLab.titles.lab', 'Budget lab'],
     soundctl: ['soundctl.title', 'Sound control'],
-    sunpath: ['sunpath.title', 'Plant sun'], plantwall: ['plantwall.title', 'Plant wall lights'], list: ['pantry.listTitle', 'List'], architecture: ['touch.name.architecture', 'Architecture'],
+    sunpath: ['sunpath.title', 'Plant sun'], plantwall: ['plantwall.title', 'Plant wall lights'], moods: ['moods.title', 'Moods'], list: ['pantry.listTitle', 'List'], architecture: ['touch.name.architecture', 'Architecture'],
     investments: ['investments.title', 'Investments'], spending: ['spending.title', 'Spending'], shows: ['shows.title', 'Schedule']
   };
 

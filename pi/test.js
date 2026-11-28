@@ -334,6 +334,20 @@ async function main() {
     assert.deepStrictEqual(h._debug(), { sse: 0, polls: 0, commands: 0, pollScreens: 0, pingTimer: false, calendar: NO_CALENDAR, spotify: NO_SPOTIFY });
   });
 
+  await check('mood commands are handled on the Pi, never sent to screens; without WLED_URL they answer 409 (pi/moods/controller.js)', async () => {
+    let r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'mood', data: { id: 'christmas' } } });
+    assert.strictEqual(r.status, 409);
+    assert.ok(/WLED_URL/.test(r.json.error));
+    assert.strictEqual(r.json.delivered, undefined);
+    r = await request(P, 'POST', '/api/command', { token: TOKEN, body: { type: 'mood', data: { colour: 'red' } } });
+    assert.strictEqual(r.status, 400);
+    r = await request(P, 'GET', '/live/state');
+    assert.strictEqual(r.json.resources.moods.data.state, 'notset');
+    r = await request(P, 'GET', '/api/moods/now', { token: TOKEN });
+    assert.deepStrictEqual([r.json.ok, r.json.id, r.json.on], [true, 'off', false]);
+    assert.deepStrictEqual(h._debug().commands, 0);
+  });
+
   /* ---------- to-do ---------- */
 
   await check('POST /api/todo adds at the top with a server id', async () => {

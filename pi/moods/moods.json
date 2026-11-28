@@ -1,0 +1,1312 @@
+{
+  "v": 1,
+  "hanukkah": { "2026": "12-04" },
+  "palettes": {
+    "forest": [
+      "006400", "006400", "556B2F", "006400", "008000", "228B22", "6B8E23", "008000", "2E8B57", "66CDAA",
+      "32CD32", "9ACD32", "90EE90", "7CFC00", "66CDAA", "228B22"
+    ],
+    "c9": ["ff0500", "c43902", "067e02", "1d3fc0"],
+    "aurora": ["01052d", "00c817", "00ff00", "00f32d", "008707", "01052d"],
+    "aurora-curtain": ["19e3a0", "2fa8e0", "7a4fd8"],
+    "canopy": ["0e5a2a", "3f9e4d", "a6d23f"],
+    "ocean": ["0b4fa8", "22b8cf", "5fd3c6"],
+    "rainbow": ["ff0000", "ffff00", "00ff00", "00ffff", "0000ff", "ff00ff"]
+  },
+  "pals": {
+    "default": { "id": 0, "name": "Default" },
+    "color1": { "id": 2, "name": "* Color 1" },
+    "colors12": { "id": 3, "name": "* Colors 1&2" },
+    "forest": { "id": 10, "name": "Forest", "steps": "forest" },
+    "aurora": { "id": 50, "name": "Aurora", "steps": "aurora" },
+    "c9new": { "id": 53, "name": "C9 New", "steps": "c9" }
+  },
+  "fx": {
+    "solid": { "id": 0, "name": "Solid" },
+    "breathe": { "id": 2, "name": "Breathe" },
+    "colorloop": { "id": 8, "name": "Colorloop" },
+    "rainbow": { "id": 9, "name": "Rainbow" },
+    "running": { "id": 15, "name": "Running" },
+    "twinkle": { "id": 17, "name": "Twinkle" },
+    "aurora": { "id": 38, "name": "Aurora" },
+    "lighthouse": { "id": 41, "name": "Lighthouse" },
+    "fairytwinkle": { "id": 51, "name": "Fairytwinkle" },
+    "lightning": { "id": 57, "name": "Lightning", "flash": true },
+    "palette": { "id": 65, "name": "Palette" },
+    "colorwaves": { "id": 67, "name": "Colorwaves" },
+    "twinklefox": { "id": 80, "name": "Twinklefox" },
+    "candle": { "id": 88, "name": "Candle" },
+    "pacifica": { "id": 101, "name": "Pacifica" },
+    "gravimeter": { "id": 132, "name": "Gravimeter", "mic": true },
+    "puddlepeak": { "id": 144, "name": "Puddlepeak", "mic": true, "flash": true },
+    "ripplepeak": { "id": 148, "name": "Ripple Peak", "mic": true, "flash": true }
+  },
+  "designs": {
+    "v-static": {
+      "for": "vase",
+      "name": "Static",
+      "es": "Fijo",
+      "desc": "One steady color in each vase.",
+      "descEs": "Un color fijo en cada jarrón.",
+      "wled": { "fx": "solid" },
+      "pi": [{ "kind": "solid", "color": "$vase" }],
+      "pv": { "base": "$vase", "anim": "still" },
+      "needs": [],
+      "fallback": null
+    },
+    "v-breathe": {
+      "for": "vase",
+      "name": "Breathe",
+      "es": "Respiración",
+      "desc": "Each vase fades slowly in and out.",
+      "descEs": "Cada jarrón se enciende y se apaga despacio.",
+      "wled": { "fx": "breathe" },
+      "pi": [{ "kind": "breathe", "color": "$vase", "low": 0.12, "period": "$sx" }],
+      "pv": { "base": "$vase", "anim": "breathe" },
+      "needs": [],
+      "fallback": null
+    },
+    "v-cycle": {
+      "for": "vase",
+      "name": "Color cycle",
+      "es": "Ciclo de color",
+      "desc": "The vases turn slowly through every color.",
+      "descEs": "Los jarrones pasan despacio por todos los colores.",
+      "wled": { "fx": "colorloop" },
+      "pi": [{ "kind": "palette", "palette": "rainbow", "cycleSeconds": "$sx", "spread": 0 }],
+      "pv": { "base": "$vase", "anim": "cycle" },
+      "needs": [],
+      "fallback": null
+    },
+    "v-candle": {
+      "for": "vase",
+      "name": "Candle",
+      "es": "Vela",
+      "desc": "A warm candle flicker in each vase.",
+      "descEs": "Un parpadeo cálido de vela en cada jarrón.",
+      "wled": { "fx": "candle" },
+      "pi": [{ "kind": "candle", "colors": ["$vase"], "low": 0.35 }],
+      "pv": { "base": "$vase", "anim": "flicker" },
+      "needs": [],
+      "fallback": null
+    },
+    "v-fireflies": {
+      "for": "vase",
+      "name": "Fireflies",
+      "es": "Luciérnagas",
+      "desc": "Yellow green fireflies blink over the vase color.",
+      "descEs": "Luciérnagas de un verde amarillo parpadean sobre el color del jarrón.",
+      "wled": { "fx": "fairytwinkle", "ix": 0, "pal": 2, "glint": "#c8ff14" },
+      "pi": [
+        { "kind": "solid", "color": "$vase" },
+        {
+          "kind": "sparkle",
+          "color": "#c8ff14",
+          "density": 0.08,
+          "rise": 1.5,
+          "hold": [0.3, 1.2],
+          "fall": 2.5
+        }
+      ],
+      "pv": { "base": "$vase", "anim": "twinkle", "glint": "#c8ff14" },
+      "needs": [],
+      "fallback": null
+    },
+    "v-rain": {
+      "for": "vase",
+      "name": "Rain",
+      "es": "Lluvia",
+      "desc": "Pale blue glints fall quickly, like rain in the glass.",
+      "descEs": "Destellos azul pálido caen rápido, como lluvia en el cristal.",
+      "wled": { "fx": "fairytwinkle", "ix": 220, "pal": 2, "glint": "#a9c8ff" },
+      "pi": [
+        { "kind": "solid", "color": "$vase" },
+        {
+          "kind": "sparkle",
+          "color": "#a9c8ff",
+          "density": 0.35,
+          "rise": 0.05,
+          "hold": [0.05, 0.15],
+          "fall": 0.35
+        }
+      ],
+      "pv": { "base": "$vase", "anim": "twinkle", "glint": "#a9c8ff" },
+      "needs": [],
+      "fallback": null
+    },
+    "v-twinkle": {
+      "for": "vase",
+      "name": "Twinkle",
+      "es": "Destellos",
+      "desc": "Warm white sparkles twinkle over the vase color.",
+      "descEs": "Chispas de blanco cálido brillan sobre el color del jarrón.",
+      "wled": { "fx": "fairytwinkle", "ix": 150, "pal": 2, "glint": "#fff1d6" },
+      "pi": [
+        { "kind": "solid", "color": "$vase" },
+        {
+          "kind": "sparkle",
+          "color": "#fff1d6",
+          "density": 0.2,
+          "rise": 0.4,
+          "hold": [0.1, 0.5],
+          "fall": 0.8
+        }
+      ],
+      "pv": { "base": "$vase", "anim": "twinkle", "glint": "#fff1d6" },
+      "needs": [],
+      "fallback": null
+    },
+    "v-meter": {
+      "for": "vase",
+      "name": "Music meter",
+      "es": "Medidor de música",
+      "desc": "Sound reactive. The vases rise and fall like meters.",
+      "descEs": "Reacciona al sonido. Los jarrones suben y bajan como medidores.",
+      "wled": { "fx": "gravimeter", "ix": 128, "pal": 2 },
+      "pi": null,
+      "pv": { "base": "$vase", "anim": "beat" },
+      "needs": ["mic"],
+      "fallback": "v-breathe"
+    },
+    "h-art": {
+      "for": "halo",
+      "name": "Match the art",
+      "es": "A juego con el arte",
+      "desc": "Each side takes the color at that edge of the painting.",
+      "descEs": "Cada lado toma el color de ese borde del cuadro.",
+      "wled": {
+        "fx": "solid",
+        "sides": {
+          "guitar": { "top": "#ff4d71", "left": "#ff632d", "right": "#ffb128", "bottom": "#ff5613" },
+          "drum": { "top": "#ff5468", "left": "#ff8549", "right": "#ff7044", "bottom": "#ff6d42" },
+          "mic": { "top": "#ff683c", "left": "#ff7d4d", "right": "#ff3e5d", "bottom": "#ff3253" }
+        }
+      },
+      "pi": [{ "kind": "solid", "color": "$side" }],
+      "pv": { "base": "$side", "anim": "still", "sw": ["#ff4d71", "#ff632d", "#ffb128", "#ff3253"] },
+      "needs": ["sides"],
+      "fallback": null
+    },
+    "h-vases": {
+      "for": "halo",
+      "name": "Follow the vases",
+      "es": "Como los jarrones",
+      "desc": "Each side picks up the nearest vase color.",
+      "descEs": "Cada lado toma el color del jarrón más cercano.",
+      "wled": {
+        "fx": "solid",
+        "colFrom": "vases",
+        "vaseMap": {
+          "guitar": { "top": 0, "right": 0, "left": 1, "bottom": 1 },
+          "drum": { "left": 1, "right": 2, "top": [1, 2], "bottom": [1, 2] },
+          "mic": { "top": 2, "left": 2, "right": 3, "bottom": 3 }
+        },
+        "perSide": true
+      },
+      "pi": [{ "kind": "solid", "color": "$side" }],
+      "pv": { "base": "$side", "anim": "still" },
+      "needs": ["sides"],
+      "fallback": null
+    },
+    "h-warm": {
+      "for": "halo",
+      "name": "Warm glow",
+      "es": "Brillo cálido",
+      "desc": "Plain warm white, gallery calm.",
+      "descEs": "Blanco cálido sencillo, calma de galería.",
+      "wled": { "fx": "solid", "col": ["#ffa25a"] },
+      "pi": [{ "kind": "solid", "color": "$col1" }],
+      "pv": { "base": "#ffa25a", "anim": "still", "sw": ["#ffa25a"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-splash": {
+      "for": "halo",
+      "name": "Paint splash",
+      "es": "Salpicadura de color",
+      "desc": "The blue, green and magenta accents from the art.",
+      "descEs": "Los acentos azules, verdes y magenta del arte.",
+      "wled": {
+        "fx": "solid",
+        "sides": {
+          "guitar": { "top": "#3d7bff", "bottom": "#3d7bff", "left": "#ff8a3d", "right": "#ff8a3d" },
+          "drum": { "top": "#3d6bff", "bottom": "#3d6bff", "left": "#ff4f6a", "right": "#ff4f6a" },
+          "mic": { "top": "#2fbf6f", "left": "#2fbf6f", "right": "#e0409a", "bottom": "#e0409a" }
+        }
+      },
+      "pi": [{ "kind": "solid", "color": "$side" }],
+      "pv": { "base": "$side", "anim": "still", "sw": ["#3d7bff", "#ff8a3d", "#2fbf6f", "#e0409a"] },
+      "needs": ["sides"],
+      "fallback": null
+    },
+    "h-gallery": {
+      "for": "halo",
+      "name": "Gallery uplight",
+      "es": "Luz de galería",
+      "desc": "Bottom edge only, like a picture light from below.",
+      "descEs": "Solo el borde de abajo, como una luz de cuadro desde abajo.",
+      "wled": {
+        "fx": "solid",
+        "sides": {
+          "guitar": { "top": null, "left": null, "right": null, "bottom": "#ffd2a1" },
+          "drum": { "top": null, "left": null, "right": null, "bottom": "#ffd2a1" },
+          "mic": { "top": null, "left": null, "right": null, "bottom": "#ffd2a1" }
+        }
+      },
+      "pi": [{ "kind": "solid", "color": "$side" }],
+      "pv": { "base": "$side", "anim": "still", "sw": ["#ffd2a1"] },
+      "needs": ["sides"],
+      "fallback": null
+    },
+    "h-breathe": {
+      "for": "halo",
+      "name": "Breathing art",
+      "es": "Arte que respira",
+      "desc": "The art colors, slowly in and out.",
+      "descEs": "Los colores del arte, que suben y bajan despacio.",
+      "wled": {
+        "fx": "breathe",
+        "sx": 40,
+        "sides": {
+          "guitar": { "top": "#ff4d71", "left": "#ff632d", "right": "#ffb128", "bottom": "#ff5613" },
+          "drum": { "top": "#ff5468", "left": "#ff8549", "right": "#ff7044", "bottom": "#ff6d42" },
+          "mic": { "top": "#ff683c", "left": "#ff7d4d", "right": "#ff3e5d", "bottom": "#ff3253" }
+        }
+      },
+      "pi": [{ "kind": "breathe", "color": "$side", "low": 0.15, "period": 7 }],
+      "pv": { "base": "$side", "anim": "breathe", "sw": ["#ff5468", "#ff8549"] },
+      "needs": ["sides"],
+      "fallback": null
+    },
+    "h-candle": {
+      "for": "halo",
+      "name": "Candlelight",
+      "es": "Luz de velas",
+      "desc": "Soft amber flicker around the frame.",
+      "descEs": "Parpadeo ámbar suave alrededor del marco.",
+      "wled": { "fx": "candle", "sx": 90, "col": ["#ff9b3d"] },
+      "pi": [{ "kind": "candle", "colors": ["$col1", "#ffb35c"], "low": 0.35 }],
+      "pv": { "base": "#ff9b3d", "anim": "flicker", "sw": ["#ff9b3d", "#ffb35c"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-twinkle": {
+      "for": "halo",
+      "name": "Twinkle",
+      "es": "Destellos",
+      "desc": "Warm dots blink on and off at random.",
+      "descEs": "Puntos cálidos que se encienden y apagan al azar.",
+      "wled": { "fx": "twinkle", "sx": 110, "col": ["#ffd9a0"] },
+      "pi": [{ "kind": "sparkle", "color": "$col1", "density": 0.12, "rise": 0.6, "hold": [0.1, 0.4], "fall": 0.8 }],
+      "pv": { "base": "#ffd9a0", "anim": "twinkle", "sw": ["#ffd9a0"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-comet": {
+      "for": "halo",
+      "name": "Comet",
+      "es": "Cometa",
+      "desc": "One bright dot laps the frame with a fading tail.",
+      "descEs": "Un punto brillante da vueltas al marco con una cola que se apaga.",
+      "wled": {
+        "fx": "lighthouse",
+        "sx": 120,
+        "colBy": { "guitar": ["#ff4d71"], "drum": ["#ff5468"], "mic": ["#ff683c"] }
+      },
+      "pi": [{ "kind": "chase", "mode": "comet", "color": "$col1", "lapSeconds": 6, "tail": 9 }],
+      "pv": { "base": "#ff4d71", "anim": "chase", "sw": ["#ff4d71", "#1b1b1b"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-rainbow": {
+      "for": "halo",
+      "name": "Rainbow loop",
+      "es": "Arcoíris en bucle",
+      "desc": "A full rainbow slowly turns around each frame.",
+      "descEs": "Un arcoíris completo gira despacio alrededor de cada marco.",
+      "wled": { "fx": "rainbow", "sx": 60 },
+      "pi": [{ "kind": "palette", "palette": "rainbow", "cycleSeconds": 24, "spread": 1 }],
+      "pv": { "base": "#ff3d3d", "anim": "cycle", "sw": ["#ff3d3d", "#ffd23d", "#3dd6ff", "#9b3dff"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-ocean": {
+      "for": "halo",
+      "name": "Ocean",
+      "es": "Océano",
+      "desc": "Blue and aqua waves drifting around the frame.",
+      "descEs": "Olas azules y aguamarina que se mueven alrededor del marco.",
+      "wled": { "fx": "pacifica", "sx": 100 },
+      "pi": [{ "kind": "palette", "palette": "ocean", "cycleSeconds": 7, "spread": 2, "level": [0.55, 1] }],
+      "pv": { "base": "#0b4fa8", "anim": "drift", "sw": ["#0b4fa8", "#22b8cf", "#5fd3c6"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-canopy": {
+      "for": "halo",
+      "name": "Canopy",
+      "es": "Dosel",
+      "desc": "Forest greens drifting slowly, like light through leaves.",
+      "descEs": "Verdes de bosque que se mueven despacio, como luz entre las hojas.",
+      "wled": { "fx": "colorwaves", "sx": 40, "ix": 110, "pal": 10 },
+      "pi": [{ "kind": "palette", "palette": "canopy", "cycleSeconds": 18, "spread": 1.5, "level": [0.5, 1] }],
+      "pv": { "base": "#0e5a2a", "anim": "drift", "sw": ["#0e5a2a", "#3f9e4d", "#a6d23f"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-fireflies": {
+      "for": "halo",
+      "name": "Fireflies",
+      "es": "Luciérnagas",
+      "desc": "Dim canopy green with yellow green fireflies fading in and out.",
+      "descEs": "Verde tenue de dosel con luciérnagas verde amarillo que aparecen y se apagan.",
+      "wled": { "fx": "twinklefox", "sx": 90, "ix": 24, "pal": 2, "o1": true, "col": ["#c8ff14", "#146e32"] },
+      "pi": [
+        { "kind": "solid", "color": "#146e32", "level": 0.25 },
+        {
+          "kind": "sparkle",
+          "color": "#c8ff14",
+          "density": 0.08,
+          "rise": 1.5,
+          "hold": [0.3, 1.2],
+          "fall": 2.5
+        }
+      ],
+      "pv": { "base": "#146e32", "anim": "twinkle", "glint": "#c8ff14", "sw": ["#146e32", "#c8ff14"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-storm": {
+      "for": "halo",
+      "name": "Storm",
+      "es": "Tormenta",
+      "desc": "Navy glow with a strike every few seconds.",
+      "descEs": "Brillo azul marino con un relámpago cada pocos segundos.",
+      "wled": { "fx": "lightning", "sx": 210, "ix": 120, "col": ["#d2e1ff", "#0c1a40"] },
+      "pi": [
+        { "kind": "solid", "color": "#0c1a40", "level": 0.12 },
+        { "kind": "strike", "color": "#e2ecff", "gap": [0.3, 4.8], "flashes": [2, 4] }
+      ],
+      "pv": { "base": "#0c1a40", "anim": "flash", "glint": "#d2e1ff", "sw": ["#0c1a40", "#d2e1ff"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-thunder": {
+      "for": "halo",
+      "name": "Thunder",
+      "es": "Trueno",
+      "desc": "Sound reactive. Each thunder clap the board mic hears bursts white.",
+      "descEs": "Reacciona al sonido. Cada trueno que oye el micrófono de la placa estalla en blanco.",
+      "wled": { "fx": "puddlepeak", "sx": 120, "ix": 255, "c1": 6, "c2": 40, "col": ["#e2ecff", "#0c1a40"] },
+      "pi": [
+        { "kind": "solid", "color": "#0c1a40", "level": 0.32 },
+        { "kind": "strike", "color": "#e2ecff", "on": "thunder", "flashes": [1, 2] }
+      ],
+      "pv": { "base": "#0c1a40", "anim": "flash", "glint": "#e2ecff", "sw": ["#0c1a40", "#e2ecff"] },
+      "needs": ["mic"],
+      "fallback": "h-storm"
+    },
+    "h-stormflies": {
+      "for": "halo",
+      "name": "Fireflies + thunder",
+      "es": "Luciérnagas y trueno",
+      "desc": "Fireflies. The thunder bursts of the artifact are not ported.",
+      "descEs": "Luciérnagas. Los estallidos de trueno del artefacto no se han portado.",
+      "wled": { "fx": "twinklefox", "sx": 90, "ix": 24, "pal": 2, "o1": true, "col": ["#c8ff14", "#146e32"] },
+      "pi": [
+        { "kind": "solid", "color": "#146e32", "level": 0.25 },
+        {
+          "kind": "sparkle",
+          "color": "#c8ff14",
+          "density": 0.08,
+          "rise": 1.5,
+          "hold": [0.3, 1.2],
+          "fall": 2.5
+        }
+      ],
+      "pv": { "base": "#146e32", "anim": "twinkle", "glint": "#c8ff14", "sw": ["#146e32", "#c8ff14", "#e2ecff"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-drumbeat": {
+      "for": "halo",
+      "name": "Drum beat",
+      "es": "Golpe de batería",
+      "desc": "Sound reactive. Each hit flashes a burst of white that fades.",
+      "descEs": "Reacciona al sonido. Cada golpe enciende un destello blanco que se apaga.",
+      "wled": { "fx": "puddlepeak", "sx": 150, "ix": 255, "c1": 6, "c2": 40, "col": ["#d2e1ff", "#000000"] },
+      "pi": null,
+      "pv": { "base": "#000000", "anim": "beat", "glint": "#d2e1ff", "sw": ["#d2e1ff", "#1b1b1b"] },
+      "needs": ["mic"],
+      "fallback": "h-twinkle"
+    },
+    "h-aurora": {
+      "for": "halo",
+      "name": "Aurora",
+      "es": "Aurora",
+      "desc": "Green, teal and violet curtains drifting slowly around the frame.",
+      "descEs": "Cortinas verdes, turquesa y violeta que flotan despacio alrededor del marco.",
+      "wled": { "fx": "aurora", "sx": 24, "ix": 128, "pal": 50 },
+      "pi": [
+        {
+          "kind": "palette",
+          "palette": "aurora-curtain",
+          "cycleSeconds": 25,
+          "spread": 1.5,
+          "level": [0.3, 1]
+        }
+      ],
+      "pv": { "base": "#19e3a0", "anim": "drift", "sw": ["#19e3a0", "#2fa8e0", "#7a4fd8"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-xmas": {
+      "for": "halo",
+      "name": "Christmas lights",
+      "es": "Luces de Navidad",
+      "desc": "Red, amber, green and blue bulbs twinkling softly, like C9 lights.",
+      "descEs": "Bombillas rojas, ámbar, verdes y azules que brillan suave, como luces C9.",
+      "wled": { "fx": "twinklefox", "sx": 70, "ix": 230, "pal": 53, "col": ["#ff0500", "#200800"] },
+      "pi": [
+        {
+          "kind": "sparkle",
+          "palette": "c9",
+          "floor": 0.3,
+          "density": 1,
+          "rise": 1.5,
+          "hold": [0.5, 2],
+          "fall": 1.5
+        }
+      ],
+      "pv": { "base": "#ff0500", "anim": "twinkle", "sw": ["#ff0500", "#c43902", "#067e02", "#1d3fc0"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-candycane": {
+      "for": "halo",
+      "name": "Candy cane",
+      "es": "Bastón de caramelo",
+      "desc": "Red and white stripes marching slowly around the frame.",
+      "descEs": "Franjas rojas y blancas que avanzan despacio alrededor del marco.",
+      "wled": { "fx": "running", "sx": 16, "ix": 128, "col": ["#ff1020", "#ffffff"] },
+      "pi": [
+        {
+          "kind": "chase",
+          "mode": "stripes",
+          "colors": ["#ff1020", "#ffffff"],
+          "period": 8,
+          "seconds": 8,
+          "level": 0.75
+        }
+      ],
+      "pv": { "base": "#ffffff", "anim": "chase", "glint": "#ff1020", "sw": ["#ff1020", "#ffffff", "#ff1020"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-bluesilver": {
+      "for": "halo",
+      "name": "Blue and silver",
+      "es": "Azul y plata",
+      "desc": "A dim blue glow with blue and white twinkles.",
+      "descEs": "Un brillo azul tenue con destellos azules y blancos.",
+      "wled": { "fx": "twinklefox", "sx": 70, "ix": 200, "pal": 3, "col": ["#ffffff", "#1440c8"] },
+      "pi": [
+        { "kind": "solid", "color": "#1440c8", "level": 0.35 },
+        { "kind": "sparkle", "color": "#ffffff", "density": 0.5, "rise": 0.8, "hold": [0.2, 0.6], "fall": 1 }
+      ],
+      "pv": { "base": "#1440c8", "anim": "twinkle", "glint": "#ffffff", "sw": ["#1440c8", "#ffffff"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-bluewave": {
+      "for": "halo",
+      "name": "Blue and white waves",
+      "es": "Olas azules y blancas",
+      "desc": "Soft white waves drifting slowly over blue.",
+      "descEs": "Olas blancas suaves que se mueven despacio sobre azul.",
+      "wled": { "fx": "running", "sx": 12, "ix": 64, "col": ["#ffffff", "#1440c8"] },
+      "pi": [{ "kind": "chase", "mode": "stripes", "colors": ["#1440c8", "#ffffff"], "period": 16, "seconds": 12 }],
+      "pv": { "base": "#1440c8", "anim": "chase", "glint": "#ffffff", "sw": ["#1440c8", "#ffffff", "#1440c8"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-peaks": {
+      "for": "halo",
+      "name": "Beat bursts",
+      "es": "Destellos al ritmo",
+      "desc": "Sound reactive. Each beat lights a burst in the nearest vase color.",
+      "descEs": "Reacciona al sonido. Cada golpe enciende un destello del color del jarrón más cercano.",
+      "wled": {
+        "fx": "puddlepeak",
+        "sx": 150,
+        "ix": 200,
+        "c1": 6,
+        "c2": 40,
+        "colFrom": "vases",
+        "vaseMap": {
+          "guitar": { "top": 0, "right": 0, "left": 1, "bottom": 1 },
+          "drum": { "left": 1, "right": 2, "top": [1, 2], "bottom": [1, 2] },
+          "mic": { "top": 2, "left": 2, "right": 3, "bottom": 3 }
+        },
+        "col2": "#000000"
+      },
+      "pi": null,
+      "pv": { "base": "$col1", "anim": "beat" },
+      "needs": ["mic"],
+      "fallback": "h-twinkle"
+    },
+    "h-ripples": {
+      "for": "halo",
+      "name": "Beat ripples",
+      "es": "Ondas al ritmo",
+      "desc": "Sound reactive. Each beat sends C9 colored ripples around the frame.",
+      "descEs": "Reacciona al sonido. Cada golpe lanza ondas de colores C9 alrededor del marco.",
+      "wled": {
+        "fx": "ripplepeak",
+        "sx": 140,
+        "ix": 120,
+        "pal": 53,
+        "c1": 6,
+        "c2": 40,
+        "col": ["#ff0500", "#000000"]
+      },
+      "pi": null,
+      "pv": {
+        "base": "#000000",
+        "anim": "beat",
+        "glint": "#ff0500",
+        "sw": ["#ff0500", "#c43902", "#067e02", "#1d3fc0"]
+      },
+      "needs": ["mic"],
+      "fallback": "h-xmas"
+    },
+    "h-spin": {
+      "for": "halo",
+      "name": "Spinning dreidel",
+      "es": "Dreidel girando",
+      "desc": "A white spark laps the frame over blue, like a spinning dreidel.",
+      "descEs": "Una chispa blanca da vueltas al marco sobre azul, como un dreidel que gira.",
+      "wled": { "fx": "lighthouse", "sx": 120, "ix": 200, "col": ["#ffffff", "#0c2a8a"] },
+      "pi": [
+        {
+          "kind": "chase",
+          "mode": "comet",
+          "color": "#ffffff",
+          "base": "#0c2a8a",
+          "lapSeconds": 2.1,
+          "tail": 7
+        }
+      ],
+      "pv": { "base": "#0c2a8a", "anim": "chase", "glint": "#ffffff", "sw": ["#0c2a8a", "#ffffff"] },
+      "needs": [],
+      "fallback": null
+    },
+    "h-menorah": {
+      "for": "halo",
+      "name": "Menorah",
+      "es": "Menorá",
+      "desc": "Single gold bulbs flicker as candles over a steady blue glow.",
+      "descEs": "Luces doradas sueltas parpadean como velas sobre un brillo azul fijo.",
+      "wled": {
+        "fx": "candle",
+        "menorah": {
+          "flame": { "fx": "candle", "sx": 96, "ix": 160, "col": ["#ff9329", "#6e2000"] },
+          "shamash": { "fx": "candle", "sx": 96, "ix": 120, "col": ["#ffc45a", "#963c00"] },
+          "base": { "fx": "solid", "col": ["#1d4fe0"], "briScale": 0.4, "briMin": 6 }
+        }
+      },
+      "pi": [
+        {
+          "kind": "pixels",
+          "from": "menorah",
+          "base": "#1d4fe0",
+          "baseLevel": 0.4,
+          "flame": ["#a83a00", "#ffb347"],
+          "shamash": ["#c45a00", "#ffd27a"]
+        }
+      ],
+      "pv": { "base": "#1d4fe0", "anim": "flicker", "glint": "#ffb347", "sw": ["#1d4fe0", "#ffb347", "#1d4fe0"] },
+      "needs": ["candles"],
+      "fallback": null
+    },
+    "h-check": {
+      "for": "halo",
+      "hidden": true,
+      "name": "Side check",
+      "es": "Prueba de lados",
+      "desc": "Top cyan, bottom magenta, left orange, right violet.",
+      "descEs": "Arriba cian, abajo magenta, izquierda naranja, derecha violeta.",
+      "wled": {
+        "fx": "solid",
+        "sides": {
+          "guitar": { "top": "#00ffff", "bottom": "#ff00ff", "left": "#ff6000", "right": "#8000ff" },
+          "drum": { "top": "#00ffff", "bottom": "#ff00ff", "left": "#ff6000", "right": "#8000ff" },
+          "mic": { "top": "#00ffff", "bottom": "#ff00ff", "left": "#ff6000", "right": "#8000ff" }
+        }
+      },
+      "pi": [{ "kind": "solid", "color": "$side" }],
+      "pv": { "base": "$side", "anim": "still" },
+      "needs": ["sides"],
+      "fallback": null
+    }
+  },
+  "moods": [
+    {
+      "id": "match-the-art",
+      "n": 1,
+      "name": "Match the art",
+      "es": "A juego con el arte",
+      "desc": "Warm reds and oranges sampled beside each vase, with the frames lit to match.",
+      "descEs": "Rojos y naranjas cálidos tomados junto a cada jarrón, con los marcos a juego.",
+      "group": "vases",
+      "sw": ["#ff5163", "#ff8d42", "#ff6b53", "#ff5a47"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-static", "c": ["#ff5163", "#ff8d42", "#ff6b53", "#ff5a47"], "bri": 120, "sx": 128 },
+      "halos": { "bri": 60, "guitar": "h-vases", "drum": "h-vases", "mic": "h-vases" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": true, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 40, "color": [255, 190, 110] },
+          "bars": { "brightness": 40, "color": [255, 70, 40] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:palette" }
+    },
+    {
+      "id": "paint-splash",
+      "n": 2,
+      "name": "Paint splash",
+      "es": "Salpicadura de color",
+      "desc": "The accent colors from all three canvases, breathing slowly.",
+      "descEs": "Los colores de acento de los tres cuadros, respirando despacio.",
+      "group": "vases",
+      "sw": ["#ff4f8a", "#ff8a3d", "#8f5bd6", "#2fbf8f"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-breathe", "c": ["#ff4f8a", "#ff8a3d", "#8f5bd6", "#2fbf8f"], "bri": 130, "sx": 30 },
+      "halos": { "bri": 65, "guitar": "h-vases", "drum": "h-vases", "mic": "h-vases" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": true, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 35, "color": [255, 30, 120] },
+          "bars": { "brightness": 45, "color": [130, 40, 255] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:palette-swatch" }
+    },
+    {
+      "id": "lofi-chill",
+      "n": 3,
+      "name": "Lo-fi chill",
+      "es": "Lo-fi tranquilo",
+      "desc": "Teal, amber and lavender in a slow breathe.",
+      "descEs": "Turquesa, ámbar y lavanda con una respiración lenta.",
+      "group": "vases",
+      "sw": ["#2fb5a3", "#e8a24a", "#8e7cc3", "#4fa36b"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-breathe", "c": ["#2fb5a3", "#e8a24a", "#8e7cc3", "#4fa36b"], "bri": 90, "sx": 40 },
+      "halos": { "bri": 45, "guitar": "h-vases", "drum": "h-vases", "mic": "h-vases" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": true, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 35, "palette": "lofi" },
+          "bars": { "brightness": 35, "palette": "lofi" },
+          "motion": "wave"
+        }
+      },
+      "sound": { "kind": "music", "hint": "Lo-fi beats, quiet", "hintEs": "Ritmos lo-fi, bajito", "cue": null },
+      "ha": { "expose": true, "icon": "mdi:headphones" }
+    },
+    {
+      "id": "rainforest",
+      "n": 4,
+      "name": "Rainforest",
+      "es": "Selva tropical",
+      "desc": "Slow forest greens drifting over the whole wall, wire runs included.",
+      "descEs": "Verdes de selva que se mueven despacio por toda la pared, cables incluidos.",
+      "group": "wall",
+      "sw": ["#2f9a52", "#8cc63f", "#16775c", "#e0a33a"],
+      "bri": 100,
+      "wash": { "palette": "forest" },
+      "vases": null,
+      "halos": null,
+      "wled": { "preset": 2 },
+      "render": {
+        "type": "pi-drawn",
+        "engine": "forest",
+        "palette": "forest",
+        "drift": { "cycleSeconds": null, "spans": 1 },
+        "groups": 1,
+        "fps": 30,
+        "maxMa": 800
+      },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": { "ref": "rainforest" },
+      "sound": {
+        "kind": "forest",
+        "hint": "A rainforest at day, birds and water",
+        "hintEs": "Una selva de día, pájaros y agua",
+        "cue": null
+      },
+      "ha": { "expose": true, "icon": "mdi:forest" }
+    },
+    {
+      "id": "rainforest-night",
+      "n": 5,
+      "name": "Rainforest night",
+      "es": "Selva de noche",
+      "desc": "Night canopy with fireflies blinking in the vases and around every painting.",
+      "descEs": "Dosel nocturno con luciérnagas que parpadean en los jarrones y alrededor de cada cuadro.",
+      "group": "wall",
+      "sw": ["#1f8a4a", "#3e9a35", "#13705a", "#2c8f6c"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-fireflies", "c": ["#1f8a4a", "#3e9a35", "#13705a", "#2c8f6c"], "bri": 95, "sx": 150 },
+      "halos": { "bri": 120, "guitar": "h-fireflies", "drum": "h-fireflies", "mic": "h-fireflies" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 8, "color": [90, 255, 0] },
+          "bars": { "brightness": 20, "color": [0, 120, 20] }
+        }
+      },
+      "sound": {
+        "kind": "night",
+        "hint": "A rainforest at night, frogs and insects",
+        "hintEs": "Una selva de noche, ranas e insectos",
+        "cue": null
+      },
+      "ha": { "expose": true, "icon": "mdi:weather-night" }
+    },
+    {
+      "id": "thunderstorm",
+      "n": 6,
+      "name": "Thunderstorm",
+      "es": "Tormenta",
+      "desc": "Rain glints in the vases, lightning on the guitar and mic, drums answer the thunder.",
+      "descEs": "Lluvia en los jarrones, relámpagos en la guitarra y el micrófono, y la batería responde al trueno.",
+      "group": "wall",
+      "sw": ["#24479a", "#1a3577", "#24479a", "#1a3577"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-rain", "c": ["#24479a", "#1a3577", "#24479a", "#1a3577"], "bri": 70, "sx": 200 },
+      "halos": { "bri": 200, "guitar": "h-storm", "drum": "h-thunder", "mic": "h-storm" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": true, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": { "ref": "thunderstorm" },
+      "sound": {
+        "kind": "storm",
+        "hint": "A thunderstorm recording near the board",
+        "hintEs": "Una grabación de tormenta cerca de la placa",
+        "cue": "thunder"
+      },
+      "ha": { "expose": true, "icon": "mdi:weather-lightning-rainy" }
+    },
+    {
+      "id": "rainforest-storm",
+      "n": 7,
+      "name": "Rainforest storm",
+      "es": "Tormenta en la selva",
+      "desc": "Slow forest light. Thunder dims a few bulbs behind a painting.",
+      "descEs": "Luz de selva lenta. El trueno atenúa unas cuantas luces detrás de un cuadro.",
+      "group": "wall",
+      "sw": ["#1f8a4a", "#3e9a35", "#13705a", "#2c8f6c"],
+      "bri": 100,
+      "wash": { "palette": "forest" },
+      "vases": null,
+      "halos": null,
+      "wled": { "preset": 2 },
+      "render": {
+        "type": "pi-drawn",
+        "engine": "forest",
+        "palette": "forest",
+        "drift": { "cycleSeconds": null, "spans": 1 },
+        "groups": 1,
+        "fps": 30,
+        "maxMa": 800,
+        "events": {
+          "thunder": {
+            "kind": "dim",
+            "zones": ["halo.guitar", "halo.drum", "halo.mic"],
+            "size": [2, 4],
+            "depth": [0.5, 0.75],
+            "attack": 0.25,
+            "hold": [1, 2.5],
+            "release": 0.9,
+            "floor": 0.15,
+            "auto": [20, 75],
+            "fallback": { "dimSegment": "halo.drum" }
+          }
+        }
+      },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": { "ref": "rainforest" },
+      "sound": {
+        "kind": "storm",
+        "hint": "A rainforest thunderstorm recording",
+        "hintEs": "Una grabación de tormenta en la selva",
+        "cue": "thunder"
+      },
+      "ha": { "expose": true, "icon": "mdi:weather-pouring" }
+    },
+    {
+      "id": "aurora",
+      "n": 8,
+      "name": "Aurora",
+      "es": "Aurora",
+      "desc": "Green, teal and violet curtains drifting around every painting.",
+      "descEs": "Cortinas verdes, turquesa y violeta que flotan alrededor de cada cuadro.",
+      "group": "wall",
+      "sw": ["#19e3a0", "#2fa8e0", "#7a4fd8", "#22c47a"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-breathe", "c": ["#19e3a0", "#2fa8e0", "#7a4fd8", "#22c47a"], "bri": 100, "sx": 22 },
+      "halos": { "bri": 130, "guitar": "h-aurora", "drum": "h-aurora", "mic": "h-aurora" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 30, "palette": "aurora" },
+          "bars": { "brightness": 35, "gradient": [[40, 255, 90], [10, 140, 140], [120, 50, 200]] },
+          "motion": "drift"
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:shimmer" }
+    },
+    {
+      "id": "christmas",
+      "n": 9,
+      "name": "Christmas",
+      "es": "Navidad",
+      "desc": "Red and green vases with warm twinkles, C9 bulbs and a candy cane stripe on the drums.",
+      "descEs": "Jarrones rojos y verdes con destellos cálidos, bombillas C9 y una franja de bastón de caramelo en la batería.",
+      "group": "wall",
+      "sw": ["#ff1a1a", "#14a03c", "#14a03c", "#ff1a1a"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-twinkle", "c": ["#ff1a1a", "#14a03c", "#14a03c", "#ff1a1a"], "bri": 120, "sx": 150 },
+      "halos": { "bri": 150, "guitar": "h-xmas", "drum": "h-candycane", "mic": "h-xmas" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 40, "color": [0, 170, 30] },
+          "bars": {
+            "brightness": 45,
+            "gradient": [[255, 0, 0], [0, 170, 30], [255, 0, 0], [0, 170, 30], [255, 0, 0]]
+          }
+        }
+      },
+      "sound": { "kind": "music", "hint": "Christmas music", "hintEs": "Música de Navidad", "cue": null },
+      "ha": { "expose": true, "icon": "mdi:pine-tree" }
+    },
+    {
+      "id": "santa",
+      "n": 10,
+      "name": "Santa Claus Is Coming to Town",
+      "es": "Santa Claus llegó a la ciudad",
+      "desc": "Play the song near the board: vases rise like meters and ripples race the drums.",
+      "descEs": "Pon la canción cerca de la placa: los jarrones suben como medidores y las ondas recorren la batería.",
+      "group": "wall",
+      "sw": ["#ff1a1a", "#14a03c", "#14a03c", "#ff1a1a"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-meter", "c": ["#ff1a1a", "#14a03c", "#14a03c", "#ff1a1a"], "bri": 170, "sx": 128 },
+      "halos": { "bri": 190, "guitar": "h-peaks", "drum": "h-ripples", "mic": "h-peaks" },
+      "wled": null,
+      "render": { "type": "wled-effects" },
+      "needs": { "mic": true, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 50, "color": [255, 0, 0] },
+          "bars": { "brightness": 50, "gradient": [[255, 0, 0], [0, 170, 30], [255, 0, 0], [0, 170, 30]] },
+          "motion": "drift"
+        }
+      },
+      "sound": {
+        "kind": "song",
+        "hint": "Santa Claus Is Coming to Town, played near the board",
+        "hintEs": "Santa Claus llegó a la ciudad, cerca de la placa",
+        "cue": null
+      },
+      "ha": { "expose": true, "icon": "mdi:gift" }
+    },
+    {
+      "id": "carol-of-the-bells",
+      "n": 11,
+      "name": "Carol of the Bells",
+      "es": "Carol of the Bells",
+      "desc": "Play the song near the board: red and green bursts ring around the wall.",
+      "descEs": "Pon la canción cerca de la placa: destellos rojos y verdes suenan por toda la pared.",
+      "group": "wall",
+      "sw": ["#ff1a1a", "#14a03c", "#14a03c", "#ff1a1a"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-meter", "c": ["#ff1a1a", "#14a03c", "#14a03c", "#ff1a1a"], "bri": 170, "sx": 128 },
+      "halos": { "bri": 190, "guitar": "h-peaks", "drum": "h-ripples", "mic": "h-peaks" },
+      "wled": null,
+      "render": { "type": "wled-effects" },
+      "needs": { "mic": true, "sides": false, "candles": false, "song": { "id": "carol", "built": false } },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 35, "color": [255, 190, 110] },
+          "bars": {
+            "brightness": 45,
+            "gradient": [[255, 0, 0], [255, 150, 0], [0, 170, 30], [255, 150, 0], [255, 0, 0]]
+          }
+        }
+      },
+      "sound": {
+        "kind": "song",
+        "hint": "Carol of the Bells, played near the board",
+        "hintEs": "Carol of the Bells, cerca de la placa",
+        "cue": null
+      },
+      "ha": { "expose": true, "icon": "mdi:bell" }
+    },
+    {
+      "id": "hanukkah",
+      "n": 12,
+      "name": "Hanukkah",
+      "es": "Janucá",
+      "desc": "Blue and white vases breathing, blue and silver twinkles, soft white waves on the drums.",
+      "descEs": "Jarrones azules y blancos que respiran, destellos azules y plateados, y olas blancas en la batería.",
+      "group": "wall",
+      "sw": ["#1d4fe0", "#dfe8ff", "#dfe8ff", "#1d4fe0"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-breathe", "c": ["#1d4fe0", "#dfe8ff", "#dfe8ff", "#1d4fe0"], "bri": 110, "sx": 30 },
+      "halos": { "bri": 140, "guitar": "h-bluesilver", "drum": "h-bluewave", "mic": "h-bluesilver" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 40, "color": [200, 215, 255] },
+          "bars": { "brightness": 45, "color": [20, 60, 255] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:star-david" }
+    },
+    {
+      "id": "dreidel",
+      "n": 13,
+      "name": "Dreidel, Dreidel, Dreidel",
+      "es": "Dreidel, dreidel, dreidel",
+      "desc": "Play the song near the board: a white spark spins around the drum frame.",
+      "descEs": "Pon la canción cerca de la placa: una chispa blanca gira alrededor del marco de la batería.",
+      "group": "wall",
+      "sw": ["#1d4fe0", "#dfe8ff", "#dfe8ff", "#1d4fe0"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-meter", "c": ["#1d4fe0", "#dfe8ff", "#dfe8ff", "#1d4fe0"], "bri": 160, "sx": 128 },
+      "halos": { "bri": 180, "guitar": "h-peaks", "drum": "h-spin", "mic": "h-peaks" },
+      "wled": null,
+      "render": { "type": "wled-effects" },
+      "needs": { "mic": true, "sides": false, "candles": false, "song": { "id": "dreidel", "built": false } },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 40, "color": [20, 60, 255] },
+          "bars": { "brightness": 45, "gradient": [[20, 60, 255], [200, 215, 255], [20, 60, 255]] },
+          "motion": "wave"
+        }
+      },
+      "sound": {
+        "kind": "song",
+        "hint": "The dreidel song, played near the board",
+        "hintEs": "La canción del dreidel, cerca de la placa",
+        "cue": null
+      },
+      "ha": { "expose": true, "icon": "mdi:music-note" }
+    },
+    {
+      "id": "menorah",
+      "n": 14,
+      "name": "Menorah",
+      "es": "Menorá",
+      "desc": "Gold candles flicker on a blue wall. Pick the night; candles light from the right.",
+      "descEs": "Velas doradas parpadean sobre una pared azul. Elige la noche; las velas se encienden desde la derecha.",
+      "group": "wall",
+      "sw": ["#1d4fe0", "#dfe8ff", "#dfe8ff", "#1d4fe0"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-static", "c": ["#1d4fe0", "#dfe8ff", "#dfe8ff", "#1d4fe0"], "bri": 40, "sx": 128 },
+      "halos": { "bri": 200, "guitar": "h-menorah", "drum": "h-menorah", "mic": "h-menorah" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": true, "song": null },
+      "param": { "night": { "min": 1, "max": 8, "auto": "hanukkah" } },
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 30, "color": [255, 150, 0] },
+          "bars": { "brightness": 30, "color": [20, 60, 255] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:candle" }
+    },
+    {
+      "id": "ocean-drift",
+      "n": 15,
+      "name": "Ocean drift",
+      "es": "Marea lenta",
+      "desc": "Deep blue and aqua, slow tide.",
+      "descEs": "Azul profundo y aguamarina, marea lenta.",
+      "group": "vases",
+      "sw": ["#1e6fd9", "#22b8cf", "#3a4fd0", "#5fd3c6"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-breathe", "c": ["#1e6fd9", "#22b8cf", "#3a4fd0", "#5fd3c6"], "bri": 100, "sx": 25 },
+      "halos": { "bri": 50, "guitar": "h-vases", "drum": "h-vases", "mic": "h-vases" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": true, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 40, "palette": "ocean" },
+          "bars": { "brightness": 40, "palette": "ocean" },
+          "motion": "drift"
+        }
+      },
+      "sound": { "kind": "waves", "hint": "Slow ocean waves", "hintEs": "Olas lentas del mar", "cue": null },
+      "ha": { "expose": true, "icon": "mdi:waves" }
+    },
+    {
+      "id": "movie-night",
+      "n": 16,
+      "name": "Movie night",
+      "es": "Noche de cine",
+      "desc": "Dim amber so the screen wins.",
+      "descEs": "Ámbar tenue para que mande la pantalla.",
+      "group": "vases",
+      "sw": ["#ff8a2a", "#ff8a2a", "#ff8a2a", "#ff8a2a"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-static", "c": ["#ff8a2a", "#ff8a2a", "#ff8a2a", "#ff8a2a"], "bri": 18, "sx": 128 },
+      "halos": { "bri": 0, "guitar": null, "drum": null, "mic": null },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 1, "color": [255, 110, 0] },
+          "bars": { "brightness": 15, "color": [255, 110, 0] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:movie-open" }
+    },
+    {
+      "id": "tv-glow",
+      "n": 17,
+      "name": "TV glow",
+      "es": "Brillo de tele",
+      "desc": "Soft cool blue, easy on the eyes.",
+      "descEs": "Azul frío y suave, descansa la vista.",
+      "group": "vases",
+      "sw": ["#6f8cff", "#6f8cff", "#8a7dff", "#8a7dff"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-static", "c": ["#6f8cff", "#6f8cff", "#8a7dff", "#8a7dff"], "bri": 30, "sx": 128 },
+      "halos": { "bri": 0, "guitar": null, "drum": null, "mic": null },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 15, "color": [130, 90, 255] },
+          "bars": { "brightness": 25, "color": [70, 100, 255] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:television" }
+    },
+    {
+      "id": "dinner-party",
+      "n": 18,
+      "name": "Dinner party",
+      "es": "Cena con amigos",
+      "desc": "Warm candle flicker for guests.",
+      "descEs": "Parpadeo cálido de velas para los invitados.",
+      "group": "vases",
+      "sw": ["#ff9b3d", "#ffb35c", "#ff9b3d", "#ffb35c"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-candle", "c": ["#ff9b3d", "#ffb35c", "#ff9b3d", "#ffb35c"], "bri": 120, "sx": 90 },
+      "halos": { "bri": 60, "guitar": "h-candle", "drum": "h-candle", "mic": "h-candle" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 55, "color": [255, 150, 60] },
+          "bars": { "brightness": 45, "color": [255, 140, 30] }
+        }
+      },
+      "sound": { "kind": "music", "hint": "Quiet dinner music", "hintEs": "Música tranquila para cenar", "cue": null },
+      "ha": { "expose": true, "icon": "mdi:silverware-fork-knife" }
+    },
+    {
+      "id": "dance-party",
+      "n": 19,
+      "name": "Dance party",
+      "es": "Fiesta de baile",
+      "desc": "Full color cycle, bright.",
+      "descEs": "Ciclo de colores completo y brillante.",
+      "group": "vases",
+      "sw": ["#ff3d7f", "#ffd23d", "#3dd6ff", "#9b3dff"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-cycle", "c": ["#ff3d7f", "#ffd23d", "#3dd6ff", "#9b3dff"], "bri": 200, "sx": 180 },
+      "halos": { "bri": 200, "guitar": "h-rainbow", "drum": "h-rainbow", "mic": "h-rainbow" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 60, "gradient": [[255, 0, 120], [255, 210, 0], [0, 200, 255], [150, 0, 255]] },
+          "bars": { "brightness": 60, "gradient": [[255, 0, 120], [255, 210, 0], [0, 200, 255], [150, 0, 255]] },
+          "motion": "wave"
+        }
+      },
+      "sound": { "kind": "music", "hint": "Dance music", "hintEs": "Música para bailar", "cue": null },
+      "ha": { "expose": true, "icon": "mdi:party-popper" }
+    },
+    {
+      "id": "sunset",
+      "n": 20,
+      "name": "Sunset",
+      "es": "Atardecer",
+      "desc": "Gold to magenta across the wall.",
+      "descEs": "Del dorado al magenta por toda la pared.",
+      "group": "vases",
+      "sw": ["#ffb347", "#ff6a3d", "#e2457a", "#8f3fbf"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-static", "c": ["#ffb347", "#ff6a3d", "#e2457a", "#8f3fbf"], "bri": 140, "sx": 128 },
+      "halos": { "bri": 70, "guitar": "h-vases", "drum": "h-vases", "mic": "h-vases" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": true, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 50, "color": [255, 150, 0] },
+          "bars": { "brightness": 50, "color": [230, 30, 110] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:weather-sunset" }
+    },
+    {
+      "id": "game-day",
+      "n": 21,
+      "name": "Game day",
+      "es": "Día de partido",
+      "desc": "Blue and silver, steady.",
+      "descEs": "Azul y plata, fijo.",
+      "group": "vases",
+      "sw": ["#2b6bff", "#c9d3e0", "#2b6bff", "#c9d3e0"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-static", "c": ["#2b6bff", "#c9d3e0", "#2b6bff", "#c9d3e0"], "bri": 160, "sx": 128 },
+      "halos": { "bri": 80, "guitar": "h-vases", "drum": "h-vases", "mic": "h-vases" },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": true, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 70, "color": [255, 228, 206] },
+          "bars": { "brightness": 65, "color": [20, 80, 255] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:football" }
+    },
+    {
+      "id": "goodnight",
+      "n": 22,
+      "name": "Goodnight",
+      "es": "Buenas noches",
+      "desc": "Deep red, barely breathing.",
+      "descEs": "Rojo intenso, respirando apenas.",
+      "group": "vases",
+      "sw": ["#ff2a10", "#ff2a10", "#ff2a10", "#ff2a10"],
+      "bri": 100,
+      "wash": null,
+      "vases": { "design": "v-breathe", "c": ["#ff2a10", "#ff2a10", "#ff2a10", "#ff2a10"], "bri": 10, "sx": 15 },
+      "halos": { "bri": 0, "guitar": null, "drum": null, "mic": null },
+      "wled": null,
+      "render": { "type": "pi-drawn", "engine": "mood", "fps": 30, "maxMa": 800 },
+      "needs": { "mic": false, "sides": false, "candles": false, "song": null },
+      "param": null,
+      "govee": {
+        "look": {
+          "lamp": { "brightness": 1, "color": [255, 20, 0] },
+          "bars": { "brightness": 4, "color": [255, 20, 0] }
+        }
+      },
+      "sound": null,
+      "ha": { "expose": true, "icon": "mdi:sleep" }
+    },
+    {
+      "id": "check",
+      "n": 23,
+      "hidden": true,
+      "name": "Wall check",
+      "es": "Prueba de la pared",
+      "desc": "First light only: each vase, drop, side and candle in its own color.",
+      "descEs": "Solo para la primera prueba: cada jarrón, gota, lado y vela con su propio color.",
+      "group": "wall",
+      "sw": ["#ff0000", "#00ff00", "#0000ff", "#ffff00"],
+      "bri": 20,
+      "wash": null,
+      "vases": { "design": "v-static", "c": ["#ff0000", "#00ff00", "#0000ff", "#ffff00"], "bri": 255, "sx": 128 },
+      "halos": { "bri": 255, "guitar": "h-check", "drum": "h-check", "mic": "h-check" },
+      "extras": { "drops": "#ffffff", "candles": "#ffb000", "shamash": "#ffb000" },
+      "wled": null,
+      "render": { "type": "wled-effects" },
+      "needs": { "mic": false, "sides": true, "candles": true, "song": null },
+      "param": null,
+      "govee": null,
+      "sound": null,
+      "ha": { "expose": false, "icon": "mdi:check-circle" }
+    }
+  ]
+}
