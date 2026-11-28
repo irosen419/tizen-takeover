@@ -289,7 +289,7 @@ async function main() {
   });
 
   await check('show, home, say, play, stop, reload (no screen on: same words as ./hub)', async () => {
-    for (const [cmd, args] of [['show', { widget: 'weather', full: true }], ['show', { widget: 'calendar' }], ['home', {}], ['say', { text: '  Dinner in 10 ', seconds: 8 }], ['play', { url: 'https://example.com/a.mp3', title: 'Doorbell' }], ['play', { url: 'https://example.com/a.mp3' }], ['stop', {}], ['reload', {}]]) {
+    for (const [cmd, args] of [['show', { widget: 'weather', full: true }], ['show', { widget: 'calendar' }], ['show', { widget: 'plantwall', full: true }], ['home', {}], ['say', { text: '  Dinner in 10 ', seconds: 8 }], ['play', { url: 'https://example.com/a.mp3', title: 'Doorbell' }], ['play', { url: 'https://example.com/a.mp3' }], ['stop', {}], ['reload', {}]]) {
       const r = await run(fake, h, cmd, args);
       assert.strictEqual(r.ok, true, cmd);
       assert.strictEqual(r.message, 'Sent, but no screen is listening (is the TV on with Home Hub open?).');
