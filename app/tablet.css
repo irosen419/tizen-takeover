@@ -39,6 +39,15 @@
 .tablet .sp-col-mid::-webkit-scrollbar,
 .tablet .sp-col-right::-webkit-scrollbar { width: 0; height: 0; }
 
+/* Taps answer at once: manipulation drops the double-tap-to-zoom wait
+   (the 300 ms tap delay, in case Fully ignores the page's viewport), and no
+   tap highlight paints over the whole panel (its click handler made every
+   tap in a panel flash it). A widget may still ask for pan-y (budget-lab.css). */
+.tablet, .tablet * {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* The Back chip is a button here: a bigger target. */
 .tablet .panel-hint {
   padding: 0.5rem 1.05rem;

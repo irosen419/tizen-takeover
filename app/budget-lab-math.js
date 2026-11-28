@@ -9,7 +9,7 @@
  *
  *   HUB_BUDGET_LAB_MATH.compute(input)       everything the tab shows, below
  *   HUB_BUDGET_LAB_MATH.newSession()         the calculated cap, no cuts
- *   HUB_BUDGET_LAB_MATH.nudgeCap / nudgeKeep / nudgeCut / toggleMode
+ *   HUB_BUDGET_LAB_MATH.nudgeCap / capAt / nudgeKeep / nudgeCut / toggleMode
  *                                            a key press on a slider or pill,
  *                                            as a new session
  *   HUB_BUDGET_LAB_MATH.normalizeSession     a session after new data:
@@ -68,6 +68,8 @@
   var SPLIT_KEYS = ['savings', 'awws', 'buffer', 'extra'];
   var CAP_TICK = 1;            // $ a step on the cap and the cuts, at rest
   var KEEP_TICK = 5;           // $ a step on the keep goal, at rest
+  var DRAG_TICK = 5;           // $ a step while a finger drags a wide cap slider (tablet)
+  var DRAG_FINE = 300;         // a cap slider narrower than this drags in $1 steps
   var CAP_SPAN = 100;          // the cap slider reaches max(2 c0, c0 + 100)
   var EARLY_DAYS = 3;          // E under this: no projection from m_i
   var SKIP_SHARE = 0.2;        // a merchant at 20% of the cap earns a "skip"
@@ -712,6 +714,28 @@
     return s;
   }
 
+  // A finger on the cap's line (tablet mode): f is where it is, 0..1 along
+  // the slider. Whole $5 steps on a wide slider ($1 under DRAG_FINE); within
+  // snap dollars of the calculated cap or the saved one, exactly that mark.
+  function capAt(session, result, f, snap) {
+    var s = copySession(session);
+    if (!result || !result.ok || !isNum(f)) return s;
+    var max = result.capMax;
+    var v = clamp(f, 0, 1) * max;
+    var size = max >= DRAG_FINE ? DRAG_TICK : CAP_TICK;
+    var c = clamp(Math.round(v / size) * size, 0, max);
+    var marks = [result.c0];
+    if (result.saved && isNum(result.saved.cap)) marks.push(result.saved.cap);
+    var best = isNum(snap) && snap > 0 ? snap : -1;
+    for (var i = 0; i < marks.length; i++) {
+      var d = Math.abs(v - marks[i]);
+      if (d <= best) { best = d; c = clamp(marks[i], 0, max); }
+    }
+    s.mode = 'cap';
+    s.cap = c;
+    return s;
+  }
+
   function nudgeKeep(session, result, dir, size) {
     var s = copySession(session);
     if (!result || !result.ok) return s;
@@ -848,6 +872,7 @@
     newSession: newSession,
     normalizeSession: normalizeSession,
     nudgeCap: nudgeCap,
+    capAt: capAt,
     nudgeKeep: nudgeKeep,
     nudgeCut: nudgeCut,
     toggleMode: toggleMode,

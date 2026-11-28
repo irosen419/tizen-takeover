@@ -146,6 +146,12 @@
     // The one thing to do, under the big number (the arrows are drawn, these are words)
     capHint: 'Hold \u25C0 \u25B6 to change your daily cap',
     keyCap: '\u25C0 \u25B6 change \u00B7 OK save',
+    // Tablet mode (no remote): the line is dragged, and only Save saves
+    capHintTouch: 'Drag along the line, or tap \u25C0 \u25B6 for $1',
+    saveCap: 'Save {n}',
+    savingCap: 'Saving\u2026',
+    savedCap: 'Saved',
+    guestLocked: 'Guest mode is on: the cap can\u2019t be changed',
     keyCut: '\u25C0 \u25B6 cut \u00B7 OK save',
     keyOk: 'OK',
     keyMore: 'Down for merchants',
@@ -345,6 +351,8 @@
   }
 
   function now() { return new Date().getTime(); }
+  function guestOn() { try { return !!(window.HUB_GUEST && window.HUB_GUEST.on()); } catch (e) { return false; } }
+  function touchMode() { return !!(LAB.ctx && LAB.ctx.tablet); }
 
   function fmtNum(n) {
     return String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -876,6 +884,24 @@
     return [fill(STRINGS.heroZero, { d: d }), STRINGS.heroZeroShort];
   }
 
+  // Tablet: the Save button says what OK would save, "Saved" when the cap
+  // on the slider is already yours, and is gone in Guest mode.
+  function paintSave(refs, r) {
+    var b = refs && refs.save;
+    if (!b) return;
+    var m = MATH();
+    var v = Math.max(1, Math.min(1000, m.wholeDown(r.cap)));
+    var tone = '';
+    var text;
+    if (guestOn()) tone = 'is-off';
+    else if (LAB.goal.state === 'sending') { tone = 'is-done'; text = STRINGS.savingCap; }
+    else if (r.saved && m.wholeDown(r.saved.cap) === v) { tone = 'is-done'; text = STRINGS.savedCap; }
+    else text = fill(STRINGS.saveCap, { n: cash(v) });
+    setTone(b, 'bl-save', tone);
+    if (refs.knob) refs.knob.style.display = tone === 'is-off' ? 'none' : '';
+    if (text !== undefined) setText(b, text);
+  }
+
   // The plain case: even $0 a day leaves card day short. The math module
   // says so with its first suggested move.
   function isShortZero(r) {
@@ -902,6 +928,11 @@
       refs.fill.style.transform = tf;
     }
     setTone(refs.fill, 'bl-fill', r.covered ? '' : 'is-neg');
+    if (refs.knob) {
+      var kl = pct(f);
+      if (refs.knob.style.left !== kl) refs.knob.style.left = kl;
+    }
+    paintSave(refs, r);
     var tickKey = (r.saved ? r.saved.cap : '') + '|' + span.hi + '|' + r.c0;
     if (refs.tickKey !== tickKey) {
       refs.tickKey = tickKey;
@@ -1082,8 +1113,12 @@
     sl.setAttribute('data-autofocus', '');
     refs.slider = sl;
     var top = el('div', 'bl-herotop', sl);
+    var touch = touchMode();
     el('div', 'bl-label', top, STRINGS.capLabel);
-    el('div', 'bl-keyhint', top, STRINGS.keyCap);
+    // Tablet: a Save button in place of the key hint; a tap anywhere else
+    // on the cap never saves (tabletCap below).
+    if (touch) refs.save = el('span', 'bl-save', top);
+    else el('div', 'bl-keyhint', top, STRINGS.keyCap);
     var val = el('div', 'bl-value', sl);
     refs.arrL = el('span', 'bl-arrow is-left', val);
     var mid = el('span', 'bl-valmid', val);
@@ -1094,7 +1129,9 @@
     refs.fill = el('span', 'bl-fill', track);
     refs.calcTick = el('span', 'bl-tick is-calc', track);
     refs.savedTick = el('span', 'bl-tick is-saved', track);
-    el('div', 'bl-hint', sl, STRINGS.capHint);
+    refs.track = track;
+    if (touch) refs.knob = el('span', 'bl-knob', track);
+    el('div', 'bl-hint', sl, touch ? STRINGS.capHintTouch : STRINGS.capHint);
     refs.result = el('div', 'bl-result', sl);
     if (r.autopay) refs.result2 = el('div', 'bl-result2', sl);
 
@@ -1778,6 +1815,11 @@
     var r = result();
     var L = window.HUB_LIVE;
     if (!r || LAB.goal.state === 'sending') return;
+    // Guest mode is read only: nothing is saved, on any screen.
+    if (guestOn()) {
+      try { ctx.toast(STRINGS.guestLocked, 3500); } catch (e) { /* no toast */ }
+      return;
+    }
     var v = value === undefined ? goalValue(r) : value;
     if (!L || typeof L.post !== 'function') {
       LAB.goal.state = 'failed';
@@ -1787,30 +1829,159 @@
     }
     LAB.goal.state = 'sending';
     paintGoal(LAB.refs, r);
+    paintSave(LAB.refs, r);
     L.post('/budget/goal', { goal: v }, function (err) {
       LAB.goal.state = err ? 'failed' : '';
       try { ctx.toast(err ? STRINGS.goalFailed : fill(value === undefined ? STRINGS.goalSaved : STRINGS.capSaved, { n: cash(v) }), 3500); } catch (e) { /* no toast */ }
       if (!err) LAB.goal.value = null;
-      try { if (LAB.refs) paintGoal(LAB.refs, result()); } catch (e) { /* closed meanwhile */ }
+      try { if (LAB.refs) { paintGoal(LAB.refs, result()); paintSave(LAB.refs, result()); } } catch (e) { /* closed meanwhile */ }
     });
   }
 
-  // Tablet mode (ctx.tablet; no remote): a tap on the cap's arrows moves it
-  // as Left and Right do, instead of the click that the hub treats as OK (save).
-  function tapArrows(body) {
+  // Tablet mode (ctx.tablet; no remote; Chrome 52: touch events, a mouse
+  // fallback, no Pointer Events). A finger on the cap's line sets the cap
+  // where it touches and a drag scrubs it (the math module's capAt: $5 steps
+  // on a wide slider, the calculated and saved marks catch it); a sideways
+  // drag that starts on the big number moves it by as much as the finger
+  // moves. A finger that goes mostly up or down scrolls the page. A tap on
+  // an arrow moves it $1, as Left and Right do. Only the Save button saves:
+  // a tap anywhere else on the cap or a merchant row is kept from becoming
+  // the click the hub treats as OK, and Save ignores a tap that comes right
+  // after a drag (TAP_GUARD). Guest mode: no drag, no Save. Repaints are
+  // one per frame, however many touch moves arrive.
+  var TAP_GUARD = 400;    // ms after a drag or an arrow tap that Save ignores
+  var SNAP_PX = 14;       // a mark this close to the finger catches the cap
+
+  // A clock that always runs (the page's Date can be held still in tests).
+  function tick() {
+    try { if (window.performance && performance.now) return performance.now(); } catch (e) { /* Date then */ }
+    return now();
+  }
+
+  function inside(node, box) {
+    for (var n = node; n; n = n.parentNode) if (n === box) return true;
+    return false;
+  }
+
+  function paintSoon() {
+    if (LAB.frame) return;
+    var raf = window.requestAnimationFrame || window.webkitRequestAnimationFrame || function (f) { return setTimeout(f, 16); };
+    LAB.frame = raf(function () {
+      LAB.frame = 0;
+      var refs = LAB.refs;
+      if (!refs) return;
+      try { paint(refs, result()); chartSoon(); } catch (e) { warn('drag: ' + (e && e.message)); }
+    });
+  }
+
+  // d: { rect, x0, f0, abs }. x: the finger's clientX now.
+  function dragTo(d, x) {
+    if (!LAB.refs || guestOn()) return;     // closed mid-drag, or Guest mode came on
+    var m = MATH();
+    var r = result();
+    if (!m || !r || !r.ok || !(d.rect.width > 0)) return;
+    var f = d.abs ? (x - d.rect.left) / d.rect.width : d.f0 + (x - d.x0) / d.rect.width;
+    LAB.session = m.capAt(LAB.session, r, f, SNAP_PX / d.rect.width * r.capMax);
+    LAB.hold = null;
+    LAB.touchAt = tick();
+    paintSoon();
+  }
+
+  // A drag that starts here, or null: the cap's line (abs) or the rest of
+  // the cap's box but its arrows and Save.
+  function dragStart(target, x) {
+    var refs = LAB.refs;
+    var r = result();
+    if (!refs || !refs.slider || !refs.track || !touchMode() || guestOn() || !r || !r.ok) return null;
+    if (!inside(target, refs.slider) || inside(target, refs.arrL) || inside(target, refs.arrR) || inside(target, refs.save)) return null;
+    return { rect: refs.track.getBoundingClientRect(), x0: x, f0: r.capMax > 0 ? r.cap / r.capMax : 0, abs: inside(target, refs.track) };
+  }
+
+  function tabletCap(body) {
     if (body.__blTap) return;
     body.__blTap = true;
-    body.addEventListener('click', function (e) {
-      var refs = LAB.refs;
-      if (!refs || !LAB.ctx || !LAB.ctx.tablet) return;
-      for (var n = e.target; n && n !== body; n = n.parentNode) {
-        if (n === refs.arrL || n === refs.arrR) {
-          e.stopPropagation();
-          LAB.hold = null;
-          nudge(n === refs.arrL ? 'left' : 'right', 'cap');
-          return;
+    body.addEventListener('touchstart', function (e) {
+      if (!e.touches || e.touches.length !== 1) return;
+      var x0 = e.touches[0].clientX;
+      var y0 = e.touches[0].clientY;
+      var d = dragStart(e.target, x0);
+      if (!d) return;
+      var node = e.target;
+      var how = '';                      // '', 'scrub' or 'swipe'
+      var lastX = x0;
+      function move(ev) {
+        if (!ev.touches || !ev.touches.length) return;
+        var t = ev.touches[0];
+        lastX = t.clientX;
+        if (!how) {
+          var dx = Math.abs(t.clientX - x0);
+          var dy = Math.abs(t.clientY - y0);
+          if (dx < 8 && dy < 8) return;
+          how = dy > dx ? 'swipe' : 'scrub';
+          if (how === 'swipe') { stop(); return; }
+          if (LAB.ctx && LAB.ctx.focus && LAB.refs) LAB.ctx.focus(LAB.refs.slider);
+        }
+        if (ev.cancelable) ev.preventDefault();
+        dragTo(d, t.clientX);
+      }
+      function end(ev) {
+        stop();
+        if (ev.type === 'touchcancel') return;
+        if (ev.cancelable) ev.preventDefault();      // no click after it: never an OK
+        if (!how) {
+          if (LAB.ctx && LAB.ctx.focus && LAB.refs) LAB.ctx.focus(LAB.refs.slider);
+          if (d.abs) dragTo(d, ev.changedTouches && ev.changedTouches.length ? ev.changedTouches[0].clientX : lastX);
         }
       }
+      function stop() {
+        node.removeEventListener('touchmove', move);
+        node.removeEventListener('touchend', end);
+        node.removeEventListener('touchcancel', end);
+      }
+      node.addEventListener('touchmove', move);
+      node.addEventListener('touchend', end);
+      node.addEventListener('touchcancel', end);
+    });
+    // A mouse (a desktop browser trying tablet mode): press and drag on the line.
+    body.addEventListener('mousedown', function (e) {
+      var d = dragStart(e.target, e.clientX);
+      if (!d || !d.abs) return;
+      e.preventDefault();
+      LAB.mouse = d;
+      dragTo(d, e.clientX);
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!LAB.mouse) return;
+      if (!LAB.refs || e.buttons === 0) { LAB.mouse = null; return; }   // released outside the window
+      dragTo(LAB.mouse, e.clientX);
+    });
+    document.addEventListener('mouseup', function () { if (LAB.mouse) { LAB.mouse = null; LAB.touchAt = tick(); } });
+    body.addEventListener('click', function (e) {
+      var refs = LAB.refs;
+      if (!refs || !touchMode()) return;
+      var t = e.target;
+      if (inside(t, refs.arrL) || inside(t, refs.arrR)) {
+        e.stopPropagation();
+        if (guestOn()) return;
+        LAB.hold = null;
+        nudge(inside(t, refs.arrL) ? 'left' : 'right', 'cap');
+        LAB.touchAt = tick();
+        return;
+      }
+      if (refs.save && inside(t, refs.save)) {
+        e.stopPropagation();
+        if (guestOn() || tick() - (LAB.touchAt || 0) < TAP_GUARD || /\bis-done\b/.test(refs.save.className)) return;
+        if (LAB.ctx && LAB.ctx.focus) LAB.ctx.focus(refs.slider);
+        saveCap(LAB.ctx);
+        return;
+      }
+      // Anywhere else on the cap or on a merchant row: focus, never a save.
+      var row = null;
+      if (refs.slider && inside(t, refs.slider)) row = refs.slider;
+      for (var i = 0; !row && refs.cuts && i < refs.cuts.length; i++) if (inside(t, refs.cuts[i].node)) row = refs.cuts[i].node;
+      if (!row) return;
+      e.stopPropagation();
+      if (LAB.ctx && LAB.ctx.focus) LAB.ctx.focus(row);
     });
   }
 
@@ -1880,6 +2051,19 @@
     return true;
   }
 
+  // The cap as it stands becomes your cap: the daily goal on the Pi, whole
+  // dollars, fixed from today on. The old saved keep amount is cleared.
+  function saveCap(ctx) {
+    var m = MATH();
+    var r = result();
+    if (!m || !r || !r.ok || !ctx) return;
+    LAB.hold = null;
+    // Guest mode is read only: saveGoal says so, and nothing shared is touched.
+    if (guestOn()) { saveGoal(ctx); return; }
+    if (readPref(snapshot().lab)) writePref(null);
+    saveGoal(ctx, Math.max(1, Math.min(1000, m.wholeDown(r.cap))));
+  }
+
   function onSelect(target, ctx) {
     if (PL() && PL().onSelect(target, ctx)) return;
     var key = target && target.getAttribute('data-key');
@@ -1893,8 +2077,7 @@
       // OK on the cap or on a merchant saves the cap as it stands as your
       // cap: the daily goal on the Pi, whole dollars, fixed from today on.
       // The old saved keep amount (re-averaged each morning) is cleared.
-      if (readPref(snapshot().lab)) writePref(null);
-      saveGoal(ctx, Math.max(1, Math.min(1000, m.wholeDown(r.cap))));
+      saveCap(ctx);
       return;
     } else {
       return;
@@ -1948,6 +2131,15 @@
         });
       }
     } catch (e) { warn('prefs: ' + (e && e.message)); }
+    // Guest mode turned on or off with the lab open: Save and the knob follow.
+    try {
+      if (window.HUB_GUEST && typeof window.HUB_GUEST.onChange === 'function') {
+        window.HUB_GUEST.onChange(function () {
+          var r = LAB.refs && result();
+          if (r && r.ok) paintSave(LAB.refs, r);
+        });
+      }
+    } catch (e) { /* guest mode is optional */ }
   }
 
   try {
@@ -1979,7 +2171,7 @@
       }
     },
     renderPanel: function (body, ctx) {
-      try { drawPanel(body, ctx); if (ctx.tablet) tapArrows(body); } catch (e) {
+      try { drawPanel(body, ctx); if (ctx.tablet) tabletCap(body); } catch (e) {
         warn('panel: ' + (e && e.message));
         broken(body);
       }
@@ -1994,7 +2186,7 @@
     // drops what was tried and not saved: the cap snaps back to the
     // calculated one, so the tile never shows an unsaved figure. Only OK saves.
     onClose: function (ctx) {
-      chartStop(); LAB.refs = null; LAB.hold = null; LAB.goal = { value: null, state: '' };
+      chartStop(); LAB.refs = null; LAB.hold = null; LAB.touchAt = 0; LAB.mouse = null; LAB.goal = { value: null, state: '' };
       if (PL()) PL().reset();
       LAB.session = newSession();
       ctx.redrawTile();

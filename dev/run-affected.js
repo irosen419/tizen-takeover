@@ -58,7 +58,7 @@ const RULES = [
   [/^app\/agents(\.js|\.css|\/)/, ['dev/agents-test.js']],
   [/^app\/backgrounds\//, ['dev/backgrounds-test.js']],
   [/^app\/budget-lab-math\.js$/, ['dev/budget-lab-math-test.js']],
-  [/^app\/widgets\/(budget|budget-lab)\.(js|css)$/, ['dev/budget-receipt-test.js', 'dev/budget-lab-math-test.js', 'dev/money-test.js']],
+  [/^app\/widgets\/(budget|budget-lab)\.(js|css)$/, ['dev/budget-receipt-test.js', 'dev/budget-lab-math-test.js', 'dev/money-test.js', 'dev/budget-lab-touch-test.js']],
   [/^app\/widgets\/(today|clock)\.(js|css)$/, ['dev/clock-test.js']],
   [/^app\/widgets\/(nowplaying|nowplaying-viz)\.(js|css)$/, ['dev/nowplaying-test.js', 'dev/nowplaying-chip-test.js', 'dev/band-test.js']],
   [/^app\/widgets\/nowplaying-band\.(js|css)$|^app\/clay\/music|^art\/clay\/tools\/music\.py$/, ['dev/band-test.js']],
