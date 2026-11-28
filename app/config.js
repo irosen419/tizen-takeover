@@ -169,9 +169,11 @@ var HUB_CONFIG = {
       { widget: 'budget-card',   x: 4, y: 3, w: 4, h: 3 },
       { widget: 'budget-goals',  x: 8, y: 3, w: 4, h: 3 }
     ] },
-    // Plant sun alone, to try it out (a new widget gets a layout of its own first).
+    // The plant wall: its lights drawn from the front (app/widgets/plantwall.js)
+    // over Plant sun.
     { id: 'plant-wall', name: 'Plants', layout: [
-      { widget: 'sunpath',       x: 0, y: 0, w: 12, h: 6 }
+      { widget: 'plantwall',     x: 0, y: 0, w: 12, h: 4 },
+      { widget: 'sunpath',       x: 0, y: 4, w: 12, h: 2 }
     ] },
     /* A test layout: Ambience (app/widgets/ambience.js, the room's lights)
        on its own, filling the screen, to try it before it joins a real

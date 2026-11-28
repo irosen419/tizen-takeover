@@ -228,6 +228,10 @@ When direct sun reaches the plant wall (`app/widgets/sunpath.js`, ported from Ia
 
 The tile answers first: "Sun on the plants now · until 7:07 PM", "Next sun at 5:15 PM", "Next sun tomorrow 5:15 PM", or from November to February a date in March ("Next sun Mar 9, 6:15 PM") with "Grow lights do the work until then". While the sun is on the plants it says to keep the Maranta out of the beam, and a soft gold glow breathes on the tile. Two rows add today's sun window on a bar from noon to 9 PM, three rows the season table (Dec 21, Mar 20, Jun 21, Sep 22), six columns and wider the room from above, with the plants near, middle and far along the wall. OK opens a time slider (Left and Right, 15 minutes), a day chooser and three views: the room, the sun's arc against the window, and the seasons with the plant and grow light notes; Full screen shows them all. The roof angle and the plant spots (2 to 6 ft) are placeholders until measured: the tile's badge says Estimate and the panel says so, until `placeholder: false` in `HUB_CONFIG.widgets.sunpath`. The next sun is searched for once (at most a year ahead, afternoons, 15 minute steps) and kept until it passes, the day changes or an hour goes by. `node dev/sunpath-test.js` checks it; `node dev/sunpath-shots.js <folder>` takes its pictures.
 
+### Plant wall lights
+
+The plant wall's lights drawn from the front (`app/widgets/plantwall.js`), copied from the part of Ian's "Plant Wall Lighting" page that its Full screen button shows: the three paintings, the four vases, the wires, all 164 LEDs and their labels, without the couch, table or legend. The LED numbers follow the live WLED setup: left (guitar) string 0 to 49 on output 1, drum strip 50 to 113 and right (mic) string 114 to 163 on output 2. A still drawing; it doesn't talk to WLED. On the "Plants" layout it is 12x4 over Plant sun (12x2); OK opens it full screen.
+
 ## To-do
 
 A to-do list kept on this TV. Every item has a **level**:

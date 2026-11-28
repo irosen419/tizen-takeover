@@ -69,6 +69,7 @@ const RULES = [
   [/^app\/widgets\/(entertainment|shows|planned|linktest)\.(js|css)$/, ['dev/shows-test.js']],
   [/^app\/widgets\/(weather)\.(js|css)$/, ['dev/weather-scene-test.js']],
   [/^app\/widgets\/(sunpath)\.(js|css)$/, ['dev/sunpath-test.js']],
+  [/^app\/widgets\/(plantwall)\.(js|css)$/, ['dev/plantwall-test.js']],
   [/^app\/widgets\/wotd\.(js|css)$|^app\/wotd-data\.js$/, ['dev/wotd-test.js']],
   [/^app\/widgets\/investments\.(js|css)$/, ['dev/investments-test.js']],
   [/^app\/spending-math\.js$/, ['dev/spending-math-test.js', 'dev/spending-test.js']],

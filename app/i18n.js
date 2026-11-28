@@ -1706,6 +1706,33 @@
     'shows.states.waiting.line': 'La Pi le pregunta a TVmaze por cada serie. Tarda unos segundos.',
     'shows.states.error.head': 'No se pudo llegar a TVmaze',
     'shows.states.error.line': 'La Pi vuelve a intentarlo cada 6 horas, o ahora con ./hub shows refresh.',
+    /* ---- Plant wall (app/widgets/plantwall.js) ----
+     * Key 'plantwall.<key>'; the English is EN in plantwall.js. Labels on the
+     * drawing; one that runs long is shrunk to fit its box. "pulg." = inches.
+     * {a} {b} {n} are filled in. */
+    'plantwall.title': 'Luces del muro de plantas',
+    'plantwall.aria': 'Vista frontal de las luces del muro de plantas: tres cuadros, cuatro floreros y 164 LED',
+    'plantwall.p1': 'Cuadro 1, guitarra',
+    'plantwall.p2': 'Cuadro 2, batería',
+    'plantwall.p3': 'Cuadro 3, micrófono',
+    'plantwall.ctrl': 'Controlador WLED',
+    'plantwall.w20': '20 pulg.',
+    'plantwall.h28': '28 pulg.',
+    'plantwall.up': '52.25 pulg.',
+    'plantwall.floor': 'del suelo',
+    'plantwall.aisle': 'pasillo de 14.25 pulg.',
+    'plantwall.drop': '12 pulg.',
+    'plantwall.v1': 'Florero 1',
+    'plantwall.v2': 'Florero 2',
+    'plantwall.v3': 'Florero 3',
+    'plantwall.v4': 'Florero 4',
+    'plantwall.guitar': 'Cola de la guitarra',
+    'plantwall.tail': '21 LED, cada 4 pulg.',
+    'plantwall.leds': 'LED {a} a {b}',
+    'plantwall.drum': 'Tira de la batería',
+    'plantwall.drumSub': '64 LED, cada 1.3 pulg.',
+    'plantwall.mic': 'Cola del micrófono',
+    'plantwall.out': 'SALIDA {n}',
     /* ---- Plant sun (app/widgets/sunpath.js) ----
      * Key 'sunpath.<path in EN>'; the English is EN in sunpath.js. Times are
      * "6:05 p. m." (am/pm below, held on one line), dates "14 mar" (month
