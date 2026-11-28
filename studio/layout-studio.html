@@ -1027,6 +1027,8 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     soundctl:      { title: 'Sound control',         sub: 'Test: All sounds with Echo buttons (play, pause, next, volume, stop, a few quick starts)' },
     // app/widgets/sunpath.js (v0.29.2): when direct sun reaches the plant wall; alone on the "Plants" layout.
     sunpath:       { title: 'Plant sun',             sub: 'When direct sun reaches the plant wall, with the room from above and the seasons' },
+    // app/widgets/plantwall.js (v0.90.0): the plant wall lights from the front, from the Plant Wall Lighting page; on the "Plants" layout.
+    plantwall:     { title: 'Plant wall lights',     sub: 'The three paintings, four vases and all 164 LEDs from the front, with their numbers' },
     // app/widgets/architecture.js (v0.30.1): the Architecture map on the TV, driven by the remote; alone on the "Hub architecture" layout.
     architecture:  { title: 'Architecture',          sub: 'The map of the whole system: Big picture, group diagrams and a detail drawer, with the data flows' },
     // app/widgets/grocery.js: the grocery list, kept on the Pi. Touch view (app/touch.html) and, since PR 2 of the one-app plan, a TV tile on the "Groceries test" layout.
@@ -1084,7 +1086,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       { id: 'budget-lab', x: 0, y: 3, w: 4, h: 3 }, { id: 'budget-card', x: 4, y: 3, w: 4, h: 3 }, { id: 'budget-goals', x: 8, y: 3, w: 4, h: 3 }
     ] },
     { id: 'plant-wall', name: 'Plants', layout: [
-      { id: 'sunpath', x: 0, y: 0, w: 12, h: 6 }
+      { id: 'plantwall', x: 0, y: 0, w: 12, h: 4 }, { id: 'sunpath', x: 0, y: 4, w: 12, h: 2 }
     ] },
     // v0.29.7: one Ambience tile on the whole screen, for trying the lights.
     { id: 'ambience-test', name: 'Ambience test', layout: [
@@ -1533,6 +1535,20 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       full: { en: 'Two columns, bigger: the rows down to Merchants on the left; on the right the runway to card day (headroom stepping up on payday and down for bills against the spending line at the cap being tried, no dollar axis, the gap on card day the one figure), then Put it somewhere and Pace.',
               es: 'Dos columnas, más grandes: las filas hasta Comercios a la izquierda; a la derecha el recorrido hasta el pago de tarjeta (el margen libre, que sube con el sueldo y baja con las facturas, frente a la línea de gasto con el tope que pruebas, sin eje de dólares, y la diferencia del día de pago como única cifra), y luego A dónde va y Ritmo.' },
     },
+    // app/widgets/plantwall.js (v0.90.0): a still drawing, the same at every size.
+    plantwall: {
+      title: { en: 'Plant wall lights', es: 'Luces del muro de plantas' },
+      sample: { en: {}, es: {} },
+      strip: { en: 'The drawing shrunk to the strip’s height, centred; too small to read at one row.',
+               es: 'El dibujo reducido a la altura de la tira, centrado; demasiado pequeño para leerlo en una fila.' },
+      standard: { en: 'The front elevation, centred and never stretched: the three paintings, the vases with their lit LEDs, the wires (output 1 green, output 2 purple), the drum strip, dark LEDs as rings, and the labels (Guitar tail LEDs 29 to 49, Drum strip 50 to 113, Mic tail 143 to 163). No tile head. Best at 12 columns.',
+                  es: 'La vista frontal, centrada y sin deformar: los tres cuadros, los floreros con sus LED encendidos, los cables (salida 1 verde, salida 2 morada), la tira de la batería, los LED apagados como anillos y las etiquetas (Cola de la guitarra LED 29 a 49, Tira de la batería 50 a 113, Cola del micrófono 143 a 163). Sin cabecera. Mejor con 12 columnas.' },
+      tall: { en: 'The same, bigger. 12 x 4 on the Plants layout fills it almost edge to edge.',
+              es: 'Lo mismo, más grande. En 12 x 4 en el diseño Plantas casi llena el mosaico.' },
+      panel: { en: 'Opens straight to full screen; there is no small panel.', es: 'Se abre directamente a pantalla completa; no hay panel pequeño.' },
+      full: { en: 'The drawing as large as the screen allows, with the panel head. Back closes it.',
+              es: 'El dibujo tan grande como permite la pantalla, con la cabecera del panel. Atrás lo cierra.' }
+    },
     // app/widgets/sunpath.js (v0.29.2). The sample is Jun 21 at 6:10 PM with the default (placeholder) roof angle and plant spots (2 to 6 ft along the wall); the room preview draws the plants near, middle and far.
     sunpath: {
       title: { en: 'Plant sun', es: 'Sol en las plantas' },
@@ -1740,7 +1756,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
   })();
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'spending', 'sunpath', 'ambience', 'ambiance', 'mirror', 'soundctl', 'architecture', 'grocery', 'pantry', 'list', 'photos', 'flashcards', 'conjugate'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'spending', 'sunpath', 'plantwall', 'ambience', 'ambiance', 'mirror', 'soundctl', 'architecture', 'grocery', 'pantry', 'list', 'photos', 'flashcards', 'conjugate'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -2276,7 +2292,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
   };
   var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
     'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
-    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', spending: 'wallet', 'budget-lab': 'wallet', soundctl: 'music', sunpath: 'plantsun', architecture: 'sitemap', grocery: 'basket', pantry: 'jar', list: 'basket', photos: 'photo', flashcards: 'speech', conjugate: 'speech' };
+    'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', spending: 'wallet', 'budget-lab': 'wallet', soundctl: 'music', sunpath: 'plantsun', plantwall: 'bulb', architecture: 'sitemap', grocery: 'basket', pantry: 'jar', list: 'basket', photos: 'photo', flashcards: 'speech', conjugate: 'speech' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
   function sunCloud(cls) {
     return '<svg class="' + cls + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><g stroke="#f5c242"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.6v1.5M3.7 4.7l1 1M2.6 9h1.5M14.3 4.7l-1 1"/></g><path stroke="currentColor" d="M8.2 19.5h9a3.6 3.6 0 0 0 .3-7.2 5 5 0 0 0-9.5 1.4 2.9 2.9 0 0 0 .2 5.8z"/></svg>';
@@ -2434,6 +2450,11 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     return '<div class="bu-grow am-r"><span class="l1">' + esc(l[0]) + '</span>' + (l[2] === 'switch' ? '<span></span>' : buMeter(l[1] / 100, 'bu-warn')) + state + '</div>';
   }
   var X_TILE = {
+    plantwall: function () {
+      var r = function (x) { return '<rect x="' + x + '" y="4" width="20" height="28" fill="#3a3a33"/><rect x="' + (x + 1.5) + '" y="5.5" width="17" height="25" fill="none" stroke="#f0a540" stroke-width=".6" stroke-dasharray="1 1.4"/>'; };
+      var v = function (x) { return '<circle cx="' + x + '" cy="12" r="2.6" fill="none" stroke="#97a59b" stroke-width=".4"/><circle cx="' + x + '" cy="24" r="2.6" fill="none" stroke="#97a59b" stroke-width=".4"/>'; };
+      return '<div class="pv" style="display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 96 36" style="width:100%;height:100%" aria-hidden="true">' + r(6) + v(33) + r(38) + v(63) + r(70) + '</svg></div>';
+    },
     photos: function (S, T, tier) {
       var cap = '<div class="ph-capv l1">' + esc(S.month) + '</div>';
       return '<div class="pv t-' + tier + '"><div class="ph-win"><div class="ph-sky blur"></div><div class="ph-pic"></div>' + cap + (tier === 'strip' ? '' : '<div class="ph-hair"><i></i></div>') + '</div></div>';
@@ -2528,6 +2549,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     }
   };
   var X_PANEL = {
+    plantwall: function (S, full) { return '<div class="pl-lead">' + esc(SIZE_MATRIX.plantwall[full ? 'full' : 'panel'][lang]) + '</div>'; },
     photos: function (S, full) {
       if (!full) return '<div class="pl-lead">' + esc(SIZE_MATRIX.photos.panel[lang]) + '</div>';
       var cells = function (n, on) { var h = ''; for (var i = 0; i < n; i++) h += '<i' + (i === on ? ' class="on"' : '') + '></i>'; return h; };

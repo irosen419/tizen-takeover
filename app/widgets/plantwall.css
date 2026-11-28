@@ -1,0 +1,105 @@
+/* Plant wall (app/widgets/plantwall.js): the front elevation of the plant
+   wall lights, one SVG that fills the tile or the screen. Colours are the
+   night look of Ian's "Plant Wall Lighting" page; a day glass tile (not a
+   lifted one) takes the page's day colours. Nothing animates. */
+
+.pw-box {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  left: 0.6rem;
+}
+.pw-box.is-full {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+.pw-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---------- night (the default) ---------- */
+
+.pw-svg .art { fill: #3a3a33; }
+.pw-svg .artin { fill: #2b2b26; }
+.pw-svg .lbl { font-size: 12px; font-weight: 500; fill: #e4ebe5; }
+.pw-svg .artlbl { fill: #97a59b; font-weight: 600; }
+.pw-svg .mut { fill: #97a59b; }
+.pw-svg .dim { stroke: #97a59b; stroke-width: 1; }
+.pw-svg .dimt { font-family: "Menlo", "DejaVu Sans Mono", "Courier New", monospace; font-size: 11.5px; font-weight: 600; fill: #97a59b; }
+.pw-svg .sm { font-size: 10.5px; }
+.pw-svg .sm2 { font-size: 11px; }
+.pw-svg .hid { font-family: "Menlo", "DejaVu Sans Mono", "Courier New", monospace; font-size: 11px; font-weight: 600; fill: #e4ebe5; }
+.pw-svg .ctrl { fill: #161e19; stroke: #e4ebe5; stroke-width: 1.5; stroke-dasharray: 4 3; }
+.pw-svg .pwr { stroke: #7fb6d9; stroke-width: 2; fill: none; }
+.pw-svg .hidp { stroke-dasharray: 5 4; }
+.pw-svg .glass { fill: none; stroke: #97a59b; stroke-width: 1.4; }
+.pw-svg .water { fill: #2f5f66; opacity: 0.55; }
+.pw-svg .neck { fill: #161e19; stroke: #97a59b; stroke-width: 1.2; }
+.pw-svg .pebble { fill: #161e19; stroke: #97a59b; stroke-width: 0.8; }
+.pw-svg .pw-g0 { stop-color: #ffbe5c; stop-opacity: 0.85; }
+.pw-svg .pw-g1 { stop-color: #ffbe5c; stop-opacity: 0; }
+.pw-svg .ledon { fill: #f0a540; }
+.pw-svg .leddark { fill: #161e19; stroke: #e4ebe5; stroke-width: 1.2; }
+.pw-svg .wire { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+.pw-svg .ch1 { stroke: #7cc69b; }
+.pw-svg .ch2 { stroke: #c49be6; }
+.pw-svg .hiddenwire { stroke-dasharray: 6 4; }
+.pw-svg .ledstrip { fill: #f0a540; }
+.pw-svg .striprun { fill: none; stroke: #f0a540; stroke-width: 3; opacity: 0.28; }
+.pw-svg .cnt { font-size: 12px; font-weight: 700; }
+.pw-svg .lblbg { fill: #2b2b26; opacity: 0.94; }
+.pw-svg .bridge { fill: none; stroke: #f0a540; stroke-width: 1.3; stroke-dasharray: 2 1.6; }
+.pw-svg .lconn { fill: none; stroke: #e4ebe5; stroke-width: 3.2; stroke-linecap: square; opacity: 0.6; }
+.pw-svg .dring { fill: none; stroke: #e4ebe5; stroke-width: 1.6; }
+.pw-svg .raceway { fill: #2b2b26; stroke: #97a59b; stroke-width: 1; }
+.pw-svg .leaf { fill: #7cc69b; opacity: 0.85; }
+.pw-svg .vname { font-size: 12px; font-weight: 700; }
+.pw-svg .tag1 { font-family: "Menlo", "DejaVu Sans Mono", "Courier New", monospace; font-size: 11px; font-weight: 700; fill: #7cc69b; }
+.pw-svg .tag2 { font-family: "Menlo", "DejaVu Sans Mono", "Courier New", monospace; font-size: 11px; font-weight: 700; fill: #c49be6; }
+.pw-svg .feed { fill: none; stroke-width: 2.5; }
+.pw-svg .feed.f1 { stroke: #7cc69b; }
+.pw-svg .feed.f2 { stroke: #c49be6; }
+.pw-svg .feed.thin { stroke-dasharray: 4 3; }
+.pw-svg .mk circle { fill: #e4ebe5; }
+.pw-svg .mk text { font-size: 11px; font-weight: 700; fill: #161e19; }
+
+/* ---------- day glass (a tile on a light picture) ---------- */
+
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .art { fill: #d8d2c4; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .artin,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .lblbg,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .raceway { fill: #e9e4d8; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .lbl,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .hid { fill: #16231c; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .artlbl,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .mut,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .dimt { fill: #56645b; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .dim,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .glass { stroke: #56645b; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .ctrl,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .leddark { fill: #f8faf6; stroke: #16231c; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .neck,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .pebble { fill: #f8faf6; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .water { fill: #9fd0d6; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .ledon,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .ledstrip { fill: #d9881c; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .ch1,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .feed.f1 { stroke: #2f6b4a; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .ch2,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .feed.f2 { stroke: #7a4fa0; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .tag1 { fill: #2f6b4a; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .tag2 { fill: #7a4fa0; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .leaf { fill: #2f6b4a; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .lconn,
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .dring { stroke: #16231c; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .mk circle { fill: #16231c; }
+.theme-day.is-glass .tile:not(.is-lifted) .pw-svg .mk text { fill: #f8faf6; }
+
+/* Keep this the last rule: hub.html uses it to tell that the whole file arrived. */
+.css-end { top: 0; }
