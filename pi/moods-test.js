@@ -132,7 +132,7 @@ async function main() {
     const h = hubServer.start(Object.assign({
       port: 0, token: TOKEN, dataDir, log: (s) => logs.push(String(s)),
       moodsEnv: Object.assign({ WLED_URL: wall.url }, o.env || {}),
-      moods: { engine: engineFactory, timers, rng: () => rng(), now: () => clock, today: () => TODAY }
+      moods: { engine: engineFactory, timers, rng: () => rng(), now: () => clock, today: () => TODAY, presetSettleMs: 0, presetPollMs: 1 }
     }, o.opt || {}));
     return h.ready.then(() => h);
   }
@@ -245,7 +245,8 @@ async function main() {
     assert.strictEqual(timers.list.length, 0, 'no director after a restart');
     const off = await api('POST', '/api/moods/off', {});
     assert.strictEqual(off.status, 200);
-    assert.ok(!wall.calls.some((c) => c.method === 'GET'), 'no new snapshot: the saved one is put back');
+    assert.strictEqual(wall.calls[0].method, 'POST', 'no new snapshot: the saved one is put back');
+    assert.ok(wall.calls.filter((c) => c.method === 'GET').every((c, i, a) => wall.calls.indexOf(c) > wall.calls.findIndex((x) => x.body && x.body.ps === 2)), 'the only reads wait for the preset');
     assert.deepStrictEqual(wall.posts(), W.restoreBodies(snap, cat.wall));
   });
 
@@ -277,7 +278,10 @@ async function main() {
     assert.deepStrictEqual(wall.posts(), W.compileWled(moodBy('menorah'), baseCtx(null, { briPct: 100, night: 5 })).bodies);
     assert.strictEqual((await nowOf()).night, 5);
     await api('POST', '/api/moods/set', { id: 'menorah', pair: false });
-    assert.strictEqual((await nowOf()).night, 3);
+    assert.strictEqual((await nowOf()).night, 5, 'Menorah on again with no night keeps the night on now');
+    await api('POST', '/api/moods/set', { id: 'christmas', pair: false });
+    await api('POST', '/api/moods/set', { id: 'menorah', pair: false });
+    assert.strictEqual((await nowOf()).night, 3, 'from another mood: tonight\'s night');
     assert.deepStrictEqual(wall.posts()[wall.posts().length - 1], W.compileWled(moodBy('menorah'), baseCtx(null, { briPct: 100, night: 3 })).bodies[0]);
     assert.strictEqual((await api('POST', '/api/moods/set', { id: 'christmas', night: 2 })).status, 400);
     assert.strictEqual((await api('POST', '/api/moods/set', { id: 'menorah', night: 9 })).status, 400);
@@ -460,6 +464,9 @@ async function main() {
     assert.strictEqual(r.body.ledMa, 55);
     assert.strictEqual(r.body.realtime, true);
     assert.strictEqual(r.body.counts.segments, 3);
+    assert.strictEqual(r.body.gamma, 2.8);
+    assert.deepStrictEqual(r.body.notes, []);
+    assert.ok(!r.body.mismatches.some((x) => /gamma/.test(x)));
     const dry = (await api('POST', '/api/moods/set', { id: 'rainforest-night', dry: true })).body.plan.wled[0].body;
     assert.ok(dry.seg.some((s) => s.fx === 81) && !dry.seg.some((s) => s.fx === 80), 'Twinklefox by name');
     const storm = (await api('POST', '/api/moods/set', { id: 'santa', dry: true })).body.plan.wled[0].body;
@@ -645,6 +652,14 @@ async function main() {
     assert.strictEqual((await a('POST', '/api/moods/probe', {})).body.dry, true);
     assert.strictEqual((await a('GET', '/api/moods')).body.dry, true);
     assert.strictEqual((await a('GET', '/api/moods/now')).body.id, 'off');
+    const t = await a('POST', '/api/moods/tune', { id: 'rainforest', spans: 2 });
+    assert.strictEqual(t.body.dry, true);
+    assert.ok(t.body.args.join(' ').indexOf('--spans 2') >= 0);
+    assert.ok(!fs.existsSync(path.join(d2, 'moods-state.json')) || !(JSON.parse(fs.readFileSync(path.join(d2, 'moods-state.json'), 'utf8')).tune || {}).rainforest, 'tune not saved');
+    const wl = await a('POST', '/api/moods/wall', { override: { zones: { vase1: { r: [[9, 15]], sure: true } } } });
+    assert.strictEqual(wl.body.dry, true);
+    assert.ok(!fs.existsSync(path.join(d2, 'moods-wall.json')), 'wall fix not written');
+    assert.strictEqual((await a('POST', '/api/moods/wall', { override: null })).body.dry, true);
     assert.strictEqual(wall.calls.length, 0);
     await stop(hd);
   });
@@ -669,7 +684,7 @@ async function main() {
     let seen = { reachable: true, on: true, bri: 40 };
     let pushed = null;
     const c = ctl.createController({
-      env: { WLED_URL: wall.url }, dataDir: tmpDir(), engine: E.createFakeEngine(), timers, rng: F.mulberry32(3), now: () => clock, today: () => TODAY,
+      env: { WLED_URL: wall.url }, dataDir: tmpDir(), engine: E.createFakeEngine(), timers, rng: F.mulberry32(3), now: () => clock, today: () => TODAY, presetSettleMs: 0, presetPollMs: 1,
       wledSeen: () => seen, put: (d) => { pushed = d; }
     });
     assert.strictEqual(c.start().now.id, 'off');
@@ -690,8 +705,290 @@ async function main() {
     assert.strictEqual(pushed.now.stale, false, 'not answering is not stale');
     assert.strictEqual(c.nowFlat().stale, false);
     await c.off({});
-    assert.strictEqual(wall.calls.filter((x) => x.method === 'GET').length, 1);
+    assert.strictEqual(wall.calls.filter((x) => x.method === 'GET').length, 2, 'the snapshot, and one read for the restored preset');
     await c.close();
+  });
+
+  /* ---------- review fixes (WP8) ---------- */
+
+  const FAKE_URL = 'http://plant-wall.test';
+  // A pretend wall in memory (no socket): records every call; answers GETs.
+  function fakeWled(o) {
+    const x = o || {};
+    const st = { on: true, bri: 128, ps: 2, seg: mockWall.LIVE.map((s) => Object.assign({ on: true, bri: 255 }, s)) };
+    const posts = [];
+    const calls = [];
+    const ok = (json) => Promise.resolve({ status: 200, json });
+    const fw = { posts, calls, st, release: null };
+    fw.request = (method, url, body) => {
+      const p = url.slice(FAKE_URL.length);
+      calls.push({ method, path: p, body });
+      if (method === 'POST') {
+        posts.push(body);
+        if (Number.isInteger(body.ps)) st.ps = body.ps;
+        if (Array.isArray(body.seg) && body.seg.length) st.ps = -1;
+        if (typeof body.bri === 'number') st.bri = body.bri;
+        return ok({ success: true });
+      }
+      if (p === '/json/state' && x.hang && !fw.released) return new Promise((resolve) => { fw.release = () => { fw.released = true; resolve({ status: 200, json: copy(st) }); }; });
+      if (p === '/json/state') return ok(copy(st));
+      if (p === '/json/cfg') return ok(x.cfg || { hw: { led: { maxpwr: 1000, ledma: 55 } }, light: { gc: { col: 2.8 } }, if: { live: { en: true } } });
+      if (p === '/json/info') return ok({ ver: '16.0.1', leds: { count: 164 } });
+      return Promise.resolve({ status: 404, json: null });
+    };
+    return fw;
+  }
+  const fakeCtl = (fw, extra) => ctl.createController(Object.assign({
+    env: { WLED_URL: FAKE_URL }, dataDir: tmpDir(), engine: E.createFakeEngine(), timers: fakeTimers(), rng: F.mulberry32(5),
+    now: () => clock, today: () => TODAY, request: fw.request, presetSettleMs: 0, presetPollMs: 1, log: (l) => logs.push(String(l))
+  }, extra || {}));
+
+  await check('brightness never tops the power budget: every mood set and dimmed at 10, 50 and 100%; the hidden check mood takes none', async () => {
+    const fw = fakeWled();
+    const c = fakeCtl(fw);
+    c.start();
+    const budget = cat.wall.power.budgetMa;
+    const ctxFor = (m) => baseCtx(m, { presetBri: 128 }); // the wall's brightness when the snapshot was taken
+    let n = 0;
+    for (const m of C.visibleMoods(cat.catalog)) {
+      for (const pct of [10, 50, 100]) {
+        const k = fw.posts.length;
+        await c.set(m.id, { bri: pct, pair: false });
+        const setBodies = fw.posts.slice(k);
+        assert.ok(W.budgetMa(setBodies, ctxFor(m)) <= budget + 0.5, m.id + ' set at ' + pct + '%');
+        for (const p2 of [10, 50, 100]) {
+          const j = fw.posts.length;
+          const r = await c.bri(p2);
+          assert.strictEqual(r.applied, true);
+          const sent = fw.posts.slice(j);
+          assert.deepStrictEqual(sent.map((b) => Object.keys(b)), [['bri']], m.id + ': only the master brightness');
+          const ma = W.budgetMa(setBodies.concat(sent), ctxFor(m));
+          assert.ok(ma <= budget + 0.5, m.id + ' set ' + pct + '%, then ' + p2 + '%: ' + Math.round(ma) + ' mA');
+          n++;
+        }
+      }
+    }
+    assert.strictEqual(n, 22 * 9);
+    await c.set('check', { pair: false });
+    assert.ok(W.budgetMa(fw.posts.slice(-1), baseCtx()) <= budget + 0.5);
+    const k = fw.posts.length;
+    for (const p of [10, 50, 100]) {
+      await assert.rejects(c.bri(p), (e) => e.status === 400 && /no brightness control/.test(e.message));
+      await assert.rejects(c.bri(p, 'check'), (e) => e.status === 400);
+    }
+    assert.strictEqual(fw.posts.length, k, 'nothing sent for the check mood');
+    await c.close();
+  });
+
+  await check('probe: a low bulb current never loosens the budget; the colour gamma is read, compared and its assumption stated', async () => {
+    const fw = fakeWled({ cfg: { hw: { led: { maxpwr: 1000, ledma: 30 } }, light: { gc: { bri: 1, col: 2.2, val: 2.2 } }, if: { live: { en: true } } } });
+    const c = fakeCtl(fw);
+    const r = await c.probe({});
+    assert.strictEqual(r.ledMa, 30);
+    assert.strictEqual(r.budgetLedMa, 55);
+    assert.ok(r.mismatches.some((x) => /bulb current is 30 mA.*budget keeps 55/.test(x)), r.mismatches.join(' | '));
+    assert.strictEqual(r.gamma, 2.2);
+    assert.ok(r.mismatches.indexOf('the colour gamma is 2.2, the power estimate assumes 2.8') >= 0, r.mismatches.join(' | '));
+    assert.deepStrictEqual(r.notes, []);
+    const plan = (await c.set('christmas', { dry: true })).plan;
+    assert.deepStrictEqual(plan.budget, W.compileWled(moodBy('christmas'), baseCtx(null, { briPct: 100 })).budget, 'budgeted at the map\'s 55 mA');
+    assert.ok(hubctl.moodsProbeLines(r)[0].indexOf('colour gamma 2.2') > 0);
+    const cases = [[{ hw: {} }, null], [{ light: { gc: { col: true, val: 2.8 } } }, 2.8], [{ light: { gc: { col: 1 } } }, 1], [{ light: { gc: { col: 2.8 } } }, 2.8]];
+    for (const [cfg, want] of cases) {
+      const f2 = fakeWled({ cfg });
+      const r2 = await fakeCtl(f2).probe({});
+      assert.strictEqual(r2.gamma, want, JSON.stringify(cfg));
+      const gm = r2.mismatches.filter((x) => /gamma/.test(x));
+      if (want === null) {
+        assert.ok(/colour gamma not read: 2.8/.test(r2.notes[0]), JSON.stringify(r2.notes));
+        assert.ok(hubctl.moodsProbeLines(r2).some((l) => /^Note: colour gamma not read/.test(l)));
+      } else if (want === 1) assert.deepStrictEqual(gm, ['the colour gamma is off, the power estimate assumes 2.8']);
+      else assert.deepStrictEqual(gm, []);
+    }
+    await c.close();
+  });
+
+  await check('Menorah from a screen: tonight\'s night (2026-12-07 = night 4), a stepped night kept by brightness and pairing, list follows the day', async () => {
+    let day = { y: 2026, m: 12, d: 7 };
+    const fw = fakeWled();
+    const c = fakeCtl(fw, { today: () => day });
+    c.start();
+    const menorahIn = () => c.resource().moods.find((m) => m.id === 'menorah');
+    assert.strictEqual(menorahIn().param.night.tonight, 4);
+    let a = await c.screenSet({ id: 'menorah' });
+    assert.strictEqual(a.status, 200, JSON.stringify(a.body));
+    assert.strictEqual(c.nowFlat().night, 4);
+    assert.deepStrictEqual(fw.posts.slice(-1), W.compileWled(moodBy('menorah'), baseCtx(null, { date: day, briPct: 100, night: 4 })).bodies);
+    a = await c.screenSet({ id: 'menorah', night: 6 });
+    assert.strictEqual(c.nowFlat().night, 6);
+    let k = fw.posts.length;
+    a = await c.screenSet({ id: 'menorah', bri: 50 });
+    assert.strictEqual(a.body.applied, true);
+    assert.deepStrictEqual(fw.posts.slice(k), [{ bri: 128 }], 'brightness only: not the mood again');
+    assert.strictEqual(c.nowFlat().night, 6);
+    k = fw.posts.length;
+    a = await c.screenSet({ id: 'menorah', pair: false });
+    assert.strictEqual(a.status, 200);
+    assert.strictEqual(fw.posts.length, k, 'pairing only: nothing to the wall');
+    await c.screenSet({ id: 'menorah' });
+    assert.strictEqual(c.nowFlat().night, 6, 'picked again with no night: the night on now');
+    assert.strictEqual(c.nowFlat().bri, 50);
+    day = { y: 2026, m: 12, d: 8 };
+    assert.strictEqual(menorahIn().param.night.tonight, 5, 'the list is built again for the new day');
+    await c.screenSet({ off: true });
+    await c.screenSet({ id: 'menorah' });
+    assert.strictEqual(c.nowFlat().night, 5);
+    day = { y: 2026, m: 12, d: 20 };
+    await c.screenSet({ id: 'christmas' });
+    await c.screenSet({ id: 'menorah' });
+    assert.strictEqual(c.nowFlat().night, 8, 'outside Hanukkah: all eight');
+    assert.strictEqual((await c.screenSet({ bri: 40 })).body.applied, true, '{ bri } alone: the mood on now');
+    await c.screenSet({ off: true });
+    assert.strictEqual((await c.screenSet({ bri: 40 })).status, 409);
+    await c.close();
+  });
+
+  await check('screen brightness and pairing for the mood on now: no resend, the renderer keeps running', async () => {
+    wall.reset();
+    timers.clear();
+    clock += 10000;
+    let r = await scr('POST', '/moods/set', { id: 'rainforest-storm', pair: false });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    assert.strictEqual((await nowOf()).path, 'pi-drawn');
+    fake.calls.length = 0;
+    const dir0 = timers.list.length;
+    let k = wall.posts().length;
+    clock += 10000;
+    r = await scr('POST', '/moods/set', { id: 'rainforest-storm', bri: 40 });
+    assert.strictEqual(r.body.applied, true);
+    assert.deepStrictEqual(posts(k)(wall).map((b) => Object.keys(b)), [['bri']]);
+    k = wall.posts().length;
+    clock += 10000;
+    r = await scr('POST', '/moods/set', { id: 'rainforest-storm', pair: true });
+    assert.strictEqual(r.body.govee, 'set');
+    assert.strictEqual(wall.posts().length, k, 'nothing to the wall');
+    assert.strictEqual((await lightsSt()).settings.look, 'rainforest');
+    assert.strictEqual((await nowOf()).pair, true);
+    assert.deepStrictEqual(fake.calls.filter((c) => c.fn === 'start' || c.fn === 'stop'), [], 'the renderer was not restarted');
+    assert.strictEqual((await nowOf()).path, 'pi-drawn');
+    assert.strictEqual(timers.list.length, dir0, 'the director was not restarted');
+    clock += 10000;
+    r = await scr('POST', '/moods/set', { id: 'christmas', bri: 30, pair: false });
+    assert.strictEqual((await nowOf()).id, 'christmas', 'another mood with a brightness is a full set');
+    clock += 10000;
+    await scr('POST', '/moods/set', { off: true });
+  });
+
+  await check('a failed set or Off after the renderer stopped: the path says effects form, not Pi-drawn', async () => {
+    wall.reset();
+    timers.clear();
+    await api('POST', '/api/moods/set', { id: 'rainforest-storm', pair: false });
+    assert.strictEqual((await nowOf()).path, 'pi-drawn');
+    wall.mode('down');
+    assert.strictEqual((await api('POST', '/api/moods/set', { id: 'christmas', pair: false })).status, 502);
+    let n = await nowOf();
+    assert.strictEqual(n.id, 'rainforest-storm');
+    assert.strictEqual(n.path, 'wled-effects');
+    wall.mode('ok');
+    await api('POST', '/api/moods/set', { id: 'rainforest-storm', pair: false });
+    assert.strictEqual((await nowOf()).path, 'pi-drawn');
+    wall.mode('down');
+    assert.strictEqual((await api('POST', '/api/moods/off', {})).status, 502);
+    n = await nowOf();
+    assert.strictEqual(n.path, 'wled-effects');
+    assert.strictEqual(stateFile().current.path, 'wled-effects');
+    wall.mode('ok');
+    await api('POST', '/api/moods/off', {});
+  });
+
+  await check('preset race: after { ps } the hub waits for the wall to report the preset before the next body (mock wall lands presets late)', async () => {
+    wall.reset();
+    wall.presetLag(80);
+    // The race is real: sent back to back, the late preset wins over the next body.
+    await ctl.request('POST', wall.url + '/json/state', { on: true, ps: 2 });
+    await ctl.request('POST', wall.url + '/json/state', { on: false, bri: 40 });
+    await sleep(160);
+    assert.strictEqual(wall.state().on, true, 'without a wait the preset lands over the brightness');
+    wall.reset();
+    wall.presetLag(80);
+    wall.set({ on: false, bri: 40 });
+    const c = ctl.createController({
+      env: { WLED_URL: wall.url }, dataDir: tmpDir(), engine: E.createFakeEngine(), rng: F.mulberry32(3), now: () => clock, today: () => TODAY,
+      presetSettleMs: 20, presetPollMs: 10, log: (l) => logs.push(String(l))
+    });
+    await c.set('christmas', { pair: false }); // segments: the wall leaves its preset (ps -1)
+    let k = wall.calls.length;
+    await c.set('rainforest', { bri: 60, pair: false });
+    let seq = wall.calls.slice(k).map((x) => x.method + (x.body && x.body.ps ? ' ps' : x.body && x.body.bri !== undefined ? ' bri' : ''));
+    assert.ok(seq.indexOf('POST ps') >= 0 && seq.indexOf('GET') > seq.indexOf('POST ps') && seq.lastIndexOf('POST bri') > seq.indexOf('GET'), seq.join(', '));
+    await sleep(150);
+    const cap = wall.posts().filter((b) => b.bri !== undefined && b.ps === undefined && !b.seg).pop().bri;
+    assert.strictEqual(wall.state().bri, cap, 'the cap stands: it came after the preset landed');
+    assert.strictEqual(wall.state().ps, 2);
+    await c.set('christmas', { pair: false });
+    k = wall.calls.length;
+    await c.off({});
+    seq = wall.calls.slice(k).map((x) => x.method + (x.body && x.body.ps ? ' ps' : ''));
+    assert.ok(seq.indexOf('GET') > seq.indexOf('POST ps'), seq.join(', '));
+    await sleep(150);
+    const s = wall.state();
+    assert.strictEqual(s.on, false, 'Off put back "off", after the preset landed');
+    assert.strictEqual(s.bri, 40);
+    await c.close();
+    wall.reset();
+  });
+
+  await check('close(): a set waiting on the wall or on the renderer\'s lead stops there (no renderer, no director, no timers left)', async () => {
+    const fw = fakeWled({ hang: true });
+    let eng = null;
+    const c = fakeCtl(fw, { engine: (hk) => { eng = E.createFakeEngine({ log: hk.log, onExit: hk.onExit }); return eng; } });
+    const p = c.set('rainforest-storm', { pair: false });
+    await sleep(10);
+    assert.ok(fw.release, 'the snapshot read is waiting');
+    await c.close();
+    fw.release();
+    await assert.rejects(p, (e) => e.status === 503);
+    assert.deepStrictEqual(fw.posts, [], 'nothing sent after close');
+    assert.ok(!eng.calls.some((x) => x.fn === 'start'));
+    assert.strictEqual(c.debug().director, 0);
+    // Closed during the 300 ms lead before the renderer starts.
+    const held = [];
+    const hold = { setTimeout: (fn, ms) => { if (ms === ctl.ENGINE_LEAD_MS) { const h = { fn }; held.push(h); return h; } return setTimeout(fn, 0); }, clearTimeout: (h) => { if (h && !h.fn) clearTimeout(h); } };
+    const fw2 = fakeWled();
+    let eng2 = null;
+    const c2 = fakeCtl(fw2, { timers: hold, engine: (hk) => { eng2 = E.createFakeEngine({ log: hk.log, onExit: hk.onExit }); return eng2; } });
+    const p2 = c2.set('rainforest-storm', { pair: false });
+    for (let i = 0; i < 50 && !held.length; i++) await sleep(2);
+    assert.strictEqual(held.length, 1, 'waiting on the lead');
+    await c2.close();
+    await assert.rejects(p2, (e) => e.status === 503);
+    assert.ok(!eng2.calls.some((x) => x.fn === 'start'), 'the renderer never starts after close');
+    assert.strictEqual(c2.debug().director, 0);
+  });
+
+  await check('wall map fix through the API: limiter and base refused, a looser budget kept at the file\'s, prototype keys refused', async () => {
+    assert.strictEqual((await api('POST', '/api/moods/wall', { override: { power: { limiterMa: 2000 } } })).status, 400);
+    assert.strictEqual((await api('POST', '/api/moods/wall', { override: { power: { baseMa: 10 } } })).status, 400);
+    const r = await api('POST', '/api/moods/wall', { override: { power: { budgetMa: 950, flashMa: 400, ledMa: 20 } } });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    assert.deepStrictEqual(r.body.clamped, ['budgetMa 800', 'flashMa 250', 'ledMa 55']);
+    assert.match(hubctl.moodsWallText(r.body), /Kept at the file's values .*budgetMa 800/);
+    const plan = (await api('POST', '/api/moods/set', { id: 'christmas', dry: true })).body.plan;
+    assert.ok(plan.budget.ma <= 800);
+    const proto = await request(h.port, 'POST', '/api/moods/wall', { token: TOKEN, body: JSON.parse('{"override":{"zones":{"__proto__":{"r":[[0,1]],"sure":true}}}}') });
+    assert.strictEqual(proto.status, 400);
+    assert.match(proto.body.error, /not allowed/);
+    await api('POST', '/api/moods/wall', { override: null });
+  });
+
+  await check('./hub moods texts: refused vs did not answer; a dry run with failed checks counts as a failure', () => {
+    const base = { configured: true, moods: [], now: { id: 'off' }, state: 'error' };
+    assert.match(hubctl.moodsLine(Object.assign({ problem: 'refused' }, base)), /Last change: the wall refused it\.$/);
+    assert.match(hubctl.moodsLine(Object.assign({ problem: 'noanswer' }, base)), /Last change: the wall did not answer\.$/);
+    assert.strictEqual(hubctl.moodsDryFailed({ dry: true, ok: false, plan: { checks: ['segment 4: id repeats'] } }), true);
+    assert.strictEqual(hubctl.moodsDryFailed({ dry: true, ok: true, plan: { checks: [] } }), false);
+    assert.strictEqual(hubctl.moodsDryFailed({ result: 'ok' }), false);
+    assert.match(hubctl.moodsTuneText({ dry: true, id: 'rainforest', tune: { spans: 2 } }), /^Dry run, nothing saved/);
   });
 
   await check('logs: every Moods line starts "moods:" and holds no address, token, mood name or id', () => {

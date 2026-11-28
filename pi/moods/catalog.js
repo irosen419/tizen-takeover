@@ -181,23 +181,61 @@ function bulbXY(wall) {
   return out;
 }
 
+// Keys that could reach an object's prototype: never taken from an override.
+const PROTO_KEYS = ['__proto__', 'constructor', 'prototype'];
+// The power fields an override may change, and which way: the fix may only make
+// the budget tighter (budgetMa and flashMa no higher, ledMa no lower than the
+// file), never touch the limiter or the base current.
+const POWER_OVERRIDE = { budgetMa: 'max', flashMa: 'max', ledMa: 'min' };
+
+function protoKeyIn(o, depth) {
+  if (depth > 8 || !o || typeof o !== 'object') return null;
+  const keys = Object.keys(o);
+  for (let i = 0; i < keys.length; i++) {
+    if (PROTO_KEYS.indexOf(keys[i]) >= 0) return keys[i];
+    const deeper = protoKeyIn(o[keys[i]], depth + 1);
+    if (deeper) return deeper;
+  }
+  return null;
+}
+
 // Pi-only override: string[] of problems ([] = fine).
 function checkOverride(o) {
   if (o === null || o === undefined) return [];
   if (!isObj(o)) return ['wall override must be an object'];
+  const proto = protoKeyIn(o, 0);
+  if (proto) return ['wall override: the key "' + proto + '" is not allowed'];
   const bad = Object.keys(o).filter((k) => OVERRIDE_KEYS.indexOf(k) < 0 && k !== 'v');
-  return bad.length ? ['wall override: "' + bad[0] + '" cannot be changed (only ' + OVERRIDE_KEYS.join(', ') + ')'] : [];
+  if (bad.length) return ['wall override: "' + bad[0] + '" cannot be changed (only ' + OVERRIDE_KEYS.join(', ') + ')'];
+  if (o.power !== undefined) {
+    if (!isObj(o.power)) return ['wall override: power must be an object'];
+    const pk = Object.keys(o.power).filter((k) => !POWER_OVERRIDE[k]);
+    if (pk.length) return ['wall override: power "' + pk[0] + '" cannot be changed (only ' + Object.keys(POWER_OVERRIDE).join(', ') + ')'];
+  }
+  return [];
 }
 
 // The wall with an override applied: zones and sides merge by zone name,
-// menorah and power replace their fields.
+// menorah and power replace their fields. Power is clamped so the fix can only
+// tighten the budget; keys that could reach a prototype are skipped.
 function mergeWall(base, override) {
   const w = copy(base);
   if (!override) return w;
-  if (isObj(override.zones)) Object.keys(override.zones).forEach((k) => { w.zones[k] = copy(override.zones[k]); });
-  if (isObj(override.sides)) Object.keys(override.sides).forEach((k) => { w.sides[k] = copy(override.sides[k]); });
-  if (isObj(override.menorah)) Object.assign(w.menorah, copy(override.menorah));
-  if (isObj(override.power)) Object.assign(w.power, copy(override.power));
+  const keys = (o) => Object.keys(o).filter((k) => PROTO_KEYS.indexOf(k) < 0);
+  if (isObj(override.zones)) keys(override.zones).forEach((k) => { w.zones[k] = copy(override.zones[k]); });
+  if (isObj(override.sides)) keys(override.sides).forEach((k) => { w.sides[k] = copy(override.sides[k]); });
+  if (isObj(override.menorah)) keys(override.menorah).forEach((k) => { w.menorah[k] = copy(override.menorah[k]); });
+  if (isObj(override.power)) {
+    keys(override.power).forEach((k) => {
+      const way = POWER_OVERRIDE[k];
+      if (!way) return;
+      const v = override.power[k];
+      const file = base.power[k];
+      // Not a number: kept as sent, so validate() names the problem.
+      if (typeof v !== 'number' || !isFinite(v) || typeof file !== 'number') { w.power[k] = v; return; }
+      w.power[k] = way === 'max' ? Math.min(v, file) : Math.max(v, file);
+    });
+  }
   return w;
 }
 

@@ -9,6 +9,9 @@
      "id": 0,
      "start": 9,
      "stop": 16,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 18,
      "col": [
@@ -35,6 +38,9 @@
      "id": 1,
      "start": 20,
      "stop": 27,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 18,
      "col": [
@@ -61,6 +67,9 @@
      "id": 2,
      "start": 121,
      "stop": 128,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 18,
      "col": [
@@ -87,6 +96,9 @@
      "id": 3,
      "start": 132,
      "stop": 139,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 18,
      "col": [
@@ -113,6 +125,9 @@
      "id": 4,
      "start": 29,
      "stop": 34,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -139,6 +154,9 @@
      "id": 5,
      "start": 35,
      "stop": 36,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -165,6 +183,9 @@
      "id": 6,
      "start": 37,
      "stop": 38,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -191,6 +212,9 @@
      "id": 7,
      "start": 39,
      "stop": 50,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -217,6 +241,9 @@
      "id": 8,
      "start": 50,
      "stop": 81,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -243,6 +270,9 @@
      "id": 9,
      "start": 82,
      "stop": 87,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -269,6 +299,9 @@
      "id": 10,
      "start": 89,
      "stop": 94,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -295,6 +328,9 @@
      "id": 11,
      "start": 95,
      "stop": 112,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -321,6 +357,9 @@
      "id": 12,
      "start": 141,
      "stop": 146,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -347,6 +386,9 @@
      "id": 13,
      "start": 147,
      "stop": 148,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -373,6 +415,9 @@
      "id": 14,
      "start": 149,
      "stop": 150,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -399,6 +444,9 @@
      "id": 15,
      "start": 151,
      "stop": 162,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 37,
      "col": [
@@ -425,6 +473,9 @@
      "id": 16,
      "start": 34,
      "stop": 35,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [
@@ -451,6 +502,9 @@
      "id": 17,
      "start": 36,
      "stop": 37,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [
@@ -477,6 +531,9 @@
      "id": 18,
      "start": 38,
      "stop": 39,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [
@@ -503,6 +560,9 @@
      "id": 19,
      "start": 81,
      "stop": 82,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [
@@ -529,6 +589,9 @@
      "id": 20,
      "start": 87,
      "stop": 89,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [
@@ -555,6 +618,9 @@
      "id": 21,
      "start": 94,
      "stop": 95,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [
@@ -581,6 +647,9 @@
      "id": 22,
      "start": 146,
      "stop": 147,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [
@@ -607,6 +676,9 @@
      "id": 23,
      "start": 148,
      "stop": 149,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [
@@ -633,6 +705,9 @@
      "id": 24,
      "start": 150,
      "stop": 151,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 94,
      "col": [

@@ -1544,25 +1544,25 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     // app/widgets/plantwall.js (v0.90.0): a still drawing, the same at every size.
     // app/widgets/moods.js. The sample is the made-up resource in dev/samples/moods-sample.json (Christmas on).
     moods: {
-      title: { en: 'Moods', es: 'Ambientes del muro' },
+      title: { en: 'Moods', es: 'Climas de la pared' },
       sample: { en: { name: 'Christmas', on: 'On now' }, es: { name: 'Navidad', on: 'Activo ahora' } },
       strip: { en: 'Four swatches and the mood\u2019s name; six columns add the description. A long name gets the room: the description leaves, then the swatches overlap. 1 column: a dot lit in the mood\u2019s first colour.',
                es: 'Cuatro muestras de color y el nombre del ambiente; seis columnas añaden la descripción. Un nombre largo se queda con el espacio: primero se va la descripción y luego las muestras se solapan. 1 columna: un punto en el primer color del ambiente.' },
       standard: { en: 'Two rows: a small lit wall over the name; six columns put the wall beside \u201cOn now\u201d, the name and the description.',
-                  es: 'Dos filas: un muro iluminado pequeño sobre el nombre; con seis columnas el muro va al lado de «Activo ahora», el nombre y la descripción.' },
+                  es: 'Dos filas: una pared iluminada pequeña sobre el nombre; con seis columnas la pared va al lado de «Activo ahora», el nombre y la descripción.' },
       tall: { en: 'The hero: the lit wall on its night stage, then \u201cOn now\u201d, the name, the description and the brightness line. Narrow: swatches over the name.',
-              es: 'El muro iluminado en grande sobre su fondo de noche, luego «Activo ahora», el nombre, la descripción y la línea de brillo. Estrecho: las muestras sobre el nombre.' },
+              es: 'La pared iluminada en grande sobre su fondo de noche, luego «Activo ahora», el nombre, la descripción y la línea de brillo. Estrecho: las muestras sobre el nombre.' },
       panel: { en: 'Left: the lit wall (focus on a card previews it, \u201cPreview\u201d), brightness as five pips, Lamp and bars (a switch) and Menorah\u2019s night 1 to 8. Right: \u201cWhole wall\u201d and \u201cVases\u201d rails, Off first. OK sends (\u201cSending\u2026\u201d), rolled back with a plain line if the wall doesn\u2019t answer.',
-               es: 'Izquierda: el muro iluminado (el foco en una tarjeta lo previsualiza, «Vista previa»), el brillo en cinco puntos, Lámpara y barras (un interruptor) y la noche de la Menorá del 1 al 8. Derecha: las filas «Todo el muro» y «Floreros», Apagado primero. OK envía («Enviando…») y se deshace con una línea clara si el muro no responde.' },
+               es: 'Izquierda: la pared iluminada (el foco en una tarjeta la previsualiza, «Vista previa»), el brillo en cinco puntos, Lámpara y barras (un interruptor) y la noche de la Menorá del 1 al 8. Derecha: las filas «Toda la pared» y «Floreros», Apagado primero. OK envía («Enviando…») y se deshace con una línea clara si el muro no responde.' },
       full: { en: 'The same, bigger, with the tags under the name.', es: 'Lo mismo, más grande, con las etiquetas bajo el nombre.' }
     },
     plantwall: {
-      title: { en: 'Plant wall lights', es: 'Luces del muro de plantas' },
+      title: { en: 'Plant wall lights', es: 'Luces de la pared de plantas' },
       sample: { en: {}, es: {} },
       strip: { en: 'The drawing shrunk to the strip’s height, centred; too small to read at one row.',
                es: 'El dibujo reducido a la altura de la tira, centrado; demasiado pequeño para leerlo en una fila.' },
       standard: { en: 'The front elevation, centred and never stretched: the three paintings, the vases with their lit LEDs, the wires (output 1 green, output 2 purple), the drum strip, dark LEDs as rings, and the labels (Guitar tail LEDs 29 to 49, Drum strip 50 to 113, Mic tail 143 to 163). No tile head. Best at 12 columns.',
-                  es: 'La vista frontal, centrada y sin deformar: los tres cuadros, los floreros con sus LED encendidos, los cables (salida 1 verde, salida 2 morada), la tira de la batería, los LED apagados como anillos y las etiquetas (Cola de la guitarra LED 29 a 49, Tira de la batería 50 a 113, Cola del micrófono 143 a 163). Sin cabecera. Mejor con 12 columnas.' },
+                  es: 'La vista frontal, centrada y sin deformar: los tres cuadros, los jarrones con sus LED encendidos, los cables (salida 1 verde, salida 2 morada), la tira de la batería, los LED apagados como anillos y las etiquetas (Cola de la guitarra LED 29 a 49, Tira de la batería 50 a 113, Cola del micrófono 143 a 163). Sin cabecera. Mejor con 12 columnas.' },
       tall: { en: 'The same, bigger. 12 x 4 on the Plants layout fills it almost edge to edge.',
               es: 'Lo mismo, más grande. En 12 x 4 en el diseño Plantas casi llena el mosaico.' },
       panel: { en: 'Opens straight to full screen; there is no small panel.', es: 'Se abre directamente a pantalla completa; no hay panel pequeño.' },
@@ -1610,7 +1610,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
               heads: ['Scenes', 'Room lights', 'Plant wall'], moods: ['Off', 'Dim', 'Bright'] },
         es: { big: 'Chill night', meta: '2 de 3 encendidas', note: 'Sengled lamp no respondió', scenes: ['Chill night', 'Lights on', 'Reading', 'Movie', 'All off'],
               lights: [['Geeni lamp', 20, 'on'], ['Sengled lamp', 0, 'gone'], ['Camera plug', 100, 'switch']], gone: 'No responde', on: 'Encendido', onNow: 'Activa ahora',
-              heads: ['Escenas', 'Iluminación del cuarto', 'Muro de plantas'], moods: ['Off', 'Dim', 'Bright'] }
+              heads: ['Escenas', 'Iluminación del cuarto', 'Pared de plantas'], moods: ['Off', 'Dim', 'Bright'] }
       },
       strip: { en: '\u201cChill night \u00b7 2 of 3 on\u201d with a dot per bulb (lit in its colour, crossed when it doesn\u2019t answer), as far as it fits; the note, then the count, then the dots leave first. 1 column: the bulb and \u201c2/3\u201d.',
                es: '\u00abChill night \u00b7 2 de 3 encendidas\u00bb con un punto por bombilla (encendido en su color, tachado si no responde), mientras quepa; primero se va la nota, luego la cuenta y luego los puntos. 1 columna: la bombilla y \u00ab2/3\u00bb.' },
@@ -1619,7 +1619,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
       tall: { en: 'Standard plus a row per light with its level (\u201cNot answering\u201d for one that doesn\u2019t), as many as fit; a wide tile adds the scene list.',
               es: 'Est\u00e1ndar m\u00e1s una fila por luz con su nivel (\u00abNo responde\u00bb si no responde), las que quepan; un mosaico ancho a\u00f1ade la lista de escenas.' },
       panel: { en: 'Scenes (cards on a rail; OK applies, \u201cSending\u2026\u201d at once, rolled back with a plain message if the Pi says no), Room lights (Left/Right dim or brighten by 10, faster when held; OK turns it on or off) and Plant wall (mood chips) when there is one. What happened shows under the title.',
-               es: 'Escenas (tarjetas en fila; OK la aplica, \u00abEnviando\u2026\u00bb al momento, y se deshace con un mensaje claro si la Pi dice que no), Iluminaci\u00f3n del cuarto (Izquierda/Derecha bajan o suben de 10 en 10, m\u00e1s r\u00e1pido si se mantiene; OK enciende o apaga) y Muro de plantas (chips de ambiente) si lo hay. Lo que pas\u00f3 se ve bajo el t\u00edtulo.' },
+               es: 'Escenas (tarjetas en fila; OK la aplica, \u00abEnviando\u2026\u00bb al momento, y se deshace con un mensaje claro si la Pi dice que no), Iluminaci\u00f3n del cuarto (Izquierda/Derecha bajan o suben de 10 en 10, m\u00e1s r\u00e1pido si se mantiene; OK enciende o apaga) y Pared de plantas (chips de ambiente) si lo hay. Lo que pas\u00f3 se ve bajo el t\u00edtulo.' },
       full: { en: 'The same three rows, bigger.', es: 'Las mismas tres filas, m\u00e1s grandes.' }
     },
     // Built on the TV as a test widget (v0.39.0); drawn here with the placeholder look only.

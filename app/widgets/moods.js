@@ -141,7 +141,7 @@
         id: m.id, name: str(m.name, 48) || m.id, es: str(m.es, 60), desc: str(m.desc, 140), descEs: str(m.descEs, 170),
         group: m.group === 'vases' ? 'vases' : 'wall', sw: sw, tags: tags,
         bri: typeof m.bri === 'number' ? Math.max(10, Math.min(100, Math.round(m.bri))) : 100,
-        night: night ? { min: Math.max(1, night.min | 0 || 1), max: Math.min(8, night.max | 0 || 8) } : null,
+        night: night ? { min: Math.max(1, night.min | 0 || 1), max: Math.min(8, night.max | 0 || 8), tonight: night.tonight | 0 || 0 } : null,
         pv: m.pv && typeof m.pv === 'object' ? m.pv : null
       });
     }
@@ -185,7 +185,8 @@
     if (!m || !m.night) return null;
     if (localNight) return Math.max(m.night.min, Math.min(m.night.max, localNight));
     var n = data && data.now;
-    var v = n && n.id === m.id && typeof n.night === 'number' ? n.night : m.night.min;
+    // Not on: tonight's night from the Pi (8 outside Hanukkah), what it sets when none is sent.
+    var v = n && n.id === m.id && typeof n.night === 'number' ? n.night : (m.night.tonight || m.night.max);
     return Math.max(m.night.min, Math.min(m.night.max, Math.round(v)));
   }
 
@@ -655,6 +656,7 @@
     var v = view();
     var m = id === 'off' ? null : find(v.moods, id);
     if (id !== 'off' && !m) return;
+    if (currentId() !== id) localNight = null; // a night stepped earlier was for the mood on then
     var mine = { id: id, at: now() };
     pending = mine;
     preview = null;
@@ -663,7 +665,8 @@
     redraw();
     var body = id === 'off' ? { off: true } : { id: id };
     if (localPair !== null) body.pair = localPair;
-    if (m && m.night) body.night = nightOf(m);
+    // Only a night a person stepped: otherwise the Pi keeps the night on now, or tonight's.
+    if (m && m.night && localNight !== null) body.night = nightOf(m);
     post(body, safe(function (err, r, code) {
       if (pending && pending !== mine) return;
       if (err || (r && r.result === 'failed')) {

@@ -47,7 +47,7 @@
       var night = m.param && m.param.night && typeof m.param.night === 'object' ? m.param.night : null;
       out.push({ id: m.id, name: str(m.name, 48) || m.id, es: str(m.es, 60), desc: str(m.desc, 140), descEs: str(m.descEs, 170),
         group: m.group === 'vases' ? 'vases' : 'wall', sw: sw, tags: tags, bri: typeof m.bri === 'number' ? m.bri : 100,
-        night: night ? { min: Math.max(1, night.min | 0 || 1), max: Math.min(8, night.max | 0 || 8) } : null,
+        night: night ? { min: Math.max(1, night.min | 0 || 1), max: Math.min(8, night.max | 0 || 8), tonight: night.tonight | 0 || 0 } : null,
         pv: m.pv && typeof m.pv === 'object' ? m.pv : null });
     }
     return out;
@@ -80,7 +80,8 @@
     function nightOf(d, m) {
       if (!m || !m.night) return null;
       var n = d && d.now;
-      var v = st.night !== null ? st.night : (n && n.id === m.id && typeof n.night === 'number' ? n.night : m.night.min);
+      // Not on: tonight's night from the Pi (8 outside Hanukkah), what it sets when none is sent.
+      var v = st.night !== null ? st.night : (n && n.id === m.id && typeof n.night === 'number' ? n.night : (m.night.tonight || m.night.max));
       return Math.max(m.night.min, Math.min(m.night.max, Math.round(v)));
     }
 
@@ -105,13 +106,15 @@
     function apply(id, d) {
       var ms = moodsOf(d);
       var m = id === 'off' ? null : find(ms, id);
+      if (current(d) !== id) st.night = null; // a night stepped earlier was for the mood on then
       st.pending = { id: id, at: new Date().getTime() };
       st.bri = null;
       st.note = { text: T('sending', 'Sending…'), kind: '' };
       draw(true);
       var body = id === 'off' ? { off: true } : { id: id };
       if (st.pair !== null) body.pair = st.pair;
-      if (m && m.night) body.night = nightOf(d, m);
+      // Only a night a person stepped: otherwise the Pi keeps the night on now, or tonight's.
+      if (m && m.night && st.night !== null) body.night = nightOf(d, m);
       send(body, function (err) {
         if (err) { st.pending = null; st.note = { text: err, kind: 'bad' }; }
         else st.note = { text: m ? T('moodOn', '{name} is on', { name: nameOf(m) }) : T('offDone', 'The wall is back to how it was'), kind: '' };
@@ -136,6 +139,7 @@
       st.sig = sig;
       // The Pi's state confirms what was on its way.
       if (st.pending && nowId(d) === (st.pending.id === 'off' ? null : st.pending.id)) st.pending = null;
+      if (st.night !== null && d && d.now && d.now.night === st.night) st.night = null; // the Pi has it
       while (root.firstChild) root.removeChild(root.firstChild);
       if (!d || !isArr(d.moods)) {
         el('div', 'mt-name', root, ctx.status() === 'offline' ? T('offline', 'Can’t reach the Pi') : T('waiting', 'Waiting for the Pi'));

@@ -444,13 +444,13 @@ check('geometry: the artifact canvases and vases; a position for every lit bulb,
 check('Pi-only override: merges zones, sides, menorah, power; refuses anything else; load() picks it up', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-moods-data-'));
   try {
-    const o = { zones: { vase1: { r: [[10, 16]], sure: true }, 'drops.left': { r: [[17, 19]], sure: false } }, menorah: { sure: true }, power: { ledMa: 40 } };
+    const o = { zones: { vase1: { r: [[10, 16]], sure: true }, 'drops.left': { r: [[17, 19]], sure: false } }, menorah: { sure: true }, power: { ledMa: 60 } };
     fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), JSON.stringify(o));
     const r = catalogLib.load(dir);
     assert.deepStrictEqual(r.wall.zones.vase1, { r: [[10, 16]], sure: true });
     assert.strictEqual(r.wall.menorah.sure, true);
     assert.deepStrictEqual(r.wall.menorah.candles, wall.menorah.candles);
-    assert.strictEqual(r.wall.power.ledMa, 40);
+    assert.strictEqual(r.wall.power.ledMa, 60, 'a higher bulb current tightens the budget: taken');
     assert.strictEqual(r.wall.power.budgetMa, 800);
     assert.deepStrictEqual(wall.zones.vase1.r, [[9, 15]], 'the file is untouched');
     fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), JSON.stringify({ zones: { vase1: { r: [[18, 24]], sure: true } } }));
@@ -460,6 +460,53 @@ check('Pi-only override: merges zones, sides, menorah, power; refuses anything e
     fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), '{nope');
     assert.throws(() => catalogLib.load(dir), /not valid JSON/);
     assert.deepStrictEqual(catalogLib.checkOverride(null), []);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+check('Pi-only override cannot raise or bypass the power budget, or reach a prototype', () => {
+  const pw = wall.power;
+  // The limiter and the base current can never be changed.
+  ['limiterMa', 'baseMa', 'maxMa'].forEach((k) => {
+    const p = catalogLib.checkOverride({ power: { [k]: 5000 } });
+    assert.ok(p.length && /cannot be changed/.test(p[0]), k + ': ' + JSON.stringify(p));
+  });
+  assert.ok(/power must be an object/.test(catalogLib.checkOverride({ power: 3 })[0]));
+  // budgetMa and flashMa only down, ledMa only up.
+  const up = catalogLib.mergeWall(wall, { power: { budgetMa: 990, flashMa: 900, ledMa: 20 } });
+  assert.strictEqual(up.power.budgetMa, pw.budgetMa);
+  assert.strictEqual(up.power.flashMa, pw.flashMa);
+  assert.strictEqual(up.power.ledMa, pw.ledMa);
+  assert.strictEqual(up.power.limiterMa, pw.limiterMa);
+  assert.strictEqual(up.power.baseMa, pw.baseMa);
+  const down = catalogLib.mergeWall(wall, { power: { budgetMa: 600, flashMa: 100, ledMa: 70 } });
+  assert.deepStrictEqual([down.power.budgetMa, down.power.flashMa, down.power.ledMa], [600, 100, 70]);
+  // A merge that skips checkOverride still never takes the limiter or the base.
+  const sneak = catalogLib.mergeWall(wall, { power: { limiterMa: 5000, baseMa: 1 } });
+  assert.strictEqual(sneak.power.limiterMa, pw.limiterMa);
+  assert.strictEqual(sneak.power.baseMa, pw.baseMa);
+  // Not a number: kept as sent so validate() refuses it (no coercion of "900").
+  const str = catalogLib.mergeWall(wall, { power: { budgetMa: '900' } });
+  assert.ok(catalogLib.validate(catalog, str).some((x) => /power needs/.test(x)));
+  // Prototype keys, at any depth, are refused and never merged.
+  ['{"__proto__":{"x":1}}', '{"zones":{"__proto__":{"r":[[0,1]],"sure":true}}}', '{"power":{"constructor":{"prototype":{"budgetMa":5000}}}}', '{"menorah":{"prototype":1}}']
+    .forEach((t) => {
+      const o = JSON.parse(t);
+      const p = catalogLib.checkOverride(o);
+      assert.ok(p.length && /not allowed/.test(p[0]), t + ': ' + JSON.stringify(p));
+      const m = catalogLib.mergeWall(wall, o);
+      assert.strictEqual(Object.getPrototypeOf(m.zones), Object.prototype, t);
+      assert.strictEqual(Object.getPrototypeOf(m.power), Object.prototype, t);
+      assert.strictEqual(m.power.budgetMa, pw.budgetMa, t);
+      assert.strictEqual({}.x, undefined, t);
+    });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-moods-data-'));
+  try {
+    fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), JSON.stringify({ power: { budgetMa: 2000, ledMa: 1 } }));
+    const r = catalogLib.load(dir);
+    assert.strictEqual(r.wall.power.budgetMa, pw.budgetMa, 'load clamps too');
+    assert.strictEqual(r.wall.power.ledMa, pw.ledMa);
+    fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), JSON.stringify({ power: { limiterMa: 2000 } }));
+    assert.throws(() => catalogLib.load(dir), /cannot be changed/);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

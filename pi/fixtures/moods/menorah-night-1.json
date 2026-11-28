@@ -9,6 +9,9 @@
      "id": 0,
      "start": 9,
      "stop": 16,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 21,
      "col": [
@@ -35,6 +38,9 @@
      "id": 1,
      "start": 20,
      "stop": 27,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 21,
      "col": [
@@ -61,6 +67,9 @@
      "id": 2,
      "start": 121,
      "stop": 128,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 21,
      "col": [
@@ -87,6 +96,9 @@
      "id": 3,
      "start": 132,
      "stop": 139,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 21,
      "col": [
@@ -113,6 +125,9 @@
      "id": 4,
      "start": 29,
      "stop": 50,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 42,
      "col": [
@@ -139,6 +154,9 @@
      "id": 5,
      "start": 50,
      "stop": 87,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 42,
      "col": [
@@ -165,6 +183,9 @@
      "id": 6,
      "start": 89,
      "stop": 112,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 42,
      "col": [
@@ -191,6 +212,9 @@
      "id": 7,
      "start": 141,
      "stop": 150,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 42,
      "col": [
@@ -217,6 +241,9 @@
      "id": 8,
      "start": 151,
      "stop": 162,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 42,
      "col": [
@@ -271,6 +298,9 @@
      "id": 16,
      "start": 87,
      "stop": 89,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 106,
      "col": [
@@ -297,6 +327,9 @@
      "id": 17,
      "start": 150,
      "stop": 151,
+     "grp": 1,
+     "spc": 0,
+     "of": 0,
      "on": true,
      "bri": 106,
      "col": [

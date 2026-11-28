@@ -1111,7 +1111,7 @@ const COMMANDS = {
     args: {},
     run: async (a, ctx) => {
       const r = await ctx.call('POST', '/api/moods/probe', {});
-      return { message: lines(hubctl.moodsProbeLines(r)), data: { read: r.read, of: r.of, mismatches: r.mismatches, counts: r.counts, leds: r.leds, maxPwr: r.maxPwr, ledMa: r.ledMa, realtime: r.realtime, mic: r.mic, ver: r.ver } };
+      return { message: lines(hubctl.moodsProbeLines(r)), data: { read: r.read, of: r.of, mismatches: r.mismatches, notes: r.notes || [], counts: r.counts, leds: r.leds, maxPwr: r.maxPwr, ledMa: r.ledMa, gamma: r.gamma === undefined ? null : r.gamma, realtime: r.realtime, mic: r.mic, ver: r.ver } };
     }
   },
   'moods.tune': {
@@ -1132,7 +1132,7 @@ const COMMANDS = {
     args: { override: [V.object(), true, true] },
     run: async (a, ctx) => {
       const r = await ctx.call('POST', '/api/moods/wall', { override: a.override });
-      return { message: hubctl.moodsWallText(r), data: { override: !!r.override, zones: r.zones, sure: r.sure } };
+      return { message: hubctl.moodsWallText(r), data: { override: !!r.override, zones: r.zones, sure: r.sure, clamped: r.clamped || [] } };
     }
   },
   // Music lights (lights/store.js): the lamp and bars follow the Pi's music.

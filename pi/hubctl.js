@@ -216,7 +216,8 @@ function call(method, p, body, timeoutMs) {
       stop('The server has no token yet. Run ./hub token, then restart the server.');
     }
     // The Echo controls answer 200 with ok: false when Home Assistant said no; the message is the answer.
-    if (!r.json.ok && !(r.status === 200 && p === '/api/echo' && typeof r.json.message === 'string')) stop('The server said no: ' + (r.json.error || 'error ' + r.status) + '.');
+    // A Moods dry run answers 200 with ok: false when its checks failed; the plan is the answer.
+    if (!r.json.ok && !(r.status === 200 && p === '/api/echo' && typeof r.json.message === 'string') && !(r.status === 200 && r.json.dry === true)) stop('The server said no: ' + (r.json.error || 'error ' + r.status) + '.');
     return r.json;
   });
 }
@@ -1382,7 +1383,7 @@ function moodsLine(s) {
     if (n.stale) line += ' Changed somewhere else since.';
   }
   if (s.engine && s.engine.kind !== 'none') line += ' Pi-drawn engine: ' + s.engine.kind + (s.engine.running ? ', running.' : ', idle.');
-  if (s.state === 'error') line += ' Last change: the wall did not answer.';
+  if (s.state === 'error') line += s.problem === 'refused' ? ' Last change: the wall refused it.' : s.problem === 'reply' ? ' Last change: the wall gave an answer that could not be read.' : ' Last change: the wall did not answer.';
   if (s.dry) line += ' Dry run only (MOODS_DRY=1).';
   return line;
 }
@@ -1436,6 +1437,11 @@ function moodsEventText(r, name) {
   return r.to === 'renderer' ? name + ' sent to the Pi-drawn engine (' + r.n + ').' : name + ': a dim on the wall for about ' + Math.round((r.holdMs || 0) / 100) / 10 + ' seconds.';
 }
 
+// A dry run whose plan failed the safety checks: the command fails.
+function moodsDryFailed(r) {
+  return !!(r && r.dry && r.plan && Array.isArray(r.plan.checks) && r.plan.checks.length);
+}
+
 function moodsProbeLines(r) {
   if (r.dry) return ['Dry run, nothing read: ' + (r.plan.wled || []).map((x) => x.path).join(', ') + '.'];
   const c = r.counts || {};
@@ -1445,18 +1451,23 @@ function moodsProbeLines(r) {
       r.maxPwr != null ? 'power limit ' + r.maxPwr + ' mA' : null, r.ledMa != null ? 'bulb ' + r.ledMa + ' mA' : null,
       r.realtime != null ? 'receive realtime ' + (r.realtime ? 'on' : 'off') : null,
       r.mic != null ? 'sound effects ' + (r.mic ? 'there' : 'missing') : null].filter(Boolean).join(', ') + '.'];
+  if (r.gamma != null) out[0] = out[0].replace(/\.$/, ', colour gamma ' + (r.gamma === 1 ? 'off' : r.gamma) + '.');
   out.push(r.mismatches.length ? plain(r.mismatches.length, 'mismatch').replace(/mismatchs$/, 'mismatches') + ':' : 'No mismatches.');
   r.mismatches.forEach((m) => out.push('  ' + m));
+  (r.notes || []).forEach((m) => out.push('Note: ' + m + '.'));
   return out;
 }
 
 function moodsTuneText(r) {
   const k = Object.keys(r.tune || {});
+  if (r.dry) return 'Dry run, nothing saved: ' + r.id + (k.length ? ' would use ' + k.map((x) => x + ' ' + r.tune[x]).join(', ') : ' would go back to the defaults') + '.';
   return k.length ? 'Saved for ' + r.id + ': ' + k.map((x) => x + ' ' + r.tune[x]).join(', ') + '. Used the next time it is set.' : 'Back to the defaults for ' + r.id + '.';
 }
 
 function moodsWallText(r) {
-  return r.override ? 'Wall map fix saved (' + r.sure + ' of ' + r.zones + ' zones marked sure). Set the mood again to see it.' : 'Wall map fix removed; the map in pi/moods/wall.json is used.';
+  if (r.dry) return r.override ? 'Dry run, nothing saved: the wall map fix fits (' + r.sure + ' of ' + r.zones + ' zones marked sure).' + (r.clamped && r.clamped.length ? ' Kept at the file\'s values: ' + r.clamped.join(', ') + '.' : '') : 'Dry run, nothing removed.';
+  const kept = r.clamped && r.clamped.length ? ' Kept at the file\'s values (a fix may only tighten the power budget): ' + r.clamped.join(', ') + '.' : '';
+  return (r.override ? 'Wall map fix saved (' + r.sure + ' of ' + r.zones + ' zones marked sure). Set the mood again to see it.' : 'Wall map fix removed; the map in pi/moods/wall.json is used.') + kept;
 }
 
 function moodsNum(v, flag, min, max, whole) {
@@ -1488,7 +1499,9 @@ async function moodsCommand(args) {
     if (a.opts.pair) body.pair = true;
     if (a.opts['dry-run']) body.dry = true;
     const r = await call('POST', '/api/moods/set', body);
-    done(moodsSetText(r, await nameOf(id)), r);
+    const text = moodsSetText(r, await nameOf(id));
+    if (moodsDryFailed(r)) { say(text); stop(JSON.stringify(r.plan, null, 1)); }
+    done(text, r);
     if (r.dry) say(JSON.stringify(r.plan, null, 1));
     return;
   }
@@ -2279,6 +2292,7 @@ module.exports = {
   moodsBriText: moodsBriText,
   moodsEventText: moodsEventText,
   moodsProbeLines: moodsProbeLines,
+  moodsDryFailed: moodsDryFailed,
   moodsTuneText: moodsTuneText,
   moodsWallText: moodsWallText,
   moodsDryText: moodsDryText,

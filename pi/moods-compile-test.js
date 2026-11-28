@@ -176,6 +176,9 @@ check('checkState rejects bad bodies', () => {
     ['colour 300', (b) => { b.seg[0].col = [[300, 0, 0]]; }, /colour/],
     ['start without stop', (b) => { delete b.seg[0].stop; }, /together/],
     ['o1 not boolean', (b) => { b.seg[0].o1 = 1; }, /o1/],
+    ['grp 0', (b) => { b.seg[0].grp = 0; }, /grp/],
+    ['spc 300', (b) => { b.seg[0].spc = 300; }, /spc/],
+    ['of -1', (b) => { b.seg[0].of = -1; }, /of must/],
   ];
   bad.forEach((x) => {
     const errs = edit(x[1]);
@@ -186,6 +189,16 @@ check('checkState rejects bad bodies', () => {
   assert.ok(W.checkState('x', wall).length);
   assert.deepStrictEqual(W.checkState({ on: true, ps: 2 }, wall), []);
   assert.deepStrictEqual(W.checkState({ tt: 3, seg: [{ id: 1, bri: 90 }] }, wall), []);
+});
+
+check('every lit mood segment resets grouping, spacing and offset (grp 1, spc 0, of 0)', () => {
+  let n = 0;
+  everyBody().forEach((x) => (x[1].seg || []).forEach((s) => {
+    if (s.stop === 0 || s.start === undefined) return;
+    n++;
+    assert.deepStrictEqual([s.grp, s.spc, s.of], [1, 0, 0], x[0] + ' segment ' + s.id);
+  }));
+  assert.ok(n > 100, n + ' segments');
 });
 
 check('no compiled body ever holds psave, pdel or playlist', () => {
@@ -377,7 +390,7 @@ check('restore bodies delete every extra segment, then put the snapshot back', (
   assert.strictEqual(b[0].seg.length, 31);
   assert.strictEqual(b[1].on, false);
   assert.strictEqual(b[1].bri, 40);
-  assert.deepStrictEqual(b[1].seg, [{ id: 0, start: 0, stop: 162, on: true, bri: 90, fx: 65, sx: 8, ix: 128, pal: 10, c1: 128, c2: 128, col: [[0, 100, 0], [0, 0, 0], [0, 0, 0]], o1: false, o2: false, o3: false }]);
+  assert.deepStrictEqual(b[1].seg, [{ id: 0, start: 0, stop: 162, on: true, bri: 90, fx: 65, sx: 8, ix: 128, pal: 10, c1: 128, c2: 128, spc: 0, of: 0, grp: 1, col: [[0, 100, 0], [0, 0, 0], [0, 0, 0]], o1: false, o2: false, o3: false }]);
   const c = W.restoreBodies(otherPreset, wall);
   assert.ok(!c.some((x) => x.ps), 'preset 7 is not selected; its segments are sent');
   assert.deepStrictEqual(c[0].seg.map((s) => s.id).indexOf(4), -1);

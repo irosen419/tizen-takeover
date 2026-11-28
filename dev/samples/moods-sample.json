@@ -1049,7 +1049,8 @@
     "night": {
      "min": 1,
      "max": 8,
-     "auto": "hanukkah"
+     "auto": "hanukkah",
+     "tonight": 8
     }
    },
    "pv": {

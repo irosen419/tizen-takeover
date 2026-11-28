@@ -66,7 +66,9 @@
  *                        from the TV (ambience.js): saved ids only, rate limited
  *   POST /moods/set      the plant wall's moods from the TV, the tablet or the phone
  *                        (moods/controller.js): { id } or { off: true }, bri?, night?, pair?;
- *                        saved ids only, rate limited (a screen and a touch route)
+ *                        saved ids only. A touch route (TOUCH_ROUTES): touchAllowed
+ *                        (home and Tailscale addresses), then the Origin check and
+ *                        the Moods rate limit
  *   POST /screen/report  what the screen shows now (screenreport.js): kept in memory, never logged
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
  *
@@ -2676,8 +2678,9 @@ function start(options) {
     });
   }
 
-  // POST /moods/set from the TV, the tablet or the phone: saved ids only, never
-  // a dry run, rate limited like Ambience. The address is never logged here.
+  // POST /moods/set from the TV, the tablet or the phone (through touch(), after
+  // touchAllowed and originOk): saved ids only, never a dry run, rate limited
+  // like Ambience. The address is never logged here.
   function moodsScreenSet(req, res, cors) {
     if (!moods.screenAllowed()) {
       req.resume();
@@ -2705,7 +2708,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/moods/set' || route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/budget/planned' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route === '/screen/report' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/budget/planned' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route === '/screen/report' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2927,7 +2930,6 @@ function start(options) {
       });
       return undefined;
     }
-    if (route === '/moods/set') return moodsScreenSet(req, res, cors);
     if (route.indexOf('/ambience/') === 0) {
       // The TV holds no secret: it may only name ids from the saved
       // settings, and not too fast. Nothing about it is logged here (the
@@ -2979,11 +2981,13 @@ function start(options) {
   const SCREEN_ROUTES = {
     '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/budget/goal': 1, '/budget/planned': 1, '/prefs': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
-    '/echo/run': 1, '/guest/pin': 1, '/lights/look': 1, '/screen/report': 1, '/moods/set': 1
+    '/echo/run': 1, '/guest/pin': 1, '/lights/look': 1, '/screen/report': 1
   };
 
-  // /moods/set is in both: the touch door answers it first (home and Tailscale
-  // addresses, as the phone needs), with the screen door's checks (Origin, rate).
+  // POST /moods/set is a touch route only, so the TV, the tablet and the phone
+  // all reach it through touch(): touchAllowed (a private or Tailscale address
+  // and an allowed Host), originOk (no Origin, a listed screen origin or the
+  // hub's own host), then the Moods rate limit (moods.screenAllowed) in moodsScreenSet.
   const TOUCH_ROUTES = { '/moods/set': 1, '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1, '/spanish/progress': 1, '/spanish/ops': 1 };
 
   function handler(door) {

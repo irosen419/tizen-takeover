@@ -537,7 +537,7 @@ async function startRealPi(o) {
           if (o.lang === 'es') {
             const eng = /\b(Whole wall|Vases|Brightness|Lamp and bars|On now|Preview|Off now|Leave as they are|With the mood)\b/.exec(s.text);
             assert(!eng, mode + ': English "' + (eng && eng[0]) + '"');
-            assert(/Todo el muro/.test(s.text) && /Brillo/.test(s.text) && /Navidad/.test(s.text), mode + ': ' + s.text.slice(0, 120));
+            assert(/Toda la pared/.test(s.text) && /Brillo/.test(s.text) && /Navidad/.test(s.text), mode + ': ' + s.text.slice(0, 120));
           }
         }
         const errs = H.errorsOf(p, true);
@@ -696,7 +696,7 @@ async function startRealPi(o) {
       rp.sent.length = 0;
     });
 
-    await check('real Pi: brightness pips send { id, bri } once; the wall gets the bodies at that brightness', async () => {
+    await check('real Pi: brightness pips send { id, bri } once; the wall gets only the new master brightness (the mood is not sent again)', async () => {
       await leftToControls(rp);
       let p = await panelInfo(rp);
       assert(p.focus === 'ctl:bri', 'focus ' + p.focus);
@@ -709,7 +709,7 @@ async function startRealPi(o) {
       await H.sleep(600);
       assert(rp.sent.length === 1 && rp.sent[0].id === 'christmas' && typeof rp.sent[0].bri === 'number', JSON.stringify(rp.sent));
       const pct = rp.sent[0].bri;
-      assert(same(wallPosts().slice(mark), bodiesFor('christmas', { briPct: pct })), 'not the bodies at ' + pct + '%');
+      assert(same(wallPosts().slice(mark), [{ bri: bodiesFor('christmas', { briPct: pct })[0].bri }]), 'not the brightness alone at ' + pct + '%: ' + JSON.stringify(wallPosts().slice(mark)).slice(0, 120));
       await H.until(async () => (await env.real.api('GET', '/api/moods/now')).body.bri === pct, 3000, 'the Pi did not keep ' + pct);
       rp.sent.length = 0;
     });
@@ -726,36 +726,36 @@ async function startRealPi(o) {
       rp.sent.length = 0;
     });
 
-    await check('real Pi: Menorah sends its night; the stepper changes the bodies (golden nights 1 and 8); the candles follow', async () => {
+    await check('real Pi: Menorah sends no night until it is stepped (tonight\'s: 8 outside Hanukkah); the stepper changes the bodies (golden nights 8 and 1); the candles follow', async () => {
       let mark = wallPosts().length;
       await goCard(rp, 'menorah');
       await H.key(rp, 'Enter');
       let got = await confirmed(rp, 'menorah', mark);
-      assert(same(rp.sent, [{ id: 'menorah', night: 1 }]), JSON.stringify(rp.sent));
-      assert(same(got, golden('menorah-night-1.json')), 'night 1 is not the golden body');
+      assert(same(rp.sent, [{ id: 'menorah' }]), JSON.stringify(rp.sent));
+      assert(same(got, golden('menorah-night-8.json')), 'tonight (8) is not the golden body');
       let q = await panelInfo(rp);
-      assert(q.night && q.candles === 1, JSON.stringify(q));
+      assert(q.night && q.candles === 8, JSON.stringify(q));
       await leftToControls(rp);
       await H.key(rp, 'ArrowDown', 2);
       q = await panelInfo(rp);
       assert(q.focus === 'ctl:night', 'focus ' + q.focus);
       rp.sent.length = 0;
       mark = wallPosts().length;
-      await H.key(rp, 'ArrowRight');
-      await H.until(() => wallPosts().length > mark, 4000, 'night 2 not sent');
+      await H.key(rp, 'ArrowLeft');
+      await H.until(() => wallPosts().length > mark, 4000, 'night 7 not sent');
       await H.sleep(400);
       got = wallPosts().slice(mark);
-      assert(same(rp.sent, [{ id: 'menorah', night: 2 }]), JSON.stringify(rp.sent));
-      assert(same(got, bodiesFor('menorah', { night: 2 })) && !same(got, golden('menorah-night-1.json')), 'night 2 bodies');
-      assert((await panelInfo(rp)).candles === 2, 'candles');
+      assert(same(rp.sent, [{ id: 'menorah', night: 7 }]), JSON.stringify(rp.sent));
+      assert(same(got, bodiesFor('menorah', { night: 7 })) && !same(got, golden('menorah-night-8.json')), 'night 7 bodies');
+      assert((await panelInfo(rp)).candles === 7, 'candles');
       rp.sent.length = 0;
       mark = wallPosts().length;
-      await H.key(rp, 'ArrowRight', 6);
-      await H.until(async () => (await env.real.api('GET', '/api/moods/now')).body.night === 8, 5000, 'night 8 not kept');
+      await H.key(rp, 'ArrowLeft', 6);
+      await H.until(async () => (await env.real.api('GET', '/api/moods/now')).body.night === 1, 5000, 'night 1 not kept');
       await H.sleep(300);
       got = wallPosts().slice(mark);
-      assert(same(got.slice(-golden('menorah-night-8.json').length), golden('menorah-night-8.json')), 'night 8 is not the golden body');
-      assert((await panelInfo(rp)).candles === 8, 'candles');
+      assert(same(got.slice(-golden('menorah-night-1.json').length), golden('menorah-night-1.json')), 'night 1 is not the golden body');
+      assert((await panelInfo(rp)).candles === 1, 'candles');
       rp.sent.length = 0;
     });
 
@@ -812,7 +812,7 @@ async function startRealPi(o) {
       await q.waitForSelector('.mt-hero svg', { timeout: 10000 });
       env.wall.mode('down');
       await q.click('.mt-card[data-mood="goodnight"]');
-      await H.until(() => q.evaluate(() => (document.querySelector('.mt-note') || {}).textContent === 'El muro no respondió. No cambió nada.'), 9000, 'no Spanish line');
+      await H.until(() => q.evaluate(() => (document.querySelector('.mt-note') || {}).textContent === 'La pared no respondió. No cambió nada.'), 9000, 'no Spanish line');
       env.wall.mode('ok');
       await es.close();
       assert(!errors.length, errors.join(' | '));

@@ -10,7 +10,7 @@
  *   GET  /json/effects    effect names (index = id), from pi/moods/moods.json's fx table
  *   GET  /json/palettes   palette names, the same way
  *   GET  /json/info       { ver, leds: { count, maxpwr, maxseg, pwr }, ... }
- *   GET  /json/cfg        { hw: { led: { maxpwr, ledma } }, if: { live: { en } } }
+ *   GET  /json/cfg        { hw: { led: { maxpwr, ledma } }, light: { gc: { bri, col, val } }, if: { live: { en } } }
  *
  *   const w = await require('./mock-wall').start();
  *   w.url                 'http://127.0.0.1:PORT' (loopback only)
@@ -23,6 +23,12 @@
  *   w.effects(fn)         change the effect list: fn(names) returns the new list
  *                         (move an id, drop the mic effects)
  *   w.set(fields)         change the state behind the hub's back ({ on, bri })
+ *   w.presetLag(ms)       like a real WLED: a POST that selects preset 1 or 2 answers
+ *                         at once, and the preset lands ms later, bringing its own
+ *                         on and bri (state.ps changes only then). 0 (the default):
+ *                         at once, keeping the brightness
+ *   w.gamma(v)            the colour gamma /json/cfg reports as light.gc.col
+ *                         (default 2.8; null leaves light out of cfg)
  *   w.reset()             all ok, preset 2 on, the calls forgotten
  *   w.close()
  *
@@ -60,6 +66,9 @@ function start(opts) {
   const palettes = names(CATALOG.pals, 72, 'Pal');
   const calls = [];
   const hanging = new Set();
+  let lag = 0;
+  let gamma = 2.8;
+  const lagTimers = new Set();
 
   function send(res, status, body) {
     const text = mode === 'broken' ? 'not json' : JSON.stringify(body);
@@ -68,7 +77,15 @@ function start(opts) {
   }
 
   function apply(b) {
-    if (Number.isInteger(b.ps) && (b.ps === 1 || b.ps === 2)) {
+    if (Number.isInteger(b.ps) && (b.ps === 1 || b.ps === 2) && lag > 0) {
+      // The preset lands later, with its own on and bri, over whatever came meanwhile.
+      const ps = b.ps;
+      const t = setTimeout(() => { lagTimers.delete(t); state = liveState(); state.ps = ps; }, lag);
+      lagTimers.add(t);
+      b = Object.assign({}, b);
+      delete b.on;
+      delete b.ps;
+    } else if (Number.isInteger(b.ps) && (b.ps === 1 || b.ps === 2)) {
       const keepBri = state.bri;
       state = liveState();
       state.bri = keepBri;
@@ -112,7 +129,11 @@ function start(opts) {
       if (p === '/json/effects') return send(res, 200, effects);
       if (p === '/json/palettes') return send(res, 200, palettes);
       if (p === '/json/info') return send(res, 200, { ver: '16.0.1', name: 'Pretend wall', leds: { count: 164, maxpwr: 1000, maxseg: 32, pwr: 420, fps: 42 }, live: false });
-      if (p === '/json/cfg') return send(res, 200, { hw: { led: { total: 164, maxpwr: 1000, ledma: 55, ins: [{ len: 164, ledma: 55 }] } }, if: { live: { en: true } } });
+      if (p === '/json/cfg') {
+        const cfg = { hw: { led: { total: 164, maxpwr: 1000, ledma: 55, ins: [{ len: 164, ledma: 55 }] } }, if: { live: { en: true } } };
+        if (gamma !== null) cfg.light = { 'scale-bri': 100, gc: { bri: 1, col: gamma, val: 2.8 } };
+        return send(res, 200, cfg);
+      }
       return send(res, 404, { error: 'not found' });
     });
   });
@@ -130,8 +151,14 @@ function start(opts) {
         mode: (m) => { mode = m || 'ok'; posts = 0; },
         effects: (fn) => { effects = fn(effects.slice()); },
         set: (f) => { Object.assign(state, f || {}); },
-        reset: () => { state = liveState(); mode = 'ok'; posts = 0; effects = names(CATALOG.fx, 190, 'FX'); calls.length = 0; },
+        presetLag: (ms) => { lag = ms || 0; },
+        gamma: (v) => { gamma = v === undefined ? 2.8 : v; },
+        reset: () => {
+          lagTimers.forEach((t) => clearTimeout(t)); lagTimers.clear();
+          state = liveState(); mode = 'ok'; posts = 0; lag = 0; gamma = 2.8; effects = names(CATALOG.fx, 190, 'FX'); calls.length = 0;
+        },
         close: () => new Promise((r) => {
+          lagTimers.forEach((t) => clearTimeout(t)); lagTimers.clear();
           hanging.forEach((h) => { try { if (h.socket) h.socket.destroy(); } catch (e) { /* gone */ } });
           server.close(() => r());
           if (typeof server.closeAllConnections === 'function') server.closeAllConnections();

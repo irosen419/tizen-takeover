@@ -45,7 +45,7 @@ const C = require('./catalog');
 const F = require('./forest-render');
 
 const TOP_KEYS = ['on', 'bri', 'transition', 'tt', 'seg', 'ps'];
-const SEG_KEYS = ['id', 'start', 'stop', 'on', 'bri', 'col', 'fx', 'sx', 'ix', 'pal', 'c1', 'c2', 'o1', 'o2', 'o3'];
+const SEG_KEYS = ['id', 'start', 'stop', 'grp', 'spc', 'of', 'on', 'bri', 'col', 'fx', 'sx', 'ix', 'pal', 'c1', 'c2', 'o1', 'o2', 'o3'];
 const BOOL_KEYS = ['on', 'o1', 'o2', 'o3'];
 const MAX_ID = 31;
 const VASE_IDS = [0, 1, 2, 3];
@@ -319,8 +319,10 @@ function carve(runs, extras) {
   return out;
 }
 
+// Every mood segment resets grouping, spacing and offset, so a segment left
+// grouped or spaced by an earlier look (or by hand in WLED) lights every bulb.
 function segOf(id, run, settings) {
-  const s = { id, start: run.a, stop: run.b + 1, on: true, bri: run.bri };
+  const s = { id, start: run.a, stop: run.b + 1, grp: 1, spc: 0, of: 0, on: true, bri: run.bri };
   s.col = settings.col; s.fx = settings.fx; s.sx = settings.sx; s.ix = settings.ix; s.pal = settings.pal;
   s.c1 = settings.c1; s.c2 = settings.c2; s.o1 = settings.o1;
   return s;
@@ -553,7 +555,8 @@ function checkState(body, wall) {
           else if (!Number.isInteger(s.start) || !Number.isInteger(s.stop) || s.start < 0 || s.start >= s.stop || s.stop > stopMax) p(at + 'start and stop must be 0 <= start < stop <= ' + stopMax);
         }
         BOOL_KEYS.forEach((k) => { if (s[k] !== undefined && typeof s[k] !== 'boolean') p(at + k + ' must be true or false'); });
-        ['bri', 'fx', 'sx', 'ix', 'pal', 'c1', 'c2'].forEach((k) => { if (s[k] !== undefined && !isByte(s[k])) p(at + k + ' must be 0 to 255'); });
+        ['bri', 'fx', 'sx', 'ix', 'pal', 'c1', 'c2', 'spc', 'of'].forEach((k) => { if (s[k] !== undefined && !isByte(s[k])) p(at + k + ' must be 0 to 255'); });
+        if (s.grp !== undefined && !(isByte(s.grp) && s.grp >= 1)) p(at + 'grp must be 1 to 255');
         if (s.col !== undefined) {
           if (!Array.isArray(s.col) || s.col.length > 3) p(at + 'col must hold at most 3 colours');
           else s.col.forEach((c) => { if (!Array.isArray(c) || c.length !== 3 || !c.every(isByte)) p(at + 'each colour is [r, g, b], 0 to 255'); });
@@ -574,7 +577,8 @@ function cleanSeg(s, stopMax) {
     if (s.start >= 0 && s.start < stop) { o.start = s.start; o.stop = stop; } else return { id: s.id, stop: 0 };
   }
   if (typeof s.on === 'boolean') o.on = s.on;
-  ['bri', 'fx', 'sx', 'ix', 'pal', 'c1', 'c2'].forEach((k) => { if (isByte(s[k])) o[k] = s[k]; });
+  ['bri', 'fx', 'sx', 'ix', 'pal', 'c1', 'c2', 'spc', 'of'].forEach((k) => { if (isByte(s[k])) o[k] = s[k]; });
+  if (isByte(s.grp) && s.grp >= 1) o.grp = s.grp;
   if (Array.isArray(s.col)) {
     const col = s.col.slice(0, 3).filter(Array.isArray).map((c) => [0, 1, 2].map((i) => (isByte(c[i]) ? c[i] : 0)));
     if (col.length) o.col = col;

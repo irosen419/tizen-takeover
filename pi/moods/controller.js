@@ -24,6 +24,9 @@
  *   timers    { setTimeout, clearTimeout } (fake ones in tests); rng () -> [0, 1)
  *   put(data) publish the live resource "moods"; current() -> the resource held now
  *   today     () -> { y, m, d } for Menorah's automatic night (default: the Pi's date)
+ *   presetSettleMs, presetPollMs  after a body that selects a preset (ps), wait
+ *             presetSettleMs (700), then read /json/state every presetPollMs (200)
+ *             until it reports that preset (at most about 2 s), before the next body
  *
  * Passive: nothing is sent to WLED until a person sets a mood or runs a probe.
  * The first mood takes a snapshot of /json/state; Off puts it back
@@ -49,6 +52,11 @@ const RATE_BURST = 3;
 const RATE_EVERY_MS = 400;
 const PAUSE_MS = 5 * 60 * 1000;
 const ENGINE_LEAD_MS = 300;
+const PRESET_SETTLE_MS = 700;
+const PRESET_POLL_MS = 200;
+const PRESET_WAIT_MAX_MS = 2000;
+// WLED's colour gamma that the power estimate and forest-render assume.
+const GAMMA = 2.8;
 const BRI_MIN = 10;
 const BRI_MAX = 100;
 const MAX_N = 6;
@@ -210,6 +218,8 @@ function createController(opts) {
   const put = typeof o.put === 'function' ? o.put : () => {};
   const current = typeof o.current === 'function' ? o.current : () => null;
   const today = typeof o.today === 'function' ? o.today : () => { const d = new Date(now()); return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() }; };
+  const settleMs = Number.isFinite(o.presetSettleMs) && o.presetSettleMs >= 0 ? o.presetSettleMs : PRESET_SETTLE_MS;
+  const pollMs = Number.isFinite(o.presetPollMs) && o.presetPollMs > 0 ? o.presetPollMs : PRESET_POLL_MS;
   const dataDir = o.dataDir || null;
   const stateFile = dataDir ? path.join(dataDir, STATE_FILE) : null;
 
@@ -226,6 +236,8 @@ function createController(opts) {
   let seenAtSet = null;
   let lastSig = '';
   let listCache = null;
+  let listDay = '';
+  const waits = new Map(); // handle -> resolve, so close() can end every wait
   let looksCache = null;
   let tokens = RATE_BURST;
   let tokensAt = now();
@@ -278,8 +290,24 @@ function createController(opts) {
     return p;
   }
 
+  // A timer that never keeps the process alive and that close() ends at once.
+  function later(fn, ms) {
+    const h = timers.setTimeout(fn, ms);
+    if (h && typeof h.unref === 'function') h.unref();
+    return h;
+  }
+
   function wait(ms) {
-    return new Promise((resolve) => timers.setTimeout(resolve, ms));
+    if (closed) return Promise.resolve();
+    return new Promise((resolve) => {
+      const h = later(() => { waits.delete(h); resolve(); }, ms);
+      waits.set(h, resolve);
+    });
+  }
+
+  // After an await: nothing more happens once the hub is closing.
+  function alive() {
+    if (closed) throw err(503, 'the hub is shutting down; set the mood again once it is back');
   }
 
   function save() {
@@ -325,7 +353,8 @@ function createController(opts) {
       palIds: Array.isArray(pr.pal) ? pr.pal : null,
       have: { mic: typeof pr.mic === 'boolean' ? pr.mic : null }
     };
-    if (typeof pr.ledMa === 'number' && pr.ledMa > 0) ctx.ledMa = pr.ledMa;
+    // A bulb current the probe read only ever tightens the budget: never below the map's.
+    if (typeof pr.ledMa === 'number' && pr.ledMa > 0) ctx.ledMa = Math.max(pr.ledMa, wallMap.power.ledMa);
     if (typeof x.briPct === 'number') ctx.briPct = x.briPct;
     if (Number.isInteger(x.night)) ctx.night = x.night;
     const snap = st.snapshot;
@@ -362,14 +391,35 @@ function createController(opts) {
     }, () => ({ ok: false, why: 'noanswer' }));
   }
 
-  // POSTs the bodies in order; stops at the first that fails.
+  // WLED loads a preset a moment after it answers, and the load brings the
+  // preset's own on and bri. So after a body that selects one, and before the
+  // next body: wait, then read the state until it reports that preset (about
+  // 2 s at most; a wall that does not say goes on after the wait).
+  async function presetLanded(n) {
+    await wait(settleMs);
+    if (closed) return false;
+    const tries = Math.max(1, Math.ceil(Math.max(0, PRESET_WAIT_MAX_MS - settleMs) / pollMs));
+    for (let i = 0; i < tries; i++) {
+      const r = await wled('GET', '/json/state');
+      if (closed) return false;
+      if (!r.ok) return false;
+      if (r.json.ps === n) return true;
+      await wait(pollMs);
+    }
+    log('moods: the preset did not report in time, going on');
+    return false;
+  }
+
+  // POSTs the bodies in order; stops at the first that fails (or when the hub closes).
   async function sendAll(bodies) {
     for (let i = 0; i < bodies.length; i++) {
+      if (closed) return { n: i, why: 'closed' };
       const r = await wled('POST', '/json/state', bodies[i]);
       if (!r.ok) {
         log(r.why === 'refused' ? 'moods: the wall refused a change' : 'moods: the wall did not answer');
         return { n: i, why: r.why };
       }
+      if (Number.isInteger(bodies[i].ps) && i < bodies.length - 1) await presetLanded(bodies[i].ps);
     }
     return { n: bodies.length, why: '' };
   }
@@ -404,6 +454,9 @@ function createController(opts) {
       await engine.stop().catch(() => ({ ok: false }));
       log('moods: renderer stopped');
     }
+    // A stop we asked for: the wall is on its own effects from here, even when
+    // the set or Off that asked for it then fails.
+    if (st.current && st.current.path === 'pi-drawn') st.current.path = 'wled-effects';
   }
 
   function startDirector(mood) {
@@ -412,7 +465,7 @@ function createController(opts) {
     const evs = (mood.render && mood.render.events) || {};
     const next = (name, a) => {
       const gap = Math.max(1000, Math.round((a[0] + rng() * (a[1] - a[0])) * 1000));
-      const h = timers.setTimeout(() => {
+      const h = later(() => {
         dirHandles.delete(h);
         if (closed || gen !== dirGen || !st.current || st.current.id !== mood.id) return;
         if (now() < pausedUntil) { next(name, a); return; }
@@ -449,7 +502,7 @@ function createController(opts) {
       log(r.why === 'refused' ? 'moods: the wall refused an event' : 'moods: the wall did not answer an event');
       throw err(502, 'The wall did not take the event.', { result: 'failed' });
     }
-    const h = timers.setTimeout(() => {
+    const h = later(() => {
       upHandles.delete(h);
       if (closed) return;
       queue(() => wled('POST', '/json/state', eb.up)).then((u) => {
@@ -500,18 +553,24 @@ function createController(opts) {
     return t;
   }
 
+  // The list the screens draw. Menorah's preview and its automatic night
+  // follow the day, so the list is built again when the date changes.
   function moodList() {
-    if (listCache) return listCache;
+    const day = JSON.stringify(today());
+    if (listCache && day === listDay) return listCache;
     if (!catalog) return [];
+    listDay = day;
     listCache = C.visibleMoods(catalog).map((m) => {
       const ctx = ctxFor(m);
       let comp = null;
       let pv = null;
       try { comp = W.compileWled(m, ctx); } catch (e) { comp = null; }
       try { pv = P.previewOf(m, ctx); } catch (e) { pv = null; }
+      const param = m.param ? copy(m.param) : null;
+      if (param && param.night) param.night.tonight = W.nightOf(m, ctx); // tonight's night (8 outside Hanukkah)
       return {
         id: m.id, name: m.name, es: m.es, desc: m.desc, descEs: m.descEs, group: m.group, sw: (m.sw || []).slice(0, 4),
-        bri: m.bri, tags: tagsOf(m, comp), param: m.param ? copy(m.param) : null, pv
+        bri: m.bri, tags: tagsOf(m, comp), param, pv
       };
     });
     return listCache;
@@ -576,7 +635,12 @@ function createController(opts) {
     if (x.pair !== undefined && x.pair !== null && typeof x.pair !== 'boolean') throw bad('"pair" must be true or false');
     const dry = x.dry === true || cfg.dry;
     const pct = Number.isInteger(x.bri) ? x.bri : (st.briByMood[mood.id] || mood.bri);
-    const ctx = ctxFor(mood, { briPct: pct, night: Number.isInteger(x.night) ? x.night : undefined });
+    // Menorah's night: as sent; else the night on now when Menorah is on (a
+    // screen sends it only when a person stepped it); else tonight's (nightFor),
+    // else 8 (compile's nightOf does those two).
+    let night = Number.isInteger(x.night) ? x.night : undefined;
+    if (night === undefined && mood.param && mood.param.night && st.current && st.current.id === mood.id && Number.isInteger(st.current.night)) night = st.current.night;
+    const ctx = ctxFor(mood, { briPct: pct, night });
     const comp = W.compileWled(mood, ctx);
     const checks = checksOf(comp.bodies);
     const plan = mood.render && mood.render.type === 'pi-drawn' ? R.compileRender(mood, ctx) : null;
@@ -612,15 +676,19 @@ function createController(opts) {
       throw err(500, 'the mood did not pass the safety checks; nothing was sent', { checks });
     }
 
+    alive();
     if (!st.snapshot) {
       const r = await wled('GET', '/json/state');
+      alive();
       if (!r.ok) throw wallFailed(r.why, 'Nothing changed.');
       st.snapshot = cleanSnapshot(r.json);
       log('moods: snapshot taken (' + plural((st.snapshot.seg || []).length, 'segment') + ')');
       save();
     }
     await stopActive();
+    alive();
     const sent = await sendAll(comp.bodies);
+    alive();
     if (sent.n === 0) throw wallFailed(sent.why, 'Nothing changed.');
     const result = sent.n === comp.bodies.length ? 'ok' : 'partial';
 
@@ -644,7 +712,13 @@ function createController(opts) {
     if (can && !can.ok) engineOut = { ok: false, why: can.why };
     if (result === 'ok' && can && can.ok) {
       await wait(ENGINE_LEAD_MS);
+      alive();
       const r = await engine.start(plan, tune).catch(() => ({ ok: false, why: 'the renderer could not start' }));
+      if (closed) {
+        // close() ran while it started: stop it again, nothing is left behind.
+        if (engineBusy()) await engine.stop().catch(() => ({ ok: false }));
+        alive();
+      }
       if (r && r.ok) {
         pathWord = 'pi-drawn';
         engineOut = { ok: true };
@@ -693,7 +767,9 @@ function createController(opts) {
       };
     }
     await stopActive();
+    alive();
     const sent = await sendAll(bodies);
+    alive();
     if (sent.n === 0) throw wallFailed(sent.why, cur ? 'It still shows the mood.' : 'Nothing changed.');
     const result = sent.n === bodies.length ? 'ok' : 'partial';
     if (clearLook) {
@@ -719,6 +795,9 @@ function createController(opts) {
       id = cur.id;
     }
     const mood = moodOf(id);
+    // The hidden check mood is fitted to the power budget at its own level
+    // only, so a brighter master could top the budget: it takes no brightness.
+    if (mood.hidden) throw bad('this mood has no brightness control (it is fitted to the power budget at its own level)');
     if (!cur || cur.id !== mood.id) {
       if (dry) return { ok: true, dry: true, plan: { wled: [], saved: { id: mood.id, bri: pct } } };
       st.briByMood[mood.id] = pct;
@@ -736,6 +815,7 @@ function createController(opts) {
     if (checks.length) throw err(500, 'the change did not pass the safety checks; nothing was sent', { checks });
     if (dry) return { ok: true, dry: true, plan: { wled: [{ method: 'POST', path: '/json/state', body }] } };
     const r = await wled('POST', '/json/state', body);
+    alive();
     if (!r.ok) throw wallFailed(r.why, 'The brightness did not change.');
     cur.bri = pct;
     cur.master = master;
@@ -747,6 +827,37 @@ function createController(opts) {
     push();
     log('moods: brightness changed');
     return { ok: true, result: 'ok', applied: true, now: nowOf() };
+  }
+
+  // The lamp and bars only, for the mood on now (a screen's pairing switch):
+  // the wall and the renderer are left as they are.
+  function doPair(pair) {
+    if (typeof pair !== 'boolean') throw bad('"pair" must be true or false');
+    if (cfg.dry) return { ok: true, dry: true, plan: { pair } };
+    const cur = st.current;
+    const mood = cur ? C.moodById(catalog, cur.id) : null;
+    st.pair = pair;
+    let word = 'off';
+    if (cur && mood && pair) {
+      const lk = lookOfMood(mood);
+      if (!lk || !lights) word = 'none';
+      else if (lights.settings().on) { word = 'music'; log('moods: lamp and bars left alone, music lights are on'); } else {
+        try {
+          lights.change({ look: lk.id });
+          word = 'set';
+          cur.look = lk.id;
+          log('moods: lamp and bars paired');
+        } catch (e) {
+          word = 'failed';
+          log('moods: lamp and bars could not be paired');
+        }
+      }
+    }
+    if (cur && !pair) { cur.look = ''; log('moods: lamp and bars left as they are from now on'); }
+    if (cur) cur.govee = word;
+    save();
+    push();
+    return { ok: true, result: 'ok', now: nowOf(), govee: word };
   }
 
   async function doEvent(name, n, opt) {
@@ -797,7 +908,20 @@ function createController(opts) {
     if (maxPwr !== null && maxPwr !== wallMap.power.limiterMa) mism.push('the power limit is ' + maxPwr + ' mA, the map says ' + wallMap.power.limiterMa);
     let ledMa = Number.isInteger(hw.ledma) ? hw.ledma : (Array.isArray(hw.ins) && hw.ins[0] && Number.isInteger(hw.ins[0].ledma) ? hw.ins[0].ledma : null);
     if (ledMa !== null && (ledMa < 1 || ledMa > 254)) ledMa = null;
-    if (ledMa !== null && ledMa !== wallMap.power.ledMa) mism.push('the bulb current is ' + ledMa + ' mA, the map assumes ' + wallMap.power.ledMa);
+    if (ledMa !== null && ledMa !== wallMap.power.ledMa) {
+      mism.push('the bulb current is ' + ledMa + ' mA, the map assumes ' + wallMap.power.ledMa + (ledMa < wallMap.power.ledMa ? ' (the budget keeps ' + wallMap.power.ledMa + ')' : ''));
+    }
+    // WLED's colour gamma (cfg.light.gc.col): the power estimate and the
+    // Pi-drawn renderer assume 2.8 (WLED's default). Newer WLED stores the
+    // value itself (1 = off); older WLED a true/false with the value in gc.val.
+    const gc = conf && isObj(conf.light) && isObj(conf.light.gc) ? conf.light.gc : null;
+    let gamma = null;
+    if (gc && typeof gc.col === 'number' && isFinite(gc.col)) gamma = gc.col > 1 ? gc.col : 1;
+    else if (gc && typeof gc.col === 'boolean') gamma = gc.col ? (typeof gc.val === 'number' && isFinite(gc.val) ? gc.val : GAMMA) : 1;
+    if (gamma !== null) gamma = Math.round(gamma * 100) / 100;
+    const notes = [];
+    if (gamma === null) notes.push('colour gamma not read: ' + GAMMA + ' (WLED\'s default) is assumed for the power estimate');
+    else if (Math.abs(gamma - GAMMA) > 0.05) mism.push('the colour gamma is ' + (gamma === 1 ? 'off' : gamma) + ', the power estimate assumes ' + GAMMA);
     const live = conf && isObj(conf.if) && isObj(conf.if.live) ? conf.if.live : null;
     const realtime = live && typeof live.en === 'boolean' ? live.en : null;
     if (realtime === false) mism.push('receive realtime is off');
@@ -810,7 +934,7 @@ function createController(opts) {
     }
     if (maxPwr === null) maxPwr = st.probe && st.probe.maxPwr != null ? st.probe.maxPwr : null;
     st.probe = {
-      at: now(), fx: fxNames, pal: palNames, ledMa, maxPwr, segments, realtime, leds, mic,
+      at: now(), fx: fxNames, pal: palNames, ledMa, maxPwr, segments, realtime, leds, mic, gamma,
       ver: info && typeof info.ver === 'string' ? info.ver.slice(0, 20) : null
     };
     listCache = null;
@@ -818,9 +942,9 @@ function createController(opts) {
     push();
     log('moods: probe read ' + read + ' of ' + PROBE_PATHS.length + ', ' + plural(mism.length, 'mismatch'));
     return {
-      ok: true, read, of: PROBE_PATHS.length, mismatches: mism,
+      ok: true, read, of: PROBE_PATHS.length, mismatches: mism, notes,
       counts: { effects: fxNames ? fxNames.length : null, palettes: palNames ? palNames.length : null, segments },
-      leds, maxPwr, ledMa, realtime, mic, ver: st.probe.ver
+      leds, maxPwr, ledMa, budgetLedMa: ledMa === null ? wallMap.power.ledMa : Math.max(ledMa, wallMap.power.ledMa), gamma, realtime, mic, ver: st.probe.ver
     };
   }
 
@@ -829,6 +953,7 @@ function createController(opts) {
     const mood = moodOf(id);
     if (!mood.render || mood.render.type !== 'pi-drawn') throw bad('only Pi-drawn moods take a tune');
     const b = isObj(t) ? t : {};
+    const dry = b.dry === true || cfg.dry;
     const given = TUNE_KEYS.filter((k) => b[k] !== undefined);
     if (!given.length) throw bad('say what to tune: cycleSeconds, spans or gamma');
     const next = Object.assign({}, st.tune[mood.id] || {});
@@ -844,6 +969,10 @@ function createController(opts) {
     const args = R.forestArgs(plan, next, { controlPort: cfg.enginePort });
     const why = E.argsWhy(args, require('./forest-render'));
     if (why) throw bad(why);
+    if (dry) {
+      log('moods: dry run, nothing saved');
+      return { ok: true, dry: true, id: mood.id, tune: next, args, plan: { tune: next, args } };
+    }
     if (Object.keys(next).length) st.tune[mood.id] = next;
     else delete st.tune[mood.id];
     save();
@@ -851,10 +980,15 @@ function createController(opts) {
     return { ok: true, id: mood.id, tune: next, args };
   }
 
-  function doWall(override) {
+  function doWall(override, opt) {
     if (override === undefined) throw bad('send { "override": {...} }, or { "override": null } to remove the fix');
-    if (!dataDir) throw err(500, 'no data folder');
-    const file = path.join(dataDir, C.OVERRIDE_FILE);
+    const dry = (opt && opt.dry === true) || cfg.dry;
+    if (!dataDir && !dry) throw err(500, 'no data folder');
+    const file = dataDir ? path.join(dataDir, C.OVERRIDE_FILE) : '';
+    if (override === null && dry) {
+      log('moods: dry run, nothing saved');
+      return { ok: true, dry: true, override: false, plan: { remove: true } };
+    }
     if (override === null) {
       try { fs.unlinkSync(file); } catch (e) { if (e.code !== 'ENOENT') throw err(500, 'the wall map fix could not be removed'); }
       loadCatalog();
@@ -871,6 +1005,14 @@ function createController(opts) {
     const merged = C.mergeWall(base, override);
     const problems = C.validate(cat, merged);
     if (problems.length) throw bad('the wall map fix does not fit: ' + problems[0]);
+    // Power values the fix asked for that would loosen the budget are kept at the file's.
+    const asked = isObj(override.power) ? override.power : {};
+    const clamped = Object.keys(asked).filter((k) => typeof asked[k] === 'number' && merged.power[k] !== asked[k]).map((k) => k + ' ' + merged.power[k]);
+    if (dry) {
+      log('moods: dry run, nothing saved');
+      const sureD = Object.keys(merged.zones).filter((k) => merged.zones[k].sure !== false).length;
+      return { ok: true, dry: true, override: true, zones: Object.keys(merged.zones).length, sure: sureD, clamped, plan: { power: copy(merged.power) } };
+    }
     try {
       fs.mkdirSync(dataDir, { recursive: true });
       fs.writeFileSync(file + '.tmp', JSON.stringify(override, null, 1) + '\n');
@@ -880,7 +1022,7 @@ function createController(opts) {
     push();
     log('moods: wall map fix saved (' + plural(Object.keys(override).filter((k) => k !== 'v').length, 'part') + ')');
     const sure = Object.keys(wallMap.zones).filter((k) => wallMap.zones[k].sure !== false).length;
-    return { ok: true, override: true, zones: Object.keys(wallMap.zones).length, sure, problem: catProblem || '' };
+    return { ok: true, override: true, zones: Object.keys(wallMap.zones).length, sure, clamped, problem: catProblem || '' };
   }
 
   /* --- status --- */
@@ -895,7 +1037,7 @@ function createController(opts) {
       now: Object.assign({ name: cur ? cur.name : '' }, d.now),
       moods: d.moods.map((m) => ({ id: m.id, name: m.name, group: m.group, bri: m.bri, tags: m.tags, night: !!(m.param && m.param.night) })),
       engine: { kind: engine ? engine.kind : 'none', running: !!(es && es.running), fps: es ? es.fps : null, scale: es ? es.scale : null, estMa: es ? es.estMa : null },
-      probe: pr ? { at: pr.at, effects: pr.fx ? pr.fx.length : null, palettes: pr.pal ? pr.pal.length : null, ledMa: pr.ledMa, maxPwr: pr.maxPwr, segments: pr.segments, realtime: pr.realtime, mic: pr.mic, ver: pr.ver } : null,
+      probe: pr ? { at: pr.at, effects: pr.fx ? pr.fx.length : null, palettes: pr.pal ? pr.pal.length : null, ledMa: pr.ledMa, maxPwr: pr.maxPwr, segments: pr.segments, realtime: pr.realtime, mic: pr.mic, gamma: pr.gamma === undefined ? null : pr.gamma, ver: pr.ver } : null,
       snapshot: !!st.snapshot, pair: st.pair, last: d.last,
       director: { events: dirHandles.size, pausedFor: Math.max(0, Math.round((pausedUntil - now()) / 1000)) },
       tune: copy(st.tune)
@@ -938,13 +1080,22 @@ function createController(opts) {
   });
 
   // The screens' door: saved ids only, never a dry run. body { id } or { off: true }, bri?, night?, pair?
+  // For the mood on now, { id, bri } only changes the brightness (as bri()) and
+  // { id, pair } only the lamp and bars: neither sends the mood again or
+  // restarts the renderer. { bri } alone is the brightness of the mood on now.
   function screenSet(body) {
     const b = isObj(body) ? body : {};
+    const keys = Object.keys(b).filter((k) => b[k] !== undefined);
+    const only = (list) => keys.every((k) => list.indexOf(k) >= 0);
     return answer(() => {
       if (b.off === true) return off({});
+      if (b.id === undefined && keys.length === 1 && keys[0] === 'bri') return bri(b.bri, null, {});
       if (typeof b.id !== 'string' || !catalog || !C.visibleMoods(catalog).some((m) => m.id === b.id)) throw bad('send the id of a saved mood, or { "off": true }');
       const x = {};
       ['bri', 'night', 'pair'].forEach((k) => { if (b[k] !== undefined) x[k] = b[k]; });
+      const isOn = () => !!(st.current && st.current.id === b.id);
+      if (b.bri !== undefined && only(['id', 'bri'])) return queue(() => (isOn() ? doBri(b.bri, b.id, {}) : doSet(b.id, x)));
+      if (b.pair !== undefined && only(['id', 'pair'])) return queue(() => (isOn() ? doPair(b.pair) : doSet(b.id, x)));
       return set(b.id, x);
     });
   }
@@ -978,8 +1129,8 @@ function createController(opts) {
     if (sub === '/moods/bri') return answer(() => bri(b.pct, b.id, opt(['dry'])));
     if (sub === '/moods/event') return answer(() => event(b.name, b.n, Object.assign({ outside: true }, opt(['dry']))));
     if (sub === '/moods/probe') return answer(() => probe(opt(['dry'])), (r) => (r.dry ? 'dry run' : 'read ' + r.read + ' of ' + r.of));
-    if (sub === '/moods/tune') return answer(() => tune(b.id, b), () => 'saved');
-    if (sub === '/moods/wall') return answer(() => wall(b.override), (r) => (r.override ? 'saved' : 'removed'));
+    if (sub === '/moods/tune') return answer(() => tune(b.id, b), (r) => (r.dry ? 'dry run' : 'saved'));
+    if (sub === '/moods/wall') return answer(() => wall(b.override, opt(['dry'])), (r) => (r.dry ? 'dry run' : r.override ? 'saved' : 'removed'));
     return Promise.resolve({ status: 404, body: { ok: false, error: 'no such call' } });
   }
 
@@ -989,7 +1140,7 @@ function createController(opts) {
   function event(name, n, x) { return queue(() => doEvent(name, n, x)); }
   function probe(x) { return queue(() => doProbe(x)); }
   function tune(id, t) { return queue(() => doTune(id, t)); }
-  function wall(override) { return queue(() => doWall(override)); }
+  function wall(override, x) { return queue(() => doWall(override, x)); }
 
   function start() {
     if (catProblem) log('moods: the catalog could not be read, moods off');
@@ -1011,6 +1162,9 @@ function createController(opts) {
     stopDirector();
     upHandles.forEach((h) => timers.clearTimeout(h));
     upHandles.clear();
+    // End every wait now: the call waiting on it sees closed and stops.
+    waits.forEach((resolve, h) => { timers.clearTimeout(h); resolve(); });
+    waits.clear();
     if (engineBusy()) return engine.stop().then(() => {}, () => {});
     return Promise.resolve();
   }
