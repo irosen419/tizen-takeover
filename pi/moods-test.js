@@ -127,12 +127,13 @@ async function main() {
     return fake;
   };
   let rng = F.mulberry32(7);
+  let todayNow = TODAY;
   function startHub(dataDir, x) {
     const o = x || {};
     const h = hubServer.start(Object.assign({
       port: 0, token: TOKEN, dataDir, log: (s) => logs.push(String(s)),
       moodsEnv: Object.assign({ WLED_URL: wall.url }, o.env || {}),
-      moods: { engine: engineFactory, timers, rng: () => rng(), now: () => clock, today: () => TODAY, presetSettleMs: 0, presetPollMs: 1 }
+      moods: { engine: engineFactory, timers, rng: () => rng(), now: () => clock, today: () => todayNow, presetSettleMs: 0, presetPollMs: 1 }
     }, o.opt || {}));
     return h.ready.then(() => h);
   }
@@ -819,7 +820,7 @@ async function main() {
     assert.strictEqual(a.status, 200, JSON.stringify(a.body));
     assert.strictEqual(c.nowFlat().night, 4);
     assert.deepStrictEqual(fw.posts.slice(-1), W.compileWled(moodBy('menorah'), baseCtx(null, { date: day, briPct: 100, night: 4 })).bodies);
-    a = await c.screenSet({ id: 'menorah', night: 6 });
+    a = await c.screenSet({ id: 'menorah', night: 6, step: true });
     assert.strictEqual(c.nowFlat().night, 6);
     let k = fw.posts.length;
     a = await c.screenSet({ id: 'menorah', bri: 50 });
@@ -827,7 +828,7 @@ async function main() {
     assert.deepStrictEqual(fw.posts.slice(k), [{ bri: 128 }], 'brightness only: not the mood again');
     assert.strictEqual(c.nowFlat().night, 6);
     k = fw.posts.length;
-    a = await c.screenSet({ id: 'menorah', pair: false });
+    a = await c.screenSet({ id: 'menorah', pair: false, step: true });
     assert.strictEqual(a.status, 200);
     assert.strictEqual(fw.posts.length, k, 'pairing only: nothing to the wall');
     await c.screenSet({ id: 'menorah' });
@@ -864,7 +865,7 @@ async function main() {
     assert.deepStrictEqual(posts(k)(wall).map((b) => Object.keys(b)), [['bri']]);
     k = wall.posts().length;
     clock += 10000;
-    r = await scr('POST', '/moods/set', { id: 'rainforest-storm', pair: true });
+    r = await scr('POST', '/moods/set', { id: 'rainforest-storm', pair: true, step: true });
     assert.strictEqual(r.body.govee, 'set');
     assert.strictEqual(wall.posts().length, k, 'nothing to the wall');
     assert.strictEqual((await lightsSt()).settings.look, 'rainforest');
@@ -979,6 +980,93 @@ async function main() {
     assert.strictEqual(proto.status, 400);
     assert.match(proto.body.error, /not allowed/);
     await api('POST', '/api/moods/wall', { override: null });
+  });
+
+
+  await check('a queued brightness or pairing step never turns a mood back on; it is kept for later', async () => {
+    const fw = fakeWled();
+    const c = fakeCtl(fw);
+    c.start();
+    await c.screenSet({ id: 'christmas', pair: false });
+    let k = fw.posts.length;
+    let a = await c.screenSet({ id: 'aurora', bri: 40 });
+    assert.strictEqual(a.body.applied, false);
+    assert.strictEqual(fw.posts.length, k, 'nothing sent for a mood that is not on');
+    assert.strictEqual(c.nowFlat().id, 'christmas');
+    assert.strictEqual(c.resource().moods.find((m) => m.id === 'aurora').bri, 40, 'kept for later');
+    a = await c.screenSet({ id: 'aurora', pair: true, step: true });
+    assert.strictEqual(a.body.applied, false);
+    assert.strictEqual(c.nowFlat().id, 'christmas');
+    assert.strictEqual(c.nowFlat().pair, true, 'the choice is remembered');
+    // A step for the mood on, queued behind Off, lands after Off: still off.
+    const p1 = c.screenSet({ off: true });
+    const p2 = c.screenSet({ id: 'christmas', bri: 50 });
+    const p3 = c.screenSet({ id: 'christmas', pair: false, step: true });
+    const p4 = c.screenSet({ id: 'christmas', night: 3, step: true });
+    await Promise.all([p1, p2, p3, p4]);
+    assert.strictEqual(c.nowFlat().id, 'off');
+    assert.strictEqual((await p2).body.applied, false);
+    assert.strictEqual((await p3).body.applied, false);
+    assert.strictEqual((await p4).body.applied, false);
+    assert.strictEqual((await c.screenSet({ id: 'christmas', night: 3, pair: true, step: true })).status, 400, 'a step is one control');
+    // Picking a mood with a pairing choice (no step) is a full set.
+    await c.screenSet({ id: 'aurora', pair: false });
+    assert.strictEqual(c.nowFlat().id, 'aurora');
+    await c.screenSet({ off: true });
+    k = fw.posts.length;
+    await c.screenSet({ id: 'christmas', bri: 60 });
+    assert.strictEqual(fw.posts.length, k);
+    assert.strictEqual(c.nowFlat().id, 'off');
+    await c.close();
+  });
+
+  await check('close() during a preset mood\'s wait still sends its brightness cap (the waits are skipped)', async () => {
+    const fw = fakeWled();
+    const held = [];
+    const hold = { setTimeout: (fn, ms) => { if (ms === 5000) { const h = { fn }; held.push(h); return h; } return setTimeout(fn, 0); }, clearTimeout: (h) => { if (h && !h.fn) clearTimeout(h); } };
+    const c = fakeCtl(fw, { timers: hold, presetSettleMs: 5000 });
+    const p = c.set('rainforest', { bri: 60, pair: false });
+    for (let i = 0; i < 50 && !held.length; i++) await sleep(2);
+    assert.strictEqual(held.length, 1, 'waiting for the preset');
+    assert.deepStrictEqual(fw.posts, [{ on: true, ps: 2 }]);
+    await c.close();
+    await assert.rejects(p, (e) => e.status === 503);
+    const want = W.compileWled(moodBy('rainforest'), baseCtx(null, { briPct: 60, presetBri: 128 })).bodies;
+    assert.strictEqual(want.length, 2);
+    assert.deepStrictEqual(fw.posts, want, 'the cap went out after the preset');
+  });
+
+  await check('an old data/moods-wall.json with limiterMa or baseMa: its power is ignored with a log line, Moods stays on', async () => {
+    const d = tmpDir();
+    fs.writeFileSync(path.join(d, 'moods-wall.json'), JSON.stringify({ zones: { vase1: { r: [[9, 15]], sure: true } }, power: { limiterMa: 5000, baseMa: 1 } }));
+    const mine = [];
+    const fw = fakeWled();
+    const c = fakeCtl(fw, { dataDir: d, log: (l) => { mine.push(String(l)); logs.push(String(l)); } });
+    const r = c.start();
+    assert.strictEqual(r.state, 'ok');
+    assert.strictEqual(r.wall.zones.vase1.sure, true, 'the zones of the fix are used');
+    assert.ok(mine.indexOf('moods: wall override ignored (power keys), the map\'s power budget is used') >= 0, mine.join(' | '));
+    const plan = (await c.set('christmas', { dry: true })).plan;
+    assert.deepStrictEqual(plan.budget, W.compileWled(moodBy('christmas'), baseCtx(null, { briPct: 100 })).budget);
+    // Infinity through the API is refused, never saved as null.
+    const inf = await c.http('POST', '/moods/wall', JSON.parse('{"override":{"power":{"budgetMa":1e999}}}'));
+    assert.strictEqual(inf.status, 400);
+    assert.match(inf.body.error, /number above 0/);
+    await c.close();
+  });
+
+  await check('Menorah\'s night for today reaches the screens on their next read after the date changes', async () => {
+    const tonight = async (p) => (await scr('GET', p)).body;
+    let live = await tonight('/live/state');
+    assert.strictEqual(live.resources.moods.data.moods.find((m) => m.id === 'menorah').param.night.tonight, 3);
+    todayNow = { y: 2026, m: 12, d: 7 };
+    live = await tonight('/live/state');
+    assert.strictEqual(live.resources.moods.data.moods.find((m) => m.id === 'menorah').param.night.tonight, 4);
+    todayNow = { y: 2026, m: 12, d: 8 };
+    const touch = await tonight('/touch/state');
+    assert.strictEqual(touch.moods.data.moods.find((m) => m.id === 'menorah').param.night.tonight, 5);
+    todayNow = TODAY;
+    await tonight('/live/state');
   });
 
   await check('./hub moods texts: refused vs did not answer; a dry run with failed checks counts as a failure', () => {

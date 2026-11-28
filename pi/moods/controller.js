@@ -249,6 +249,7 @@ function createController(opts) {
       catalog = l.catalog;
       wallMap = l.wall;
       catProblem = '';
+      if (l.ignored && l.ignored.indexOf('power') >= 0) log('moods: wall override ignored (power keys), the map\'s power budget is used');
     } catch (e) {
       catalog = null;
       wallMap = null;
@@ -410,10 +411,11 @@ function createController(opts) {
     return false;
   }
 
-  // POSTs the bodies in order; stops at the first that fails (or when the hub closes).
+  // POSTs the bodies in order; stops at the first that fails. A sequence once
+  // started is sent to the end even when the hub closes meanwhile (the waits
+  // are skipped then), so a preset mood cut short still gets its brightness cap.
   async function sendAll(bodies) {
     for (let i = 0; i < bodies.length; i++) {
-      if (closed) return { n: i, why: 'closed' };
       const r = await wled('POST', '/json/state', bodies[i]);
       if (!r.ok) {
         log(r.why === 'refused' ? 'moods: the wall refused a change' : 'moods: the wall did not answer');
@@ -831,10 +833,12 @@ function createController(opts) {
 
   // The lamp and bars only, for the mood on now (a screen's pairing switch):
   // the wall and the renderer are left as they are.
-  function doPair(pair) {
+  // id: the mood the switch was for; when another mood (or none) is on by
+  // now, only the remembered choice changes and the lights are left alone.
+  function doPair(pair, id) {
     if (typeof pair !== 'boolean') throw bad('"pair" must be true or false');
     if (cfg.dry) return { ok: true, dry: true, plan: { pair } };
-    const cur = st.current;
+    const cur = st.current && (id === undefined || id === null || st.current.id === id) ? st.current : null;
     const mood = cur ? C.moodById(catalog, cur.id) : null;
     st.pair = pair;
     let word = 'off';
@@ -857,7 +861,7 @@ function createController(opts) {
     if (cur) cur.govee = word;
     save();
     push();
-    return { ok: true, result: 'ok', now: nowOf(), govee: word };
+    return { ok: true, result: cur ? 'ok' : 'saved', applied: !!cur, now: nowOf(), govee: word };
   }
 
   async function doEvent(name, n, opt) {
@@ -1079,10 +1083,16 @@ function createController(opts) {
     return { status, body, note: e && e.result ? e.result : 'refused' };
   });
 
-  // The screens' door: saved ids only, never a dry run. body { id } or { off: true }, bri?, night?, pair?
-  // For the mood on now, { id, bri } only changes the brightness (as bri()) and
-  // { id, pair } only the lamp and bars: neither sends the mood again or
-  // restarts the renderer. { bri } alone is the brightness of the mood on now.
+  // The screens' door: saved ids only, never a dry run.
+  //   { id, pair?, night?, bri? }  pick a mood (sent in full); { off: true }
+  //   { id, bri }                  brightness only (bri(): the mood on now gets
+  //                                just its master brightness, another one keeps it for later)
+  //   { id, pair | night, step: true }   a control moved on a screen, for that
+  //                                mood: pairing changes only the lamp and bars,
+  //                                night sends the mood again with that night.
+  //   { bri }                      the brightness of the mood on now
+  // A step that arrives after the mood went off (or another came on) never
+  // turns it back on: bri is kept for later, pairing only remembered, night ignored.
   function screenSet(body) {
     const b = isObj(body) ? body : {};
     const keys = Object.keys(b).filter((k) => b[k] !== undefined);
@@ -1091,11 +1101,16 @@ function createController(opts) {
       if (b.off === true) return off({});
       if (b.id === undefined && keys.length === 1 && keys[0] === 'bri') return bri(b.bri, null, {});
       if (typeof b.id !== 'string' || !catalog || !C.visibleMoods(catalog).some((m) => m.id === b.id)) throw bad('send the id of a saved mood, or { "off": true }');
+      if (b.step !== undefined && b.step !== true) throw bad('"step" must be true');
       const x = {};
       ['bri', 'night', 'pair'].forEach((k) => { if (b[k] !== undefined) x[k] = b[k]; });
-      const isOn = () => !!(st.current && st.current.id === b.id);
-      if (b.bri !== undefined && only(['id', 'bri'])) return queue(() => (isOn() ? doBri(b.bri, b.id, {}) : doSet(b.id, x)));
-      if (b.pair !== undefined && only(['id', 'pair'])) return queue(() => (isOn() ? doPair(b.pair) : doSet(b.id, x)));
+      const step = b.step === true;
+      if (b.bri !== undefined && only(['id', 'bri', 'step'])) return bri(b.bri, b.id, {});
+      if (step && b.pair !== undefined && only(['id', 'pair', 'step'])) return queue(() => doPair(b.pair, b.id));
+      if (step && b.night !== undefined && only(['id', 'night', 'step'])) {
+        return queue(() => (st.current && st.current.id === b.id ? doSet(b.id, x) : { ok: true, result: 'ignored', applied: false, now: nowOf() }));
+      }
+      if (step) throw bad('a step sends one of bri, night or pair with the id');
       return set(b.id, x);
     });
   }

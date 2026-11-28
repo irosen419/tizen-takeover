@@ -565,10 +565,11 @@ async function main() {
     assert(am.length >= 5, 'only ' + am.length + ' lines');
     const bad = [];
     env.lines.forEach((l) => {
-      if (am.indexOf(l) >= 0 && !/^(ambience|music lights): /.test(l)) bad.push('no prefix: ' + l);
+      // "moods:" lines are the plant wall moods' own (pi/moods/controller.js, checked in pi/moods-test.js).
+      if (am.indexOf(l) >= 0 && !/^(ambience|music lights|moods): /.test(l)) bad.push('no prefix: ' + l);
       if (l.indexOf(env.mock.token) >= 0 || /light\.example|switch\.example/.test(l)) bad.push('a secret or an entity id: ' + l);
       if ((am.indexOf(l) >= 0 || /^control .*ambience/.test(l)) && /127\.0\.0\.1|localhost|:\d{4,5}\b/.test(l)) bad.push('an address: ' + l);
-      if (/^(ambience|music lights): /.test(l) && names.some((n) => l.indexOf(n) >= 0)) bad.push('a name: ' + l);
+      if (/^(ambience|music lights|moods): /.test(l) && names.some((n) => l.indexOf(n) >= 0)) bad.push('a name: ' + l);
     });
     assert(!bad.length, bad.slice(0, 4).join(' | '));
   });

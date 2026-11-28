@@ -2576,6 +2576,7 @@ function start(options) {
     const okMethod = req.method === want || (image && req.method === 'HEAD');
     if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
+      moods.refresh(); // Menorah's night for today, when the date changed since the last push
       return sendJson(res, 200, {
         ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev,
         grocery: state.resources.grocery, todo: state.resources.todo, products: groceryProducts(), pantry: pantryView(),
@@ -2714,6 +2715,7 @@ function start(options) {
     }
     if (route === '/live/state') {
       remote.seen(address, true); // a first guess at the TV's address, for the mailbox
+      moods.refresh(); // Menorah's night for today, when the date changed since the last push (Ambience's 10 s read refreshes it too)
       return sendJson(res, 200, {
         ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev, resources: state.resources
       }, cors);

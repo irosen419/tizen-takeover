@@ -310,7 +310,7 @@
     /* ---- Moods: the plant wall's moods (app/widgets/moods.js, moods-touch.js) ----
      * Key 'moods.<name>'; the English is in the widget (T). Mood names and
      * descriptions come from the Pi with their own Spanish (es, descEs). */
-    'moods.title': 'Climas de la pared',
+    'moods.title': 'Ambientes de la pared',
     'moods.off': 'Apagado',
     'moods.offDesc': 'La pared vuelve a como estaba.',
     'moods.offNow': 'Apagado ahora',
@@ -1775,7 +1775,7 @@
      * drawing; one that runs long is shrunk to fit its box. "pulg." = inches.
      * {a} {b} {n} are filled in. */
     'plantwall.title': 'Luces de la pared de plantas',
-    'plantwall.aria': 'Vista frontal de las luces de la pared de plantas: tres cuadros, cuatro jarrones y 164 LED',
+    'plantwall.aria': 'Vista frontal de las luces de la pared de plantas: tres cuadros, cuatro floreros y 164 LED',
     'plantwall.p1': 'Cuadro 1, guitarra',
     'plantwall.p2': 'Cuadro 2, batería',
     'plantwall.p3': 'Cuadro 3, micrófono',
@@ -1786,10 +1786,10 @@
     'plantwall.floor': 'del suelo',
     'plantwall.aisle': 'pasillo de 14.25 pulg.',
     'plantwall.drop': '12 pulg.',
-    'plantwall.v1': 'Jarrón 1',
-    'plantwall.v2': 'Jarrón 2',
-    'plantwall.v3': 'Jarrón 3',
-    'plantwall.v4': 'Jarrón 4',
+    'plantwall.v1': 'Florero 1',
+    'plantwall.v2': 'Florero 2',
+    'plantwall.v3': 'Florero 3',
+    'plantwall.v4': 'Florero 4',
     'plantwall.guitar': 'Cola de la guitarra',
     'plantwall.tail': '21 LED, cada 4 pulg.',
     'plantwall.leds': 'LED {a} a {b}',

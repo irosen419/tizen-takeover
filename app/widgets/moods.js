@@ -10,7 +10,9 @@
  * app/moods-wall.js paints onto the drawing of the wall made from
  * wall.geometry. The TV never talks to the wall: choices go back to the Pi as
  * saved ids only, ctx.live.post('/moods/set', { id } | { off: true }, with
- * bri, night and pair), the way Ambience sends its scenes.
+ * pair and a night a person stepped), the way Ambience sends its scenes; a
+ * control moved for the mood on now goes as { id, bri } or { id, night | pair,
+ * step: true }, which never turns a mood back on (pi/moods/controller.js screenSet).
  *
  * The tile (docs/tile-sizes.md): one column, the icon and a lit dot; a strip,
  * the mood's name and its four swatches; two rows, a small wall and the name;
@@ -725,7 +727,7 @@
     localNight = next;
     repaintControls();
     paintHero();
-    sendLater(function () { return currentId() === id ? { id: id, night: next } : null; });
+    sendLater(function () { return currentId() === id ? { id: id, night: next, step: true } : null; });
   }
 
   function togglePair(want) {
@@ -734,7 +736,7 @@
     localPair = next;
     repaintControls();
     var id = currentId();
-    if (id) sendLater(function () { return { id: id, pair: next }; });
+    if (id) sendLater(function () { return { id: id, pair: next, step: true }; });
     var n = data && data.now;
     if (next && n && n.govee === 'music') setNote(T('pairMusic', 'Music lights are on, so the lamp and bars stay as they are'), 'warn');
   }

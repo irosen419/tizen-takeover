@@ -123,8 +123,9 @@
       });
     }
 
+    // A control moved for the mood on now: a step (never turns a mood back on).
     function sendFor(id, extra) {
-      var body = { id: id };
+      var body = { id: id, step: true };
       for (var k in extra) if (extra.hasOwnProperty(k)) body[k] = extra[k];
       send(body, function (err) {
         if (err) { st.bri = null; st.night = null; st.note = { text: err, kind: 'bad' }; draw(true); }

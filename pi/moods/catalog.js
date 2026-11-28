@@ -187,6 +187,8 @@ const PROTO_KEYS = ['__proto__', 'constructor', 'prototype'];
 // the budget tighter (budgetMa and flashMa no higher, ledMa no lower than the
 // file), never touch the limiter or the base current.
 const POWER_OVERRIDE = { budgetMa: 'max', flashMa: 'max', ledMa: 'min' };
+// A current: a finite number above 0 (JSON's 1e999 is Infinity, never taken).
+const goodMa = (v) => Number.isFinite(v) && v > 0;
 
 function protoKeyIn(o, depth) {
   if (depth > 8 || !o || typeof o !== 'object') return null;
@@ -211,8 +213,23 @@ function checkOverride(o) {
     if (!isObj(o.power)) return ['wall override: power must be an object'];
     const pk = Object.keys(o.power).filter((k) => !POWER_OVERRIDE[k]);
     if (pk.length) return ['wall override: power "' + pk[0] + '" cannot be changed (only ' + Object.keys(POWER_OVERRIDE).join(', ') + ')'];
+    const nf = Object.keys(o.power).filter((k) => !goodMa(o.power[k]));
+    if (nf.length) return ['wall override: power "' + nf[0] + '" must be a number above 0'];
   }
   return [];
+}
+
+// The override with its power part left out when that part would be refused
+// (an old file with limiterMa or baseMa, or a value that is not a number above
+// 0): { override, ignored } where ignored is true when power was dropped.
+function withoutBadPower(o) {
+  if (!isObj(o) || o.power === undefined) return { override: o, ignored: false };
+  const p = o.power;
+  const ok = isObj(p) && Object.keys(p).every((k) => POWER_OVERRIDE[k] && goodMa(p[k]));
+  if (ok) return { override: o, ignored: false };
+  const out = Object.assign({}, o);
+  delete out.power;
+  return { override: out, ignored: true };
 }
 
 // The wall with an override applied: zones and sides merge by zone name,
@@ -231,8 +248,8 @@ function mergeWall(base, override) {
       if (!way) return;
       const v = override.power[k];
       const file = base.power[k];
-      // Not a number: kept as sent, so validate() names the problem.
-      if (typeof v !== 'number' || !isFinite(v) || typeof file !== 'number') { w.power[k] = v; return; }
+      // Not a finite number above 0: kept as sent, so validate() names the problem.
+      if (!goodMa(v) || typeof file !== 'number') { w.power[k] = v; return; }
       w.power[k] = way === 'max' ? Math.min(v, file) : Math.max(v, file);
     });
   }
@@ -334,7 +351,7 @@ function validateWall(wall, problems) {
     if (new Set(m.candles.concat(m.shamash)).size !== m.candles.length + m.shamash.length) p('menorah bulbs repeat');
   }
   const pw = wall.power;
-  if (!isObj(pw) || ['limiterMa', 'budgetMa', 'baseMa', 'ledMa', 'flashMa'].some((k) => !(typeof pw[k] === 'number' && pw[k] > 0))) p('power needs limiterMa, budgetMa, baseMa, ledMa, flashMa');
+  if (!isObj(pw) || ['limiterMa', 'budgetMa', 'baseMa', 'ledMa', 'flashMa'].some((k) => !goodMa(pw[k]))) p('power needs limiterMa, budgetMa, baseMa, ledMa, flashMa (numbers above 0)');
   else if (pw.budgetMa > pw.limiterMa) p('power budget over the limiter');
   const lv = wall.live;
   if (!isObj(lv) || !Array.isArray(lv.segments) || !Array.isArray(lv.protectedPresets) || !Number.isInteger(lv.restorePreset) || !(lv.maxSegments > 0 && lv.maxSegments <= 32)) p('live needs segments, protectedPresets, restorePreset, maxSegments');
@@ -570,17 +587,21 @@ function load(dataDir) {
     const f = path.join(dataDir, OVERRIDE_FILE);
     if (fs.existsSync(f)) override = readJson(f, OVERRIDE_FILE);
   }
+  // A saved fix whose power part is refused (an old file with limiterMa or
+  // baseMa) keeps its zones and the map's power: Moods stays on, the caller logs it.
+  const wp = withoutBadPower(override);
+  override = wp.override;
   const ob = checkOverride(override);
   if (ob.length) throw new Error(ob[0]);
   const wall = mergeWall(base, override);
   const problems = validate(catalog, wall);
   if (problems.length) throw new Error((override ? 'moods (with ' + OVERRIDE_FILE + '): ' : 'moods: ') + problems[0]);
-  return { catalog, wall, override };
+  return { catalog, wall, override, ignored: wp.ignored ? ['power'] : [] };
 }
 
 module.exports = {
   MOODS_FILE, WALL_FILE, OVERRIDE_FILE, OVERRIDE_KEYS, LIMITS, VASE_DESIGNS, PAINTINGS, LAYER_KINDS,
-  load, validate, nightFor, checkOverride, mergeWall,
+  load, validate, nightFor, checkOverride, mergeWall, withoutBadPower,
   moodById, designById, visibleMoods, designsOf, fxByKey, palByNumber, paletteRgb, goveeLook,
   zoneBulbs, sideBulbs, physicalSide, whereIs, menorahBulbs, pathFor, pointsAlong, bulbXY,
   isHex, hexToRgb

@@ -487,6 +487,16 @@ check('Pi-only override cannot raise or bypass the power budget, or reach a prot
   // Not a number: kept as sent so validate() refuses it (no coercion of "900").
   const str = catalogLib.mergeWall(wall, { power: { budgetMa: '900' } });
   assert.ok(catalogLib.validate(catalog, str).some((x) => /power needs/.test(x)));
+  // Only finite numbers above 0, in checkOverride, mergeWall and validate.
+  [JSON.parse('1e999'), -JSON.parse('1e999'), NaN, 0, -5, '700', null, true].forEach((v) => {
+    const p = catalogLib.checkOverride({ power: { budgetMa: v } });
+    assert.ok(p.length && /number above 0/.test(p[0]), String(v) + ': ' + JSON.stringify(p));
+    const m = catalogLib.mergeWall(wall, { power: { budgetMa: v } });
+    assert.ok(catalogLib.validate(catalog, m).some((x) => /power needs/.test(x)), 'validate refuses ' + String(v));
+  });
+  const infWall = copy(wall);
+  infWall.power.limiterMa = JSON.parse('1e999');
+  assert.ok(catalogLib.validate(catalog, infWall).some((x) => /power needs/.test(x)), 'validate refuses Infinity in the file too');
   // Prototype keys, at any depth, are refused and never merged.
   ['{"__proto__":{"x":1}}', '{"zones":{"__proto__":{"r":[[0,1]],"sure":true}}}', '{"power":{"constructor":{"prototype":{"budgetMa":5000}}}}', '{"menorah":{"prototype":1}}']
     .forEach((t) => {
@@ -505,8 +515,19 @@ check('Pi-only override cannot raise or bypass the power budget, or reach a prot
     const r = catalogLib.load(dir);
     assert.strictEqual(r.wall.power.budgetMa, pw.budgetMa, 'load clamps too');
     assert.strictEqual(r.wall.power.ledMa, pw.ledMa);
-    fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), JSON.stringify({ power: { limiterMa: 2000 } }));
-    assert.throws(() => catalogLib.load(dir), /cannot be changed/);
+    // An old fix with limiterMa or baseMa: its power part is ignored (reported), its zones kept, Moods stays on.
+    fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), JSON.stringify({ zones: { vase1: { r: [[9, 15]], sure: true } }, power: { limiterMa: 2000, budgetMa: 700 } }));
+    const old = catalogLib.load(dir);
+    assert.deepStrictEqual(old.ignored, ['power']);
+    assert.deepStrictEqual(old.wall.power, pw, 'the map\'s power');
+    assert.deepStrictEqual(old.wall.zones.vase1, { r: [[9, 15]], sure: true }, 'the zones are kept');
+    // 1e999 is Infinity in JSON: never taken, in a file or through checkOverride.
+    fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), '{"power":{"budgetMa":1e999}}');
+    const inf = catalogLib.load(dir);
+    assert.deepStrictEqual(inf.ignored, ['power']);
+    assert.strictEqual(inf.wall.power.budgetMa, pw.budgetMa);
+    fs.writeFileSync(path.join(dir, catalogLib.OVERRIDE_FILE), JSON.stringify({ power: { ledMa: 60 } }));
+    assert.deepStrictEqual(catalogLib.load(dir).ignored, []);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

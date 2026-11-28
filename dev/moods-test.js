@@ -470,7 +470,7 @@ async function startRealPi(o) {
       p = await panelInfo(page);
       assert(/Leave as they are/.test(p.pair), 'still ' + p.pair);
       await H.until(() => page.fake.posts.length > 0, 3000, 'nothing sent');
-      assert(page.fake.posts[0].pair === false, JSON.stringify(page.fake.posts));
+      assert(page.fake.posts[0].pair === false && page.fake.posts[0].step === true, JSON.stringify(page.fake.posts));
       assert(!p.night, 'a night stepper for a mood that is not Menorah');
       page.fake.posts.length = 0;
     });
@@ -496,7 +496,7 @@ async function startRealPi(o) {
       q = await panelInfo(p);
       assert(q.candles === 4, 'candles ' + q.candles);
       await H.until(() => p.fake.posts.length > 0, 3000, 'nothing sent');
-      assert(JSON.stringify(p.fake.posts[0]) === JSON.stringify({ id: 'menorah', night: 4 }), JSON.stringify(p.fake.posts));
+      assert(JSON.stringify(p.fake.posts[0]) === JSON.stringify({ id: 'menorah', night: 4, step: true }), JSON.stringify(p.fake.posts));
       assert(await heroLit() >= before, 'the hero lost bulbs');
       const errs = H.errorsOf(p, true);
       assert(!errs.length, errs.join(' | '));
@@ -745,7 +745,7 @@ async function startRealPi(o) {
       await H.until(() => wallPosts().length > mark, 4000, 'night 7 not sent');
       await H.sleep(400);
       got = wallPosts().slice(mark);
-      assert(same(rp.sent, [{ id: 'menorah', night: 7 }]), JSON.stringify(rp.sent));
+      assert(same(rp.sent, [{ id: 'menorah', night: 7, step: true }]), JSON.stringify(rp.sent));
       assert(same(got, bodiesFor('menorah', { night: 7 })) && !same(got, golden('menorah-night-8.json')), 'night 7 bodies');
       assert((await panelInfo(rp)).candles === 7, 'candles');
       rp.sent.length = 0;
