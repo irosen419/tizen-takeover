@@ -1808,18 +1808,21 @@
        "title": "Screen commands",
        "kind": "component",
        "status": "live",
-       "summary": "show, home, say, play, stop and reload: sent to every screen that is on right now, never stored for a TV that is off.",
+       "summary": "show, home, say, play, stop and reload: sent to every screen that is on right now, never stored for a TV that is off. layout, scene and visualizer go to the TV only.",
        "details": [
         "This is what makes 'TV off' safe: a command reaches 0 screens and the sender is told 'no screen is listening'. Only the poll fallback remembers commands, for 10 s, at most 20.",
         "say can carry 'hub:working <kind> <seconds>', which the TV turns into a quiet working chip on a tile instead of showing text. The Pi passes it on unchanged.",
         "play {url (http or https, up to 2048 characters), title?} has the TV play that audio through one reused audio element; stop ends it. ./hub news fetches the newest NPR News Now newscast (pi/news.js reads its public feed, a new one every hour), follows its tracking redirects to the MP3 and sends that address as play. Server 0.21.0; the redirects from server 0.22.3.",
         "Autoplay: the first key press after the hub loads plays a silent blip to unlock sound; a play the TV still refuses waits up to 10 minutes for the next key press. Hub v0.38.2.",
-        "A layout switch loads the page afresh; sound playing then carries on from the second it was at if the page is back within a minute (a note in sessionStorage). Hub v0.38.5."
+        "A layout switch loads the page afresh; sound playing then carries on from the second it was at if the page is back within a minute (a note in sessionStorage). Hub v0.38.5.",
+        "layout { id }, scene { name } and visualizer (server 0.48.0, hub 0.89.0): for the TV only (data.screen, default tv; a tablet or browser leaves them alone). layout picks a saved layout as the layout bar does; scene plays one of Ian and Ember's animations now; visualizer opens Now Playing full screen with the visualizer. Home Assistant's Home Hub dashboard sends them.",
+        "The screen report: each screen POSTs /screen/report when what it shows changes and once a minute (layout, what is open, which animations can play now). GET /api/screen gives the TV's to Home Assistant; kept in memory only, never logged (pi/screenreport.js)."
        ],
        "files": [
         "pi/server.js",
         "docs/live-updates.md",
-        "pi/news.js"
+        "pi/news.js",
+        "pi/screenreport.js"
        ],
        "talksTo": [
         {
@@ -3575,6 +3578,28 @@
         {
          "to": "pi.allsounds",
          "label": "answers the state requests",
+         "dir": "out"
+        }
+       ]
+      },
+      {
+       "id": "ext.ha.hubdash",
+       "title": "Home Hub dashboard",
+       "kind": "component",
+       "status": "unverified",
+       "summary": "A Home Assistant dashboard that shows what the TV hub shows and opens layouts, widgets and animations on it.",
+       "details": [
+        "Reads GET /api/screen every 5 s (a REST sensor) and sends commands to POST /api/command with the same token as the Lights buttons. Only the widgets on the layout showing and only the animations that can play there now have buttons: Ian and Ember on the home screen, the band in the visualizer, headphones and dance on the expanded Now Playing page.",
+        "Its YAML lives only in Home Assistant on the Pi, put there by the Pi helper (no addresses in this repo)."
+       ],
+       "files": [
+        "pi/screenreport.js",
+        "app/hub.js"
+       ],
+       "talksTo": [
+        {
+         "to": "pi.server.control-api",
+         "label": "reads the screen report, sends layout, show, scene and visualizer",
          "dir": "out"
         }
        ]
@@ -6123,6 +6148,33 @@
     {
      "node": "pi.server.control-api",
      "say": "Off, quiet for 15 minutes, or a hub scene: the engine fades out and puts the lights back (not over a change made elsewhere)"
+    }
+   ]
+  },
+  {
+   "id": "flow.ha-animation",
+   "title": "An animation from Home Assistant",
+   "summary": "A button on the Home Hub dashboard plays Ian and Ember on the TV, and the dashboard learns what can play.",
+   "steps": [
+    {
+     "node": "tv.hub",
+     "say": "The TV reports its layout, what is open and which animations can play now"
+    },
+    {
+     "node": "pi.server.commands",
+     "say": "The Pi keeps the last report; Home Assistant reads it every 5 seconds"
+    },
+    {
+     "node": "ext.ha.hubdash",
+     "say": "The dashboard shows only the buttons that fit; Ian taps Fetch"
+    },
+    {
+     "node": "pi.server.control-api",
+     "say": "Home Assistant sends scene fetch with its token"
+    },
+    {
+     "node": "tv.characters.clay",
+     "say": "The TV plays one of the fetch scenes now, or says why not"
     }
    ]
   }

@@ -44,6 +44,7 @@ const news = require('./news');
 const echo = require('./echo');
 const grocery = require('./grocery');
 const lightSettings = require('./lights/settings');
+const screenreport = require('./screenreport');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -518,6 +519,23 @@ const COMMANDS = {
     run: sendCommand('show', (a) => ({ widget: a.widget, mode: a.full ? 'full' : 'panel' }))
   },
   home: { args: {}, run: sendCommand('home', () => ({})) },
+  // The TV only: what it shows, another layout, the visualizer, an animation.
+  screen: {
+    args: { screen: [V.oneOf(screenreport.KINDS), false] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/screen?screen=' + (a.screen || 'tv'));
+      return { message: screenreport.text(r), data: r };
+    }
+  },
+  'layout.pick': {
+    args: { id: [V.text(40), true] },
+    run: sendCommand('layout', (a) => ({ id: a.id }))
+  },
+  scene: {
+    args: { name: [V.text(30), true] },
+    run: sendCommand('scene', (a) => ({ name: a.name }))
+  },
+  visualizer: { args: {}, run: sendCommand('visualizer', () => ({})) },
   reload: { args: {}, run: sendCommand('reload', () => ({})) },
   say: {
     args: { text: [V.text(MAX_TEXT), true], seconds: [V.number(1, 60), false] },

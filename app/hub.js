@@ -3308,6 +3308,66 @@
     });
   }
 
+  // A layout by its id in HUB_CONFIG.layouts, as if picked on the layout bar.
+  function liveLayout(data) {
+    var id = String(data.id || '');
+    var all = switcherPresets();
+    var p = null;
+    for (var i = 0; i < all.length; i++) if ((all[i].id || all[i].name) === id) p = all[i];
+    if (!p) {
+      toast(hubWord('askedLayout', 'Asked for the "{name}" layout, which this hub doesn\'t have.', { name: id.substring(0, 40) }), 5000);
+      return;
+    }
+    whenIdle(function () {
+      clearForCommand();
+      if (sw.on) closeSwitcher();
+      rot.lastMove = new Date().getTime();   // auto-rotate waits its full time from here
+      saveChoice({ id: p.id || p.name, live: p.live });
+      saveLayout(p.layout);
+      pendingLayout = p.layout;
+      if (open) closePanel();               // closing applies it (layoutChance)
+      else applyPendingLayout();
+      toast(hubWord('layoutPicked', '{name} layout', { name: layoutName(p) }), 1800);
+      screenSoon();
+      return false;
+    });
+  }
+
+  // An animation by name: Ian and Ember on the home screen (clay.js), or on
+  // Now Playing's stage or corner (nowplaying-band.js). Which can play now is
+  // in the screen report; anything else gets a short word on the screen.
+  var askedScene = null;   // { scene, ok, why, at } for the screen report
+
+  function liveScene(data) {
+    var name = String(data.name || '');
+    var why = 'unknown';
+    if (open && open.w.id === 'nowplaying') {
+      var B = window.HUB_NP_BAND;
+      why = B && typeof B.play === 'function' ? B.play(name) : 'off';
+    } else if (open || frameOpen || sw.on) {
+      why = 'busy';
+    } else {
+      var K = clayApi('play');
+      if (K) clearForCommand();
+      why = K ? K.play(name) : 'off';
+    }
+    askedScene = { scene: name.substring(0, 30), ok: why === '', why: why, at: new Date().getTime() };
+    if (why) toast(hubWord(why === 'busy' ? 'sceneBusy' : 'sceneNot', why === 'busy' ? 'Close the panel to see that animation.' : 'That animation can\'t play here now.'), 4000);
+    screenSoon();
+  }
+
+  // Now Playing full screen with the visualizer on.
+  function liveViz() {
+    var R = window.HUB_NP_REMOTE;
+    if (!widgetById('nowplaying') || !R || typeof R.viz !== 'function') {
+      liveShow({ widget: 'nowplaying', mode: 'full' });   // says the hub doesn't have it
+      return;
+    }
+    R.viz();
+    liveShow({ widget: 'nowplaying', mode: 'full' });
+    screenSoon();
+  }
+
   function liveHome() {
     whenIdle(function () {
       clearForCommand();
@@ -3559,6 +3619,13 @@
       else if (type === 'play') livePlay(data);
       else if (type === 'stop') liveStop();
       else if (type === 'reload') liveReload();
+      else if (type === 'layout' || type === 'scene' || type === 'visualizer') {
+        // For one kind of screen (the TV, unless the Pi says all).
+        if (data.screen && data.screen !== 'all' && data.screen !== screenKind()) return;
+        if (type === 'layout') liveLayout(data);
+        else if (type === 'scene') liveScene(data);
+        else liveViz();
+      }
     } catch (e) {
       liveWarn(type + ' failed: ' + (e && e.message));
     }
@@ -3600,9 +3667,120 @@
         for (var i = 0; i < WORK_RESOURCES.length; i++) L.on(WORK_RESOURCES[i], onWorkData(WORK_RESOURCES[i]));
       }
       L.start({ server: server });
+      startScreenReport(L);
     } catch (e) {
       liveWarn('could not start: ' + (e && e.message));
     }
+  }
+
+  /* ---------- the screen report ---------- */
+
+  // What this screen shows now, for the Home Assistant dashboard (POST
+  // /screen/report, pi/screenreport.js): the layout, what is open, and which
+  // animations can play here now. Sent when it changes (checked every 3 s)
+  // and once a minute, so the Pi knows the screen is still there.
+  var SCREEN_CHECK_MS = 3000;
+  var SCREEN_EVERY_MS = 60000;
+  var scr = { sent: '', at: 0, timer: null, live: null, soon: null };
+
+  function screenKind() {
+    if (tablet.on) return 'tablet';
+    return /Tizen/.test(navigator.userAgent || '') ? 'tv' : 'browser';
+  }
+
+  var REPORT_ID = /^[A-Za-z0-9_-]{1,40}$/;
+
+  function currentPreset(all) {
+    var chosen = readChoice();
+    var id = isLiveChoice(chosen) ? 'main' : chosen.id;
+    for (var i = 0; i < all.length; i++) if ((all[i].id || all[i].name) === id) return all[i];
+    var current = layoutSig(layoutKey ? JSON.parse(layoutKey) : null);
+    for (var k = 0; k < all.length; k++) if (presetSig(all[k]) === current) return all[k];
+    return null;
+  }
+
+  function askedList(api) {
+    var A = api;
+    if (!A || typeof A.scenes !== 'function') return [];
+    try {
+      var list = A.scenes();
+      return list && typeof list.length === 'number' ? list.slice(0, 20) : [];
+    } catch (e) { return []; }
+  }
+
+  function screenReport() {
+    var all = switcherPresets();
+    var layouts = [];
+    for (var i = 0; i < all.length; i++) {
+      var lid = all[i].id || all[i].name;
+      if (REPORT_ID.test(lid)) layouts.push({ id: lid, name: layoutName(all[i]) });
+    }
+    var cur = currentPreset(all);
+    var ids = [];
+    for (var w = 0; w < widgets.length; w++) {
+      if (widgets[w].expandable && REPORT_ID.test(widgets[w].w.id)) ids.push(widgets[w].w.id);
+    }
+    var np = null;
+    try { np = window.HUB_NP_REMOTE && window.HUB_NP_REMOTE.state ? window.HUB_NP_REMOTE.state() : null; } catch (e) { np = null; }
+    var place = 'home';
+    var set = 'none';
+    var scenes = [];
+    if (document.hidden) place = 'away';
+    else if (sw.on) place = 'switcher';
+    else if (open && open.w.id === 'nowplaying') {
+      place = np && np.viz ? 'visualizer' : 'nowplaying';
+      scenes = askedList(window.HUB_NP_BAND);
+      if (scenes.length) set = place === 'visualizer' ? 'stage' : 'corner';
+    } else if (open || frameOpen) place = 'panel';
+    else {
+      scenes = askedList(window.HUB_CLAY);
+      if (scenes.length) set = 'wanderers';
+    }
+    var r = {
+      kind: screenKind(), hub: BUILD.replace(/^v/, ''), place: place,
+      layout: cur && REPORT_ID.test(cur.id || cur.name) ? { id: cur.id || cur.name, name: layoutName(cur) } : null,
+      layouts: layouts, widgets: ids,
+      open: open && REPORT_ID.test(open.w.id) ? open.w.id : null,
+      mode: open ? mode : null,
+      viz: !!(np && np.viz && open && open.w.id === 'nowplaying'),
+      playing: !!(np && np.playing && open && open.w.id === 'nowplaying'),
+      animations: { set: set, scenes: scenes }
+    };
+    if (askedScene && /^[a-z0-9-]{1,30}$/.test(askedScene.scene)) {
+      r.last = { scene: askedScene.scene, ok: askedScene.ok, why: askedScene.why, ago: Math.round((new Date().getTime() - askedScene.at) / 1000) };
+    }
+    return r;
+  }
+
+  function screenCheck(force) {
+    var L = scr.live;
+    if (!L || typeof L.post !== 'function') return;
+    var r;
+    try { r = screenReport(); } catch (e) { liveWarn('screen report failed: ' + (e && e.message)); return; }
+    var ago = r.last ? r.last.ago : 0;
+    if (r.last) delete r.last.ago;   // the age alone is no change
+    var json = JSON.stringify(r);
+    var t = new Date().getTime();
+    if (!force && json === scr.sent && t - scr.at < SCREEN_EVERY_MS) return;
+    if (r.last) r.last.ago = ago;
+    scr.sent = json;
+    scr.at = t;
+    try { L.post('/screen/report', r, function () { /* an older Pi answers 404: it is tried again in a minute */ }); } catch (e) { /* next time */ }
+  }
+
+  // Soon after a command, once its change has had time to show.
+  function screenSoon() {
+    if (!scr.live) return;
+    clearTimeout(scr.soon);
+    scr.soon = setTimeout(function () { screenCheck(false); }, 1200);
+  }
+
+  function startScreenReport(L) {
+    if (!L || typeof L.post !== 'function' || scr.timer) return;
+    scr.live = L;
+    scr.timer = setInterval(function () { screenCheck(false); }, SCREEN_CHECK_MS);
+    setTimeout(function () { screenCheck(true); }, 2000);
+    try { document.addEventListener('visibilitychange', function () { screenCheck(true); }); } catch (e) { /* the minute report still goes */ }
   }
 
   /* ---------- updates ---------- */

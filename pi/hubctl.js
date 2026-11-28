@@ -10,6 +10,10 @@
  *   ./hub stop                       stop what the TV is playing
  *   ./hub news                       play the newest NPR News Now newscast on the TV
  *   ./hub reload                     load the hub afresh
+ *   ./hub screen                     what the TV shows now and which animations can play
+ *   ./hub pick <layout id>           switch the TV's layout (as the layout bar does)
+ *   ./hub scene <animation id>       play an animation on the TV now
+ *   ./hub visualizer                 open Now Playing's visualizer on the TV
  *   ./hub todo add "Buy milk" [--level must|optional|passive] [--due 2026-12-24] [--lead 3] [--notes "Oat, not dairy"]
  *   ./hub todo list
  *   ./hub todo level <id or exact title> must|optional|passive
@@ -104,6 +108,7 @@ const tvremote = require('./tvremote');
 const news = require('./news');
 const grocery = require('./grocery');
 const pantrydb = require('./pantrydb');
+const screenreport = require('./screenreport');
 
 const ENV_FILE = path.join(__dirname, '.env');
 const EXAMPLE_FILE = path.join(__dirname, '.env.example');
@@ -1577,6 +1582,10 @@ const HELP = [
   '  ./hub stop                  stop what the TV is playing',
   '  ./hub news                  play the newest NPR News Now newscast (a new one every hour) on the TV',
   '  ./hub reload                load the hub afresh',
+  '  ./hub screen                what the TV shows now: layout, what is open, animations it can play',
+  '  ./hub pick budget           switch the TV to a layout (ids: ./hub screen; Main stays as saved)',
+  '  ./hub scene fetch           play an animation on the TV now (ids: ./hub screen)',
+  '  ./hub visualizer            open the Now Playing visualizer on the TV',
   '  ./hub todo add "Buy milk"   add a to-do (add --level must or passive, --due 2026-12-24; optional when left out)',
   '  ./hub todo level "Buy milk" must   change a to-do\'s level: must, optional or passive',
   '  ./hub todo lead "School meeting" 3   a passive to-do shows 3 days before it is due (0 to 30; --clear for 2)',
@@ -1907,6 +1916,20 @@ async function main(argv) {
     return command('show', { widget: widget, mode: a.opts.full ? 'full' : 'panel' });
   }
   if (cmd === 'home' || cmd === 'reload') return command(cmd, {});
+  if (cmd === 'screen') {
+    const r = await call('GET', '/api/screen?screen=' + encodeURIComponent(rest[0] || 'tv'));
+    say(screenreport.text(r));
+    return;
+  }
+  if (cmd === 'pick') {
+    if (!rest[0]) stop('Say which layout, by its id: ./hub pick main (./hub screen lists them).');
+    return command('layout', { id: rest[0] });
+  }
+  if (cmd === 'scene') {
+    if (!rest[0]) stop('Say which animation, for example: ./hub scene fetch (./hub screen lists what plays now).');
+    return command('scene', { name: rest[0] });
+  }
+  if (cmd === 'visualizer') return command('visualizer', {});
   if (cmd === 'say') {
     const a = parseArgs(rest, ['seconds']);
     const text = a.words.join(' ').trim();

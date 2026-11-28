@@ -64,10 +64,12 @@
  *   POST /echo/run       the Echo controls from the TV (soundctl.js): presets only, rate limited
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
  *                        from the TV (ambience.js): saved ids only, rate limited
+ *   POST /screen/report  what the screen shows now (screenreport.js): kept in memory, never logged
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
  *
  * Control API (needs "Authorization: Bearer <token>"):
  *   POST /api/command    show / home / say / reload on every screen now on
+ *                        (layout { id }, scene { name }, visualizer: the TV only)
  *   GET  /api/todo       the to-do list
  *   POST /api/todo       add one to-do
  *   POST /api/todo/ops   several to-do changes at once
@@ -108,6 +110,8 @@
  *   GET  /api/tvremote   the TV remote from the Pi: paired or not, last run and its steps (tvremote.js)
  *   POST /api/tvremote/run   start a run, the same body as POST /tvremote/run
  *   GET  /api/status     version, rev, connected screens, calendar summary
+ *   GET  /api/screen     what the TV shows now and which animations can play there
+ *                        (?screen=tablet|browser for another; screenreport.js), for Home Assistant
  *   GET  /api/log        the last log lines kept in memory (?lines=1-200,
  *                        ?errors=1 for problems only, ?scrub=1 hides addresses
  *                        and names; see logscrub.js)
@@ -196,6 +200,7 @@ const budgetgoal = require('./budgetgoal');
 const budgetplanned = require('./budgetplanned');
 const spanish = require('./spanish');
 const prefs = require('./prefs');
+const screenreport = require('./screenreport');
 
 const SERVER_VERSION = '0.47.0';
 const PROTOCOL = 1;
@@ -607,7 +612,19 @@ function normalizeCommand(body) {
     return { type: type, data: out };
   }
   if (type === 'home' || type === 'reload' || type === 'stop') return { type: type, data: {} };
-  throw bad('unknown command type (use show, home, say, play, stop or reload)');
+  // For the TV only (the Home Assistant dashboard): another screen ignores them.
+  if (type === 'layout' || type === 'scene' || type === 'visualizer') {
+    const screen = data.screen === undefined || data.screen === null ? 'tv' : data.screen;
+    if (screenreport.KINDS.indexOf(screen) < 0 && screen !== 'all') throw bad('"screen" must be tv, tablet, browser or all');
+    if (type === 'visualizer') return { type: type, data: { screen: screen } };
+    if (type === 'layout') {
+      if (typeof data.id !== 'string' || !screenreport.ID_RE.test(data.id)) throw bad('"layout" needs a layout id, like main or budget');
+      return { type: type, data: { id: data.id, screen: screen } };
+    }
+    if (typeof data.name !== 'string' || !screenreport.SCENE_RE.test(data.name)) throw bad('"scene" needs an animation id, like fetch or band');
+    return { type: type, data: { name: data.name, screen: screen } };
+  }
+  throw bad('unknown command type (use show, home, say, play, stop, reload, layout, scene or visualizer)');
 }
 
 /* ---------- state file ---------- */
@@ -767,6 +784,7 @@ function start(options) {
   const remote = tvremote.create(Object.assign({ dataDir: dataDir, log: log, host: opt.tvRemoteIp || '' }, isObj(opt.tvremote) ? opt.tvremote : {}));
 
   // Open things on the TV from the Pi (tvlaunch.js): Home Assistant first, then the remote link.
+  const screenStore = screenreport.createStore({ now: typeof opt.now === 'function' ? () => +opt.now() : undefined });
   const tvLauncher = tvlaunch.create(Object.assign({ config: tvlaunch.configFromEnv(opt.tvLaunchEnv || {}), remote: remote, log: log }, isObj(opt.tvlaunch) ? opt.tvlaunch : {}));
 
   let state = loadState(dataDir, log);
@@ -1885,6 +1903,7 @@ function start(options) {
     '/api/budget/goal': ['GET', 'POST'],
     '/api/prefs': ['GET'],
     '/api/status': ['GET'],
+    '/api/screen': ['GET'],
     '/api/log': ['GET'],
     '/api/calendar': ['GET'],
     '/api/calendar/refresh': ['POST'],
@@ -2015,6 +2034,7 @@ function start(options) {
           return undefined;
         }
         if (route === '/api/status') return reply(200, statusBody());
+        if (route === '/api/screen') return reply(200, screenStore.get(query.get('screen') || 'tv'));
         if (route === '/api/log') return reply(200, logBody(query));
         if (route === '/api/calendar') {
           const c = state.resources.calendar;
@@ -2576,7 +2596,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/budget/planned' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/budget/planned' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route === '/screen/report' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2695,6 +2715,19 @@ function start(options) {
           if (e && e.status === 502) log('planned buy: ' + (e.logText || e.message));
           fail(res, e, cors);
         });
+      });
+    }
+    if (route === '/screen/report') {
+      // What the screen shows now (screenreport.js), for Home Assistant. Only
+      // its coming back after a silence is logged, never what it shows.
+      return readBody(req, res, (body) => {
+        try {
+          const r = screenStore.put(body);
+          sendJson(res, 200, { ok: true }, cors);
+          if (r.first) log('the ' + r.kind + ' reports what it shows');
+        } catch (e) {
+          fail(res, e, cors);
+        }
       });
     }
     if (route === '/prefs') {
@@ -2836,7 +2869,7 @@ function start(options) {
   const SCREEN_ROUTES = {
     '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/budget/goal': 1, '/budget/planned': 1, '/prefs': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
-    '/echo/run': 1, '/guest/pin': 1, '/lights/look': 1
+    '/echo/run': 1, '/guest/pin': 1, '/lights/look': 1, '/screen/report': 1
   };
 
   const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1, '/spanish/progress': 1, '/spanish/ops': 1 };
