@@ -649,6 +649,20 @@ async function main() {
     assert.strictEqual(storeLib.createStore({ dataDir: dir }).settings().on, false, 'kept across a restart');
   });
 
+  await check('store: extraLooks (Moods\' own looks) are picked by id and painted, never listed', () => {
+    const extra = [{ id: 'mood-test', name: 'Test', lamp: { brightness: 20, color: [255, 0, 0] }, bars: { brightness: 20, color: [0, 0, 255] } }];
+    const st = storeLib.createStore({ dataDir: tmpDir(), extraLooks: () => extra });
+    st.change({ on: true });
+    st.change({ look: 'mood-test' });
+    assert.strictEqual(st.settings().look, 'mood-test');
+    assert.strictEqual(st.settings().on, false, 'a preset wins over music lights, as before');
+    assert.deepStrictEqual(st.engineReport({ state: 'off' }).look, extra[0]);
+    assert.ok(!st.status().looks.some((l) => l.id === 'mood-test'));
+    assert.ok(!st.screenData().looks.some((l) => l.id === 'mood-test'));
+    assert.strictEqual(st.screenData().looks.length, storeLib.createStore({ dataDir: tmpDir() }).screenData().looks.length);
+    assert.throws(() => storeLib.createStore({ dataDir: tmpDir() }).change({ look: 'mood-test' }), /no preset/);
+  });
+
   await check('store: an event raised before the latest switch on is ignored (a resend cannot turn a new session off)', () => {
     const st = storeLib.createStore({ dataDir: tmpDir() });
     st.change({ on: true });

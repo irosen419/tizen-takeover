@@ -345,7 +345,7 @@ async function main() {
     r = await run(fake, h, 'grocery.export');
     assert.strictEqual(r.ok, true, r.message);
     assert.strictEqual(r.message, '1 to get, 1 ticked.\nEggs');
-    assert.deepStrictEqual(r.data, { counts: { left: 1, ticked: 1 }, search: ['Eggs'], scanned: 0, noBrand: 0, noPicture: 0 });
+    assert.deepStrictEqual(r.data, { counts: { left: 1, ticked: 1 }, search: ['Eggs'], byStore: { '': ['Eggs'] }, scanned: 0, noBrand: 0, noPicture: 0 });
     r = await run(fake, h, 'grocery.clear');
     assert.strictEqual(r.message, 'Cleared 1 ticked grocery item.');
     assert.deepStrictEqual(r.data, { cleared: 1 });
@@ -355,6 +355,26 @@ async function main() {
     assert.strictEqual(r.ok, false, 'milk was cleared');
     r = await run(fake, h, 'grocery.list');
     assert.strictEqual(r.data.items.length, 1);
+  });
+
+  // Moods (pi/moods/controller.js): the full run against a pretend wall is in pi/moods-test.js.
+  await check('moods.*: the commands exist, check their args, and say "not set up" without WLED_URL', async () => {
+    ['moods.status', 'moods.list', 'moods.set', 'moods.off', 'moods.bri', 'moods.event', 'moods.probe', 'moods.tune', 'moods.wall']
+      .forEach((c) => assert.ok(mailbox.COMMANDS[c], c));
+    let r = await run(fake, h, 'moods.status');
+    assert.strictEqual(r.ok, true, r.message);
+    assert.strictEqual(r.message, 'Moods: not set up (add WLED_URL to pi/.env, then restart the hub).');
+    r = await run(fake, h, 'moods.list');
+    assert.ok(/^22 moods/.test(r.message), r.message);
+    r = await run(fake, h, 'moods.set', { id: 'christmas' });
+    assert.strictEqual(r.ok, false);
+    assert.ok(/not set up on the Pi \(WLED_URL/.test(r.message), r.message);
+    r = await run(fake, h, 'moods.event', { name: 'lightning' });
+    assert.ok(/^Rejected: "name" must be one of: thunder/.test(r.message), r.message);
+    r = await run(fake, h, 'moods.bri', { pct: 200 });
+    assert.ok(/^Rejected: "pct" must be a whole number from 10 to 100/.test(r.message), r.message);
+    r = await run(fake, h, 'moods.tune', { id: 'rainforest' });
+    assert.ok(/^Rejected: say what to tune/.test(r.message), r.message);
   });
 
   await check('grocery.orderlist: the ordering rows as data, counts as the message', async () => {

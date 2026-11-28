@@ -64,6 +64,9 @@
  *   POST /echo/run       the Echo controls from the TV (soundctl.js): presets only, rate limited
  *   POST /ambience/scene, /ambience/light, /ambience/mood   the room's lights
  *                        from the TV (ambience.js): saved ids only, rate limited
+ *   POST /moods/set      the plant wall's moods from the TV, the tablet or the phone
+ *                        (moods/controller.js): { id } or { off: true }, bri?, night?, pair?;
+ *                        saved ids only, rate limited (a screen and a touch route)
  *   POST /screen/report  what the screen shows now (screenreport.js): kept in memory, never logged
  *   GET  /spotify/callback   where Spotify's sign-in page can land (see spotify.js)
  *
@@ -133,6 +136,10 @@
  *   POST /api/ambience/mood    a plant wall mood, { id }
  *   GET  /api/ambience/config  the saved lights, scenes and moods
  *   POST /api/ambience/config  replace them, { config }, or { config: null } for the defaults
+ *   GET  /api/moods      plant wall moods (moods/controller.js): list, now, engine, probe
+ *   GET  /api/moods/now  flat, for Home Assistant: { ok, id, name, on, bri, path, stale, night, pair, since }
+ *   POST /api/moods/set|off|bri|event|probe|tune|wall   see pi/moods/controller.js;
+ *                        POST /api/command { type: "mood" } is handled here, never sent to screens
  *   GET  /api/lights     music lights: settings, palettes, what the engine does (lights/store.js)
  *   POST /api/lights     { on?, palette?, vibrancy?, beat?, preset?, quietMin? }
  *   POST /api/lights/engine   the engine's once-a-second report (never logged when fine)
@@ -201,6 +208,7 @@ const budgetplanned = require('./budgetplanned');
 const spanish = require('./spanish');
 const prefs = require('./prefs');
 const screenreport = require('./screenreport');
+const moodsLib = require('./moods/controller');
 
 const SERVER_VERSION = '0.48.1';
 const PROTOCOL = 1;
@@ -612,6 +620,8 @@ function normalizeCommand(body) {
     return { type: type, data: out };
   }
   if (type === 'home' || type === 'reload' || type === 'stop') return { type: type, data: {} };
+  // Plant wall moods (Home Assistant's dashboard): handled on the Pi, never sent to a screen.
+  if (type === 'mood') return { type: type, data: normalizeMood(data) };
   // For the TV only (the Home Assistant dashboard): another screen ignores them.
   if (type === 'layout' || type === 'scene' || type === 'visualizer') {
     const screen = data.screen === undefined || data.screen === null ? 'tv' : data.screen;
@@ -624,7 +634,38 @@ function normalizeCommand(body) {
     if (typeof data.name !== 'string' || !screenreport.SCENE_RE.test(data.name)) throw bad('"scene" needs an animation id, like fetch or band');
     return { type: type, data: { name: data.name, screen: screen } };
   }
-  throw bad('unknown command type (use show, home, say, play, stop, reload, layout, scene or visualizer)');
+  throw bad('unknown command type (use show, home, say, play, stop, reload, layout, scene, visualizer or mood)');
+}
+
+// { id } | { id: "off" } | { bri } | { event, n? }, with pair, night and bri beside an id.
+function normalizeMood(data) {
+  const out = {};
+  const int = (k, lo, hi) => {
+    if (data[k] === undefined || data[k] === null) return;
+    if (!Number.isInteger(data[k]) || data[k] < lo || data[k] > hi) throw bad('"' + k + '" must be a whole number from ' + lo + ' to ' + hi);
+    out[k] = data[k];
+  };
+  Object.keys(data).forEach((k) => { if (['id', 'bri', 'pair', 'night', 'event', 'n'].indexOf(k) < 0) throw bad('"mood" does not take "' + k + '"'); });
+  if (data.id !== undefined && data.id !== null) {
+    if (typeof data.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,39}$/.test(data.id)) throw bad('"mood" needs a mood id, like christmas, or "off"');
+    out.id = data.id;
+  }
+  if (data.event !== undefined && data.event !== null) {
+    if (typeof data.event !== 'string' || !/^[a-z][a-z0-9-]{0,31}$/.test(data.event)) throw bad('"event" must be an event name, like thunder');
+    if (out.id !== undefined) throw bad('send an event or an id, not both');
+    out.event = data.event;
+  }
+  int('bri', 10, 100);
+  int('night', 1, 8);
+  int('n', 1, 6);
+  if (data.pair !== undefined && data.pair !== null) {
+    if (typeof data.pair !== 'boolean') throw bad('"pair" must be true or false');
+    out.pair = data.pair;
+  }
+  if (out.id === undefined && out.event === undefined && out.bri === undefined) throw bad('"mood" needs an id, bri or event');
+  if (out.id === 'off' && (out.bri !== undefined || out.night !== undefined || out.pair !== undefined)) throw bad('"off" takes nothing else');
+  if (out.n !== undefined && out.event === undefined) throw bad('"n" goes with an event');
+  return out;
 }
 
 /* ---------- state file ---------- */
@@ -647,7 +688,8 @@ function freshState() {
       ambience: { rev: 0, data: ambience.notsetData('noha') },
       prefs: { rev: 0, data: prefs.emptyData() },
       guestall: { rev: 0, data: prefs.guestEmpty() },
-      lightlooks: { rev: 0, data: emptyLooksData() }
+      lightlooks: { rev: 0, data: emptyLooksData() },
+      moods: { rev: 0, data: moodsLib.notsetData() }
     }
   };
 }
@@ -715,6 +757,8 @@ function loadState(dir, log) {
     // "All screens" choice (prefs.js): empty in older files.
     st.resources.prefs = prefs.cleanResource(st.resources.prefs);
     st.resources.guestall = prefs.guestClean(st.resources.guestall);
+    // Plant wall moods (moods/controller.js): rebuilt as the server starts.
+    st.resources.moods = moodsLib.cleanResource(st.resources.moods);
     // The lamp and bars presets: rebuilt from lights/store.js as the server starts.
     const ll = st.resources.lightlooks;
     st.resources.lightlooks = { rev: isObj(ll) && Number.isInteger(ll.rev) && ll.rev >= 0 ? ll.rev : 0, data: emptyLooksData() };
@@ -968,6 +1012,7 @@ function start(options) {
   // opt.ambienceEnv is the .env settings (HA_URL, HA_TOKEN, WLED_URL).
   // opt.ambience may hold { manual, timeoutMs, ... } for tests and the preview.
   const amOpt = isObj(opt.ambience) ? opt.ambience : {};
+  let moods = null; // plant wall moods (below); Ambience's wall read feeds its "stale"
   const lights = ambience.createController(Object.assign({}, amOpt, {
     env: ambience.configFromEnv(opt.ambienceEnv || {}),
     dataDir: dataDir,
@@ -976,6 +1021,7 @@ function start(options) {
     current: () => state.resources.ambience.data,
     publish: (data) => {
       try { changeResource('ambience', data); } catch (e) { /* changeResource already logged it */ }
+      if (moods) moods.refresh();
     }
   }));
   lights.start();
@@ -998,6 +1044,8 @@ function start(options) {
     dataDir: dataDir,
     log: log,
     onChange: () => publishLooks(),
+    // Moods' own lamp and bars looks: found by id, never listed (the Ambience row stays as it is).
+    extraLooks: () => (moods ? moods.looks() : []),
     // The song's own tempo (vibe.js), only while Spotify plays.
     songBpm: () => {
       const d = state.resources.nowplaying.data;
@@ -1037,6 +1085,36 @@ function start(options) {
       const look = looksLib.fromStates(b.save, { lamp: st[0], bars: st[1] });
       const r = musicLights.saveLook(look);
       return { status: 200, body: Object.assign({ ok: true, saved: look }, r), note: 'saved' };
+    });
+  }
+
+  /* --- Plant wall moods (moods/controller.js) --- */
+
+  // opt.moodsEnv is the .env settings (WLED_URL, MOODS_ENGINE, MOODS_ENGINE_PORT,
+  // MOODS_DRY). opt.moods may hold { engine, request, timers, rng, now, today } for tests.
+  const moodsOpt = isObj(opt.moods) ? opt.moods : {};
+  moods = moodsLib.createController(Object.assign({}, moodsOpt, {
+    env: opt.moodsEnv || opt.ambienceEnv || {},
+    dataDir: dataDir,
+    log: log,
+    lights: musicLights,
+    wledSeen: () => {
+      const w = state.resources.ambience.data && state.resources.ambience.data.wled;
+      return isObj(w) ? { reachable: w.reachable === true, on: w.on === true, bri: w.bri } : null;
+    },
+    current: () => state.resources.moods.data,
+    put: (data) => {
+      try { changeResource('moods', data); } catch (e) { /* changeResource already logged it */ }
+    }
+  }));
+  // At start the resource goes into the state quietly (no new rev), like the presets above.
+  state.resources.moods = { rev: state.resources.moods.rev, data: moods.start() };
+
+  // The control API's /api/moods* (sub is '/moods', '/moods/set', ...). Never rejects.
+  function moodsCall(method, sub, body) {
+    return moods.http(method, sub, body).catch(() => {
+      log('moods: unexpected problem with a command');
+      return { status: 500, body: { ok: false, error: 'the server had a problem' } };
     });
   }
 
@@ -1937,7 +2015,16 @@ function start(options) {
     '/api/photos': ['GET'],
     '/api/lights': ['GET', 'POST'],
     '/api/lights/engine': ['POST'],
-    '/api/lights/looks': ['GET', 'POST']
+    '/api/lights/looks': ['GET', 'POST'],
+    '/api/moods': ['GET'],
+    '/api/moods/now': ['GET'],
+    '/api/moods/set': ['POST'],
+    '/api/moods/off': ['POST'],
+    '/api/moods/bri': ['POST'],
+    '/api/moods/event': ['POST'],
+    '/api/moods/probe': ['POST'],
+    '/api/moods/tune': ['POST'],
+    '/api/moods/wall': ['POST']
   };
 
   function statusBody() {
@@ -2093,6 +2180,10 @@ function start(options) {
           ambienceCall(method, route.slice(4), body).then((a) => reply(a.status, a.body, a.note));
           return undefined;
         }
+        if (route.indexOf('/api/moods') === 0) {
+          moodsCall(method, route.slice(4), body).then((a) => reply(a.status, a.body, a.note));
+          return undefined;
+        }
         if (route === '/api/layout' && method === 'GET') {
           const l = state.resources.layout;
           return reply(200, { ok: true, rev: l.rev, layout: l.data.layout });
@@ -2246,6 +2337,10 @@ function start(options) {
         }
         if (route === '/api/command') {
           const cmd = normalizeCommand(body);
+          if (cmd.type === 'mood') {
+            moods.command(cmd.data).then((a) => reply(a.status, a.body, 'mood, ' + a.note));
+            return undefined;
+          }
           const r = sendCommand(cmd);
           return reply(200, { ok: true, delivered: r.delivered }, cmd.type + ', delivered ' + r.delivered);
         }
@@ -2464,7 +2559,7 @@ function start(options) {
   function touch(req, res, route, query) {
     const cors = corsHeaders(req);
     if (!touchAllowed(req)) return sendJson(res, 403, { ok: false, error: 'screen not allowed' }, cors);
-    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/spanish/ops' || route === '/spanish/progress')) {
+    if (req.method === 'OPTIONS' && (route === '/grocery/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/spanish/ops' || route === '/spanish/progress' || route === '/moods/set')) {
       const h = Object.assign({ 'Cache-Control': 'no-store', 'Content-Length': 0 }, cors);
       if (cors['Access-Control-Allow-Origin']) {
         h['Access-Control-Allow-Methods'] = route === '/spanish/progress' ? 'GET' : 'POST';
@@ -2475,13 +2570,14 @@ function start(options) {
       return res.end();
     }
     const image = route.indexOf('/products/image/') === 0;
-    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' || route === '/spanish/ops' ? 'POST' : 'GET';
+    const want = route === '/grocery/ops' || route === '/touch/todo/ops' || route === '/pantry/ops' || route === '/pantry/screen-ops' || route === '/products/save' || route === '/spanish/ops' || route === '/moods/set' ? 'POST' : 'GET';
     const okMethod = req.method === want || (image && req.method === 'HEAD');
     if (!okMethod) return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     if (route === '/touch/state') {
       return sendJson(res, 200, {
         ok: true, v: PROTOCOL, server: SERVER_VERSION, epoch: state.epoch, rev: state.rev,
-        grocery: state.resources.grocery, todo: state.resources.todo, products: groceryProducts(), pantry: pantryView()
+        grocery: state.resources.grocery, todo: state.resources.todo, products: groceryProducts(), pantry: pantryView(),
+        moods: state.resources.moods
       }, cors);
     }
     if (image) {
@@ -2491,6 +2587,7 @@ function start(options) {
       return sendProductImage(req, res, code, cors);
     }
     if (!originOk(req)) return sendJson(res, 403, { ok: false, error: 'origin not allowed' }, cors);
+    if (route === '/moods/set') return moodsScreenSet(req, res, cors);
     if (route === '/products/lookup') {
       // A GET that may call the web: it needs proof it comes from the app's
       // own page (a same-host Origin, Sec-Fetch-Site: same-origin, or the
@@ -2579,6 +2676,18 @@ function start(options) {
     });
   }
 
+  // POST /moods/set from the TV, the tablet or the phone: saved ids only, never
+  // a dry run, rate limited like Ambience. The address is never logged here.
+  function moodsScreenSet(req, res, cors) {
+    if (!moods.screenAllowed()) {
+      req.resume();
+      return sendJson(res, 429, { ok: false, error: 'slow down' }, cors);
+    }
+    return readBody(req, res, (body) => {
+      moods.screenSet(body).then((a) => sendJson(res, a.status, a.body, cors));
+    });
+  }
+
   function screen(req, res, route, query) {
     const address = clientAddress(req);
     const cors = corsHeaders(req);
@@ -2596,7 +2705,7 @@ function start(options) {
       return res.end();
     }
     if (route === '/spotify/callback' && req.method === 'GET') return spotifyCallback(res, query);
-    const want = route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/budget/planned' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route === '/screen/report' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
+    const want = route === '/moods/set' || route === '/todo/ops' || route === '/translate' || route === '/linktests' || route === '/tvremote/run' || route === '/tv/launch' || route === '/echo/run' || route === '/awws/resync' || route === '/budget/goal' || route === '/budget/planned' || route === '/prefs' || route === '/shows/watched' || route === '/shows/unwatch' || route === '/shows/upto' || route === '/shows/caughtup' || route === '/guest/pin' || route === '/lights/look' || route === '/screen/report' || route.indexOf('/ambience/') === 0 ? 'POST' : 'GET';
     if (req.method !== want) {
       return sendJson(res, 405, { ok: false, error: 'use ' + want + ' for ' + route }, Object.assign({ Allow: want }, cors));
     }
@@ -2818,6 +2927,7 @@ function start(options) {
       });
       return undefined;
     }
+    if (route === '/moods/set') return moodsScreenSet(req, res, cors);
     if (route.indexOf('/ambience/') === 0) {
       // The TV holds no secret: it may only name ids from the saved
       // settings, and not too fast. Nothing about it is logged here (the
@@ -2869,10 +2979,12 @@ function start(options) {
   const SCREEN_ROUTES = {
     '/live/state': 1, '/live/events': 1, '/live/poll': 1, '/todo/ops': 1, '/translate': 1, '/linktests': 1, '/tvremote/run': 1, '/tv/launch': 1, '/awws/resync': 1, '/budget/goal': 1, '/budget/planned': 1, '/prefs': 1, '/shows/watched': 1, '/shows/unwatch': 1, '/shows/upto': 1, '/shows/caughtup': 1, '/shows/episodes': 1, '/spotify/callback': 1,
     '/ambience/scene': 1, '/ambience/light': 1, '/ambience/mood': 1,
-    '/echo/run': 1, '/guest/pin': 1, '/lights/look': 1, '/screen/report': 1
+    '/echo/run': 1, '/guest/pin': 1, '/lights/look': 1, '/screen/report': 1, '/moods/set': 1
   };
 
-  const TOUCH_ROUTES = { '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1, '/spanish/progress': 1, '/spanish/ops': 1 };
+  // /moods/set is in both: the touch door answers it first (home and Tailscale
+  // addresses, as the phone needs), with the screen door's checks (Origin, rate).
+  const TOUCH_ROUTES = { '/moods/set': 1, '/touch/state': 1, '/grocery/ops': 1, '/touch/todo/ops': 1, '/pantry/ops': 1, '/pantry/screen-ops': 1, '/products/lookup': 1, '/products/save': 1, '/spanish/progress': 1, '/spanish/ops': 1 };
 
   function handler(door) {
     return (req, res) => {
@@ -2976,6 +3088,7 @@ function start(options) {
     mailbox: mbox,
     spotify: player,
     ambience: lights,
+    moods: moods,
     // Keeps a line that was already printed some other way (process events).
     note: (s) => { try { remember(String(s)); } catch (e) { /* never throws */ } },
     shows: tracker,
@@ -3016,6 +3129,7 @@ function start(options) {
     tracker.close();
     sounds.close();
     lights.close();
+    moods.close(); // stops the Pi-drawn renderer, if one runs
     catalog.close();
     if (pantry) pantry.close();
     if (spanishDb) spanishDb.close();
@@ -3087,6 +3201,7 @@ if (require.main === module) {
     echoEnv: env,
     tvLaunchEnv: env,
     ambienceEnv: env,
+    moodsEnv: env,
     // The mailbox's "restart": stop cleanly, and Docker (restart: unless-stopped)
     // or systemd (Restart=always) starts the server again, with any new code.
     onRestart: () => {

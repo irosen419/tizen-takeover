@@ -1051,6 +1051,90 @@ const COMMANDS = {
       return { message: hubctl.ambienceSetText(r, true), data: ambienceCounts(r.config) };
     }
   },
+  // Plant wall moods (moods/controller.js). The replies are the lines ./hub moods prints;
+  // a partly applied change answers ok: false.
+  'moods.status': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/moods');
+      return { message: hubctl.moodsLine(r), data: { state: r.state, problem: r.problem, now: r.now, engine: r.engine, probe: r.probe, snapshot: r.snapshot, pair: r.pair, last: r.last } };
+    }
+  },
+  'moods.list': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/moods');
+      return { message: lines(hubctl.moodsListLines(r.moods || [])), data: { moods: r.moods || [] } };
+    }
+  },
+  'moods.set': {
+    args: { id: [V.text(40), true], bri: [V.int(10, 100), false], night: [V.int(1, 8), false], pair: [V.bool(), false], dry: [V.bool(), false] },
+    run: async (a, ctx) => {
+      const body = { id: a.id };
+      ['bri', 'night', 'pair', 'dry'].forEach((k) => { if (a[k] !== undefined) body[k] = a[k]; });
+      const r = await ctx.call('POST', '/api/moods/set', body);
+      const list = (await ctx.call('GET', '/api/moods')).moods || [];
+      const name = (list.filter((m) => m.id === a.id)[0] || {}).name;
+      const out = { message: hubctl.moodsSetText(r, name), data: r.dry ? { dry: true, plan: r.plan } : { result: r.result, now: r.now, budget: r.budget, approx: r.approx, govee: r.govee, engine: r.engine || null } };
+      if (r.result === 'partial' || (r.dry && r.ok === false)) out.ok = false;
+      return out;
+    }
+  },
+  'moods.off': {
+    args: { dry: [V.bool(), false] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/moods/off', a.dry ? { dry: true } : {});
+      const out = { message: hubctl.moodsOffText(r), data: r.dry ? { dry: true, plan: r.plan } : { result: r.result, now: r.now } };
+      if (r.result === 'partial') out.ok = false;
+      return out;
+    }
+  },
+  'moods.bri': {
+    args: { pct: [V.int(10, 100), true], id: [V.text(40), false] },
+    run: async (a, ctx) => {
+      const body = { pct: a.pct };
+      if (a.id !== undefined) body.id = a.id;
+      const r = await ctx.call('POST', '/api/moods/bri', body);
+      return { message: hubctl.moodsBriText(r, a.pct), data: { result: r.result, applied: !!r.applied, now: r.now } };
+    }
+  },
+  'moods.event': {
+    args: { name: [V.oneOf(['thunder']), true], n: [V.int(1, 6), false] },
+    run: async (a, ctx) => {
+      const body = { name: a.name };
+      if (a.n !== undefined) body.n = a.n;
+      const r = await ctx.call('POST', '/api/moods/event', body);
+      return { message: hubctl.moodsEventText(r, 'Thunder'), data: { to: r.to, n: r.n, holdMs: r.holdMs || null } };
+    }
+  },
+  'moods.probe': {
+    args: {},
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/moods/probe', {});
+      return { message: lines(hubctl.moodsProbeLines(r)), data: { read: r.read, of: r.of, mismatches: r.mismatches, counts: r.counts, leds: r.leds, maxPwr: r.maxPwr, ledMa: r.ledMa, realtime: r.realtime, mic: r.mic, ver: r.ver } };
+    }
+  },
+  'moods.tune': {
+    args: {
+      id: [V.text(40), true], cycleSeconds: [V.number(1, 3600), false, true], spans: [V.int(1, 16), false, true],
+      gamma: [(name, v) => (v === 'off' ? 'off' : V.number(0.5, 5)(name, v)), false, true]
+    },
+    check: (a) => { if (a.cycleSeconds === undefined && a.spans === undefined && a.gamma === undefined) throw argError('say what to tune: cycleSeconds, spans or gamma'); },
+    run: async (a, ctx) => {
+      const body = { id: a.id };
+      ['cycleSeconds', 'spans', 'gamma'].forEach((k) => { if (a[k] !== undefined) body[k] = a[k]; });
+      const r = await ctx.call('POST', '/api/moods/tune', body);
+      return { message: hubctl.moodsTuneText(r), data: { id: r.id, tune: r.tune, args: r.args } };
+    }
+  },
+  'moods.wall': {
+    // The Pi-only fix of the wall map (zones, sides, menorah, power); null removes it.
+    args: { override: [V.object(), true, true] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('POST', '/api/moods/wall', { override: a.override });
+      return { message: hubctl.moodsWallText(r), data: { override: !!r.override, zones: r.zones, sure: r.sure } };
+    }
+  },
   // Music lights (lights/store.js): the lamp and bars follow the Pi's music.
   'lights.status': {
     args: {},

@@ -50,7 +50,9 @@ function createStore(opt) {
   try { saved = looksLib.checkList(JSON.parse(fs.readFileSync(savedFile, 'utf8')).looks, 'saved look').map((l) => Object.assign(l, { saved: true })); } catch (e) { saved = []; }
 
   const allLooks = () => looksLib.BUILT_IN.concat(saved);
-  const lookById = (id) => allLooks().find((l) => l.id === id) || null;
+  // o.extraLooks: () => [look, ...] found by id but never listed (Moods' own lamp and bars looks).
+  const extraLooks = typeof o.extraLooks === 'function' ? o.extraLooks : () => [];
+  const lookById = (id) => allLooks().find((l) => l.id === id) || (extraLooks() || []).find((l) => l && l.id === id) || null;
 
   function saveLooks() {
     try {
