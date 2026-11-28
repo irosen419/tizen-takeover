@@ -72,7 +72,7 @@
     'hub.askedShow': 'Se pidió mostrar "{name}", que este hub no tiene.',
     /* Commands from the Home Assistant dashboard (layout, animation). */
     'hub.askedLayout': 'Se pidió el diseño "{name}", que este hub no tiene.',
-    'hub.sceneBusy': 'Cierra el panel para ver esa animación.',
+    'hub.sceneBusy': 'Cierra lo que está abierto para ver esa animación.',
     'hub.sceneNot': 'Esa animación no puede mostrarse aquí ahora.',
     'hub.playing': 'Reproduciendo: {title}',
     'hub.playingNoTitle': 'Reproduciendo',

@@ -256,6 +256,18 @@ async function command(type, data) {
   say(commandText(r));
 }
 
+// layout, scene, visualizer: only the TV acts on them, so say when it is off.
+function tvCommandText(r, screen) {
+  if (screen && !screen.on) return 'Sent, but the TV hub is not showing, so nothing will change (./hub screen says more).';
+  return commandText(r);
+}
+
+async function tvCommand(type, data) {
+  const screen = await call('GET', '/api/screen?screen=tv').catch(() => null);
+  const r = await call('POST', '/api/command', { type: type, data: data });
+  say(tvCommandText(r, screen));
+}
+
 // ./hub news and the mailbox's "news": the play command for the newest
 // newscast, and the line naming it.
 function newsPlay(ep) {
@@ -1923,13 +1935,13 @@ async function main(argv) {
   }
   if (cmd === 'pick') {
     if (!rest[0]) stop('Say which layout, by its id: ./hub pick main (./hub screen lists them).');
-    return command('layout', { id: rest[0] });
+    return tvCommand('layout', { id: rest[0] });
   }
   if (cmd === 'scene') {
     if (!rest[0]) stop('Say which animation, for example: ./hub scene fetch (./hub screen lists what plays now).');
-    return command('scene', { name: rest[0] });
+    return tvCommand('scene', { name: rest[0] });
   }
-  if (cmd === 'visualizer') return command('visualizer', {});
+  if (cmd === 'visualizer') return tvCommand('visualizer', {});
   if (cmd === 'say') {
     const a = parseArgs(rest, ['seconds']);
     const text = a.words.join(' ').trim();
@@ -2002,6 +2014,7 @@ module.exports = {
   setLead: setLead,
   MAX_LEAD: MAX_LEAD,
   commandText: commandText,
+  tvCommandText: tvCommandText,
   newsPlay: newsPlay,
   newsText: newsText,
   matchItem: matchItem,

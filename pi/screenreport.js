@@ -140,7 +140,8 @@ function createStore(opt) {
       playing: on && r.playing,
       animations: on ? r.animations : 'none',
       scenes: on ? r.scenes : [],
-      last: r ? r.last : null,
+      // Its age now: what the screen said plus the time since it said it.
+      last: r && r.last ? Object.assign({}, r.last, { ago: (r.last.ago || 0) + seen }) : null,
       hub: r ? r.hub : ''
     };
   }

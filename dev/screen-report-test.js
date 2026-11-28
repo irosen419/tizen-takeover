@@ -104,7 +104,7 @@ const STUB = () => {
       await check('(' + lang + ') with a panel open an animation is refused, said whole; the report says panel, no scenes', async () => {
         await H.openPanel(page, 'calendar');
         await cmd('scene', { name: 'stroll', screen: 'all' });
-        const want = lang === 'es' ? 'Cierra el panel para ver esa animación.' : 'Close the panel to see that animation.';
+        const want = lang === 'es' ? 'Cierra lo que está abierto para ver esa animación.' : 'Close what\'s open to see that animation.';
         const t = await H.until(() => toastText(page).then((x) => (x && x.text.indexOf(want) >= 0 ? x : false)), 4000, 'no toast');
         assert(t.whole, 'the words are cut: ' + JSON.stringify(t));
         const r = await H.until(() => screen().then((x) => (x.place === 'panel' ? x : false)), 6000, 'the report did not say panel');

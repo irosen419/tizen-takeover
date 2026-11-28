@@ -3348,11 +3348,12 @@
       why = 'busy';
     } else {
       var K = clayApi('play');
-      if (K) clearForCommand();
+      // Only a scene that can play here clears the Menu or typing for it.
+      if (K && askedList(window.HUB_CLAY).indexOf(name) >= 0) clearForCommand();
       why = K ? K.play(name) : 'off';
     }
     askedScene = { scene: name.substring(0, 30), ok: why === '', why: why, at: new Date().getTime() };
-    if (why) toast(hubWord(why === 'busy' ? 'sceneBusy' : 'sceneNot', why === 'busy' ? 'Close the panel to see that animation.' : 'That animation can\'t play here now.'), 4000);
+    if (why) toast(hubWord(why === 'busy' ? 'sceneBusy' : 'sceneNot', why === 'busy' ? 'Close what\'s open to see that animation.' : 'That animation can\'t play here now.'), 4000);
     screenSoon();
   }
 
@@ -3681,6 +3682,7 @@
   // and once a minute, so the Pi knows the screen is still there.
   var SCREEN_CHECK_MS = 3000;
   var SCREEN_EVERY_MS = 60000;
+  var SCENE_NEWS_MS = 120000;
   var scr = { sent: '', at: 0, timer: null, live: null, soon: null };
 
   function screenKind() {
@@ -3746,7 +3748,8 @@
       playing: !!(np && np.playing && open && open.w.id === 'nowplaying'),
       animations: { set: set, scenes: scenes }
     };
-    if (askedScene && /^[a-z0-9-]{1,30}$/.test(askedScene.scene)) {
+    // The last request, for a couple of minutes (an old refusal is no news).
+    if (askedScene && /^[a-z0-9-]{1,30}$/.test(askedScene.scene) && new Date().getTime() - askedScene.at < SCENE_NEWS_MS) {
       r.last = { scene: askedScene.scene, ok: askedScene.ok, why: askedScene.why, ago: Math.round((new Date().getTime() - askedScene.at) / 1000) };
     }
     return r;

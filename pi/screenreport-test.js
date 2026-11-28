@@ -123,6 +123,12 @@ async function main() {
     assert.strictEqual(s.put(Object.assign({}, REPORT, { place: 'away' })).first, true);
     assert.strictEqual(s.get('tv').on, false);
     assert.strictEqual(s.get('tablet').seenSecondsAgo, null, 'a tablet report is kept apart');
+    s.put(Object.assign({}, REPORT, { last: { scene: 'fetch', ok: false, why: 'busy', ago: 3 } }));
+    t += 4000;
+    assert.strictEqual(s.get('tv').last.ago, 7, 'the age counts the time since the report');
+    const hubctl = require('./hubctl');
+    assert.ok(/not showing, so nothing will change/.test(hubctl.tvCommandText({ delivered: 1 }, { on: false })));
+    assert.ok(/^Sent\./.test(hubctl.tvCommandText({ delivered: 1 }, { on: true })));
   });
 
   const tv = { Origin: 'http://127.0.0.1:8081', 'x-test-ip': '192.168.1.50' };

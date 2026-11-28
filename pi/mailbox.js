@@ -418,6 +418,16 @@ function sendCommand(type, data) {
   };
 }
 
+// For the TV only: the reply says so when the TV hub is not showing.
+function tvCommand(type, data) {
+  return async (args, ctx) => {
+    let screen = null;
+    try { screen = await ctx.call('GET', '/api/screen?screen=tv'); } catch (e) { screen = null; }
+    const r = await ctx.call('POST', '/api/command', { type: type, data: data(args) });
+    return { message: hubctl.tvCommandText(r, screen), data: { delivered: r.delivered, tvOn: !!(screen && screen.on) } };
+  };
+}
+
 function calendarSummary(list) {
   return (list || []).map((c) => {
     const o = { name: c.name, ok: !!c.ok, count: c.count || 0 };
@@ -529,13 +539,13 @@ const COMMANDS = {
   },
   'layout.pick': {
     args: { id: [V.text(40), true] },
-    run: sendCommand('layout', (a) => ({ id: a.id }))
+    run: tvCommand('layout', (a) => ({ id: a.id }))
   },
   scene: {
     args: { name: [V.text(30), true] },
-    run: sendCommand('scene', (a) => ({ name: a.name }))
+    run: tvCommand('scene', (a) => ({ name: a.name }))
   },
-  visualizer: { args: {}, run: sendCommand('visualizer', () => ({})) },
+  visualizer: { args: {}, run: tvCommand('visualizer', () => ({})) },
   reload: { args: {}, run: sendCommand('reload', () => ({})) },
   say: {
     args: { text: [V.text(MAX_TEXT), true], seconds: [V.number(1, 60), false] },
