@@ -70,6 +70,10 @@
     'hub.noEntertainment': 'Entretenimiento no está en este diseño. Elige uno que lo tenga (Arriba en un mosaico de arriba) y vuelve a intentarlo.',
     'hub.noAddress': 'Este panel todavía no tiene dirección.',
     'hub.askedShow': 'Se pidió mostrar "{name}", que este hub no tiene.',
+    /* Commands from the Home Assistant dashboard (layout, animation). */
+    'hub.askedLayout': 'Se pidió el diseño "{name}", que este hub no tiene.',
+    'hub.sceneBusy': 'Cierra lo que está abierto para ver esa animación.',
+    'hub.sceneNot': 'Esa animación no puede mostrarse aquí ahora.',
     'hub.playing': 'Reproduciendo: {title}',
     'hub.playingNoTitle': 'Reproduciendo',
     'hub.playFailed': 'No se pudo reproducir ese audio',

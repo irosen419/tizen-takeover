@@ -44,6 +44,7 @@ const news = require('./news');
 const echo = require('./echo');
 const grocery = require('./grocery');
 const lightSettings = require('./lights/settings');
+const screenreport = require('./screenreport');
 
 const DEFAULT_BUCKET = 'home-hub-mailbox';
 const DEFAULT_POLL_SECONDS = 10;
@@ -417,6 +418,16 @@ function sendCommand(type, data) {
   };
 }
 
+// For the TV only: the reply says so when the TV hub is not showing.
+function tvCommand(type, data) {
+  return async (args, ctx) => {
+    let screen = null;
+    try { screen = await ctx.call('GET', '/api/screen?screen=tv'); } catch (e) { screen = null; }
+    const r = await ctx.call('POST', '/api/command', { type: type, data: data(args) });
+    return { message: hubctl.tvCommandText(r, screen), data: { delivered: r.delivered, tvOn: !!(screen && screen.on) } };
+  };
+}
+
 function calendarSummary(list) {
   return (list || []).map((c) => {
     const o = { name: c.name, ok: !!c.ok, count: c.count || 0 };
@@ -518,6 +529,23 @@ const COMMANDS = {
     run: sendCommand('show', (a) => ({ widget: a.widget, mode: a.full ? 'full' : 'panel' }))
   },
   home: { args: {}, run: sendCommand('home', () => ({})) },
+  // The TV only: what it shows, another layout, the visualizer, an animation.
+  screen: {
+    args: { screen: [V.oneOf(screenreport.KINDS), false] },
+    run: async (a, ctx) => {
+      const r = await ctx.call('GET', '/api/screen?screen=' + (a.screen || 'tv'));
+      return { message: screenreport.text(r), data: r };
+    }
+  },
+  'layout.pick': {
+    args: { id: [V.text(40), true] },
+    run: tvCommand('layout', (a) => ({ id: a.id }))
+  },
+  scene: {
+    args: { name: [V.text(30), true] },
+    run: tvCommand('scene', (a) => ({ name: a.name }))
+  },
+  visualizer: { args: {}, run: tvCommand('visualizer', () => ({})) },
   reload: { args: {}, run: sendCommand('reload', () => ({})) },
   say: {
     args: { text: [V.text(MAX_TEXT), true], seconds: [V.number(1, 60), false] },

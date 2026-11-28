@@ -483,7 +483,32 @@
 
   try { document.addEventListener('keydown', function () { try { onKey(); } catch (e) { /* */ } }, true); } catch (e) { /* no keys */ }
 
+  // What a person may ask for now (the Home Assistant dashboard, through
+  // hub.js): the stage's scenes in the visualizer, the corner's on the
+  // expanded page, nothing while paused or with no room in the corner.
+  function askable() {
+    if (!host || !info || !info.playing) return [];
+    if (info.mode === 'stage') return info.outfit ? ['band', 'singer', 'encore', 'outfit'] : ['band', 'singer', 'encore'];
+    if (!info.corner || info.corner.room < CORNER_ROOM * (info.corner.z || 1)) return [];
+    return CORNER_ORDER.slice();
+  }
+
+  // Plays one now, as a normal visit (a key still sends them off). '' when
+  // it starts, else 'unknown' (not one that can play here now).
+  function askScene(name) {
+    var list = askable();
+    var ok = false;
+    for (var i = 0; i < list.length; i++) if (list[i] === name) ok = true;
+    if (!ok) return 'unknown';
+    leave(true);
+    lastKey = now() - QUIET_MS;
+    start(name, false);
+    return '';
+  }
+
   window.HUB_NP_BAND = {
+    scenes: function () { try { return askable(); } catch (e) { return []; } },
+    play: function (name) { try { return askScene(String(name)); } catch (e) { return 'error'; } },
     sync: sync,
     stop: function () { sync(null); },
     outfit: outfitFor,

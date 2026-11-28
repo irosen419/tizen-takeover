@@ -6,7 +6,8 @@
  * first scene; nothing plays before idle; every scene plays to the end with
  * no console errors, leaves nothing behind and only ever changes transform
  * and opacity; a key press clears the screen in the same tick and focus
- * still moves; a panel clears and blocks scenes; a layout change ends one;
+ * still moves; a panel clears and blocks scenes; asked by name (Home
+ * Assistant) it plays the list's scenes, a fetch take for fetch, never with a panel open; a layout change ends one;
  * the layout bar blocks scenes and a layout picked there is measured anew;
  * clay: false and ?clay=off load nothing; a missing sprite skips the scene;
  * night hours pick night scenes; by day, over 4000 picks fed their last
@@ -412,6 +413,22 @@ async function checkPanelBlocks() {
   await until(() => page.evaluate(() => window.HUB_TEST.open() === null && !window.HUB_TEST.busy()), 4000, 'the panel did not close');
   // Idle starts over after the panel: a visit comes again, by itself.
   await until(async () => (await look.state(page)).phase !== 'waiting', 15000, 'no scene after the panel closed');
+  noErrors(page);
+}
+
+// Asked by name (Home Assistant's dashboard through hub.js): the list, the
+// fetch family, a panel open, a name not on the list.
+async function checkAsked() {
+  const page = await newHub({ clay: { idleAfter: 600, every: [600, 600] } });
+  const list = await page.evaluate(() => window.HUB_CLAY.scenes());
+  ['stroll', 'fetch', 'sock-heist', 'zoomies', 'perch', 'morning', 'evening', 'night'].forEach((n) => assert(list.indexOf(n) >= 0, 'missing ' + n + ': ' + list.join()));
+  assert(list.indexOf('cheer') < 0 && list.indexOf('shrug') < 0 && list.indexOf('fetch-bolt') < 0, 'not askable: ' + list.join());
+  assert((await page.evaluate(() => window.HUB_CLAY.play('cheer'))) === 'unknown', 'cheer is not askable');
+  assert((await page.evaluate(() => window.HUB_CLAY.play('fetch'))) === '', 'fetch refused');
+  await until(async () => { const st = await look.state(page); return st.phase === 'playing' && /^fetch/.test(st.scene); }, 10000, 'no fetch take played');
+  await page.evaluate(() => window.HUB_TEST.openPanel('weather'));
+  await until(() => page.evaluate(() => window.HUB_TEST.open() === 'weather' && !window.HUB_TEST.busy()), 4000, 'the panel did not open');
+  assert((await page.evaluate(() => window.HUB_CLAY.play('stroll'))) === 'busy', 'played with a panel open');
   noErrors(page);
 }
 
@@ -1619,6 +1636,7 @@ async function main() {
   await check('3. Every scene plays to the end, clean: 2 characters, 3 props, only transform and opacity', checkEveryScene);
   await check('4. A key press clears the screen before the hub handles it; focus moves', checkKeyClears);
   await check('5. A panel clears a scene and blocks new ones until idle again', checkPanelBlocks);
+  await check('5b. Asked by name: the list, a fetch take, refused with a panel open or for a name not on it', checkAsked);
   await check('6. A layout from the Pi or a resize ends a scene; ledges follow the new layout', checkLayoutEnds);
   await check('6b. The layout bar ends a scene and blocks new ones; a layout picked there is measured anew', checkSwitcher);
   await check('7. clay: false, on: false and ?clay=off load and show nothing', checkOff);

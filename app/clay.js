@@ -2705,7 +2705,47 @@
     };
   }
 
+  /* ---------- on request (the Home Assistant dashboard, through hub.js) ---------- */
+
+  // The scenes a person may ask for by name. 'fetch' is the family: one of
+  // its three takes at random. Weather only when there is weather to dress for.
+  var ASKABLE = ['stroll', 'fetch', 'sock-heist', 'zoomies', 'perch', 'morning', 'evening', 'night', 'weather'];
+
+  function askable() {
+    if (!settings) return [];
+    var out = [];
+    for (var i = 0; i < ASKABLE.length; i++) {
+      if (ASKABLE[i] === 'weather') {
+        var w = '';
+        try { w = outfit(); } catch (e) { w = ''; }
+        if (!w) continue;
+      }
+      out.push(ASKABLE[i]);
+    }
+    return out;
+  }
+
+  // Plays one now. '' when it starts, else why not: 'off', 'unknown', 'busy'.
+  function askScene(name) {
+    if (!settings) return 'off';
+    var list = askable();
+    var ok = false;
+    for (var i = 0; i < list.length; i++) if (list[i] === name) ok = true;
+    if (!ok) return 'unknown';
+    try { if (host && host.quiet() === false) return 'busy'; } catch (e) { return 'busy'; }
+    if (name === 'fetch') {
+      var takes = [];
+      for (var k in FAMILY) if (FAMILY.hasOwnProperty(k) && FAMILY[k] === 'fetch' && SCENES.hasOwnProperty(k)) takes.push(k);
+      name = takes[Math.floor(Math.random() * takes.length)] || 'fetch';
+    }
+    delete broken[name];
+    begin(name, {});
+    return '';
+  }
+
   window.HUB_CLAY = {
+    scenes: function () { try { return askable(); } catch (e) { return []; } },
+    play: function (name) { try { return askScene(String(name)); } catch (e) { return 'error'; } },
     start: safe(start),
     input: safe(input),
     stop: safe(interrupt),

@@ -79,6 +79,7 @@
   var sounds = null;       // the Pi's "allsounds" data (any sound in the house), or null
   var lastPageSig = '';    // pageSignature() when the page was last drawn
   var vizWanted = false;   // the Visualizer button asked for it (full screen only)
+  var vizAskedAt = 0;     // the hub was asked to open the visualizer (HUB_NP_REMOTE.viz)
   var vizPress = 0;        // counts presses, so an old press's check never undoes a new one
   var otherAt = { key: '', pos: 0, at: 0, playing: false };   // where a non-Spotify sound is, counted here
 
@@ -1068,6 +1069,23 @@
 
   /* ---------- the widget ---------- */
 
+  // For hub.js (the Home Assistant dashboard): open the visualizer, and
+  // what the page shows now. viz(): the hub then opens the page full screen;
+  // already full screen, it turns on at once.
+  window.HUB_NP_REMOTE = {
+    viz: safe(function () {
+      vizAskedAt = now();
+      if (C && C.isOpen && C.isOpen() && C.mode && C.mode() === 'full') {
+        vizWanted = true;
+        vizAskedAt = 0;
+        C.redrawPanel();
+      }
+    }),
+    state: function () {
+      return { viz: !!(page && page.vizOn), playing: !!(page && page.v && page.v.kind === 'playing') };
+    }
+  };
+
   return {
     id: 'nowplaying',
     get title() { return T('nowplaying.title', 'Now Playing'); },
@@ -1140,6 +1158,8 @@
     onMode: function (mode, ctx) {
       // Out of full screen the visualizer is forgotten: the button asks again.
       if (mode !== 'full') { vizWanted = false; vizPress++; }
+      else if (vizAskedAt && now() - vizAskedAt < 8000) vizWanted = true;
+      if (mode === 'full') vizAskedAt = 0;
       ctx.redrawPanel();
     },
 

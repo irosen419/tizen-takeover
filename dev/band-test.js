@@ -10,7 +10,9 @@
  * and clear of the song card; any key sends them off; a pause too; the
  * corner on the expanded page never covers a word or a button; the off
  * switch; the stylesheet animates only transform and opacity and uses no
- * clip-path or filter; the files are ES5.
+ * clip-path or filter; the files are ES5. Asked from the Pi (Home Assistant's
+ * dashboard): the visualizer command, the screen report's stage scenes, a
+ * scene played and one refused.
  *
  * SHOTS=/some/folder saves screenshots (1920x1080).
  */
@@ -358,6 +360,29 @@ async function main() {
       assert(inside, name + ': inside the panel');
       await shot(s.page, 'band-corner-' + name + '.jpg');
     }
+    await s.context.close();
+  });
+
+  await check('asked from the Pi (Home Assistant): visualizer opens full screen with it on; the report lists the stage scenes; a scene plays; one the stage lacks is refused', async () => {
+    mock.reset();
+    await control(pi, 'POST', '/api/spotify/refresh', {});
+    const s = await open(pi, ONLY(3, 2), { motion: 'push' });
+    await until(() => s.page.evaluate(() => window.HUB_LIVE && window.HUB_LIVE.status().state === 'live'), 8000, 'not live');
+    // A command for the TV only: this browser leaves it alone.
+    await control(pi, 'POST', '/api/command', { type: 'visualizer' });
+    await sleep(1200);
+    assert(await s.page.evaluate(() => window.HUB_TEST.open() === null), 'a TV-only command opened something here');
+    await control(pi, 'POST', '/api/command', { type: 'visualizer', data: { screen: 'all' } });
+    await until(() => s.page.evaluate(() => window.HUB_TEST.mode() === 'full' && !!document.querySelector('.np-page.is-full.np-card')), 8000, 'the visualizer did not open');
+    await until(() => band(s.page).then((b) => b.mode === 'stage'), 8000, 'stage');
+    const rep = await until(() => control(pi, 'GET', '/api/screen?screen=browser').then((r) => (r.place === 'visualizer' && r.scenes.length ? r : false)), 8000, 'the report did not say visualizer');
+    assert(rep.animations === 'stage' && rep.scenes.slice(0, 3).join() === 'band,singer,encore' && rep.open === 'nowplaying' && rep.viz && rep.playing, JSON.stringify(rep));
+    await control(pi, 'POST', '/api/command', { type: 'scene', data: { name: 'singer', screen: 'all' } });
+    await until(() => band(s.page).then((b) => b.scene === 'singer'), 10000, 'singer did not play');
+    await until(() => control(pi, 'GET', '/api/screen?screen=browser').then((r) => r.last && r.last.scene === 'singer' && r.last.ok), 6000, 'the report did not say it played');
+    await control(pi, 'POST', '/api/command', { type: 'scene', data: { name: 'fetch', screen: 'all' } });
+    await until(() => control(pi, 'GET', '/api/screen?screen=browser').then((r) => r.last && r.last.scene === 'fetch' && !r.last.ok && r.last.why === 'unknown'), 6000, 'fetch was not refused on the stage');
+    await shot(s.page, 'band-asked-singer.jpg');
     await s.context.close();
   });
 
