@@ -1,0 +1,75 @@
+{
+  "v": 1,
+  "leds": 164,
+  "lastLit": 161,
+  "spare": [162, 163],
+  "sections": [
+    { "id": "guitar", "start": 0, "end": 49, "dim": [29, 49] },
+    { "id": "drum", "start": 50, "end": 111, "dim": [50, 111] },
+    { "id": "mic", "start": 112, "end": 161, "dim": [141, 161] }
+  ],
+  "zones": {
+    "vase1": { "r": [[9, 15]], "sure": false },
+    "vase2": { "r": [[20, 26]], "sure": false },
+    "vase3": { "r": [[121, 127]], "sure": false },
+    "vase4": { "r": [[132, 138]], "sure": false },
+    "drops.left": { "r": [[16, 19]], "sure": false },
+    "drops.right": { "r": [[128, 131]], "sure": false },
+    "run.left": { "r": [[0, 8], [27, 28]], "sure": false },
+    "run.right": { "r": [[112, 120], [139, 140]], "sure": false },
+    "halo.guitar": { "r": [[29, 49]], "sure": true },
+    "halo.drum": { "r": [[50, 111]], "sure": true },
+    "halo.mic": { "r": [[141, 161]], "sure": true }
+  },
+  "sides": {
+    "halo.guitar": {
+      "sure": false,
+      "inside": "right",
+      "s": [["inside", 29, 33], ["top", 34, 38], ["outside", 39, 45], ["bottom", 46, 49]]
+    },
+    "halo.drum": { "sure": false, "s": [["bottom", 50, 63], ["left", 64, 80], ["top", 81, 94], ["right", 95, 111]] },
+    "halo.mic": {
+      "sure": false,
+      "inside": "left",
+      "s": [["inside", 141, 145], ["top", 146, 150], ["outside", 151, 157], ["bottom", 158, 161]]
+    }
+  },
+  "menorah": { "sure": false, "candles": [150, 148, 146, 94, 81, 34, 36, 38], "shamash": [87, 88] },
+  "live": {
+    "segments": [
+      { "id": 0, "start": 0, "stop": 50 },
+      { "id": 1, "start": 50, "stop": 112 },
+      { "id": 2, "start": 112, "stop": 162 }
+    ],
+    "protectedPresets": [1, 2],
+    "restorePreset": 2,
+    "maxSegments": 32
+  },
+  "power": { "limiterMa": 1000, "budgetMa": 800, "baseMa": 264, "ledMa": 55, "flashMa": 250 },
+  "geometry": {
+    "unit": "in",
+    "canvases": [
+      { "id": "guitar", "x": 0, "y": 52.25, "w": 20, "h": 28 },
+      { "id": "drum", "x": 34.25, "y": 52.25, "w": 20, "h": 28 },
+      { "id": "mic", "x": 68.5, "y": 52.25, "w": 20, "h": 28 }
+    ],
+    "vases": [
+      { "zone": "vase1", "x": 27.125, "y": 72.25 },
+      { "zone": "vase2", "x": 27.125, "y": 60.25 },
+      { "zone": "vase3", "x": 61.375, "y": 72.25 },
+      { "zone": "vase4", "x": 61.375, "y": 60.25 }
+    ],
+    "paths": {
+      "halo.guitar": [[19.25, 61], [19.25, 79.5], [0.75, 79.5], [0.75, 53], [19.25, 53]],
+      "halo.drum": [[54, 52.5], [34.5, 52.5], [34.5, 80], [54, 80], [54, 52.5]],
+      "halo.mic": [[69.25, 61], [69.25, 79.5], [87.75, 79.5], [87.75, 53], [69.25, 53]],
+      "drops.left": [[27.125, 69.5], [27.125, 63]],
+      "drops.right": [[61.375, 69.5], [61.375, 63]],
+      "run.left#0": [[52, 55], [36.5, 55], [30, 70.5]],
+      "run.left#1": [[25, 60.5], [20.5, 61]],
+      "run.right#0": [[55, 53.5], [58.5, 56], [59, 70.5]],
+      "run.right#1": [[63.5, 60.5], [68, 61]]
+    },
+    "unsure": ["drops.left", "drops.right", "run.left#0", "run.left#1", "run.right#0", "run.right#1"]
+  }
+}
