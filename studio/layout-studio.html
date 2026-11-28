@@ -1010,6 +1010,8 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     mirror:        { title: 'Mirror',                sub: 'A camera mirror for mornings and nights out', soon: true },
     // app/widgets/ambience.js (v0.29.7): the room's lights through the Pi and Home Assistant. Not the Ambiance placeholder above.
     ambience:      { title: 'Ambience',              sub: 'Scenes, each light\u2019s level and the plant wall, from the TV' },
+    // app/widgets/moods.js + app/moods-wall.js: whole-wall moods for the plant wall (WLED, the vases, the lamp and bars) through the Pi; on the "Moods test" layout.
+    moods:         { title: 'Moods',                 sub: 'The lit wall drawn from the wall map; pick a whole-wall or vase mood, its brightness, and Menorah\u2019s night' },
     // app/widgets/wotd.js (v0.28.5): one Latin American Spanish word a day, easy in January, B1 by December.
     // The budget tiles (app/widgets/budget.js, v0.28.4; budget-lab.js, v0.29.3, merchants and Put it somewhere v0.29.4, runway chart at full screen v0.29.5): the "Budget" layout. The Runway tile stays a proposal (the chart lives in Budget lab's full screen).
     'budget-room':  { title: 'Daily room',           sub: 'What is left to spend each day until card day' },
@@ -1091,6 +1093,10 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     // v0.29.7: one Ambience tile on the whole screen, for trying the lights.
     { id: 'ambience-test', name: 'Ambience test', layout: [
       { id: 'ambience', x: 0, y: 0, w: 12, h: 6 }
+    ] },
+    // Moods (the plant wall's whole-wall moods) beside Ambience, for trying it.
+    { id: 'moods-test', name: 'Moods test', layout: [
+      { id: 'moods', x: 0, y: 0, w: 8, h: 6 }, { id: 'ambience', x: 8, y: 0, w: 4, h: 6 }
     ] },
     // v0.30.1: the Architecture widget on the whole screen, for trying the map with the remote.
     { id: 'architecture-test', name: 'Hub architecture', layout: [
@@ -1536,6 +1542,20 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
               es: 'Dos columnas, más grandes: las filas hasta Comercios a la izquierda; a la derecha el recorrido hasta el pago de tarjeta (el margen libre, que sube con el sueldo y baja con las facturas, frente a la línea de gasto con el tope que pruebas, sin eje de dólares, y la diferencia del día de pago como única cifra), y luego A dónde va y Ritmo.' },
     },
     // app/widgets/plantwall.js (v0.90.0): a still drawing, the same at every size.
+    // app/widgets/moods.js. The sample is the made-up resource in dev/samples/moods-sample.json (Christmas on).
+    moods: {
+      title: { en: 'Moods', es: 'Ambientes del muro' },
+      sample: { en: { name: 'Christmas', on: 'On now' }, es: { name: 'Navidad', on: 'Activo ahora' } },
+      strip: { en: 'Four swatches and the mood\u2019s name; six columns add the description. A long name gets the room: the description leaves, then the swatches overlap. 1 column: a dot lit in the mood\u2019s first colour.',
+               es: 'Cuatro muestras de color y el nombre del ambiente; seis columnas añaden la descripción. Un nombre largo se queda con el espacio: primero se va la descripción y luego las muestras se solapan. 1 columna: un punto en el primer color del ambiente.' },
+      standard: { en: 'Two rows: a small lit wall over the name; six columns put the wall beside \u201cOn now\u201d, the name and the description.',
+                  es: 'Dos filas: un muro iluminado pequeño sobre el nombre; con seis columnas el muro va al lado de «Activo ahora», el nombre y la descripción.' },
+      tall: { en: 'The hero: the lit wall on its night stage, then \u201cOn now\u201d, the name, the description and the brightness line. Narrow: swatches over the name.',
+              es: 'El muro iluminado en grande sobre su fondo de noche, luego «Activo ahora», el nombre, la descripción y la línea de brillo. Estrecho: las muestras sobre el nombre.' },
+      panel: { en: 'Left: the lit wall (focus on a card previews it, \u201cPreview\u201d), brightness as five pips, Lamp and bars (a switch) and Menorah\u2019s night 1 to 8. Right: \u201cWhole wall\u201d and \u201cVases\u201d rails, Off first. OK sends (\u201cSending\u2026\u201d), rolled back with a plain line if the wall doesn\u2019t answer.',
+               es: 'Izquierda: el muro iluminado (el foco en una tarjeta lo previsualiza, «Vista previa»), el brillo en cinco puntos, Lámpara y barras (un interruptor) y la noche de la Menorá del 1 al 8. Derecha: las filas «Todo el muro» y «Floreros», Apagado primero. OK envía («Enviando…») y se deshace con una línea clara si el muro no responde.' },
+      full: { en: 'The same, bigger, with the tags under the name.', es: 'Lo mismo, más grande, con las etiquetas bajo el nombre.' }
+    },
     plantwall: {
       title: { en: 'Plant wall lights', es: 'Luces del muro de plantas' },
       sample: { en: {}, es: {} },
@@ -1756,7 +1776,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
   })();
   var CELLS = ['strip', 'standard', 'tall', 'panel', 'full'];
   var SZ_ORDER = ['today', 'entertainment', 'weather', 'todo', 'calendar', 'nowplaying',
-    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'spending', 'sunpath', 'plantwall', 'ambience', 'ambiance', 'mirror', 'soundctl', 'architecture', 'grocery', 'pantry', 'list', 'photos', 'flashcards', 'conjugate'];
+    'awws', 'awws-visits', 'awws-agenda', 'awws-todo', 'awws-reach', 'awws-outreach', 'awws-pipeline', 'awws-money', 'wotd', 'budget-room', 'budget-card', 'budget-goals', 'budget-lab', 'budget-runway', 'investments', 'spending', 'sunpath', 'plantwall', 'ambience', 'moods', 'ambiance', 'mirror', 'soundctl', 'architecture', 'grocery', 'pantry', 'list', 'photos', 'flashcards', 'conjugate'];
   var TIER_EN = { strip: 'Strip', standard: 'Standard', tall: 'Tall', panel: 'Clicked', full: 'Full screen' };
   var I18N = {
     en: { title: 'What shows at each size', lang: 'Language',
@@ -2290,7 +2310,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     photo: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><circle cx="9" cy="9.5" r="1.6"/><path d="M3.5 17.5l5-4.5 3.5 3 3-2.5 5.5 4.5"/>',
     sitemap: '<rect x="8.5" y="3" width="7" height="5.5" rx="1.2"/><rect x="2.5" y="15.5" width="7" height="5.5" rx="1.2"/><rect x="14.5" y="15.5" width="7" height="5.5" rx="1.2"/><path d="M12 8.5v3.5M6 15.5V12h12v3.5"/>'
   };
-  var WICON = { today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
+  var WICON = { moods: 'sparkle', today: 'clock', entertainment: 'tv', todo: 'list', calendar: 'cal', nowplaying: 'music', awws: 'globe', ambiance: 'sparkle', mirror: 'camera',
     'awws-visits': 'globe', 'awws-agenda': 'globe', 'awws-todo': 'globe', 'awws-reach': 'globe', 'awws-outreach': 'globe', 'awws-pipeline': 'globe', 'awws-money': 'globe', wotd: 'speech',
     'budget-room': 'wallet', 'budget-card': 'card', 'budget-goals': 'target', 'budget-runway': 'trend', investments: 'trend', spending: 'wallet', 'budget-lab': 'wallet', soundctl: 'music', sunpath: 'plantsun', plantwall: 'bulb', architecture: 'sitemap', grocery: 'basket', pantry: 'jar', list: 'basket', photos: 'photo', flashcards: 'speech', conjugate: 'speech' };
   function ic(name, cls) { return '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + ICON[name] + '</svg>'; }
@@ -2450,6 +2470,14 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
     return '<div class="bu-grow am-r"><span class="l1">' + esc(l[0]) + '</span>' + (l[2] === 'switch' ? '<span></span>' : buMeter(l[1] / 100, 'bu-warn')) + state + '</div>';
   }
   var X_TILE = {
+    moods: function (S, T, tier, cls, id) {
+      var dots = ['#ff2a2a', '#1fbf4a', '#1fbf4a', '#ff2a2a'].map(function (c) { return '<i style="display:inline-block;width:.7em;height:.7em;margin-right:.25em;border-radius:50%;background:' + c + '"></i>'; }).join('');
+      if (tier === 'strip') return '<div class="' + cls + '">' + head(id, T, '', '', true) + '<div class="l1">' + dots + ' <b>' + esc(S.name) + '</b></div></div>';
+      var pane = function (x, glow) { return '<rect x="' + x + '" y="4" width="20" height="28" rx="1" fill="#1b1d22" stroke="' + glow + '" stroke-width="1.2" stroke-dasharray="1.2 2"/>'; };
+      var vase = function (x, c) { return '<circle cx="' + x + '" cy="12" r="2.6" fill="none" stroke="#9aa" stroke-width=".4"/><circle cx="' + x + '" cy="13" r="1.6" fill="' + c + '"/><circle cx="' + x + '" cy="24" r="2.6" fill="none" stroke="#9aa" stroke-width=".4"/><circle cx="' + x + '" cy="25" r="1.6" fill="' + (c === '#ff2a2a' ? '#1fbf4a' : '#ff2a2a') + '"/>'; };
+      var wall = '<svg viewBox="0 0 96 36" style="width:100%;height:100%;background:#0e1014;border-radius:.6em" aria-hidden="true">' + pane(6, '#c33') + vase(33, '#ff2a2a') + pane(38, '#fff') + vase(63, '#1fbf4a') + pane(70, '#c33') + '</svg>';
+      return '<div class="' + cls + '">' + head(id, T) + '<div style="flex:1 1 auto;min-height:0">' + wall + '</div><div class="l1 xs mu">' + esc(S.on) + '</div><div class="l1"><b>' + esc(S.name) + '</b></div></div>';
+    },
     plantwall: function () {
       var r = function (x) { return '<rect x="' + x + '" y="4" width="20" height="28" fill="#3a3a33"/><rect x="' + (x + 1.5) + '" y="5.5" width="17" height="25" fill="none" stroke="#f0a540" stroke-width=".6" stroke-dasharray="1 1.4"/>'; };
       var v = function (x) { return '<circle cx="' + x + '" cy="12" r="2.6" fill="none" stroke="#97a59b" stroke-width=".4"/><circle cx="' + x + '" cy="24" r="2.6" fill="none" stroke="#97a59b" stroke-width=".4"/>'; };
@@ -2550,6 +2578,7 @@ a.ar-cm-path:hover { color: var(--accent); text-decoration-color: currentColor; 
   };
   var X_PANEL = {
     plantwall: function (S, full) { return '<div class="pl-lead">' + esc(SIZE_MATRIX.plantwall[full ? 'full' : 'panel'][lang]) + '</div>'; },
+    moods: function (S, full) { return '<div class="pl-lead">' + esc(SIZE_MATRIX.moods[full ? 'full' : 'panel'][lang]) + '</div>'; },
     photos: function (S, full) {
       if (!full) return '<div class="pl-lead">' + esc(SIZE_MATRIX.photos.panel[lang]) + '</div>';
       var cells = function (n, on) { var h = ''; for (var i = 0; i < n; i++) h += '<i' + (i === on ? ' class="on"' : '') + '></i>'; return h; };
